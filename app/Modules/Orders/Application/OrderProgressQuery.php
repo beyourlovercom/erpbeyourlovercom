@@ -107,7 +107,15 @@ final class OrderProgressQuery
                     ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending'))),
             'allocated' => $orders->where('order_status', 'pending_shipment')
                 ->whereNull('fulfillment_parent_id')
-                ->whereHas('fulfillmentAllocation', fn ($a) => $a->where('status', 'submitted')),
+                ->whereHas('fulfillmentAllocation', fn ($a) => $a->where('status', 'submitted'))
+                ->whereDoesntHave('originalFulfillmentChildren', fn ($c) => $c
+                    ->whereHas('shipment', fn ($s) => $s->whereIn('shipment_status', ['shipped', 'completed']))),
+            'partially_shipped' => $orders->whereNull('fulfillment_parent_id')
+                ->whereHas('originalFulfillmentChildren', fn ($c) => $c
+                    ->whereHas('shipment', fn ($s) => $s->whereIn('shipment_status', ['shipped', 'completed'])))
+                ->whereHas('originalFulfillmentChildren', fn ($c) => $c
+                    ->whereDoesntHave('shipment')->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending')))
+                ->whereDoesntHave('originalFulfillmentChildren', fn (Builder $c) => $this->directConflict($c)),
             'sent' => $orders->whereHas('shipment', fn ($s) => $s
                 ->where('shipment_status', 'shipped')->whereNotNull('shipped_at')
                 ->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', '')))
@@ -118,7 +126,21 @@ final class OrderProgressQuery
                     })->orWhereHas('shipment', fn ($shipment) => $shipment
                         ->whereHas('overseaReview', fn ($r) => $r->where('status', 'approved')
                             ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id')))),
-            'progress_conflict' => $orders->where(function (Builder $bad): void {
+            'progress_conflict' => $orders->where(function (Builder $q): void {
+                $this->directConflict($q)
+                    ->orWhereHas('originalFulfillmentChildren', fn (Builder $child) => $this->directConflict($child));
+            }),
+            'shipping' => $orders->whereHas('shipment', fn ($s) => $s
+                ->where('shipment_status', 'shipped')->whereNotNull('tracking_number')->where('tracking_number', '!=', '')),
+            'completed' => $orders->whereIn('order_status', ['completed', 'completed_delivered']),
+            default => $orders->whereRaw('1=0'),
+        };
+    }
+
+    /** Reusable direct-segment reconciliation predicate, excluding root roll-up. */
+    private function directConflict(Builder $orders): Builder
+    {
+        return $orders->where(function (Builder $bad): void {
                 $bad->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'shipped')
                     ->whereNull('shipped_at'))
                     ->orWhere(function (Builder $factory): void {
@@ -133,12 +155,7 @@ final class OrderProgressQuery
                     ->orWhere(function (Builder $stock): void {
                         $stock->where('workflow_status', 'out_of_stock')->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'shipped'));
                     });
-            }),
-            'shipping' => $orders->whereHas('shipment', fn ($s) => $s
-                ->where('shipment_status', 'shipped')->whereNotNull('tracking_number')->where('tracking_number', '!=', '')),
-            'completed' => $orders->whereIn('order_status', ['completed', 'completed_delivered']),
-            default => $orders->whereRaw('1=0'),
-        };
+        });
     }
 
     /** $shipments is a Shipment model query. */

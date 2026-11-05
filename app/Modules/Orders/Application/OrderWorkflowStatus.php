@@ -12,6 +12,8 @@ final class OrderWorkflowStatus
         return [
             'pending_allocation' => ['en' => 'Pending Allocation', 'zh' => '待分仓', 'color' => 'neutral', 'mutable' => false],
             'pending_review' => ['en' => 'Pending Review', 'zh' => '待审核', 'color' => 'amber', 'mutable' => false],
+            'partially_shipped' => ['en' => 'Partially Shipped', 'zh' => '部分已发货', 'color' => 'blue', 'mutable' => false],
+            'archived' => ['en' => 'Archived', 'zh' => '已归档', 'color' => 'neutral', 'mutable' => false],
             'progress_conflict' => ['en' => 'Reconciliation Required', 'zh' => '状态待对账', 'color' => 'red', 'mutable' => false],
             'sending' => ['en' => 'Sending', 'zh' => '待发', 'color' => 'neutral', 'mutable' => true],
             'allocated' => ['en' => 'Allocated', 'zh' => '已分仓', 'color' => 'blue', 'mutable' => false],

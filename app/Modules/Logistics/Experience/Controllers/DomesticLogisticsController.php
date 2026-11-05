@@ -56,6 +56,10 @@ final class DomesticLogisticsController
             'manualSync',
             'fulfillmentParent',
             'fulfillmentAllocation',
+            'shipment.overseaReview',
+            'originalFulfillmentChildren.shipment.warehouse',
+            'originalFulfillmentChildren.shipment.overseaReview',
+            'originalFulfillmentChildren.operationalMarkers',
         ]);
 
         $this->applyView($query, $view);

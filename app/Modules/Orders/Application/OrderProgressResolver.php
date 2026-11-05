@@ -17,8 +17,18 @@ final class OrderProgressResolver
             return null; // KOL business phases keep their pre-V3 semantics.
         }
 
+        if ($order->archived_at !== null || $order->isOperationallyArchived()) {
+            return 'archived';
+        }
         if ($order->order_status === OrderStatus::Cancelled) {
             return 'cancelled';
+        }
+
+        if ($order->fulfillment_parent_id === null) {
+            $order->loadMissing('originalFulfillmentChildren');
+            if ($order->originalFulfillmentChildren->isNotEmpty()) {
+                return $this->aggregateChildren($order->originalFulfillmentChildren);
+            }
         }
 
         if (in_array($order->order_status, [OrderStatus::Completed, OrderStatus::CompletedDelivered], true)) {
@@ -26,7 +36,9 @@ final class OrderProgressResolver
         }
 
         // Parent is a non-executable aggregate after Vita commits allocation.
-        $order->loadMissing('fulfillmentAllocation');
+        if ($order->fulfillment_parent_id === null) {
+            $order->loadMissing('fulfillmentAllocation');
+        }
         if ($order->fulfillment_parent_id === null && $order->fulfillmentAllocation?->status === 'submitted') {
             return 'allocated';
         }
@@ -83,5 +95,32 @@ final class OrderProgressResolver
         }
 
         return 'pending_review';
+    }
+
+    /** Non-executable source order follows a read-only rollup of its own fulfillment segments. */
+    private function aggregateChildren(\Illuminate\Support\Collection $children): string
+    {
+        $phases = $children->map(fn (Order $child): ?string => $this->resolve($child))->values();
+
+        if ($phases->contains('progress_conflict')) {
+            return 'progress_conflict';
+        }
+        if ($phases->every(fn ($phase) => $phase === 'completed')) {
+            return 'completed';
+        }
+
+        $active = ['sent', 'shipping', 'completed'];
+        $moved = $phases->filter(fn ($phase) => in_array($phase, $active, true))->count();
+        if ($moved > 0 && $moved < $phases->count()) {
+            return 'partially_shipped';
+        }
+        if ($moved === $phases->count()) {
+            return $phases->contains('sent') ? 'sent' : 'shipping';
+        }
+        if ($phases->every(fn ($phase) => $phase === 'out_of_stock')) {
+            return 'out_of_stock';
+        }
+
+        return 'allocated';
     }
 }

@@ -299,7 +299,7 @@ final class OrderService
         $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
         $query = $orderClass::query()
             ->eligibleForOperations()
-            ->with(['items', 'owner', 'address', 'shipment.warehouse', 'operationalMarkers', 'fulfillmentAllocation'])
+            ->with(['items', 'owner', 'address', 'shipment.warehouse', 'shipment.overseaReview', 'operationalMarkers', 'fulfillmentAllocation', 'originalFulfillmentChildren.shipment.warehouse', 'originalFulfillmentChildren.shipment.overseaReview', 'originalFulfillmentChildren.operationalMarkers'])
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
             ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
@@ -335,8 +335,13 @@ final class OrderService
             ->when($filters['order_status'] ?? null, fn ($query, string $status) => $query->where('order_status', $status));
 
         $query->when($filters['workflow_status'] ?? null, function ($query, string $status): void {
-            if (in_array($status, ['pending_allocation', 'pending_review', 'allocated', 'sending', 'sent', 'shipping', 'out_of_stock', 'progress_conflict', 'completed'], true)) {
+            if (in_array($status, ['pending_allocation', 'pending_review', 'allocated', 'partially_shipped', 'sending', 'sent', 'shipping', 'out_of_stock', 'progress_conflict', 'completed'], true)) {
                 $this->progressQueries->applyPhase($query, $status);
+                return;
+            }
+            if (OrderAuxiliaryStatusService::isAuxiliary($status)) {
+                $query->where(fn (Builder $q) => $q->where('workflow_status', $status)
+                    ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'workflow_aux_'.$status)));
                 return;
             }
             $canonicalFallbacks = ['sending' => ['pending_shipment'], 'sent' => ['shipped'], 'finished' => ['completed', 'completed_delivered'], 'cancel' => ['cancelled']][$status] ?? [];

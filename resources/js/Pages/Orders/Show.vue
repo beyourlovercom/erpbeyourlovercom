@@ -143,6 +143,7 @@ const props = withDefaults(defineProps<{
   canMarkOperational?: boolean
   canEditOrder?: boolean
   canEditWorkflowStatus?: boolean
+  canManageAuxiliary?: boolean
   canTrashOrder?: boolean
   canArchiveOrder?: boolean
   operationallyArchived?: boolean
@@ -159,7 +160,7 @@ const props = withDefaults(defineProps<{
   wooAdminEditUrl?: string | null
   kolProfile?: { id: number; display_name: string; url: string } | null
 
-}>(), { canMarkOperational: false, canEditOrder: false, canEditWorkflowStatus: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
+}>(), { canMarkOperational: false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
 
 
 const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
@@ -1107,7 +1108,7 @@ onBeforeUnmount(() => {
         <!-- Identity strip -->
         <div class="ord-identity-strip">
           <div class="ord-identity-main">
-            <span class="ord-identity-number">{{ order.erp_order_id ?? '—' }}</span><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :options="workflowStatusOptions" />
+            <span class="ord-identity-number">{{ order.erp_order_id ?? '—' }}</span><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :can-manage-auxiliary="canManageAuxiliary" :options="workflowStatusOptions" />
             <span class="ord-identity-badge">{{ order.order_kind_label }}</span>
             <span class="ord-identity-badge ord-badge-muted">{{ order.source_label }}</span>
             <span class="ord-identity-badge ord-badge-status">{{ order.order_status_label }}</span>

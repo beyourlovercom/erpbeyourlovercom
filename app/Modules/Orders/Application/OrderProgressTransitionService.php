@@ -16,6 +16,7 @@ final class OrderProgressTransitionService
     public function __construct(
         private readonly OrderWorkflowStatusService $annotations,
         private readonly DomesticReviewDecisionService $domestic,
+        private readonly OrderAuxiliaryStatusService $auxiliary,
     ) {}
 
     public function transition(Order $order, string $next, int $revision, Authenticatable $actor): Order
@@ -25,16 +26,25 @@ final class OrderProgressTransitionService
         if ((int) $order->workflow_revision !== $revision) {
             throw new HttpException(409, '订单进度已变化，请刷新后重试。');
         }
-        if ($order->archived_at !== null || $order->trashed()) {
+        if ($order->archived_at !== null || $order->trashed() || $order->isOperationallyArchived()) {
             throw new HttpException(422, '归档订单不可改变状态。');
         }
 
         if (in_array($order->order_kind, [OrderKind::Customer, OrderKind::FulfillmentDerived], true)) {
+            if (OrderAuxiliaryStatusService::isAuxiliary($next)) {
+                return $this->auxiliary->add($order, $next, $revision, $actor);
+            }
+            if (! in_array($next, ['sending', 'out_of_stock'], true)) {
+                throw new HttpException(409, '此进度必须通过实际业务操作完成，不能直接修改标签。');
+            }
             $shipment = $order->shipment;
             $isFactory = strtoupper(trim((string) $shipment?->warehouse?->code)) === 'FACTORY';
             $stockout = $order->workflow_status === 'out_of_stock'
                 || $order->operationalMarkers->contains('marker', 'domestic_stockout');
             $approved = $order->operationalMarkers->contains('marker', 'domestic_reviewed');
+            if ($next === 'out_of_stock' && ! $isFactory) {
+                throw new HttpException(409, '缺货操作需通过已分配的国内商务审核流程。');
+            }
             if ($next === 'sending' && ! $shipment?->warehouse_id) {
                 throw new HttpException(409, '订单尚未分仓，不能直接标记待发货。');
             }
