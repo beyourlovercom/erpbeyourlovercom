@@ -22,6 +22,7 @@ const props = defineProps<{
   canExport: boolean
   omsGridAvailable?: boolean
   omsGridEnabled?: boolean
+  canImportOmsOrders?: boolean
   canPreviewKolLinks?: boolean
   canManageTrash?: boolean
   canEditWorkflowStatus?: boolean
@@ -166,6 +167,7 @@ const saveCurrentView = () => {
 }
 const deleteSavedView = (saved: SavedView) => router.delete(`/orders/views/${saved.id}`, { preserveScroll: true })
 const exportUrl = () => `${basePath.value}/export?${new globalThis.URLSearchParams(filters).toString()}`
+const omsExportUrl = () => `/orders/oms/export?${new globalThis.URLSearchParams(Object.entries({ ...filters, ...gridParams() }).filter(([, value]) => value !== undefined).map(([key, value]): [string, string] => [key, String(value)])).toString()}`
 const goToPage = (page: number) => nav({ ...filters, page })
 const orderPath = (order: Order) => order.order_kind === 'kol_fulfillment' ? `/kol/orders/${order.id}` : `/customers/orders/${order.id}`
 const definitions: GridColumnDefinition<ColumnKey>[] = [
@@ -190,7 +192,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
           <Link v-if="omsGridAvailable" class="mvp-button" :href="gridToggleUrl(!omsGridEnabled)">{{ omsGridEnabled ? '返回原列表' : '体验 OMS Grid' }}</Link>
           <Link v-if="canManageTrash" class="mvp-button" href="/orders/trash">回收站（管理员）</Link>
           <Link class="mvp-button" href="/orders/archive">归档清单</Link>
-          <a v-if="canExport" class="mvp-button" :href="exportUrl()">导出 CSV</a>
+          <a v-if="canExport && !omsGridEnabled" class="mvp-button" :href="exportUrl()">导出 CSV</a>
           <Link v-if="orderKind === 'kol_fulfillment' && canPreviewKolLinks" class="mvp-button" href="/kol/orders/link-preview" data-testid="kol-order-link-preview">历史关联预览</Link>
           <template v-if="orderKind === 'all' && orderScope !== 'external_warehouse'">
             <Link class="mvp-button" href="/customers/orders/create">新建客户订单</Link>
@@ -238,6 +240,8 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         :filters="props.filters"
         :can-edit-workflow-status="canEditWorkflowStatus"
         :workflow-status-options="workflowStatusOptions"
+        :export-url="omsExportUrl()"
+        :can-import="canImportOmsOrders ?? false"
         @page-change="goToPage"
         @page-size-change="gridPageSize"
         @sort-change="gridSort"

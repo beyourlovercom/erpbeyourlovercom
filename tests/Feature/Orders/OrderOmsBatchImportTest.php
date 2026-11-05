@@ -1,0 +1,189 @@
+<?php
+
+namespace Tests\Feature\Orders;
+
+use App\Models\Role;
+use App\Models\User;
+use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxTableReader;
+use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
+use App\Modules\Orders\Application\OrderOmsBatchImport;
+use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Tests\TestCase;
+
+final class OrderOmsBatchImportTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withHeader('Accept', 'application/json');
+    }
+
+    private function userWith(array $permissions): User
+    {
+        $role = Role::create(['key' => 'oms-batch-'.uniqid(), 'label' => 'OMS Batch UAT']);
+        foreach ($permissions as $permission) {
+            $role->permissions()->firstOrCreate(['key' => $permission], ['label' => $permission]);
+        }
+        $user = User::factory()->create(['is_active' => true]);
+        $user->roles()->attach($role);
+
+        return $user;
+    }
+
+    private function xlsx(string $externalNumber = 'R3-IMPORT-0001', string $sku = 'MF414A', string $qty = '2'): UploadedFile
+    {
+        $entry = array_fill_keys(OrderOmsBatchImport::FIELDS, '');
+        $entry['external_order_number'] = $externalNumber;
+        $entry['order_date'] = '2026-11-05';
+        $entry['recipient_name'] = 'Test Customer';
+        $entry['phone'] = '123456789';
+        $entry['country'] = 'US';
+        $entry['province_state'] = 'NY';
+        $entry['city'] = 'New York';
+        $entry['address_line_1'] = '1 Test St';
+        $entry['postal_code'] = '10001';
+        $entry['currency'] = 'USD';
+        $entry['sku_1'] = $sku;
+        $entry['quantity_1'] = $qty;
+        $entry['unit_price_1'] = '79.50';
+        $bytes = app(ProviderXlsxWriter::class)->write('批量订单', OrderOmsBatchImport::FIELDS, [array_values($entry)]);
+
+        return UploadedFile::fake()->createWithContent('orders.xlsx', $bytes);
+    }
+
+    public function test_template_download_uses_xlsx_with_matching_header_and_help_sheet(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        $result = $this->actingAs($user)->get('/orders/oms/import/template');
+        $result->assertOk()->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $file = UploadedFile::fake()->createWithContent('template.xlsx', $result->getContent());
+        $data = app(ProviderXlsxTableReader::class)->read($file);
+        $this->assertSame(OrderOmsBatchImport::FIELDS, $data['headers']);
+    }
+
+    public function test_preflight_then_confirm_creates_audited_manual_customer_order_once(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        Product::query()->create(['sku' => 'MF414A', 'name' => 'MF414A Sample', 'is_active' => true]);
+        $result = $this->actingAs($user)->post('/orders/oms/import/preview', [
+            'file' => $this->xlsx(),
+        ])->assertOk()->json();
+        $this->assertSame(1, $result['count']);
+        $this->assertSame([], $result['errors']);
+        $this->assertNotEmpty($result['token']);
+        $this->assertDatabaseCount('orders', 0); // Preview must never create.
+        $created = $this->actingAs($user)->post('/orders/oms/import/confirm', [
+            'file' => $this->xlsx(), 'token' => $result['token'], 'confirm' => '1',
+        ])->assertOk()->json();
+        $this->assertSame(1, $created['created']);
+        $order = Order::query()->where('external_order_number', 'R3-IMPORT-0001')->firstOrFail();
+        $this->assertSame('manual', $order->source_type->value);
+        $this->assertSame('customer', $order->order_kind->value);
+        $this->assertNotNull($order->erp_order_id);
+        $this->assertSame(2, (int) $order->items()->firstOrFail()->quantity);
+        $this->assertSame('MF414A', $order->items()->firstOrFail()->sku);
+        $this->assertSame('Test Customer', $order->address?->recipient_name);
+        $response = $this->actingAs($user)->post('/orders/oms/import/confirm', [
+            'file' => $this->xlsx(), 'token' => $result['token'], 'confirm' => '1',
+        ]);
+        $response->assertUnprocessable();
+        $this->assertDatabaseCount('orders', 1);
+    }
+
+    public function test_preflight_reports_unknown_sku_and_duplicate_without_any_writes(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        $result = $this->actingAs($user)->post('/orders/oms/import/preview', ['file' => $this->xlsx(sku: 'INVALID')])->assertOk()->json();
+        $this->assertNull($result['token']);
+        $this->assertNotEmpty($result['errors']);
+        $this->assertDatabaseCount('orders', 0);
+    }
+
+    public function test_preflight_token_cannot_be_used_by_different_user_or_file(): void
+    {
+        Product::query()->create(['sku' => 'MF414A', 'name' => 'Test']);
+        $first = $this->userWith(['orders.view', 'orders.create']);
+        $second = $this->userWith(['orders.view', 'orders.create']);
+        $token = $this->actingAs($first)->post('/orders/oms/import/preview', ['file' => $this->xlsx()])->assertOk()->json('token');
+        $this->actingAs($second)->post('/orders/oms/import/confirm', [
+            'file' => $this->xlsx(), 'token' => $token, 'confirm' => '1',
+        ])->assertUnprocessable();
+        $this->actingAs($first)->post('/orders/oms/import/confirm', [
+            'file' => $this->xlsx(externalNumber: 'CHANGED-ORDER'), 'token' => $token, 'confirm' => '1',
+        ])->assertUnprocessable();
+        $this->assertDatabaseCount('orders', 0);
+    }
+
+    public function test_import_requires_both_view_and_create_permissions(): void
+    {
+        $viewer = $this->userWith(['orders.view']);
+        $this->actingAs($viewer)->get('/orders/oms/import/template')->assertForbidden();
+        $this->actingAs($viewer)->post('/orders/oms/import/preview', ['file' => $this->xlsx()])->assertForbidden();
+        $this->actingAs($viewer)->post('/orders/oms/import/confirm', [
+            'file' => $this->xlsx(), 'token' => 'invalid', 'confirm' => 1,
+        ])->assertForbidden();
+        $creator = $this->userWith(['orders.create']);
+        $this->actingAs($creator)->get('/orders/oms/import/template')->assertForbidden();
+        $this->actingAs($creator)->get('/orders/oms/export')->assertForbidden();
+    }
+
+    public function test_kol_only_specialist_cannot_bulk_create_customer_orders_even_with_create_permission(): void
+    {
+        $kolOnly = $this->userWith(['orders.view', 'orders.create', 'kol.view']);
+        $this->actingAs($kolOnly)->get('/orders/oms/import/template')->assertForbidden();
+        $this->actingAs($kolOnly)->post('/orders/oms/import/preview', ['file' => $this->xlsx()])->assertForbidden();
+        $this->actingAs($kolOnly)->post('/orders/oms/import/confirm', [
+            'file' => $this->xlsx(), 'token' => 'invalid', 'confirm' => '1',
+        ])->assertForbidden();
+    }
+
+    public function test_csv_export_is_server_filtered_and_escapes_spreadsheet_formulas(): void
+    {
+        $user = $this->userWith(['orders.view']);
+        $order = Order::query()->create([
+            'source_type' => 'manual', 'order_kind' => 'customer', 'internal_order_number' => 'IT-CSV-001',
+            'external_order_number' => 'CSV-001', 'erp_order_id' => '007-1105-CSV01',
+            'order_date' => '2026-11-05', 'order_status' => 'pending_shipment', 'currency' => 'USD',
+            'owner_id' => $user->id, 'order_note' => '=HYPERLINK("evil")',
+        ]);
+        $order->address()->create(['recipient_name' => 'CSV Tester', 'country' => 'US']);
+        $order->items()->create([
+            'sku' => 'MF414A', 'product_summary' => 'Sample', 'quantity' => 2,
+            'unit_price' => '79.00', 'line_revenue' => '158.00',
+        ]);
+        $response = $this->actingAs($user)->get('/orders/oms/export?format=csv&grid_sku=MF414A');
+        $response->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+        $content = $response->streamedContent();
+        $this->assertStringContainsString('MF414A', $content);
+        $this->assertStringContainsString('下单数量', $content);
+        $this->assertStringContainsString("'=HYPERLINK", $content);
+        $this->assertStringNotContainsString('CSV-999', $content);
+    }
+
+    public function test_export_download_returns_xlsx_with_sku_quantity_and_business_filter(): void
+    {
+        $user = $this->userWith(['orders.view']);
+        $order = Order::query()->create([
+            'source_type' => 'manual', 'order_kind' => 'customer', 'internal_order_number' => 'IT-001',
+            'external_order_number' => 'EXPORT-001', 'erp_order_id' => '007-1105-40001',
+            'order_date' => '2026-11-05', 'order_status' => 'pending_shipment', 'currency' => 'USD',
+            'owner_id' => $user->id,
+        ]);
+        $order->address()->create(['recipient_name' => 'Exporter', 'country' => 'US']);
+        $order->items()->create(['sku' => 'A1', 'product_summary' => 'Product A', 'quantity' => 3,
+            'unit_price' => '19.00', 'line_revenue' => '57.00']);
+        $res = $this->actingAs($user)->get('/orders/oms/export?grid_sku=A1');
+        $res->assertOk()->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $bytes = $res->getContent();
+        $data = app(ProviderXlsxTableReader::class)->read(UploadedFile::fake()->createWithContent('export.xlsx', $bytes));
+        $this->assertSame('SKU', $data['headers'][4]);
+        $this->assertSame('下单数量', $data['headers'][5]);
+        $this->assertSame('A1', $data['rows'][0]['cells'][4]);
+        $this->assertSame('3', $data['rows'][0]['cells'][5]);
+    }
+}

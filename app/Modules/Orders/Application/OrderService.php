@@ -288,6 +288,15 @@ final class OrderService
             ->withQueryString();
     }
 
+    /**
+     * Bounded export adapter: eager-load relations per chunk rather than
+     * issuing one query per order from a plain Eloquent cursor.
+     */
+    public function exportBatched(array $filters, int $chunk = 100): LazyCollection
+    {
+        return $this->filteredQuery($filters)->lazy($chunk);
+    }
+
     public function exportCursor(array $filters): LazyCollection
     {
         return $this->filteredQuery($filters)->cursor();

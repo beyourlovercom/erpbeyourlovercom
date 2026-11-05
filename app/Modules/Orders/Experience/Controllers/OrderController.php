@@ -120,6 +120,7 @@ final class OrderController
             ],
             'omsGridAvailable' => $omsGridAvailable,
             'omsGridEnabled' => $omsGridEnabled,
+            'canImportOmsOrders' => $omsGridEnabled && $request->user()->can('orders.create') && ! KolOrderAccessScope::isKolOnly($request->user()),
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
             'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),

@@ -9,7 +9,7 @@ Scope: BYL ERP front-end list / table pages; this is the single standard for new
 - One flat column-title row and, for searchable data columns, a separate AG Grid Floating Filters input row; compact one-record-per-row layout. Do not add grouped headers or embed input boxes inside the title row.
 - Column resize, drag order, hide/show, persisted preferences, left/right pinned counts, maximize/Esc restore, sorting and filtering follow shared behavior.
 - Exactly one pagination/footer region. Page size 20 / 50 / 100 / 全部 where safe; prompt about browser cost before 全部.
-- Import/export are provided by the domain's existing backend authorities, not invented by the grid.
+- Import/export use each domain's authorized backend adapters. Imports must offer a downloadable fixed-header template, no-write preflight, explicit confirm, row-level errors, auditing, duplicate protection and operation-specific permissions. Never create records directly in the AG Grid frontend; export must be server-authoritative over the full filtered dataset, not merely the browser's current page.
 
 ## 2. Workflow and permission authority
 - Grid UI is presentation only: Orders, Logistics, Inventory, Finance, Procurement and KOL retain their own API endpoints and permission gates.

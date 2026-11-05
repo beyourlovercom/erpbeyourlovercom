@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import OmsGrid from '../../Components/DataGrid/OmsGrid.vue'
 import OrderOmsCell from './OrderOmsCell.vue'
+import OrderOmsTransfer from './OrderOmsTransfer.vue'
 import { toOrderOmsRow, type OrderGridOrder } from './orderOmsRows'
 
 type Option = { code: string; en: string; zh: string; color: string; mutable: boolean }
@@ -19,6 +20,8 @@ const props = defineProps<{
   filters: Record<string, string>
   canEditWorkflowStatus?: boolean
   workflowStatusOptions?: Option[]
+  exportUrl: string
+  canImport: boolean
 }>()
 const emit = defineEmits<{
   (event: 'page-change', page: number): void
@@ -137,7 +140,7 @@ const columnFilterValues = computed(() =>
     @search-change="emit('search-change', $event)"
     @column-search-change="emit('column-search-change', $event)"
   >
-    <template #actions><span class="oms-orders-server-authority">可选列在右侧设置 · 查询由 ERP 服务器处理</span></template>
+    <template #actions><OrderOmsTransfer :export-url="exportUrl" :can-import="canImport" :total="orders.total" /></template>
   </OmsGrid>
 </template>
 <style scoped>
