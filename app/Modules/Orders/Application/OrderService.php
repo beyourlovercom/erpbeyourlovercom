@@ -347,7 +347,16 @@ final class OrderService
 
         $this->applyBusinessView($query, (string) ($filters['view'] ?? 'all'));
 
-        return $query->latest('order_date')->latest('id');
+        $sortColumns = [
+            'order_number' => 'erp_order_id',
+            'date' => 'order_date',
+            'source' => 'source_type',
+            'status' => 'order_status',
+        ];
+        $sortColumn = $sortColumns[$filters['oms_sort'] ?? 'date'] ?? 'order_date';
+        $sortDirection = ($filters['oms_direction'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
+
+        return $query->orderBy($sortColumn, $sortDirection)->orderByDesc('id');
     }
 
     private function applyBusinessView(Builder $query, string $view): void
