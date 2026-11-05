@@ -4,9 +4,21 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Audit\Infrastructure\Models\AuditRecord;
+use App\Modules\Logistics\Application\LogisticsTrackingImmediateDispatch;
+use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
+use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
+use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use App\Modules\Sync\Application\ManualSyncService;
+use App\Modules\Sync\Application\SyncOrchestrationService;
+use App\Modules\Sync\Application\WooCommerceTrackingConflictException;
+use App\Modules\Sync\Application\WooCommerceTrackingOutboundService;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class LogisticsTrackingPushControllerTest extends TestCase
@@ -28,8 +40,8 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         config(['tracking_sync_v2.manual_mode' => 'off']);
         $operator = $this->userWith('role_preset_operations', ['logistics.view', 'orders.view', 'sync.view']);
         $order = $this->order(1017);
-        self::assertFalse(app(\App\Modules\Logistics\Application\LogisticsTrackingPushAccess::class)->allows($operator));
-        $this->actingAs($operator)->post('/logistics/tracking-outbound/selected', ['order_ids'=>[$order->id]])
+        self::assertFalse(app(LogisticsTrackingPushAccess::class)->allows($operator));
+        $this->actingAs($operator)->post('/logistics/tracking-outbound/selected', ['order_ids' => [$order->id]])
             ->assertForbidden();
         self::assertSame(0, $this->gateway->calls);
     }
@@ -40,7 +52,7 @@ final class LogisticsTrackingPushControllerTest extends TestCase
             $user = $this->userWith($roleKey, [
                 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate',
             ]);
-            self::assertFalse(app(\App\Modules\Logistics\Application\LogisticsTrackingPushAccess::class)->allows($user));
+            self::assertFalse(app(LogisticsTrackingPushAccess::class)->allows($user));
             $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
                 'order_ids' => [999],
             ])->assertForbidden();
@@ -52,13 +64,13 @@ final class LogisticsTrackingPushControllerTest extends TestCase
     {
         foreach (['role_preset_logistics', 'role_preset_operations', 'role_preset_administrator'] as $roleKey) {
             $user = $this->userWith($roleKey, ['logistics.view', 'sync.view']);
-            self::assertTrue(app(\App\Modules\Logistics\Application\LogisticsTrackingPushAccess::class)->allows($user));
+            self::assertTrue(app(LogisticsTrackingPushAccess::class)->allows($user));
         }
 
         $unrelated = $this->userWith('role_preset_kol_manager', [
             'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate',
         ]);
-        self::assertFalse(app(\App\Modules\Logistics\Application\LogisticsTrackingPushAccess::class)->allows($unrelated));
+        self::assertFalse(app(LogisticsTrackingPushAccess::class)->allows($unrelated));
     }
 
     public function test_manual_canary_requires_explicit_exact_erp_order_allowlist(): void
@@ -99,7 +111,7 @@ final class LogisticsTrackingPushControllerTest extends TestCase
             'order_ids' => [$order->id],
         ])->assertSessionHas('success');
 
-        app(\App\Modules\Logistics\Application\ShipmentService::class)
+        app(ShipmentService::class)
             ->updateTracking($order, 'TRACK-1021-CORRECTED', $user);
         $this->assertDatabaseHas('manual_syncs', [
             'order_id' => $order->id, 'website_sync_status' => 'pending',
@@ -176,16 +188,16 @@ final class LogisticsTrackingPushControllerTest extends TestCase
     {
         $order = $this->order();
         self::assertFalse((bool) config('tracking_sync_v2.immediate_enabled'));
-        $result = app(\App\Modules\Logistics\Application\LogisticsTrackingImmediateDispatch::class)->afterShipmentSaved($order, null);
+        $result = app(LogisticsTrackingImmediateDispatch::class)->afterShipmentSaved($order, null);
         self::assertSame('disabled', $result['status']);
         self::assertSame(0, $this->gateway->calls);
     }
 
     public function test_enabled_immediate_dispatch_uses_same_idempotent_outbox(): void
     {
-        config(['tracking_sync_v2.immediate_enabled' => true]);
+        config(['tracking_sync_v2.immediate_enabled' => true, 'tracking_sync_v2.immediate_mode' => 'general']);
         $order = $this->order();
-        $dispatcher = app(\App\Modules\Logistics\Application\LogisticsTrackingImmediateDispatch::class);
+        $dispatcher = app(LogisticsTrackingImmediateDispatch::class);
         $first = $dispatcher->afterShipmentSaved($order, null);
         $second = $dispatcher->afterShipmentSaved($order, null);
 
@@ -197,14 +209,53 @@ final class LogisticsTrackingPushControllerTest extends TestCase
 
     public function test_immediate_dispatch_never_sends_unshipped_or_manual_source(): void
     {
-        config(['tracking_sync_v2.immediate_enabled' => true]);
+        config(['tracking_sync_v2.immediate_enabled' => true, 'tracking_sync_v2.immediate_mode' => 'general']);
         $order = $this->order();
         $order->shipment->update(['shipment_status' => 'pending']);
-        $dispatcher = app(\App\Modules\Logistics\Application\LogisticsTrackingImmediateDispatch::class);
+        $dispatcher = app(LogisticsTrackingImmediateDispatch::class);
         self::assertSame('not_eligible', $dispatcher->afterShipmentSaved($order, null)['status']);
         $order->shipment->update(['shipment_status' => 'shipped']);
         $order->forceFill(['source_type' => 'manual_other'])->save();
         self::assertSame('not_eligible', $dispatcher->afterShipmentSaved($order, null)['status']);
+        self::assertSame(0, $this->gateway->calls);
+    }
+
+    public function test_immediate_cutover_requires_explicit_mode_and_exact_canary_order(): void
+    {
+        $allowed = $this->order(1031);
+        $other = $this->order(1032);
+        $dispatcher = app(LogisticsTrackingImmediateDispatch::class);
+
+        config(['tracking_sync_v2.immediate_enabled' => true]);
+        self::assertSame('disabled', $dispatcher->afterShipmentSaved($allowed, null)['status']);
+
+        config(['tracking_sync_v2.immediate_mode' => 'canary']);
+        self::assertSame('not_allowlisted', $dispatcher->afterShipmentSaved($allowed, null)['status']);
+
+        config(['tracking_sync_v2.immediate_canary_order_ids' => 'all,1x,-1']);
+        self::assertSame('not_allowlisted', $dispatcher->afterShipmentSaved($allowed, null)['status']);
+
+        config(['tracking_sync_v2.immediate_canary_order_ids' => (string) $allowed->id]);
+        self::assertSame('not_allowlisted', $dispatcher->afterShipmentSaved($other, null)['status']);
+        self::assertSame(0, $this->gateway->calls);
+        self::assertSame('completed', $dispatcher->afterShipmentSaved($allowed, null)['status']);
+        self::assertSame('completed', $dispatcher->afterShipmentSaved($allowed, null)['status']);
+        self::assertSame(1, $this->gateway->calls);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $other->id, 'website_sync_status' => 'pending',
+        ]);
+    }
+
+    public function test_immediate_boolean_off_blocks_canary_even_when_allowlisted(): void
+    {
+        $order = $this->order(1033);
+        config([
+            'tracking_sync_v2.immediate_enabled' => false,
+            'tracking_sync_v2.immediate_mode' => 'canary',
+            'tracking_sync_v2.immediate_canary_order_ids' => (string) $order->id,
+        ]);
+        self::assertSame('disabled', app(LogisticsTrackingImmediateDispatch::class)
+            ->afterShipmentSaved($order, null)['status']);
         self::assertSame(0, $this->gateway->calls);
     }
 
@@ -214,19 +265,19 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         $gateway = $this->gateway;
         $gateway->fail = true;
         $old = $this->order(1009);
-        $service = app(\App\Modules\Sync\Application\WooCommerceTrackingOutboundService::class);
+        $service = app(WooCommerceTrackingOutboundService::class);
         self::assertSame('retry_scheduled', $service->pushOne($old, null)['status']);
-        $oldOutboxId = (int) \Illuminate\Support\Facades\DB::table('sync_outbox')
+        $oldOutboxId = (int) DB::table('sync_outbox')
             ->where('operation', 'woocommerce.tracking_outbound')->value('id');
 
         $new = $this->order(1010);
         self::assertSame('retry_scheduled', $service->pushOne($new, null)['status']);
-        \Illuminate\Support\Facades\DB::table('sync_outbox')
+        DB::table('sync_outbox')
             ->where('operation', 'woocommerce.tracking_outbound')
             ->update(['available_at' => now()->subMinute()]);
 
         $gateway->fail = false;
-        $run = app(\App\Modules\Sync\Application\SyncOrchestrationService::class)
+        $run = app(SyncOrchestrationService::class)
             ->retryPending(null, 50, $oldOutboxId);
 
         self::assertSame(1, $run->requested_items);
@@ -241,17 +292,17 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         self::assertFalse((bool) config('tracking_sync_v2.periodic_enabled'));
         config(['tracking_sync_v2.periodic_enabled' => true, 'tracking_sync_v2.min_outbox_id' => null]);
         require base_path('routes/console.php');
-        $events = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events());
+        $events = collect(app(Schedule::class)->events());
         self::assertCount(0, $events->where('description', 'tracking.woocommerce.outbound.retry.half-hourly'));
 
         config(['tracking_sync_v2.min_outbox_id' => '13']);
         require base_path('routes/console.php');
-        self::assertCount(0, collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
+        self::assertCount(0, collect(app(Schedule::class)->events())
             ->where('description', 'tracking.woocommerce.outbound.retry.half-hourly'));
 
         config(['tracking_sync_v2.min_shipment_id' => '0']);
         require base_path('routes/console.php');
-        $tracking = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
+        $tracking = collect(app(Schedule::class)->events())
             ->where('description', 'tracking.woocommerce.outbound.retry.half-hourly');
         self::assertCount(1, $tracking);
         self::assertSame('*/30 * * * *', $tracking->first()->expression);
@@ -266,7 +317,7 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         $oldShipmentId = (int) $old->shipment->id;
         $new = $this->order(1012);
 
-        $run = app(\App\Modules\Sync\Application\SyncOrchestrationService::class)
+        $run = app(SyncOrchestrationService::class)
             ->trackingAllPending(null, 50, $oldShipmentId);
 
         self::assertSame('tracking_v2_auto_discovery', $run->run_type);
@@ -299,12 +350,12 @@ final class LogisticsTrackingPushControllerTest extends TestCase
     public function test_editing_verified_tracking_reopens_woo_sync_but_repeated_same_number_does_not(): void
     {
         $order = $this->order(1014);
-        app(\App\Modules\Sync\Application\ManualSyncService::class)->complete($order, null);
+        app(ManualSyncService::class)->complete($order, null);
         $this->assertDatabaseHas('manual_syncs', [
             'order_id' => $order->id, 'website_sync_status' => 'completed',
         ]);
 
-        $shipmentService = app(\App\Modules\Logistics\Application\ShipmentService::class);
+        $shipmentService = app(ShipmentService::class);
         $shipmentService->updateTracking($order, 'TRACK-1014', null);
         $this->assertDatabaseHas('manual_syncs', [
             'order_id' => $order->id, 'website_sync_status' => 'completed',
@@ -315,7 +366,7 @@ final class LogisticsTrackingPushControllerTest extends TestCase
             'order_id' => $order->id, 'website_sync_status' => 'pending',
             'synced_at' => null,
         ]);
-        self::assertSame(1, \App\Modules\Audit\Infrastructure\Models\AuditRecord::query()
+        self::assertSame(1, AuditRecord::query()
             ->where('action', 'manual_sync.reopened')->count());
     }
 
@@ -325,10 +376,10 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         $baselineShipmentId = (int) $baseOrder->shipment->id;
         $order = $this->order(1016);
         $this->gateway->fail = true;
-        $result = app(\App\Modules\Sync\Application\WooCommerceTrackingOutboundService::class)
+        $result = app(WooCommerceTrackingOutboundService::class)
             ->pushOne($order, null);
         self::assertSame('retry_scheduled', $result['status']);
-        $due = app(\App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository::class)
+        $due = app(SyncOrchestrationRepository::class)
             ->eligibleTrackingOrders(50, $baselineShipmentId);
         self::assertFalse($due->contains('id', $order->id));
         $this->assertDatabaseHas('manual_syncs', ['order_id' => $order->id, 'website_sync_status' => 'pending']);
@@ -336,7 +387,7 @@ final class LogisticsTrackingPushControllerTest extends TestCase
 
     public function test_list_projection_never_marks_stale_completed_outbox_as_current_tracking_success(): void
     {
-        $service = app(\App\Modules\Logistics\Application\LogisticsTrackingListStatus::class);
+        $service = app(LogisticsTrackingListStatus::class);
         $completed = ['status' => 'completed', 'reason' => null];
         self::assertSame('pending', $service->currentStatus($completed, 'pending')['status']);
         self::assertSame('completed', $service->currentStatus($completed, 'completed')['status']);
@@ -394,9 +445,13 @@ final class LogisticsTrackingPushControllerTest extends TestCase
 final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
 {
     public int $calls = 0;
+
     public int $writes = 0;
+
     private array $seen = [];
+
     public bool $fail = false;
+
     public bool $conflict = false;
 
     public function descriptor(): array
@@ -417,12 +472,19 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
     public function syncTracking(int $providerOrderId, string $providerSlug, string $trackingNumber, string $shipDate, array $lineItems = []): array
     {
         $this->calls++;
-        if ($this->fail) { throw new \RuntimeException('Test-only transient Woo tracking gateway failure'); }
-        if ($this->conflict) { throw new \App\Modules\Sync\Application\WooCommerceTrackingConflictException('Existing Woo line belongs to another package'); }
+        if ($this->fail) {
+            throw new \RuntimeException('Test-only transient Woo tracking gateway failure');
+        }
+        if ($this->conflict) {
+            throw new WooCommerceTrackingConflictException('Existing Woo line belongs to another package');
+        }
         $key = $providerOrderId.'|'.$providerSlug.'|'.$trackingNumber;
-        $written = !isset($this->seen[$key]);
+        $written = ! isset($this->seen[$key]);
         $this->seen[$key] = true;
-        if ($written) $this->writes++;
+        if ($written) {
+            $this->writes++;
+        }
+
         return ['written' => $written, 'verified' => true];
     }
 

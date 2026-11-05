@@ -7,6 +7,10 @@ return [
     // Explicit ERP order IDs, comma separated. Mandatory in canary mode.
     'manual_canary_order_ids' => env('TRACKING_SYNC_V2_MANUAL_CANARY_ORDER_IDS', ''),
     'immediate_enabled' => env('TRACKING_SYNC_V2_IMMEDIATE_ENABLED', false),
+    // Independent fail-closed cutover gate. Default OFF even if the boolean flips.
+    // Canary accepts only exact ERP order IDs. General requires separate Production approval.
+    'immediate_mode' => env('TRACKING_SYNC_V2_IMMEDIATE_MODE', 'off'),
+    'immediate_canary_order_ids' => env('TRACKING_SYNC_V2_IMMEDIATE_CANARY_ORDER_IDS', ''),
     'periodic_enabled' => env('TRACKING_SYNC_V2_PERIODIC_ENABLED', false),
     // Exclusive outbox ID snapshot at controlled Production activation.
     // Prevents a new cron from draining legacy pending Tracking records.
