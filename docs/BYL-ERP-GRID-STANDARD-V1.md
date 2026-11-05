@@ -39,3 +39,10 @@ Scope: BYL ERP front-end list / table pages; this is the single standard for new
 - Orders with multiple items render one visual row per SKU item. **No new ERP order is created** for extra lines; server pagination, totals, archived/fulfillment state and workflow identity remain order-scoped.
 - Keep the same clickable ERP order number on each line to communicate grouping. Duplicate status mutations and action controls must be hidden on continuation lines.
 - Import/export files express one SKU per row with an explicit repeated canonical grouping key (`external_order_number`), inherited and consistency-checked order-level fields, and a preview grouped into canonical orders. Preview must show both order count and line count.
+
+
+## R3 performance acceptance standard
+- Resolve ERP Vue pages lazily through Inertia/Vite. Do not eagerly bundle unrelated list, Finance, Inventory and Logistics page components into the application entry.
+- Publish hashed JS/CSS assets with gzip/Brotli and long immutable caching ONLY for the hashed /build/assets/ files; do not cache authenticated HTML or Inertia API JSON as static content.
+- Measure both data-query time and cross-region browser asset transfer before treating a slow page as a grid-rendering problem. Large canonical order counts must not disable bounded server pagination.
+- Run baseline and scale tests with actual item-line multiplicity, and verify permissions, legacy-page route resolution and rollback before Production release.
