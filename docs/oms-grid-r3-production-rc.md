@@ -65,3 +65,30 @@ Production source code must never default to an all-users ON state. Rollback is 
 | R6 | Other list inventory, template cleanup | Regression/release checklist for every migrated page |
 
 All migrations use the single Grid Standard V1 engine and keep domain workflows unchanged. Confirm target-specific server query performance instead of assuming the Orders query benchmark applies to all modules.
+
+## Final main-rebase compatibility gate — 2026-11-05
+
+- Source of truth: newest `origin/main` at `efc8b600` merged into the PR branch. Only one content conflict: `resources/js/Pages/Orders/Index.vue`.
+- Resolution preserves latest main's **#631 Woo sync notice/button removal** from the Orders page. Only the new `体验 OMS Grid / 返回原列表` switch remains, and only in the allowlisted canary context.
+- Merge commit `64ff3e256f859c6b752816ec72969f4ae563c557`. `origin/main` is now an ancestor; GitHub reports mergeable.
+- Combined Orders / UI Preferences / Sync Workspace / Logistics Tracking / Tracking Auto tests: **133 total, 1,718 assertions, 1 intentional skip** (separate live Woo Canary test not executed).
+- Front-end six focused suites: **32/32 PASS**. Typecheck, Vite build PASS.
+- Real authenticated Chrome on US Mac isolated SQLite + private nginx: OMS Orders, legacy Orders, Customer, KOL, Products, Inventory, Logistics, Accounting and Order Detail all HTTP 200, 0 JavaScript/static-asset failures; same-SKU-line combined filter confirmed again.
+- GitHub PR ready for code review; **not merged or deployed**. Current Production canary gates all default OFF. No Production data/role/config writes.
+
+## Updated remaining roadmap / engineering hours
+
+| Gate | Action | Remaining estimate |
+|---|---|---|
+| R3-RC | Final code review and exact HEAD GitHub checks | 0.5–1 h |
+| R3-P0 | With separate owner approval: merge main and deploy dormant code + verified isolated migration, feature flags OFF | 1–2 h |
+| R3-P1 | With separate owner approval: allowlisted read-only Production canary, true data/performance/permissions acceptance, verified OFF rollback | 1–2 h |
+| R3-P2/P3 | Separately approve export, then real bulk-import single-small-batch canary only if needed; no inferred permission | 1–3 h |
+| R4-A | Inventory overview, stock products and aged stock list | 4–7 h |
+| R4-B | Domestic + overseas Logistics/fulfillment lists, unchanged shipment semantics | 5–9 h |
+| R5-A | Product listings and SKU/barcode filters | 2–4 h |
+| R5-B | KOL lists and associated permissions | 2–4 h |
+| R5-C | Accounting/finance list views | 2–4 h |
+| R6 | Remaining lists audit, regression, cleanup | 6–12 h |
+
+R3 estimates are engineering time, not a promised delivery time. All R4+ begins only after Owner approves and verifies R3 Production canary.
