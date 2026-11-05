@@ -79,7 +79,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $levelTwo = collect($items)->where('level', 2)->values();
 
         $this->assertCount(13, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(64, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
+        $this->assertCount(66, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
         $this->assertSame(['settings-backup'], $levelTwo->where('code', 'settings-backup')->pluck('code')->all(), self::MISMATCH.': backup child approval');
         $this->assertSame(['settings-fx'], $levelTwo->where('code', 'settings-fx')->pluck('code')->all(), self::MISMATCH.': FX child approval');
         $this->assertSame(
@@ -93,13 +93,21 @@ class ApprovedMenuBaselineTest extends TestCase
             self::MISMATCH.': Emoji approval',
         );
         $this->assertSame(
-            ['accounting-overview', 'accounting-order-costs'],
+            ['accounting-overview', 'accounting-order-costs', 'accounting-loss-orders'],
             $levelTwo->where('parent_code', 'accounting')->sortBy('sort')->pluck('code')->values()->all(),
             self::MISMATCH.': Accounting A8 level-2 closure',
         );
     }
 
     /** @throws JsonException */
+    public function test_orders_archive_appears_under_orders_in_fourth_position(): void
+    {
+        $items = collect($this->baseline()['items'])->where('parent_code', 'orders')->sortBy('sort')->values();
+        $this->assertSame(['orders-customers', 'orders-kol', 'orders-procurement', 'orders-archive'], $items->pluck('code')->all());
+        $this->assertSame('/orders/archive', $items->last()['url']);
+        $this->assertSame('orders.view', $items->last()['permission']);
+    }
+
     public function test_customer_navigation_closure_has_only_stable_workspaces_and_no_ghost_my_orders_route(): void
     {
         $customerItems = collect($this->baseline()['items'])

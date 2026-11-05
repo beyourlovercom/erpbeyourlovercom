@@ -70,7 +70,7 @@ final class OverseaWarehouseController
         $base = Shipment::query()
             ->with(['order.address', 'order.items.product', 'order.manualSync', 'order.fulfillmentParent', 'order.fulfillmentAllocation', 'warehouse', 'overseaReview'])
             ->whereIn('warehouse_id', collect($warehouseMap)->pluck('id')->all())
-            ->whereHas('order', fn ($q) => $q
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()
                 ->where('order_status', '!=', 'cancelled')
                 ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
         if ($selectedWarehouse) {
@@ -117,7 +117,7 @@ final class OverseaWarehouseController
                 'can_edit_workflow_status' => $request->user()->can('orders.view')
                     && $request->user()->can('orders.edit')
                     && $shipment->order !== null
-                    && $shipment->order->archived_at === null,
+                    && $shipment->order->archived_at === null && ! $shipment->order->isOperationallyArchived(),
             ])->toArray(),
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
             'xlwmsAuthorizedOrderId' => $canRunXlwms ? (int) config('xlwms.live_order_id', 0) : 0,
@@ -198,6 +198,7 @@ final class OverseaWarehouseController
         abort_unless($approved, 422, '订单尚未通过海外仓审核，请先审核。');
         abort_unless($shipment->order && $shipment->order->order_status?->value !== 'cancelled',
             422, '已取消的 ERP 订单不能导出。');
+        abort_if($shipment->order->isOperationallyArchived(), 409, '运营归档订单不可导出发货文件。');
         $file = $this->outboundFiles->exportManualUsSmOrder($shipment);
 
         return response($file['bytes'], 200, [
@@ -218,7 +219,7 @@ final class OverseaWarehouseController
         $shipments = Shipment::query()
             ->with(['order.address', 'order.items.product', 'order.manualSync', 'order.fulfillmentParent', 'order.fulfillmentAllocation', 'warehouse', 'overseaReview'])
             ->where('warehouse_id', $selectedWarehouse['id'])
-            ->whereHas('order', fn ($q) => $q
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()
                 ->where('order_status', '!=', 'cancelled')
                 ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
         $this->applyView($shipments, 'pending');
@@ -410,7 +411,7 @@ final class OverseaWarehouseController
         $counts = [];
         foreach (self::VIEWS as $view) {
             $query = Shipment::query()->whereIn('warehouse_id', collect($warehouseMap)->pluck('id')->all())
-                ->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')
+                ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')
                     ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
             if ($selectedWarehouse) {
                 $query->where('warehouse_id', $selectedWarehouse['id']);

@@ -64,6 +64,7 @@ final class OrderTrashController
             $locked = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
             KolOrderAccessScope::authorize($request->user(), $locked);
             abort_if($locked->archived_at !== null, 409, '订单已在回收站。');
+            abort_if($locked->isOperationallyArchived(), 409, '请先从运营归档清单恢复，不能直接移至回收站。');
             // Business evidence remains queryable for fulfillment, finance, stock and Woo sync.
             if ($this->hasBusinessEvidence($locked)) {
                 $locked->archived_at = now();
@@ -104,19 +105,9 @@ final class OrderTrashController
 
     public function purge(Request $request, int $order): RedirectResponse
     {
+        // Owner policy: order records are recoverable evidence, never physically deleted.
         $this->authorizeAdmin($request);
-        DB::transaction(function () use ($request, $order): void {
-            $locked = Order::withTrashed()->where(fn ($q) => $q->whereNotNull('deleted_at')->orWhereNotNull('archived_at'))
-                ->whereKey($order)->lockForUpdate()->firstOrFail();
-            abort_if($locked->archived_at !== null, 409, '保留业务证据的归档订单不能永久删除。');
-            // Protected business evidence can never be physically deleted.
-            abort_if($this->hasBusinessEvidence($locked), 409,
-                '订单存在业务关联，不能永久删除。请保留在回收站。');
-            $this->record($request, $locked, 'order.purged');
-            $locked->forceDelete();
-        });
-
-        return back()->with('success', '订单已永久删除');
+        abort(409, '订单不允许永久删除。请保留记录并使用归档或恢复功能。');
     }
 
     private function hasBusinessEvidence(Order $order): bool

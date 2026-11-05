@@ -41,11 +41,7 @@ final class SyncWorkspaceTest extends TestCase
             ->where('manualRuns.0.id', $manual->id)
             ->where('manualRuns.0.initiator', $user->name)
             ->where('automaticRuns.0.run_type', 'woocommerce_order_incremental')
-            ->where('wooOrderSync.frequency', '每 30 分钟')
-            ->where('wooOrderSync.can_operate', false)
-            ->where('wooOrderSync.manual_action', '/sync/woocommerce/incremental')
-            ->where('wooOrderSync.advanced_href', '/sync/woocommerce')
-            ->where('wooOrderSync.latest_run.run_type', 'woocommerce_order_incremental')
+            ->missing('wooOrderSync')
         );
 
         $this->actingAs($user)->get('/sync/orders')->assertOk()->assertInertia(fn (Assert $page) => $page
@@ -53,21 +49,27 @@ final class SyncWorkspaceTest extends TestCase
             ->has('orders')
             ->has('syncRuns')
             ->has('queueSummary')
+            ->where('wooOrderSync.can_import_today', false)
+            ->where('wooOrderSync.health', 'disabled')
         );
     }
 
 
-    public function test_sync_overview_exposes_manual_today_control_to_sync_operators(): void
+    public function test_sync_orders_exposes_manual_today_control_to_sync_operators(): void
     {
         config(['services.woocommerce.order_sync_enabled' => true]);
         $user = $this->userWithPermissions(['sync.view', 'sync.operate']);
 
-        $this->actingAs($user)->get('/sync')->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->component('Sync/Index')
+        $this->actingAs($user)->get('/sync/orders')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Sync/Orders')
             ->where('wooOrderSync.enabled', true)
             ->where('wooOrderSync.frequency', '每 30 分钟')
-            ->where('wooOrderSync.can_operate', true)
-            ->where('wooOrderSync.manual_action', '/sync/woocommerce/incremental')
+            ->where('wooOrderSync.can_import_today', true)
+        );
+        $this->actingAs($user)->get('/sync/orders')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Sync/Orders')
+            ->where('wooOrderSync.can_import_today', true)
+            ->where('wooOrderSync.health', 'stale')
         );
     }
 
@@ -116,7 +118,7 @@ final class SyncWorkspaceTest extends TestCase
             'started_at' => $startedAt,
             'completed_at' => $startedAt->copy()->subHours(7)->addSecond(),
         ]);
-        $this->actingAs($user)->get('/sync')->assertOk()->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($user)->get('/sync/orders')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('wooOrderSync.health', 'ok')
             ->where('wooOrderSync.last_success_at', $startedAt->toIso8601String())
         );
@@ -137,7 +139,7 @@ final class SyncWorkspaceTest extends TestCase
                 'started_at' => now(), 'completed_at' => now(),
             ]);
         }
-        $this->actingAs($user)->get('/sync')->assertOk()->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($user)->get('/sync/orders')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('wooOrderSync.health', 'failed')
             ->where('wooOrderSync.latest_run.run_type', 'woocommerce_order_incremental')
             ->where('wooOrderSync.last_success_at', null)

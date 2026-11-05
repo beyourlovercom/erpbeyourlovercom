@@ -142,13 +142,21 @@ final class AutomaticAllocationV1Test extends TestCase
         $this->authoritative($warehouse, $product, 'DE', 5);
         $this->configure(true, false);
         app(AutomaticAllocationService::class)->allocate($order);
+        // The existing overseas fulfillment gate requires warehouse review.
+        $order->fresh()->shipment->overseaReview()->create([
+            'status' => 'approved',
+            'submitted_warehouse_id' => $warehouse->id,
+            'reviewed_warehouse_id' => $warehouse->id,
+            'reviewed_by' => $user->id,
+            'reviewed_at' => now(),
+        ]);
 
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', [
             'warehouse_id' => $warehouse->id,
             'carrier' => 'UPS',
             'service' => 'Ground',
             'tracking_number' => 'AUTO-TRACK',
-            'shipped_at' => '2026-09-06T12:00:00Z',
+            'shipped_at' => '2026-11-04T04:00:00Z',
         ])->assertRedirect();
 
         $this->assertDatabaseHas('inventory_reservations', ['order_id' => $order->id, 'status' => 'committed']);
@@ -239,7 +247,7 @@ final class AutomaticAllocationV1Test extends TestCase
 
         $this->actingAs($user)->post('/customers/orders', [
             'external_order_number' => 'AUTO-'.uniqid(),
-            'order_date' => '2026-09-06',
+            'order_date' => '2026-11-04',
             'recipient_name' => 'Automatic Allocation UAT',
             'country' => $country,
             'items' => [[

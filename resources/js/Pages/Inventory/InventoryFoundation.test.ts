@@ -28,6 +28,56 @@ describe('Inventory foundation UI', () => {
     expect(wrapper.text()).toContain('3')
     expect(wrapper.find('a[href="/inventory/de"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/inventory/add"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/inventory/overdue"]').exists()).toBe(true)
+  })
+
+  it('inventory summary is one horizontal strip with all 13 unchanged metrics and overdue link', async () => {
+    const wrapper = mount(Dashboard, { props: {
+      canManage: false,
+      overdue: {overdue_units: 2673,overdue_products:51,overdue_lot_rows:84,unknown_age_units:16,lot_mismatch_skus:2},
+      summary: {warehouse_count:7, warehouse_total_count:7, fulfillment_warehouse_count:6,
+        inventory_only_warehouse_count:1, warehouse_data_gap_count:2,warehouse_confirmed_count:4,
+        sku_rows:110,quantity_on_hand:5157,quantity_reserved:16,quantity_available:5141,
+        out_of_stock_rows:13,low_stock_rows:26,in_stock_rows:71,stock_alert_rows:39,
+        warehouses:[] },
+    } })
+    const strip=wrapper.find('.inventory-ticker-track')
+    expect(strip.exists()).toBe(true)
+    expect(wrapper.find('.mvp-stat-grid').exists()).toBe(false)
+    const metrics=strip.findAll('.inventory-ticker-metric')
+    expect(metrics).toHaveLength(13)
+    expect(metrics.map(m=>m.find('small').text())).toEqual([
+      '可用库存','已记录库存','超期库存 ≥90天','预留库存','没货 SKU',
+      '库存紧张 SKU','有货 SKU','库存记录','仓库总数','待分仓仓库',
+      '库存统计仓','已确认仓库','库存未导入仓',
+    ])
+    expect(metrics.map(m=>m.find('strong').text())).toEqual([
+      '5,141','5,157','2,673 件','16','13','26','71','110','7','6','1','4','2',
+    ])
+    expect(strip.findAll('a')).toHaveLength(1)
+    expect(strip.find('a[href="/inventory/overdue"]').exists()).toBe(true)
+  })
+
+  it('statistics rail supports arrow buttons and keyboard horizontal scroll', async () => {
+    const wrapper=mount(Dashboard,{props:{
+      canManage:false,
+      summary:{warehouse_count:0,warehouse_total_count:0,fulfillment_warehouse_count:0,
+        inventory_only_warehouse_count:0,warehouse_data_gap_count:0,warehouse_confirmed_count:0,
+        sku_rows:0,quantity_on_hand:0,quantity_reserved:0,quantity_available:0,
+        out_of_stock_rows:0,low_stock_rows:0,in_stock_rows:0,stock_alert_rows:0,warehouses:[]},
+    }})
+    const rail=wrapper.find('[role="region"][aria-label="库存统计指标，左右滑动查看更多"]')
+    expect(rail.attributes('tabindex')).toBe('0')
+    const scrollBy=vi.fn()
+    Object.defineProperty(rail.element,'scrollBy',{value:scrollBy,configurable:true})
+    await wrapper.find('button[aria-label="向右滑动库存指标"]').trigger('click')
+    await wrapper.find('button[aria-label="向左滑动库存指标"]').trigger('click')
+    await rail.trigger('keydown',{key:'ArrowRight'})
+    await rail.trigger('keydown',{key:'ArrowLeft'})
+    expect(scrollBy).toHaveBeenNthCalledWith(1,{left:440,behavior:'smooth'})
+    expect(scrollBy).toHaveBeenNthCalledWith(2,{left:-440,behavior:'smooth'})
+    expect(scrollBy).toHaveBeenNthCalledWith(3,{left:440,behavior:'smooth'})
+    expect(scrollBy).toHaveBeenNthCalledWith(4,{left:-440,behavior:'smooth'})
   })
 
   it('dashboard hides warehouse create action from view-only users', () => {

@@ -4,6 +4,7 @@ import { computed, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import StockExceptionConfirmDialog from '../../Components/Logistics/StockExceptionConfirmDialog.vue'
 import { allocationStockWarnings } from '../../lib/allocationStockWarning'
+import { allocationGuidance } from '../../lib/allocationGuidance'
 
 type Availability = { warehouse_id:number; warehouse_slug:string; warehouse_name:string; inventory_state:string; can_auto_allocate:boolean; quantity_on_hand:number|null; quantity_reserved:number|null; quantity_available:number|null }
 type GiftOption = { mapping_id:number; warehouse_id:number; warehouse_code:string; warehouse_name:string; fulfillment_product_id:number; fulfillment_sku:string; fulfillment_name:string; quantity_available:number|null; can_fulfill:boolean; priority:number }
@@ -21,7 +22,7 @@ type Order = { id:number; erp_order_id:string|null; order_url:string|null; recip
 type Warehouse = { id:number; slug:string; code:string; name:string; country_code:string|null; can_auto_allocate:boolean }
 type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
-type TabKey = 'pending'|'recommendation'|'manual'|'gift'|'processed'
+type TabKey = 'pending'|'recommendation'|'inventory'|'manual'|'gift'|'processed'
 
 const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; canOperate:boolean }>()
 const activeTab = ref<TabKey>('pending')
@@ -59,20 +60,23 @@ const selectedStockWarnings = computed(() => {
 
 const processed = (order:Order) => Boolean(order.fulfillment_allocation?.status === 'submitted' || localSubmitted[order.id])
 const hasGift = (order:Order) => order.items.some(item => item.is_gift)
+const guidanceById = computed(() => new Map(props.orders.data.map(order =>
+  [order.id, allocationGuidance(order, props.warehouses, processed(order))] as const)))
+const guidanceFor = (order:Order) => guidanceById.value.get(order.id)!
 const counts = computed(() => ({
   pending: props.orders.data.filter(order => !processed(order)).length,
-  recommendation: props.orders.data.filter(order => !processed(order) && order.allocation_decision.status === 'system_recommendation').length,
-  manual: props.orders.data.filter(order => !processed(order) && order.allocation_decision.status === 'manual_review').length,
+  recommendation: props.orders.data.filter(order => !processed(order) && guidanceFor(order).group === 'recommendation').length,
+  inventory: props.orders.data.filter(order => !processed(order) && guidanceFor(order).group === 'inventory').length,
+  manual: props.orders.data.filter(order => !processed(order) && guidanceFor(order).group === 'manual').length,
   gift: props.orders.data.filter(order => !processed(order) && hasGift(order)).length,
   processed: props.orders.data.filter(processed).length,
 }))
 const filteredOrders = computed(() => props.orders.data.filter(order => {
   if (activeTab.value === 'processed') return processed(order)
   if (processed(order)) return false
-  if (activeTab.value === 'recommendation') return order.allocation_decision.status === 'system_recommendation'
-  if (activeTab.value === 'manual') return order.allocation_decision.status === 'manual_review'
   if (activeTab.value === 'gift') return hasGift(order)
-  return true
+  if (activeTab.value === 'pending') return true
+  return guidanceFor(order).group === activeTab.value
 }))
 const warehouseOptions = computed(() => props.warehouses.filter(w => ['FACTORY','US-NY','US-LA','US-SM','DE','CA'].includes(w.code.toUpperCase())))
 const canonicalWarehouseCode = (code:string) => { const upper = code.trim().toUpperCase(); return upper === 'US-SJ' ? 'US-SM' : upper }
@@ -259,30 +263,30 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
   <AuthenticatedLayout title="待分仓" :breadcrumbs="['BYL ERP','物流','待分仓']">
     <section class="allocation-page">
       <header class="page-heading">
-        <div><div class="title-row"><h1>待分仓</h1><span class="version">V1.1</span></div><p>系统提供区域、库存、仓库与承运商建议；Vita 在一个弹窗内完成最终履约分配。</p></div>
-        <div class="principle"><strong>System Assisted</strong><span>Human Confirmed</span></div>
+        <div class="title-row"><h1>待分仓</h1><span class="version">V1.2.1</span></div>
+        <div class="principle"><div><span>System Assisted</span><strong>{{ counts.recommendation }}</strong></div><div><span>Human Confirmed</span><strong>{{ counts.processed }}</strong></div></div>
       </header>
       <nav class="tabs">
         <button :class="{active:activeTab==='pending'}" @click="activeTab='pending'">全部 <span>{{ counts.pending }}</span></button>
-        <button :class="{active:activeTab==='manual'}" @click="activeTab='manual'">需要人工判断 <span>{{ counts.manual }}</span></button>
+        <button :class="{active:activeTab==='recommendation'}" @click="activeTab='recommendation'">仓库建议 <span>{{ counts.recommendation }}</span></button>
+        <button :class="{active:activeTab==='inventory'}" @click="activeTab='inventory'">库存待核实 <span>{{ counts.inventory }}</span></button>
+        <button :class="{active:activeTab==='manual'}" @click="activeTab='manual'">人工处理 <span>{{ counts.manual }}</span></button>
         <button :class="{active:activeTab==='gift'}" @click="activeTab='gift'">礼品待确认 <span>{{ counts.gift }}</span></button>
-        <button :class="{active:activeTab==='recommendation'}" @click="activeTab='recommendation'">系统推荐 <span>{{ counts.recommendation }}</span></button>
         <button :class="{active:activeTab==='processed'}" @click="activeTab='processed'">已处理 <span>{{ counts.processed }}</span></button>
       </nav>
-      <div class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>SKU 摘要</th><th>收件信息摘要</th><th>美国区域 / 推荐仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
+      <div class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>SKU 摘要</th><th>收件信息摘要</th><th>区域 / 优先仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
         <tr v-for="(order,index) in filteredOrders" :key="order.id">
           <td>{{ index+1 }}</td>
           <td><Link v-if="order.order_url" class="order-link" :href="order.order_url">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.domestic_reject_reason" class="domestic-rejection">商务驳回：{{ order.domestic_reject_reason }}</small></td>
           <td class="sku-list"><div v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? item.product_summary ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-if="item.is_gift" :class="item.resolved_fulfillment_sku?'gift-done':'gift-pending'">{{ item.resolved_fulfillment_sku ? `→ ${item.resolved_fulfillment_sku}` : '待解析' }}</span></div></td>
           <td class="address-summary"><strong>{{ order.recipient_name ?? '—' }}</strong><span>{{ addressLine(order) || '—' }}</span><small v-if="order.phone">{{ order.phone }}</small></td>
           <td><template v-if="order.country==='US'"><span :class="['zone-chip',order.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(order) }}</span><div class="zone-priority">{{ zonePriorityLabel(order.us_fulfillment_zone) }}</div></template><span v-else>{{ order.country ?? '—' }}</span></td>
-          <td><span v-if="order.allocation_decision.status==='system_recommendation'" class="plan-chip good">{{ order.allocation_decision.recommended_plan?.label ?? '系统推荐' }}</span><span v-else class="plan-chip warn">需要人工判断</span></td>
-          <td><span v-if="order.domestic_reject_reason && !processed(order)" class="status-chip manual">驳回待重分仓</span><span v-else-if="processed(order)" class="status-chip done">已分仓</span><span v-else-if="hasGift(order)" class="status-chip gift">礼品待确认</span><span v-else-if="order.allocation_decision.status==='system_recommendation'" class="status-chip recommend">待确认</span><span v-else class="status-chip manual">数据不足</span></td>
+          <td class="advice-cell"><span :class="['advice-heading',guidanceFor(order).kind]">{{ guidanceFor(order).title }}</span></td>
+          <td><span :class="['status-chip',guidanceFor(order).kind]">{{ guidanceFor(order).status }}</span></td>
           <td class="sticky-action"><button class="primary compact" @click="openPlan(order)">{{ processed(order)?'查看记录':'查看方案' }}</button></td>
         </tr>
         <tr v-if="!filteredOrders.length"><td colspan="8" class="empty">当前分类暂无订单</td></tr>
       </tbody></table></div>
-      <footer class="page-foot">共 {{ props.orders.total }} 条候选订单 · 美国分仓：美国3世迈仓优先 → MorePlus 兜底；美东纽约仓；区域无法可靠识别时必须人工判断。</footer>
     </section>
 
     <Teleport to="body"><div v-if="selectedOrder" class="modal-backdrop" @click.self="closePlan"><section class="plan-modal" role="dialog" aria-modal="true">
@@ -338,4 +342,34 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
 .record-banner{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:11px 13px;border-bottom:1px solid #dce7df;background:#eefaf3}.record-banner>div{display:grid;gap:4px}.segment-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;padding:12px}.segment-card{border:1px solid #dfe6ee;border-radius:8px;overflow:hidden}.segment-card>header{display:flex;justify-content:space-between;padding:10px 12px;background:#f8fafc}.segment-card h3{margin:2px 0 0;color:#175ebf;font-size:14px}.segment-card table{width:100%;border-collapse:collapse}.segment-card th,.segment-card td{padding:8px 10px;border-top:1px solid #e5e7eb;text-align:left}.record-route{display:grid;text-align:right;gap:3px}.record-route span{color:#334155}.record-route strong{color:#087f5b;font-size:11px}
 .note-field{position:relative;display:grid;gap:6px;margin:13px 18px;color:#374151;font-weight:650}.note-field textarea{padding:9px 10px 22px;border:1px solid #b8c4d1;border-radius:7px;color:#111827;resize:vertical}.note-field>small{position:absolute;right:9px;bottom:6px;color:#64748b;font-weight:500}.record-note{display:grid;gap:5px;margin:13px 18px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc}.submit-error{margin:0 18px;padding:8px 10px;border-radius:6px;background:#fff0f0;color:#b42318}.modal-actions{position:sticky;bottom:0;z-index:8;display:flex;justify-content:flex-end;gap:9px;align-items:center;padding:13px 18px;border-top:1px solid #e7ebf1;background:#fff}.submitted-note{color:#16814f;font-weight:750}
 @media(max-width:980px){.top-grid{grid-template-columns:1fr}.explanation-grid{grid-template-columns:1fr}.explanation-grid>div+div{border-left:0;border-top:1px solid #dde2e7}.map-card svg{height:150px}.plan-modal{width:100%}.modal-backdrop{padding:5px}.group-heading{display:grid}}
+
+/* V1.2: evidence-aware allocation guidance, visually separate from executable recommendation. */
+.principle{display:flex;align-items:start;gap:18px;text-align:left;padding:10px 14px}
+.principle>div{display:grid;gap:3px;min-width:110px}.principle>div+div{border-left:1px solid #dbe7f5;padding-left:18px}
+.principle>div span{font-size:11px;font-weight:750;color:#41536c}
+.principle>div strong{font-size:20px;line-height:1.2;color:#172033}
+.allocation-table{min-width:1310px}.advice-cell{min-width:215px;max-width:310px}
+.advice-heading{display:inline-flex;padding:4px 9px;border-radius:6px;font-weight:750;line-height:1.4}
+.advice-heading.ready{background:#e7f8ed;color:#087c4c}
+.advice-heading.candidate{background:#e6f1ff;color:#1d5cb4}
+.advice-heading.compare{background:#f0eaff;color:#6542b5}
+.advice-heading.stock_review{background:#fff3de;color:#9c5b00}
+.advice-heading.stock_short{background:#fff0e8;color:#b45020}
+.advice-heading.manual{background:#ffe9e9;color:#b42626}
+.advice-heading.gift{background:#fce7f3;color:#aa2266}
+.advice-heading.processed{background:#ecfdf3;color:#13834f}
+.status-chip.ready,.status-chip.processed{background:#e7f8ed;color:#087c4c}
+.status-chip.candidate,.status-chip.compare{background:#ede9fe;color:#6241a4}
+.status-chip.stock_review{background:#fff3de;color:#9c5b00}
+.status-chip.stock_short{background:#fff0e8;color:#b45020}
+.status-chip.manual{background:#ffe9e9;color:#b42626}
+.allocation-table th,.allocation-table td{padding:8px 10px;vertical-align:middle}
+.allocation-table th:nth-child(5){min-width:170px}
+.allocation-table th:nth-child(7){min-width:85px}
+.allocation-table th.sticky-action{min-width:95px}
+.allocation-table td.sticky-action{white-space:nowrap}
+.sku-list>div{margin-bottom:3px}
+.sku-list>div:last-child{margin-bottom:0}
+.zone-priority{margin-top:3px}
+@media(max-width:800px){.page-heading{flex-wrap:wrap}.principle{width:100%;justify-content:flex-start}.tabs{overflow-x:auto;white-space:nowrap}}
 </style>

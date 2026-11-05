@@ -34,6 +34,12 @@ return [
     'production_read_enabled' => filter_var(env('SHIPOUT_PRODUCTION_READ_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_dispatch_enabled' => filter_var(env('SHIPOUT_PRODUCTION_DISPATCH_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_tracking_apply_enabled' => filter_var(env('SHIPOUT_PRODUCTION_TRACKING_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    // Inventory is a completely separate, default-OFF, Owner-authorized ERP-only write.
+    'production_inventory_apply_enabled' => filter_var(env('SHIPOUT_PRODUCTION_INVENTORY_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    // Separate Owner-gated protection for dated FIFO lot decreases; default OFF.
+    'production_fifo_apply_enabled' => filter_var(env('SHIPOUT_PRODUCTION_FIFO_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'production_fifo_approved_skus' => array_values(array_filter(array_map('trim', explode(',', (string) env('SHIPOUT_PRODUCTION_FIFO_APPROVED_SKUS', ''))))),
+    'production_fifo_max_units' => (int) env('SHIPOUT_PRODUCTION_FIFO_MAX_UNITS', 0),
     'production_app_key' => (string) env('SHIPOUT_PRODUCTION_APP_KEY', ''),
     'production_app_secret' => (string) env('SHIPOUT_PRODUCTION_APP_SECRET', ''),
     'production_bearer' => (string) env('SHIPOUT_PRODUCTION_BEARER', ''),

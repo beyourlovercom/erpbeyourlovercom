@@ -83,6 +83,31 @@ describe('Sync tracking outbound UI', () => {
     expect(post).toHaveBeenCalledWith('/sync/orchestration/reconcile', { order_ids: [1] })
   })
 
+  it('confines Woo health and manual actions to the sync orders workspace', async () => {
+    const wrapper = mount(Orders, { props: {
+      orders: [], filters: {},
+      wooOrderSync: { health: 'failed', last_success_at: null, last_failure: { run_id: 18, at: null, error_code: 'network', message: 'retry' }, can_import_today: true },
+    } })
+    expect(wrapper.text()).toContain('网站订单同步')
+    expect(wrapper.text()).toContain('最近执行失败')
+    expect(wrapper.text()).toContain('今日未同步：待核对')
+    expect(wrapper.find('a[href="/sync/runs/18"]').exists()).toBe(true)
+    await wrapper.findAll('button').find((button) => button.text() === '同步网站订单')!.trigger('click')
+    expect(post).toHaveBeenCalledWith('/sync/woocommerce/incremental', {}, expect.objectContaining({
+      preserveScroll: true, onFinish: expect.any(Function),
+    }))
+  })
+
+  it('never shows Woo manual controls to users without import access', () => {
+    const wrapper = mount(Orders, { props: {
+      orders: [], filters: {},
+      wooOrderSync: { health: 'disabled', last_success_at: null, last_failure: null, can_import_today: false },
+    } })
+    expect(wrapper.text()).toContain('状态：未启用')
+    expect(wrapper.text()).not.toContain('同步网站订单')
+    expect(wrapper.text()).not.toContain('核对网站未同步')
+  })
+
   it('renders queue summary and recent sync runs', () => {
     const wrapper = mount(Orders, { props: {
       orders: [], filters: {},

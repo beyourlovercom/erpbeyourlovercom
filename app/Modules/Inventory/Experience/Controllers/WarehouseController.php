@@ -2,6 +2,8 @@
 
 namespace App\Modules\Inventory\Experience\Controllers;
 
+use App\Modules\Audit\Infrastructure\Models\AuditRecord;
+use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseClearanceService;
@@ -56,8 +58,11 @@ final class WarehouseController
         $publicSlug=$this->inventory->warehousePublicSlug($w);
         if($warehouse!==$publicSlug) return redirect()->route('inventory.warehouse.show',$publicSlug);
         $latestRestockPlan=$this->restockPlans->latestForWarehouse($w);
+        $moreplusPreviewVisible=strtoupper((string) $w->code)==='US-LA' && (bool) session()->pull('inventory.moreplus_preview_visible.'.$w->id,false);
         return Inertia::render('Inventory/WarehouseShow',[
             'warehouse'=>$this->payload($w),
+            'moreplusInventoryPreview'=>$moreplusPreviewVisible ? session('inventory.moreplus_provider_preview.'.$w->id) : null,
+            'moreplusFifoPreview'=>$moreplusPreviewVisible ? session('inventory.moreplus_fifo_preview.'.$w->id) : null,
             'clearanceProducts'=>$this->clearance->listForWarehouse($w),
             'clearanceCandidates'=>$this->clearance->candidatesForWarehouse($w),
             'costCenter'=>$this->inventory->warehouseCostCenter($w),
@@ -440,11 +445,40 @@ final class WarehouseController
         $fulfillmentCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
         $inventoryOnlyCodes = array_map('strtoupper', (array) config('warehouse_master.inventory_only_codes', []));
 
+        // US-LA warehouse identity: verified provider SKU, original Woo master untouched.
+        $providerSkus = [];
+        if ($code === 'US-LA') {
+            $ids = $w->inventories->pluck('product_id')->unique()->all();
+            $verifiedAliases = ProductSkuAlias::query()
+                ->whereIn('product_id', $ids)
+                ->where('is_active', true)
+                ->whereNotNull('oms_verified_at')
+                ->whereNotNull('oms_identity_evidence')
+                ->get()->groupBy('product_id');
+            foreach ($verifiedAliases as $productId => $aliases) {
+                if ($aliases->count() === 1 && trim((string) $aliases->first()->oms_identity_evidence) !== '') {
+                    $providerSkus[(int) $productId] = $aliases->first()->alias_sku;
+                }
+            }
+        }
+
         $lastConfirmedSync = InventorySyncBatch::query()
             ->where('warehouse_id', $w->id)
             ->where('status', 'confirmed')
             ->orderByDesc('confirmed_at')
             ->first();
+
+        $lastProviderSync = $code === 'US-LA'
+            ? AuditRecord::query()
+                ->where('action', 'inventory.moreplus_provider_stock_applied')
+                ->where('entity_type', \App\Modules\Inventory\Infrastructure\Models\Warehouse::class)
+                ->where('entity_id', (string) $w->id)
+                ->orderByDesc('created_at')->first()
+            : null;
+        $manualSyncAt = $lastConfirmedSync?->stock_count_at ?? $lastConfirmedSync?->confirmed_at;
+        $providerSyncAt = $lastProviderSync?->created_at;
+        $lastSyncAt = $providerSyncAt && (! $manualSyncAt || $providerSyncAt->greaterThan($manualSyncAt))
+            ? $providerSyncAt : $manualSyncAt;
 
         return [
             'id'=>$w->id,'slug'=>$w->slug,'public_slug'=>$this->inventory->warehousePublicSlug($w),
@@ -459,9 +493,11 @@ final class WarehouseController
             'fulfillment_state_label'=>$this->fulfillmentStateLabel($w),
             'replenishment_lead_time_days'=>$w->replenishment_lead_time_days,'replenishment_safety_stock_days'=>$w->replenishment_safety_stock_days,'replenishment_target_cover_days'=>$w->replenishment_target_cover_days,'billing_markdown'=>$w->billing_markdown,
             'service_regions'=>$w->serviceRegions->pluck('country_code')->all(),
-            'last_inventory_sync_at'=>($lastConfirmedSync?->stock_count_at ?? $lastConfirmedSync?->confirmed_at)?->toIso8601String(),
+            'last_inventory_sync_at'=>$lastSyncAt?->toIso8601String(),
+            'last_provider_inventory_sync_at'=>$providerSyncAt?->toIso8601String(),
+            'last_provider_inventory_sync_summary'=>$lastProviderSync?->after,
             'inventories'=>$w->inventories->map(fn($i)=>[
-                'id'=>$i->id,'product'=>['id'=>$i->product->id,'sku'=>$i->product->sku,'name'=>$i->product->name],
+                'id'=>$i->id,'product'=>['id'=>$i->product->id,'sku'=>$i->product->sku,'provider_sku'=>$providerSkus[(int) $i->product_id] ?? null,'name'=>$i->product->name],
                 'quantity_on_hand'=>$i->quantity_on_hand,'quantity_reserved'=>$i->quantity_reserved,'quantity_available'=>$i->quantity_available,
                 'stock_status'=>InventoryStockStatus::classify((int)$i->quantity_available),'stock_status_label'=>InventoryStockStatus::label(InventoryStockStatus::classify((int)$i->quantity_available)),
             'inbound_at'=>$i->inbound_at?->format('Y-m-d'),'stay_days'=>$i->stay_days,'location'=>$i->location,'standard_qoh'=>$i->standard_qoh,'expected_restock_qty'=>$i->expected_restock_qty,

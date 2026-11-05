@@ -67,7 +67,7 @@ final class DomesticInlineTrackingController
         $factoryId = Warehouse::query()->whereRaw('UPPER(code) = ?', ['FACTORY'])->where('is_active', true)->value('id');
 
         abort_unless($shipment && $factoryId && (int) $shipment->warehouse_id === (int) $factoryId, 409, '订单未分配到中国工厂仓。');
-        abort_if($order->archived_at !== null || $order->order_status?->value === 'cancelled', 409, '已归档或取消的订单不能操作。');
+        abort_if($order->archived_at !== null || $order->isOperationallyArchived() || $order->order_status?->value === 'cancelled', 409, '已归档或取消的订单不能操作。');
         abort_if($order->fulfillmentChildren()->exists(), 409, '已拆分原单不能直接发货，请操作分仓子单。');
         abort_if($order->externalReferences->contains('provider', 'historical_logistics'), 409, '历史物流证据订单不允许快速发货。');
 

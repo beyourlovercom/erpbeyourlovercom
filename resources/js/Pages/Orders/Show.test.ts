@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import Show from './Show.vue'
 import { router } from '@inertiajs/vue3'
+import axios from 'axios'
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
-  router: { post: vi.fn(), delete: vi.fn(), visit: vi.fn() },
+  router: { post: vi.fn(), delete: vi.fn(), visit: vi.fn(), reload: vi.fn() },
   useForm: (initial: Record<string, unknown>) => {
     const data = { ...initial }
     return {
@@ -115,6 +116,38 @@ const splitOrder = {
 const audit = [
   { action: 'created', actor_id: 1, created_at: '2026-08-25T10:00:00Z' },
 ]
+
+const mountShipmentReview = (assigned: boolean, approved: boolean) => {
+  const persisted = assigned ? 3 : null
+  const shipment = {
+    ...splitOrder.fulfillment.segments[1].shipment,
+    warehouse_id: persisted, warehouse_name: assigned ? '美国世迈仓' : null,
+    carrier: 'USPS', service: 'Priority Mail',
+    review_required: assigned, review_approved: approved, review_role: 'Dede',
+  }
+  const order = {
+    ...baseOrder, shipment: assigned ? shipment : null,
+    fulfillment: {
+      ...splitOrder.fulfillment, is_split: false,
+      segments: [{ ...splitOrder.fulfillment.segments[1], order_id: 1, shipment }],
+    },
+  }
+  return mount(Show, { props: {
+    order, audit, canOperateLogistics: true,
+    warehouses: [{ id: 3, slug: 'us-sm', name: '美国世迈仓', code: 'US-SM', country_code: 'US' }],
+    carrierOptions: [{ value: 'USPS', label: 'USPS / 美国邮政', default_service_id: 101,
+      default_service_value: 'Priority Mail', services: [{ id: 101, key: 'priority_mail',
+        value: 'Priority Mail', label: 'Priority Mail', name_en: 'Priority Mail', name_zh: '优先件' }] }],
+  } })
+}
+
+const openShipmentReview = async (wrapper: ReturnType<typeof mountShipmentReview>) => {
+  const action = wrapper.get('[data-testid="fulfillment-actions"]').findAll('button')
+    .find(button => button.text().includes('履约发货'))
+  expect(action).toBeTruthy()
+  await action!.trigger('click')
+  return wrapper.get('[role="dialog"][aria-label="填写物流并发货"]')
+}
 
 describe('Orders/Show V2', () => {
   beforeEach(() => {
@@ -277,7 +310,7 @@ describe('Orders/Show V2', () => {
     await button!.trigger('click')
     expect(wrapper.text()).toContain('填写物流并发货')
     expect(wrapper.find('.ord-shipment-form').exists()).toBe(true)
-    expect(wrapper.text()).toContain('所有发货、重发、补发操作统一在上方“履约状态”处理')
+    expect(wrapper.text()).toContain('发货、重发、补发仍在上方“履约状态”处理')
   })
 
   it('offers fulfillment execution per pending split segment without changing shipped siblings', async () => {
@@ -299,6 +332,68 @@ describe('Orders/Show V2', () => {
     const carrier = wrapper.find('.ord-shipment-form select:nth-of-type(2)')
     expect(wrapper.find('.ord-shipment-form').exists()).toBe(true)
     expect(wrapper.html()).toContain('4PX')
+  })
+
+  it('blocks confirmation for order 7865 style: no persisted shipment, even after selecting US-SM', async () => {
+    const post = vi.spyOn(axios, 'post')
+    try {
+      const wrapper = mountShipmentReview(false, false)
+      const dialog = await openShipmentReview(wrapper)
+      expect(dialog.text()).toContain('待分仓')
+      await dialog.get('.ord-shipment-form select').setValue('3')
+      expect(dialog.text()).toContain('待分仓')
+      const confirm = dialog.findAll('button').find(button => button.text().includes('确认发货'))!
+      expect(confirm.attributes('disabled')).toBeDefined()
+      await confirm.trigger('click')
+      expect(post).not.toHaveBeenCalled()
+      wrapper.unmount()
+    } finally { post.mockRestore() }
+  })
+
+  it('shows waiting Dede review for a persisted US-SM allocation and blocks confirmation', async () => {
+    const post = vi.spyOn(axios, 'post')
+    try {
+      const wrapper = mountShipmentReview(true, false)
+      const dialog = await openShipmentReview(wrapper)
+      expect(dialog.text()).toContain('等待 Dede 审核')
+      expect(dialog.findAll('button').find(button => button.text().includes('确认发货'))!.attributes('disabled')).toBeDefined()
+      expect(post).not.toHaveBeenCalled()
+      wrapper.unmount()
+    } finally { post.mockRestore() }
+  })
+
+  it('preserves the shipping dialog and shows the exact 409 reason in Chinese', async () => {
+    const rejection = Object.assign(new Error('Conflict'), {
+      isAxiosError: true, response: { status: 409, data: { message: '当前海外仓订单尚未通过 Dede 审核，禁止确认发货' } },
+    })
+    const post = vi.spyOn(axios, 'post').mockRejectedValueOnce(rejection)
+    try {
+      const wrapper = mountShipmentReview(true, true)
+      const dialog = await openShipmentReview(wrapper)
+      const confirm = dialog.findAll('button').find(button => button.text().includes('确认发货'))!
+      expect(confirm.attributes('disabled')).toBeUndefined()
+      await confirm.trigger('click')
+      await flushPromises()
+      expect(post).toHaveBeenCalledWith('/logistics/orders/1/ship', expect.any(Object),
+        { headers: { Accept: 'application/json' } })
+      expect(dialog.get('.ord-shipment-error[role="alert"]').text()).toContain('当前海外仓订单尚未通过 Dede 审核')
+      expect(wrapper.find('[role="dialog"][aria-label="填写物流并发货"]').exists()).toBe(true)
+      wrapper.unmount()
+    } finally { post.mockRestore() }
+  })
+
+  it('allows approved US-SM confirmation and reloads the order after success', async () => {
+    const post = vi.spyOn(axios, 'post').mockResolvedValueOnce({ status: 200, data: {} })
+    try {
+      const wrapper = mountShipmentReview(true, true)
+      const dialog = await openShipmentReview(wrapper)
+      await dialog.findAll('button').find(button => button.text().includes('确认发货'))!.trigger('click')
+      await flushPromises()
+      expect(post).toHaveBeenCalledTimes(1)
+      expect(router.reload).toHaveBeenCalledWith()
+      expect(wrapper.find('[role="dialog"][aria-label="填写物流并发货"]').exists()).toBe(false)
+      wrapper.unmount()
+    } finally { post.mockRestore() }
   })
 
   it('allows only the pending sibling to adjust warehouse after another segment has shipped', async () => {

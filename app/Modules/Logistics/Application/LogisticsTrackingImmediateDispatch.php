@@ -19,6 +19,20 @@ final class LogisticsTrackingImmediateDispatch
             return ['status' => 'disabled'];
         }
 
+        $mode = (string) config('tracking_sync_v2.immediate_mode', 'off');
+        if (! in_array($mode, ['canary', 'general'], true)) {
+            return ['status' => 'disabled'];
+        }
+        if ($mode === 'canary') {
+            $raw = (string) config('tracking_sync_v2.immediate_canary_order_ids', '');
+            $ids = array_map('trim', explode(',', $raw));
+            $allowed = array_filter($ids, static fn (string $id): bool => ctype_digit($id) && (int) $id > 0
+            );
+            if (! in_array((string) $order->getKey(), $allowed, true)) {
+                return ['status' => 'not_allowlisted'];
+            }
+        }
+
         // Called ONLY after the successful shipment transaction has returned.
         $order = $order->fresh(['shipment', 'items', 'externalReferences', 'fulfillmentParent.externalReferences']);
         if (! $order) {
@@ -36,6 +50,7 @@ final class LogisticsTrackingImmediateDispatch
 
         try {
             $result = $this->tracking->pushOne($order, $actor);
+
             return ['status' => (string) ($result['status'] ?? 'failed')];
         } catch (Throwable $e) {
             // Do not roll back a real shipment or leak remote gateway errors into the UI.
@@ -43,6 +58,7 @@ final class LogisticsTrackingImmediateDispatch
                 'order_id' => (int) $order->getKey(),
                 'exception_type' => class_basename($e),
             ]);
+
             return ['status' => 'failed'];
         }
     }

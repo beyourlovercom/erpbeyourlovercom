@@ -2,10 +2,8 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
 
-const { routerPost } = vi.hoisted(() => ({ routerPost: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
-  router: { post: routerPost },
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' },
@@ -19,10 +17,9 @@ const domains = [
 ]
 const queueSummary = { retry_due: 1, retry_waiting: 2, processing: 3, failed: 4, conflicts: 5 }
 const wooOrderRun = { id: 20, domain: 'orders', run_type: 'woocommerce_order_incremental', provider_key: 'woocommerce', status: 'completed', initiator: null, started_at: '2026-09-06T03:00:00Z', completed_at: '2026-09-06T03:00:02Z', requested_items: 2, succeeded_items: 2, failed_items: 0, conflict_items: 0 }
-const wooOrderSync = { enabled: true, frequency: '每 30 分钟', can_operate: true, health: 'ok' as const, last_success_at: '2026-10-28T02:00:00Z', last_failure: null, unimported_count: null, manual_action: '/sync/woocommerce/incremental', advanced_href: '/sync/woocommerce', latest_run: wooOrderRun }
 describe('Sync overview', () => {
   it('renders the four frozen second-level workspaces', () => {
-    const wrapper = mount(Index, { props: { domains, queueSummary, manualRuns: [], automaticRuns: [], wooOrderSync } })
+    const wrapper = mount(Index, { props: { domains, queueSummary, manualRuns: [], automaticRuns: [] } })
     for (const domain of domains) {
       expect(wrapper.text()).toContain(domain.title)
       expect(wrapper.find(`a[href="${domain.href}"]`).exists()).toBe(true)
@@ -34,7 +31,7 @@ describe('Sync overview', () => {
   it('separates manual and automatic run history without inventing records', () => {
     const run = { id: 11, domain: 'orders', run_type: 'tracking_selected', provider_key: 'woocommerce', status: 'completed', initiator: 'Andy', started_at: '2026-08-28T08:00:00Z', completed_at: '2026-08-28T08:01:00Z', requested_items: 1, succeeded_items: 1, failed_items: 0, conflict_items: 0 }
     const systemRun = { ...run, id: 12, initiator: null, run_type: 'scheduled_incremental' }
-    const wrapper = mount(Index, { props: { domains, queueSummary, manualRuns: [run], automaticRuns: [systemRun], wooOrderSync } })
+    const wrapper = mount(Index, { props: { domains, queueSummary, manualRuns: [run], automaticRuns: [systemRun] } })
     expect(wrapper.text()).toContain('手动同步记录')
     expect(wrapper.text()).toContain('自动同步记录')
     expect(wrapper.text()).toContain('Andy')
@@ -42,14 +39,12 @@ describe('Sync overview', () => {
     expect(wrapper.find('a[href="/sync/runs/12"]').exists()).toBe(true)
   })
 
-  it('shows Woo order automatic status and runs today-only manual sync from the overview', async () => {
-    routerPost.mockClear()
-    const wrapper = mount(Index, { props: { domains, queueSummary, manualRuns: [], automaticRuns: [wooOrderRun], wooOrderSync } })
-    expect(wrapper.text()).toContain('WooCommerce 订单同步')
-    expect(wrapper.text()).toContain('每 30 分钟')
-    expect(wrapper.text()).toContain('2 成功 / 0 失败')
-    expect(wrapper.find('a[href="/sync/woocommerce"]').exists()).toBe(true)
-    await wrapper.findAll('button').find(b => b.text().includes('手动同步今日订单'))!.trigger('click')
-    expect(routerPost).toHaveBeenCalledWith('/sync/woocommerce/incremental', {}, expect.objectContaining({ preserveScroll: true, onFinish: expect.any(Function) }))
+  it('keeps Woo order health and manual import actions exclusive to /sync/orders', () => {
+    const wrapper = mount(Index, { props: { domains, queueSummary, manualRuns: [], automaticRuns: [wooOrderRun] } })
+    expect(wrapper.text()).not.toContain('WooCommerce 订单同步')
+    expect(wrapper.text()).not.toContain('自动同步健康状态')
+    expect(wrapper.text()).not.toContain('手动同步今日订单')
+    expect(wrapper.find('a[href="/sync/orders"]').exists()).toBe(true)
   })
+
 })

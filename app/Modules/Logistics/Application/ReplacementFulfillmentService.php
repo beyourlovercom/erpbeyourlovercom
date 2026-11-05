@@ -47,6 +47,7 @@ final class ReplacementFulfillmentService
             $rootId = $order->fulfillment_parent_id ?: $order->getKey();
             $root = Order::query()->with(['address', 'items', 'shipment', 'originalFulfillmentChildren.items', 'originalFulfillmentChildren.shipment'])
                 ->whereKey($rootId)->lockForUpdate()->firstOrFail();
+            abort_if($root->isOperationallyArchived(), 409, '归档订单不能补发。');
 
             abort_unless(array_key_exists($reason, self::REASONS), 422, '无效补发原因');
             abort_unless($this->originalLogisticsStarted($root), 409, '原订单尚未进入实际物流，请使用重新分仓而不是补发');

@@ -11,6 +11,8 @@ on:
       - 'tests/Feature/Orders/**'
       - 'tests/Feature/Kol/**'
       - '.github/workflows/erp-orders-kol-cross-module.yml'
+      - 'docs/60_Codex_Operations/runbooks/ERP_ORDER_MUTATION_CONTRACT_GATE_V1_20261104.md'
+      - 'AGENTS.md'
   workflow_dispatch:
 
 permissions:
@@ -41,6 +43,10 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Prepare Linux case-sensitive Inertia page path
         run: ln -s Pages resources/js/pages
+      - name: Order mutation frontend types (same PR head)
+        run: npm run typecheck
+      - name: Order editor buttons and interaction regression (same PR head)
+        run: npx vitest run resources/js/Pages/Orders/Show.test.ts
       - name: Build frontend for Inertia HTTP assertions
         run: npm run build
       - name: Prepare isolated SQLite test environment
@@ -49,6 +55,8 @@ jobs:
           php artisan key:generate
           touch database/database.sqlite
           php artisan migrate:fresh --force
+      - name: Order item preview route, authorization and actual save/readback contract
+        run: php artisan test tests/Feature/Orders/OrderItemAmendmentPreflightTest.php
       - name: Orders and KOL HTTP authorization and identity regression
         run: php artisan test tests/Feature/Orders tests/Feature/Kol
       - name: Diff check

@@ -23,7 +23,17 @@ final class OrderSavedViewsTest extends TestCase
         'kol_commission', 'payment_fee', 'customs_tax', 'refund_replacement_loss', 'other_variable_cost',
     ];
 
+    public function test_order_list_does_not_load_or_expose_website_sync_status(): void
+    {
+        $user = $this->userWith(['orders.view', 'sync.view']);
+        $this->actingAs($user)->get('/orders')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Orders/Index')
+            ->missing('wooOrderSync')
+        );
+    }
+
     public function test_default_status_and_operational_marker_views_use_operational_progress_plus_explicit_markers(): void
+
     {
         $user = $this->userWith(['orders.view', 'orders.edit']);
         $pending = $this->order($user, 'PENDING', 'pending_shipment');

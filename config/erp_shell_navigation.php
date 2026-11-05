@@ -6,6 +6,7 @@ return [
         ['key' => 'orders-customers', 'label' => '客户订单', 'path' => '/customers/orders', 'route' => 'customers.orders', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'orders-kol', 'label' => '网红订单', 'path' => '/kol/orders', 'route' => 'kol.orders', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'orders-procurement', 'label' => '外采订单', 'path' => '/orders/procurement', 'route' => 'orders.procurement', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
+        ['key' => 'orders-archive', 'label' => '归档清单', 'path' => '/orders/archive', 'route' => 'orders.archive.index', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
     ]],
     ['key' => 'logistics', 'label' => '物流', 'emoji' => '🚚', 'path' => '/logistics', 'route' => 'shell.logistics', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false, 'children' => [
         ['key' => 'logistics-wait-stock', 'label' => '待分仓', 'path' => '/logistics/wait-stock', 'route' => 'logistics.wait-stock', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],

@@ -253,7 +253,7 @@ final class DomesticLogisticsController
 
     private function baseQuery(int $factoryId): Builder
     {
-        return Order::query()
+        return Order::query()->eligibleForOperations()
             ->where('order_status', '!=', 'cancelled')
             ->whereDoesntHave('fulfillmentChildren')
             ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))

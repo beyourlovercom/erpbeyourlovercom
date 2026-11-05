@@ -17,22 +17,25 @@ use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
+use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
-use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Application\KolOrderAccessScope;
+use App\Modules\Orders\Application\OrderItemAmendmentPreflight;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderWorkflowStatus;
-use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Application\OrderProgressTransitionService;
+
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
+use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Application\WooCommerceAdminOrderLink;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Sync\Application\WooOrderSyncHealthReader;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -44,6 +47,7 @@ final class OrderController
 {
     public function __construct(
         private readonly OrderService $orders,
+        private readonly OrderItemAmendmentPreflight $itemAmendmentPreflight,
         private readonly InventoryAvailabilityReader $availability,
         private readonly SavedViewService $views,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
@@ -92,15 +96,6 @@ final class OrderController
             'canEditWorkflowStatus' => $request->user()->can('orders.edit'),
             'canPreviewKolLinks' => $kind === OrderKind::KolFulfillment && $request->user()->can('kol.views.manage'),
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
-            'wooOrderSync' => $request->user()->can('sync.view') ? [
-                ...app(WooOrderSyncHealthReader::class)->snapshot(),
-                'can_import_today' => app(WooOrderManualSyncAccess::class)->allows($request->user()),
-            ] : [
-                'health' => 'disabled',
-                'last_success_at' => null,
-                'last_failure' => null,
-                'can_import_today' => false,
-            ],
         ]);
     }
 
@@ -224,7 +219,7 @@ final class OrderController
             'carrierOptions' => $this->carrierServices->options(),
             'canViewProfit' => ! $isDerived && ($request->user()?->can('analysis.view') ?? false),
             'kolProfile' => $this->kolProfileForOrder($request, $order),
-            'canMarkOperational' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
+            'canMarkOperational' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())
                 ->map(fn (array $definition, string $code): array => [
                     'code' => $code, ...$definition,
@@ -232,10 +227,15 @@ final class OrderController
                         ? $definition['mutable']
                         : ($definition['mutable'] && in_array($code, ['sending', 'out_of_stock'], true)),
                 ])->values()->all(),
-            'canEditOrder' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
-            'canEditWorkflowStatus' => ($request->user()?->can('orders.edit') ?? false)
-                || ($request->user()?->can('domestic.review') && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY'),
-            'canTrashOrder' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
+            'canEditOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
+            'canEditWorkflowStatus' => ! $order->isOperationallyArchived()
+                && (($request->user()?->can('orders.edit') ?? false)
+                    || ($request->user()?->can('domestic.review') && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY')),
+            'canTrashOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
+            'canArchiveOrder' => ! $order->trashed() && $order->archived_at === null && $order->operational_archived_at === null && ($request->user()?->can('orders.edit') ?? false),
+            'directlyArchived' => $order->operational_archived_at !== null,
+            'operationallyArchived' => $order->isOperationallyArchived(),
+
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
             'canCreateReplacement' => ! $isDerived && $this->logisticsExecutionAccess->allows($request->user()) && $this->originalLogisticsStarted($order),
             'canCreateProcurement' => ! $isDerived && ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
@@ -417,6 +417,7 @@ final class OrderController
         });
         $requiresFullFlow = $order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0);
         $allocationAllowed = $this->fulfillmentAllocationAccess->allows($request->user());
+        $entryAllowed = app(PendingAllocationEntryPolicy::class)->allows($order);
         $canReallocate = $order->order_status?->value === 'pending_shipment'
             && $allocationCommitted
             && ! $logisticsStarted
@@ -429,7 +430,7 @@ final class OrderController
 
         return [
             'status' => $allocationCommitted ? 'submitted' : ($order->order_status?->value === 'pending_shipment' ? 'pending' : 'locked'),
-            'can_operate' => $order->order_status?->value === 'pending_shipment' && ! $allocationCommitted && $allocationAllowed,
+            'can_operate' => $entryAllowed && $order->order_status?->value === 'pending_shipment' && ! $allocationCommitted && $allocationAllowed,
             'can_reallocate' => $canReallocate,
             'can_partial_reallocate' => $canPartialReallocate,
             'logistics_started' => $logisticsStarted,
@@ -443,14 +444,42 @@ final class OrderController
         ];
     }
 
+    public function previewItemAmendment(Request $request, Order $order): JsonResponse
+    {
+        $this->authorizeKind($request, $order);
+        KolOrderAccessScope::authorize($request->user(), $order);
+        abort_if($order->isOperationallyArchived(), 409, '订单已归档，不能编辑商品。');
+        $data = $request->validate($this->itemAmendmentRules());
+
+        return response()->json($this->itemAmendmentPreflight->preview($order, $data['items']));
+    }
+
     public function update(Request $request, Order $order): RedirectResponse
     {
         $this->authorizeKind($request, $order);
         KolOrderAccessScope::authorize($request->user(), $order);
+        abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能编辑。');
         $data = $request->validate($this->updateRules($order));
         $items = $data['items'] ?? null;
-        unset($data['items']);
-        $this->orders->update($order, $data, $items, $request->user());
+        $reason = trim((string) ($data['amendment_reason'] ?? ''));
+        unset($data['items'], $data['amendment_reason'], $data['expected_revision']);
+
+        // Lock the source order before rechecking inventory/fulfillment gates. The
+        // preview itself is read-only; a concurrent allocation must never race a save.
+        DB::transaction(function () use ($request, $order, $data, $items, $reason): void {
+            $lockedOrder = Order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            abort_if($lockedOrder->isOperationallyArchived(), 409, '运营归档订单为只读，不能编辑。');
+            if ($items !== null) {
+                $preview = $this->itemAmendmentPreflight->preview($lockedOrder, $items);
+                if (filled($request->input('expected_revision')) && $request->input('expected_revision') !== $preview['expected_revision']) {
+                    abort(409, '订单商品已被其他操作修改，请刷新订单并重新预检。');
+                }
+                if (! $preview['can_save_direct']) {
+                    throw ValidationException::withMessages(['items' => $preview['issues'][0] ?? '订单商品不能直接修改。']);
+                }
+            }
+            $this->orders->update($lockedOrder, $data, $items, $request->user(), $reason ?: null);
+        });
 
         return back()->with('success', '订单已更新');
     }
@@ -458,16 +487,19 @@ final class OrderController
     public function setOperationalMarker(Request $request, Order $order, string $marker): RedirectResponse
     {
         KolOrderAccessScope::authorize($request->user(), $order);
+        abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能修改业务标记。');
         $data = $request->validate(['active' => ['required', 'boolean']]);
         $this->orders->setOperationalMarker($order, $marker, (bool) $data['active'], $request->user());
 
         return back()->with('success', '订单业务标记已更新');
     }
 
-    public function updateWorkflowStatus(Request $request, Order $order): \Illuminate\Http\JsonResponse
+    public function updateWorkflowStatus(Request $request, Order $order): JsonResponse
     {
         KolOrderAccessScope::authorize($request->user(), $order);
+        abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能修改履约状态。');
         abort_unless($request->user()?->can('orders.edit') || $request->user()?->can('domestic.review'), 403);
+
         $data = $request->validate([
             'workflow_status' => ['required', 'string', Rule::in(array_keys(array_filter(OrderWorkflowStatus::registry(), fn (array $definition): bool => $definition['mutable'])))],
             'expected_workflow_revision' => ['required', 'integer', 'min:0'],
@@ -568,6 +600,7 @@ final class OrderController
                     false,
                 ),
             ] : null,
+            'operationally_archived' => $order->isOperationallyArchived(),
             'order_date' => $order->order_date?->toDateString(),
             'order_status' => $order->order_status->value,
             'order_status_label' => $workflowProjection['code'] === 'allocated' ? '已分仓' : $this->statusLabel($order->order_status->value),
@@ -782,6 +815,19 @@ final class OrderController
         ];
     }
 
+    /** @return array<string, mixed> */
+    private function itemAmendmentRules(): array
+    {
+        return [
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.id' => ['nullable', 'integer', 'min:1'],
+            'items.*.product_summary' => ['nullable', 'string', 'max:255'],
+            'items.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->whereNotNull('sku')->where('sku', '!=', '')],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.unit_price' => ['required', 'decimal:0,2', 'min:0'],
+        ];
+    }
+
     private function updateRules(Order $order): array
     {
         return [
@@ -795,6 +841,9 @@ final class OrderController
             'country' => ['sometimes', 'nullable', 'string', 'max:128'], 'province_state' => ['sometimes', 'nullable', 'string', 'max:128'],
             'city' => ['sometimes', 'nullable', 'string', 'max:128'], 'address_line_1' => ['sometimes', 'nullable', 'string', 'max:255'],
             'address_line_2' => ['sometimes', 'nullable', 'string', 'max:255'], 'postal_code' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'items.*.id' => ['nullable', 'integer', 'min:1'],
+            'expected_revision' => ['sometimes', 'nullable', 'string', 'size:64'],
+            'amendment_reason' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'items' => ['sometimes', 'array', 'min:1'], 'items.*.product_summary' => ['sometimes', 'nullable', 'string', 'max:255'],
             'items.*.product_id' => ['required_with:items', 'integer', Rule::exists('products', 'id')->whereNotNull('sku')->where('sku', '!=', '')],
             'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],

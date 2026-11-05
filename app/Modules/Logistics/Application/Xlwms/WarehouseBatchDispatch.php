@@ -34,7 +34,7 @@ final class WarehouseBatchDispatch
         }
         $warehouse = \App\Modules\Inventory\Infrastructure\Models\Warehouse::query()->where('code', self::WAREHOUSE_CODE)->first();
         if (! $warehouse) return ['count' => 0, 'results' => [], 'summary' => $this->summary([])];
-        $query = Order::query()->where('order_status', 'pending_shipment')
+        $query = Order::query()->eligibleForOperations()->where('order_status', 'pending_shipment')
             ->whereHas('shipment', fn ($q) => $q->where('warehouse_id', $warehouse->id)->where('shipment_status', 'pending'))
             ->whereHas('shipment.overseaReview', fn ($q) => $q->where('status', 'approved')->where('reviewed_warehouse_id', $warehouse->id))
             ->with(['address', 'items', 'shipment.warehouse', 'shipment.carrierService', 'shipment.overseaReview'])

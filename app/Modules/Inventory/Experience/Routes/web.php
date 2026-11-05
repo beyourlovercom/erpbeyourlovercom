@@ -2,6 +2,8 @@
 
 use App\Modules\Inventory\Experience\Controllers\InventoryController;
 use App\Modules\Inventory\Experience\Controllers\InventorySyncController;
+use App\Modules\Inventory\Experience\Controllers\WarehouseOverdueInventoryController;
+use App\Modules\Inventory\Experience\Controllers\MorePlusInventorySyncController;
 use App\Modules\Inventory\Experience\Controllers\WarehouseController;
 use App\Modules\Inventory\Experience\Controllers\PackagingMeasurementController;
 use App\Modules\Inventory\Experience\Controllers\BlueLabelWorkerController;
@@ -35,8 +37,10 @@ Route::middleware(['web','auth','can:inventory.view'])->group(function (): void 
     Route::get('/inventory',[InventoryController::class,'dashboard'])->name('shell.inventory');
     Route::get('/inventory/list',[InventoryController::class,'warehouses'])->name('inventory.list');
     Route::get('/inventory/products',[InventoryController::class,'products'])->name('inventory.products');
+    Route::get('/inventory/overdue',[WarehouseOverdueInventoryController::class,'index'])->name('inventory.overdue');
+    Route::get('/inventory/overdue/export',[WarehouseOverdueInventoryController::class,'export'])->name('inventory.overdue.export');
     Route::get('/inventory/warehouses',fn()=>redirect()->route('inventory.list'))->name('inventory.warehouses');
-    Route::get('/inventory/{warehouse}',[WarehouseController::class,'show'])->where('warehouse','^(?!add$|list$|products$|product-search$|warehouses$|sync$)[^/]+$')->name('inventory.warehouse.show');
+    Route::get('/inventory/{warehouse}',[WarehouseController::class,'show'])->where('warehouse','^(?!add$|list$|overdue$|products$|product-search$|warehouses$|sync$)[^/]+$')->name('inventory.warehouse.show');
 });
 
 Route::middleware(['web','auth','can:inventory.warehouses.manage'])->group(function (): void {
@@ -53,7 +57,13 @@ Route::middleware(['web','auth','can:inventory.warehouses.manage'])->group(funct
     Route::post('/inventory/{warehouse}/costs/reconciliation/{batch}/apply',[WarehouseController::class,'applyBillReconciliation'])->whereNumber('batch')->name('inventory.warehouse.costs.reconciliation.apply');
 });
 
+Route::middleware(['web','auth','can:inventory.overdue.manage'])->group(function (): void {
+    Route::patch('/inventory/overdue/exclusions/{product}',[WarehouseOverdueInventoryController::class,'setExcluded'])->whereNumber('product')->name('inventory.overdue.exclusions.update');
+});
+
 Route::middleware(['web','auth','can:inventory.operate'])->group(function (): void {
+    Route::post('/inventory/{warehouse}/provider-stock/preview',[MorePlusInventorySyncController::class,'preview'])->name('inventory.moreplus-stock.preview');
+    Route::post('/inventory/{warehouse}/provider-stock/apply',[MorePlusInventorySyncController::class,'apply'])->name('inventory.moreplus-stock.apply');
     Route::post('/inventory/{warehouse}/stock',[WarehouseController::class,'saveInventory'])->name('inventory.stock.store');
     Route::post('/inventory/{warehouse}/stock/add',[WarehouseController::class,'addInventory'])->name('inventory.stock.add');
     Route::patch('/inventory/{warehouse}/stock/{inventory}',[WarehouseController::class,'updateInventory'])->name('inventory.stock.update');

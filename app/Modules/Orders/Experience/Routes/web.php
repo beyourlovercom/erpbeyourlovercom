@@ -3,6 +3,7 @@
 use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
 use App\Modules\Orders\Experience\Controllers\KolOrderLinkPreviewController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
+use App\Modules\Orders\Experience\Controllers\OrderOperationalArchiveController;
 use App\Modules\Orders\Experience\Controllers\OrderSavedViewController;
 use App\Modules\Orders\Experience\Controllers\OrderTrashController;
 use App\Modules\Orders\Experience\Controllers\WooCommerceInboundController;
@@ -16,6 +17,9 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/sync/woocommerce/reconcile-today', [WooCommerceInboundController::class, 'reconcileToday'])->name('woocommerce.inbound.reconcile-today');
     Route::post('/sync/woocommerce/historical', [WooCommerceInboundController::class, 'historical'])->middleware('can:sync.operate')->name('woocommerce.inbound.historical');
     Route::get('/orders/trash', [OrderTrashController::class, 'index'])->middleware('can:system.permissions.manage')->name('orders.trash.index');
+    Route::get('/orders/archive', [OrderOperationalArchiveController::class, 'index'])->middleware('can:orders.view')->name('orders.archive.index');
+    Route::post('/orders/{order}/archive', [OrderOperationalArchiveController::class, 'archive'])->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.archive');
+    Route::post('/orders/archive/{order}/restore', [OrderOperationalArchiveController::class, 'restore'])->middleware(['can:orders.view', 'can:system.permissions.manage'])->whereNumber('order')->name('orders.archive.restore');
     Route::post('/orders/trash/{order}/restore', [OrderTrashController::class, 'restore'])->middleware('can:system.permissions.manage')->whereNumber('order')->name('orders.trash.restore');
     Route::delete('/orders/trash/{order}', [OrderTrashController::class, 'purge'])->middleware('can:system.permissions.manage')->whereNumber('order')->name('orders.trash.purge');
     Route::delete('/orders/{order}/trash', [OrderTrashController::class, 'destroy'])->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.trash.destroy');
@@ -34,6 +38,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/customers/orders', [OrderController::class, 'store'])->middleware('can:orders.create')->name('orders.store.customers')->defaults('order_kind', 'customer');
     Route::get('/customers/orders/export', [OrderController::class, 'export'])->middleware(['can:customers.export', 'can:system.permissions.manage'])->name('orders.export')->defaults('order_kind', 'customer');
     Route::get('/customers/orders/{order}', [OrderController::class, 'show'])->middleware('can:orders.view')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|[0-9]+')->name('customers.orders.show')->defaults('order_kind', 'customer');
+    Route::post('/customers/orders/{order}/items/preview', [OrderController::class, 'previewItemAmendment'])->middleware('can:orders.edit')->whereNumber('order')->name('customers.orders.items.preview')->defaults('order_kind', 'customer');
     Route::patch('/customers/orders/{order}', [OrderController::class, 'update'])->middleware('can:orders.edit')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|[0-9]+')->name('orders.update.customers')->defaults('order_kind', 'customer');
 
     Route::get('/kol/logistics', [KolLogisticsController::class, 'index'])->middleware('can:kol.view')->name('kol.logistics');
@@ -42,5 +47,6 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/kol/orders/create', [OrderController::class, 'create'])->middleware('can:orders.create')->name('kol.orders.create')->defaults('order_kind', 'kol_fulfillment');
     Route::post('/kol/orders', [OrderController::class, 'store'])->middleware('can:orders.create')->name('orders.store')->defaults('order_kind', 'kol_fulfillment');
     Route::get('/kol/orders/{order}', [OrderController::class, 'show'])->middleware('can:orders.view')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|KOL[0-9]{8}-[0-9]{3}|[0-9]+')->name('kol.orders.show')->defaults('order_kind', 'kol_fulfillment');
+    Route::post('/kol/orders/{order}/items/preview', [OrderController::class, 'previewItemAmendment'])->middleware('can:orders.edit')->whereNumber('order')->name('kol.orders.items.preview')->defaults('order_kind', 'kol_fulfillment');
     Route::patch('/kol/orders/{order}', [OrderController::class, 'update'])->middleware('can:orders.edit')->name('orders.update')->defaults('order_kind', 'kol_fulfillment');
 });

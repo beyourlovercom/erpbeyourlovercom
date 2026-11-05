@@ -27,7 +27,8 @@ final class ReshipmentDispatchService
             throw new RuntimeException('REISSUE_CREATE_NOT_AUTHORIZED');
         }
         $record = DB::transaction(function () use ($orderId,$requestId,$actorId): XlwmsReshipment {
-            Order::query()->whereKey($orderId)->lockForUpdate()->firstOrFail();
+            $lockedOrder = Order::query()->whereKey($orderId)->lockForUpdate()->firstOrFail();
+            abort_if($lockedOrder->isOperationallyArchived(), 409, '归档订单不能进行仓库补发。');
             $r = XlwmsReshipment::query()->where('original_order_id',$orderId)
                 ->where('request_id',$requestId)->lockForUpdate()->first();
             if (!$r || $r->status!=='approved_for_reissue' || !$r->approved_by
@@ -122,6 +123,7 @@ final class ReshipmentDispatchService
     private function verifiedContext(XlwmsReshipment $record): array
     {
         $order=Order::query()->with(['address','items','shipment.warehouse'])->findOrFail($record->original_order_id);
+        abort_if($order->isOperationallyArchived(), 409, '归档订单不能进行仓库补发。');
         $shipment=$order->shipment;
         if (! $shipment || $shipment->warehouse?->code!=='US-SM'
             || (int)$shipment->id!==(int)$record->original_shipment_id

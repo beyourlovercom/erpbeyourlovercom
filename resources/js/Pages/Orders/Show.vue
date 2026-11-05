@@ -144,6 +144,9 @@ const props = withDefaults(defineProps<{
   canEditOrder?: boolean
   canEditWorkflowStatus?: boolean
   canTrashOrder?: boolean
+  canArchiveOrder?: boolean
+  operationallyArchived?: boolean
+  directlyArchived?: boolean
   canManageTrash?: boolean
   canManageProductPackaging?: boolean
   canViewPackagingEvidence?: boolean
@@ -156,7 +159,7 @@ const props = withDefaults(defineProps<{
   wooAdminEditUrl?: string | null
   kolProfile?: { id: number; display_name: string; url: string } | null
 
-}>(), { canMarkOperational: false, canEditOrder: false, canEditWorkflowStatus: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
+}>(), { canMarkOperational: false, canEditOrder: false, canEditWorkflowStatus: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
 
 
 const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
@@ -396,7 +399,12 @@ const previewItemAmendment = async () => {
     const payload = axios.isAxiosError(error)
       ? error.response?.data as {message?:string;errors?:Record<string,string[]>}|undefined : undefined
     const problem = Object.values(payload?.errors ?? {}).flat()[0]
-    amendmentPreviewError.value = problem || payload?.message || '预检失败，请检查产品 SKU、数量及权限后重试。'
+    const httpStatus = axios.isAxiosError(error) ? error.response?.status : undefined
+    amendmentPreviewError.value = problem || payload?.message || (httpStatus === 404
+      ? '预检接口不存在（404），请核查 ERP 后端部署版本。'
+      : httpStatus === 403 ? '当前账号缺少订单编辑权限（403）。'
+      : httpStatus === 409 ? '订单履约状态冲突（409），请重新加载并核对库存预留。'
+      : '预检请求失败，请检查网络与服务器日志。')
     publishGlobalFeedback({
       state:'ERROR',title:'商品修改预检失败',message:amendmentPreviewError.value,
       next:'请在当前订单页修正错误，不需要重新打开页面。',
@@ -464,7 +472,7 @@ const submit = () => {
     return
   }
   form.transform(data => {
-    if (itemsChanged) return data
+    if (itemsChanged) return { ...data, expected_revision: amendmentPreview.value?.expected_revision ?? null }
     const { items: _unchangedItems, ...otherFields } = data
     return otherFields
   }).patch(`${basePath.value}/${props.order.id}`, {
@@ -500,6 +508,10 @@ const operationalMarkerOptions = [
 ]
 const markerActive = (key: string) => props.order.operational_markers?.includes(key) ?? false
 const toggleMarker = (key: string) => router.post(`/orders/${props.order.id}/operational-markers/${key}`, { active: !markerActive(key) }, { preserveScroll: true })
+const archiveOrder = () => {
+  if (!props.canArchiveOrder || !window.confirm('确认归档此订单？归档后订单将退出所有分配、发货和仓库操作序列，仅保留在归档清单；财务、物流、同步和历史记录不会删除。')) return
+  router.post('/orders/' + props.order.id + '/archive')
+}
 
 const shipmentStatusLabel = computed(() => {
   const s = props.order.shipment?.shipment_status
@@ -721,7 +733,9 @@ const reportShipmentErrors = (errors:Record<string,string>, action:string) => {
   shipmentEditorError.value = errors.fulfillment || '请修正红色提示的字段后重试。'
   publishGlobalFeedback({
     state:'BLOCKED', title:`${action}未完成`, message:first,
-    next:'请在当前弹窗修正红色提示字段，已填写的内容不会丢失。',
+    next:errors.fulfillment
+      ? '请核对分仓、审核及订单状态；当前填写内容不会丢失。'
+      : '请在当前弹窗修正红色提示字段，已填写的内容不会丢失。',
   })
 }
 const shipmentLocalErrors = (needsCompleteFields:boolean):Record<string,string> => {
@@ -748,14 +762,18 @@ const shipmentEditor = ref<ShipmentEditorDraft>({ warehouse_id: null, carrier: '
 const shipmentEditorReviewGate = computed(() => {
   const segment = props.order.fulfillment?.segments.find(row => row.order_id === shipmentEditorOrderId.value)
   const saved = segment?.shipment
-  if (!saved) return ''
-  if (saved.review_required && shipmentEditor.value.warehouse_id !== saved.warehouse_id) {
-    return '发货仓库已变更，需先保存分仓并重新审核，不能直接确认发货。'
+  const assignedWarehouseId = saved?.warehouse_id
+    ?? (shipmentEditorOrderId.value === props.order.id ? props.order.shipment?.warehouse_id : null)
+  if (!assignedWarehouseId) {
+    return '待分仓：请先完成正式分仓，不能在发货弹窗中直接选择仓库后确认发货。'
   }
-  if (saved.review_required && !saved.review_approved) {
+  if (shipmentEditor.value.warehouse_id !== assignedWarehouseId) {
+    return '发货仓库与已分配仓库不一致，请先完成重新分仓及对应审核。'
+  }
+  if (saved?.review_required && !saved.review_approved) {
     return saved.review_role === 'Dede'
-      ? '该订单尚未通过 Dede 海外仓审核，请先进入对应仓库的「待审核」列表。'
-      : '该订单尚未通过国内审核，请先进入中国工厂「待审核」列表。'
+      ? '等待 Dede 审核：请先进入对应海外仓的「待审核」列表。'
+      : '等待国内商务审核：请先进入中国工厂「待审核」列表。'
   }
   return ''
 })
@@ -798,20 +816,40 @@ const saveShipmentDraft = () => {
     onFinish: () => { shipmentEditorSaving.value = false },
   })
 }
-const confirmShipment = () => {
+const confirmShipment = async () => {
   if (!props.canOperateLogistics || !shipmentEditorOrderId.value || shipmentEditorSaving.value) return
+  // The persisted warehouse/review gate is also checked on the server.
+  if (shipmentEditorReviewGate.value) {
+    reportShipmentErrors({ fulfillment: shipmentEditorReviewGate.value }, '确认发货')
+    return
+  }
   const errors = shipmentLocalErrors(true)
   if (Object.keys(errors).length) { reportShipmentErrors(errors, '确认发货'); return }
   shipmentEditorSaving.value = true
   shipmentEditorError.value = ''
   shipmentFieldErrors.value = {}
-  router.post(`/logistics/orders/${shipmentEditorOrderId.value}/ship`, shipmentEditor.value, {
-    preserveScroll: true,
-    preserveState: true,
-    onSuccess: () => { shipmentEditorOpen.value = false },
-    onError: (errors) => reportShipmentErrors(errors, '确认发货'),
-    onFinish: () => { shipmentEditorSaving.value = false },
-  })
+  try {
+    // A JSON request keeps Laravel's HTTP 409 reason inside the modal.
+    await axios.post(`/logistics/orders/${shipmentEditorOrderId.value}/ship`,
+      shipmentEditor.value, { headers: { Accept: 'application/json' } })
+    shipmentEditorOpen.value = false
+    router.reload()
+  } catch (error) {
+    const response = axios.isAxiosError(error) ? error.response : undefined
+    const payload = response?.data as { message?:string; errors?:Record<string,string[]> } | undefined
+    const fieldErrors:Record<string,string> = {}
+    for (const [field, messages] of Object.entries(payload?.errors ?? {})) {
+      fieldErrors[field] = Array.isArray(messages) ? (messages[0] ?? '') : String(messages)
+    }
+    const message = typeof payload?.message === 'string' && payload.message.trim()
+      ? payload.message.trim()
+      : response?.status === 409 ? '发货状态或审核条件已发生变化，请核对后重试。'
+      : response?.status === 403 ? '当前账号没有执行此发货操作的权限。'
+      : '确认发货请求失败，请检查网络后重试。'
+    reportShipmentErrors(Object.keys(fieldErrors).length ? fieldErrors : { fulfillment: message }, '确认发货')
+  } finally {
+    shipmentEditorSaving.value = false
+  }
 }
 
 const replacementOpen = ref(false)
@@ -1213,10 +1251,12 @@ onBeforeUnmount(() => {
               :aria-expanded="!isSectionCollapsed('order-section-flags')" @click="toggleSection('order-section-flags')">{{ isSectionCollapsed('order-section-flags') ? '▸' : '▾' }}</button>
           </div>
           </div>
-          <p class="ord-inventory-help">用于异常、运输中、退货、缺货等辅助业务视图，不是发货入口。所有发货、重发、补发操作统一在上方“履约状态”处理；这里仅保留辅助业务标记。</p>
+          <p class="ord-inventory-help">异常、运输中、退货、缺货属于辅助标记；发货、重发、补发仍在上方“履约状态”处理。“归档订单”是独立操作，主订单与子订单都可独立归档；归档后进入归档清单并退出分仓和发货队列，不会永久删除。</p>
           <div class="ord-marker-row">
             <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="!canMarkOperational" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
+            <button type="button" class="erp-btn erp-btn-secondary ord-marker" :disabled="!canArchiveOrder" :aria-label="directlyArchived ? '订单已归档' : '归档订单'" @click="archiveOrder">{{ directlyArchived ? '已归档' : '归档订单' }}</button>
           </div>
+          <p v-if="operationallyArchived" class="ord-operational-archive-warning" role="status">运营归档：已退出分配、发货和仓库操作序列。财务、物流、同步和历史记录仍予保留。</p>
         </div>
 
         <div v-if="allocationUi?.status === 'submitted' && allocationUi.can_reallocate && !reallocationOpen" class="ord-allocation-reopen-bar" :style="{ order: sectionVisualOrder('order-section-inventory') - 1 }">
@@ -1512,7 +1552,7 @@ onBeforeUnmount(() => {
               <button type="button" class="erp-btn erp-btn-secondary" :disabled="form.items.length <= 1" @click="removeOrderItem(index)">删除商品</button>
             </div>
             <button type="button" class="erp-btn erp-btn-secondary ord-add-product" @click="addOrderItem">+ 增加商品 / 赠品</button>
-            <p class="ord-item-gift-hint">赠品使用真实 SKU，数量需大于 0；Woo 来源订单新增赠品价格固定为 0。</p>
+            <p class="ord-item-gift-hint">赠品使用真实 SKU，数量需大于 0；Woo 组合商品拆分须保持商品金额合计不变，纯赠品价格为 0。</p>
             <label v-if="order.source_type === 'woocommerce'" class="erp-form-label">
               客户协商后的履约修改原因
               <textarea v-model="form.amendment_reason" class="erp-textarea" rows="2" placeholder="填写客户同意升级产品或赠品的具体依据"/>
@@ -1721,7 +1761,7 @@ onBeforeUnmount(() => {
           <label class="ord-shipment-note">物流备注<textarea v-model="shipmentEditor.logistics_note" rows="3" class="erp-textarea" :class="{ 'ord-field-invalid': shipmentFieldErrors.logistics_note }" :aria-invalid="Boolean(shipmentFieldErrors.logistics_note)" :disabled="!canOperateLogistics" placeholder="可填写包裹、异常或操作备注" @input="clearShipmentFieldError('logistics_note')"></textarea><small v-if="shipmentFieldErrors.logistics_note" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.logistics_note }}</small></label>
         </div>
         <p v-if="shipmentEditorReviewGate" class="ord-shipment-error" role="alert">{{ shipmentEditorReviewGate }}</p>
-        <p v-if="shipmentEditorError" class="ord-shipment-error">{{ shipmentEditorError }}</p>
+        <p v-if="shipmentEditorError" class="ord-shipment-error" role="alert">{{ shipmentEditorError }}</p>
         <p v-if="!canOperateLogistics" class="ord-shipment-readonly">当前账号为物流执行只读模式；物流员可以在这里直接填写物流并确认发货。</p>
         <footer class="ord-replacement-actions">
           <button v-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary" :disabled="shipmentEditorSaving" @click="saveShipmentDraft">保存草稿</button>

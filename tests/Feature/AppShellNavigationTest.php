@@ -71,6 +71,24 @@ class AppShellNavigationTest extends TestCase
         $this->assertLessThanOrEqual(4, $queryCount, 'Shell navigation must not query once per permission check.');
     }
 
+    public function test_archive_menu_is_fourth_orders_child_for_readers_only(): void
+    {
+        $reader = $this->userWith(['dashboard.view', 'orders.view'], 'archive-menu-reader');
+        $this->actingAs($reader)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
+            ->where('shellNavigation.1.key', 'orders')
+            ->has('shellNavigation.1.children', 4)
+            ->where('shellNavigation.1.children.3.key', 'orders-archive')
+            ->where('shellNavigation.1.children.3.label', '归档清单')
+            ->where('shellNavigation.1.children.3.path', '/orders/archive'));
+        $this->actingAs($reader)->get('/orders/archive')
+            ->assertInertia(fn (Assert $page) => $page->component('Orders/Archive'));
+
+        $unprivileged = $this->userWith(['dashboard.view'], 'archive-menu-unprivileged');
+        $this->actingAs($unprivileged)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
+            ->has('shellNavigation', 1)->where('shellNavigation.0.key', 'dashboard'));
+        $this->actingAs($unprivileged)->get('/orders/archive')->assertForbidden();
+    }
+
     public function test_dashboard_renders_formal_shell_with_safe_shared_props(): void
     {
         $user = $this->userWith(['dashboard.view', 'sync.view']);

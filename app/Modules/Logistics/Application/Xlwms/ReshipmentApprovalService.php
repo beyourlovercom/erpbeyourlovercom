@@ -20,6 +20,7 @@ final class ReshipmentApprovalService
 
         return DB::transaction(function () use ($orderId, $requestId, $actorId): array {
             $order = Order::query()->whereKey($orderId)->lockForUpdate()->firstOrFail();
+            abort_if($order->isOperationallyArchived(), 409, '归档订单不能进行仓库补发。');
             $record = XlwmsReshipment::query()->where('original_order_id', $orderId)
                 ->where('request_id', $requestId)->lockForUpdate()->first();
             if (! $record || $record->status !== 'requested') {

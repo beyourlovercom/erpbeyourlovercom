@@ -222,7 +222,7 @@ final class LogisticsController
             ->whereNotNull('shipped_at')
             ->whereNull('tracking_number')
             ->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))
-            ->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('shipped_at')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
@@ -241,7 +241,7 @@ final class LogisticsController
             ->whereNotNull('tracking_number')
             ->where('tracking_number', '!=', '')
             ->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))
-            ->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('shipped_at')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
@@ -258,7 +258,7 @@ final class LogisticsController
             ->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])
             ->where('shipment_status', 'exception')
             ->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))
-            ->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('shipped_at')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
@@ -272,7 +272,7 @@ final class LogisticsController
     public function review(Request $request): Response
     {
         $reviews = LogisticsReview::query()->with(['order.address', 'order.items.product', 'order.shipment.warehouse'])
-            ->where('status', 'pending')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
+            ->where('status', 'pending')->whereHas('order', fn ($q) => $q->eligibleForOperations()->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('requested_at')->paginate(self::PER_PAGE)->withQueryString();
 
         return Inertia::render('Logistics/Review', ['reviews' => $reviews->through(fn (LogisticsReview $review): array => [...$this->queueRow($review->order->shipment), 'review_id' => $review->id, 'reason' => $review->reason, 'trigger' => $review->trigger, 'requested_at' => $review->requested_at?->toIso8601String()])->toArray(), 'statusBar' => $this->statusSummary->statusBar(), 'canOperate' => $this->executionAccess->allows($request->user())]);
@@ -285,7 +285,7 @@ final class LogisticsController
 
     public function cancelled(Request $request): Response
     {
-        $orders = Order::query()->with(['address', 'items.product', 'shipment.warehouse'])->where('order_status', 'cancelled')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->latest('order_date')->latest('id')->paginate(self::PER_PAGE)->withQueryString();
+        $orders = Order::query()->eligibleForOperations()->with(['address', 'items.product', 'shipment.warehouse'])->where('order_status', 'cancelled')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->latest('order_date')->latest('id')->paginate(self::PER_PAGE)->withQueryString();
 
         return Inertia::render('Logistics/Cancelled', ['orders' => $orders->through(fn (Order $order) => $this->orderProjection($order))->toArray(), 'statusBar' => $this->statusSummary->statusBar()]);
     }
@@ -526,7 +526,7 @@ final class LogisticsController
 
     private function projection(Request $request, string $kind, string $component, \Closure $filter): Response
     {
-        $shipments = Shipment::query()->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])->where($filter)->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
+        $shipments = Shipment::query()->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])->where($filter)->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('shipped_at')->latest('id')->paginate(self::PER_PAGE)->withQueryString();
 
         return Inertia::render($component, ['shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(), 'statusBar' => $this->statusSummary->statusBar()]);

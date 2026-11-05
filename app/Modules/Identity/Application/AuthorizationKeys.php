@@ -30,6 +30,7 @@ enum AuthorizationKeys: string
     case KolPayoutsManage = 'kol.payouts.manage';
     case InventoryView = 'inventory.view';
     case InventoryOperate = 'inventory.operate';
+    case InventoryOverdueManage = 'inventory.overdue.manage';
     case InventoryWarehousesManage = 'inventory.warehouses.manage';
     case InventoryPackagingSubmit = 'inventory.packaging.submit';
     case InventoryPackagingReview = 'inventory.packaging.review';
