@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
-import { computed, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
 import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatusPill.vue'
+const OrderOmsGrid = defineAsyncComponent(() => import('../../Components/Orders/OrderOmsGrid.vue'))
 
 type Order = { id: number; erp_order_id: string | null; external_order_number: string; internal_order_number: string; source_label: string; order_kind?: string; order_date: string; order_status_label: string; workflow_status_projection?: { code:string; en:string; zh:string; color:string; source:string; mutable?:boolean }; workflow_revision?: number; address?: { recipient_name: string; country: string }; owner?: { name: string }; owner_label?: string | null }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
@@ -19,6 +20,8 @@ const props = defineProps<{
   sourceTypes: { value: string; label: string }[]
   savedViews: SavedView[]
   canExport: boolean
+  omsGridAvailable?: boolean
+  omsGridEnabled?: boolean
   canPreviewKolLinks?: boolean
   canManageTrash?: boolean
   canEditWorkflowStatus?: boolean
@@ -75,7 +78,32 @@ const systemViews = [
   { key: 'stockout', label: '缺货单' },
 ]
 
-const submit = () => router.get(basePath.value, filters, { preserveState: true, replace: true })
+const gridParams = () => props.omsGridEnabled ? {
+  oms_grid: '1',
+  per_page: props.filters.per_page ?? '50',
+  sort: props.filters.sort ?? 'date',
+  direction: props.filters.direction ?? 'desc',
+} : {}
+const nav = (params: Record<string, unknown>) =>
+  router.get(basePath.value, { ...params, ...gridParams() }, { preserveState: true, replace: true })
+const submit = () => nav({ ...filters, page: 1 })
+const gridPageSize = (size: number | 'all') =>
+  router.get(basePath.value, { ...filters, ...gridParams(), per_page: String(size), page: 1 }, { preserveState: true, replace: true })
+const gridSort = (sort: { colId: string; direction: 'asc' | 'desc' | null }) => {
+  const allowed = ['order_number', 'date', 'source']
+  router.get(basePath.value, {
+    ...filters, ...gridParams(),
+    sort: sort.direction && allowed.includes(sort.colId) ? sort.colId : 'date',
+    direction: sort.direction ?? 'desc', page: 1,
+  }, { preserveState: true, replace: true })
+}
+const gridToggleUrl = (enabled: boolean) => {
+  const params = new URLSearchParams(filters)
+  for (const [key, value] of Object.entries(gridParams())) if (value !== undefined) params.set(key, String(value))
+  if (enabled) params.set('oms_grid', '1')
+  else params.delete('oms_grid')
+  return basePath.value + '?' + params.toString()
+}
 const applySystemView = (view: string) => {
   filters.search = ''
   filters.source_type = ''
@@ -109,7 +137,7 @@ const saveCurrentView = () => {
 }
 const deleteSavedView = (saved: SavedView) => router.delete(`/orders/views/${saved.id}`, { preserveScroll: true })
 const exportUrl = () => `${basePath.value}/export?${new globalThis.URLSearchParams(filters).toString()}`
-const goToPage = (page: number) => router.get(basePath.value, { ...filters, page }, { preserveState: true, replace: true })
+const goToPage = (page: number) => nav({ ...filters, page })
 const orderPath = (order: Order) => order.order_kind === 'kol_fulfillment' ? `/kol/orders/${order.id}` : `/customers/orders/${order.id}`
 const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'order_number', label: 'ERP订单号' },
@@ -130,6 +158,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
             <button class="mvp-button" type="button" :disabled="wooReconcileLoading" @click="checkWooBacklog">{{ wooReconcileLoading ? '核对中…' : '核对网站未同步' }}</button>
             <button class="mvp-button mvp-button-primary" type="button" :disabled="syncingWoo" @click="syncWooToday">{{ syncingWoo ? '同步中…' : '同步网站订单' }}</button>
           </template>
+          <Link v-if="omsGridAvailable" class="mvp-button" :href="gridToggleUrl(!omsGridEnabled)">{{ omsGridEnabled ? '返回原列表' : '体验 OMS Grid' }}</Link>
           <Link v-if="canManageTrash" class="mvp-button" href="/orders/trash">回收站（管理员）</Link>
           <Link class="mvp-button" href="/orders/archive">归档清单</Link>
           <a v-if="canExport" class="mvp-button" :href="exportUrl()">导出 CSV</a>
@@ -172,8 +201,19 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         <button class="mvp-button" type="submit">筛选</button>
       </form>
 
-      <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.source_label === 'WooCommerce' && order.external_order_number" class="order-source-reference">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ order.address?.country ?? '—' }}</template><template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :options="workflowStatusOptions" /><span v-else>—</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 2" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
-      <div v-if="orders.last_page > 1" class="mvp-pagination"><button class="mvp-button" type="button" :disabled="orders.current_page <= 1" @click="goToPage(orders.current_page - 1)">上一页</button><span>第 {{ orders.current_page }} / {{ orders.last_page }} 页 · 共 {{ orders.total }} 条</span><button class="mvp-button" type="button" :disabled="orders.current_page >= orders.last_page" @click="goToPage(orders.current_page + 1)">下一页</button></div>
+      <div v-if="!omsGridEnabled" class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.source_label === 'WooCommerce' && order.external_order_number" class="order-source-reference">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ order.address?.country ?? '—' }}</template><template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :options="workflowStatusOptions" /><span v-else>—</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 2" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
+      <OrderOmsGrid
+        v-else
+        :title="heading"
+        :orders="orders"
+        :filters="props.filters"
+        :can-edit-workflow-status="canEditWorkflowStatus"
+        :workflow-status-options="workflowStatusOptions"
+        @page-change="goToPage"
+        @page-size-change="gridPageSize"
+        @sort-change="gridSort"
+      />
+      <div v-if="!omsGridEnabled && orders.last_page > 1" class="mvp-pagination"><button class="mvp-button" type="button" :disabled="orders.current_page <= 1" @click="goToPage(orders.current_page - 1)">上一页</button><span>第 {{ orders.current_page }} / {{ orders.last_page }} 页 · 共 {{ orders.total }} 条</span><button class="mvp-button" type="button" :disabled="orders.current_page >= orders.last_page" @click="goToPage(orders.current_page + 1)">下一页</button></div>
     </section>
   </AuthenticatedLayout>
 </template>
