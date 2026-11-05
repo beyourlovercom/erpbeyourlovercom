@@ -6,7 +6,7 @@ import { router } from '@inertiajs/vue3'
 type PreviewRow = { row: number; order_number: string; customer: string; country: string; sku_detail: string; total_quantity: number }
 type Problem = { row: number; message: string }
 type Preview = { count: number; row_count: number; valid_count: number; errors: Problem[]; preview: PreviewRow[]; token: string | null }
-const props = defineProps<{ exportUrl: string; canImport: boolean; total: number }>()
+const props = defineProps<{ exportUrl: string; canImport: boolean; canExport: boolean; total: number }>()
 const csvUrl = computed(() => props.exportUrl + (props.exportUrl.includes('?') ? '&' : '?') + 'format=csv')
 const open = ref(false)
 const busy = ref(false)
@@ -72,9 +72,9 @@ async function confirm() {
 <template>
   <div class="oms-transfer-actions">
     <button v-if="canImport" type="button" @click="open = true">导入</button>
-    <a v-if="total <= 2000" :href="exportUrl" class="oms-transfer-export">导出 XLSX</a>
-    <span v-else title="XLSX 单次最多导出 2000 单，请先筛选或使用 CSV" class="oms-export-limit">XLSX ≤2000</span>
-    <a :href="csvUrl" class="oms-transfer-export">导出 CSV</a>
+    <a v-if="canExport && total <= 2000" :href="exportUrl" class="oms-transfer-export">导出 XLSX</a>
+    <span v-else-if="canExport" title="XLSX 单次最多导出 2000 单，请先筛选或使用 CSV" class="oms-export-limit">XLSX ≤2000</span>
+    <a v-if="canExport" :href="csvUrl" class="oms-transfer-export">导出 CSV</a>
   </div>
   <Teleport to="body">
     <div v-if="open" class="oms-import-overlay" role="presentation" @click.self="close">

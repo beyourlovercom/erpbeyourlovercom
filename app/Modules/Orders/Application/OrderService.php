@@ -368,8 +368,6 @@ final class OrderService
             // These queries are evaluated against the full filtered orders dataset,
             // not the currently loaded AG Grid page. Only allowlisted relations/fields.
             foreach ([
-                'grid_sku' => ['items', 'sku'],
-                'grid_product_names' => ['items', 'product_summary'],
                 'grid_warehouse' => ['shipment.warehouse', 'name'],
                 'grid_tracking' => ['shipment', 'tracking_number'],
                 'grid_city' => ['address', 'city'],
@@ -381,19 +379,28 @@ final class OrderService
                     $query->whereHas($relation, fn ($related) => $related->where($column, 'like', "%{$value}%"));
                 }
             }
-            if (! empty($grid['grid_external_number'])) {
-                $query->where('external_order_number', 'like', '%'.$grid['grid_external_number'].'%');
-            }
-            if (isset($grid['grid_quantity']) && $grid['grid_quantity'] !== '') {
-                $quantity = filter_var($grid['grid_quantity'], FILTER_VALIDATE_INT, [
+            // A single SKU item must satisfy *all* item-column filters.
+            // Separate whereHas clauses could falsely match different lines
+            // of the same multi-SKU order.
+            $sku = (string) ($grid['grid_sku'] ?? '');
+            $name = (string) ($grid['grid_product_names'] ?? '');
+            $qtyInput = (string) ($grid['grid_quantity'] ?? '');
+            if ($sku !== '' || $name !== '' || $qtyInput !== '') {
+                $quantity = $qtyInput === '' ? null : filter_var($qtyInput, FILTER_VALIDATE_INT, [
                     'options' => ['min_range' => 0, 'max_range' => 99999],
                 ]);
                 if ($quantity === false) {
                     $query->whereRaw('1 = 0');
                 } else {
-                    // Grid SKU数量 is the per-SKU item-line quantity, not the order total.
-                    $query->whereHas('items', fn ($items) => $items->where('quantity', $quantity));
+                    $query->whereHas('items', function ($items) use ($sku, $name, $quantity): void {
+                        if ($sku !== '') $items->where('sku', 'like', "%{$sku}%");
+                        if ($name !== '') $items->where('product_summary', 'like', "%{$name}%");
+                        if ($quantity !== null) $items->where('quantity', $quantity);
+                    });
                 }
+            }
+            if (! empty($grid['grid_external_number'])) {
+                $query->where('external_order_number', 'like', '%'.$grid['grid_external_number'].'%');
             }
             if (! empty($grid['grid_order_number'])) {
                 $v = $grid['grid_order_number'];

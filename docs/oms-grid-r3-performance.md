@@ -59,3 +59,10 @@ Note: US Mac local times do not represent a guarantee for China Mac. China Mac n
 | R6 | Remaining lists scoped inventory, regression and remove duplicates only after approved migration | 6–12 h |
 
 Owner approved R3 UI and continuation of performance work. This is NOT an approval to merge main or deploy Production: production writes or releases need separate exact-HEAD Owner authorization.
+
+## R3 final production canary safety (2026-11-05)
+- Production feature controls are configured in config/oms_grid.php and disabled by default, with a mandatory non-empty exact-user-ID canary allowlist; export and bulk import require separate flags.
+- Browser lazy import regression was repeated with local view-only Product, Inventory, Logistics and Accounting permissions (test SQLite only). Nine authorized routes including Orders/Customer/KOL/Detail/Products/Inventory/Logistics/Accounting returned HTTP 200 and had no JavaScript/static-asset failures.
+- Public Production asset headers (read only): gzip enabled; hashed JS and CSS currently cache for 4 hours. Do not change Production cache policy without deployment approval.
+- Remote Dev domain currently fails DNS, so actual Dev real customer data UAT is not claimed.
+- Exact release checklist: docs/oms-grid-r3-production-rc.md.

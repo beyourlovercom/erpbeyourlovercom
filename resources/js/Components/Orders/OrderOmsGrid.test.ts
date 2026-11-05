@@ -25,6 +25,7 @@ const props = {
   canEditWorkflowStatus: true,
   exportUrl: '/orders/oms/export',
   canImport: true,
+  canExport: true,
   workflowStatusOptions: [{ code: 'sending', en: 'Sending', zh: '待发货', color: 'amber', mutable: true }],
 }
 describe('Order OMS server adapter', () => {

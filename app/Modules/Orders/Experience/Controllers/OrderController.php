@@ -23,6 +23,7 @@ use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderItemAmendmentPreflight;
 use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderOmsAvailability;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
@@ -76,9 +77,10 @@ final class OrderController
             $filters['order_kind'] = $kind->value;
         }
         $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
-        // R3 opt-in: real Orders pilot is limited to non-Production and never changes legacy pages by default.
+        // A Production canary must be explicitly enabled and individually allowlisted;
+        // all other users retain the existing Orders list unconditionally.
         $omsGridAvailable = $kind === null && $scope !== 'external_warehouse'
-            && app()->environment(['local', 'development', 'staging', 'testing']);
+            && OrderOmsAvailability::grid($request->user());
         $omsGridEnabled = $omsGridAvailable && $request->boolean('oms_grid');
         $requestedPageSize = $omsGridEnabled ? (string) $request->query('per_page', '50') : '50';
         $perPage = in_array($requestedPageSize, ['20', '50', '100'], true) ? (int) $requestedPageSize : 50;
@@ -120,7 +122,9 @@ final class OrderController
             ],
             'omsGridAvailable' => $omsGridAvailable,
             'omsGridEnabled' => $omsGridEnabled,
-            'canImportOmsOrders' => $omsGridEnabled && $request->user()->can('orders.create') && ! KolOrderAccessScope::isKolOnly($request->user()),
+            'canExportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::export($request->user()),
+            'canImportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::import($request->user())
+                && $request->user()->can('orders.create') && ! KolOrderAccessScope::isKolOnly($request->user()),
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
             'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),

@@ -22,6 +22,7 @@ const props = defineProps<{
   workflowStatusOptions?: Option[]
   exportUrl: string
   canImport: boolean
+  canExport: boolean
 }>()
 const emit = defineEmits<{
   (event: 'page-change', page: number): void
@@ -31,7 +32,12 @@ const emit = defineEmits<{
   (event: 'column-search-change', filter: { colId: string; value: string }): void
 }>()
 
-const rows = computed<Record<string, unknown>[]>(() => props.orders.data.flatMap(toOrderOmsItemRows))
+const rows = computed<Record<string, unknown>[]>(() => props.orders.data.flatMap(order =>
+  toOrderOmsItemRows(order, {
+    sku: props.filters.grid_sku,
+    quantity: props.filters.grid_quantity,
+    product_names: props.filters.grid_product_names,
+  })))
 const basic = (id: string, field: string, title: string, width: number, visible = false, sortable = false): ColDef<Record<string, unknown>> => ({
   colId: id, field, headerName: title, width, hide: !visible, sortable,
   tooltipField: field,
@@ -143,7 +149,7 @@ const columnFilterValues = computed(() =>
     @search-change="emit('search-change', $event)"
     @column-search-change="emit('column-search-change', $event)"
   >
-    <template #actions><OrderOmsTransfer :export-url="exportUrl" :can-import="canImport" :total="orders.total" /></template>
+    <template #actions><OrderOmsTransfer :export-url="exportUrl" :can-import="canImport" :can-export="canExport" :total="orders.total" /></template>
   </OmsGrid>
 </template>
 <style scoped>

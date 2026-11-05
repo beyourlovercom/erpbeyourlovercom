@@ -149,6 +149,20 @@ final class OrderOmsBatchImportTest extends TestCase
         $this->assertSame('1', $data['rows'][1]['cells'][5]);
         $this->assertSame('007-1105-40223', $data['rows'][1]['cells'][0]);
 
+        $skuOnly = $this->actingAs($user)->get('/orders/oms/export?grid_order_number=40223&grid_sku=MF414A');
+        $skuOnly->assertOk();
+        $skuFiltered = app(ProviderXlsxTableReader::class)->read(
+            UploadedFile::fake()->createWithContent('sku_only.xlsx', $skuOnly->getContent()));
+        $this->assertCount(1, $skuFiltered['rows']);
+        $this->assertSame('MF414A', $skuFiltered['rows'][0]['cells'][4]);
+        $this->assertSame('3', $skuFiltered['rows'][0]['cells'][6]); // full-order total retained
+
+        $skuAndWrongQuantity = $this->actingAs($user)->get('/orders/oms/export?grid_sku=MF414A&grid_quantity=1');
+        $skuAndWrongQuantity->assertOk();
+        $empty = app(ProviderXlsxTableReader::class)->read(
+            UploadedFile::fake()->createWithContent('none.xlsx', $skuAndWrongQuantity->getContent()));
+        $this->assertCount(0, $empty['rows']);
+
         $csv = $this->actingAs($user)->get('/orders/oms/export?format=csv&grid_order_number=40223');
         $csv->assertOk();
         $lines = preg_split('/\r?\n/', trim($csv->streamedContent()));

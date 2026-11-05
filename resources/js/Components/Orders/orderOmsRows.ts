@@ -133,11 +133,22 @@ export function toOrderOmsRow(order: OrderGridOrder): Record<string, unknown> {
  * One visible AG Grid row per order line item, without creating additional ERP orders.
  * Server pages and totals continue to count canonical Orders, never item lines.
  */
-export function toOrderOmsItemRows(order: OrderGridOrder): Record<string, unknown>[] {
+export type OrderOmsLineFilters = { sku?: string; quantity?: string; product_names?: string }
+
+export function toOrderOmsItemRows(order: OrderGridOrder, filters: OrderOmsLineFilters = {}): Record<string, unknown>[] {
   const summary = toOrderOmsRow(order)
   const items = Array.isArray(order.items) && order.items.length
     ? [...order.items].sort((a,b) => (a.id ?? 0) - (b.id ?? 0)) : [null]
-  return items.map((item, index) => {
+  const skuNeedle = (filters.sku ?? '').toLocaleLowerCase().trim()
+  const nameNeedle = (filters.product_names ?? '').toLocaleLowerCase().trim()
+  const qtyNeedle = (filters.quantity ?? '').trim()
+  const visibleItems = items.filter(item => {
+    if (skuNeedle && !(item?.sku ?? '').toLocaleLowerCase().includes(skuNeedle)) return false
+    if (nameNeedle && !(item?.product_summary ?? '').toLocaleLowerCase().includes(nameNeedle)) return false
+    if (qtyNeedle && validNumber(item?.quantity) !== Number(qtyNeedle)) return false
+    return true
+  })
+  return visibleItems.map((item, index) => {
     const sku = item?.sku?.trim() || item?.product_summary?.trim() || '—'
     const price = item ? validNumber(item.unit_price) : null
     const lineRevenue = item ? validNumber(item.line_revenue) : null

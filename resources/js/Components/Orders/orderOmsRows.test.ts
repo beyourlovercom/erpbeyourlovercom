@@ -38,6 +38,21 @@ describe('OMS order-column projection', () => {
     expect(rows.map(row => row._is_additional_item)).toEqual([false, true])
     expect(rows.map(row => row.item_subtotal)).toEqual([158, 0])
   })
+  it('shows only matching SKU lines while preserving full-order totals and first-row actions', () => {
+    const order = base({items: [
+      { id: 11, sku: 'MF414A', product_summary: 'Main product', quantity: 2, line_revenue: '158.00' },
+      { id: 12, sku: 'A1', product_summary: 'Gift item', quantity: 1, line_revenue: '0.00' },
+    ]})
+    const match = toOrderOmsItemRows(order, {sku: 'a1', quantity: '1'})
+    expect(match).toHaveLength(1)
+    expect(match[0].sku_list).toBe('A1')
+    expect(match[0].order_quantity).toBe(1)
+    expect(match[0].order_total_quantity).toBe(3)
+    expect(match[0]._is_additional_item).toBe(false)
+    expect(toOrderOmsItemRows(order, {sku: 'MF414A', quantity: '1'})).toHaveLength(0)
+    expect(toOrderOmsItemRows(order, {product_names: 'gift'})).toHaveLength(1)
+  })
+
   it('retains a single row for historic orders without SKU lines', () => {
     const rows = toOrderOmsItemRows(base())
     expect(rows).toHaveLength(1)

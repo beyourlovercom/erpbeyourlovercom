@@ -40,3 +40,8 @@ Status: R3 optional-column expansion, isolated UAT only, Draft PR #628.
 
 ## R3.5 item-row projection
 For multi-SKU orders, the grid now displays one SKU row per item line while retaining a single canonical order, one server order page slot and one status/action per order. The existing default SKU quantity column is now titled `SKU数量` (line quantity), while the optional `订单总件数` remains the sum across all lines. The `商品行金额` column is line-specific; the optional `整单商品行金额` aggregates item lines only, excluding shipping/tax/discount/refund.
+
+## R3 release candidate: line-filter semantics
+- When SKU, per-SKU quantity, and product-name filters are combined, the server requires all conditions on the same OrderItem row (not separate lines in the same canonical order).
+- The table and XLSX/CSV export show only matching item rows, preserving the original Order identity and per-order totals; page counts remain canonical Orders.
+- Regression: local Chrome verified order R3-MULTILINE-UAT-001 has two item lines (MF414A × 2, A1 × 1); filtering MF414A leaves one row; adding quantity 1 returns zero orders; clearing SKU with quantity 1 shows only A1. No JavaScript errors.

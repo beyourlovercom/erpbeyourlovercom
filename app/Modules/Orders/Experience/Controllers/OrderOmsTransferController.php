@@ -6,6 +6,7 @@ use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderOmsBatchImport;
+use App\Modules\Orders\Application\OrderOmsAvailability;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\JsonResponse;
@@ -21,14 +22,16 @@ final class OrderOmsTransferController
         private readonly ProviderXlsxWriter $writer,
     ) {}
 
-    private function pilot(): void
+    private function pilot(Request $request, bool $write = false): void
     {
-        abort_unless(app()->environment(['local', 'development', 'staging', 'testing']), 404);
+        abort_unless($write
+            ? OrderOmsAvailability::import($request->user())
+            : OrderOmsAvailability::export($request->user()), 404);
     }
 
     public function template(Request $request): Response
     {
-        $this->pilot();
+        $this->pilot($request, true);
         KolOrderAccessScope::authorizeCreate($request->user(), OrderKind::Customer);
 
         return response($this->import->template(), 200, [
@@ -40,7 +43,7 @@ final class OrderOmsTransferController
 
     public function preview(Request $request): JsonResponse
     {
-        $this->pilot();
+        $this->pilot($request, true);
         KolOrderAccessScope::authorizeCreate($request->user(), OrderKind::Customer);
         try {
             $payload = $request->validate(['file' => ['required', 'file', 'extensions:xlsx', 'max:5120']]);
@@ -55,7 +58,7 @@ final class OrderOmsTransferController
 
     public function confirm(Request $request): JsonResponse
     {
-        $this->pilot();
+        $this->pilot($request, true);
         KolOrderAccessScope::authorizeCreate($request->user(), OrderKind::Customer);
         try {
             $payload = $request->validate([
@@ -72,7 +75,7 @@ final class OrderOmsTransferController
 
     public function export(Request $request): Response
     {
-        $this->pilot();
+        $this->pilot($request);
 
         $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']);
         $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
@@ -98,12 +101,12 @@ final class OrderOmsTransferController
             '地址第1行', '地址第2行', '工作状态', '仓库', '物流商', '渠道', '物流单号', '发货时间', '负责人', '订单备注',
         ];
         if ($request->query('format') === 'csv') {
-            return response()->streamDownload(function () use ($filters, $headers): void {
+            return response()->streamDownload(function () use ($filters, $headers, $columns): void {
                 $handle = fopen('php://output', 'w');
                 fwrite($handle, "\xEF\xBB\xBF");
                 fputcsv($handle, $headers);
                 foreach ($this->orders->exportBatched($filters) as $order) {
-                    foreach ($this->exportRows($order) as $raw) {
+                    foreach ($this->exportRows($order, $columns) as $raw) {
                         $line = array_map(function ($value): string {
                             $text = (string) ($value ?? '');
                             // Neutralize Excel formula injection in untrusted text cells.
@@ -120,11 +123,12 @@ final class OrderOmsTransferController
         }
 
         $rows = [];
+        $orderCount = 0;
         foreach ($this->orders->exportBatched($filters) as $order) {
-            if (count($rows) >= 2000) {
-                throw ValidationException::withMessages(['export' => '单次 XLSX 导出最多 2000 单，请缩小筛选范围；大批量数据可使用原有 CSV 导出。']);
+            if (++$orderCount > 2000) {
+                throw ValidationException::withMessages(['export' => '单次 XLSX 导出最多 2000 张订单，请缩小筛选范围；更多订单请使用 CSV 导出。']);
             }
-            foreach ($this->exportRows($order) as $row) {
+            foreach ($this->exportRows($order, $columns) as $row) {
                 if (count($rows) >= 5000) {
                     throw ValidationException::withMessages(['export' => 'XLSX 单次最多 5000 个 SKU 商品行，请缩小筛选范围或使用 CSV 导出。']);
                 }
@@ -141,14 +145,26 @@ final class OrderOmsTransferController
 
 
     /** @return list<list<mixed>> */
-    private function exportRows(Order $order): array
+    private function exportRows(Order $order, array $lineFilters = []): array
     {
-        $items = $order->items->sortBy('id')->values();
-        $all = $items->map(fn ($item) => $item->sku.' × '.$item->quantity)->implode('; ');
-        $totalUnits = $items->sum('quantity');
+        $allItems = $order->items->sortBy('id')->values();
+        $all = $allItems->map(fn ($item) => $item->sku.' × '.$item->quantity)->implode('; ');
+        $totalUnits = $allItems->sum('quantity');
+        // Match the same SKU-line filters shown by the grid, while retaining
+        // the original order total in each output row.
+        $sku = mb_strtolower((string) ($lineFilters['grid_sku'] ?? ''));
+        $name = mb_strtolower((string) ($lineFilters['grid_product_names'] ?? ''));
+        $qtyText = (string) ($lineFilters['grid_quantity'] ?? '');
+        $items = $allItems->filter(function ($item) use ($sku, $name, $qtyText): bool {
+            if ($sku !== '' && ! str_contains(mb_strtolower((string) $item->sku), $sku)) return false;
+            if ($name !== '' && ! str_contains(mb_strtolower((string) $item->product_summary), $name)) return false;
+            if ($qtyText !== '' && (int) $item->quantity !== (int) $qtyText) return false;
+
+            return true;
+        })->values();
         $rows = [];
-        // Preserve one visible/export row even if the historic order has no item lines.
-        foreach (($items->isEmpty() ? [null] : $items) as $item) {
+        $emptyHistoric = $allItems->isEmpty() && $sku === '' && $name === '' && $qtyText === '';
+        foreach ($emptyHistoric ? [null] : $items as $item) {
             $rows[] = [
                 $order->erp_order_id, $order->external_order_number, $order->order_date?->toDateString(),
                 $order->source_type->value,

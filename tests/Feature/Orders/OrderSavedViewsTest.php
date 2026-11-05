@@ -323,6 +323,12 @@ final class OrderSavedViewsTest extends TestCase
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $first->id));
 
+        // A combination must match the SAME SKU line, not different lines of one order.
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_sku=MF414A&grid_quantity=1')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_sku=MF414A&grid_quantity=2&grid_product_names=Product%20One')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 1));
+
         // The filter must match one individual item line, never aggregate order-level units.
         $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=3')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));

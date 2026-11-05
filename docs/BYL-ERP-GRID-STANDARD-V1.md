@@ -46,3 +46,8 @@ Scope: BYL ERP front-end list / table pages; this is the single standard for new
 - Publish hashed JS/CSS assets with gzip/Brotli and long immutable caching ONLY for the hashed /build/assets/ files; do not cache authenticated HTML or Inertia API JSON as static content.
 - Measure both data-query time and cross-region browser asset transfer before treating a slow page as a grid-rendering problem. Large canonical order counts must not disable bounded server pagination.
 - Run baseline and scale tests with actual item-line multiplicity, and verify permissions, legacy-page route resolution and rollback before Production release.
+
+## R3 final release gates
+- R3 must pass a Production canary behind per-account allowlisting before R4 migrations begin. Production flags default OFF and bulk import/export have independent enabling gates.
+- A multi-SKU order remains one canonical Order for paging/status/actions. Filtering SKU/product/line quantity must match the **same SKU item line** and display/export only matching item lines; the full parent order's total remains available separately.
+- The browser UI and server must enforce the same allowed operations and permissions. New import endpoints must not become enabled simply because the read-only grid is enabled.

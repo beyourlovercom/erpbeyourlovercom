@@ -23,6 +23,7 @@ const props = defineProps<{
   omsGridAvailable?: boolean
   omsGridEnabled?: boolean
   canImportOmsOrders?: boolean
+  canExportOmsOrders?: boolean
   canPreviewKolLinks?: boolean
   canManageTrash?: boolean
   canEditWorkflowStatus?: boolean
@@ -242,6 +243,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         :workflow-status-options="workflowStatusOptions"
         :export-url="omsExportUrl()"
         :can-import="canImportOmsOrders ?? false"
+        :can-export="canExportOmsOrders ?? false"
         @page-change="goToPage"
         @page-size-change="gridPageSize"
         @sort-change="gridSort"
