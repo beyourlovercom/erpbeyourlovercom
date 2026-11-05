@@ -76,7 +76,24 @@ final class OrderController
             $filters['order_kind'] = $kind->value;
         }
         $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
-        $orders = $this->orders->list($filters);
+        // R3 opt-in: real Orders pilot is limited to non-Production and never changes legacy pages by default.
+        $omsGridAvailable = $kind === null && $scope !== 'external_warehouse'
+            && app()->environment(['local', 'development', 'staging', 'testing']);
+        $omsGridEnabled = $omsGridAvailable && $request->boolean('oms_grid');
+        $requestedPageSize = $omsGridEnabled ? (string) $request->query('per_page', '50') : '50';
+        $perPage = in_array($requestedPageSize, ['20', '50', '100'], true) ? (int) $requestedPageSize : 50;
+        $sort = $omsGridEnabled && in_array($request->query('sort'), ['order_number', 'date', 'source', 'status'], true)
+            ? (string) $request->query('sort') : 'date';
+        $direction = $omsGridEnabled && $request->query('direction') === 'asc' ? 'asc' : 'desc';
+        if ($omsGridEnabled) {
+            $filters['oms_sort'] = $sort;
+            $filters['oms_direction'] = $direction;
+        }
+        $orders = $this->orders->list($filters, $requestedPageSize === 'all' && $omsGridEnabled ? 200 : $perPage);
+        $allRowsAllowed = $omsGridEnabled && $requestedPageSize === 'all' && $orders->total() <= 200;
+        if ($requestedPageSize === 'all' && ! $allRowsAllowed) {
+            $orders = $this->orders->list($filters, 50);
+        }
 
         $isCustomerKind = $kind?->value === 'customer';
         $canExport = $isCustomerKind
@@ -87,7 +104,12 @@ final class OrderController
             'orderKind' => $kind?->value ?? 'all',
             'orderScope' => $scope === 'external_warehouse' ? 'external_warehouse' : 'all',
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order))->toArray(),
-            'filters' => $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']),
+            'filters' => [
+                ...$request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']),
+                ...($omsGridEnabled ? ['sort' => $sort, 'direction' => $direction, 'per_page' => $allRowsAllowed ? 'all' : (string) $orders->perPage(), 'oms_grid' => '1'] : []),
+            ],
+            'omsGridAvailable' => $omsGridAvailable,
+            'omsGridEnabled' => $omsGridEnabled,
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
             'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
