@@ -42,3 +42,26 @@ Related: Draft PR #628. Frozen standard: `docs/BYL-ERP-GRID-STANDARD-V1.md`.
 6. Confirm export, Woo sync controls, saved-view create/delete, orders permissions and archive links remain unchanged.
 7. Confirm column pinning, drag order, account persistence and full-screen mode; check desktop/midsize viewport.
 8. Only after Owner PASS prepare separate exact-head main merge and controlled Dev/Production rollouts.
+
+## R3 2026-11-05 US Mac isolated end-to-end execution
+
+Test root: `/Users/a/ai/uat/erp-oms-grid-r3-20261105`. Exact tested branch HEAD at setup: `610bc19fa26cb1e6236a499cc8623b147f344b0f`. Local APP_ENV=local, isolated SQLite file `database/oms-grid-uat.sqlite`, 225 synthetic customer orders, temporary local UAT operator with `orders.view` and `orders.edit`. No Production DB, API credentials, or customer records were used.
+
+Executed:
+- `composer install --no-scripts --no-plugins`, `npm ci`, `npm run build`: PASS.
+- `vendor/bin/phpunit tests/Feature/Orders`: **82/82 PASS, 1,092 assertions**.
+- `vendor/bin/phpunit tests/Feature/UserUiPreferenceTest.php`: **3/3 PASS, 11 assertions**.
+- Authenticated Chrome headless flow at `http://127.0.0.1:8198/orders?oms_grid=1`: PASS:
+  - 225 orders across 5 pages by default; page 2 shows different orders;
+  - switching to 20 rows yields 12 server pages; requesting 全部 on 225 rows is refused and preserves 20;
+  - filtering `source_type=manual` yields 112 rows; confirmed 全部 yields one server page of 112;
+  - existing workflow dropdown PATCH to `renew` returned HTTP 200 on **synthetic test order only**;
+  - hiding Source column persisted through a reload; reset brought it back;
+  - fixed-left cells rendered; maximize uses fixed viewport and Esc restores;
+  - canonical `/customers/orders/{id}` detail link navigated correctly;
+  - 0 browser JavaScript page errors.
+- A 403 appeared only on the login redirect's `/dashboard` for the limited-permission UAT operator; the authorized `/orders` URL opened and all R3 checks passed. Do not misreport as 0 HTTP errors.
+
+Existing whole Vue suite result (isolated Windows): 731/736 PASS. Five failing tests are unchanged legacy Inventory pages; the test files and `WarehouseShow.vue` SHA match `main`. No unrelated Inventory scope expansion.
+
+**Remaining approval gate:** Owner review of the R3 real Orders page in an accessible controlled Dev/staging deployment, ideally with a read-only or sanitized order dataset; confirm desired display of Woo external reference in one-line grid. Do not merge `main` or deploy Production until this visual UAT and exact-head authorization.
