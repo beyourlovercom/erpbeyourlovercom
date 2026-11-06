@@ -4,19 +4,18 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
-use App\Modules\Logistics\Application\Domestic\DomesticTodayOrdersExporter;
-use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewAccess;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
-use App\Modules\Logistics\Application\LogisticsExecutionAccess;
-use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
-use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
+use App\Modules\Logistics\Application\Domestic\DomesticTodayOrdersExporter;
+use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
+use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
+use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
-use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Orders\Application\OrderWorkflowStatus;
-use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Application\OrderProgressQuery;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -305,6 +304,7 @@ final class DomesticLogisticsController
                 : (string) ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type),
             'tracking_sync_status' => $trackingState['status'],
             'tracking_sync_reason' => $trackingState['reason'],
+            'tracking_sync_verified_at' => $trackingState['verified_at'] ?? null,
             'erp_order_id' => $order->erp_order_id,
             'workflow_status_projection' => $projection,
             'provider_reference' => $reference,

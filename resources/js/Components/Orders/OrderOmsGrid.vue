@@ -113,6 +113,8 @@ const columns = computed<ColDef<Record<string, unknown>>[]>(() => [
   basic('manual_sync_at', 'manual_sync_at', '官网同步时间', 168),
   basic('domestic_reject_reason', 'domestic_reject_reason', '国内驳回原因', 210),
   basic('domestic_rejected_at', 'domestic_rejected_at', '国内驳回时间', 170),
+  { ...basic('website_sync', 'tracking_sync_label', '官网同步', 112, true),
+    cellRenderer: OrderOmsCell, cellRendererParams: { mode: 'sync' }, tooltipField: 'tracking_sync_reason' },
   { ...basic('actions', 'erp_order_id', '操作', 84, true),
     filter: false, cellRenderer: OrderOmsCell, cellRendererParams: { mode: 'action' } },
 ])

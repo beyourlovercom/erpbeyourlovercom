@@ -10,6 +10,7 @@ type Order = {
   synced_at: string | null; synced_by: number | null; tracking_number: string | null
   shipment_status: string | null; carrier: string | null; source_type: string
   tracking_outbound_status: string | null; tracking_outbound_attempts: number | null
+  tracking_sync_status?: string | null; tracking_sync_reason?: string | null; tracking_sync_verified_at?: string | null
 }
 type SyncRun = {
   id: number; run_type: string; status: string; requested_items: number
@@ -71,6 +72,12 @@ const checkWooBacklog = async () => {
 const wooHealthLabel = (health: 'ok' | 'stale' | 'failed' | 'disabled') =>
   ({ ok: '正常', failed: '最近执行失败', stale: '超时或无成功记录', disabled: '未启用' })[health]
 const outboundLabel = (order: Order) => {
+  if (order.source_type === 'woocommerce' && order.tracking_sync_status === 'completed') return '已同步'
+  if (order.source_type === 'woocommerce' && order.tracking_sync_status === 'failed') return '失败'
+  if (order.source_type === 'woocommerce' && order.tracking_sync_status === 'retry_wait') return '待重试'
+  if (order.source_type === 'woocommerce' && order.tracking_sync_status === 'processing') return '同步中'
+  if (order.source_type === 'woocommerce' && order.tracking_sync_status === 'partial') return '部分同步'
+  if (order.source_type === 'woocommerce') return order.tracking_number ? (order.tracking_sync_reason ? '待核对' : '待同步') : '未执行'
   if (!order.tracking_outbound_status) return '未执行'
   if (order.tracking_outbound_status === 'pending') return (order.tracking_outbound_attempts ?? 0) > 0 ? '待重试' : '待执行'
   if (order.tracking_outbound_status === 'processing') return '处理中'
@@ -82,7 +89,7 @@ type ColumnKey = 'order_number' | 'source' | 'recipient' | 'tracking' | 'outboun
 const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'order_number', label: 'ERP订单号' },
   { key: 'source', label: '来源' }, { key: 'recipient', label: '收件人' }, { key: 'tracking', label: '追踪号' },
-  { key: 'outbound', label: 'Tracking 写回' }, { key: 'status', label: '状态' }, { key: 'synced_at', label: '完成时间' },
+  { key: 'outbound', label: '官网物流' }, { key: 'status', label: '状态' }, { key: 'synced_at', label: '官网验证时间' },
 ]
 const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = useAccountGridPreferences<ColumnKey>({ namespace: 'grid.sync.orders.v1', definitions, requiredKeys: ['order_number'] })
 </script>
@@ -160,10 +167,10 @@ const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = u
           <tbody>
             <tr v-for="order in props.orders" :key="order.id">
               <td><input v-if="selectable(order)" type="checkbox" :aria-label="`选择 ${order.erp_order_id ?? '—'}`" :checked="selected.includes(order.id)" @change="toggleSelected(order.id, ($event.target as HTMLInputElement).checked)"></td>
-              <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><strong>{{ order.erp_order_id ?? '—' }}</strong></template><template v-else-if="column.key === 'source'">{{ order.source_type }}</template><template v-else-if="column.key === 'recipient'">{{ order.recipient_name }}</template><template v-else-if="column.key === 'tracking'">{{ order.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'outbound'"><span class="mvp-status">{{ order.source_type === 'woocommerce' ? outboundLabel(order) : '—' }}</span></template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ order.status }}</span></template><template v-else>{{ order.synced_at ?? '—' }}</template></td>
+              <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><strong>{{ order.erp_order_id ?? '—' }}</strong></template><template v-else-if="column.key === 'source'">{{ order.source_type }}</template><template v-else-if="column.key === 'recipient'">{{ order.recipient_name }}</template><template v-else-if="column.key === 'tracking'">{{ order.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'outbound'"><span class="tracking-sync-pill" :class="order.tracking_sync_status ?? 'pending'" :title="[order.tracking_sync_reason, order.tracking_sync_verified_at ? '最近官网验证：' + new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '尚无官网验证记录'].filter(Boolean).join('；')">{{ order.source_type === 'woocommerce' ? outboundLabel(order) : '—' }}</span><small v-if="order.tracking_sync_reason" class="tracking-sync-reason">{{ order.tracking_sync_reason }}</small></template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ order.status }}</span></template><template v-else>{{ order.tracking_sync_verified_at ? new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '—' }}</template></td>
               <td class="mvp-actions">
                 <button class="mvp-button" @click="copy(order.id)">复制网站 payload</button>
-                <button v-if="order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && order.tracking_number && order.status !== 'completed'" class="mvp-button mvp-button-primary" @click="pushTracking(order.id)">写回 Tracking</button>
+                <button v-if="order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && order.tracking_number && order.tracking_sync_status !== 'completed'" class="mvp-button mvp-button-primary" @click="pushTracking(order.id)">{{ (['failed','retry_wait'].includes(order.tracking_sync_status ?? '') || !!order.tracking_sync_reason) ? '重新同步' : '同步官网物流' }}</button>
                 <button v-if="order.status !== 'completed'" class="mvp-button" @click="update(order.id, 'complete')">标记完成</button>
                 <button v-if="order.status === 'completed'" class="mvp-button" @click="update(order.id, 'reopen')">重开</button>
                 <button v-if="order.status !== 'returned'" class="mvp-button" @click="update(order.id, 'return')">退回更正</button>
@@ -180,4 +187,5 @@ const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = u
 <style scoped>
 .woo-sync-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 12px; margin: 0 0 12px; border: 1px solid var(--byl-border-subtle, #d9e1e5); border-radius: 8px; background: var(--byl-surface, #fff); font-size: 13px; }
 .woo-sync-strip .mvp-button { padding: 5px 10px; }
+.tracking-sync-pill{display:inline-flex;padding:3px 7px;border-radius:5px;font-size:11px;font-weight:700;background:#fff1d6;color:#92400e;white-space:nowrap}.tracking-sync-pill.completed{background:#dcfce7;color:#166534}.tracking-sync-pill.failed{background:#fee2e2;color:#991b1b}.tracking-sync-pill.retry_wait{background:#fef3c7;color:#92400e}.tracking-sync-pill.processing{background:#dbeafe;color:#1d4ed8}.tracking-sync-pill.partial{background:#fef3c7;color:#92400e}.tracking-sync-reason{display:block;max-width:220px;color:#b42318;font-size:11px;white-space:normal}
 </style>

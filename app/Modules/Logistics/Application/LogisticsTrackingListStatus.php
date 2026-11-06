@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 final class LogisticsTrackingListStatus
 {
     /**
-     * Read-only one-query projection. Never treats a completed outbox for an
+     * Read-only bounded-query projection. Never treats a completed outbox for an
      * earlier Tracking number as proof that the current Shipment was synced.
      *
      * @param  list<int>  $shipmentIds
@@ -26,8 +26,22 @@ final class LogisticsTrackingListStatus
             ->where('aggregate_type', 'shipment')
             ->whereIn('aggregate_id', array_map('strval', $ids))
             ->orderByDesc('id')
-            ->get(['id', 'aggregate_id', 'status', 'last_error_code']);
+            ->get(['id', 'aggregate_id', 'status', 'last_error_code', 'payload', 'completed_at']);
 
+        $currentTracking = DB::table('shipments')->whereIn('id', $ids)->pluck('tracking_number', 'id');
+        $rootOrders = DB::table('shipments as s')
+            ->join('orders as o', 'o.id', '=', 's.order_id')
+            ->whereIn('s.id', $ids)
+            ->get(['s.id as shipment_id', DB::raw('COALESCE(o.fulfillment_parent_id, o.id) as root_order_id')])
+            ->keyBy('shipment_id');
+        $statusOutboxes = DB::table('sync_outbox')
+            ->where('operation', 'woocommerce.order_status_outbound')
+            ->where('aggregate_type', 'order')
+            ->whereIn('aggregate_id', $rootOrders->pluck('root_order_id')->map(fn ($id): string => (string) $id)->unique()->values()->all())
+            ->orderByDesc('id')
+            ->get(['aggregate_id', 'status', 'payload', 'completed_at'])
+            ->unique('aggregate_id')
+            ->keyBy('aggregate_id');
         $result = [];
         foreach ($rows as $row) {
             $id = (int) $row->aggregate_id;
@@ -37,6 +51,16 @@ final class LogisticsTrackingListStatus
 
             $code = (string) ($row->last_error_code ?? '');
             $status = (string) $row->status;
+            $payload = is_array($row->payload) ? $row->payload : (json_decode((string) $row->payload, true) ?: []);
+            $rootId = (string) ($rootOrders[$id]->root_order_id ?? '');
+            $statusOutbox = $statusOutboxes->get($rootId);
+            $statusPayload = is_array($statusOutbox?->payload) ? $statusOutbox->payload : (json_decode((string) ($statusOutbox?->payload ?? ''), true) ?: []);
+            $statusVerified = $statusOutbox?->status === 'completed'
+                && $statusOutbox?->completed_at !== null
+                && ($statusPayload['woo_status'] ?? null) === 'completed';
+            $trackingVerified = $status === 'completed' && $row->completed_at !== null
+                && trim((string) ($payload['tracking_number'] ?? '')) !== ''
+                && hash_equals(trim((string) ($currentTracking[$id] ?? '')), trim((string) ($payload['tracking_number'] ?? '')));
             $result[$id] = [
                 'status' => $status === 'pending' && $code !== '' ? 'retry_wait' : $status,
                 'reason' => match ($code) {
@@ -46,6 +70,13 @@ final class LogisticsTrackingListStatus
                     'retry_runner_exception' => '自动重试异常，请查看同步记录',
                     default => $code !== '' ? '同步出现异常，请查看详细同步记录' : null,
                 },
+                'tracking_verified' => $trackingVerified,
+                'verified_outbox' => $trackingVerified && $statusVerified,
+                'status_outbox_status' => $statusOutbox?->status,
+                'status_outbox_woo_status' => $statusPayload['woo_status'] ?? null,
+                'outbox_tracking_number' => trim((string) ($payload['tracking_number'] ?? '')),
+                'verified_at' => $statusVerified ? $statusOutbox->completed_at : $row->completed_at,
+                'status_outbox_verified' => $statusVerified,
             ];
         }
 
@@ -58,13 +89,15 @@ final class LogisticsTrackingListStatus
             ->leftJoin('manual_syncs as ms', 'ms.order_id', '=', 's.order_id')
             ->whereIn('s.id', $ids)
             ->where('m.marker', 'woo_manual_tracking_verified')
-            ->get(['s.id', 's.tracking_number', 'ms.sync_note']);
+            ->get(['s.id', 's.tracking_number', 'ms.sync_note', 'ms.synced_at']);
         foreach ($verified as $record) {
             $id = (int) $record->id;
             $result[$id] ??= ['status' => 'pending', 'reason' => null];
             $fingerprint = 'verified_tracking_sha256:'.hash('sha256', trim((string) $record->tracking_number)).';';
             if (str_starts_with((string) $record->sync_note, $fingerprint)) {
                 $result[$id]['verified_manual'] = true;
+                $result[$id]['verified_tracking_fingerprint'] = true;
+                $result[$id]['verified_at'] = $record->synced_at;
             } else {
                 // A Tracking draft may change while Shipment remains pending.
                 // Never show previous manual success for a different number.
@@ -87,7 +120,33 @@ final class LogisticsTrackingListStatus
         }
 
         if ($manualSyncStatus === 'completed' && ($outbox['verified_manual'] ?? false)) {
-            return ['status' => 'completed', 'reason' => null];
+            return ['status' => 'completed', 'reason' => null, 'verified_at' => $outbox['verified_at'] ?? null];
+        }
+        if ($manualSyncStatus === 'completed' && ($outbox['verified_outbox'] ?? false)
+            && filled($outbox['outbox_tracking_number'] ?? null)
+            && ($outbox['status_outbox_verified'] ?? false)) {
+            // Outbox is only current when its immutable payload matches the current
+            // Shipment fingerprint. A historical/manual label is not proof.
+            return ['status' => 'completed', 'reason' => null, 'verified_at' => $outbox['verified_at'] ?? null];
+        }
+        if (($outbox['tracking_verified'] ?? false) && ($outbox['status_outbox_status'] ?? '') === 'completed' && ($outbox['status_outbox_woo_status'] ?? '') === 'processing') {
+            return ['status' => 'partial', 'reason' => 'Tracking 已同步；官网订单仍为 processing，等待其他包裹完成'];
+        }
+        if (($outbox['status'] ?? '') === 'completed' && ! ($outbox['verified_outbox'] ?? false)) {
+            return ['status' => 'pending', 'reason' => '历史同步记录与当前 Tracking 不一致，请重新同步官网'];
+        }
+        if (($outbox['tracking_verified'] ?? false)
+            && ($outbox['status_outbox_status'] ?? '') === 'completed'
+            && ($outbox['status_outbox_woo_status'] ?? '') === 'processing') {
+            return ['status' => 'partial', 'reason' => 'Tracking 已同步；官网订单仍为 processing，等待其他包裹完成'];
+        }
+        if (($outbox['status'] ?? '') === 'completed' && ($outbox['outbox_tracking_number'] ?? '') !== ''
+            && ! ($outbox['status_outbox_verified'] ?? false)) {
+            return ['status' => 'pending', 'reason' => 'AfterShip Tracking 已有写回记录，但官网订单状态尚未验证'];
+        }
+        if (($outbox['verified_outbox'] ?? false)
+            && trim((string) ($outbox['outbox_tracking_number'] ?? '')) !== '') {
+            return ['status' => 'pending', 'reason' => '官网写回记录与 ERP 同步状态尚未一致，请重新核对'];
         }
         if ($outbox['stale_manual_override'] ?? false) {
             return ['status' => 'pending', 'reason' => $outbox['reason'] ?? null];
@@ -99,8 +158,9 @@ final class LogisticsTrackingListStatus
         }
 
         return $outbox ?? [
-            'status' => $manualSyncStatus === 'completed' ? 'completed' : 'pending',
-            'reason' => null,
+            // A manually changed ManualSync flag is not a remote Woo readback.
+            'status' => 'pending',
+            'reason' => $manualSyncStatus === 'completed' ? 'ERP 已标记完成，但没有官网写回验证记录' : null,
         ];
     }
 }

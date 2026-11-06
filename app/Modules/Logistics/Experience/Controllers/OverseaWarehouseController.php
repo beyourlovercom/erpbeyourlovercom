@@ -17,10 +17,10 @@ use App\Modules\Logistics\Application\WarehouseDispatchStatus;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
-use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWorkflowStatus;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
-use App\Modules\Orders\Application\OrderProgressQuery;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -461,6 +461,7 @@ final class OverseaWarehouseController
                 : (string) ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type),
             'tracking_sync_status' => $trackingState['status'],
             'tracking_sync_reason' => $trackingState['reason'],
+            'tracking_sync_verified_at' => $trackingState['verified_at'] ?? null,
             'shipped_at' => $shipment->shipped_at?->toIso8601String(),
             'xlwms' => $xlwms ? [
                 'state' => $xlwms->state,
