@@ -92,6 +92,11 @@ final class TrackingManualOverrideLocalWooE2eTest extends TestCase
             'order_id' => $child->id, 'website_sync_status' => 'completed',
         ]);
         self::assertSame('pending', $child->shipment->fresh()->shipment_status);
+        self::assertSame('shared', $child->fresh()->workflow_status);
+        self::assertNull($root->fresh()->workflow_status);
+        $this->assertDatabaseHas('order_workflow_status_histories', [
+            'order_id' => $child->id, 'to_status' => 'shared',
+        ]);
         self::assertFalse($service->pushOne($child, null)['written']);
 
         // A second split child appends its package to the SAME Woo mother
@@ -133,5 +138,7 @@ final class TrackingManualOverrideLocalWooE2eTest extends TestCase
         $this->assertDatabaseHas('manual_syncs', [
             'order_id' => $childB->id, 'website_sync_status' => 'completed',
         ]);
+        self::assertSame('shared', $childB->fresh()->workflow_status);
+        self::assertNull($root->fresh()->workflow_status);
     }
 }

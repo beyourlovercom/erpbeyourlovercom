@@ -1,46 +1,35 @@
-# Tracking V3.1 — Owner manual AfterShip and Woo Completed override
+# Tracking V3.1 — Processing-only Woo AfterShip Sync + ERP 2.2 Shared
 
-2026-11-06 (Asia/Taipei) | Issue #635 | Branch: feat/manual-woo-tracking-override-20261106
+Date: 2026-11-06 Asia/Taipei | Issue #635 | Draft PR #637
+Branch: feat/manual-woo-tracking-override-20261106
 
-## Frozen Owner rules
-1. Retain existing Sync Woo Tracking per-row button; permit a single order of any ERP state with a real Tracking value to manually sync AfterShip and force the linked Woo order Completed.
-2. For ANY A/B/C split child, publish that specific child's Tracking on the real/root Woo customer order, and make the mother Woo order Completed even if other children are pending.
-3. Never introduce a second sync engine or button, guess SKU-to-Woo line identity, or replay the old failed/pending queue in bulk.
+## Owner correction (SUPERSEDES earlier requirements)
+- Owner did NOT authorize changing refunded, cancelled, failed, on-hold, pending, archived, or any other non-processing Woo order into completed. Prior interpretation of any status referred to ERP fulfillment status ONLY.
+- Woo mother processing: existing per-row Sync Woo Tracking button may sync this fulfillment's Tracking into the mother Woo order's AfterShip; verify Tracking and then change Woo processing -> completed; verify remote Completed.
+- Woo mother completed: ONLY when already completed by this exact manual V3.1 parent workflow, a linked A/B/C child may append its Tracking without any Woo order status mutation. This ensures B/C can be notified after A completed the mother. Do not permit arbitrary completed Woo orders to be rewritten.
+- Any other Woo mother status, including refunded, cancelled, failed, on-hold, pending, is strictly blocked BEFORE Tracking write, with clear operator feedback. HTTP Woo gateway independently retains fail-closed protected statuses.
+- ERP success postcondition: after verified remote AfterShip + Woo Completed, update the SELECTED ERP order's mutable workflow status to shared (2.2 Shared / 已通知). Record workflow_revision, history and audit. Never update other A/B/C child statuses or canonical shipment status. Root ERP shared changes only when root itself is the selected order. Existing split mother canonical fulfillment remains truthful.
+- On any failed Tracking/status write or missing Woo identity, ERP Shared must NOT be recorded. Archived ERP orders must first be restored before changing their ERP workflow annotation.
+- Only single-row force manual sync allowed. Batch sync remains old strict shipped/carrier/shipped_at rule, no protected state overrides or historical Outbox replay.
 
-## Isolated code delta
-- Existing domestic and overseas row buttons submit manual_override=true for exactly one order and appear whenever Tracking exists. Their batch action stays strict and unchanged. Role and permission gates preserved.
-- Orchestrator writes a separate audited tracking_manual_force_completed run with per-order failed, skipped, conflict or succeeded outcome; the page displays actual reasons and skips rather than a false success.
-- Manual service uses Woo root source and provider reference identity, child Tracking number, configured courier slug or order-level OTHER if the carrier is unknown, stable ship date; splits and old records with missing Woo IDs use order-level AfterShip package (empty line_items, never SKU guessing).
-- Existing Woo gateway permits order-level package, verifies Woo native meta readback and preserves existing package and bindings on repeat. Protected Woo states can ONLY be overridden using an explicit additional allowProtectedStatus=true parameter from the permission-scoped manual operation. Automatic, retries, batch and prior caller defaults remain false.
-- Manual write verifies BOTH AfterShip Tracking and Woo Completed before marking the selected fulfillment's manual sync completed, writing child woo_manual_tracking_verified marker and root woo_manual_force_completed marker. Backend list status respects the verified child marker plus completed manual sync; manual reopen still shows pending.
-- Subsequent automatic status projection honors the root marker, so sending A does not get reverted to Woo processing when B remains pending. Internal ERP shipment/workflow truth does not change.
-- Manual force can change refunded, cancelled, on-hold or failed Woo states: this is explicitly requested and may invoke Woo business hooks/notifications. The system logs actor, order and prior Woo status. Force only supports ONE order per click, never forced batch.
+## Implementation and guards
+- Existing Overseas and Domestic row actions use manual_override=true and show as long as ERP Tracking exists; upstream permissions remain restricted to formal logistics/operations/admin roles. Existing 30-minute automatic sync and retry are not changed.
+- WooCommerceManualTrackingOverrideService resolves a credible Woo root reference, sends selected child package to real Woo mother, uses AfterShip order-level packages when Woo line identity unavailable; never guesses SKU. Preserve existing packages, idempotently re-send same Tracking.
+- HTTP gateway allows validated order-level package line_items=[] but keeps original default protected Woo status guards; removed all explicit bypass parameters from contract, gateway, and test doubles.
+- Auto WooCommerceOrderStatusOutboundService honors parent woo_manual_force_completed marker so next partial shipment does not revert completed to processing.
+- Manual verified marker and SHA-256 Tracking fingerprint (in sync note) plus completed manual_sync guard list badge accuracy. If ERP Tracking changes, show pending until reverified, including if pending shipment draft changed.
+- Persist root marker, selected child manual sync, selected child's verified marker, and selected workflow_status=shared / revision/history/audit inside ONE local DB transaction AFTER external Woo writes and verification.
+- OrderWorkflowStatusService::setAfterVerifiedWebsiteTracking handles system/operator audit and idempotent workflow revisions, preserving auxiliary labels. No direct canonical order_status mutation.
 
-## Tests / verified
-- Pending unshipped, no carrier, missing Woo line-id, split A parent identity, refunded override, mismatch/failure feedback, duplicate click, one-order-only and role permission cases: PHP feature targeted.
-- Woo HTTP mock: line_items empty, existing package preserved, repeated no PUT, protected override, default protected safety.
-- Aggregate marker test: later partial auto shipment cannot undo Woo Completed.
-- Isolated actual WordPress Woo 11.2.1 and AfterShip 1.18.5: LOCAL mother order #24, pending child A with no Woo line IDs -> AfterShip package and Completed; repeat remains one package; PHP integration 1 test/11 assertions PASS; native AfterShip customer template shows Tracking and no guessed lines; Cloud is NOT verified.
-- 113 targeted feature tests / 1010 assertions PASS, 1 opt-in E2E skipped by default. Isolated npm ci, Vue typecheck and Vite build PASS.
-- Full suite additional test initiated; attach real result separately.
+## Tested
+- New owner-corrected tests: non-processing Woo statuses (cancelled/refunded/failed/on-hold/pending/unrelated completed) cannot write Tracking or ERP Shared; Woo Tracking conflict or failed Woo status write never marks ERP Shared. Legacy gateway protected-state tests still pass.
+- Existing local WordPress (WooCommerce 11.2.1 + AfterShip 1.18.5), with external HTTP/mail/webhooks blocked, mother #29: pending A and B, two preserved AfterShip packages, Woo Completed, selected A/B ERP status=shared, ERP mother status unchanged, native customer template displays both. E2E 1 test / 22 assertions PASS.
+- Other UAT: tracking-only missing carrier uses AfterShip provider other, manually completed mother, idempotent repeat; no SKU guessing.
+- Previous targeted Feature regression 114 tests / 1,014 assertions PASS (pre-correction). Re-run final correction suite and cite real count.
+- Preexisting full Feature suite failures: previous 2,195 tests / 6 errors / 55 failures, 10 opt-in skipped; pristine GitHub main vs branch identical 5 errors / 27 failures / 608 assertions on 87 representative failing tests. Do not misstate full suite PASS.
+- npm ci / Vue TypeScript / Vite build PASS (pre-correction; front-end source not changed by correction), re-check if required.
 
-## Deployment gates / limitations
-- No changes to Production flags or existing half-hour scheduler and no real customer order writes.
-- No Woo order exists for arbitrary standalone manual ERP order: report a clear error, never create a fictitious parent.
-- Real Dev and protected status UAT / exact-head CI before Production. Confirm customer-order side effects and choose an exact safe Canary. Maintain rollback path. No automatic historical backlog replay.
-
-## Expanded proof and baseline comparison (2026-11-06)
-- Fresh LOCAL Woo mother #25: pending A + real carrier USPS, 1 order-level AfterShip package, mother completed, original customer template verified.
-- Fresh LOCAL Woo mother #26: pending A with ONLY Tracking, no carrier and no shipped_at. Manual fallback provider OTHER published, mother completed, AfterShip native display PASS.
-- Fresh LOCAL Woo mother #27: split children A and B, both pending, different USPS Tracking numbers; manual sends both to the same real root Woo ID, mother Completed, AfterShip native plugin displays exactly TWO preserved packages with zero guessed line bindings, customer template displays both: one real local integration test / 17 assertions PASS.
-- Full PHP Feature suite of current GitHub main + V3.1 branch had 2,195 tests / 20,466 assertions; 6 errors, 55 failures, 10 opt-in skipped. These failures are NOT claimed as resolved. An unmodified GitHub main baseline was checked in separate detached worktree on the identical 87 tests covering representative failing domains: both baseline and V3.1 produce exactly 5 errors / 27 failures / 1 skipped, with identical 608 assertions. Therefore those representative failures predate this branch.
-- Prior targeted V3.1 feature regression 113 tests / 1,010 assertions PASS, with one intentionally skipped opt-in LOCAL test; current final-run result should be appended separately.
-- One-order-only force override for per-row button; normal multi-select/batch remains strict. Force never bypasses user role authorization or invents Woo mother identity.
-- Production status: NOT deployed, NOT merged. AfterShip Cloud remains unverified; do not present full rollout as PASS.
-
-## Last safety refinement and acceptance
-- On successful manual overwrite, manual_sync.sync_note stores a SHA-256 fingerprint of the exact current Tracking (not the plaintext number). The read-only list projection requires the fingerprint still matches current shipment Tracking plus completed ManualSync and verified marker. If a pending-shipment Tracking is subsequently edited without reopening manual status, the UI displays PENDING with an explanation rather than stale success.
-- One-order-only API override is fail-closed (HTTP 422 if >1 IDs). Bulk button retains old shipped+carrier+timestamp requirement and does not send manual_override. Individual row button remains enabled by Tracking alone.
-- Final fresh independent LOCAL mother #28: both pending A/B children synced order-level, Woo mother completed, AfterShip native two package records and customer template PASS, repeat no duplicates, 1 test / 17 assertions.
-- Baseline subset from unmodified GitHub main: 87 tests / 608 assertions = 5 errors, 27 failures, 1 skipped; same exact result on V3.1 branch. These are legacy cross-module failures and must be tracked separately from this feature.
-- No real order or Production flags were touched by V3.1.
+## Release gate
+- Issue #635 and PR #637 remain open/Draft; no main merge, no Production deploy, no WWW writes from this correction.
+- Previous PR #637 source allowed force-changing Woo refunded/cancelled; that logic is explicitly replaced in next commit, and PR title/body must be corrected.
+- CI review exact new HEAD; single eligible processing real customer order Canary, remote AfterShip + Woo readback, then authorize release. No batch processing of historical orders.

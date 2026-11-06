@@ -187,12 +187,12 @@ final class AggregateStatusFakeGateway implements WooCommerceTrackingGateway
         return ['tracking_number' => '', 'provider' => '', 'has_tracking' => false];
     }
 
-    public function syncTracking(int $providerOrderId, string $providerSlug, string $trackingNumber, string $shipDate, array $lineItems = [], bool $allowProtectedStatus = false): array
+    public function syncTracking(int $providerOrderId, string $providerSlug, string $trackingNumber, string $shipDate, array $lineItems = []): array
     {
         return ['written' => false, 'verified' => true];
     }
 
-    public function syncOrderStatus(int $providerOrderId, string $status, bool $allowProtectedStatus = false): array
+    public function syncOrderStatus(int $providerOrderId, string $status): array
     {
         $this->statuses[] = $status;
         if ($this->unsupported === $status) {

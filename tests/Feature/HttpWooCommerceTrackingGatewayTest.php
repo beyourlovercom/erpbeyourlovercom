@@ -97,7 +97,7 @@ final class HttpWooCommerceTrackingGatewayTest extends TestCase
             ->push($this->remoteOrder([$existing, $manual]), 200);
 
         $result = app(HttpWooCommerceTrackingGateway::class)
-            ->syncTracking(7001, '4px', 'TRACK-B', '2026-09-15', [], allowProtectedStatus: true);
+            ->syncTracking(7001, '4px', 'TRACK-B', '2026-09-15', []);
 
         self::assertTrue($result['verified']);
         self::assertSame(2, $result['package_count']);
@@ -126,22 +126,24 @@ final class HttpWooCommerceTrackingGatewayTest extends TestCase
         ]);
 
         $result = app(HttpWooCommerceTrackingGateway::class)
-            ->syncTracking(7001, 'usps', 'TRACK-A', '2026-09-15', [], allowProtectedStatus: true);
+            ->syncTracking(7001, 'usps', 'TRACK-A', '2026-09-15', []);
         self::assertFalse($result['written']);
         Http::assertNotSent(fn (Request $request): bool => $request->method() === 'PUT');
     }
 
-    public function test_explicit_manual_override_can_change_refunded_woo_to_completed_with_readback(): void
+    public function test_refunded_woo_order_cannot_be_force_completed_even_with_manual_flow(): void
     {
-        Http::fakeSequence('https://shop.test/wp-json/wc/v3/orders/7001')
-            ->push($this->remoteOrder(status: 'refunded'), 200)
-            ->push(['id' => 7001], 200)
-            ->push($this->remoteOrder(status: 'completed'), 200);
-        $result = app(HttpWooCommerceTrackingGateway::class)
-            ->syncOrderStatus(7001, 'completed', allowProtectedStatus: true);
-        self::assertSame(['written' => true, 'verified' => true, 'status' => 'completed'], $result);
-        Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT'
-            && ($request->data()['status'] ?? '') === 'completed');
+        Http::fake([
+            'https://shop.test/wp-json/wc/v3/orders/7001' => Http::response(
+                $this->remoteOrder(status: 'refunded'), 200
+            ),
+        ]);
+        $this->expectException(WooCommerceOrderStatusUnsupportedException::class);
+        try {
+            app(HttpWooCommerceTrackingGateway::class)->syncOrderStatus(7001, 'completed');
+        } finally {
+            Http::assertNotSent(fn (Request $request): bool => $request->method() === 'PUT');
+        }
     }
 
     public function test_same_package_and_same_line_items_is_idempotent(): void

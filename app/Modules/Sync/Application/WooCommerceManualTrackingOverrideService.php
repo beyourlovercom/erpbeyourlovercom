@@ -2,17 +2,19 @@
 
 namespace App\Modules\Sync\Application;
 
+use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 final class WooCommerceManualTrackingOverrideService
 {
     public function __construct(
         private readonly WooCommerceTrackingGateway $gateway,
         private readonly ManualSyncService $manualSync,
+        private readonly OrderWorkflowStatusService $workflowStatus,
     ) {}
 
     /**
@@ -26,6 +28,11 @@ final class WooCommerceManualTrackingOverrideService
     public function pushOne(Order $order, ?Authenticatable $actor): array
     {
         $order->loadMissing(['shipment', 'items', 'fulfillmentParent.externalReferences', 'externalReferences']);
+        // An archived ERP order must be restored before changing its
+        // workflow to Shared; reject BEFORE changing WooCommerce.
+        if ($order->trashed() || $order->archived_at !== null || $order->isOperationallyArchived()) {
+            throw new DomainException('归档订单请先恢复，才能同步官网并更新为已通知。');
+        }
         $shipment = $order->shipment;
         $number = trim((string) $shipment?->tracking_number);
         if ($number === '') {
@@ -56,6 +63,22 @@ final class WooCommerceManualTrackingOverrideService
         }
 
         $providerId = (int) $reference->reference;
+        $beforeStatus = $this->gateway->inspectOrderStatus($providerId);
+        $parentAlreadyManuallyCompleted = $root->operationalMarkers()
+            ->where('marker', 'woo_manual_force_completed')->exists();
+        if ($beforeStatus !== 'processing') {
+            // After A completed the Woo mother, B/C may still add their own
+            // AfterShip package without modifying a non-processing Woo state.
+            // Otherwise even an operator may NOT overwrite cancelled,
+            // refunded, failed, on-hold, pending or unrelated completed orders.
+            if ($beforeStatus !== 'completed' || ! $parentAlreadyManuallyCompleted
+                || ! $order->fulfillment_parent_id) {
+                throw new DomainException(
+                    '官网母订单当前状态是 '.$beforeStatus.'，只允许 processing 订单新增 Tracking 并转 completed；'
+                    .'仅已由本流程完成的母订单，允许 A/B/C 子单继续补充 Tracking，且不修改官网状态。'
+                );
+            }
+        }
         $slug = $this->carrierSlug((string) $shipment->carrier);
         if ($slug === 'other') {
             // Keep an already published provider for this exact Tracking.
@@ -86,44 +109,48 @@ final class WooCommerceManualTrackingOverrideService
             }
         }
 
-        // Only this explicit, permission-scoped manual action can override
-        // protected Woo statuses. Auto dispatch stays fail-closed.
-        $beforeStatus = $this->gateway->inspectOrderStatus($providerId);
-        if (in_array($beforeStatus, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
-            Log::warning('tracking.manual_override.protected_woo_status', [
-                'root_order_id' => (int) $root->getKey(),
-                'fulfillment_order_id' => (int) $order->getKey(),
-                'previous_woo_status' => $beforeStatus,
-                'actor_id' => $actor?->getAuthIdentifier(),
-            ]);
-        }
+        // Never bypass protected WooCommerce statuses. The gateway checks
+        // remote status again before writing, covering status races.
         $tracking = $this->gateway->syncTracking(
-            $providerId, $slug, $number, $shipDate, $lineItems, allowProtectedStatus: true
+            $providerId, $slug, $number, $shipDate, $lineItems
         );
         if (! ($tracking['verified'] ?? false)) {
             throw new \RuntimeException('官网 AfterShip Tracking 写入后回读未通过。');
         }
 
-        $status = $this->gateway->syncOrderStatus($providerId, 'completed', allowProtectedStatus: true);
+        // Only a Woo order that STARTED as processing may be updated to
+        // completed. If the mother was completed earlier by A, B/C only
+        // append AfterShip Tracking without a second status mutation.
+        $status = $beforeStatus === 'processing'
+            ? $this->gateway->syncOrderStatus($providerId, 'completed')
+            : ['status' => $this->gateway->inspectOrderStatus($providerId),
+                'verified' => true, 'written' => false];
         if (! ($status['verified'] ?? false) || ($status['status'] ?? '') !== 'completed') {
-            throw new \RuntimeException('官网母订单 Completed 状态回读未通过，物流可能已经写入，请复查。');
+            throw new \RuntimeException('官网母订单 Completed 状态回读未通过，物流可能已写入，请检查官网。');
         }
 
         // Remember the explicit owner-approved override: a subsequent
         // partial-shipment automatic status projection must not undo it.
-        $root->operationalMarkers()->firstOrCreate(
-            ['marker' => 'woo_manual_force_completed'],
-            ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()],
-        );
-        $trackingFingerprint = hash('sha256', $number);
-        $this->manualSync->completeVerifiedManualOverride(
-            $order, $actor,
-            'verified_tracking_sha256:'.$trackingFingerprint.'; 已回读确认 Woo 母订单 #'.$providerId.' AfterShip Tracking 和 Completed。'
-        );
-        $order->operationalMarkers()->firstOrCreate(
-            ['marker' => 'woo_manual_tracking_verified'],
-            ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()],
-        );
+        // Local state and workflow/history/audit must be committed together.
+        // Never hold the ERP transaction across external WooCommerce requests.
+        DB::transaction(function () use ($root, $order, $actor, $number, $providerId): void {
+            $root->operationalMarkers()->firstOrCreate(
+                ['marker' => 'woo_manual_force_completed'],
+                ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()],
+            );
+            $trackingFingerprint = hash('sha256', $number);
+            $this->manualSync->completeVerifiedManualOverride(
+                $order, $actor,
+                'verified_tracking_sha256:'.$trackingFingerprint.'; 已回读确认 Woo 母订单 #'.$providerId.' AfterShip Tracking 和 Completed。'
+            );
+            $order->operationalMarkers()->firstOrCreate(
+                ['marker' => 'woo_manual_tracking_verified'],
+                ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()],
+            );
+            // Only the clicked ERP fulfillment becomes 2.2 Shared.
+            // Other A/B/C children and canonical shipment state are unchanged.
+            $this->workflowStatus->setAfterVerifiedWebsiteTracking($order, $actor);
+        });
 
         return [
             'status' => 'completed',

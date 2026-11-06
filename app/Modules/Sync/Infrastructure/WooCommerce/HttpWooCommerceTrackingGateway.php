@@ -54,7 +54,6 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         string $trackingNumber,
         string $shipDate,
         array $lineItems = [],
-        bool $allowProtectedStatus = false,
     ): array {
         if (! $this->configured()) {
             throw new RuntimeException('WooCommerce connection is not configured.');
@@ -62,7 +61,7 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
 
         $before = $this->readOrder($providerOrderId);
         $currentStatus = strtolower(trim((string) ($before['status'] ?? '')));
-        if (! $allowProtectedStatus && in_array($currentStatus, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
+        if (in_array($currentStatus, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
             throw new WooCommerceTrackingConflictException(
                 'WooCommerce order has a protected status; Tracking changes are blocked.'
             );
@@ -158,7 +157,7 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         return ['written' => true, 'verified' => true, 'package_count' => count($afterState['items'])];
     }
 
-    public function syncOrderStatus(int $providerOrderId, string $status, bool $allowProtectedStatus = false): array
+    public function syncOrderStatus(int $providerOrderId, string $status): array
     {
         if (! $this->configured()) {
             throw new RuntimeException('WooCommerce connection is not configured.');
@@ -173,7 +172,7 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         if ($current === $status) {
             return ['written' => false, 'verified' => true, 'status' => $status];
         }
-        if (! $allowProtectedStatus && in_array($current, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
+        if (in_array($current, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
             throw new WooCommerceOrderStatusUnsupportedException(
                 'WooCommerce has a protected status; manual status reconciliation was blocked.'
             );

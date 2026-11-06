@@ -1479,7 +1479,7 @@ final class TrackingReturnFakeWooGateway implements WooCommerceTrackingGateway
         return ['tracking_number' => $this->trackingNumber, 'provider' => 'usps', 'ship_date' => '2026-09-15', 'has_tracking' => $this->trackingNumber !== ''];
     }
 
-    public function syncTracking(int $providerOrderId, string $providerSlug, string $trackingNumber, string $shipDate, array $lineItems = [], bool $allowProtectedStatus = false): array
+    public function syncTracking(int $providerOrderId, string $providerSlug, string $trackingNumber, string $shipDate, array $lineItems = []): array
     {
         $this->trackingCalls++;
         $this->providerOrderId = $providerOrderId;
@@ -1489,7 +1489,7 @@ final class TrackingReturnFakeWooGateway implements WooCommerceTrackingGateway
         return ['written' => true, 'verified' => true];
     }
 
-    public function syncOrderStatus(int $providerOrderId, string $status, bool $allowProtectedStatus = false): array
+    public function syncOrderStatus(int $providerOrderId, string $status): array
     {
         $this->orderStatusCalls++;
         return ['written' => true, 'verified' => true, 'status' => $status];

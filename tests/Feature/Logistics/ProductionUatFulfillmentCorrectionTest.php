@@ -215,12 +215,12 @@ final class ProductionUatCorrectionFakeGateway implements WooCommerceTrackingGat
         ];
     }
 
-    public function syncTracking(int $providerOrderId, string $providerSlug, string $trackingNumber, string $shipDate, array $lineItems = [], bool $allowProtectedStatus = false): array
+    public function syncTracking(int $providerOrderId, string $providerSlug, string $trackingNumber, string $shipDate, array $lineItems = []): array
     {
         return ['written' => false, 'verified' => true];
     }
 
-    public function syncOrderStatus(int $providerOrderId, string $status, bool $allowProtectedStatus = false): array
+    public function syncOrderStatus(int $providerOrderId, string $status): array
     {
         return ['written' => true, 'verified' => true, 'status' => $status];
     }

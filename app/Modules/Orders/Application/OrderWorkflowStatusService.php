@@ -15,9 +15,50 @@ final class OrderWorkflowStatusService
 {
     public function __construct(private readonly AuditRecorder $audit, private readonly OrderAuxiliaryStatusService $auxiliary) {}
 
+    /**
+     * Record '2.2 Shared / 已通知' only after a verifiable manual Woo
+     * Tracking + Completed write. Never alter the canonical fulfillment
+     * order_status or another A/B/C fulfillment child.
+     */
+    public function setAfterVerifiedWebsiteTracking(Order $order, ?Authenticatable $actor): Order
+    {
+        return DB::transaction(function () use ($order, $actor): Order {
+            $locked = Order::withTrashed()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            if ($locked->trashed() || $locked->archived_at !== null || $locked->isOperationallyArchived()) {
+                throw new HttpException(422, '归档订单不能变更通知状态，请先恢复订单。');
+            }
+            if ($locked->workflow_status === 'shared') {
+                return $locked;
+            }
+            $this->auxiliary->preserveLegacy($locked);
+            $current = $locked->workflow_status;
+            $revision = (int) $locked->workflow_revision + 1;
+            $locked->forceFill(['workflow_status' => 'shared', 'workflow_revision' => $revision])->save();
+            OrderWorkflowStatusHistory::query()->create([
+                'order_id' => $locked->id,
+                'actor_id' => $actor?->getAuthIdentifier(),
+                'from_status' => $current,
+                'to_status' => 'shared',
+                'revision' => $revision,
+            ]);
+            $this->audit->record(
+                $actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),
+                'order.workflow_status_changed',
+                Order::class,
+                $locked->id,
+                before: ['workflow_status' => $current],
+                after: ['workflow_status' => 'shared', 'workflow_revision' => $revision],
+                reason: 'verified_woo_tracking_completed_shared',
+            );
+
+            return $locked;
+        });
+    }
+
     public function set(Order $order, string $next, int $expectedRevision, Authenticatable $actor): Order
     {
         OrderWorkflowStatus::assertMutable($next);
+
         return DB::transaction(function () use ($order, $next, $expectedRevision, $actor): Order {
             $locked = Order::withTrashed()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             if ($locked->archived_at !== null || $locked->trashed()) {
@@ -35,6 +76,7 @@ final class OrderWorkflowStatusService
             $locked->forceFill(['workflow_status' => $next, 'workflow_revision' => $revision])->save();
             OrderWorkflowStatusHistory::query()->create(['order_id' => $locked->id, 'actor_id' => $actor->getAuthIdentifier(), 'from_status' => $current, 'to_status' => $next, 'revision' => $revision]);
             $this->audit->record(AuditActor::user($actor, AuditSource::Web), 'order.workflow_status_changed', Order::class, $locked->id, ['workflow_status' => $current], ['workflow_status' => $next, 'workflow_revision' => $revision], 'staff_workflow_progress');
+
             return $locked->fresh(['owner', 'address', 'items', 'shipment', 'manualSync']);
         });
     }
