@@ -6,8 +6,14 @@ import { router } from '@inertiajs/vue3'
 type PreviewRow = { row: number; order_number: string; customer: string; country: string; sku_detail: string; total_quantity: number }
 type Problem = { row: number; message: string }
 type Preview = { count: number; row_count: number; valid_count: number; errors: Problem[]; preview: PreviewRow[]; token: string | null }
-const props = defineProps<{ exportUrl: string; canImport: boolean; canExport: boolean; total: number }>()
-const csvUrl = computed(() => props.exportUrl + (props.exportUrl.includes('?') ? '&' : '?') + 'format=csv')
+const props = defineProps<{ exportUrl: string; canImport: boolean; canExport: boolean; total: number; selectedOrderIds: number[] }>()
+const emit = defineEmits<{ (event: 'clear-selection'): void }>()
+const selectedCount = computed(() => props.selectedOrderIds.length)
+const selectionMode = computed(() => selectedCount.value > 0)
+const activeExportUrl = computed(() => selectionMode.value
+  ? '/orders/oms/export?selected_order_ids=' + props.selectedOrderIds.join(',')
+  : props.exportUrl)
+const csvUrl = computed(() => activeExportUrl.value + (activeExportUrl.value.includes('?') ? '&' : '?') + 'format=csv')
 const open = ref(false)
 const busy = ref(false)
 const file = ref<File | null>(null)
@@ -72,9 +78,11 @@ async function confirm() {
 <template>
   <div class="oms-transfer-actions">
     <button v-if="canImport" type="button" @click="open = true">导入</button>
-    <a v-if="canExport && total <= 2000" :href="exportUrl" class="oms-transfer-export">导出 XLSX</a>
-    <span v-else-if="canExport" title="XLSX 单次最多导出 2000 单，请先筛选或使用 CSV" class="oms-export-limit">XLSX ≤2000</span>
-    <a v-if="canExport" :href="csvUrl" class="oms-transfer-export">导出 CSV</a>
+    <span v-if="canExport && selectionMode" class="oms-export-scope" title="导出所选订单的全部 SKU 行，不再使用当前筛选条件">已选 {{ selectedCount }} 单</span>
+    <a v-if="canExport && selectedCount <= 200 && (selectionMode || total <= 2000)" :href="activeExportUrl" class="oms-transfer-export">导出{{ selectionMode ? '已选 ' + selectedCount + ' 单' : '筛选结果' }} XLSX</a>
+    <span v-else-if="canExport" class="oms-export-limit">XLSX {{ selectedCount > 200 ? '选择上限200单' : '请筛选到≤2000单' }}</span>
+    <a v-if="canExport && selectedCount <= 200" :href="csvUrl" class="oms-transfer-export">导出{{ selectionMode ? '已选 ' + selectedCount + ' 单' : '筛选结果' }} CSV</a>
+    <button v-if="selectionMode" type="button" aria-label="清除已选订单" @click="emit('clear-selection')">清除选择</button>
   </div>
   <Teleport to="body">
     <div v-if="open" class="oms-import-overlay" role="presentation" @click.self="close">

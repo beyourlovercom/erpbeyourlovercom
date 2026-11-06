@@ -28,6 +28,9 @@ const props = withDefaults(defineProps<{
   serverSearch?: string
   serverColumnFilters?: Record<string, string>
   serverFilterColumns?: string[]
+  rowIdentityKey?: string
+  selectionOrderKey?: string
+  selectedOrderIds?: number[]
 }>(), {
   title: 'OMS Grid', preferenceScope: 'account', defaultPinnedLeft: 1,
   defaultPinnedRight: 1, requiredColumnIds: () => [],
@@ -79,6 +82,7 @@ const pinnedLeft = ref(props.defaultPinnedLeft)
 const pinnedRight = ref(props.defaultPinnedRight)
 const query = ref(props.serverSearch ?? '')
 const selectedCount = ref(0)
+let restoringSelection = false
 const visibleCount = ref(0)
 const syncState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const theme = themeBalham.withParams({ fontSize: 12, spacing: 5, headerFontSize: 12 })
@@ -133,8 +137,52 @@ const refresh = () => {
   if (!api.value) return
   states.value = api.value.getColumnState()
   visibleCount.value = props.serverPagination?.total ?? api.value.getDisplayedRowCount()
-  selectedCount.value = api.value.getSelectedRows().length
+  selectedCount.value = props.selectionOrderKey ? (props.selectedOrderIds?.length ?? 0) : api.value.getSelectedRows().length
 }
+const orderKey = (row: GridRow | undefined): number | null => {
+  const raw = row?.[props.selectionOrderKey ?? '']
+  const id = Number(raw)
+  return Number.isSafeInteger(id) && id > 0 ? id : null
+}
+const restoreSelections = () => {
+  if (!props.selectionOrderKey || !api.value) return
+  const selected = new Set(props.selectedOrderIds ?? [])
+  restoringSelection = true
+  try {
+    api.value.forEachNode(node => {
+      const shouldSelect = selected.has(orderKey(node.data) ?? -1)
+      if (node.isSelected() !== shouldSelect) node.setSelected(shouldSelect)
+    })
+  } finally { restoringSelection = false }
+  refresh()
+}
+const onRowSelected = (event: { node: { data?: GridRow; isSelected(): boolean }; api: GridApi<GridRow> }) => {
+  if (!props.selectionOrderKey || restoringSelection) return
+  const id = orderKey(event.node.data)
+  if (id === null) return
+  restoringSelection = true
+  try {
+    event.api.forEachNode(node => {
+      if (node !== event.node && orderKey(node.data) === id && node.isSelected() !== event.node.isSelected()) {
+        node.setSelected(event.node.isSelected())
+      }
+    })
+  } finally { restoringSelection = false }
+}
+const onSelectionChanged = (event: { api: GridApi<GridRow>; source?: string }) => {
+  if (restoringSelection) return
+  if (props.selectionOrderKey) {
+    // AG Grid emits selectionChanged when new server-page rows replace old
+    // ones. That is NOT the user unchecking orders on the previous page.
+    const userSources = ['checkboxSelected', 'rowClicked', 'spaceKey',
+      'keyboardSelectAll', 'uiSelectAll', 'uiSelectAllFiltered', 'uiSelectAllCurrentPage']
+    if (!userSources.includes(event.source ?? '')) return
+  }
+  refresh()
+  emit('selection-change', event.api.getSelectedRows())
+}
+watch(() => props.selectedOrderIds, () => restoreSelections())
+const getRowId = (params: { data: GridRow }) => String(params.data[props.rowIdentityKey ?? 'id'] ?? '')
 const snapshot = (): OmsGridPreference => ({
   version: 1, columns: api.value?.getColumnState().filter(c => ids.value.includes(c.colId)) ?? [],
   pinnedLeft: pinnedLeft.value, pinnedRight: pinnedRight.value,
@@ -212,6 +260,7 @@ const load = async () => {
 const onReady = (event: GridReadyEvent<GridRow>) => {
   api.value = event.api
   refresh()
+  restoreSelections()
   void load()
 }
 const toggleColumn = (colId: string, show: boolean) => {
@@ -349,6 +398,7 @@ onBeforeUnmount(() => {
           :column-defs="leafColumns"
           :default-col-def="effectiveDefaultColDef"
           :row-selection="rowSelection"
+          :get-row-id="rowIdentityKey ? getRowId : undefined"
           :row-height="rowHeight"
           :header-height="headerHeight"
           :floating-filters-height="headerHeight"
@@ -364,8 +414,9 @@ onBeforeUnmount(() => {
           @column-pinned="scheduleSave"
           @sort-changed="onSortChanged"
           @filter-changed="onFiltered"
-          @model-updated="onFiltered"
-          @selection-changed="(e: any) => { refresh(); emit('selection-change', e.api.getSelectedRows()) }"
+          @model-updated="() => { onFiltered(); restoreSelections() }"
+          @row-selected="onRowSelected"
+          @selection-changed="onSelectionChanged"
         />
         <div v-if="!serverPagination" class="oms-pagination-size"><label for="oms-grid-page-size">每页</label><select id="oms-grid-page-size" :value="pageSize" aria-label="每页显示条数" @change="changePageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="all">全部</option></select></div>
         <div v-if="serverPagination" class="oms-server-pagination">

@@ -309,6 +309,7 @@ final class OrderService
         $query = $orderClass::query()
             ->eligibleForOperations()
             ->with(['items', 'owner', 'address', 'shipment.warehouse', 'shipment.overseaReview', 'operationalMarkers', 'fulfillmentAllocation', 'originalFulfillmentChildren.shipment.warehouse', 'originalFulfillmentChildren.shipment.overseaReview', 'originalFulfillmentChildren.operationalMarkers'])
+            ->when($filters['oms_selected_ids'] ?? null, fn ($query, array $ids) => $query->whereKey($ids))
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
             ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
