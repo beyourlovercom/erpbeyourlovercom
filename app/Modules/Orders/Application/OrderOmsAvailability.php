@@ -32,6 +32,14 @@ final class OrderOmsAvailability
             && (! app()->environment('production') || config('oms_grid.production_export_enabled') === true);
     }
 
+    public static function importPreview(?Authenticatable $actor): bool
+    {
+        return self::grid($actor)
+            && (! app()->environment('production')
+                || config('oms_grid.production_import_preview_enabled') === true
+                || config('oms_grid.production_import_enabled') === true);
+    }
+
     public static function import(?Authenticatable $actor): bool
     {
         return self::grid($actor)

@@ -22,6 +22,7 @@ const props = defineProps<{
   workflowStatusOptions?: Option[]
   exportUrl: string
   canImport: boolean
+  canConfirmImport?: boolean
   canExport: boolean
 }>()
 const emit = defineEmits<{
@@ -161,7 +162,7 @@ const columnFilterValues = computed(() =>
     @search-change="emit('search-change', $event)"
     @column-search-change="emit('column-search-change', $event)"
   >
-    <template #actions><OrderOmsTransfer :export-url="exportUrl" :can-import="canImport" :can-export="canExport" :total="orders.total" :selected-order-ids="selectedOrderIds" @clear-selection="clearSelected" /></template>
+    <template #actions><OrderOmsTransfer :export-url="exportUrl" :can-import="canImport" :can-confirm-import="canConfirmImport ?? false" :can-export="canExport" :total="orders.total" :selected-order-ids="selectedOrderIds" @clear-selection="clearSelected" /></template>
   </OmsGrid>
 </template>
 <style scoped>

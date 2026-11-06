@@ -4,6 +4,9 @@ namespace Tests\Feature\Orders;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Orders\Application\OrderOmsBatchImport;
+use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -85,6 +88,64 @@ final class OrderOmsProductionGateTest extends TestCase
                     ->where('canExportOmsOrders', false));
             $this->actingAs($user)->get('/orders/oms/export')->assertNotFound();
             $this->actingAs($user)->get('/orders/oms/import/template')->assertNotFound();
+        });
+    }
+
+    public function test_production_preview_only_accepts_valid_multisku_file_but_commit_stays_404(): void
+    {
+        $user = $this->user();
+        $outsider = User::factory()->create(['is_active' => true]);
+        $outsider->roles()->attach($user->roles()->first()->id);
+        \App\Modules\Products\Infrastructure\Models\Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
+        \App\Modules\Products\Infrastructure\Models\Product::query()->create(['sku' => 'A1', 'name' => 'Accessory']);
+        $one = array_fill_keys(OrderOmsBatchImport::FIELDS, '');
+        $one['external_order_number'] = 'P3-PREVIEW-GROUP-001';
+        $one['order_date'] = '2026-11-06';
+        $one['recipient_name'] = 'Synthetic Test Only';
+        $one['country'] = 'US';
+        $one['province_state'] = 'CA';
+        $one['city'] = 'Los Angeles';
+        $one['address_line_1'] = '123 Example St';
+        $one['sku'] = 'MF414A';
+        $one['quantity'] = '2';
+        $one['unit_price'] = '79.00';
+        $two = array_fill_keys(OrderOmsBatchImport::FIELDS, '');
+        $two['external_order_number'] = $one['external_order_number'];
+        $two['sku'] = 'A1';
+        $two['quantity'] = '1';
+        $two['unit_price'] = '0.00';
+        $file = UploadedFile::fake()->createWithContent(
+            'p3-preview.xlsx',
+            app(ProviderXlsxWriter::class)->write('批量订单导入', OrderOmsBatchImport::FIELDS, [
+                array_values($one), array_values($two),
+            ]),
+        );
+
+        $this->asProduction(function () use ($user, $outsider, $file): void {
+            config()->set('oms_grid.production_enabled', true);
+            config()->set('oms_grid.production_user_ids', (string) $user->id);
+            config()->set('oms_grid.production_import_preview_enabled', true);
+            config()->set('oms_grid.production_import_enabled', false);
+            $this->actingAs($user)->get('/orders?oms_grid=1')
+                ->assertInertia(fn (Assert $page) => $page
+                    ->where('canImportOmsOrders', true)
+                    ->where('canConfirmOmsOrders', false));
+            $this->actingAs($outsider)->get('/orders/oms/import/template')->assertNotFound();
+            $this->actingAs($outsider)->post('/orders/oms/import/preview', ['file' => $file])->assertNotFound();
+            $this->actingAs($user)->get('/orders/oms/import/template')->assertOk();
+            $preview = $this->actingAs($user)->post('/orders/oms/import/preview', ['file' => $file])
+                ->assertOk()->json();
+            $this->assertSame(1, $preview['count']);
+            $this->assertSame(2, $preview['row_count']);
+            $this->assertSame(1, $preview['valid_count']);
+            $this->assertSame([], $preview['errors']);
+            $this->assertNotEmpty($preview['token']);
+            $this->actingAs($user)->post('/orders/oms/import/confirm', [
+                'file' => $file, 'token' => $preview['token'], 'confirm' => '1',
+            ])->assertNotFound();
+            $this->assertDatabaseCount('orders', 0);
+            $this->assertDatabaseCount('oms_order_import_batches', 0);
+            $this->assertDatabaseCount('oms_order_import_claims', 0);
         });
     }
 

@@ -22,16 +22,19 @@ final class OrderOmsTransferController
         private readonly ProviderXlsxWriter $writer,
     ) {}
 
-    private function pilot(Request $request, bool $write = false): void
+    private function pilot(Request $request, string $mode = 'export'): void
     {
-        abort_unless($write
-            ? OrderOmsAvailability::import($request->user())
-            : OrderOmsAvailability::export($request->user()), 404);
+        $allowed = match ($mode) {
+            'preview' => OrderOmsAvailability::importPreview($request->user()),
+            'commit' => OrderOmsAvailability::import($request->user()),
+            default => OrderOmsAvailability::export($request->user()),
+        };
+        abort_unless($allowed, 404);
     }
 
     public function template(Request $request): Response
     {
-        $this->pilot($request, true);
+        $this->pilot($request, 'preview');
         KolOrderAccessScope::authorizeCreate($request->user(), OrderKind::Customer);
 
         return response($this->import->template(), 200, [
@@ -43,7 +46,7 @@ final class OrderOmsTransferController
 
     public function preview(Request $request): JsonResponse
     {
-        $this->pilot($request, true);
+        $this->pilot($request, 'preview');
         KolOrderAccessScope::authorizeCreate($request->user(), OrderKind::Customer);
         try {
             $payload = $request->validate(['file' => ['required', 'file', 'extensions:xlsx', 'max:5120']]);
@@ -58,7 +61,7 @@ final class OrderOmsTransferController
 
     public function confirm(Request $request): JsonResponse
     {
-        $this->pilot($request, true);
+        $this->pilot($request, 'commit');
         KolOrderAccessScope::authorizeCreate($request->user(), OrderKind::Customer);
         try {
             $payload = $request->validate([
