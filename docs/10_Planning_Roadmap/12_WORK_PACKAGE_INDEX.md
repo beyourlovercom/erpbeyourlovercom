@@ -18,6 +18,15 @@ Current closed foundations include KOL V1, Product OS core, Purchase OS V1, Cust
 ## Active
 
 ```text
+ERP-OMS-GRID-P3B-CONFIRM-CREATE-20261106
+OMS Grid P3-B confirmed XLSX import / actual manual customer Order creation
+Status: OWNER AUTHORIZED / IMPLEMENTATION / DEV UAT PENDING
+PR: #642 / DRAFT
+Baseline: main@efff77c90969af4e8cff0efd45989a7ba526a19e
+Branch: feat/oms-grid-p3-confirm-create-20261106
+Work Package: docs/60_Codex_Operations/work-packages/ERP-OMS-GRID-P3B-CONFIRM-CREATE-20261106.md
+Production P3-B: OFF / NO DEPLOYMENT AUTHORIZED
+
 ERP-GOV-ROADMAP-RECONCILIATION-001
 Full ERP Roadmap conflict cleanup through PR #110
 Status: CURRENT / DOCS-ONLY / OWNER DIRECTED / MERGE NOT AUTHORIZED

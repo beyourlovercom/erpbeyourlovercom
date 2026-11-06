@@ -51,3 +51,13 @@ R4 Inventory grid migration is on hold until R3/P3 closes.
 
 ## Rollback
 Set P3-A `ERP_OMS_GRID_PRODUCTION_IMPORT_PREVIEW_ENABLED=false` and rebuild Laravel config cache; no Orders created at any point. Preserve P1/P2 as-is. A separate code release can also revert the branch without touching business data.
+
+## P3-B Owner authorization update — 2026-11-06
+
+- Owner explicitly authorized starting P3-B implementation and isolated Dev validation after P3-A preflight passed.
+- This authorization is **not** Production enablement, merge approval or deployment approval.
+- P3-B continues to use the independent `ERP_OMS_GRID_PRODUCTION_IMPORT_ENABLED=false` Production default; P3-A remains independently controlled.
+- Production canary target remains administrator ID 1 only, behind the existing OMS Grid allowlist and orders.create permission, and requires a later separate release decision.
+- Draft implementation/verification PR: #642, `feat/oms-grid-p3-confirm-create-20261106`.
+- Isolated UAT runtime: `http://127.0.0.1:18867`, separate SQLite `database/oms-grid-p3b-uat.sqlite`; only synthetic seed data and test SKUs MF414A / A1.
+- No Production database, environment, order, WooCommerce or warehouse state was changed.

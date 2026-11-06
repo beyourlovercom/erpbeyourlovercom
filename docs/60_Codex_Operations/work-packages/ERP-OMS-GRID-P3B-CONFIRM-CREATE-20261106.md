@@ -2,7 +2,7 @@
 
 EXECUTION_PROVIDER: GPT_WEB
 VERIFICATION_TIER: HIGH_RISK
-BASELINE: main@f68829254b9f08106f6a6110e66128bfca9bee90
+BASELINE: main@efff77c90969af4e8cff0efd45989a7ba526a19e
 OWNER_AUTHORIZATION: 2026-11-06 — Owner approved starting P3-B development and Dev validation; Production release is not authorized.
 DEPENDENCIES: P3-A preview-only merged by PR #638; WPS date compatibility merged by PR #640.
 DEPENDENCY_TYPE: SEQUENTIAL
@@ -75,7 +75,7 @@ CURRENT_PHASE: P3-B confirm-create safety and Dev validation
 CURRENT_WORK_PACKAGE: ERP-OMS-GRID-P3B-CONFIRM-CREATE-20261106
 PACKAGE_STATUS: OWNER_AUTHORIZED / IMPLEMENTATION
 WAITING_PHASES: focused validation; prepared Owner Dev/UAT; separate Production approval
-BASELINE: main@f68829254b9f08106f6a6110e66128bfca9bee90
+BASELINE: main@efff77c90969af4e8cff0efd45989a7ba526a19e
 GITHUB_STATE: PR #640 merged; dedicated P3-B branch created from exact main baseline
 SOURCE_CONFLICTS: NONE WITH EVIDENCE
 GLOBAL_GATE: ERP_ORDER_MUTATION_CONTRACT_GATE_V1; same-PR UI→route→controller→permission→preflight→transaction→audit/readback
