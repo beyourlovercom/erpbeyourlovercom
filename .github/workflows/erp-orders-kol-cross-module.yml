@@ -8,6 +8,7 @@ on:
       - 'app/Modules/Kol/**'
       - 'app/Modules/Identity/Application/RolePreset.php'
       - 'resources/js/Pages/Orders/**'
+      - 'resources/js/Components/Orders/**'
       - 'tests/Feature/Orders/**'
       - 'tests/Feature/Kol/**'
       - '.github/workflows/erp-orders-kol-cross-module.yml'
@@ -47,6 +48,8 @@ jobs:
         run: npm run typecheck
       - name: Order editor buttons and interaction regression (same PR head)
         run: npx vitest run resources/js/Pages/Orders/Show.test.ts
+      - name: OMS P3 preview and confirm interaction (same PR head)
+        run: npx vitest run resources/js/Components/Orders/OrderOmsTransfer.test.ts
       - name: Build frontend for Inertia HTTP assertions
         run: npm run build
       - name: Prepare isolated SQLite test environment
