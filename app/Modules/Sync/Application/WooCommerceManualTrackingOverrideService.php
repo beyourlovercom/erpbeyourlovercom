@@ -139,28 +139,45 @@ final class WooCommerceManualTrackingOverrideService
             ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()],
         );
 
-        // The user confirmed WWW Customer Note emails are enabled. Each A/B/C
-        // package gets one remote, customer-visible note. Only after the note
-        // is accepted AND read back may the ERP order become 2.2 Shared.
-        // This is proof of handoff to Woo email processing, not inbox delivery.
-        $notice = $this->customerNotes->notifyPackage($providerId, $slug, $number);
-        if (! ($notice['verified'] ?? false)) {
-            throw new \RuntimeException('官网客户通知没有通过回读，ERP 暂不标记 2.2 已通知。');
+        // First shipment: Woo processing -> completed triggers the site's
+        // existing Completed email. In particular A must NEVER generate an
+        // additional Customer Note. Only later B/C/... parcels on an already
+        // completed mother can send one note each.
+        //
+        // A rare B-first shipment which changes processing -> completed also
+        // uses only the Completed email (no duplicate first-package mail).
+        $suffix = strtoupper(trim((string) $order->fulfillment_suffix));
+        $isLaterSplitPackage = $order->fulfillment_parent_id !== null
+            && preg_match('/^[B-Z][0-9]*$/', $suffix) === 1;
+        $shouldSendCustomerNote = $isLaterSplitPackage && $beforeStatus === 'completed';
+        $notice = null;
+
+        if ($shouldSendCustomerNote) {
+            // WWW Customer Note email is already enabled. Confirm the
+            // customer-visible note by remote GET before ERP 2.2 Shared.
+            // Note verification confirms handoff, not inbox delivery.
+            $notice = $this->customerNotes->notifyPackage($providerId, $slug, $number);
+            if (! ($notice['verified'] ?? false)) {
+                throw new \RuntimeException('官网客户通知没有通过回读，ERP 暂不标记 2.2 已通知。');
+            }
         }
         if ($this->gateway->inspectOrderStatus($providerId) !== 'completed') {
-            throw new \RuntimeException('官网母订单状态在客户通知期间发生变化；ERP 暂不标记 2.2 已通知。');
+            throw new \RuntimeException('官网母订单状态在通知期间发生变化；ERP 暂不标记 2.2 已通知。');
         }
 
         // Remember the explicit owner-approved override: a subsequent
         // partial-shipment automatic status projection must not undo it.
         // Local state and workflow/history/audit must be committed together.
         // Never hold the ERP transaction across external WooCommerce requests.
-        DB::transaction(function () use ($order, $actor, $number, $providerId, $notice): void {
+        DB::transaction(function () use ($order, $actor, $number, $providerId, $notice, $beforeStatus): void {
             $trackingFingerprint = hash('sha256', $number);
             $this->manualSync->completeVerifiedManualOverride(
                 $order, $actor,
                 'verified_tracking_sha256:'.$trackingFingerprint.'; 已回读确认 Woo 母订单 #'.$providerId
-                .' AfterShip Tracking、Completed 和 Customer Note #'.$notice['note_id'].' 已接受。'
+                .' AfterShip Tracking 和 Completed 已确认。'
+                .($notice !== null ? ' Customer Note #'.$notice['note_id'].' 已接受。'
+                    : ($beforeStatus === 'processing' ? ' 首次发货使用 Woo Completed 邮件，无 Customer Note。'
+                        : ' 本包裹按规则不创建 Customer Note。'))
             );
             $order->operationalMarkers()->firstOrCreate(
                 ['marker' => 'woo_manual_tracking_verified'],
@@ -180,8 +197,10 @@ final class WooCommerceManualTrackingOverrideService
             'provider_order_id' => $providerId,
             'order_status_sync' => 'completed',
             'manual_override' => true,
-            'customer_note_id' => $notice['note_id'],
-            'customer_note_created' => $notice['created'],
+            'customer_note_id' => $notice['note_id'] ?? null,
+            'customer_note_created' => (bool) ($notice['created'] ?? false),
+            'notification_channel' => $shouldSendCustomerNote ? 'customer_note'
+                : ($beforeStatus === 'processing' ? 'woo_completed_email' : 'no_new_notification'),
         ];
     }
 
