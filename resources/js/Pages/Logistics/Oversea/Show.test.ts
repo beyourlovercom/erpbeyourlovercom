@@ -427,6 +427,13 @@ describe('Oversea Dede file exchange workbench', () => {
     expect(routerPost).toHaveBeenCalledWith('/logistics/tracking-outbound/selected',
       {order_ids:[99],manual_override:false},expect.objectContaining({preserveScroll:true}))
     expect(mountPage({canTrackingSync:false}).text()).not.toContain('同步官网物流')
+
+    const conflict={...shipped,tracking_sync_status:'conflict',tracking_sync_reason:'官网已有相同 Tracking，但承运商不一致'}
+    const conflictWrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+      canTrackingSync:true,trackingImportPreview:null,rows:{...usSmPendingRows,data:[conflict]}})
+    expect(conflictWrapper.text()).toContain('冲突待核对')
+    expect(conflictWrapper.find('input[aria-label^="选择同步"]').exists()).toBe(false)
+    expect(conflictWrapper.findAll('tbody button').filter(b=>b.text().includes('同步官网物流'))).toHaveLength(0)
   })
 
   it('MorePlus specified service group re-preflights mode 10 and binds send to it', async () => {

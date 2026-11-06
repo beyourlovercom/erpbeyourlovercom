@@ -78,9 +78,10 @@ const canEditRow = computed(() => props.canOperate || (props.canReview && props.
 const trackingSelection = ref<number[]>([])
 const trackingBusy = ref(false)
 const trackingFeedback = ref('')
-const eligibleForTracking = (row:Row) => !!row.tracking_number?.trim()
+const eligibleForTracking = (row:Row) => !!row.tracking_number?.trim() && !['completed','conflict'].includes(row.tracking_sync_status ?? '')
 const eligibleForBatchTracking = (row:Row) => row.source_type === 'woocommerce'
   && row.shipment_status === 'shipped' && !!row.tracking_number && !!row.carrier && !!row.shipped_at
+  && !['completed','conflict'].includes(row.tracking_sync_status ?? '')
 const chooseTracking = (id:number, checked:boolean) => {
   trackingSelection.value=checked?[...new Set([...trackingSelection.value,id])]:trackingSelection.value.filter(v=>v!==id)
 }
@@ -99,7 +100,7 @@ const pushTracking = (ids:number[], manualOverride = false) => {
     onFinish:()=>{trackingBusy.value=false},
   })
 }
-const trackingLabel=(status:string|null|undefined)=>status==='completed'?'已同步':status==='failed'?'失败':status==='retry_wait'?'待重试':status==='processing'?'同步中':status==='partial'?'部分同步':'待同步'
+const trackingLabel=(status:string|null|undefined)=>status==='completed'?'已同步':status==='failed'?'失败':status==='retry_wait'?'待重试':status==='processing'?'同步中':status==='partial'?'部分同步':status==='conflict'?'冲突待核对':'待同步'
 const drafts = reactive<Record<number,{ note:string; carrier:string; service:string; tracking_number:string }>>({})
 const trackingFileInput = ref<HTMLInputElement|null>(null)
 const trackingPreviewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 20) ?? [])
@@ -946,7 +947,7 @@ const compactPages = computed<(number|string)[]>(() => {
                 <template v-else>{{ itemText(row) }}</template>
               </td>
               <td><span v-if="row.source_type==='woocommerce'" class="tracking-sync-status" :title="[row.tracking_sync_reason, row.tracking_sync_verified_at ? '最近官网验证：' + new Date(row.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12:false }) : '尚无官网验证记录'].filter(Boolean).join('；')" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="tracking-sync-failure">{{ row.tracking_sync_reason }}</small></td>
-              <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row) && row.tracking_sync_status !== 'completed'" class="file-button"
+              <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row)" class="file-button"
                 type="button" :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">{{ (['failed','retry_wait'].includes(row.tracking_sync_status ?? '') || !!row.tracking_sync_reason) ? '重新同步' : '同步官网物流' }}</button><span v-else>—</span></td>
               <td class="settings-spacer" aria-hidden="true"></td>
             </tr>

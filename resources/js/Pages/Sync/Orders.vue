@@ -41,7 +41,7 @@ const copy = async (id: number) => {
   const response = await fetch(`/sync/orders/${id}/payload`, { headers: { Accept: 'application/json' } })
   await navigator.clipboard.writeText(JSON.stringify(await response.json(), null, 2))
 }
-const selectable = (order: Order) => order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && !!order.tracking_number
+const selectable = (order: Order) => order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && !!order.tracking_number && !['completed','conflict'].includes(order.tracking_sync_status ?? '')
 const toggleSelected = (id: number, checked: boolean) => {
   selected.value = checked ? [...new Set([...selected.value, id])] : selected.value.filter((value) => value !== id)
 }
@@ -73,6 +73,7 @@ const wooHealthLabel = (health: 'ok' | 'stale' | 'failed' | 'disabled') =>
   ({ ok: '正常', failed: '最近执行失败', stale: '超时或无成功记录', disabled: '未启用' })[health]
 const outboundLabel = (order: Order) => {
   if (order.source_type === 'woocommerce' && order.tracking_sync_status === 'completed') return '已同步'
+  if (order.source_type === 'woocommerce' && order.tracking_sync_status === 'conflict') return '冲突待核对'
   if (order.source_type === 'woocommerce' && order.tracking_sync_status === 'failed') return '失败'
   if (order.source_type === 'woocommerce' && order.tracking_sync_status === 'retry_wait') return '待重试'
   if (order.source_type === 'woocommerce' && order.tracking_sync_status === 'processing') return '同步中'
@@ -170,7 +171,7 @@ const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = u
               <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><strong>{{ order.erp_order_id ?? '—' }}</strong></template><template v-else-if="column.key === 'source'">{{ order.source_type }}</template><template v-else-if="column.key === 'recipient'">{{ order.recipient_name }}</template><template v-else-if="column.key === 'tracking'">{{ order.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'outbound'"><span class="tracking-sync-pill" :class="order.tracking_sync_status ?? 'pending'" :title="[order.tracking_sync_reason, order.tracking_sync_verified_at ? '最近官网验证：' + new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '尚无官网验证记录'].filter(Boolean).join('；')">{{ order.source_type === 'woocommerce' ? outboundLabel(order) : '—' }}</span><small v-if="order.tracking_sync_reason" class="tracking-sync-reason">{{ order.tracking_sync_reason }}</small></template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ order.status }}</span></template><template v-else>{{ order.tracking_sync_verified_at ? new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '—' }}</template></td>
               <td class="mvp-actions">
                 <button class="mvp-button" @click="copy(order.id)">复制网站 payload</button>
-                <button v-if="order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && order.tracking_number && order.tracking_sync_status !== 'completed'" class="mvp-button mvp-button-primary" @click="pushTracking(order.id)">{{ (['failed','retry_wait'].includes(order.tracking_sync_status ?? '') || !!order.tracking_sync_reason) ? '重新同步' : '同步官网物流' }}</button>
+                <button v-if="order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && order.tracking_number && !['completed','conflict'].includes(order.tracking_sync_status ?? '')" class="mvp-button mvp-button-primary" @click="pushTracking(order.id)">{{ (['failed','retry_wait'].includes(order.tracking_sync_status ?? '') || !!order.tracking_sync_reason) ? '重新同步' : '同步官网物流' }}</button>
                 <button v-if="order.status !== 'completed'" class="mvp-button" @click="update(order.id, 'complete')">标记完成</button>
                 <button v-if="order.status === 'completed'" class="mvp-button" @click="update(order.id, 'reopen')">重开</button>
                 <button v-if="order.status !== 'returned'" class="mvp-button" @click="update(order.id, 'return')">退回更正</button>

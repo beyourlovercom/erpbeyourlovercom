@@ -70,6 +70,15 @@ describe('Sync tracking outbound UI', () => {
     expect(wrapper.text()).toContain('Woo write failed')
   })
 
+  it('shows a carrier conflict and prevents retrying or batch-selecting it', () => {
+    const conflict = { ...woo, id: 10, tracking_sync_status: 'conflict', tracking_sync_reason: '官网已有相同 Tracking，但承运商不一致' }
+    const wrapper = mount(Orders, { props: { orders: [conflict], filters: {} } })
+    expect(wrapper.text()).toContain('冲突待核对')
+    expect(wrapper.text()).toContain('承运商不一致')
+    expect(wrapper.findAll('button').filter((item) => ['同步官网物流', '重新同步'].includes(item.text()))).toHaveLength(0)
+    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
+  })
+
   it('posts selected and orchestration actions to canonical routes', async () => {
     const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
     await wrapper.find('input[type="checkbox"]').setValue(true)
