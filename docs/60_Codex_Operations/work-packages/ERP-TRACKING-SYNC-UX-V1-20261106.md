@@ -20,6 +20,14 @@ Branch: `feat/erp-tracking-sync-ux-v1-20261106`
 - Domestic and overseas logistics remove the duplicate header action; selected-row batch action remains contextual. Successful row actions are hidden; stale/failed rows can retry.
 - Protected Woo statuses, V3.1 A/B/C package notification behavior, and the 30-minute scheduler are unchanged.
 
+## Browser UAT — R5 responsive pass
+
+- Added a disposable SQLite + system-Chrome browser harness (`BYL_E2E_SUITE=tracking-ux`) that uses loopback only and blocks all external requests.
+- Real authenticated page loads checked at desktop 1440×900 and mobile 390×844: Orders classic, Orders OMS Grid (including scrolling to the final sync column), Sync Orders, Domestic Logistics, Overseas Logistics.
+- Run with `BYL_E2E_BROWSER=chrome BYL_E2E_SUITE=tracking-ux npm run test:e2e`.
+- **10/10 viewport checks PASS**: all five pages return HTTP 200, the expected sync column/marker is present, no duplicate row-level header sync action appears, document/body widths equal viewport width, and there are zero external requests, console errors, or page errors.
+- The browser run used a fresh disposable SQLite database; cleanup verified PASS. No screenshots, customer data, outbound provider calls, or Production access.
+
 ## Verification gates
 
 - PHP feature tests: `LogisticsTrackingListStatusTest`, `DomesticLogisticsProductionClosureTest`, `OverseaWarehouseWorkbenchTest`, `OrderSavedViewsTest`.

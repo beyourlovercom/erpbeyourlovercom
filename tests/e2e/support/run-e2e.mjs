@@ -65,12 +65,14 @@ async function runFoundation() {
     await runManagedChild('php', ['tests/e2e/support/provision-users.php'], { env, signal: abortController.signal });
     assertNotAborted(abortController.signal);
     const suite = process.env.BYL_E2E_SUITE ?? 'all';
-    if (suite !== 'all' && suite !== 'kol-role') {
-        throw new Error('BYL_E2E_SUITE must be either all or kol-role.');
+    if (!['all', 'kol-role', 'tracking-ux'].includes(suite)) {
+        throw new Error('BYL_E2E_SUITE must be all, kol-role, or tracking-ux.');
     }
     const testArgs = suite === 'kol-role'
         ? [playwrightCli, 'test', 'tests/e2e/orders/kol-role-isolation.spec.ts', '--project=chromium', '--timeout=90000']
-        : [playwrightCli, 'test', '--project=chromium'];
+        : suite === 'tracking-ux'
+            ? ['tests/e2e/support/tracking-ux-browser.mjs']
+            : [playwrightCli, 'test', '--project=chromium'];
     await runManagedChild(process.execPath, testArgs, {
         env,
         signal: abortController.signal,
