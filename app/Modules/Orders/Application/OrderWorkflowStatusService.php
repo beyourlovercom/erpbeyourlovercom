@@ -13,7 +13,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 final class OrderWorkflowStatusService
 {
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(private readonly AuditRecorder $audit, private readonly OrderAuxiliaryStatusService $auxiliary) {}
 
     public function set(Order $order, string $next, int $expectedRevision, Authenticatable $actor): Order
     {
@@ -30,6 +30,7 @@ final class OrderWorkflowStatusService
             if ($current === $next || OrderWorkflowStatus::effectiveCode($current, $locked->order_status->value) === $next) {
                 return $locked->load('owner', 'address', 'items', 'shipment', 'manualSync');
             }
+            $this->auxiliary->preserveLegacy($locked);
             $revision = (int) $locked->workflow_revision + 1;
             $locked->forceFill(['workflow_status' => $next, 'workflow_revision' => $revision])->save();
             OrderWorkflowStatusHistory::query()->create(['order_id' => $locked->id, 'actor_id' => $actor->getAuthIdentifier(), 'from_status' => $current, 'to_status' => $next, 'revision' => $revision]);

@@ -52,3 +52,69 @@ describe('OrderWorkflowStatusPill', () => {
     request.mockRestore()
   })
 })
+
+it('shows independent cost follow-up without changing shipping progress', () => {
+  const wrapper = mount(OrderWorkflowStatusPill, {
+    props: {
+      orderId: 17,
+      canEdit: true,
+      canManageAuxiliary: true,
+      revision: 2,
+      projection: {
+        code: 'shipping', en: 'Shipping', zh: '运输中', color: 'blue',
+        source: 'canonical_projection', mutable: false,
+        auxiliary: [{ code: 'freight_product_cost_follow_up', en: 'Cost', zh: '需跟进成本', color: 'amber' }],
+      },
+      options: [
+        { code: 'shipping', en: 'Shipping', zh: '运输中', color: 'blue', mutable: false },
+        { code: 'freight_product_cost_follow_up', en: 'Cost', zh: '需跟进成本', color: 'amber', mutable: true },
+      ],
+    },
+  })
+  expect(wrapper.find('select').element.value).toBe('shipping')
+  expect(wrapper.find('[aria-label="移除需跟进成本"]').exists()).toBe(true)
+  expect(wrapper.text()).toContain('需跟进成本')
+  expect(wrapper.text()).toContain('2.1 Shipping · 运输中')
+})
+
+
+it('keeps main phase visible after adding an independent follow-up', async () => {
+  const axios = await import('axios')
+  const stub = vi.spyOn(axios.default, 'patch').mockResolvedValueOnce({
+    data: { order: { workflow_revision: 1 }, workflow_status: {
+      code: 'sending',
+      auxiliary: [{ code: 'renew', en: 'Renew', zh: '问题订单', color: 'amber' }],
+    } },
+  })
+  const wrapper = mount(OrderWorkflowStatusPill, {
+    props: {
+      orderId: 27, canEdit: true, canManageAuxiliary: true, revision: 0,
+      projection: { code: 'sending', en: 'Sending', zh: '待发', color: 'neutral', source: 'canonical_projection' },
+      options: [
+        { code: 'sending', en: 'Sending', zh: '待发', color: 'neutral', mutable: true },
+        { code: 'renew', en: 'Renew', zh: '问题订单', color: 'amber', mutable: true },
+      ],
+    },
+  })
+  await wrapper.find('select').setValue('renew')
+  await vi.waitFor(() => expect(wrapper.find('.auxiliary-tag').exists()).toBe(true))
+  await vi.waitFor(() => expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('sending'))
+  expect(wrapper.find('.auxiliary-tag').text()).toContain('问题订单')
+  expect(stub).toHaveBeenCalledWith('/orders/27/workflow-status', {
+    workflow_status: 'renew', expected_workflow_revision: 0,
+  })
+  stub.mockRestore()
+})
+
+it('does not offer manual progress editing for archived and reconciliation statuses', () => {
+  for (const code of ['archived', 'progress_conflict', 'allocated', 'partially_shipped']) {
+    const wrapper = mount(OrderWorkflowStatusPill, {
+      props: {
+        orderId: 28, canEdit: true,
+        projection: { code, en: code, zh: code, color: 'red', source: 'canonical_projection' },
+        options: [{ code, en: code, zh: code, color: 'red', mutable: false }],
+      },
+    })
+    expect(wrapper.find('select').exists()).toBe(false)
+  }
+})

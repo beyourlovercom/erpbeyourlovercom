@@ -27,6 +27,9 @@ use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderWorkflowStatus;
+use App\Modules\Orders\Application\OrderProgressTransitionService;
+use App\Modules\Orders\Application\OrderAuxiliaryStatusService;
+
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Application\WooCommerceAdminOrderLink;
@@ -60,6 +63,8 @@ final class OrderController
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly WooCommerceAdminOrderLink $wooAdminLink,
         private readonly OrderWorkflowStatusService $workflowStatuses,
+        private readonly OrderProgressTransitionService $progressTransitions,
+        private readonly OrderAuxiliaryStatusService $auxiliaryStatuses,
         private readonly OrderWorkflowStatusProjection $workflowProjectionService,
     ) {}
 
@@ -254,12 +259,25 @@ final class OrderController
             'canViewProfit' => ! $isDerived && ($request->user()?->can('analysis.view') ?? false),
             'kolProfile' => $this->kolProfileForOrder($request, $order),
             'canMarkOperational' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
-            'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
+            'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())
+                ->map(fn (array $definition, string $code): array => [
+                    'code' => $code, ...$definition,
+                    'mutable' => $definition['mutable']
+                        && ($order->order_kind === OrderKind::KolFulfillment
+                            || in_array($code, ['sending', 'out_of_stock', ...OrderAuxiliaryStatusService::CODES], true))
+                        && (($request->user()?->can('orders.edit') ?? false)
+                            || ($request->user()?->can('domestic.review') && in_array($code, ['sending', 'out_of_stock'], true))),
+                ])->values()->all(),
             'canEditOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
+            'canEditWorkflowStatus' => ! $order->isOperationallyArchived()
+                && (($request->user()?->can('orders.edit') ?? false)
+                    || ($request->user()?->can('domestic.review') && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY')),
+            'canManageAuxiliary' => ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canTrashOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canArchiveOrder' => ! $order->trashed() && $order->archived_at === null && $order->operational_archived_at === null && ($request->user()?->can('orders.edit') ?? false),
             'directlyArchived' => $order->operational_archived_at !== null,
             'operationallyArchived' => $order->isOperationallyArchived(),
+
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
             'canCreateReplacement' => ! $isDerived && $this->logisticsExecutionAccess->allows($request->user()) && $this->originalLogisticsStarted($order),
             'canCreateProcurement' => ! $isDerived && ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
@@ -522,12 +540,29 @@ final class OrderController
     {
         KolOrderAccessScope::authorize($request->user(), $order);
         abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能修改履约状态。');
+        abort_unless($request->user()?->can('orders.edit') || $request->user()?->can('domestic.review'), 403);
+
         $data = $request->validate([
             'workflow_status' => ['required', 'string', Rule::in(array_keys(array_filter(OrderWorkflowStatus::registry(), fn (array $definition): bool => $definition['mutable'])))],
             'expected_workflow_revision' => ['required', 'integer', 'min:0'],
         ]);
-        $updated = $this->workflowStatuses->set($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user());
+        if (! $request->user()->can('orders.edit')) {
+            abort_unless(in_array($data['workflow_status'], ['sending', 'out_of_stock'], true), 403);
+            $order->loadMissing('shipment.warehouse');
+            abort_unless(strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY', 403);
+        }
+        $updated = $this->progressTransitions->transition($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user());
 
+        return response()->json(['order' => $this->orderData($updated), 'workflow_status' => $this->workflowProjection($updated)]);
+    }
+
+    public function removeAuxiliaryStatus(Request $request, Order $order, string $code): JsonResponse
+    {
+        KolOrderAccessScope::authorize($request->user(), $order);
+        abort_unless($request->user()?->can('orders.edit'), 403);
+        abort_if($order->isOperationallyArchived(), 409, '归档订单不可修改辅助标记。');
+        $data = $request->validate(['expected_workflow_revision' => ['required', 'integer', 'min:0']]);
+        $updated = $this->auxiliaryStatuses->remove($order, $code, (int) $data['expected_workflow_revision'], $request->user());
         return response()->json(['order' => $this->orderData($updated), 'workflow_status' => $this->workflowProjection($updated)]);
     }
 

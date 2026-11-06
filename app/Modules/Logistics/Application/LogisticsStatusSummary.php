@@ -11,20 +11,14 @@ final class LogisticsStatusSummary
 {
     public function pendingAllocationQuery(): Builder
     {
-        // Preserve the current Processing/KOL admission policy while excluding
-        // operationally archived roots and their fulfillment descendants.
-        return app(PendingAllocationEntryPolicy::class)
-            ->constrain(Order::query()->eligibleForOperations())
-            ->where('order_status', 'pending_shipment')
-            ->whereNull('fulfillment_parent_id')
-            ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
-            // A submitted allocation has left Vita's allocation inbox, even if
-            // the source order remains pending while derived shipments proceed.
-            ->whereDoesntHave('fulfillmentAllocation', fn ($allocation) => $allocation->where('status', 'submitted'))
-            ->where(function ($pending): void {
-                $pending->whereDoesntHave('shipment')
-                    ->orWhereHas('shipment', fn ($shipment) => $shipment->whereNull('warehouse_id'));
-            });
+        // Retain the latest Processing, KOL and operational-archive gates.
+        return app(\App\Modules\Orders\Application\OrderProgressQuery::class)
+            ->pendingAllocation(
+                app(PendingAllocationEntryPolicy::class)
+                    ->constrain(Order::query()->eligibleForOperations())
+            )
+            ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'));
+
     }
 
     public function waitStockCount(): int

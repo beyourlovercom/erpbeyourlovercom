@@ -16,6 +16,7 @@ use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Application\OrderWorkflowStatus;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
+use App\Modules\Orders\Application\OrderProgressQuery;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,6 +38,7 @@ final class DomesticLogisticsController
         private readonly WarehouseOrderReference $references,
         private readonly DomesticReviewDecisionService $decisions,
         private readonly DomesticReviewAccess $reviewAccess,
+        private readonly OrderProgressQuery $progressQueries,
     ) {}
 
     public function index(Request $request): Response
@@ -54,6 +56,10 @@ final class DomesticLogisticsController
             'manualSync',
             'fulfillmentParent',
             'fulfillmentAllocation',
+            'shipment.overseaReview',
+            'originalFulfillmentChildren.shipment.warehouse',
+            'originalFulfillmentChildren.shipment.overseaReview',
+            'originalFulfillmentChildren.operationalMarkers',
         ]);
 
         $this->applyView($query, $view);
@@ -135,12 +141,9 @@ final class DomesticLogisticsController
         $label = $this->providerLabel($provider);
 
         $factory = $this->factory();
-        $orders = $this->baseQuery((int) $factory->id)
+        $orders = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id))
             ->with(['address', 'items.product', 'externalReferences', 'operationalMarkers'])
-            ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER))
-            ->whereDoesntHave('operationalMarkers', fn ($q) => $q->where('marker', 'domestic_stockout'))
-            ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
-            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereRaw('LOWER(carrier) = ?', [$carrier]))
+            ->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', [$carrier]))
             ->orderBy('order_date')
             ->orderBy('id')
             ->get();
@@ -186,12 +189,9 @@ final class DomesticLogisticsController
     public function exportPendingBatch(): HttpResponse
     {
         $factory = $this->factory();
-        $orders = $this->baseQuery((int) $factory->id)
+        $orders = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id))
             ->with(['address', 'items.product', 'shipment', 'externalReferences', 'operationalMarkers'])
-            ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER))
-            ->whereDoesntHave('operationalMarkers', fn ($q) => $q->where('marker', 'domestic_stockout'))
-            ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
-            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
+
             ->orderBy('order_date')
             ->orderBy('id')
             ->get();
@@ -267,53 +267,20 @@ final class DomesticLogisticsController
     private function applyView(Builder $query, string $view): void
     {
         match ($view) {
-            'review' => $query
-                ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
-                ->whereDoesntHave('operationalMarkers', fn ($q) => $q->whereIn('marker', [self::REVIEW_MARKER, 'domestic_stockout']))
-                ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock')),
-            'stockout' => $query
-                ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
-                ->where(fn ($q) => $q->where('workflow_status', 'out_of_stock')
-                    ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_stockout'))),
-            'pending' => $query
-                ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
-                ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER))
-                ->whereDoesntHave('operationalMarkers', fn ($q) => $q->where('marker', 'domestic_stockout'))
-                ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock')),
-            'today-4px' => $this->applyTodayProviderView($query, '4px'),
-            'today-weship' => $this->applyTodayProviderView($query, 'weship'),
-            'exceptions' => $query->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'exception')),
-            'today' => $this->applyTodayView($query),
+            'review' => $this->progressQueries->domesticReview($query),
+            'stockout' => $this->progressQueries->domesticStockout($query),
+            'pending' => $this->progressQueries->domesticReady($query),
+            'today-4px' => $this->progressQueries->domesticTodayProvider($query, '4px'),
+            'today-weship' => $this->progressQueries->domesticTodayProvider($query, 'weship'),
+            'exceptions' => $query->where(function (Builder $issues): void {
+                $issues->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'exception'))
+                    ->orWhere(fn (Builder $conflicts) => $this->progressQueries->applyPhase($conflicts, 'progress_conflict'));
+            }),
+            'today' => $this->progressQueries->domesticToday($query),
             '4px' => $query->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', ['4px'])),
             'weship' => $query->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', ['weship'])),
             default => null,
         };
-    }
-
-    private function applyTodayProviderView(Builder $query, string $provider): Builder
-    {
-        return $query->where(function (Builder $daily) use ($provider): void {
-            $daily->where(function (Builder $pending) use ($provider): void {
-                $pending
-                    ->whereHas('shipment', fn ($q) => $q
-                        ->where('shipment_status', 'pending')
-                        ->whereRaw('LOWER(carrier) = ?', [$provider]))
-                    ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER));
-            })->orWhereHas('shipment', fn ($q) => $q
-                ->whereDate('shipped_at', now()->toDateString())
-                ->whereRaw('LOWER(carrier) = ?', [$provider]));
-        });
-    }
-
-    private function applyTodayView(Builder $query): Builder
-    {
-        return $query->where(function (Builder $daily): void {
-            $daily->where(function (Builder $pending): void {
-                $pending
-                    ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
-                    ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER));
-            })->orWhereHas('shipment', fn ($q) => $q->whereDate('shipped_at', now()->toDateString()));
-        });
     }
 
     private function row(Order $order, int $line, ?array $tracking = null): array
@@ -322,6 +289,8 @@ final class DomesticLogisticsController
         $trackingState = app(LogisticsTrackingListStatus::class)->currentStatus($tracking, $order->manualSync?->website_sync_status);
         $stockout = $order->workflow_status === 'out_of_stock' || $order->operationalMarkers->contains('marker', 'domestic_stockout');
         $approved = ! $stockout && $order->operationalMarkers->contains('marker', self::REVIEW_MARKER);
+        $projection = $this->workflowProjection($order);
+        $conflict = $projection['code'] === 'progress_conflict';
         $reference = null;
         try {
             $reference = $this->references->warehouse($order);
@@ -337,7 +306,7 @@ final class DomesticLogisticsController
             'tracking_sync_status' => $trackingState['status'],
             'tracking_sync_reason' => $trackingState['reason'],
             'erp_order_id' => $order->erp_order_id,
-            'workflow_status_projection' => $this->workflowProjection($order),
+            'workflow_status_projection' => $projection,
             'provider_reference' => $reference,
             'order_url' => '/customers/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,
@@ -351,10 +320,13 @@ final class DomesticLogisticsController
             'tracking_number' => $shipment?->tracking_number,
             'shipment_status' => $shipment?->shipment_status,
             'shipped_at' => $shipment?->shipped_at?->toIso8601String(),
-            'review_status' => $stockout ? 'stockout' : ($approved ? 'approved' : 'pending'),
-            'export_blockers' => $stockout ? ['缺货，禁止导出'] : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
-                ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
-                : []),
+            'review_status' => $conflict ? 'conflict' : ($stockout ? 'stockout' : ($approved ? 'approved' : 'pending')),
+            'export_blockers' => $shipment?->shipment_status !== 'pending'
+                ? ['该单已离开待发货队列，禁止重复导出']
+                : ($stockout ? ['缺货，禁止导出'] : (! $approved ? ['商务尚未审核，禁止导出']
+                    : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
+                        ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
+                        : ['未选定速达或纬狮承运商']))),
             'items' => $order->items->map(fn ($item) => [
                 'sku' => $item->sku,
                 'quantity' => (int) $item->quantity,

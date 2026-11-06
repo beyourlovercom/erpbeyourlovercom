@@ -32,7 +32,8 @@ final class OrderSavedViewsTest extends TestCase
         );
     }
 
-    public function test_default_status_and_operational_marker_views_use_canonical_order_plus_explicit_markers(): void
+    public function test_default_status_and_operational_marker_views_use_operational_progress_plus_explicit_markers(): void
+
     {
         $user = $this->userWith(['orders.view', 'orders.edit']);
         $pending = $this->order($user, 'PENDING', 'pending_shipment');
@@ -49,9 +50,13 @@ final class OrderSavedViewsTest extends TestCase
         $this->assertViewContainsOnly($user, 'in_transit', 'ORDER-TRANSIT');
         $this->assertViewContainsOnly($user, 'return', 'ORDER-RETURN');
 
+        // R3: a canonical pending_shipment without warehouse and review is
+        // pending ALLOCATION, not operationally ready for shipment.
         $this->actingAs($user)->get('/orders?view=pending')->assertInertia(fn (Assert $page) => $page
-            ->has('orders.data', 2)
+            ->has('orders.data', 0)
             ->where('filters.view', 'pending'));
+        $this->actingAs($user)->get('/orders?workflow_status=pending_allocation')->assertInertia(fn (Assert $page) => $page
+            ->has('orders.data', 2));
         $this->actingAs($user)->get('/orders?view=shipped')->assertInertia(fn (Assert $page) => $page
             ->has('orders.data', 3)
             ->where('filters.view', 'shipped'));
