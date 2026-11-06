@@ -3,6 +3,7 @@
 use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
 use App\Modules\Orders\Experience\Controllers\KolOrderLinkPreviewController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
+use App\Modules\Orders\Experience\Controllers\OrderOmsTransferController;
 use App\Modules\Orders\Experience\Controllers\OrderOperationalArchiveController;
 use App\Modules\Orders\Experience\Controllers\OrderSavedViewController;
 use App\Modules\Orders\Experience\Controllers\OrderTrashController;
@@ -23,6 +24,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/orders/trash/{order}/restore', [OrderTrashController::class, 'restore'])->middleware('can:system.permissions.manage')->whereNumber('order')->name('orders.trash.restore');
     Route::delete('/orders/trash/{order}', [OrderTrashController::class, 'purge'])->middleware('can:system.permissions.manage')->whereNumber('order')->name('orders.trash.purge');
     Route::delete('/orders/{order}/trash', [OrderTrashController::class, 'destroy'])->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.trash.destroy');
+    Route::get('/orders/oms/export', [OrderOmsTransferController::class, 'export'])->middleware('can:orders.view')->name('orders.oms.export');
+    Route::get('/orders/oms/import/template', [OrderOmsTransferController::class, 'template'])->middleware(['can:orders.view', 'can:orders.create'])->name('orders.oms.import.template');
+    Route::post('/orders/oms/import/preview', [OrderOmsTransferController::class, 'preview'])->middleware(['can:orders.view', 'can:orders.create'])->name('orders.oms.import.preview');
+    Route::post('/orders/oms/import/confirm', [OrderOmsTransferController::class, 'confirm'])->middleware(['can:orders.view', 'can:orders.create'])->name('orders.oms.import.confirm');
     Route::get('/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.index')->defaults('order_kind', 'all');
     Route::get('/orders/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.all')->defaults('order_kind', 'all');
     Route::post('/orders/views', [OrderSavedViewController::class, 'store'])->middleware('can:orders.view')->name('orders.views.store');

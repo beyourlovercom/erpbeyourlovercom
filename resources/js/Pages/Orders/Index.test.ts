@@ -90,6 +90,25 @@ describe('Orders Saved Views', () => {
     }), expect.objectContaining({ preserveScroll: true }))
   })
 
+  it('keeps the existing table by default and carries the R3 opt-in through server filtering', async () => {
+    const legacy = mount(Index, { props: { ...props, omsGridAvailable: true, omsGridEnabled: false } })
+    expect(legacy.find('.mvp-table-wrap').exists()).toBe(true)
+    expect(legacy.text()).toContain('体验 OMS Grid')
+    legacy.unmount()
+
+    const pilot = mount(Index, { props: {
+      ...props, omsGridAvailable: true, omsGridEnabled: true,
+      filters: { view: 'all', sort: 'date', direction: 'desc', per_page: '50', oms_grid: '1' },
+    } })
+    expect(pilot.find('.mvp-table-wrap').exists()).toBe(false)
+    expect(pilot.text()).toContain('返回原列表')
+    await pilot.find('form.mvp-toolbar').trigger('submit')
+    expect(get).toHaveBeenCalledWith('/orders', expect.objectContaining({
+      oms_grid: '1', per_page: '50', sort: 'date', direction: 'desc', page: 1,
+    }), { preserveState: true, replace: true })
+    pilot.unmount()
+  })
+
   it('renders the ERP order identity with the external order as secondary text', () => {
     const wrapper = mount(Index, { props: {
       ...props,
