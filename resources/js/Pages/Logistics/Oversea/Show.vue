@@ -77,17 +77,25 @@ const grid = reactive(useAccountGridPreferences<ColumnKey>({
 const canEditRow = computed(() => props.canOperate || (props.canReview && props.view === 'review'))
 const trackingSelection = ref<number[]>([])
 const trackingBusy = ref(false)
-const eligibleForTracking = (row:Row) => row.source_type === 'woocommerce'
+const trackingFeedback = ref('')
+const eligibleForTracking = (row:Row) => !!row.tracking_number?.trim()
+const eligibleForBatchTracking = (row:Row) => row.source_type === 'woocommerce'
   && row.shipment_status === 'shipped' && !!row.tracking_number && !!row.carrier && !!row.shipped_at
 const chooseTracking = (id:number, checked:boolean) => {
   trackingSelection.value=checked?[...new Set([...trackingSelection.value,id])]:trackingSelection.value.filter(v=>v!==id)
 }
-const pushTracking = (ids:number[]) => {
+const pushTracking = (ids:number[], manualOverride = false) => {
   if(!props.canTrackingSync || !ids.length || trackingBusy.value)return
   trackingBusy.value=true
-  router.post('/logistics/tracking-outbound/selected',{order_ids:ids},{
+  trackingFeedback.value=''
+  router.post('/logistics/tracking-outbound/selected',{order_ids:ids,manual_override:manualOverride},{
     preserveScroll:true,
-    onSuccess:()=>{trackingSelection.value=[]},
+    onSuccess:(page)=>{
+      trackingSelection.value=[]
+      const flash = page.props.flash as {warning?:string;error?:string;success?:string}|undefined
+      trackingFeedback.value = flash?.warning || flash?.error || flash?.success || '同步请求已处理，请刷新核对官网同步状态'
+    },
+    onError:(errors)=>{trackingFeedback.value=Object.values(errors).join('；')||'官网同步请求验证未通过'},
     onFinish:()=>{trackingBusy.value=false},
   })
 }
@@ -799,6 +807,7 @@ const compactPages = computed<(number|string)[]>(() => {
         <button type="button" class="file-button primary" :disabled="trackingBusy" @click="pushTracking(trackingSelection)">批量同步官网物流</button>
         <button type="button" class="file-button" @click="trackingSelection=[]">清除选择</button>
       </div>
+      <div v-if="trackingFeedback" class="tracking-action-feedback" role="status">{{ trackingFeedback }}</div>
       <div class="oversea-table-wrap">
         <table class="oversea-table">
           <thead><tr>
@@ -812,7 +821,7 @@ const compactPages = computed<(number|string)[]>(() => {
           </tr></thead>
           <tbody>
             <tr v-for="row in rows.data" :key="row.order_id">
-              <td v-if="canTrackingSync"><input v-if="eligibleForTracking(row)" type="checkbox"
+              <td v-if="canTrackingSync"><input v-if="eligibleForBatchTracking(row)" type="checkbox"
                 :aria-label="'选择同步 '+(row.erp_order_id??row.order_id)" :checked="trackingSelection.includes(row.order_id)"
                 @change="chooseTracking(row.order_id, ($event.target as HTMLInputElement).checked)" /></td>
               <td class="decision-cell sticky-decision">
@@ -941,7 +950,7 @@ const compactPages = computed<(number|string)[]>(() => {
               </td>
               <td><span v-if="row.source_type==='woocommerce'" class="tracking-sync-status" :title="row.tracking_sync_reason??''" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="tracking-sync-failure">{{ row.tracking_sync_reason }}</small></td>
               <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row)" class="file-button"
-                type="button" :disabled="trackingBusy" @click="pushTracking([row.order_id])">同步官网物流</button><span v-else>—</span></td>
+                type="button" :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">同步官网物流</button><span v-else>—</span></td>
               <td class="settings-spacer" aria-hidden="true"></td>
             </tr>
             <tr v-if="!rows.data.length"><td :colspan="grid.visibleColumns.length + (['us-3sm','us-moreplus'].includes(warehouseKey) ? 3 : 2) + 1 + (canTrackingSync?2:0)" class="empty-cell">当前视图暂无订单</td></tr>

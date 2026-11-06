@@ -24,17 +24,25 @@ const props = defineProps<{
 
 const trackingSelection = ref<number[]>([])
 const trackingBusy = ref(false)
-const eligibleForTracking = (row:Row) => row.source_type === 'woocommerce'
+const trackingFeedback = ref('')
+const eligibleForTracking = (row:Row) => !!row.tracking_number?.trim()
+const eligibleForBatchTracking = (row:Row) => row.source_type === 'woocommerce'
   && row.shipment_status === 'shipped' && !!row.tracking_number && !!row.carrier && !!row.shipped_at
 const chooseTracking = (id:number, checked:boolean) => {
   trackingSelection.value = checked ? [...new Set([...trackingSelection.value, id])] : trackingSelection.value.filter(v=>v!==id)
 }
-const pushTracking = (ids:number[]) => {
+const pushTracking = (ids:number[], manualOverride = false) => {
   if (!props.canTrackingSync || !ids.length || trackingBusy.value) return
   trackingBusy.value = true
-  router.post('/logistics/tracking-outbound/selected', { order_ids:ids }, {
+  trackingFeedback.value = ''
+  router.post('/logistics/tracking-outbound/selected', { order_ids:ids, manual_override:manualOverride }, {
     preserveScroll:true,
-    onSuccess:()=>{trackingSelection.value=[]},
+    onSuccess:(page)=>{
+      trackingSelection.value=[]
+      const flash = page.props.flash as {warning?:string;error?:string;success?:string}|undefined
+      trackingFeedback.value = flash?.warning || flash?.error || flash?.success || '同步请求已处理，请核对官网同步状态'
+    },
+    onError:(errors)=>{trackingFeedback.value=Object.values(errors).join('；')||'官网同步请求验证未通过'},
     onFinish:()=>{trackingBusy.value=false},
   })
 }
@@ -213,6 +221,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         </div>
         <p>即使存在阻断行，也只跳过阻断行；可安全行仍会逐单提交 Shipment，并逐单尝试 Woo Tracking 同步。</p>
         <div class="table-wrap">
+        <div v-if="trackingFeedback" class="tracking-action-feedback" role="status">{{ trackingFeedback }}</div>
           <table><thead><tr><th>行</th><th>订单号</th><th>Tracking</th><th>Carrier</th><th>Provider 状态</th><th>结果</th><th>说明</th></tr></thead>
           <tbody><tr v-for="row in previewRows" :key="row.row + '-' + row.order_number">
             <td>{{ row.row }}</td><td>{{ row.order_number }}</td><td>{{ row.tracking_number || '—' }}</td><td>{{ row.carrier }}</td><td>{{ row.provider_status ?? '—' }}</td>
@@ -231,7 +240,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           <thead><tr><th v-if="canTrackingSync">选择</th><th>#</th><th>审核</th><th>ERP 订单</th><th>订单状态</th><th>导出状态</th><th>承运商单号</th><th>Carrier</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th>SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync">操作</th></tr></thead>
           <tbody>
             <tr v-for="row in rows.data" :key="row.order_id">
-              <td v-if="canTrackingSync"><input v-if="eligibleForTracking(row)" type="checkbox"
+              <td v-if="canTrackingSync"><input v-if="eligibleForBatchTracking(row)" type="checkbox"
                 :aria-label="'选择同步 '+(row.erp_order_id??row.order_id)" :checked="trackingSelection.includes(row.order_id)"
                 @change="chooseTracking(row.order_id, ($event.target as HTMLInputElement).checked)" /></td>
               <td>{{ row.line }}</td>
@@ -268,7 +277,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               <td>{{ [row.country,row.state,row.city].filter(Boolean).join(' / ') || '—' }}</td><td>{{ itemText(row) }} <button v-if="europeanCountries.has((row.country ?? '').toUpperCase())" type="button" class="secondary" :disabled="barcodeLoading" @click="showBarcode(row)">69条码</button><div v-if="barcodePreview?.orderId===row.order_id" class="barcode-preview"><div v-for="item in barcodePreview.items" :key="item.sku">{{ item.sku }} × {{ item.quantity }}：{{ item.barcode_69 }}</div></div><small v-if="barcodeError && barcodeErrorOrderId===row.order_id && !barcodeLoading" class="danger">{{ barcodeError }}</small></td>
               <td><span v-if="row.source_type==='woocommerce'" class="sync-status" :title="row.tracking_sync_reason??''" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="sync-failure">{{ row.tracking_sync_reason }}</small></td>
               <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row)" type="button" class="secondary"
-                :disabled="trackingBusy" @click="pushTracking([row.order_id])">同步官网物流</button><span v-else>—</span></td>
+                :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">同步官网物流</button><span v-else>—</span></td>
             </tr>
             <tr v-if="!rows.data.length"><td :colspan="14+(canTrackingSync?2:0)" class="empty">当前视图暂无订单</td></tr>
           </tbody>

@@ -87,6 +87,65 @@ final class HttpWooCommerceTrackingGatewayTest extends TestCase
         });
     }
 
+    public function test_explicit_manual_override_appends_order_level_package_without_woo_line_id(): void
+    {
+        $existing = $this->tracking('usps', 'TRACK-A', [1001]);
+        $manual = $this->tracking('4px', 'TRACK-B', []);
+        Http::fakeSequence('https://shop.test/wp-json/wc/v3/orders/7001')
+            ->push($this->remoteOrder([$existing]), 200)
+            ->push(['id' => 7001], 200)
+            ->push($this->remoteOrder([$existing, $manual]), 200);
+
+        $result = app(HttpWooCommerceTrackingGateway::class)
+            ->syncTracking(7001, '4px', 'TRACK-B', '2026-09-15', []);
+
+        self::assertTrue($result['verified']);
+        self::assertSame(2, $result['package_count']);
+        Http::assertSent(function (Request $request) use ($existing): bool {
+            if ($request->method() !== 'PUT') {
+                return false;
+            }
+            $meta = collect($request->data()['meta_data'] ?? [])->keyBy('key');
+            $items = $meta['_aftership_tracking_items']['value'] ?? [];
+
+            return count($items) === 2
+                && $items[0]['tracking_id'] === $existing['tracking_id']
+                && count($items[0]['line_items']) === 1
+                && $items[1]['tracking_number'] === 'TRACK-B'
+                && $items[1]['line_items'] === [];
+        });
+    }
+
+    public function test_manual_repeat_keeps_original_line_bindings_and_never_puts_again(): void
+    {
+        $existing = $this->tracking('usps', 'TRACK-A', [1001]);
+        Http::fake([
+            'https://shop.test/wp-json/wc/v3/orders/7001' => Http::response(
+                $this->remoteOrder([$existing]), 200
+            ),
+        ]);
+
+        $result = app(HttpWooCommerceTrackingGateway::class)
+            ->syncTracking(7001, 'usps', 'TRACK-A', '2026-09-15', []);
+        self::assertFalse($result['written']);
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'PUT');
+    }
+
+    public function test_refunded_woo_order_cannot_be_force_completed_even_with_manual_flow(): void
+    {
+        Http::fake([
+            'https://shop.test/wp-json/wc/v3/orders/7001' => Http::response(
+                $this->remoteOrder(status: 'refunded'), 200
+            ),
+        ]);
+        $this->expectException(WooCommerceOrderStatusUnsupportedException::class);
+        try {
+            app(HttpWooCommerceTrackingGateway::class)->syncOrderStatus(7001, 'completed');
+        } finally {
+            Http::assertNotSent(fn (Request $request): bool => $request->method() === 'PUT');
+        }
+    }
+
     public function test_same_package_and_same_line_items_is_idempotent(): void
     {
         $a = $this->tracking('usps', 'TRACK-A', [1001]);
@@ -135,8 +194,7 @@ final class HttpWooCommerceTrackingGatewayTest extends TestCase
     public function test_refunded_order_blocks_tracking_before_remote_put(): void
     {
         Http::fake([
-            'https://shop.test/wp-json/wc/v3/orders/7001' =>
-                Http::response($this->remoteOrder(status: 'refunded'), 200),
+            'https://shop.test/wp-json/wc/v3/orders/7001' => Http::response($this->remoteOrder(status: 'refunded'), 200),
         ]);
         $this->expectException(WooCommerceTrackingConflictException::class);
         try {
@@ -168,8 +226,7 @@ final class HttpWooCommerceTrackingGatewayTest extends TestCase
     public function test_inspect_status_reads_current_woo_order_without_writing(): void
     {
         Http::fake([
-            'https://shop.test/wp-json/wc/v3/orders/7001' =>
-                Http::response($this->remoteOrder(status: 'processing'), 200),
+            'https://shop.test/wp-json/wc/v3/orders/7001' => Http::response($this->remoteOrder(status: 'processing'), 200),
         ]);
         $this->assertSame('processing', app(HttpWooCommerceTrackingGateway::class)->inspectOrderStatus(7001));
         Http::assertNotSent(fn (Request $request): bool => $request->method() === 'PUT');

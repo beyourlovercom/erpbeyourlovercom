@@ -13,6 +13,7 @@ use Throwable;
 final class SyncOrchestrationService
 {
     private const int MaximumBatch = 100;
+
     private const string TrackingOperation = 'woocommerce.tracking_outbound';
 
     public function __construct(
@@ -21,10 +22,11 @@ final class SyncOrchestrationService
         private readonly WooCommerceTrackingGateway $gateway,
         private readonly SyncOutboxService $outbox,
         private readonly SyncOrchestrationRepository $repository,
+        private readonly WooCommerceManualTrackingOverrideService $manualOverride,
     ) {}
 
     /** @param array<int,mixed> $orderIds */
-    public function trackingSelected(array $orderIds, ?Authenticatable $actor): Model
+    public function trackingSelected(array $orderIds, ?Authenticatable $actor, bool $manualOverride = false): Model
     {
         $ids = $this->normalizeIds($orderIds);
         if ($ids === []) {
@@ -33,12 +35,12 @@ final class SyncOrchestrationService
 
         $connection = $this->connection();
         $run = $this->runs->start(
-            'tracking_selected',
+            $manualOverride ? 'tracking_manual_force_completed' : 'tracking_selected',
             count($ids),
             $actor,
             'woocommerce',
             $connection,
-            ['selection' => 'selected'],
+            ['selection' => 'selected', 'manual_override' => $manualOverride],
         );
         $orders = $this->repository->ordersByIds($ids);
 
@@ -50,9 +52,14 @@ final class SyncOrchestrationService
                     'provider_reference' => 'erp-order:'.$id,
                 ]);
                 $this->runs->finishItem($item, SyncRunItemStatus::Skipped, 'order_missing');
+
                 continue;
             }
-            $this->executeTrackingOrder($run, $order, $actor, $connection, verifyRemote: true);
+            if ($manualOverride) {
+                $this->executeManualOverride($run, $order, $actor, $connection);
+            } else {
+                $this->executeTrackingOrder($run, $order, $actor, $connection, verifyRemote: true);
+            }
         }
 
         return $this->runs->complete($run, $actor);
@@ -178,6 +185,7 @@ final class SyncOrchestrationService
                     'provider_reference' => 'erp-order:'.$id,
                 ]);
                 $this->runs->finishItem($item, SyncRunItemStatus::Skipped, 'not_eligible');
+
                 continue;
             }
 
@@ -247,6 +255,44 @@ final class SyncOrchestrationService
         }
     }
 
+    private function executeManualOverride(
+        Model $run,
+        Model $order,
+        ?Authenticatable $actor,
+        string $connection,
+    ): void {
+        $item = $this->runs->addItem($run, [
+            'operation' => 'woocommerce.tracking_manual_override',
+            'order_id' => $order->id,
+            'shipment_id' => $order->shipment?->id,
+            'provider_reference' => $this->providerReference($order, $connection),
+        ]);
+        $this->runs->markProcessing($item);
+
+        try {
+            $result = $this->manualOverride->pushOne($order, $actor);
+            $this->runs->finishItem(
+                $item, SyncRunItemStatus::Succeeded,
+                ($result['written'] ?? false) ? 'remote_written_verified' : 'already_verified'
+            );
+        } catch (WooCommerceTrackingConflictException $exception) {
+            $this->runs->finishItem(
+                $item, SyncRunItemStatus::Conflict, 'remote_tracking_conflict',
+                'remote_tracking_conflict', $exception->getMessage()
+            );
+        } catch (DomainException $exception) {
+            $this->runs->finishItem(
+                $item, SyncRunItemStatus::Skipped, 'not_eligible',
+                'not_eligible', $exception->getMessage()
+            );
+        } catch (Throwable $exception) {
+            $this->runs->finishItem(
+                $item, SyncRunItemStatus::Failed, 'manual_override_failed',
+                'manual_override_failed', $exception->getMessage()
+            );
+        }
+    }
+
     private function executePendingRecord(
         Model $item,
         Model $record,
@@ -255,12 +301,14 @@ final class SyncOrchestrationService
         try {
             if (! ctype_digit((string) $record->aggregate_id)) {
                 $this->runs->finishItem($item, SyncRunItemStatus::Skipped, 'aggregate_missing');
+
                 return;
             }
 
             $shipment = $this->repository->shipmentWithOrder((int) $record->aggregate_id);
             if (! $shipment?->order) {
                 $this->runs->finishItem($item, SyncRunItemStatus::Skipped, 'aggregate_missing');
+
                 return;
             }
 
@@ -279,6 +327,7 @@ final class SyncOrchestrationService
                     'Canonical Shipment truth changed after this outbox intent was created.',
                     $record->id,
                 );
+
                 return;
             }
 
@@ -356,12 +405,14 @@ final class SyncOrchestrationService
             $remote = $this->gateway->inspectTracking((int) $expected['provider_order_id']);
             if (! $remote['has_tracking']) {
                 $this->runs->finishItem($item, SyncRunItemStatus::Conflict, 'remote_missing');
+
                 return;
             }
 
             if ($remote['tracking_number'] === $expected['tracking_number']
                 && $remote['provider'] === $expected['provider_slug']) {
                 $this->runs->finishItem($item, SyncRunItemStatus::Succeeded, 'matched');
+
                 return;
             }
 

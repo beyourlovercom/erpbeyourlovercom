@@ -8,6 +8,7 @@ use App\Modules\Sync\Application\SyncOrchestrationService;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 final class LogisticsTrackingPushController
@@ -24,8 +25,11 @@ final class LogisticsTrackingPushController
         $data = $request->validate([
             'order_ids' => ['required', 'array', 'min:1', 'max:50'],
             'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'manual_override' => ['sometimes', 'boolean'],
         ]);
         $ids = array_map('intval', $data['order_ids']);
+        $manualOverride = (bool) ($data['manual_override'] ?? false);
+        abort_if($manualOverride && count($ids) !== 1, 422, '人工强制同步只能逐笔执行，批量同步仍走原安全规则。');
         if ((string) config('tracking_sync_v2.manual_mode') === 'canary') {
             // Fail closed even if manual Canary mode was enabled without any IDs.
             $allowed = array_values(array_unique(array_map(
@@ -44,29 +48,43 @@ final class LogisticsTrackingPushController
             $root = $order->fulfillment_parent_id ? $order->fulfillmentParent : $order;
             $source = $root?->source_type instanceof \BackedEnum
                 ? $root->source_type->value : (string) ($root?->source_type ?? '');
-            abort_unless($source === 'woocommerce', 422, '只允许同步 WooCommerce 来源订单');
+            if (! $manualOverride) {
+                abort_unless($source === 'woocommerce', 422, '只允许同步 WooCommerce 来源订单');
+            }
             $shipment = $order->shipment;
-            abort_unless(
-                $shipment?->shipment_status === 'shipped'
-                && filled($shipment->carrier)
-                && filled($shipment->tracking_number)
-                && $shipment->shipped_at !== null,
-                422,
-                '必须先完成发货并填写承运商、Tracking 和发货时间',
-            );
+            if ($manualOverride) {
+                abort_unless($shipment && filled($shipment->tracking_number), 422, '至少需要填写真实 Tracking 才能同步官网');
+            } else {
+                abort_unless(
+                    $shipment?->shipment_status === 'shipped'
+                    && filled($shipment->carrier)
+                    && filled($shipment->tracking_number)
+                    && $shipment->shipped_at !== null,
+                    422,
+                    '必须先完成发货并填写承运商、Tracking 和发货时间',
+                );
+            }
         }
 
         try {
-            $run = $this->orchestration->trackingSelected($ids, $request->user());
+            $run = $this->orchestration->trackingSelected($ids, $request->user(), manualOverride: $manualOverride);
+            $problem = DB::table('sync_run_items')
+                ->where('sync_run_id', $run->getKey())
+                ->whereIn('status', ['skipped', 'failed', 'conflict', 'retrying'])
+                ->orderBy('id')->first(['error_message', 'error_code', 'result_code']);
+            $problemText = trim((string) ($problem?->error_message ?: $problem?->error_code ?: ''));
+
             return back()->with(
-                $run->failed_items || $run->conflict_items || $run->retrying_items
+                $run->failed_items || $run->conflict_items || $run->retrying_items || $run->skipped_items
                     ? 'warning' : 'success',
                 sprintf(
-                    '官网物流同步：成功 %d，待重试 %d，冲突 %d，失败 %d。详情可在同步记录查看。',
+                    '官网物流同步：成功 %d，待重试 %d，冲突 %d，失败 %d，跳过 %d。%s',
                     (int) $run->succeeded_items,
                     (int) $run->retrying_items,
                     (int) $run->conflict_items,
                     (int) $run->failed_items,
+                    (int) $run->skipped_items,
+                    $problemText !== '' ? '原因：'.mb_strimwidth($problemText, 0, 280, '…') : '',
                 ),
             );
         } catch (DomainException $e) {

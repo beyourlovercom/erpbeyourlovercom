@@ -22,7 +22,7 @@ final class OrderWorkflowStatus
             'missing_info' => ['en' => 'Missing Info', 'zh' => '信息缺失', 'color' => 'amber', 'mutable' => true],
             'returned' => ['en' => 'Returned', 'zh' => '返回订单', 'color' => 'amber', 'mutable' => true],
             'shipping' => ['en' => 'Shipping', 'zh' => '运输中', 'color' => 'blue', 'mutable' => false],
-            'shared' => ['en' => 'Shared', 'zh' => '已经通知', 'color' => 'blue', 'mutable' => true],
+            'shared' => ['en' => 'Shared', 'zh' => '已通知', 'color' => 'blue', 'mutable' => true],
             'arrived' => ['en' => 'Arrived', 'zh' => '已收货', 'color' => 'green', 'mutable' => false],
             'creating' => ['en' => 'Creating', 'zh' => '创作沟通', 'color' => 'neutral', 'mutable' => true],
             'published' => ['en' => 'Published', 'zh' => '已发布', 'color' => 'green', 'mutable' => true],
@@ -61,6 +61,7 @@ final class OrderWorkflowStatus
         // Once staff advances to a post-shipment business phase (e.g. KOL creating/published),
         // that separately persisted workflow phase remains visible without changing canonical truth.
         $preShipment = $workflowStatus === null || in_array($workflowStatus, ['sending', 'sent'], true);
+
         return match ($canonicalStatus) {
             'cancelled' => 'cancelled',
             'shipped' => $preShipment ? 'shipped' : $workflowStatus,

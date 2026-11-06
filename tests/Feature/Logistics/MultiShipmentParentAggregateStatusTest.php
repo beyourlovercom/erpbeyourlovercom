@@ -51,6 +51,33 @@ final class MultiShipmentParentAggregateStatusTest extends TestCase
         $this->assertSame(['processing', 'completed', 'completed-delivered'], $gateway->statuses);
     }
 
+    public function test_manual_completed_marker_prevents_later_partial_auto_downgrade(): void
+    {
+        config([
+            'services.woocommerce.url' => 'https://shop.test',
+            'services.woocommerce.connection_key' => 'shop-a',
+        ]);
+        $gateway = new AggregateStatusFakeGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+
+        [$parent, $a, $b] = $this->splitScenario();
+        $this->shipment($a, 'shipped', 'USPS', 'TRACK-A');
+        $this->shipment($b, 'pending', null, null);
+        $parent->operationalMarkers()->create([
+            'marker' => 'woo_manual_force_completed',
+            'marked_at' => now(),
+        ]);
+
+        $result = app(WooCommerceOrderStatusOutboundService::class)->pushOne($a);
+        self::assertSame(ShipmentCompletionSemantics::PartiallyShipped, $result['aggregate']);
+        self::assertSame('completed', $result['woo_status']);
+        self::assertSame(['completed'], $gateway->statuses);
+        self::assertSame('pending_shipment', $parent->fresh()->order_status->value);
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id' => $parent->id, 'marker' => 'woo_manual_force_completed',
+        ]);
+    }
+
     public function test_unregistered_completed_delivered_status_is_terminal_and_does_not_retry(): void
     {
         config([

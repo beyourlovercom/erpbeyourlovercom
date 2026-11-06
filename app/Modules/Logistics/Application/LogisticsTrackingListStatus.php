@@ -11,7 +11,7 @@ final class LogisticsTrackingListStatus
      * Read-only one-query projection. Never treats a completed outbox for an
      * earlier Tracking number as proof that the current Shipment was synced.
      *
-     * @param list<int> $shipmentIds
+     * @param  list<int>  $shipmentIds
      * @return array<int, array{status:string,reason:?string}>
      */
     public function forShipments(array $shipmentIds): array
@@ -49,6 +49,31 @@ final class LogisticsTrackingListStatus
             ];
         }
 
+        // This explicit per-fulfillment marker proves a verified operator
+        // override even when an old automatic Outbox is pending/failed. The
+        // corresponding ManualSync must still be completed; Tracking changes
+        // reopen ManualSync so a stale marker alone cannot claim success.
+        $verified = DB::table('shipments as s')
+            ->join('order_operational_markers as m', 'm.order_id', '=', 's.order_id')
+            ->leftJoin('manual_syncs as ms', 'ms.order_id', '=', 's.order_id')
+            ->whereIn('s.id', $ids)
+            ->where('m.marker', 'woo_manual_tracking_verified')
+            ->get(['s.id', 's.tracking_number', 'ms.sync_note']);
+        foreach ($verified as $record) {
+            $id = (int) $record->id;
+            $result[$id] ??= ['status' => 'pending', 'reason' => null];
+            $fingerprint = 'verified_tracking_sha256:'.hash('sha256', trim((string) $record->tracking_number)).';';
+            if (str_starts_with((string) $record->sync_note, $fingerprint)) {
+                $result[$id]['verified_manual'] = true;
+            } else {
+                // A Tracking draft may change while Shipment remains pending.
+                // Never show previous manual success for a different number.
+                $result[$id]['status'] = 'pending';
+                $result[$id]['reason'] = 'Tracking 已变化，请重新同步官网';
+                $result[$id]['stale_manual_override'] = true;
+            }
+        }
+
         return $result;
     }
 
@@ -59,6 +84,13 @@ final class LogisticsTrackingListStatus
         // also accept serialized status strings from older callers.
         if ($manualSyncStatus instanceof ManualSyncStatus) {
             $manualSyncStatus = $manualSyncStatus->value;
+        }
+
+        if ($manualSyncStatus === 'completed' && ($outbox['verified_manual'] ?? false)) {
+            return ['status' => 'completed', 'reason' => null];
+        }
+        if ($outbox['stale_manual_override'] ?? false) {
+            return ['status' => 'pending', 'reason' => $outbox['reason'] ?? null];
         }
 
         // Canonical manual-sync state must agree before a completed badge is shown.
