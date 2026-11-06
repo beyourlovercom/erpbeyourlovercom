@@ -5,14 +5,14 @@ namespace App\Modules\Orders\Application;
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxTableReader;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
-use DateTimeImmutable;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Throwable;
@@ -20,21 +20,27 @@ use Throwable;
 final class OrderOmsBatchImport
 {
     public const MAX_ORDERS = 200;
+
     public const MAX_ROWS = 2000;
+
     public const MAX_ITEMS_PER_ORDER = 100;
+
     public const FIELDS = [
         'external_order_number', 'order_date', 'recipient_name', 'phone', 'country',
         'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code',
         'currency', 'order_note', 'sku', 'quantity', 'unit_price',
     ];
+
     private const ORDER_FIELDS = [
         'order_date', 'recipient_name', 'phone', 'country',
         'province_state', 'city', 'address_line_1', 'address_line_2',
         'postal_code', 'currency', 'order_note',
     ];
+
     private const ORDER_REQUIRED = [
         'order_date', 'recipient_name', 'country', 'province_state', 'city', 'address_line_1',
     ];
+
     private const LINE_REQUIRED = ['external_order_number', 'sku', 'quantity', 'unit_price'];
 
     public function __construct(
@@ -76,7 +82,7 @@ final class OrderOmsBatchImport
             ['订单资料', '只在这个订单首次出现的行填写地址、日期、币种、备注等；后续行留空继承；若重复填写却与首行不同将报错'],
             ['黄色表头', '必填；灰色表头可留空。不要删除、修改、重排第一行字段名称'],
             ['external_order_number', '同一个订单的所有 SKU 行必须是完全相同的来源订单号；不同订单使用不同号；不可与 ERP 已有订单重复'],
-            ['order_date', '填写 YYYY-MM-DD，例如 2026-11-05，勿使用 Excel 自动日期格式'],
+            ['order_date', '支持 YYYY-MM-DD、YYYY/MM/DD 和 Excel/WPS 日期格式，后台自动统一为 YYYY-MM-DD'],
             ['sku', '每个 XLSX 数据行一个 SKU；必须与 ERP 产品库中唯一 SKU 精确匹配'],
             ['quantity', '当前 SKU 的购买数量，必须为 1–99999 的正整数'],
             ['unit_price', '当前 SKU 商品单价，0 或正数，最多两位小数'],
@@ -93,7 +99,9 @@ final class OrderOmsBatchImport
         }
         $example = $book->createSheet();
         $example->setTitle('示例-勿上传');
-        foreach (self::FIELDS as $i => $name) $example->setCellValueExplicit([$i+1, 1], $name, DataType::TYPE_STRING);
+        foreach (self::FIELDS as $i => $name) {
+            $example->setCellValueExplicit([$i + 1, 1], $name, DataType::TYPE_STRING);
+        }
         $first = array_fill_keys(self::FIELDS, '');
         $first['external_order_number'] = 'DEMO-1001';
         $first['order_date'] = '2026-11-05';
@@ -120,13 +128,17 @@ final class OrderOmsBatchImport
         $third['unit_price'] = '29.00';
         foreach ([$first, $second, $third] as $index => $entry) {
             foreach (array_values($entry) as $j => $value) {
-                if ($value !== '') $example->setCellValueExplicit([$j+1, $index+2], (string) $value, DataType::TYPE_STRING);
+                if ($value !== '') {
+                    $example->setCellValueExplicit([$j + 1, $index + 2], (string) $value, DataType::TYPE_STRING);
+                }
             }
         }
         $example->getStyle('A1:O1')->getFont()->setBold(true);
         $example->getStyle('A1:O1')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF94A3B8');
         $example->getColumnDimension('A')->setWidth(26);
-        foreach (range('B', 'O') as $letter) $example->getColumnDimension($letter)->setWidth(18);
+        foreach (range('B', 'O') as $letter) {
+            $example->getColumnDimension($letter)->setWidth(18);
+        }
         $help->getColumnDimension('A')->setWidth(35);
         $help->getColumnDimension('B')->setWidth(100);
         $help->getStyle('A1:B1')->getFont()->setBold(true)->setSize(13);
@@ -134,11 +146,43 @@ final class OrderOmsBatchImport
         $tmp = tempnam(sys_get_temp_dir(), 'byl-oms-import-');
         try {
             (new Xlsx($book))->save($tmp);
+
             return (string) file_get_contents($tmp);
         } finally {
             @unlink($tmp);
             $book->disconnectWorksheets();
         }
+    }
+
+    /** Normalize Excel/WPS dates to ISO while rejecting impossible calendar dates. */
+    private static function normalizeOrderDate(string $raw): ?string
+    {
+        $raw = trim($raw);
+        if (preg_match('/^([12][0-9]{3})[-\/.]([0-9]{1,2})[-\/.]([0-9]{1,2})(?:\s+00:00(?::00)?)?$/D', $raw, $parts) === 1) {
+            $year = (int) $parts[1];
+            $month = (int) $parts[2];
+            $day = (int) $parts[3];
+            if (! checkdate($month, $day, $year)) {
+                return null;
+            }
+
+            return sprintf('%04d-%02d-%02d', $year, $month, $day);
+        }
+        if (preg_match('/^[0-9]{1,5}(?:\.0+)?$/D', $raw) === 1) {
+            $serial = (float) $raw;
+            if ($serial < 1 || $serial > 73050) {
+                return null;
+            }
+            try {
+                $date = ExcelDate::excelToDateTimeObject($serial);
+
+                return (int) $date->format('Y') >= 1900 ? $date->format('Y-m-d') : null;
+            } catch (Throwable) {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     /** @return array{count:int,row_count:int,valid_count:int,errors:list<array{row:int,message:string}>,preview:list<array<string,mixed>>,token:string|null,orders:list<array<string,mixed>>} */
@@ -153,8 +197,7 @@ final class OrderOmsBatchImport
             throw ValidationException::withMessages(['file' => '表头与最新的一行一 SKU 模板不一致。请重新下载模板。']);
         }
 
-        $rawRows = collect($parsed['rows'])->filter(fn (array $r): bool =>
-            collect($r['cells'])->contains(fn ($cell): bool => trim((string) $cell) !== '')
+        $rawRows = collect($parsed['rows'])->filter(fn (array $r): bool => collect($r['cells'])->contains(fn ($cell): bool => trim((string) $cell) !== '')
         )->values()->all();
         $rowCount = count($rawRows);
         if ($rowCount < 1 || $rowCount > self::MAX_ROWS) {
@@ -175,17 +218,33 @@ final class OrderOmsBatchImport
             $cells = array_replace(array_fill(0, count(self::FIELDS), ''), $raw['cells']);
             $entry = array_combine(self::FIELDS,
                 array_map(fn ($cell): string => trim((string) $cell), array_slice($cells, 0, count(self::FIELDS))));
+            // Normalize WPS/Excel date representations before comparing grouped
+            // order headers or handing data to the manual-order creation service.
+            if ($entry['order_date'] !== '') {
+                $normalizedDate = self::normalizeOrderDate($entry['order_date']);
+                if ($normalizedDate === null) {
+                    $errors[] = ['row' => $row,
+                        'message' => 'order_date 日期无效；支持 2026-10-10、2026/10/10 或 Excel/WPS 日期单元格'];
+                } else {
+                    $entry['order_date'] = $normalizedDate;
+                }
+            }
             $number = $entry['external_order_number'];
             if ($number === '') {
                 $errors[] = ['row' => $row, 'message' => '每个 SKU 行必须填写 external_order_number，用于归属同一张订单'];
+
                 continue;
             }
-            if (mb_strlen($number) > 128) $errors[] = ['row' => $row, 'message' => '来源订单号最多 128 字符'];
+            if (mb_strlen($number) > 128) {
+                $errors[] = ['row' => $row, 'message' => '来源订单号最多 128 字符'];
+            }
             $key = mb_strtolower($number);
             $rowGroups[$row] = $key;
             if (! isset($groups[$key])) {
                 foreach (self::ORDER_REQUIRED as $field) {
-                    if ($entry[$field] === '') $errors[] = ['row' => $row, 'message' => '该订单首行 '.$field.' 必填'];
+                    if ($entry[$field] === '') {
+                        $errors[] = ['row' => $row, 'message' => '该订单首行 '.$field.' 必填'];
+                    }
                 }
                 $groups[$key] = [
                     'row' => $row, 'external_order_number' => $number,
@@ -203,9 +262,13 @@ final class OrderOmsBatchImport
             }
 
             foreach (self::LINE_REQUIRED as $field) {
-                if ($entry[$field] === '') $errors[] = ['row' => $row, 'message' => $field.' 为每个 SKU 行必填'];
+                if ($entry[$field] === '') {
+                    $errors[] = ['row' => $row, 'message' => $field.' 为每个 SKU 行必填'];
+                }
             }
-            if (mb_strlen($entry['sku']) > 128) $errors[] = ['row' => $row, 'message' => 'SKU 最多 128 字符'];
+            if (mb_strlen($entry['sku']) > 128) {
+                $errors[] = ['row' => $row, 'message' => 'SKU 最多 128 字符'];
+            }
             if (! preg_match('/^[1-9][0-9]{0,4}$/', $entry['quantity']) || (int) $entry['quantity'] > 99999) {
                 $errors[] = ['row' => $row, 'message' => 'quantity 必须为 1–99999 的整数'];
             }
@@ -229,11 +292,11 @@ final class OrderOmsBatchImport
         foreach ($groups as $key => $group) {
             $fields = $group['order_fields'];
             $row = $group['row'];
-            $date = DateTimeImmutable::createFromFormat('!Y-m-d', $fields['order_date']);
-            if (! $date || $date->format('Y-m-d') !== $fields['order_date']) {
-                $errors[] = ['row' => $row, 'message' => 'order_date 必须为 YYYY-MM-DD'];
+            // The first row owns the canonical order date; later SKU rows may leave it blank.
+            if ($fields['order_date'] === '') {
+                $errors[] = ['row' => $row, 'message' => 'order_date 日期不能为空'];
             }
-            foreach (['recipient_name'=>255,'phone'=>64,'country'=>128,'province_state'=>128,'city'=>128,'address_line_1'=>255,'address_line_2'=>255,'postal_code'=>32,'order_note'=>5000] as $field=>$length) {
+            foreach (['recipient_name' => 255, 'phone' => 64, 'country' => 128, 'province_state' => 128, 'city' => 128, 'address_line_1' => 255, 'address_line_2' => 255, 'postal_code' => 32, 'order_note' => 5000] as $field => $length) {
                 if (mb_strlen($fields[$field]) > $length) {
                     $errors[] = ['row' => $row, 'message' => $field.' 超过最大长度 '.$length];
                 }
@@ -263,7 +326,7 @@ final class OrderOmsBatchImport
         }
 
         $products = Product::query()->whereIn('sku', array_keys($allSku))
-            ->get(['id','sku','name'])->groupBy('sku');
+            ->get(['id', 'sku', 'name'])->groupBy('sku');
         foreach ($orders as &$order) {
             foreach ($order['items'] as &$item) {
                 $matching = $products->get($item['sku']);
@@ -296,7 +359,9 @@ final class OrderOmsBatchImport
         $invalidGroups = [];
         foreach ($errors as $problem) {
             $key = $rowGroups[$problem['row']] ?? null;
-            if ($key !== null) $invalidGroups[$key] = true;
+            if ($key !== null) {
+                $invalidGroups[$key] = true;
+            }
         }
         $token = $errors === [] ? Crypt::encryptString(json_encode([
             'sha' => hash_file('sha256', $file->getRealPath()),
@@ -327,6 +392,7 @@ final class OrderOmsBatchImport
             || ! hash_equals((string) ($proof['sha'] ?? ''), (string) hash_file('sha256', $file->getRealPath()))) {
             throw ValidationException::withMessages(['token' => '文件已变化或预检已过期，请重新预检。']);
         }
+
         return DB::transaction(function () use ($file, $proof, $actor): array {
             $data = $this->inspect($file, $actor);
             if ($data['errors'] !== [] || $data['count'] !== (int) $proof['count']
@@ -357,6 +423,7 @@ final class OrderOmsBatchImport
                 }
                 $items = array_map(function (array $item): array {
                     unset($item['row']);
+
                     return $item;
                 }, $order['items']);
                 unset($order['items'], $order['row']);
@@ -368,6 +435,7 @@ final class OrderOmsBatchImport
                     ->update(['order_id' => $result->id, 'updated_at' => now()]);
                 $created[] = ['id' => (int) $result->id, 'erp_order_id' => $result->erp_order_id];
             }
+
             return ['created' => count($created), 'orders' => $created];
         });
     }

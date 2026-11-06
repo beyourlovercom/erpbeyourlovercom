@@ -11,6 +11,8 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
 use Tests\TestCase;
 
 final class OrderOmsBatchImportTest extends TestCase
@@ -35,11 +37,11 @@ final class OrderOmsBatchImportTest extends TestCase
         return $user;
     }
 
-    private function xlsx(string $externalNumber = 'R3-IMPORT-0001', string $sku = 'MF414A', string $qty = '2'): UploadedFile
+    private function xlsx(string $externalNumber = 'R3-IMPORT-0001', string $sku = 'MF414A', string $qty = '2', string $date = '2026-11-05'): UploadedFile
     {
         $entry = array_fill_keys(OrderOmsBatchImport::FIELDS, '');
         $entry['external_order_number'] = $externalNumber;
-        $entry['order_date'] = '2026-11-05';
+        $entry['order_date'] = $date;
         $entry['recipient_name'] = 'Test Customer';
         $entry['phone'] = '123456789';
         $entry['country'] = 'US';
@@ -56,7 +58,6 @@ final class OrderOmsBatchImportTest extends TestCase
         return UploadedFile::fake()->createWithContent('orders.xlsx', $bytes);
     }
 
-
     private function groupedXlsx(bool $conflict = false): UploadedFile
     {
         $parsed = app(ProviderXlsxTableReader::class)->read($this->xlsx());
@@ -66,15 +67,62 @@ final class OrderOmsBatchImportTest extends TestCase
         $second['sku'] = 'A1';
         $second['quantity'] = '1';
         $second['unit_price'] = '0.00';
-        if ($conflict) $second['city'] = 'Conflicting City';
+        if ($conflict) {
+            $second['city'] = 'Conflicting City';
+        }
         $third = $first;
         $third['external_order_number'] = 'R3-IMPORT-0002';
         $third['sku'] = 'A1';
         $third['quantity'] = '3';
         $third['unit_price'] = '29.00';
+
         return UploadedFile::fake()->createWithContent('order-lines.xlsx',
             app(ProviderXlsxWriter::class)->write('批量订单', OrderOmsBatchImport::FIELDS,
                 [array_values($first), array_values($second), array_values($third)]));
+    }
+
+    public function test_wps_and_excel_date_formats_normalize_without_creating_orders(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
+        $serial = (string) (int) Date::PHPToExcel(
+            new \DateTimeImmutable('2026-10-10')
+        );
+        foreach (['2026-10-10', '2026/10/10', '2026-10/10', '2026/10/10 00:00:00',
+            '2026/1/2', $serial] as $index => $value) {
+            $file = $this->xlsx('WPS-DATE-'.$index, date: $value);
+            $response = $this->actingAs($user)->post('/orders/oms/import/preview', [
+                'file' => $file,
+            ])->assertOk()->json();
+            $this->assertSame([], $response['errors'], 'Rejected valid WPS date: '.$value);
+            $this->assertNotNull($response['token']);
+
+            // The HTTP preview intentionally omits internal order payloads; assert
+            // the normalized date on the no-write inspection service itself.
+            $inspection = app(OrderOmsBatchImport::class)->inspect(
+                $this->xlsx('WPS-DATE-'.$index, date: $value), $user,
+            );
+            $this->assertSame(
+                $value === '2026/1/2' ? '2026-01-02' : '2026-10-10',
+                $inspection['orders'][0]['order_date'],
+            );
+        }
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('oms_order_import_batches', 0);
+    }
+
+    public function test_impossible_calendar_dates_are_rejected(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
+        foreach (['', '2026/02/30', '2026-13-01', '2026/10', 'not a date', '999999'] as $index => $value) {
+            $response = $this->actingAs($user)->post('/orders/oms/import/preview', [
+                'file' => $this->xlsx('WPS-BAD-'.$index, date: $value),
+            ])->assertOk()->json();
+            $this->assertNull($response['token']);
+            $this->assertNotEmpty($response['errors']);
+        }
+        $this->assertDatabaseCount('orders', 0);
     }
 
     public function test_multiple_sku_rows_with_same_order_number_create_one_canonical_order(): void
@@ -152,10 +200,10 @@ final class OrderOmsBatchImportTest extends TestCase
         $this->assertCount(3, $data['rows']);
         $numbers = array_column(array_map(fn ($row) => $row['cells'], $data['rows']), 0);
         sort($numbers);
-        $this->assertSame(['007-1106-SELECT1','007-1106-SELECT1','007-1106-SELECT2'], $numbers);
+        $this->assertSame(['007-1106-SELECT1', '007-1106-SELECT1', '007-1106-SELECT2'], $numbers);
         $skus = array_column(array_map(fn ($row) => $row['cells'], $data['rows']), 4);
         sort($skus);
-        $this->assertSame(['A1','A1','MF414A'], $skus);
+        $this->assertSame(['A1', 'A1', 'MF414A'], $skus);
         $csv = $this->actingAs($viewer)->get('/orders/oms/export?selected_order_ids='.$chosen.'&format=csv');
         $csv->assertOk();
         $this->assertCount(4, preg_split('/\\r?\\n/', trim($csv->streamedContent())));
@@ -196,9 +244,9 @@ final class OrderOmsBatchImportTest extends TestCase
             'order_date' => '2026-11-05', 'order_status' => 'pending_shipment', 'currency' => 'USD',
             'owner_id' => $user->id,
         ]);
-        $order->address()->create(['recipient_name'=>'Line Buyer','country'=>'US']);
-        $order->items()->create(['sku'=>'MF414A','product_summary'=>'Product One','quantity'=>2,'unit_price'=>'79.00','line_revenue'=>'158.00']);
-        $order->items()->create(['sku'=>'A1','product_summary'=>'Gift','quantity'=>1,'unit_price'=>'0.00','line_revenue'=>'0.00']);
+        $order->address()->create(['recipient_name' => 'Line Buyer', 'country' => 'US']);
+        $order->items()->create(['sku' => 'MF414A', 'product_summary' => 'Product One', 'quantity' => 2, 'unit_price' => '79.00', 'line_revenue' => '158.00']);
+        $order->items()->create(['sku' => 'A1', 'product_summary' => 'Gift', 'quantity' => 1, 'unit_price' => '0.00', 'line_revenue' => '0.00']);
 
         $xlsx = $this->actingAs($user)->get('/orders/oms/export?grid_order_number=40223');
         $xlsx->assertOk();
@@ -242,7 +290,7 @@ final class OrderOmsBatchImportTest extends TestCase
         $file = UploadedFile::fake()->createWithContent('template.xlsx', $result->getContent());
         $data = app(ProviderXlsxTableReader::class)->read($file);
         $this->assertSame(OrderOmsBatchImport::FIELDS, $data['headers']);
-        $book = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getRealPath());
+        $book = IOFactory::load($file->getRealPath());
         $this->assertSame(['批量订单导入', '使用说明', '示例-勿上传'], $book->getSheetNames());
         $example = $book->getSheetByName('示例-勿上传');
         $this->assertSame('DEMO-1001', $example->getCell('A2')->getValue());
