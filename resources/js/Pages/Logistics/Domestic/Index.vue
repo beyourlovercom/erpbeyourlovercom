@@ -6,7 +6,7 @@ import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowSta
 
 type Item = { sku:string|null; quantity:number }
 type Row = {
-  line:number; order_id:number; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null
+  line:number; order_id:number; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
   workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
@@ -46,7 +46,7 @@ const pushTracking = (ids:number[], manualOverride = false) => {
     onFinish:()=>{trackingBusy.value=false},
   })
 }
-const trackingLabel = (status:string|null|undefined) => status==='completed'?'已同步':status==='failed'?'失败':status==='retry_wait'?'待重试':status==='processing'?'同步中':'待同步'
+const trackingLabel = (status:string|null|undefined) => status==='completed'?'已同步':status==='failed'?'失败':status==='retry_wait'?'待重试':status==='processing'?'同步中':status==='partial'?'部分同步':'待同步'
 // Saving a Tracking draft does not ship. Physical dispatch requires explicit confirmation.
 const inlineTracking = ref<Record<number,string>>({})
 const inlineBusy = ref<Record<number,boolean>>({})
@@ -168,8 +168,6 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         </div>
         <div class="domestic-head-actions">
           <a class="secondary" href="/logistics/wait-stock">待分配 →</a>
-          <button v-if="canTrackingSync" class="primary" type="button" :disabled="trackingSelection.length===0 || trackingBusy"
-            @click="pushTracking(trackingSelection)">{{ trackingBusy ? '同步中…' : '同步官网物流' }}</button>
         </div>
       </header>
 
@@ -275,9 +273,9 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               </td>
               <td>{{ row.recipient_name ?? '—' }}</td><td :class="{danger:!row.phone}">{{ row.phone || '缺电话' }}</td>
               <td>{{ [row.country,row.state,row.city].filter(Boolean).join(' / ') || '—' }}</td><td>{{ itemText(row) }} <button v-if="europeanCountries.has((row.country ?? '').toUpperCase())" type="button" class="secondary" :disabled="barcodeLoading" @click="showBarcode(row)">69条码</button><div v-if="barcodePreview?.orderId===row.order_id" class="barcode-preview"><div v-for="item in barcodePreview.items" :key="item.sku">{{ item.sku }} × {{ item.quantity }}：{{ item.barcode_69 }}</div></div><small v-if="barcodeError && barcodeErrorOrderId===row.order_id && !barcodeLoading" class="danger">{{ barcodeError }}</small></td>
-              <td><span v-if="row.source_type==='woocommerce'" class="sync-status" :title="row.tracking_sync_reason??''" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="sync-failure">{{ row.tracking_sync_reason }}</small></td>
-              <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row)" type="button" class="secondary"
-                :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">同步官网物流</button><span v-else>—</span></td>
+              <td><span v-if="row.source_type==='woocommerce'" class="sync-status" :title="[row.tracking_sync_reason, row.tracking_sync_verified_at ? '最近官网验证：' + new Date(row.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12:false }) : '尚无官网验证记录'].filter(Boolean).join('；')" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="sync-failure">{{ row.tracking_sync_reason }}</small></td>
+              <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row) && row.tracking_sync_status !== 'completed'" type="button" class="secondary"
+                :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">{{ (['failed','retry_wait'].includes(row.tracking_sync_status ?? '') || !!row.tracking_sync_reason) ? '重新同步' : '同步官网物流' }}</button><span v-else>—</span></td>
             </tr>
             <tr v-if="!rows.data.length"><td :colspan="14+(canTrackingSync?2:0)" class="empty">当前视图暂无订单</td></tr>
           </tbody>

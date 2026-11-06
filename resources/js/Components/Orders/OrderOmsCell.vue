@@ -10,9 +10,9 @@ type Order = {
   _is_additional_item?: boolean;
   id: number; erp_order_id: string | null; order_kind?: string;
   source_label?: string; external_order_number?: string;
-  workflow_status_projection?: Workflow; workflow_revision?: number
+  workflow_status_projection?: Workflow; workflow_revision?: number; tracking_sync_status?: string | null; tracking_sync_label?: string | null; tracking_sync_reason?: string | null
 }
-type Params = ICellRendererParams & { mode?: 'number' | 'status' | 'action'; options?: Option[]; canEdit?: boolean }
+type Params = ICellRendererParams & { mode?: 'number' | 'status' | 'action' | 'sync'; options?: Option[]; canEdit?: boolean }
 const props = defineProps<{ params: Params }>()
 const order = computed(() => props.params.data as Order | undefined)
 const href = computed(() => order.value?.order_kind === 'kol_fulfillment'
@@ -36,6 +36,7 @@ const sourceTitle = computed(() => order.value?.source_label === 'WooCommerce' &
       />
       <span v-else>—</span>
     </template>
+    <template v-else-if="order && params.mode === 'sync'"><span v-if="order.tracking_sync_status" class="oms-sync-pill" :class="order.tracking_sync_status" :title="order.tracking_sync_reason ?? ''">{{ order.tracking_sync_label ?? '—' }}</span><span v-else>—</span></template>
     <Link v-else-if="order" :href="href" class="oms-order-link" :title="sourceTitle || label">
       {{ params.mode === 'action' ? '查看' : label }}
     </Link>
@@ -47,4 +48,5 @@ const sourceTitle = computed(() => order.value?.source_label === 'WooCommerce' &
 .oms-order-link{color:#155dfb;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .oms-order-link:hover{text-decoration:underline}
 .oms-item-followup{color:#cbd5e1}
+.oms-sync-pill{display:inline-flex;align-items:center;padding:3px 7px;border-radius:5px;font-size:11px;font-weight:700;background:#fff1d6;color:#92400e;white-space:nowrap}.oms-sync-pill.completed{background:#dcfce7;color:#166534}.oms-sync-pill.failed{background:#fee2e2;color:#991b1b}.oms-sync-pill.retry_wait{background:#fef3c7;color:#92400e}.oms-sync-pill.processing{background:#dbeafe;color:#1d4ed8}.oms-sync-pill.partial{background:#fef3c7;color:#92400e}
 </style>

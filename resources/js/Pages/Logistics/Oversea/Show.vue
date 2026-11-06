@@ -41,7 +41,7 @@ type ShipOutStatus = {
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
-  progress:string; note:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; shipped_at?:string|null; items:Item[]
+  progress:string; note:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
   web_draft?:WebDraft|null
   shipout_production?:ShipOutDispatchState|null
 }
@@ -99,7 +99,7 @@ const pushTracking = (ids:number[], manualOverride = false) => {
     onFinish:()=>{trackingBusy.value=false},
   })
 }
-const trackingLabel=(status:string|null|undefined)=>status==='completed'?'已同步':status==='failed'?'失败':status==='retry_wait'?'待重试':status==='processing'?'同步中':'待同步'
+const trackingLabel=(status:string|null|undefined)=>status==='completed'?'已同步':status==='failed'?'失败':status==='retry_wait'?'待重试':status==='processing'?'同步中':status==='partial'?'部分同步':'待同步'
 const drafts = reactive<Record<number,{ note:string; carrier:string; service:string; tracking_number:string }>>({})
 const trackingFileInput = ref<HTMLInputElement|null>(null)
 const trackingPreviewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 20) ?? [])
@@ -752,9 +752,6 @@ const compactPages = computed<(number|string)[]>(() => {
             :href="warehousePortal.href" target="_blank" rel="noopener noreferrer">
             {{ warehousePortal.label }} <span aria-hidden="true">↗</span>
           </a>
-          <button v-if="canTrackingSync" type="button" class="file-button primary"
-            :disabled="!trackingSelection.length || trackingBusy" @click="pushTracking(trackingSelection)">
-            {{ trackingBusy?'同步中…':'同步官网物流' }}</button>
           <template v-if="warehouse && view === 'pending'">
           <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button" :disabled="refreshBusy" @click="refreshOmsStatuses">{{refreshBusy?'查询中…':'刷新仓库状态'}}</button>
           <a v-if="warehouseKey === 'us-3sm'" class="file-button file-link" href="https://oms.xlwms.com/warehouse/packet" target="_blank" rel="noopener noreferrer">查看仓库草稿箱</a>
@@ -948,9 +945,9 @@ const compactPages = computed<(number|string)[]>(() => {
                 <template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template>
                 <template v-else>{{ itemText(row) }}</template>
               </td>
-              <td><span v-if="row.source_type==='woocommerce'" class="tracking-sync-status" :title="row.tracking_sync_reason??''" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="tracking-sync-failure">{{ row.tracking_sync_reason }}</small></td>
-              <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row)" class="file-button"
-                type="button" :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">同步官网物流</button><span v-else>—</span></td>
+              <td><span v-if="row.source_type==='woocommerce'" class="tracking-sync-status" :title="[row.tracking_sync_reason, row.tracking_sync_verified_at ? '最近官网验证：' + new Date(row.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12:false }) : '尚无官网验证记录'].filter(Boolean).join('；')" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="tracking-sync-failure">{{ row.tracking_sync_reason }}</small></td>
+              <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row) && row.tracking_sync_status !== 'completed'" class="file-button"
+                type="button" :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">{{ (['failed','retry_wait'].includes(row.tracking_sync_status ?? '') || !!row.tracking_sync_reason) ? '重新同步' : '同步官网物流' }}</button><span v-else>—</span></td>
               <td class="settings-spacer" aria-hidden="true"></td>
             </tr>
             <tr v-if="!rows.data.length"><td :colspan="grid.visibleColumns.length + (['us-3sm','us-moreplus'].includes(warehouseKey) ? 3 : 2) + 1 + (canTrackingSync?2:0)" class="empty-cell">当前视图暂无订单</td></tr>

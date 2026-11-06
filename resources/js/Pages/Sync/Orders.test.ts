@@ -37,11 +37,11 @@ describe('Sync tracking outbound UI', () => {
     expect(wrapper.text()).not.toContain('WOO-1')
   })
 
-  it('shows one-click outbound only for eligible Woo shipped orders', async () => {
+  it('offers the legacy outbound action only for shipped Woo orders with Tracking', async () => {
     const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
-    expect(wrapper.text()).toContain('Tracking 写回')
-    expect(wrapper.text()).toContain('未执行')
-    const button = wrapper.findAll('button').find((item) => item.text() === '写回 Tracking')
+    expect(wrapper.text()).toContain('官网物流')
+    expect(wrapper.text()).toContain('待同步')
+    const button = wrapper.findAll('button').find((item) => item.text() === '同步官网物流')
     expect(button?.exists()).toBe(true)
     await button!.trigger('click')
     expect(post).toHaveBeenCalledWith('/sync/orders/1/tracking-outbound')
@@ -49,9 +49,9 @@ describe('Sync tracking outbound UI', () => {
 
   it('hides outbound action for non-Woo or unshipped orders', () => {
     const manual = { ...woo, id: 2, source_type: 'manual' }
-    const unshipped = { ...woo, id: 3, shipment_status: 'pending' }
+    const unshipped = { ...woo, id: 3, shipment_status: 'pending', tracking_number: null }
     const wrapper = mount(Orders, { props: { orders: [manual, unshipped], filters: {} } })
-    expect(wrapper.findAll('button').filter((item) => item.text() === '写回 Tracking')).toHaveLength(0)
+    expect(wrapper.findAll('button').filter((item) => item.text() === '同步官网物流')).toHaveLength(0)
   })
 
   it('renders retry and completed outbox states explicitly', () => {
@@ -61,6 +61,15 @@ describe('Sync tracking outbound UI', () => {
     expect(wrapper.text()).toContain('待重试')
     expect(wrapper.text()).toContain('已完成')
   })
+  it('hides the sync action after verified success and restores retry after a failure', () => {
+    const verified = { ...woo, id: 8, tracking_sync_status: 'completed' }
+    const failed = { ...woo, id: 9, tracking_sync_status: 'failed', tracking_sync_reason: 'Woo write failed' }
+    const wrapper = mount(Orders, { props: { orders: [verified, failed], filters: {} } })
+    expect(wrapper.findAll('button').filter((item) => item.text() === '同步官网物流')).toHaveLength(0)
+    expect(wrapper.findAll('button').filter((item) => item.text() === '重新同步')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Woo write failed')
+  })
+
   it('posts selected and orchestration actions to canonical routes', async () => {
     const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
     await wrapper.find('input[type="checkbox"]').setValue(true)

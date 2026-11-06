@@ -2,12 +2,15 @@
 
 namespace App\Modules\Sync\Experience\Controllers;
 
+use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\ManualSyncService;
 use App\Modules\Sync\Application\SyncOrchestrationService;
 use App\Modules\Sync\Application\WooOrderSyncHealthReader;
 use App\Modules\Sync\Infrastructure\Models\SyncOutbox;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -21,7 +24,7 @@ final class ManualSyncController
 
     public function index(Request $request): Response
     {
-        $orders = Order::query()->with(['address', 'manualSync.operator', 'shipment'])
+        $orders = Order::query()->with(['address', 'manualSync.operator', 'shipment', 'fulfillmentParent'])
             ->whereHas('manualSync', function ($query) use ($request): void {
                 $query->when($request->input('status'), fn ($statusQuery, string $status) => $statusQuery->where('website_sync_status', $status));
             })
@@ -41,6 +44,10 @@ final class ManualSyncController
             ->get()
             ->unique('aggregate_id')
             ->keyBy('aggregate_id');
+
+        $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments(
+            $orders->map(fn (Order $order): int => (int) $order->shipment?->id)->all()
+        );
 
         $recentRuns = $this->orchestration->recentRuns(10);
 
@@ -62,28 +69,39 @@ final class ManualSyncController
                 'skipped_items' => $run->skipped_items,
                 'started_at' => $run->started_at?->toIso8601String(),
             ])->values()->all(),
-            'orders' => $orders->map(fn (Order $order): array => [
-                'id' => $order->id, 'erp_order_id' => $order->erp_order_id, 'external_order_number' => $order->external_order_number,
-                'recipient_name' => $order->address?->recipient_name,
-                'status' => $order->manualSync?->website_sync_status->value,
-                'synced_at' => $order->manualSync?->synced_at?->toIso8601String(),
-                'synced_by' => $order->manualSync?->synced_by,
-                'tracking_number' => $order->shipment?->tracking_number,
-                'shipment_status' => $order->shipment?->shipment_status,
-                'carrier' => $order->shipment?->carrier,
-                'source_type' => $order->source_type->value,
-                'tracking_outbound_status' => $order->shipment
-                    ? $trackingOutbox->get((string) $order->shipment->id)?->status?->value
-                    : null,
-                'tracking_outbound_attempts' => $order->shipment
-                    ? $trackingOutbox->get((string) $order->shipment->id)?->attempts
-                    : null,
-            ])->values()->all(),
+            'orders' => $orders->map(function (Order $order) use ($trackingStatuses): array {
+                $trackingState = app(LogisticsTrackingListStatus::class)->currentStatus(
+                    $trackingStatuses[(int) $order->shipment?->id] ?? null, $order->manualSync?->website_sync_status
+                );
+                $rootSource = $order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type;
+                $rootSourceType = $rootSource instanceof \BackedEnum ? $rootSource->value : (string) $rootSource;
+
+                return [
+                    'id' => $order->id, 'erp_order_id' => $order->erp_order_id, 'external_order_number' => $order->external_order_number,
+                    'recipient_name' => $order->address?->recipient_name,
+                    'status' => $order->manualSync?->website_sync_status->value,
+                    'synced_at' => $order->manualSync?->synced_at?->toIso8601String(),
+                    'synced_by' => $order->manualSync?->synced_by,
+                    'tracking_number' => $order->shipment?->tracking_number,
+                    'shipment_status' => $order->shipment?->shipment_status,
+                    'carrier' => $order->shipment?->carrier,
+                    'source_type' => $rootSourceType,
+                    'tracking_outbound_status' => $order->shipment
+                        ? $trackingOutbox->get((string) $order->shipment->id)?->status?->value
+                        : null,
+                    'tracking_outbound_attempts' => $order->shipment
+                        ? $trackingOutbox->get((string) $order->shipment->id)?->attempts
+                        : null,
+                    'tracking_sync_status' => $trackingState['status'],
+                    'tracking_sync_reason' => $trackingState['reason'],
+                    'tracking_sync_verified_at' => $trackingState['verified_at'] ?? null,
+                ];
+            })->values()->all(),
             'filters' => $request->only(['status', 'search']),
         ]);
     }
 
-    public function payload(Order $order): \Illuminate\Http\JsonResponse
+    public function payload(Order $order): JsonResponse
     {
         $order->load(['address', 'items', 'shipment']);
 
@@ -91,7 +109,7 @@ final class ManualSyncController
             'order_number' => $order->erp_order_id,
             'erp_order_id' => $order->erp_order_id,
             'external_order_number' => $order->external_order_number,
-            'source_type' => $order->source_type->value,
+            'source_type' => $rootSourceType,
             'order_date' => $order->order_date?->toDateString(),
             'recipient' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code']),
             'items' => $order->items->map(fn ($item): array => $item->only(['product_summary', 'sku', 'quantity', 'unit_price']))->values(),
@@ -101,7 +119,7 @@ final class ManualSyncController
         ]);
     }
 
-    public function complete(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    public function complete(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate(['sync_note' => ['nullable', 'string', 'max:5000']]);
         $this->sync->complete($order, $request->user(), $data['sync_note'] ?? null);
@@ -109,7 +127,7 @@ final class ManualSyncController
         return back()->with('success', '人工同步已完成');
     }
 
-    public function reopen(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    public function reopen(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate(['sync_note' => ['nullable', 'string', 'max:5000']]);
         $this->sync->reopen($order, $request->user(), $data['sync_note'] ?? null);
@@ -117,7 +135,7 @@ final class ManualSyncController
         return back()->with('success', '人工同步已重开');
     }
 
-    public function return(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    public function return(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate(['sync_note' => ['nullable', 'string', 'max:5000']]);
         $this->sync->returnForCorrection($order, $request->user(), $data['sync_note'] ?? null);

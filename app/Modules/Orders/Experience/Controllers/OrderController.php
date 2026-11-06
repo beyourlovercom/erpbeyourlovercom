@@ -16,20 +16,20 @@ use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
 use App\Modules\Orders\Application\KolOrderAccessScope;
+use App\Modules\Orders\Application\OrderAuxiliaryStatusService;
 use App\Modules\Orders\Application\OrderItemAmendmentPreflight;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderOmsAvailability;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
+use App\Modules\Orders\Application\OrderProgressTransitionService;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderWorkflowStatus;
-use App\Modules\Orders\Application\OrderProgressTransitionService;
-use App\Modules\Orders\Application\OrderAuxiliaryStatusService;
-
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Application\WooCommerceAdminOrderLink;
@@ -99,7 +99,9 @@ final class OrderController
                 $raw = $request->query($key);
                 if (is_string($raw)) {
                     $value = mb_substr(trim($raw), 0, 80);
-                    if ($value !== '') $gridColumnFilters[$key] = $value;
+                    if ($value !== '') {
+                        $gridColumnFilters[$key] = $value;
+                    }
                 }
             }
             $filters['oms_grid_columns'] = $gridColumnFilters;
@@ -115,10 +117,15 @@ final class OrderController
             ? ($request->user()->can('customers.export') && $request->user()->can('system.permissions.manage'))
             : $request->user()->can('orders.view');
 
+        $orders->getCollection()->loadMissing(['shipment', 'manualSync', 'fulfillmentParent']);
+        $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments(
+            $orders->getCollection()->map(fn (Order $order): int => (int) $order->shipment?->id)->all()
+        );
+
         return Inertia::render('Orders/Index', [
             'orderKind' => $kind?->value ?? 'all',
             'orderScope' => $scope === 'external_warehouse' ? 'external_warehouse' : 'all',
-            'orders' => $orders->through(fn (Order $order): array => $this->orderData($order))->toArray(),
+            'orders' => $orders->through(fn (Order $order): array => $this->orderData($order, $trackingStatuses[(int) $order->shipment?->id] ?? null))->toArray(),
             'filters' => [
                 ...$request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']),
                 ...($omsGridEnabled ? ['sort' => $sort, 'direction' => $direction, 'per_page' => $allRowsAllowed ? 'all' : (string) $orders->perPage(), 'oms_grid' => '1', ...$gridColumnFilters] : []),
@@ -564,6 +571,7 @@ final class OrderController
         abort_if($order->isOperationallyArchived(), 409, '归档订单不可修改辅助标记。');
         $data = $request->validate(['expected_workflow_revision' => ['required', 'integer', 'min:0']]);
         $updated = $this->auxiliaryStatuses->remove($order, $code, (int) $data['expected_workflow_revision'], $request->user());
+
         return response()->json(['order' => $this->orderData($updated), 'workflow_status' => $this->workflowProjection($updated)]);
     }
 
@@ -629,9 +637,14 @@ final class OrderController
         abort_if($order->archived_at !== null && ! $request->user()?->can('system.permissions.manage'), HttpResponse::HTTP_NOT_FOUND);
     }
 
-    private function orderData(Order $order): array
+    private function orderData(Order $order, ?array $trackingOutbox = null): array
     {
         $workflowProjection = $this->workflowProjection($order);
+        $trackingSource = $order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type;
+        $trackingSourceValue = $trackingSource instanceof \BackedEnum ? $trackingSource->value : (string) $trackingSource;
+        $trackingSync = $order->shipment && $trackingSourceValue === 'woocommerce'
+            ? app(LogisticsTrackingListStatus::class)->currentStatus($trackingOutbox, $order->manualSync?->website_sync_status)
+            : ['status' => null, 'reason' => null];
 
         return [
             'id' => $order->id,
@@ -668,6 +681,12 @@ final class OrderController
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code']),
             'items' => $order->items->map(fn ($item): array => $item->only(['id', 'product_id', 'product_summary', 'sku', 'quantity', 'unit_price', 'line_revenue']))->values()->all(),
+            'tracking_sync_status' => $trackingSync['status'],
+            'tracking_sync_reason' => $trackingSync['reason'],
+            'tracking_sync_verified_at' => $trackingSync['verified_at'] ?? null,
+            'tracking_sync_label' => match ($trackingSync['status']) {
+                'completed' => '已同步', 'failed' => '失败', 'retry_wait' => '待重试', 'processing' => '同步中', default => $trackingSourceValue === 'woocommerce' && filled($order->shipment?->tracking_number) ? '待同步' : '—'
+            },
             'shipment' => $order->shipment ? [
                 ...$order->shipment->only(['shipment_status', 'warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note', 'handled_by']),
                 'warehouse_name' => $order->shipment->warehouse?->name,
