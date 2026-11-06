@@ -82,8 +82,12 @@ final class OrderOmsBatchImportTest extends TestCase
         $user = $this->userWith(['orders.view', 'orders.create']);
         Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
         Product::query()->create(['sku' => 'A1', 'name' => 'Accessory']);
+        // The preview and confirmation must upload byte-identical files.
+        // Regenerating an XLSX changes ZIP metadata and invalidates the strict token.
+        $generated = $this->groupedXlsx();
+        $xlsxBytes = file_get_contents($generated->getRealPath());
         $preview = $this->actingAs($user)->post('/orders/oms/import/preview', [
-            'file' => $this->groupedXlsx(),
+            'file' => UploadedFile::fake()->createWithContent('order-lines.xlsx', $xlsxBytes),
         ])->assertOk()->json();
         $this->assertSame(2, $preview['count']);
         $this->assertSame(3, $preview['row_count']);
@@ -94,7 +98,8 @@ final class OrderOmsBatchImportTest extends TestCase
         $this->assertSame(3, $preview['preview'][0]['order_total_quantity']);
         $this->assertDatabaseCount('orders', 0);
         $result = $this->actingAs($user)->post('/orders/oms/import/confirm', [
-            'file' => $this->groupedXlsx(), 'token' => $preview['token'], 'confirm' => '1',
+            'file' => UploadedFile::fake()->createWithContent('order-lines.xlsx', $xlsxBytes),
+            'token' => $preview['token'], 'confirm' => '1',
         ])->assertOk()->json();
         $this->assertSame(2, $result['created']);
         $first = Order::query()->where('external_order_number', 'R3-IMPORT-0001')->firstOrFail();
@@ -192,15 +197,18 @@ final class OrderOmsBatchImportTest extends TestCase
     {
         $user = $this->userWith(['orders.view', 'orders.create']);
         Product::query()->create(['sku' => 'MF414A', 'name' => 'MF414A Sample', 'is_active' => true]);
+        $generated = $this->xlsx();
+        $xlsxBytes = file_get_contents($generated->getRealPath());
         $result = $this->actingAs($user)->post('/orders/oms/import/preview', [
-            'file' => $this->xlsx(),
+            'file' => UploadedFile::fake()->createWithContent('orders.xlsx', $xlsxBytes),
         ])->assertOk()->json();
         $this->assertSame(1, $result['count']);
         $this->assertSame([], $result['errors']);
         $this->assertNotEmpty($result['token']);
         $this->assertDatabaseCount('orders', 0); // Preview must never create.
         $created = $this->actingAs($user)->post('/orders/oms/import/confirm', [
-            'file' => $this->xlsx(), 'token' => $result['token'], 'confirm' => '1',
+            'file' => UploadedFile::fake()->createWithContent('orders.xlsx', $xlsxBytes),
+            'token' => $result['token'], 'confirm' => '1',
         ])->assertOk()->json();
         $this->assertSame(1, $created['created']);
         $order = Order::query()->where('external_order_number', 'R3-IMPORT-0001')->firstOrFail();
@@ -211,7 +219,8 @@ final class OrderOmsBatchImportTest extends TestCase
         $this->assertSame('MF414A', $order->items()->firstOrFail()->sku);
         $this->assertSame('Test Customer', $order->address?->recipient_name);
         $response = $this->actingAs($user)->post('/orders/oms/import/confirm', [
-            'file' => $this->xlsx(), 'token' => $result['token'], 'confirm' => '1',
+            'file' => UploadedFile::fake()->createWithContent('orders.xlsx', $xlsxBytes),
+            'token' => $result['token'], 'confirm' => '1',
         ]);
         $response->assertUnprocessable();
         $this->assertDatabaseCount('orders', 1);
