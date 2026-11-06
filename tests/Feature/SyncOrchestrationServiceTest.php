@@ -212,6 +212,7 @@ final class OrchestrationFakeGateway implements WooCommerceTrackingGateway
         string $trackingNumber,
         string $shipDate,
         array $lineItems = [],
+        bool $allowProtectedStatus = false,
     ): array {
         $this->writeCalls++;
         if ($this->failWrites) {
@@ -221,7 +222,7 @@ final class OrchestrationFakeGateway implements WooCommerceTrackingGateway
         return ['written' => true, 'verified' => true];
     }
 
-    public function syncOrderStatus(int $providerOrderId, string $status): array
+    public function syncOrderStatus(int $providerOrderId, string $status, bool $allowProtectedStatus = false): array
     {
         return ['written' => true, 'verified' => true, 'status' => $status];
     }

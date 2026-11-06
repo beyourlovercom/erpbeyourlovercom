@@ -22,8 +22,9 @@ interface WooCommerceTrackingGateway
         string $trackingNumber,
         string $shipDate,
         array $lineItems = [],
+        bool $allowProtectedStatus = false,
     ): array;
 
     /** @return array{written:bool,verified:bool,status:string} */
-    public function syncOrderStatus(int $providerOrderId, string $status): array;
+    public function syncOrderStatus(int $providerOrderId, string $status, bool $allowProtectedStatus = false): array;
 }

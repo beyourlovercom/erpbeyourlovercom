@@ -329,6 +329,7 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         string $trackingNumber,
         string $shipDate,
         array $lineItems = [],
+        bool $allowProtectedStatus = false,
     ): array {
         $this->calls++;
 
@@ -342,7 +343,7 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         return ['written' => true, 'verified' => true];
     }
 
-    public function syncOrderStatus(int $providerOrderId, string $status): array
+    public function syncOrderStatus(int $providerOrderId, string $status, bool $allowProtectedStatus = false): array
     {
         $this->statusCalls++;
         if ($this->statusFail) {

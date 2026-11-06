@@ -38,7 +38,11 @@ final class WooCommerceOrderStatusOutboundService
             return ['status' => 'reference_missing', 'aggregate' => $aggregate['aggregate'], 'woo_status' => $aggregate['woo_status']];
         }
         $providerOrderId = (int) $reference->reference;
-        $wooStatus = (string) $aggregate['woo_status'];
+        // Owner-approved manual completed override on a split parent must not
+        // be rolled back to processing by later partial-shipment auto sync.
+        $manualCompleted = $root->operationalMarkers()
+            ->where('marker', 'woo_manual_force_completed')->exists();
+        $wooStatus = $manualCompleted ? 'completed' : (string) $aggregate['woo_status'];
         $fingerprint = hash('sha256', implode('|', [$connectionKey, $providerOrderId, $aggregate['aggregate'], $wooStatus, $aggregate['state_fingerprint']]));
         $record = $this->outbox->enqueue([
             'idempotency_key' => 'woo-order-status:'.$fingerprint,
@@ -74,6 +78,7 @@ final class WooCommerceOrderStatusOutboundService
             if (! ($remote['verified'] ?? false)) {
                 return ['status' => 'failed', 'aggregate' => $aggregate['aggregate'], 'woo_status' => $wooStatus, 'outbox' => $record];
             }
+
             return [
                 'status' => 'completed', 'aggregate' => $aggregate['aggregate'],
                 'woo_status' => $wooStatus, 'outbox' => $record,

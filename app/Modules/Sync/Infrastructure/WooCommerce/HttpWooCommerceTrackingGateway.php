@@ -54,6 +54,7 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         string $trackingNumber,
         string $shipDate,
         array $lineItems = [],
+        bool $allowProtectedStatus = false,
     ): array {
         if (! $this->configured()) {
             throw new RuntimeException('WooCommerce connection is not configured.');
@@ -61,13 +62,24 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
 
         $before = $this->readOrder($providerOrderId);
         $currentStatus = strtolower(trim((string) ($before['status'] ?? '')));
-        if (in_array($currentStatus, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
+        if (! $allowProtectedStatus && in_array($currentStatus, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
             throw new WooCommerceTrackingConflictException(
                 'WooCommerce order has a protected status; Tracking changes are blocked.'
             );
         }
         $state = $this->trackingState($before);
         $resolvedLineItems = $this->resolveRemoteLineItems($before, $lineItems);
+        if ($lineItems === []) {
+            // An existing package with this exact carrier and Tracking must
+            // retain its original line-item bindings on a repeat manual push.
+            foreach ($state['items'] as $existing) {
+                if (is_array($existing) && (string) ($existing['tracking_number'] ?? '') === $trackingNumber
+                    && (string) ($existing['slug'] ?? '') === $providerSlug) {
+                    $resolvedLineItems = $this->lineBindings($existing);
+                    break;
+                }
+            }
+        }
         $trackingItem = $this->trackingItem($providerSlug, $trackingNumber, $shipDate, $resolvedLineItems);
         $trackingId = (string) $trackingItem['tracking_id'];
         $items = $state['items'];
@@ -146,7 +158,7 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         return ['written' => true, 'verified' => true, 'package_count' => count($afterState['items'])];
     }
 
-    public function syncOrderStatus(int $providerOrderId, string $status): array
+    public function syncOrderStatus(int $providerOrderId, string $status, bool $allowProtectedStatus = false): array
     {
         if (! $this->configured()) {
             throw new RuntimeException('WooCommerce connection is not configured.');
@@ -161,7 +173,7 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         if ($current === $status) {
             return ['written' => false, 'verified' => true, 'status' => $status];
         }
-        if (in_array($current, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
+        if (! $allowProtectedStatus && in_array($current, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
             throw new WooCommerceOrderStatusUnsupportedException(
                 'WooCommerce has a protected status; manual status reconciliation was blocked.'
             );
@@ -227,8 +239,11 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
     /** @param array<int,array{id:int,quantity:int}> $bindings */
     private function resolveRemoteLineItems(array $order, array $bindings): array
     {
+        // The explicit *manual* button may send an order-level AfterShip package
+        // with no guessed SKU/line binding. Automatic callers still supply
+        // validated explicit bindings from WooCommerceTrackingOutboundService.
         if ($bindings === []) {
-            throw new WooCommerceTrackingConflictException('WooCommerce tracking package must bind explicit line items.');
+            return [];
         }
         $remote = collect(is_array($order['line_items'] ?? null) ? $order['line_items'] : [])
             ->filter(fn ($item): bool => is_array($item) && (int) ($item['id'] ?? 0) > 0)

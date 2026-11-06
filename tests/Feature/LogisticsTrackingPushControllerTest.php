@@ -103,6 +103,140 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         $this->assertDatabaseHas('manual_syncs', ['order_id' => $order->id, 'website_sync_status' => 'completed']);
     }
 
+    public function test_manual_override_allows_pending_shipment_with_only_tracking_and_no_line_identity(): void
+    {
+        $user = $this->userWith('role_preset_operations', ['logistics.view', 'orders.view', 'sync.view']);
+        $order = $this->order(1091);
+        $order->shipment->update(['shipment_status' => 'pending', 'shipped_at' => null, 'carrier' => null]);
+        $order->items()->update(['woocommerce_line_item_id' => null]);
+
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$order->id], 'manual_override' => true,
+        ])->assertRedirect()->assertSessionHas('success');
+
+        self::assertSame(1, $this->gateway->calls);
+        self::assertSame([], $this->gateway->lastLineItems);
+        self::assertSame('other', $this->gateway->lastCarrierSlug);
+        self::assertSame(1091, $this->gateway->lastProviderOrderId);
+        self::assertTrue($this->gateway->lastOverrideProtected);
+        self::assertSame('completed', $this->gateway->remoteStatus);
+        self::assertSame('pending', $order->shipment->fresh()->shipment_status);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id, 'website_sync_status' => 'completed',
+        ]);
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id' => $order->id, 'marker' => 'woo_manual_force_completed',
+        ]);
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id' => $order->id, 'marker' => 'woo_manual_tracking_verified',
+        ]);
+        $this->assertDatabaseHas('sync_runs', ['run_type' => 'tracking_manual_force_completed']);
+    }
+
+    public function test_manual_override_of_a_child_writes_to_woo_mother_and_marks_mother_completed(): void
+    {
+        $user = $this->userWith('role_preset_logistics', ['logistics.view', 'sync.view']);
+        $root = $this->order(1092);
+        $child = $this->order(1093);
+        $child->forceFill(['fulfillment_parent_id' => $root->id])->save();
+        $child->shipment->update(['shipment_status' => 'pending', 'shipped_at' => null]);
+        $child->items()->update(['woocommerce_line_item_id' => null]);
+
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$child->id], 'manual_override' => true,
+        ])->assertRedirect()->assertSessionHas('success');
+
+        self::assertSame(1092, $this->gateway->lastProviderOrderId);
+        self::assertSame([], $this->gateway->lastLineItems);
+        self::assertSame('completed', $this->gateway->remoteStatus);
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id' => $root->id, 'marker' => 'woo_manual_force_completed',
+        ]);
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id' => $child->id, 'marker' => 'woo_manual_tracking_verified',
+        ]);
+        $trackingState = app(LogisticsTrackingListStatus::class)->forShipments([$child->shipment->id]);
+        self::assertSame(
+            'completed',
+            app(LogisticsTrackingListStatus::class)->currentStatus(
+                $trackingState[$child->shipment->id] ?? null, $child->manualSync->fresh()->website_sync_status
+            )['status'],
+        );
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $child->id, 'website_sync_status' => 'completed',
+        ]);
+        self::assertSame('shipped', $root->shipment->fresh()->shipment_status);
+        self::assertSame('pending', $child->shipment->fresh()->shipment_status);
+
+        // Tracking correction makes the status pending again even though the
+        // old verified-marker row remains for audit.
+        app(ManualSyncService::class)->reopen($child, $user);
+        $statusAfterReopen = app(LogisticsTrackingListStatus::class)->currentStatus(
+            $trackingState[$child->shipment->id] ?? null,
+            $child->manualSync->fresh()->website_sync_status,
+        );
+        self::assertSame('pending', $statusAfterReopen['status']);
+
+        // Even if a draft is changed without reopening ManualSync, the
+        // recorded verified fingerprint must not claim the new Tracking synced.
+        $child->shipment->update(['tracking_number' => 'TRACK-1093-NEW']);
+        $child->manualSync()->update(['website_sync_status' => 'completed']);
+        $changedState = app(LogisticsTrackingListStatus::class)->forShipments([$child->shipment->id]);
+        self::assertSame(
+            'pending',
+            app(LogisticsTrackingListStatus::class)->currentStatus(
+                $changedState[$child->shipment->id] ?? null,
+                $child->manualSync->fresh()->website_sync_status,
+            )['status'],
+        );
+        $child->shipment->update(['tracking_number' => 'TRACK-1093']);
+
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$child->id], 'manual_override' => true,
+        ])->assertSessionHas('success');
+        self::assertSame(2, $this->gateway->calls);
+        self::assertSame(1, $this->gateway->writes);
+    }
+
+    public function test_force_override_is_single_order_only_and_does_not_allow_unsafe_bulk(): void
+    {
+        $user = $this->userWith('role_preset_operations', ['logistics.view', 'sync.view']);
+        $a = $this->order(1096);
+        $b = $this->order(1097);
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$a->id, $b->id], 'manual_override' => true,
+        ])->assertStatus(422);
+        self::assertSame(0, $this->gateway->calls);
+    }
+
+    public function test_manual_override_of_refunded_woo_status_requires_explicit_manual_flag(): void
+    {
+        $user = $this->userWith('role_preset_operations', ['logistics.view', 'sync.view']);
+        $order = $this->order(1094);
+        $this->gateway->remoteStatus = 'refunded';
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$order->id], 'manual_override' => true,
+        ])->assertSessionHas('success');
+
+        self::assertTrue($this->gateway->lastOverrideProtected);
+        self::assertSame('completed', $this->gateway->remoteStatus);
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id' => $order->id, 'marker' => 'woo_manual_force_completed',
+        ]);
+    }
+
+    public function test_manual_override_reports_missing_parent_woo_identity_instead_of_false_success(): void
+    {
+        $user = $this->userWith('role_preset_logistics', ['logistics.view', 'sync.view']);
+        $order = $this->order(1095);
+        $order->forceFill(['source_type' => 'manual_other'])->save();
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$order->id], 'manual_override' => true,
+        ])->assertSessionHas('warning', fn (string $value) => str_contains($value, '官网母订单'));
+        self::assertSame(0, $this->gateway->calls);
+        $this->assertDatabaseHas('sync_run_items', ['status' => 'skipped', 'error_code' => 'not_eligible']);
+    }
+
     public function test_corrected_tracking_remains_pending_when_woo_line_conflicts(): void
     {
         $user = $this->userWith('role_preset_operations', ['logistics.view', 'sync.view']);
@@ -454,6 +588,16 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
 
     public bool $conflict = false;
 
+    public array $lastLineItems = [];
+
+    public string $lastCarrierSlug = '';
+
+    public int $lastProviderOrderId = 0;
+
+    public bool $lastOverrideProtected = false;
+
+    public string $remoteStatus = 'processing';
+
     public function descriptor(): array
     {
         return ['configured' => true, 'url' => 'https://shop.test', 'connection_key' => 'shop-a'];
@@ -461,7 +605,7 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
 
     public function inspectOrderStatus(int $providerOrderId): string
     {
-        return 'processing';
+        return $this->remoteStatus;
     }
 
     public function inspectTracking(int $providerOrderId): array
@@ -469,8 +613,12 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
         return ['tracking_number' => '', 'provider' => '', 'has_tracking' => false];
     }
 
-    public function syncTracking(int $providerOrderId, string $providerSlug, string $trackingNumber, string $shipDate, array $lineItems = []): array
+    public function syncTracking(int $providerOrderId, string $providerSlug, string $trackingNumber, string $shipDate, array $lineItems = [], bool $allowProtectedStatus = false): array
     {
+        $this->lastProviderOrderId = $providerOrderId;
+        $this->lastCarrierSlug = $providerSlug;
+        $this->lastLineItems = $lineItems;
+        $this->lastOverrideProtected = $allowProtectedStatus;
         $this->calls++;
         if ($this->fail) {
             throw new \RuntimeException('Test-only transient Woo tracking gateway failure');
@@ -488,8 +636,10 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
         return ['written' => $written, 'verified' => true];
     }
 
-    public function syncOrderStatus(int $providerOrderId, string $status): array
+    public function syncOrderStatus(int $providerOrderId, string $status, bool $allowProtectedStatus = false): array
     {
+        $this->remoteStatus = $status;
+
         return ['written' => true, 'verified' => true, 'status' => $status];
     }
 }

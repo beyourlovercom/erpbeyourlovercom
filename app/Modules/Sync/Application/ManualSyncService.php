@@ -45,18 +45,24 @@ final class ManualSyncService
         return $this->completeWithReason($order, $actor, $note, 'woocommerce_tracking_updated_automatically');
     }
 
-    private function completeWithReason(Model $order, ?Authenticatable $actor, ?string $note, string $reason): Model
+    public function completeVerifiedManualOverride(Model $order, ?Authenticatable $actor, ?string $note = null): Model
     {
-        return DB::transaction(function () use ($order, $actor, $note, $reason): Model {
+        // Only called after BOTH Woo Tracking and completed status were read back.
+        return $this->completeWithReason($order, $actor, $note, 'woocommerce_manual_tracking_force_completed_verified', true);
+    }
+
+    private function completeWithReason(Model $order, ?Authenticatable $actor, ?string $note, string $reason, bool $overrideShipmentGate = false): Model
+    {
+        return DB::transaction(function () use ($order, $actor, $note, $reason, $overrideShipmentGate): Model {
             $order->loadMissing('shipment');
-            if ($order->shipment?->shipment_status !== 'shipped') {
+            if (! $overrideShipmentGate && $order->shipment?->shipment_status !== 'shipped') {
                 throw new \DomainException('Only shipped orders can be marked as manually synced.');
             }
             $sync = $order->manualSync()->lockForUpdate()->firstOrCreate(
                 ['order_id' => $order->getKey()],
                 ['website_sync_status' => ManualSyncStatus::Pending],
             );
-            if ($sync->website_sync_status === ManualSyncStatus::Completed) {
+            if ($sync->website_sync_status === ManualSyncStatus::Completed && ! $overrideShipmentGate) {
                 return $sync->fresh(['order', 'operator']);
             }
             $before = $sync->only(['website_sync_status', 'synced_at', 'synced_by', 'sync_note']);
