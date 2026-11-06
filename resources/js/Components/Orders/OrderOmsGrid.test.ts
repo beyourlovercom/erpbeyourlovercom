@@ -5,8 +5,8 @@ import OrderOmsGrid from './OrderOmsGrid.vue'
 vi.mock('../../Components/DataGrid/OmsGrid.vue', () => ({
   default: {
     name: 'OmsGrid',
-    props: ['rows', 'columns', 'serverPagination', 'serverSort', 'serverSearch', 'serverColumnFilters', 'serverFilterColumns', 'namespace', 'requiredColumnIds'],
-    emits: ['page-change', 'page-size-change', 'sort-change', 'search-change', 'column-search-change'],
+    props: ['rows', 'columns', 'serverPagination', 'serverSort', 'serverSearch', 'serverColumnFilters', 'serverFilterColumns', 'namespace', 'requiredColumnIds', 'selectedOrderIds'],
+    emits: ['page-change', 'page-size-change', 'sort-change', 'search-change', 'column-search-change', 'selection-change'],
     template: '<div data-testid="oms-grid"><slot name="actions" /></div>',
   },
 }))
@@ -68,5 +68,34 @@ describe('Order OMS server adapter', () => {
     expect(wrapper.emitted('sort-change')?.[0]).toEqual([{ colId: 'order_number', direction: 'asc' }])
     expect(wrapper.emitted('search-change')?.[0]).toEqual(['40223'])
     expect(wrapper.emitted('column-search-change')?.[0]).toEqual([{ colId: 'recipient', value: 'Tester' }])
+  })
+  it('selected 3 canonical orders export only those IDs, independent of grid SKU filter', async () => {
+    const wrapper = mount(OrderOmsGrid, { props: { ...props, exportUrl: '/orders/oms/export?grid_sku=MF414A' } })
+    const grid = wrapper.findComponent({ name: 'OmsGrid' })
+    const row1 = { id: 7870, sku_list: 'MF414A', _oms_line_key: '7870:0' }
+    const row2 = { id: 7870, sku_list: 'A1', _oms_line_key: '7870:1' }
+    grid.vm.$emit('selection-change', [row1, row2, { id: 7871 }, { id: 7872 }])
+    await wrapper.vm.$nextTick()
+    const links = wrapper.findAll('a.oms-transfer-export')
+    expect(links).toHaveLength(2)
+    expect(links[0].attributes('href')).toBe('/orders/oms/export?selected_order_ids=7870,7871,7872')
+    expect(links[1].attributes('href')).toBe('/orders/oms/export?selected_order_ids=7870,7871,7872&format=csv')
+    expect(wrapper.text()).toContain('已选 3 单')
+    expect(grid.props('selectedOrderIds')).toEqual([7870, 7871, 7872])
+    await wrapper.find('button[aria-label="清除已选订单"]').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('a.oms-transfer-export')[0].attributes('href')).toBe('/orders/oms/export?grid_sku=MF414A')
+  })
+  it('keeps selected orders from previous server page while editing current-page selection', async () => {
+    const wrapper = mount(OrderOmsGrid, { props })
+    const grid = wrapper.findComponent({ name: 'OmsGrid' })
+    grid.vm.$emit('selection-change', [{ id: 7870 }])
+    await wrapper.vm.$nextTick()
+    await wrapper.setProps({ orders: { ...props.orders, current_page: 3, data: [
+      { ...props.orders.data[0], id: 7875 },
+    ] } })
+    grid.vm.$emit('selection-change', [{ id: 7875 }])
+    await wrapper.vm.$nextTick()
+    expect(grid.props('selectedOrderIds')).toEqual([7870, 7875])
   })
 })

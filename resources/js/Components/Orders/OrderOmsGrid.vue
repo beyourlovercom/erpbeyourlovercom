@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import OmsGrid from '../../Components/DataGrid/OmsGrid.vue'
 import OrderOmsCell from './OrderOmsCell.vue'
@@ -32,6 +32,14 @@ const emit = defineEmits<{
   (event: 'column-search-change', filter: { colId: string; value: string }): void
 }>()
 
+const selectedOrderIds = ref<number[]>([])
+const onSelectionChange = (selectedRows: Record<string, unknown>[]) => {
+  const pageIds = new Set(props.orders.data.map(order => Number(order.id)))
+  const newlySelected = new Set(selectedRows.map(row => Number(row.id)).filter(id => Number.isSafeInteger(id) && id > 0))
+  selectedOrderIds.value = [...selectedOrderIds.value.filter(id => !pageIds.has(id)), ...newlySelected]
+    .filter((id, index, all) => all.indexOf(id) === index)
+}
+const clearSelected = () => { selectedOrderIds.value = [] }
 const rows = computed<Record<string, unknown>[]>(() => props.orders.data.flatMap(order =>
   toOrderOmsItemRows(order, {
     sku: props.filters.grid_sku,
@@ -143,13 +151,17 @@ const columnFilterValues = computed(() =>
     :default-pinned-left="1"
     :default-pinned-right="1"
     :required-column-ids="['order_number', 'actions']"
+    row-identity-key="_oms_line_key"
+    selection-order-key="id"
+    :selected-order-ids="selectedOrderIds"
+    @selection-change="onSelectionChange"
     @page-change="emit('page-change', $event)"
     @page-size-change="emit('page-size-change', $event)"
     @sort-change="emit('sort-change', $event)"
     @search-change="emit('search-change', $event)"
     @column-search-change="emit('column-search-change', $event)"
   >
-    <template #actions><OrderOmsTransfer :export-url="exportUrl" :can-import="canImport" :can-export="canExport" :total="orders.total" /></template>
+    <template #actions><OrderOmsTransfer :export-url="exportUrl" :can-import="canImport" :can-export="canExport" :total="orders.total" :selected-order-ids="selectedOrderIds" @clear-selection="clearSelected" /></template>
   </OmsGrid>
 </template>
 <style scoped>

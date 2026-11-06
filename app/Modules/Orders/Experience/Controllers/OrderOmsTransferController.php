@@ -77,8 +77,29 @@ final class OrderOmsTransferController
     {
         $this->pilot($request);
 
-        $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']);
-        $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
+        // Selected orders take precedence over the current grid filters. A checkbox
+        // selects a canonical ERP order, not just one of its SKU item rows.
+        $selected = $request->query('selected_order_ids');
+        if ($selected !== null) {
+            if (! is_string($selected)
+                || preg_match('/^[1-9][0-9]*(?:,[1-9][0-9]*){0,199}$/D', $selected) !== 1) {
+                abort(422, '已选订单必须为 1–200 个有效的 ERP 订单 ID。');
+            }
+            $ids = array_map('intval', explode(',', $selected));
+            if (count(array_unique($ids)) !== count($ids)) {
+                abort(422, '选中的订单不能重复。');
+            }
+            $filters = KolOrderAccessScope::scopeFilters($request->user(), []);
+            $filters['oms_selected_ids'] = $ids;
+            // An inaccessible, archived or stale ID must never be silently
+            // replaced with unrelated current-filter orders.
+            if ($this->orders->list($filters, 200)->total() !== count($ids)) {
+                abort(422, '部分已选订单不存在或当前账号无权导出，请重新勾选。');
+            }
+        } else {
+            $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']);
+            $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
+        }
         $sortFields = ['order_number', 'date', 'source', 'status'];
         $filters['oms_sort'] = in_array($request->query('sort'), $sortFields, true) ? $request->query('sort') : 'date';
         $filters['oms_direction'] = $request->query('direction') === 'asc' ? 'asc' : 'desc';
@@ -89,7 +110,7 @@ final class OrderOmsTransferController
             'recipient', 'country', 'warehouse', 'status', 'tracking', 'owner',
             'city', 'postal_code', 'carrier', 'external_number',
         ] as $key) {
-            $input = $request->query('grid_'.$key);
+            $input = $selected === null ? $request->query('grid_'.$key) : null;
             if (is_string($input) && trim($input) !== '') {
                 $columns['grid_'.$key] = mb_substr(trim($input), 0, 80);
             }

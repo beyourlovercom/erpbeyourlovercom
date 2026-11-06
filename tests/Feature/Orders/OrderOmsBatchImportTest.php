@@ -123,6 +123,70 @@ final class OrderOmsBatchImportTest extends TestCase
         $this->assertDatabaseCount('orders', 0);
     }
 
+    public function test_selected_ids_export_exact_two_orders_and_every_sku_even_when_grid_filter_is_broader(): void
+    {
+        $viewer = $this->userWith(['orders.view']);
+        $created = [];
+        foreach (['MF414A', 'A1', 'MF414A'] as $index => $sku) {
+            $order = Order::query()->create([
+                'source_type' => 'manual', 'order_kind' => 'customer',
+                'internal_order_number' => 'SELECT-'.($index + 1),
+                'external_order_number' => 'SELECT-EXT-'.($index + 1),
+                'erp_order_id' => '007-1106-SELECT'.($index + 1),
+                'order_date' => '2026-11-06', 'order_status' => 'pending_shipment',
+                'currency' => 'USD', 'owner_id' => $viewer->id,
+            ]);
+            $order->address()->create(['recipient_name' => 'Selected Customer', 'country' => 'US']);
+            $order->items()->create(['sku' => $sku, 'product_summary' => 'Sample '.$sku, 'quantity' => $index + 1, 'unit_price' => '20.00', 'line_revenue' => '20.00']);
+            if ($index === 0) {
+                $order->items()->create(['sku' => 'A1', 'product_summary' => 'Gift A1', 'quantity' => 1, 'unit_price' => '0.00', 'line_revenue' => '0.00']);
+            }
+            $created[] = $order;
+        }
+        $chosen = $created[0]->id.','.$created[1]->id;
+        // The current filter matches orders 1 and 3, but the two checked orders are 1 and 2.
+        $xlsx = $this->actingAs($viewer)->get('/orders/oms/export?selected_order_ids='.$chosen.'&grid_sku=MF414A');
+        $xlsx->assertOk();
+        $data = app(ProviderXlsxTableReader::class)->read(
+            UploadedFile::fake()->createWithContent('selected.xlsx', $xlsx->getContent()));
+        $this->assertCount(3, $data['rows']);
+        $numbers = array_column(array_map(fn ($row) => $row['cells'], $data['rows']), 0);
+        sort($numbers);
+        $this->assertSame(['007-1106-SELECT1','007-1106-SELECT1','007-1106-SELECT2'], $numbers);
+        $skus = array_column(array_map(fn ($row) => $row['cells'], $data['rows']), 4);
+        sort($skus);
+        $this->assertSame(['A1','A1','MF414A'], $skus);
+        $csv = $this->actingAs($viewer)->get('/orders/oms/export?selected_order_ids='.$chosen.'&format=csv');
+        $csv->assertOk();
+        $this->assertCount(4, preg_split('/\\r?\\n/', trim($csv->streamedContent())));
+        $this->assertDatabaseCount('orders', 3);
+    }
+
+    public function test_selected_order_ids_reject_invalid_duplicate_and_nonexistent_ids(): void
+    {
+        $viewer = $this->userWith(['orders.view']);
+        foreach (['1,2,2', 'not-an-id', '999999999', '1,2,abc'] as $value) {
+            $this->actingAs($viewer)->getJson('/orders/oms/export?selected_order_ids='.$value)->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('orders', 0);
+    }
+
+    public function test_kol_only_user_cannot_export_an_unrelated_customer_order_by_selected_id(): void
+    {
+        $kol = $this->userWith(['orders.view', 'kol.view']);
+        $order = Order::query()->create([
+            'source_type' => 'manual', 'order_kind' => 'customer',
+            'internal_order_number' => 'KOL-UNRELATED',
+            'external_order_number' => 'KOL-UNRELATED-EXT',
+            'erp_order_id' => '007-1106-KOLPROTECTED',
+            'order_date' => '2026-11-06', 'order_status' => 'pending_shipment',
+            'currency' => 'USD', 'owner_id' => $kol->id,
+        ]);
+        $order->address()->create(['recipient_name' => 'Protected Buyer', 'country' => 'US']);
+        $this->actingAs($kol)->getJson('/orders/oms/export?selected_order_ids='.$order->id)
+            ->assertUnprocessable();
+    }
+
     public function test_one_order_with_two_skus_exports_two_rows_not_one_concatenated_cell(): void
     {
         $user = $this->userWith(['orders.view']);
