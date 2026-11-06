@@ -7,6 +7,7 @@ use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 final class WooCommerceTrackingOutboundService
@@ -43,6 +44,7 @@ final class WooCommerceTrackingOutboundService
                     if (! ($remoteTracking['verified'] ?? false)) {
                         return ['status' => 'failed', 'outbox' => $record];
                     }
+                    $this->forgetRemoteTrackingSnapshot($prepared['provider_order_id']);
                 } catch (WooCommerceTrackingConflictException) {
                     return ['status' => 'conflict', 'outbox' => $record];
                 } catch (Throwable) {
@@ -60,6 +62,7 @@ final class WooCommerceTrackingOutboundService
                     $actor,
                     $syncOrderStatus ? 'WooCommerce tracking and status explicitly re-verified.' : 'AfterShip tracking explicitly re-verified.',
                 );
+
                 return [
                     'status' => 'completed',
                     'written' => (bool) ($remoteTracking['written'] ?? false),
@@ -159,6 +162,7 @@ final class WooCommerceTrackingOutboundService
             return ['status' => 'failed', 'outbox' => $failed];
         }
 
+        $this->forgetRemoteTrackingSnapshot($prepared['provider_order_id']);
         $completed = $this->outbox->complete($claimed->id, $lockToken);
         $this->manualSync->completeFromAutomaticTracking($order, $actor, 'WooCommerce tracking outbound verified.');
         $statusSync = $syncOrderStatus
@@ -314,5 +318,13 @@ final class WooCommerceTrackingOutboundService
         }
 
         throw new DomainException("承运商 {$carrier} 尚未配置 AfterShip provider slug。只有显式映射的承运商可以自动写回。");
+    }
+
+    private function forgetRemoteTrackingSnapshot(int $providerOrderId): void
+    {
+        $connection = (string) ($this->gateway->descriptor()['connection_key'] ?? '');
+        if ($connection !== '') {
+            Cache::forget('erp:woo-tracking-snapshot:v1:'.sha1($connection).':'.$providerOrderId);
+        }
     }
 }

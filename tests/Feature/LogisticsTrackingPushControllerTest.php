@@ -12,13 +12,16 @@ use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository;
 use App\Modules\Sync\Application\Contracts\WooCommerceCustomerNoteGateway;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use App\Modules\Sync\Application\ManualSyncService;
 use App\Modules\Sync\Application\SyncOrchestrationService;
+use App\Modules\Sync\Application\WooCommerceManualTrackingOverrideService;
 use App\Modules\Sync\Application\WooCommerceTrackingConflictException;
 use App\Modules\Sync\Application\WooCommerceTrackingOutboundService;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -35,9 +38,136 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         parent::setUp();
         $this->gateway = new TrackingPushFakeGateway;
         $this->app->instance(WooCommerceTrackingGateway::class, $this->gateway);
+        Cache::flush();
         $this->customerNotes = new TrackingPushFakeCustomerNoteGateway;
         $this->app->instance(WooCommerceCustomerNoteGateway::class, $this->customerNotes);
         config(['tracking_sync_v2.manual_mode' => 'general']);
+    }
+
+    public function test_existing_exact_website_tracking_is_projected_as_synced_without_any_write(): void
+    {
+        $order = $this->order(1191);
+        $this->gateway->batchSnapshots[1191] = [
+            'order_status' => 'completed',
+            'tracking_items' => [[
+                'tracking_number' => 'TRACK-1191',
+                'provider' => 'dhl-api',
+                'ship_date' => '2026-11-06',
+            ]],
+            'has_tracking' => true,
+            'checked_at' => now()->toIso8601String(),
+        ];
+
+        $states = app(LogisticsTrackingListStatus::class)->forShipments([$order->shipment->id]);
+        $projected = app(LogisticsTrackingListStatus::class)->currentStatus(
+            $states[$order->shipment->id] ?? null,
+            $order->manualSync->website_sync_status,
+        );
+
+        self::assertSame('completed', $projected['status']);
+        self::assertTrue($states[$order->shipment->id]['verified_remote_tracking']);
+        self::assertSame(1, $this->gateway->batchCalls);
+        self::assertSame(0, $this->gateway->calls);
+        self::assertSame(0, $this->gateway->statusCalls);
+        self::assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id,
+            'website_sync_status' => 'pending',
+        ]);
+    }
+
+    public function test_existing_split_child_package_is_found_beyond_the_first_remote_tracking_item(): void
+    {
+        $root = $this->order(1192);
+        $child = $this->order(1193);
+        $child->forceFill(['fulfillment_parent_id' => $root->id, 'fulfillment_suffix' => 'B'])->save();
+        $childC = $this->order(1196);
+        $childC->forceFill(['fulfillment_parent_id' => $root->id, 'fulfillment_suffix' => 'C'])->save();
+        $this->gateway->batchSnapshots[1192] = [
+            'order_status' => 'completed',
+            'tracking_items' => [
+                ['tracking_number' => 'TRACK-1192', 'provider' => 'dhl-api', 'ship_date' => null],
+                ['tracking_number' => 'TRACK-1193', 'provider' => 'dhl-api', 'ship_date' => null],
+                ['tracking_number' => 'TRACK-1196', 'provider' => 'dhl-api', 'ship_date' => null],
+            ],
+            'has_tracking' => true,
+            'checked_at' => now()->toIso8601String(),
+        ];
+
+        $shipmentIds = [$root->shipment->id, $child->shipment->id, $childC->shipment->id];
+        $states = app(LogisticsTrackingListStatus::class)->forShipments($shipmentIds);
+        foreach ([[$root, $root->shipment->id], [$child, $child->shipment->id], [$childC, $childC->shipment->id]] as [$packageOrder, $shipmentId]) {
+            $projected = app(LogisticsTrackingListStatus::class)->currentStatus(
+                $states[$shipmentId] ?? null,
+                $packageOrder->manualSync->website_sync_status,
+            );
+            self::assertSame('completed', $projected['status']);
+            self::assertTrue($states[$shipmentId]['verified_remote_tracking']);
+        }
+        self::assertSame(1, $this->gateway->batchCalls);
+        self::assertSame(0, $this->gateway->calls);
+        self::assertSame(0, $this->customerNotes->createdCount);
+    }
+
+    public function test_same_tracking_number_with_different_website_carrier_is_a_conflict_not_synced(): void
+    {
+        $order = $this->order(1194);
+        $this->gateway->batchSnapshots[1194] = [
+            'order_status' => 'completed',
+            'tracking_items' => [[
+                'tracking_number' => 'TRACK-1194',
+                'provider' => 'usps',
+                'ship_date' => null,
+            ]],
+            'has_tracking' => true,
+            'checked_at' => now()->toIso8601String(),
+        ];
+
+        $states = app(LogisticsTrackingListStatus::class)->forShipments([$order->shipment->id]);
+        $projected = app(LogisticsTrackingListStatus::class)->currentStatus(
+            $states[$order->shipment->id] ?? null,
+            $order->manualSync->website_sync_status,
+        );
+
+        self::assertSame('conflict', $projected['status']);
+        self::assertStringContainsString('承运商不一致', $projected['reason']);
+        self::assertSame(0, $this->gateway->calls);
+        self::assertSame(0, $this->gateway->statusCalls);
+    }
+
+    public function test_manual_override_recognizes_existing_website_tracking_without_rewriting_or_notifying(): void
+    {
+        $user = $this->userWith('role_preset_operations', ['logistics.view', 'orders.view', 'sync.view']);
+        $order = $this->order(1195);
+        $this->gateway->remoteStatus = 'completed';
+        $this->gateway->batchSnapshots[1195] = [
+            'order_status' => 'completed',
+            'tracking_items' => [[
+                'tracking_number' => 'TRACK-1195',
+                'provider' => 'dhl-api',
+                'ship_date' => '2026-11-06',
+            ]],
+            'has_tracking' => true,
+            'checked_at' => now()->toIso8601String(),
+        ];
+
+        $result = app(WooCommerceManualTrackingOverrideService::class)->pushOne($order, $user);
+
+        self::assertSame('completed', $result['status']);
+        self::assertFalse($result['written']);
+        self::assertSame('existing_website_tracking', $result['notification_channel']);
+        self::assertSame(1, $this->gateway->batchCalls);
+        self::assertSame(0, $this->gateway->calls);
+        self::assertSame(0, $this->gateway->statusCalls);
+        self::assertSame(0, $this->customerNotes->createdCount);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id,
+            'website_sync_status' => 'completed',
+        ]);
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id' => $order->id,
+            'marker' => 'woo_manual_tracking_verified',
+        ]);
+        self::assertSame($order->workflow_status, $order->fresh()->workflow_status);
     }
 
     public function test_manual_tracking_is_closed_to_vita_and_logistics_by_default(): void
@@ -655,7 +785,7 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         $service = app(LogisticsTrackingListStatus::class);
         $completed = ['status' => 'completed', 'reason' => null];
         self::assertSame('pending', $service->currentStatus($completed, 'pending')['status']);
-        self::assertSame('completed', $service->currentStatus($completed, 'completed')['status']);
+        self::assertSame('pending', $service->currentStatus($completed, 'completed')['status']);
     }
 
     private function userWith(string $roleKey, array $permissions): User
@@ -707,9 +837,11 @@ final class LogisticsTrackingPushControllerTest extends TestCase
     }
 }
 
-final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
+final class TrackingPushFakeGateway implements WooCommerceTrackingBatchInspector, WooCommerceTrackingGateway
 {
     public int $calls = 0;
+
+    public int $statusCalls = 0;
 
     public int $writes = 0;
 
@@ -731,6 +863,10 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
 
     public array $seenOrders = [];
 
+    public array $batchSnapshots = [];
+
+    public int $batchCalls = 0;
+
     public function descriptor(): array
     {
         return ['configured' => true, 'url' => 'https://shop.test', 'connection_key' => 'shop-a'];
@@ -738,12 +874,30 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
 
     public function inspectOrderStatus(int $providerOrderId): string
     {
+        $this->statusCalls++;
+
         return $this->remoteStatus;
     }
 
     public function inspectTracking(int $providerOrderId): array
     {
         return ['tracking_number' => '', 'provider' => '', 'has_tracking' => false];
+    }
+
+    public function inspectTrackingBatch(array $providerOrderIds): array
+    {
+        $this->batchCalls++;
+        $result = [];
+        foreach ($providerOrderIds as $providerOrderId) {
+            $result[(int) $providerOrderId] = $this->batchSnapshots[(int) $providerOrderId] ?? [
+                'order_status' => $this->remoteStatus,
+                'tracking_items' => [],
+                'has_tracking' => false,
+                'checked_at' => now()->toIso8601String(),
+            ];
+        }
+
+        return $result;
     }
 
     public function syncTracking(int $providerOrderId, string $providerSlug, string $trackingNumber, string $shipDate, array $lineItems = []): array
@@ -770,6 +924,7 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
 
     public function syncOrderStatus(int $providerOrderId, string $status): array
     {
+        $this->statusCalls++;
         if ($this->failStatus) {
             throw new \RuntimeException('Local simulated Woo status write failure');
         }

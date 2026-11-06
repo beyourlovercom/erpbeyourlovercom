@@ -2,7 +2,11 @@
 
 namespace App\Modules\Logistics\Application;
 
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use App\Modules\Sync\Application\ManualSyncStatus;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 final class LogisticsTrackingListStatus
@@ -12,7 +16,7 @@ final class LogisticsTrackingListStatus
      * earlier Tracking number as proof that the current Shipment was synced.
      *
      * @param  list<int>  $shipmentIds
-     * @return array<int, array{status:string,reason:?string}>
+     * @return array<int, array<string,mixed>>
      */
     public function forShipments(array $shipmentIds): array
     {
@@ -28,7 +32,8 @@ final class LogisticsTrackingListStatus
             ->orderByDesc('id')
             ->get(['id', 'aggregate_id', 'status', 'last_error_code', 'payload', 'completed_at']);
 
-        $currentTracking = DB::table('shipments')->whereIn('id', $ids)->pluck('tracking_number', 'id');
+        $shipmentFacts = DB::table('shipments')->whereIn('id', $ids)->get(['id', 'tracking_number', 'carrier'])->keyBy('id');
+        $currentTracking = $shipmentFacts->mapWithKeys(fn ($shipment): array => [(int) $shipment->id => $shipment->tracking_number]);
         $rootOrders = DB::table('shipments as s')
             ->join('orders as o', 'o.id', '=', 's.order_id')
             ->whereIn('s.id', $ids)
@@ -107,7 +112,154 @@ final class LogisticsTrackingListStatus
             }
         }
 
+        $this->applyRemoteTrackingSnapshots($rootOrders, $shipmentFacts, $result);
+
         return $result;
+    }
+
+    /**
+     * Reconcile the current shipment Tracking against every package on the real Woo root.
+     * One bounded Woo collection request covers up to 100 root orders; short cache TTL
+     * prevents every table refresh from repeating the same remote read.
+     *
+     * @param  Collection<int,object>  $rootOrders
+     * @param  Collection<int,object>  $shipmentFacts
+     * @param  array<int,array<string,mixed>>  $result
+     */
+    private function applyRemoteTrackingSnapshots($rootOrders, $shipmentFacts, array &$result): void
+    {
+        $gateway = app(WooCommerceTrackingGateway::class);
+        if (! $gateway instanceof WooCommerceTrackingBatchInspector) {
+            return;
+        }
+
+        $descriptor = $gateway->descriptor();
+        if (! ($descriptor['configured'] ?? false)) {
+            return;
+        }
+        $connection = (string) ($descriptor['connection_key'] ?? '');
+        $rootIds = $rootOrders->pluck('root_order_id')->filter()->unique()->values()->all();
+        if ($rootIds === [] || $connection === '') {
+            return;
+        }
+
+        $references = DB::table('order_external_references')
+            ->whereIn('order_id', $rootIds)
+            ->where('provider', 'woocommerce')
+            ->where('connection_key', $connection)
+            ->get(['order_id', 'reference'])
+            ->keyBy('order_id');
+
+        $providerByShipment = [];
+        foreach ($rootOrders as $shipmentId => $root) {
+            $shipment = $shipmentFacts->get($shipmentId);
+            $reference = $references->get($root->root_order_id);
+            if (! $shipment || trim((string) $shipment->tracking_number) === ''
+                || ! $reference || ! ctype_digit((string) $reference->reference)) {
+                continue;
+            }
+            $providerByShipment[(int) $shipmentId] = (int) $reference->reference;
+        }
+        if ($providerByShipment === []) {
+            return;
+        }
+
+        $snapshots = [];
+        $missing = [];
+        foreach (array_unique(array_values($providerByShipment)) as $providerOrderId) {
+            $key = $this->remoteSnapshotCacheKey($connection, $providerOrderId);
+            $cached = Cache::get($key);
+            if (is_array($cached)) {
+                $snapshots[$providerOrderId] = $cached;
+            } else {
+                $missing[$providerOrderId] = $key;
+            }
+        }
+
+        if ($missing !== []) {
+            try {
+                $fresh = $gateway->inspectTrackingBatch(array_keys($missing));
+                foreach ($missing as $providerOrderId => $key) {
+                    $snapshot = $fresh[$providerOrderId] ?? [
+                        'order_status' => 'not_found', 'tracking_items' => [],
+                        'has_tracking' => false, 'checked_at' => now()->toIso8601String(),
+                    ];
+                    $snapshots[$providerOrderId] = $snapshot;
+                    Cache::put($key, $snapshot, now()->addSeconds(20));
+                }
+            } catch (\Throwable) {
+                // A remote read outage must not take down a logistics list or
+                // be mistaken for a successful verification. Retry shortly.
+                foreach ($missing as $providerOrderId => $key) {
+                    $snapshots[$providerOrderId] = ['read_error' => true];
+                    Cache::put($key, ['read_error' => true], now()->addSeconds(8));
+                }
+            }
+        }
+
+        foreach ($providerByShipment as $shipmentId => $providerOrderId) {
+            $snapshot = $snapshots[$providerOrderId] ?? null;
+            $shipment = $shipmentFacts->get($shipmentId);
+            if (! is_array($snapshot) || ($snapshot['read_error'] ?? false) || ! $shipment) {
+                continue;
+            }
+
+            $trackingNumber = trim((string) $shipment->tracking_number);
+            $matches = array_values(array_filter(
+                (array) ($snapshot['tracking_items'] ?? []),
+                fn ($item): bool => is_array($item)
+                    && trim((string) ($item['tracking_number'] ?? '')) === $trackingNumber,
+            ));
+            if ($matches === []) {
+                continue;
+            }
+
+            $expectedProvider = $this->providerSlugForCarrier((string) $shipment->carrier);
+            $matchingProvider = array_filter($matches, fn (array $item): bool => $expectedProvider === '' || trim((string) ($item['provider'] ?? '')) === ''
+                || trim((string) ($item['provider'] ?? '')) === $expectedProvider
+            );
+            if ($matchingProvider !== []) {
+                $result[$shipmentId] = [
+                    'status' => 'completed',
+                    'reason' => null,
+                    'verified_remote_tracking' => true,
+                    'remote_order_status' => (string) ($snapshot['order_status'] ?? ''),
+                    'verified_at' => $snapshot['checked_at'] ?? now()->toIso8601String(),
+                ];
+
+                continue;
+            }
+
+            $result[$shipmentId] = [
+                'status' => 'conflict',
+                'reason' => '官网已有相同 Tracking，但承运商不一致，系统不会覆盖',
+                'remote_tracking_conflict' => true,
+                'remote_order_status' => (string) ($snapshot['order_status'] ?? ''),
+                'verified_at' => $snapshot['checked_at'] ?? now()->toIso8601String(),
+            ];
+        }
+    }
+
+    private function remoteSnapshotCacheKey(string $connection, int $providerOrderId): string
+    {
+        return 'erp:woo-tracking-snapshot:v1:'.sha1($connection).':'.$providerOrderId;
+    }
+
+    private function providerSlugForCarrier(string $carrier): string
+    {
+        $normalize = static fn (string $value): string => strtolower(trim(preg_replace(
+            '/\\s+/', ' ', str_replace(['_', '-'], ' ', $value),
+        ) ?? $value));
+        $normalized = $normalize($carrier);
+        foreach ((array) config('erp_logistics.carriers', []) as $definition) {
+            foreach ([...(array) ($definition['aliases'] ?? []), (string) ($definition['value'] ?? '')] as $alias) {
+                if ($normalized !== '' && $normalized === $normalize((string) $alias)) {
+                    return (string) ($definition['aftership_slug'] ?? '');
+                }
+            }
+        }
+
+        return '';
     }
 
     /** @param array{status:string,reason:?string}|null $outbox */
@@ -117,6 +269,13 @@ final class LogisticsTrackingListStatus
         // also accept serialized status strings from older callers.
         if ($manualSyncStatus instanceof ManualSyncStatus) {
             $manualSyncStatus = $manualSyncStatus->value;
+        }
+
+        if ($outbox['remote_tracking_conflict'] ?? false) {
+            return ['status' => 'conflict', 'reason' => $outbox['reason'] ?? '官网 Tracking 承运商冲突'];
+        }
+        if ($outbox['verified_remote_tracking'] ?? false) {
+            return ['status' => 'completed', 'reason' => null, 'verified_at' => $outbox['verified_at'] ?? null];
         }
 
         if ($manualSyncStatus === 'completed' && ($outbox['verified_manual'] ?? false)) {
