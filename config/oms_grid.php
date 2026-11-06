@@ -7,5 +7,8 @@ return [
     // Separate, stronger release gates; switching on the read-only grid does
     // not expose export or bulk customer-order creation.
     'production_export_enabled' => (bool) env('ERP_OMS_GRID_PRODUCTION_EXPORT_ENABLED', false),
+    // P3-A: permit downloading template and no-write preflight only.
+    'production_import_preview_enabled' => (bool) env('ERP_OMS_GRID_PRODUCTION_IMPORT_PREVIEW_ENABLED', false),
+    // P3-B: independently authorizes real order creation.
     'production_import_enabled' => (bool) env('ERP_OMS_GRID_PRODUCTION_IMPORT_ENABLED', false),
 ];

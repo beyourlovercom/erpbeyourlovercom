@@ -126,7 +126,8 @@ final class OrderController
             'omsGridAvailable' => $omsGridAvailable,
             'omsGridEnabled' => $omsGridEnabled,
             'canExportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::export($request->user()),
-            'canImportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::import($request->user())
+            'canConfirmOmsOrders' => $omsGridEnabled && OrderOmsAvailability::import($request->user()),
+            'canImportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::importPreview($request->user())
                 && $request->user()->can('orders.create') && ! KolOrderAccessScope::isKolOnly($request->user()),
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
             'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),

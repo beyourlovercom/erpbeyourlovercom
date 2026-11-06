@@ -6,7 +6,7 @@ import { router } from '@inertiajs/vue3'
 type PreviewRow = { row: number; order_number: string; customer: string; country: string; sku_detail: string; total_quantity: number }
 type Problem = { row: number; message: string }
 type Preview = { count: number; row_count: number; valid_count: number; errors: Problem[]; preview: PreviewRow[]; token: string | null }
-const props = defineProps<{ exportUrl: string; canImport: boolean; canExport: boolean; total: number; selectedOrderIds: number[] }>()
+const props = defineProps<{ exportUrl: string; canImport: boolean; canConfirmImport?: boolean; canExport: boolean; total: number; selectedOrderIds: number[] }>()
 const emit = defineEmits<{ (event: 'clear-selection'): void }>()
 const selectedCount = computed(() => props.selectedOrderIds.length)
 const selectionMode = computed(() => selectedCount.value > 0)
@@ -20,7 +20,7 @@ const file = ref<File | null>(null)
 const preview = ref<Preview | null>(null)
 const message = ref('')
 const committed = ref<{ created: number; orders: Array<{ id: number; erp_order_id: string }> } | null>(null)
-const canConfirm = computed(() => file.value !== null && preview.value?.errors.length === 0 && !!preview.value?.token && !busy.value)
+const canConfirm = computed(() => props.canConfirmImport === true && file.value !== null && preview.value?.errors.length === 0 && !!preview.value?.token && !busy.value)
 const close = () => { if (busy.value) return; open.value = false }
 const chooseFile = (event: Event) => {
   file.value = (event.target as HTMLInputElement).files?.[0] ?? null
@@ -125,7 +125,8 @@ async function confirm() {
         <footer class="oms-import-footer">
           <button type="button" :disabled="busy" @click="close">关闭</button>
           <button type="button" :disabled="!file || busy" @click="inspect">{{ busy ? '处理中...' : '上传并预检' }}</button>
-          <button type="button" class="oms-import-commit" :disabled="!canConfirm" @click="confirm">确认创建 {{ preview?.count ?? 0 }} 单</button>
+          <span v-if="!canConfirmImport" class="oms-import-readonly" role="status">预检模式：创建订单未开放</span>
+          <button v-else type="button" class="oms-import-commit" :disabled="!canConfirm" @click="confirm">确认创建 {{ preview?.count ?? 0 }} 单</button>
         </footer>
       </section>
     </div>
@@ -157,5 +158,6 @@ async function confirm() {
 .oms-import-footer{display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #e5e7eb;padding:12px 24px}
 .oms-import-footer button{padding:8px 14px;background:#fff;border:1px solid #cbd5e1;border-radius:5px;cursor:pointer}
 .oms-import-footer button:disabled{opacity:.5;cursor:not-allowed}
+.oms-import-readonly{font-size:12px;color:#64748b;align-self:center}
 .oms-import-footer .oms-import-commit{background:#155dfb;color:#fff;border-color:#155dfb}
 </style>
