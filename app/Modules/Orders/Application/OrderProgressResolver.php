@@ -40,7 +40,13 @@ final class OrderProgressResolver
             $order->loadMissing('fulfillmentAllocation');
         }
         if ($order->fulfillment_parent_id === null && $order->fulfillmentAllocation?->status === 'submitted') {
-            return 'allocated';
+            // A legacy submitted allocation must not mask authoritative shipment facts.
+            // In particular, an already-shipped source order without evidence must
+            // remain a reconciliation exception instead of appearing as allocated.
+            $order->loadMissing('shipment');
+            if ($order->shipment === null || $order->shipment->shipment_status === 'pending') {
+                return 'allocated';
+            }
         }
 
         $order->loadMissing(['shipment.warehouse', 'shipment.overseaReview', 'operationalMarkers']);

@@ -37,6 +37,32 @@ final class OrderProgressV3AggregateTest extends TestCase
         self::assertSame('shipping', $this->phase($b));
     }
 
+    public function test_submitted_allocation_cannot_hide_existing_shipment_exception(): void
+    {
+        // Mirrors a historical 4PX source order with submitted allocation,
+        // shipped Shipment, no Tracking and no Kaven review marker.
+        $root = $this->order('ORPHAN-ALLOCATED');
+        $root->fulfillmentAllocation()->create(['status'=>'submitted','decision_source'=>'manual']);
+        $factory = Warehouse::where('code','FACTORY')->firstOrFail();
+        $root->shipment()->create([
+            'warehouse_id'=>$factory->id,'carrier'=>'4PX',
+            'shipment_status'=>'shipped','shipped_at'=>now(),
+        ]);
+
+        self::assertSame('shipped', $root->fresh()->shipment?->shipment_status);
+        self::assertSame('progress_conflict', $this->phase($root));
+        self::assertSame(0, app(OrderProgressQuery::class)->applyPhase(Order::query(),'allocated')
+            ->whereKey($root->id)->count());
+        self::assertSame(1, app(OrderProgressQuery::class)->applyPhase(Order::query(),'progress_conflict')
+            ->whereKey($root->id)->count());
+        self::assertSame('shipped', $root->fresh()->shipment->shipment_status);
+
+        $root->shipment->update(['shipment_status'=>'pending','shipped_at'=>null]);
+        self::assertSame('allocated', $this->phase($root));
+        self::assertSame(1, app(OrderProgressQuery::class)->applyPhase(Order::query(),'allocated')
+            ->whereKey($root->id)->count());
+    }
+
     public function test_conflicting_split_child_is_not_misreported_as_partially_shipped(): void
     {
         $root = $this->order('CONFLICT-ROOT');

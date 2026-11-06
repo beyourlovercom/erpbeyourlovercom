@@ -108,6 +108,7 @@ final class OrderProgressQuery
             'allocated' => $orders->where('order_status', 'pending_shipment')
                 ->whereNull('fulfillment_parent_id')
                 ->whereHas('fulfillmentAllocation', fn ($a) => $a->where('status', 'submitted'))
+                ->whereDoesntHave('shipment', fn ($s) => $s->where('shipment_status', '!=', 'pending'))
                 ->whereDoesntHave('originalFulfillmentChildren', fn ($c) => $c
                     ->whereHas('shipment', fn ($s) => $s->whereIn('shipment_status', ['shipped', 'completed']))),
             'partially_shipped' => $orders->whereNull('fulfillment_parent_id')
