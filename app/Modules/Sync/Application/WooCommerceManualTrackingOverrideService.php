@@ -4,6 +4,7 @@ namespace App\Modules\Sync\Application;
 
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Sync\Application\Contracts\WooCommerceCustomerNoteGateway;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -15,6 +16,7 @@ final class WooCommerceManualTrackingOverrideService
         private readonly WooCommerceTrackingGateway $gateway,
         private readonly ManualSyncService $manualSync,
         private readonly OrderWorkflowStatusService $workflowStatus,
+        private readonly WooCommerceCustomerNoteGateway $customerNotes,
     ) {}
 
     /**
@@ -71,11 +73,10 @@ final class WooCommerceManualTrackingOverrideService
             // AfterShip package without modifying a non-processing Woo state.
             // Otherwise even an operator may NOT overwrite cancelled,
             // refunded, failed, on-hold, pending or unrelated completed orders.
-            if ($beforeStatus !== 'completed' || ! $parentAlreadyManuallyCompleted
-                || ! $order->fulfillment_parent_id) {
+            if ($beforeStatus !== 'completed' || ! $parentAlreadyManuallyCompleted) {
                 throw new DomainException(
                     '官网母订单当前状态是 '.$beforeStatus.'，只允许 processing 订单新增 Tracking 并转 completed；'
-                    .'仅已由本流程完成的母订单，允许 A/B/C 子单继续补充 Tracking，且不修改官网状态。'
+                    .'仅已由本流程完成的母订单，允许继续补充或重试包裹通知，且不修改官网状态。'
                 );
             }
         }
@@ -129,19 +130,37 @@ final class WooCommerceManualTrackingOverrideService
             throw new \RuntimeException('官网母订单 Completed 状态回读未通过，物流可能已写入，请检查官网。');
         }
 
+        // Persist proof that THIS workflow completed the Woo mother BEFORE
+        // attempting email notification. If Woo accepts a completed status
+        // but the Customer Note API times out, the next click can safely
+        // recover on the already-completed mother (never any unrelated one).
+        $root->operationalMarkers()->firstOrCreate(
+            ['marker' => 'woo_manual_force_completed'],
+            ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()],
+        );
+
+        // The user confirmed WWW Customer Note emails are enabled. Each A/B/C
+        // package gets one remote, customer-visible note. Only after the note
+        // is accepted AND read back may the ERP order become 2.2 Shared.
+        // This is proof of handoff to Woo email processing, not inbox delivery.
+        $notice = $this->customerNotes->notifyPackage($providerId, $slug, $number);
+        if (! ($notice['verified'] ?? false)) {
+            throw new \RuntimeException('官网客户通知没有通过回读，ERP 暂不标记 2.2 已通知。');
+        }
+        if ($this->gateway->inspectOrderStatus($providerId) !== 'completed') {
+            throw new \RuntimeException('官网母订单状态在客户通知期间发生变化；ERP 暂不标记 2.2 已通知。');
+        }
+
         // Remember the explicit owner-approved override: a subsequent
         // partial-shipment automatic status projection must not undo it.
         // Local state and workflow/history/audit must be committed together.
         // Never hold the ERP transaction across external WooCommerce requests.
-        DB::transaction(function () use ($root, $order, $actor, $number, $providerId): void {
-            $root->operationalMarkers()->firstOrCreate(
-                ['marker' => 'woo_manual_force_completed'],
-                ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()],
-            );
+        DB::transaction(function () use ($order, $actor, $number, $providerId, $notice): void {
             $trackingFingerprint = hash('sha256', $number);
             $this->manualSync->completeVerifiedManualOverride(
                 $order, $actor,
-                'verified_tracking_sha256:'.$trackingFingerprint.'; 已回读确认 Woo 母订单 #'.$providerId.' AfterShip Tracking 和 Completed。'
+                'verified_tracking_sha256:'.$trackingFingerprint.'; 已回读确认 Woo 母订单 #'.$providerId
+                .' AfterShip Tracking、Completed 和 Customer Note #'.$notice['note_id'].' 已接受。'
             );
             $order->operationalMarkers()->firstOrCreate(
                 ['marker' => 'woo_manual_tracking_verified'],
@@ -154,11 +173,15 @@ final class WooCommerceManualTrackingOverrideService
 
         return [
             'status' => 'completed',
-            'written' => (bool) ($tracking['written'] ?? false) || (bool) ($status['written'] ?? false),
+            'written' => (bool) ($tracking['written'] ?? false)
+                || (bool) ($status['written'] ?? false)
+                || (bool) ($notice['created'] ?? false),
             'root_order_id' => (int) $root->getKey(),
             'provider_order_id' => $providerId,
             'order_status_sync' => 'completed',
             'manual_override' => true,
+            'customer_note_id' => $notice['note_id'],
+            'customer_note_created' => $notice['created'],
         ];
     }
 

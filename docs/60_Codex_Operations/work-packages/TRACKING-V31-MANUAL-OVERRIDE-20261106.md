@@ -33,3 +33,25 @@ Branch: feat/manual-woo-tracking-override-20261106
 - Issue #635 and PR #637 remain open/Draft; no main merge, no Production deploy, no WWW writes from this correction.
 - Previous PR #637 source allowed force-changing Woo refunded/cancelled; that logic is explicitly replaced in next commit, and PR title/body must be corrected.
 - CI on owner-corrected source commit daa9f69e: ERP Production Stability, Orders+KOL Cross-Module, Order Trash Gate, WordPress Connector, KOL Scoped Logistics all SUCCESS. Final documentation-only commit requires exact-head CI recheck. Remaining: controlled Dev/Production single eligible processing real customer order Canary, remote AfterShip + Woo readback, then authorize release. No batch processing of historical orders.
+
+## R3.5 — WooCommerce Customer Note shipment notification
+
+Owner directly confirmed: WWW WooCommerce Customer Note emails are already enabled, and a customer-visible order note is mailed to the customer. Therefore use the existing WooCommerce REST order-notes API; no new email delivery integration/plugin.
+
+### Operational contract
+1. Explicit single-order manual "同步官网物流" writes package A/B/C to the real Woo mother AfterShip and verifies remote Woo Completed.
+2. **For EACH package with a unique courier+Tracking**, submit a Woo REST order Customer Note with customer_note=true, and independently GET that note by ID to verify Woo accepted it. Note text is a neutral English shipment update with Courier/Tracking and an explanation that the order may arrive in separate packages. No item names, SKU or adult-product descriptions.
+3. Before creating a note, scan existing customer-visible Woo notes for the exact stable normalized message. Repeat clicks and retries reuse the existing note (no second POST) even when the ERP state was not updated because of a prior timeout. Bound pagination to a safe maximum; any ambiguity fails closed.
+4. **Only after** AfterShip Tracking, Woo Completed, and Customer Note are verified, set selected ERP fulfillment to "2.2 Shared / 已通知" and record note ID in the audit sync note. Failed note call does NOT make the fulfillment Shared.
+5. After Woo Completed but before note creation, write the root woo_manual_force_completed safety marker. If the note POST fails or times out, the next manual retry can recognize the verified V3.1 mother order as eligible and safely recover without resetting Woo status. This is necessary because Woo status cannot be rolled back after the remote write.
+6. Never send Woo Customer Notes for cancelled, refunded, failed, on-hold or other non-eligible statuses. Automatic 30-minute Tracking outbound and its historic queue remain unchanged by this R3.5 change.
+7. No guarantee of inbox delivery is implied. Verified Woo note creation means Woo accepted the customer email handoff. WWW actual send and inbox delivery should be checked using a safe dedicated Canary after code review and approval.
+8. **Potential first-package duplicate email:** A may trigger Woo's ordinary Completed email as well as the dedicated package Customer Note email; review/approve this expected user-experience behavior before Production enabled. B/C do not trigger Completed again, so each adds only its own Customer Note.
+
+### Evidence
+- New separate WooCommerceCustomerNoteGateway interface and HttpWooCommerceCustomerNoteGateway; existing Woo Tracking interface/automatic callers not modified by note feature. Provider registration in existing SyncServiceProvider.
+- New isolated HTTP mock gateway tests: note create + readback; repeat customer note reuses existing remote note with zero POST; Woo non-completed status aborts; unverified POST cannot claim success.
+- Controller tests: Customer Note retry after failure leaves ERP Pending then succeeds; repeat after success creates zero duplicate notes.
+- Corrected targeted regression **128 tests / 1,112 assertions PASS, 1 opt-in skipped**.
+- Fresh independent LOCAL WooCommerce + AfterShip mother #31: two split children A/B, two AfterShip Tracking packages, both ERP Shared, native customer template and 2 Woo customer-visible notes (Woo note IDs 68,70). True local E2E **1 test / 28 assertions PASS**. Local fixture blocks external email/webhooks, so no real customer email was sent.
+- Production/WWW NOT modified, PR remains Draft. AfterShip Cloud and actual WWW email delivery not verified.

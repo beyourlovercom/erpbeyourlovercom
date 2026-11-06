@@ -99,6 +99,18 @@ final class TrackingManualOverrideLocalWooE2eTest extends TestCase
         ]);
         self::assertFalse($service->pushOne($child, null)['written']);
 
+        // Woo's customer-note endpoint is the notification handoff, not an
+        // email-delivery confirmation. Repeated A must still have one note.
+        $notesUri = $connection['base_url'].'/wp-json/wc/v3/orders/'.$fixture['order_id'].'/notes';
+        $getCustomerNotes = function () use ($notesUri, $connection): array {
+            return collect(Http::withBasicAuth($connection['consumer_key'], $connection['consumer_secret'])
+                ->get($notesUri)->throw()->json())
+                ->filter(fn ($note): bool => (bool) ($note['customer_note'] ?? false)
+                    && str_contains((string) ($note['note'] ?? ''), 'Tracking number: LOCAL-ONLY-V31-'))
+                ->values()->all();
+        };
+        self::assertCount(1, $getCustomerNotes());
+
         // A second split child appends its package to the SAME Woo mother
         // without removing A or recreating the Woo order.
         $childB = Order::create([
@@ -140,5 +152,11 @@ final class TrackingManualOverrideLocalWooE2eTest extends TestCase
         ]);
         self::assertSame('shared', $childB->fresh()->workflow_status);
         self::assertNull($root->fresh()->workflow_status);
+        $notes = $getCustomerNotes();
+        self::assertCount(2, $notes);
+        self::assertTrue(collect($notes)->contains(fn ($n): bool => str_contains((string) $n['note'], 'Tracking number: LOCAL-ONLY-V31-CHILD-A')));
+        self::assertTrue(collect($notes)->contains(fn ($n): bool => str_contains((string) $n['note'], 'Tracking number: LOCAL-ONLY-V31-CHILD-B')));
+        self::assertFalse($service->pushOne($childB, null)['written']);
+        self::assertCount(2, $getCustomerNotes());
     }
 }

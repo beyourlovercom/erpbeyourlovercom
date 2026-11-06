@@ -11,6 +11,7 @@ use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository;
+use App\Modules\Sync\Application\Contracts\WooCommerceCustomerNoteGateway;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use App\Modules\Sync\Application\ManualSyncService;
 use App\Modules\Sync\Application\SyncOrchestrationService;
@@ -27,11 +28,15 @@ final class LogisticsTrackingPushControllerTest extends TestCase
 
     private TrackingPushFakeGateway $gateway;
 
+    private TrackingPushFakeCustomerNoteGateway $customerNotes;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->gateway = new TrackingPushFakeGateway;
         $this->app->instance(WooCommerceTrackingGateway::class, $this->gateway);
+        $this->customerNotes = new TrackingPushFakeCustomerNoteGateway;
+        $this->app->instance(WooCommerceCustomerNoteGateway::class, $this->customerNotes);
         config(['tracking_sync_v2.manual_mode' => 'general']);
     }
 
@@ -170,6 +175,8 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         self::assertSame('pending', $child->shipment->fresh()->shipment_status);
         self::assertSame('shared', $child->fresh()->workflow_status);
         self::assertNull($root->fresh()->workflow_status);
+        self::assertSame(1, $this->customerNotes->createdCount);
+        self::assertSame(1092, $this->customerNotes->lastWooOrder);
 
         // Tracking correction makes the status pending again even though the
         // old verified-marker row remains for audit.
@@ -199,6 +206,7 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         ])->assertSessionHas('success');
         self::assertSame(2, $this->gateway->calls);
         self::assertSame(1, $this->gateway->writes);
+        self::assertSame(1, $this->customerNotes->createdCount);
     }
 
     public function test_force_override_is_single_order_only_and_does_not_allow_unsafe_bulk(): void
@@ -266,6 +274,38 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         $this->assertDatabaseMissing('order_operational_markers', [
             'order_id' => $order->id, 'marker' => 'woo_manual_force_completed',
         ]);
+    }
+
+    public function test_customer_note_failure_leaves_erp_unshared_then_retry_recovers_without_duplicate(): void
+    {
+        $user = $this->userWith('role_preset_operations', ['logistics.view', 'sync.view']);
+        $order = $this->order(1129);
+        $this->customerNotes->fail = true;
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$order->id], 'manual_override' => true,
+        ])->assertSessionHas('warning');
+
+        self::assertSame('completed', $this->gateway->remoteStatus);
+        self::assertNull($order->fresh()->workflow_status);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id, 'website_sync_status' => 'pending',
+        ]);
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id' => $order->id, 'marker' => 'woo_manual_force_completed',
+        ]);
+        self::assertSame(0, $this->customerNotes->createdCount);
+
+        $this->customerNotes->fail = false;
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$order->id], 'manual_override' => true,
+        ])->assertSessionHas('success');
+        self::assertSame('shared', $order->fresh()->workflow_status);
+        self::assertSame(1, $this->customerNotes->createdCount);
+
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$order->id], 'manual_override' => true,
+        ])->assertSessionHas('success');
+        self::assertSame(1, $this->customerNotes->createdCount);
     }
 
     public function test_manual_override_reports_missing_parent_woo_identity_instead_of_false_success(): void
@@ -688,5 +728,32 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
         $this->remoteStatus = $status;
 
         return ['written' => true, 'verified' => true, 'status' => $status];
+    }
+}
+
+final class TrackingPushFakeCustomerNoteGateway implements WooCommerceCustomerNoteGateway
+{
+    public bool $fail = false;
+
+    public int $createdCount = 0;
+
+    public int $lastWooOrder = 0;
+
+    /** @var array<string,int> */
+    private array $sent = [];
+
+    public function notifyPackage(int $wooOrderId, string $carrier, string $tracking): array
+    {
+        if ($this->fail) {
+            throw new \RuntimeException('Simulated Woo Customer Note unavailable');
+        }
+        $this->lastWooOrder = $wooOrderId;
+        $key = $wooOrderId.'|'.$carrier.'|'.$tracking;
+        if (isset($this->sent[$key])) {
+            return ['created' => false, 'verified' => true, 'note_id' => $this->sent[$key]];
+        }
+        $this->sent[$key] = ++$this->createdCount;
+
+        return ['created' => true, 'verified' => true, 'note_id' => $this->sent[$key]];
     }
 }
