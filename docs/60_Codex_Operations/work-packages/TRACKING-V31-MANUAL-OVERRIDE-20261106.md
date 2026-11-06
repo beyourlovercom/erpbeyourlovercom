@@ -25,11 +25,11 @@ Branch: feat/manual-woo-tracking-override-20261106
 - New owner-corrected tests: non-processing Woo statuses (cancelled/refunded/failed/on-hold/pending/unrelated completed) cannot write Tracking or ERP Shared; Woo Tracking conflict or failed Woo status write never marks ERP Shared. Legacy gateway protected-state tests still pass.
 - Existing local WordPress (WooCommerce 11.2.1 + AfterShip 1.18.5), with external HTTP/mail/webhooks blocked, mother #29: pending A and B, two preserved AfterShip packages, Woo Completed, selected A/B ERP status=shared, ERP mother status unchanged, native customer template displays both. E2E 1 test / 22 assertions PASS.
 - Other UAT: tracking-only missing carrier uses AfterShip provider other, manually completed mother, idempotent repeat; no SKU guessing.
-- Previous targeted Feature regression 114 tests / 1,014 assertions PASS (pre-correction). Re-run final correction suite and cite real count.
+- Owner-corrected targeted Feature regression 123 tests / 1,088 assertions, zero failed, one intentionally skipped opt-in LOCAL test; explicit LOCAL Woo/AfterShip integration mother #29 passed 22 assertions.
 - Preexisting full Feature suite failures: previous 2,195 tests / 6 errors / 55 failures, 10 opt-in skipped; pristine GitHub main vs branch identical 5 errors / 27 failures / 608 assertions on 87 representative failing tests. Do not misstate full suite PASS.
-- npm ci / Vue TypeScript / Vite build PASS (pre-correction; front-end source not changed by correction), re-check if required.
+- npm ci / Vue TypeScript / Vite build PASS; owner-corrected source rechecked with vue-tsc and Pint PASS.
 
 ## Release gate
 - Issue #635 and PR #637 remain open/Draft; no main merge, no Production deploy, no WWW writes from this correction.
 - Previous PR #637 source allowed force-changing Woo refunded/cancelled; that logic is explicitly replaced in next commit, and PR title/body must be corrected.
-- CI review exact new HEAD; single eligible processing real customer order Canary, remote AfterShip + Woo readback, then authorize release. No batch processing of historical orders.
+- CI on owner-corrected source commit daa9f69e: ERP Production Stability, Orders+KOL Cross-Module, Order Trash Gate, WordPress Connector, KOL Scoped Logistics all SUCCESS. Final documentation-only commit requires exact-head CI recheck. Remaining: controlled Dev/Production single eligible processing real customer order Canary, remote AfterShip + Woo readback, then authorize release. No batch processing of historical orders.
