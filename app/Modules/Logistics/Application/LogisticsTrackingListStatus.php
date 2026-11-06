@@ -215,8 +215,9 @@ final class LogisticsTrackingListStatus
             }
 
             $expectedProvider = $this->providerSlugForCarrier((string) $shipment->carrier);
-            $matchingProvider = array_filter($matches, fn (array $item): bool => $expectedProvider === '' || trim((string) ($item['provider'] ?? '')) === ''
-                || trim((string) ($item['provider'] ?? '')) === $expectedProvider
+            $matchingProvider = array_filter($matches, fn (array $item): bool => $expectedProvider !== ''
+                && trim((string) ($item['provider'] ?? '')) !== ''
+                && trim((string) ($item['provider'] ?? '')) === $expectedProvider
             );
             if ($matchingProvider !== []) {
                 $result[$shipmentId] = [
@@ -232,7 +233,7 @@ final class LogisticsTrackingListStatus
 
             $result[$shipmentId] = [
                 'status' => 'conflict',
-                'reason' => '官网已有相同 Tracking，但承运商不一致，系统不会覆盖',
+                'reason' => '官网已有相同 Tracking，但承运商不一致或无法核验，系统不会覆盖',
                 'remote_tracking_conflict' => true,
                 'remote_order_status' => (string) ($snapshot['order_status'] ?? ''),
                 'verified_at' => $snapshot['checked_at'] ?? now()->toIso8601String(),

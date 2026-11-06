@@ -82,9 +82,13 @@ final class WooCommerceManualTrackingOverrideService
             $remoteItems = (array) ($remoteSnapshot['tracking_items'] ?? []);
             $sameNumber = array_values(array_filter($remoteItems, fn ($item): bool => is_array($item) && trim((string) ($item['tracking_number'] ?? '')) === $number
             ));
-            $alreadyPublished = array_filter($sameNumber, fn (array $item): bool => $slug === 'other' || trim((string) ($item['provider'] ?? '')) === ''
-                || trim((string) ($item['provider'] ?? '')) === $slug
+            $alreadyPublished = array_filter($sameNumber, fn (array $item): bool => $slug !== 'other'
+                && trim((string) ($item['provider'] ?? '')) !== ''
+                && trim((string) ($item['provider'] ?? '')) === $slug
             );
+            if ($sameNumber !== [] && $alreadyPublished === []) {
+                throw new DomainException('官网已有相同 Tracking，但承运商不一致或无法核验；为避免覆盖现有物流，请人工核对。');
+            }
             if ($alreadyPublished !== []) {
                 $this->forgetRemoteTrackingSnapshot($connection, $providerId);
                 $this->completeFromExistingWebsiteTracking($order, $actor, $providerId, $number);

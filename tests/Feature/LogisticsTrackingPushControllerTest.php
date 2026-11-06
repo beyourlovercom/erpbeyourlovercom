@@ -134,6 +134,64 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         self::assertSame(0, $this->gateway->statusCalls);
     }
 
+    public function test_same_tracking_number_without_remote_carrier_proof_is_a_conflict(): void
+    {
+        $order = $this->order(1197);
+        $this->gateway->batchSnapshots[1197] = [
+            'order_status' => 'completed',
+            'tracking_items' => [[
+                'tracking_number' => 'TRACK-1197',
+                'provider' => '',
+                'ship_date' => null,
+            ]],
+            'has_tracking' => true,
+            'checked_at' => now()->toIso8601String(),
+        ];
+
+        $states = app(LogisticsTrackingListStatus::class)->forShipments([$order->shipment->id]);
+        $projected = app(LogisticsTrackingListStatus::class)->currentStatus(
+            $states[$order->shipment->id] ?? null,
+            $order->manualSync->website_sync_status,
+        );
+
+        self::assertSame('conflict', $projected['status']);
+        self::assertStringContainsString('无法核验', $projected['reason']);
+        self::assertSame(0, $this->gateway->calls);
+        self::assertSame(0, $this->gateway->statusCalls);
+    }
+
+    public function test_manual_override_rejects_same_tracking_without_carrier_proof(): void
+    {
+        $user = $this->userWith('role_preset_operations', ['logistics.view', 'orders.view', 'sync.view']);
+        $order = $this->order(1198);
+        $this->gateway->remoteStatus = 'completed';
+        $this->gateway->batchSnapshots[1198] = [
+            'order_status' => 'completed',
+            'tracking_items' => [[
+                'tracking_number' => 'TRACK-1198',
+                'provider' => '',
+                'ship_date' => null,
+            ]],
+            'has_tracking' => true,
+            'checked_at' => now()->toIso8601String(),
+        ];
+
+        try {
+            app(WooCommerceManualTrackingOverrideService::class)->pushOne($order, $user);
+            self::fail('An unverified carrier must not be accepted as an exact existing package.');
+        } catch (\DomainException $exception) {
+            self::assertStringContainsString('无法核验', $exception->getMessage());
+        }
+
+        self::assertSame(0, $this->gateway->calls);
+        self::assertSame(0, $this->gateway->statusCalls);
+        self::assertSame(0, $this->customerNotes->createdCount);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id,
+            'website_sync_status' => 'pending',
+        ]);
+    }
+
     public function test_manual_override_recognizes_existing_website_tracking_without_rewriting_or_notifying(): void
     {
         $user = $this->userWith('role_preset_operations', ['logistics.view', 'orders.view', 'sync.view']);
