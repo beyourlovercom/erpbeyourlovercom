@@ -28,7 +28,7 @@ This is **isolated Dev browser UAT on US Mac mini**, NOT a production browser se
 | Unauthorized identity | Template GET and preview POST return 403 with proper session CSRF | PASS |
 | Browser guard | Console, page errors, failed requests, external requests and unhandled rejections all zero | PASS |
 
-**Playwright result:** 2/2 browser cases PASS (~7 seconds in final run). Artifact cleanup PASS.
+**Playwright result:** 2/2 browser cases PASS (~6 seconds after visual source-label fix). All three imported types show Chinese source in the existing grid column and detail source field; their original XLSX order numbers are unchanged. Artifact cleanup PASS.
 
 **Additional check:** `npm run typecheck:e2e` PASS; `npm run test:e2e:contracts` 16/16 PASS.
 

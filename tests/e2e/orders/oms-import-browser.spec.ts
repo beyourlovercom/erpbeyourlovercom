@@ -95,6 +95,10 @@ test('authenticated Dev browser imports three source types and reads source iden
     await expect(identity).toContainText(item.original)
     await expect(identity).toContainText(item.label)
     await expect(page.locator('.ord-identity-strip')).toContainText(item.label)
+    // The existing source badge and detail source field must no longer show
+    // the server's English label for imported orders.
+    const sourceField = page.locator('.ord-summary-field').filter({ has: page.locator('dt:text-is("来源")') })
+    await expect(sourceField.locator('dd')).toHaveText(item.label)
     console.log('OMS_BROWSER_UAT_DETAIL_PASS=' + item.type + ':' + item.original + ':' + result.orders[0].id)
 
     // Repeated XLSX after a committed batch must not generate another order.
@@ -111,6 +115,10 @@ test('authenticated Dev browser imports three source types and reads source iden
       console.log('OMS_BROWSER_UAT_DUPLICATE_BLOCK_PASS=true')
     }
     await page.goto('/orders?oms_grid=1', { waitUntil: 'domcontentloaded' })
+  }
+  for (const item of cases) {
+    const row = page.locator('.ag-row').filter({ has: page.getByRole('link', { name: item.original }) })
+    await expect(row.locator('[col-id="source"]')).toHaveText(item.label)
   }
   await guard.assertClean()
 })

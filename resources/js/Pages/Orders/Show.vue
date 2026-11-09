@@ -189,6 +189,7 @@ const applyShipmentCarrierDefault = () => {
 const isImportedOrder = computed(() => ['website', 'kol', 'manual_other'].includes(props.order.source_type))
 const sourceNumber = computed(() => isImportedOrder.value ? (props.order.external_order_number || props.order.erp_order_id || '—') : (props.order.erp_order_id || '—'))
 const displayedOrderKind = computed(() => ({ website: '网站订单', kol: '网红订单', manual_other: '外采订单' } as Record<string, string>)[props.order.source_type] ?? props.order.order_kind_label)
+const displayedSourceLabel = computed(() => isImportedOrder.value ? (displayedOrderKind.value || props.order.source_label) : props.order.source_label)
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment'
   || props.order.fulfillment_parent?.order_kind === 'kol_fulfillment')
 const adjacentNavigationPending = ref(false)
@@ -1142,7 +1143,7 @@ onBeforeUnmount(() => {
             <span class="ord-identity-badge ord-source-order-number" data-testid="source-order-number">源订单号：{{ order.external_order_number || '未记录' }}</span>
             <span v-if="order.source_order_status || order.source_type === 'woocommerce'" class="ord-identity-badge ord-source-order-status" :title="order.source_order_status_modified_at ? `网站状态更新时间：${order.source_order_status_modified_at}` : '尚无网站状态同步记录'" data-testid="source-order-status">网站真实状态：{{ order.source_order_status || '未同步' }}</span>
             <span class="ord-identity-badge">{{ displayedOrderKind }}</span>
-            <span class="ord-identity-badge ord-badge-muted">{{ order.source_label }}</span>
+            <span class="ord-identity-badge ord-badge-muted">{{ displayedSourceLabel }}</span>
             <span class="ord-identity-badge ord-badge-status">{{ order.order_status_label }}</span>
             <span class="ord-identity-owner">负责人：{{ order.owner?.name ?? '—' }}</span>
           </div>
@@ -1395,7 +1396,7 @@ onBeforeUnmount(() => {
           <dl v-if="!editMode" class="ord-summary-grid ord-summary-grid-order" aria-label="订单信息摘要">
             <div class="ord-summary-field"><dt>{{ isImportedOrder ? '原始订单号' : '订单号' }}</dt><dd>{{ sourceNumber }}</dd></div>
             <div class="ord-summary-field"><dt>订单类型</dt><dd>{{ displayedOrderKind }}</dd></div>
-            <div class="ord-summary-field"><dt>来源</dt><dd>{{ order.source_label }}</dd></div>
+            <div class="ord-summary-field"><dt>来源</dt><dd>{{ displayedSourceLabel }}</dd></div>
             <div class="ord-summary-field"><dt>负责人</dt><dd>{{ order.owner?.name ?? '—' }}</dd></div>
             <div class="ord-summary-field"><dt>币种</dt><dd>{{ order.currency }}</dd></div>
             <div class="ord-summary-field"><dt>订单日期</dt><dd>{{ order.order_date }}</dd></div>
@@ -1411,7 +1412,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="erp-form-field">
               <label class="erp-form-label">来源</label>
-              <input :value="order.source_label" class="erp-input" disabled>
+              <input :value="displayedSourceLabel" class="erp-input" disabled>
             </div>
             <div class="erp-form-field">
               <label class="erp-form-label">负责人</label>
