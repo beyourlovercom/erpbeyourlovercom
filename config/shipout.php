@@ -68,6 +68,8 @@ return [
     'production_v1_operator_user_ids' => (string) env('SHIPOUT_PRODUCTION_V1_OPERATOR_USER_IDS', ''),
     'production_v1_min_order_id' => (int) env('SHIPOUT_PRODUCTION_V1_MIN_ORDER_ID', 0),
     'production_operator_cli_enabled' => filter_var(env('SHIPOUT_PRODUCTION_OPERATOR_CLI_ENABLED', false), FILTER_VALIDATE_BOOL),
+    // Explicit Owner-approved exact ERP=>provider SKU pairs. Empty means no alias substitution.
+    'production_verified_alias_pairs' => (string) env('SHIPOUT_PRODUCTION_VERIFIED_ALIAS_PAIRS', ''),
     'production_canary_execute_enabled' => filter_var(env('SHIPOUT_PRODUCTION_CANARY_EXECUTE_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_canary_owner_approved' => filter_var(env('SHIPOUT_PRODUCTION_CANARY_OWNER_APPROVED', false), FILTER_VALIDATE_BOOL),
     'production_canary_order_id' => (string) env('SHIPOUT_PRODUCTION_CANARY_ORDER_ID', ''),
