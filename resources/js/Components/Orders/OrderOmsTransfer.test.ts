@@ -32,6 +32,7 @@ async function readyForConfirm() {
     global: { stubs: { Teleport: true } },
   })
   await wrapper.get('.oms-transfer-actions button').trigger('click')
+  await wrapper.get('#oms-import-type').setValue('website')
   const fileInput = wrapper.get('input[type="file"]')
   Object.defineProperty(fileInput.element, 'files', { configurable: true, value: [file] })
   await fileInput.trigger('change')
@@ -88,6 +89,7 @@ describe('OMS P3 preview and confirm production gates', () => {
     expect(axios.post).toHaveBeenNthCalledWith(1, '/orders/oms/import/preview', expect.any(FormData))
     const previewPayload = vi.mocked(axios.post).mock.calls[0]?.[1] as FormData
     expect(previewPayload.get('file')).toBe(file)
+    expect(previewPayload.get('import_type')).toBe('website')
 
     vi.mocked(axios.post).mockResolvedValueOnce({ data: {
       created: 1, orders: [{ id: 901, erp_order_id: '007-1106-P3B01' }],
@@ -95,14 +97,41 @@ describe('OMS P3 preview and confirm production gates', () => {
     await wrapper.get('button.oms-import-commit').trigger('click')
     await flushPromises()
 
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('确定批量创建 1 个真实 ERP 手动客户订单吗？'))
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('确定批量创建 1 个真实 ERP 网站订单吗？'))
     expect(axios.post).toHaveBeenNthCalledWith(2, '/orders/oms/import/confirm', expect.any(FormData))
     const confirmPayload = vi.mocked(axios.post).mock.calls[1]?.[1] as FormData
     expect(confirmPayload.get('file')).toBe(file)
     expect(confirmPayload.get('token')).toBe('signed-preview-token')
+    expect(confirmPayload.get('import_type')).toBe('website')
     expect(confirmPayload.get('confirm')).toBe('1')
     expect(wrapper.text()).toContain('批量创建完成：1 个订单。')
     expect(router.reload).toHaveBeenCalledWith({ only: ['orders'] })
+  })
+
+  it('requires an explicit import type and invalidates the proof when it changes', async () => {
+    const wrapper = mount(OrderOmsTransfer, {
+      props: { ...props, canConfirmImport: true },
+      global: { stubs: { Teleport: true } },
+    })
+    await wrapper.get('.oms-transfer-actions button').trigger('click')
+    expect(wrapper.get('#oms-import-type').element).toBeTruthy()
+    const uploadButton = wrapper.findAll('button').find(button => button.text().includes('上传并预检'))
+    expect(uploadButton?.attributes('disabled')).toBeDefined()
+    await wrapper.get('#oms-import-type').setValue('kol')
+    expect((wrapper.get('#oms-import-type').element as HTMLSelectElement).value).toBe('kol')
+    const fileInput = wrapper.get('input[type="file"]')
+    Object.defineProperty(fileInput.element, 'files', { configurable: true, value: [new File(['fake'], 'test.xlsx')] })
+    await fileInput.trigger('change')
+    vi.mocked(axios.post).mockResolvedValueOnce({ data: { count: 1, row_count: 1, valid_count: 1, errors: [], token: 'signed', preview: [] } } as never)
+    const activeUpload = wrapper.findAll('button').find(button => button.text().includes('上传并预检'))
+    expect(activeUpload?.attributes('disabled')).toBeUndefined()
+    await activeUpload?.trigger('click')
+    await flushPromises()
+    expect((vi.mocked(axios.post).mock.calls[0]?.[1] as FormData).get('import_type')).toBe('kol')
+    expect(wrapper.get('button.oms-import-commit').attributes('disabled')).toBeUndefined()
+    await wrapper.get('#oms-import-type').setValue('manual_other')
+    expect(wrapper.get('button.oms-import-commit').attributes('disabled')).toBeDefined()
+    expect(axios.post).toHaveBeenCalledTimes(1)
   })
 
   it('does not call the confirm endpoint when the browser confirmation is cancelled', async () => {

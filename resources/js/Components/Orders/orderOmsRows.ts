@@ -10,6 +10,7 @@ export type OrderGridOrder = Record<string, unknown> & {
   id: number
   erp_order_id: string | null
   external_order_number?: string | null
+  source_type?: string
   internal_order_number?: string | null
   source_label?: string
   order_date?: string | null
@@ -75,6 +76,7 @@ export function toOrderOmsRow(order: OrderGridOrder): Record<string, unknown> {
   const subtotal = subtotalLines.some(value => value !== null)
     ? subtotalLines.reduce<number>((total, value) => total + (value ?? 0), 0)
     : null
+  const importSourceLabel = ({ website: '网站订单', kol: '网红订单', manual_other: '外采订单' } as Record<string, string>)[order.source_type ?? '']
   const currency = order.currency || 'USD'
   const money = (value: number | null) => value === null ? '' : currency + ' ' + value.toFixed(2)
   const itemDescriptors = items.map(item => {
@@ -87,6 +89,14 @@ export function toOrderOmsRow(order: OrderGridOrder): Record<string, unknown> {
     ...order,
     order_db_id: order.id,
     erp_order_id: order.erp_order_id ?? '—',
+    // Primary visible number is the immutable XLSX source number; ERP identity stays
+    // separate for canonical linking, audit and internal references.
+    display_order_number: ['website', 'kol', 'manual_other'].includes(order.source_type ?? '')
+      ? (order.external_order_number || order.erp_order_id || '—') : (order.erp_order_id || '—'),
+    // Reuse the existing 来源 column; do not leave English source labels on
+    // imported orders even when the server's historic label is English.
+    source_label: importSourceLabel ?? order.source_label ?? '—',
+    display_order_kind_label: importSourceLabel ?? order.order_kind_label ?? '—',
     sku_list: skus.length ? skus.join(', ') : '—',
     order_quantity: quantity,
     sku_quantity_detail: itemDescriptors.length ? itemDescriptors.join('; ') : '—',

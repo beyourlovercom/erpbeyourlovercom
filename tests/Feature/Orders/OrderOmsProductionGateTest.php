@@ -4,11 +4,13 @@ namespace Tests\Feature\Orders;
 
 use App\Models\Role;
 use App\Models\User;
-use App\Modules\Orders\Application\OrderOmsBatchImport;
-use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
-use Illuminate\Http\UploadedFile;
+use App\Modules\Orders\Application\OrderOmsBatchImport;
+use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -21,7 +23,7 @@ final class OrderOmsProductionGateTest extends TestCase
         parent::setUp();
         // Simulating Production environment inside PHPUnit activates CSRF middleware;
         // bypass only CSRF in this feature test to reach the real authorization gates.
-        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class);
+        $this->withoutMiddleware(PreventRequestForgery::class);
         $this->withHeader('Accept', 'application/json');
     }
 
@@ -62,8 +64,8 @@ final class OrderOmsProductionGateTest extends TestCase
                     ->where('omsGridEnabled', false));
             $this->actingAs($user)->get('/orders/oms/export')->assertNotFound();
             $this->actingAs($user)->get('/orders/oms/import/template')->assertNotFound();
-            $this->actingAs($user)->post('/orders/oms/import/preview', [])->assertNotFound();
-            $this->actingAs($user)->post('/orders/oms/import/confirm', [])->assertNotFound();
+            $this->actingAs($user)->post('/orders/oms/import/preview', ['import_type' => 'website'])->assertNotFound();
+            $this->actingAs($user)->post('/orders/oms/import/confirm', ['import_type' => 'website'])->assertNotFound();
             $this->assertDatabaseCount('orders', 0);
         });
     }
@@ -97,8 +99,8 @@ final class OrderOmsProductionGateTest extends TestCase
         $user = $this->user();
         $outsider = User::factory()->create(['is_active' => true]);
         $outsider->roles()->attach($user->roles()->first()->id);
-        \App\Modules\Products\Infrastructure\Models\Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
-        \App\Modules\Products\Infrastructure\Models\Product::query()->create(['sku' => 'A1', 'name' => 'Accessory']);
+        Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
+        Product::query()->create(['sku' => 'A1', 'name' => 'Accessory']);
         $one = array_fill_keys(OrderOmsBatchImport::FIELDS, '');
         $one['external_order_number'] = 'P3-PREVIEW-GROUP-001';
         $one['order_date'] = '2026-11-06';
@@ -132,16 +134,16 @@ final class OrderOmsProductionGateTest extends TestCase
                     ->where('canImportOmsOrders', true)
                     ->where('canConfirmOmsOrders', false));
             $this->actingAs($outsider)->get('/orders/oms/import/template')->assertNotFound();
-            $this->actingAs($outsider)->post('/orders/oms/import/preview', ['file' => $file])->assertNotFound();
+            $this->actingAs($outsider)->post('/orders/oms/import/preview', ['import_type' => 'website', 'file' => $file])->assertNotFound();
             $this->actingAs($user)->get('/orders/oms/import/template')->assertOk();
-            $preview = $this->actingAs($user)->post('/orders/oms/import/preview', ['file' => $file])
+            $preview = $this->actingAs($user)->post('/orders/oms/import/preview', ['import_type' => 'website', 'file' => $file])
                 ->assertOk()->json();
             $this->assertSame(1, $preview['count']);
             $this->assertSame(2, $preview['row_count']);
             $this->assertSame(1, $preview['valid_count']);
             $this->assertSame([], $preview['errors']);
             $this->assertNotEmpty($preview['token']);
-            $this->actingAs($user)->post('/orders/oms/import/confirm', [
+            $this->actingAs($user)->post('/orders/oms/import/confirm', ['import_type' => 'website',
                 'file' => $file, 'token' => $preview['token'], 'confirm' => '1',
             ])->assertNotFound();
             $this->assertDatabaseCount('orders', 0);
@@ -169,7 +171,7 @@ final class OrderOmsProductionGateTest extends TestCase
             $this->actingAs($user)->get('/orders?oms_grid=1', ['Accept' => 'text/html'])
                 ->assertInertia(fn (Assert $page) => $page->where('canImportOmsOrders', true));
             $this->actingAs($user)->get('/orders/oms/import/template')->assertOk();
-            $this->actingAs($user)->post('/orders/oms/import/preview', [])
+            $this->actingAs($user)->post('/orders/oms/import/preview', ['import_type' => 'website'])
                 ->assertUnprocessable(); // endpoint opened, but file validation is still enforced
             $this->assertDatabaseCount('orders', 0);
         });
@@ -226,13 +228,13 @@ final class OrderOmsProductionGateTest extends TestCase
                     ->where('omsGridEnabled', false)
                     ->where('canConfirmOmsOrders', false));
             $this->actingAs($outsider)->get('/orders/oms/import/template')->assertNotFound();
-            $this->actingAs($outsider)->post('/orders/oms/import/preview', ['file' => $file])->assertNotFound();
-            $this->actingAs($outsider)->post('/orders/oms/import/confirm', [
+            $this->actingAs($outsider)->post('/orders/oms/import/preview', ['import_type' => 'website', 'file' => $file])->assertNotFound();
+            $this->actingAs($outsider)->post('/orders/oms/import/confirm', ['import_type' => 'website',
                 'file' => $file, 'token' => 'not-issued-to-outsider', 'confirm' => '1',
             ])->assertNotFound();
             $this->assertDatabaseCount('orders', 0);
 
-            $preview = $this->actingAs($admin)->post('/orders/oms/import/preview', ['file' => $file])
+            $preview = $this->actingAs($admin)->post('/orders/oms/import/preview', ['import_type' => 'website', 'file' => $file])
                 ->assertOk()->json();
             $this->assertSame(1, $preview['count']);
             $this->assertSame(2, $preview['row_count']);
@@ -241,15 +243,15 @@ final class OrderOmsProductionGateTest extends TestCase
             $this->assertDatabaseCount('orders', 0);
             $this->assertDatabaseCount('oms_order_import_batches', 0);
 
-            $created = $this->actingAs($admin)->post('/orders/oms/import/confirm', [
+            $created = $this->actingAs($admin)->post('/orders/oms/import/confirm', ['import_type' => 'website',
                 'file' => $file, 'token' => $preview['token'], 'confirm' => '1',
             ])->assertOk()->json();
             $this->assertSame(1, $created['created']);
-            $order = \App\Modules\Orders\Infrastructure\Models\Order::query()
+            $order = Order::query()
                 ->with(['items', 'address', 'shipment', 'fulfillmentAllocation', 'manualSync', 'externalReferences'])
                 ->where('external_order_number', 'P3B-ADMIN-001')
                 ->firstOrFail();
-            $this->assertSame('manual', $order->source_type->value);
+            $this->assertSame('website', $order->source_type->value);
             $this->assertSame('customer', $order->order_kind->value);
             $this->assertSame((int) $admin->id, (int) $order->owner_id);
             $this->assertNotEmpty($order->erp_order_id);
@@ -267,7 +269,7 @@ final class OrderOmsProductionGateTest extends TestCase
             $this->assertDatabaseCount('oms_order_import_batches', 1);
             $this->assertDatabaseCount('oms_order_import_claims', 1);
 
-            $this->actingAs($admin)->post('/orders/oms/import/confirm', [
+            $this->actingAs($admin)->post('/orders/oms/import/confirm', ['import_type' => 'website',
                 'file' => $file, 'token' => $preview['token'], 'confirm' => '1',
             ])->assertUnprocessable();
             $this->assertDatabaseCount('orders', 1);

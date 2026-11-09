@@ -53,7 +53,7 @@ const basic = (id: string, field: string, title: string, width: number, visible 
 })
 const columns = computed<ColDef<Record<string, unknown>>[]>(() => [
   // One AG Grid row per SKU line; server pagination and status remain per original order.
-  { ...basic('order_number', 'erp_order_id', 'ERP订单号', 170, true, true),
+  { ...basic('order_number', 'display_order_number', '订单号', 170, true, true),
     cellRenderer: OrderOmsCell, cellRendererParams: { mode: 'number' } },
   basic('sku', 'sku_list', 'SKU', 174, true),
   basic('quantity', 'order_quantity', 'SKU数量', 94, true),
@@ -84,7 +84,7 @@ const columns = computed<ColDef<Record<string, unknown>>[]>(() => [
   basic('external_number', 'external_order_number', '网站/来源订单号', 165),
   basic('internal_number', 'internal_order_number', '内部订单号', 170),
   basic('db_id', 'order_db_id', '订单数据库ID', 110),
-  basic('order_kind', 'order_kind_label', '订单类型', 120),
+  basic('order_kind', 'display_order_kind_label', '订单类型', 120),
   basic('source_type', 'source_type', '来源类型代码', 126),
   basic('real_status', 'order_status_label', '订单真实状态', 125),
   basic('owner', 'owner_label', '负责人', 140),
