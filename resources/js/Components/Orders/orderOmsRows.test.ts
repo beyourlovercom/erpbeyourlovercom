@@ -20,12 +20,16 @@ it('uses the original Excel number as the main visible order number without over
   })
   expect(row.display_order_number).toBe('ORIGINAL-KOL-0007')
   expect(row.display_order_kind_label).toBe('网红订单')
+  expect(row.source_label).toBe('网红订单')
+  expect(toOrderOmsRow({ id: 9905, erp_order_id: 'ERP-5', source_type: 'website', source_label: 'Website' }).source_label).toBe('网站订单')
+  expect(toOrderOmsRow({ id: 9906, erp_order_id: 'ERP-6', source_type: 'manual_other', source_label: 'Manual Other' }).source_label).toBe('外采订单')
   expect(row.erp_order_id).toBe('007-1109-c99999')
   const native = toOrderOmsRow({
     id: 9904, erp_order_id: '007-1109-c99998', external_order_number: 'Woo-010',
-    source_type: 'woocommerce',
+    source_type: 'woocommerce', source_label: 'WooCommerce',
   })
   expect(native.display_order_number).toBe('007-1109-c99998')
+  expect(native.source_label).toBe('WooCommerce')
 })
 
 describe('OMS order-column projection', () => {
