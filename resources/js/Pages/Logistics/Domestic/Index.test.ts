@@ -39,19 +39,18 @@ describe('Domestic logistics production workbench', () => {
 
   it('splits SKU and product quantity into separate columns on the domestic review page only', () => {
     const review = mount(Index,{props:{...baseProps,view:'review'}})
-    const reviewHeaders = review.findAll('.orders thead th')
-    const headers = reviewHeaders.map(th=>th.text())
+    const headers = review.findAll('.orders thead th').map(th=>th.text())
     const cells = review.findAll('.orders tbody tr:first-child td')
-    expect(reviewHeaders.find(th=>th.text()==='SKU')?.isVisible()).toBe(true)
-    expect(reviewHeaders.find(th=>th.text()==='数量')?.isVisible()).toBe(true)
+    expect(headers).toContain('SKU')
+    expect(headers).toContain('数量')
     expect(cells[headers.indexOf('SKU')].find('div').text()).toBe('M2')
     expect(cells[headers.indexOf('数量')].text()).toBe('1')
 
     const pending = mount(Index,{props:{...baseProps,view:'pending'}})
-    const pendingHeaders = pending.findAll('.orders thead th')
-    expect(pendingHeaders.find(th=>th.text()==='SKU / 数量')?.isVisible()).toBe(true)
-    expect(pendingHeaders.find(th=>th.text()==='SKU')?.isVisible()).toBe(false)
-    expect(pendingHeaders.find(th=>th.text()==='数量')?.isVisible()).toBe(false)
+    const pendingHeaders = pending.findAll('.orders thead th').map(th=>th.text())
+    expect(pendingHeaders).toContain('SKU / 数量')
+    expect(pendingHeaders).not.toContain('SKU')
+    expect(pendingHeaders).not.toContain('数量')
   })
 
   it('shows the read-only 今日订单 XLSX download before the 4PX provider button only on the aggregate today tab', () => {
