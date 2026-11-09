@@ -69,7 +69,7 @@ final class ManualSyncController
                 'skipped_items' => $run->skipped_items,
                 'started_at' => $run->started_at?->toIso8601String(),
             ])->values()->all(),
-            'orders' => $orders->map(function (Order $order) use ($trackingStatuses): array {
+            'orders' => $orders->map(function (Order $order) use ($trackingStatuses, $trackingOutbox): array {
                 $trackingState = app(LogisticsTrackingListStatus::class)->currentStatus(
                     $trackingStatuses[(int) $order->shipment?->id] ?? null, $order->manualSync?->website_sync_status
                 );

@@ -5,8 +5,11 @@ namespace Tests\Feature;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Sync\Application\SyncOutboxService;
 use App\Modules\Sync\Infrastructure\Models\SyncRun;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -54,6 +57,46 @@ final class SyncWorkspaceTest extends TestCase
         );
     }
 
+    public function test_sync_orders_includes_tracking_outbox_status_and_attempts_for_shipments(): void
+    {
+        $user = $this->userWithSyncView();
+        $order = Order::create([
+            'internal_order_number' => 'SYNC-OUTBOX-'.uniqid(),
+            'erp_order_id' => '007-SYNC-OUTBOX-'.uniqid(),
+            'source_type' => 'manual',
+            'order_kind' => 'customer',
+            'external_order_number' => 'EXT-SYNC-OUTBOX-'.uniqid(),
+            'order_date' => now()->toDateString(),
+            'order_status' => 'shipped',
+            'currency' => 'USD',
+        ]);
+        $shipment = $order->shipment()->create([
+            'shipment_status' => 'shipped',
+            'carrier' => 'USPS',
+            'tracking_number' => 'SYNC-OUTBOX-TRACK-'.uniqid(),
+            'shipped_at' => now(),
+        ]);
+        $order->manualSync()->create(['website_sync_status' => 'pending']);
+
+        $outbox = app(SyncOutboxService::class)->enqueue([
+            'idempotency_key' => 'sync-orders-tracking-'.$shipment->id,
+            'operation' => 'woocommerce.tracking_outbound',
+            'aggregate_type' => 'shipment',
+            'aggregate_id' => (string) $shipment->id,
+            'provider_key' => 'woocommerce',
+            'connection_key' => 'test-shop',
+            'payload' => ['tracking_number' => $shipment->tracking_number],
+            'max_attempts' => 4,
+        ]);
+        DB::table('sync_outbox')->where('id', $outbox->id)->update(['attempts' => 2]);
+
+        $this->actingAs($user)->get('/sync/orders')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Sync/Orders')
+            ->where('orders.0.id', $order->id)
+            ->where('orders.0.tracking_outbound_status', 'pending')
+            ->where('orders.0.tracking_outbound_attempts', 2)
+        );
+    }
 
     public function test_sync_orders_exposes_manual_today_control_to_sync_operators(): void
     {
