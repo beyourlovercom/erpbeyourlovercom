@@ -12,7 +12,7 @@ type Order = {
   status: string; synced_at: string | null
   tracking_outbound_status: string | null; tracking_outbound_attempts: number | null
   tracking_sync_status: string | null; tracking_sync_reason: string | null; tracking_sync_verified_at: string | null
-  progress: Progress; can_sync: boolean; can_reconcile: boolean; can_operate: boolean
+  progress: Progress; can_sync: boolean; sync_block_reason?: string | null; can_reconcile: boolean; can_operate: boolean
 }
 type SyncRun = {
   id: number; run_type: string; status: string; requested_items: number
@@ -64,6 +64,13 @@ const sourceName = (source: string) => ({
 const pushTracking = (id: number) => {
   if (!window.confirm('确认将此订单物流同步到官网？系统仍执行付款、物流审核及官网状态门禁，成功后可能触发网站邮件。')) return
   router.post(`/sync/orders/${id}/tracking-outbound`)
+}
+const syncWebsite = (order: Order) => {
+  if (!order.can_sync) {
+    window.alert(order.sync_block_reason || order.progress.reason || '当前订单未满足官网同步条件，请打开订单详情检查。')
+    return
+  }
+  pushTracking(order.id)
 }
 const reconcile = (id: number) => router.post('/sync/orchestration/reconcile', { order_ids: [id] })
 const notifyReason = (order: Order) => window.alert(order.progress.reason || '请打开订单详情核对官网物流状态')
@@ -173,8 +180,15 @@ const checkWooBacklog = async () => {
               <td class="tracking-number" :title="order.tracking_number || ''">{{ order.tracking_number || '—' }}</td>
               <td class="operational-actions">
                 <a class="mvp-button" :href="`/customers/orders/${order.id}`">查看订单</a>
-                <button v-if="order.can_sync" type="button" class="mvp-button mvp-button-primary" @click="pushTracking(order.id)">同步物流</button>
-                <button v-else-if="order.can_reconcile" type="button" class="mvp-button" @click="reconcile(order.id)">核对官网</button>
+                <button
+                  v-if="order.can_operate && ['unsynced', 'failed'].includes(order.progress.code)"
+                  type="button"
+                  class="mvp-button"
+                  :class="{ 'mvp-button-primary': order.can_sync, 'sync-blocked': !order.can_sync }"
+                  :title="order.can_sync ? '同步当前订单物流到官网' : (order.sync_block_reason || '该订单暂时不能写回官网')"
+                  @click="syncWebsite(order)"
+                >同步网站</button>
+                <button v-if="order.can_reconcile && !order.can_sync && ['unsynced', 'failed'].includes(order.progress.code)" type="button" class="mvp-button" @click="reconcile(order.id)">核对官网</button>
                 <button v-if="order.progress.code === 'failed'" type="button" class="mvp-button" @click="notifyReason(order)">查看原因</button>
               </td>
               <td class="progress-column">
@@ -284,7 +298,7 @@ const checkWooBacklog = async () => {
 .order-number .mobile-order-meta { display: none; }
 .order-number small { display: block; color: #70828b; font-size: 11px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .tracking-number { max-width: 190px; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.operational-actions { white-space: nowrap; } .operational-actions .mvp-button { margin: 0 4px 0 0; padding: 5px 9px; font-size: 12px; }
+.operational-actions { white-space: nowrap; } .operational-actions .sync-blocked { color: #657681; background: #f0f3f4; border-color: #d4dde1; } .operational-actions .mvp-button { margin: 0 4px 0 0; padding: 5px 9px; font-size: 12px; }
 .progress-column { width: 118px; } .progress-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 70px; border-radius: 5px; padding: 5px 7px; font-weight: 700; font-size: 12px; white-space: nowrap; }
 .progress-badge.unsynced { color: #5f6b76; background: #edf0f3; }
 .progress-badge.failed { color: #a72626; background: #fff1ef; }

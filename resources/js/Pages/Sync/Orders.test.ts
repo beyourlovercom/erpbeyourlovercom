@@ -19,13 +19,18 @@ const woo = {
   shipment_status: 'shipped', carrier: 'DHL', tracking_outbound_status: null,
   tracking_outbound_attempts: null, tracking_sync_status: 'pending', tracking_sync_reason: null,
   tracking_sync_verified_at: null, progress: { code: 'unsynced' as 'unsynced' | 'failed' | 'synced' | 'notified', label: '未同步', reason: '待同步' as string | null },
-  can_sync: true, can_reconcile: true, can_operate: true,
+  can_sync: true, sync_block_reason: null as string | null, can_reconcile: true, can_operate: true,
 }
 const pagination = { total: 100, current_page: 1, last_page: 2, per_page: 50, from: 1, to: 50 }
 const props = (orders = [woo]) => ({ orders, filters: { search: '', source: '', per_page: 50 }, pagination })
 
 describe('Sync all-orders simple status UI', () => {
-  beforeEach(() => { get.mockClear(); post.mockClear(); vi.stubGlobal('confirm', vi.fn(() => true)) })
+  beforeEach(() => {
+    get.mockClear()
+    post.mockClear()
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.stubGlobal('alert', vi.fn())
+  })
 
   it('shows source ERP and original order IDs with the operational progress at the right edge', () => {
     const wrapper = mount(Orders, { props: props() })
@@ -49,18 +54,48 @@ describe('Sync all-orders simple status UI', () => {
     expect(wrapper.findAll('.operational-actions button').filter((item) => item.text() === '查看原因')).toHaveLength(1)
   })
 
-  it('uses only eligible per-order sync actions and never offers write actions on readonly, archived or conflict rows', async () => {
-    const archived = { ...woo, id: 2, archived: true, can_sync: false, can_reconcile: false }
-    const conflict = { ...woo, id: 3, progress: { code: 'failed' as const, label: '同步失败', reason: '承运商冲突' }, can_sync: false, can_reconcile: true }
+  it('shows 同步网站 on every unsuccessful operator row while retaining server-backed safety gates', async () => {
+    const archived = { ...woo, id: 2, archived: true, can_sync: false, can_reconcile: false, sync_block_reason: '订单已归档，请先恢复' }
+    const conflict = { ...woo, id: 3, progress: { code: 'failed' as const, label: '同步失败', reason: '承运商冲突' }, can_sync: false, can_reconcile: true, sync_block_reason: '官网物流存在冲突' }
     const readonly = { ...woo, id: 4, can_sync: false, can_reconcile: false, can_operate: false }
-    const wrapper = mount(Orders, { props: props([woo, archived, conflict, readonly]) })
-    const buttons = wrapper.findAll('.operational-actions button')
-    expect(buttons.filter((item) => item.text() === '同步物流')).toHaveLength(1)
-    expect(buttons.filter((item) => item.text() === '核对官网')).toHaveLength(1)
-    await buttons.find((item) => item.text() === '同步物流')!.trigger('click')
+    const synced = { ...woo, id: 5, progress: { code: 'synced' as const, label: '已同步', reason: null }, can_sync: false }
+    const notified = { ...woo, id: 6, progress: { code: 'notified' as const, label: '已通知', reason: null }, can_sync: false }
+    const wrapper = mount(Orders, { props: props([woo, archived, conflict, readonly, synced, notified]) })
+    const actionRows = wrapper.findAll('tbody tr .operational-actions')
+    expect(actionRows.map(row => row.findAll('button').filter(item => item.text() === '同步网站').length)).toEqual([1, 1, 1, 0, 0, 0])
+    const eligible = actionRows[0].findAll('button').find(item => item.text() === '同步网站')!
+    expect(eligible.classes()).toContain('mvp-button-primary')
+    await eligible.trigger('click')
     expect(post).toHaveBeenCalledWith('/sync/orders/1/tracking-outbound')
-    await buttons.find((item) => item.text() === '核对官网')!.trigger('click')
+    expect(window.confirm).toHaveBeenCalled()
+
+    const blocked = actionRows[1].findAll('button').find(item => item.text() === '同步网站')!
+    expect(blocked.classes()).toContain('sync-blocked')
+    await blocked.trigger('click')
+    expect(window.alert).toHaveBeenCalledWith('订单已归档，请先恢复')
+    expect(post).toHaveBeenCalledTimes(1)
+
+    await actionRows[2].findAll('button').find(item => item.text() === '同步网站')!.trigger('click')
+    expect(window.alert).toHaveBeenCalledWith('官网物流存在冲突')
+    expect(post).toHaveBeenCalledTimes(1)
+    await actionRows[2].findAll('button').find(item => item.text() === '核对官网')!.trigger('click')
     expect(post).toHaveBeenCalledWith('/sync/orchestration/reconcile', { order_ids: [3] })
+  })
+
+  it('shows 同步网站 for non-Woo unsynced orders but explains why no write can happen', async () => {
+    const imported = { ...woo, id: 7, source_type: 'manual_other', can_sync: false,
+      can_reconcile: false, sync_block_reason: '该订单未关联 WooCommerce 官网订单，不能直接同步网站。' }
+    const wrapper = mount(Orders, { props: props([imported]) })
+    await wrapper.findAll('.operational-actions button').find(item => item.text() === '同步网站')!.trigger('click')
+    expect(window.alert).toHaveBeenCalledWith('该订单未关联 WooCommerce 官网订单，不能直接同步网站。')
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('does not trigger any write when an operator cancels the sync confirmation', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => false))
+    const wrapper = mount(Orders, { props: props([woo]) })
+    await wrapper.findAll('.operational-actions button').find(item => item.text() === '同步网站')!.trigger('click')
+    expect(post).not.toHaveBeenCalled()
   })
 
   it('searches all orders, paginates, and keeps the source filter', async () => {

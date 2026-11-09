@@ -130,6 +130,54 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
         ], true)['code']);
     }
 
+    public function test_operator_sees_sync_website_eligibility_and_explanation_for_non_woo_or_unshipped_orders(): void
+    {
+        config(['tracking_sync_v2.manual_mode' => 'general']);
+        $role = Role::create(['key' => 'role_preset_logistics', 'label' => '物流']);
+        foreach (['sync.view', 'sync.operate', 'logistics.view', 'logistics.operate'] as $key) {
+            $permission = Permission::firstOrCreate(['key' => $key], ['label' => $key]);
+            $role->permissions()->syncWithoutDetaching([$permission->id]);
+        }
+        $operator = User::factory()->create(['is_active' => true, 'permission_mode' => 'role']);
+        $operator->roles()->attach($role);
+
+        $eligible = $this->makeOrder('woocommerce', 'SYNC-BUTTON-READY');
+        $eligible->externalReferences()->create([
+            'provider' => 'woocommerce', 'connection_key' => 'test-shop', 'reference' => '30041',
+        ]);
+        $eligible->shipment()->create([
+            'shipment_status' => 'shipped', 'carrier' => 'USPS', 'tracking_number' => 'SYNC-READY-TRACK',
+            'shipped_at' => now(),
+        ]);
+        $nonWoo = $this->makeOrder('manual_other', 'SYNC-BUTTON-NONWOO');
+        $pending = $this->makeOrder('woocommerce', 'SYNC-BUTTON-NOT-SHIPPED');
+        $pending->externalReferences()->create([
+            'provider' => 'woocommerce', 'connection_key' => 'test-shop', 'reference' => '30042',
+        ]);
+        $pending->shipment()->create([
+            'shipment_status' => 'pending', 'carrier' => 'USPS', 'tracking_number' => 'SYNC-PENDING-TRACK',
+        ]);
+
+        $response = $this->actingAs($operator)->get('/sync/orders')->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('canOperate', true)
+            ->has('orders', 3)
+        );
+
+        $orders = collect($response->viewData('page')['props']['orders'])->keyBy('id');
+        self::assertTrue($orders[$eligible->id]['can_sync']);
+        self::assertNull($orders[$eligible->id]['sync_block_reason']);
+        self::assertFalse($orders[$nonWoo->id]['can_sync']);
+        self::assertSame(
+            '该订单未关联 WooCommerce 官网订单，不能直接同步网站。',
+            $orders[$nonWoo->id]['sync_block_reason']
+        );
+        self::assertFalse($orders[$pending->id]['can_sync']);
+        self::assertStringContainsString('尚未完成发货', $orders[$pending->id]['sync_block_reason']);
+        // This is only a read; no ERP sync row may be created implicitly.
+        $this->assertDatabaseCount('manual_syncs', 0);
+    }
+
     public function test_read_only_sync_view_cannot_write_and_payload_endpoint_has_valid_source_type(): void
     {
         $user = $this->viewer();

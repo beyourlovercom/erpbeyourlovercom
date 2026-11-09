@@ -105,6 +105,21 @@ final class ManualSyncController
                 $pushable = $canPush && ! $isArchived && $isWoo && $hasWooReference
                     && $order->shipment?->shipment_status === 'shipped'
                     && $number !== '' && ! in_array($trackingState['status'] ?? '', ['completed', 'conflict'], true);
+                // A row may be shown as unsynced/failed while it is not yet
+                // eligible for a website write. Make the blocker visible to
+                // operators rather than offering a silently ineffective action.
+                $syncBlockedReason = match (true) {
+                    ! $canOperate => '当前账号没有同步操作权限。',
+                    $isArchived => '订单已归档，需先恢复订单才能同步网站。',
+                    ! $isWoo => '该订单未关联 WooCommerce 官网订单，不能直接同步网站。',
+                    ! $hasWooReference => '缺少可信的官网 WooCommerce 母订单引用。',
+                    $order->shipment?->shipment_status !== 'shipped' => '订单尚未完成发货，请先完成发货审核。',
+                    $number === '' => '尚未填写物流单号，请先填写有效的 Tracking。',
+                    ($trackingState['status'] ?? '') === 'conflict' => '官网物流信息存在冲突，请先核对，不能直接覆盖。',
+                    ($trackingState['status'] ?? '') === 'completed' => '官网物流已核验，请刷新同步进度。',
+                    ! $canPush => '当前账号或同步开关不允许执行官网物流写回。',
+                    default => null,
+                };
 
                 return [
                     'id' => $order->id,
@@ -128,6 +143,7 @@ final class ManualSyncController
                     'tracking_sync_verified_at' => $trackingState['verified_at'] ?? null,
                     'progress' => $proof,
                     'can_sync' => $pushable,
+                    'sync_block_reason' => $syncBlockedReason,
                     'can_reconcile' => $canOperate && ! $isArchived && $hasWooReference && $number !== '',
                     'can_operate' => $canOperate,
                 ];
