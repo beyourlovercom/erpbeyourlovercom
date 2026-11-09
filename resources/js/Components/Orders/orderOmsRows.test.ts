@@ -10,6 +10,24 @@ const base = (overrides: Partial<OrderGridOrder> = {}): OrderGridOrder => ({
   ...overrides,
 })
 
+it('uses the original Excel number as the main visible order number without overwriting ERP identity', () => {
+  const row = toOrderOmsRow({
+    id: 9903,
+    erp_order_id: '007-1109-c99999',
+    external_order_number: 'ORIGINAL-KOL-0007',
+    source_type: 'kol',
+    order_kind: 'kol_fulfillment',
+  })
+  expect(row.display_order_number).toBe('ORIGINAL-KOL-0007')
+  expect(row.display_order_kind_label).toBe('网红订单')
+  expect(row.erp_order_id).toBe('007-1109-c99999')
+  const native = toOrderOmsRow({
+    id: 9904, erp_order_id: '007-1109-c99998', external_order_number: 'Woo-010',
+    source_type: 'woocommerce',
+  })
+  expect(native.display_order_number).toBe('007-1109-c99998')
+})
+
 describe('OMS order-column projection', () => {
   it('shows SKU separately from total ordered units across multiple item lines', () => {
     const row = toOrderOmsRow(base({ items: [

@@ -8,7 +8,7 @@ type Workflow = { code: string; en: string; zh: string; color: string; source: s
 type Option = { code: string; en: string; zh: string; color: string; mutable: boolean }
 type Order = {
   _is_additional_item?: boolean;
-  id: number; erp_order_id: string | null; order_kind?: string;
+  id: number; erp_order_id: string | null; display_order_number?: string; order_kind?: string;
   source_label?: string; external_order_number?: string;
   workflow_status_projection?: Workflow; workflow_revision?: number; tracking_sync_status?: string | null; tracking_sync_label?: string | null; tracking_sync_reason?: string | null
 }
@@ -17,7 +17,7 @@ const props = defineProps<{ params: Params }>()
 const order = computed(() => props.params.data as Order | undefined)
 const href = computed(() => order.value?.order_kind === 'kol_fulfillment'
   ? '/kol/orders/' + order.value?.id : '/customers/orders/' + order.value?.id)
-const label = computed(() => order.value?.erp_order_id || '—')
+const label = computed(() => order.value?.display_order_number || order.value?.erp_order_id || '—')
 const sourceTitle = computed(() => order.value?.source_label === 'WooCommerce' && order.value.external_order_number
   ? '来源订单：' + order.value.external_order_number : '')
 </script>

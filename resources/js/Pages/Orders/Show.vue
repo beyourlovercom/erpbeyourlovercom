@@ -186,6 +186,9 @@ const applyShipmentCarrierDefault = () => {
   shipmentEditor.value.service = contextualDefaultService(shipmentEditor.value.carrier, props.order.address?.country)
 }
 
+const isImportedOrder = computed(() => ['website', 'kol', 'manual_other'].includes(props.order.source_type))
+const sourceNumber = computed(() => isImportedOrder.value ? (props.order.external_order_number || props.order.erp_order_id || '—') : (props.order.erp_order_id || '—'))
+const displayedOrderKind = computed(() => ({ website: '网站订单', kol: '网红订单', manual_other: '外采订单' } as Record<string, string>)[props.order.source_type] ?? props.order.order_kind_label)
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment'
   || props.order.fulfillment_parent?.order_kind === 'kol_fulfillment')
 const adjacentNavigationPending = ref(false)
@@ -1088,7 +1091,7 @@ onBeforeUnmount(() => {
 
         <div id="order-section-overview" class="erp-form-header-row">
           <div>
-            <p class="ord-kicker">{{ order.order_kind_label }}</p>
+            <p class="ord-kicker">{{ displayedOrderKind }}</p>
             <h1 class="erp-form-title">{{ order.erp_order_id ?? '—' }}</h1>
             <p v-if="editMode" class="erp-form-subtitle">仅修改允许编辑的字段；商品变更须通过库存与分仓影响预检。</p>
           </div>
@@ -1137,8 +1140,8 @@ onBeforeUnmount(() => {
           <div class="ord-identity-main">
             <span class="ord-identity-number">{{ order.erp_order_id ?? '—' }}</span><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :can-manage-auxiliary="canManageAuxiliary" :options="workflowStatusOptions" />
             <span class="ord-identity-badge ord-source-order-number" data-testid="source-order-number">源订单号：{{ order.external_order_number || '未记录' }}</span>
-            <span v-if="order.source_order_status || order.source_type === 'woocommerce'" class="ord-identity-badge ord-source-order-status" data-testid="source-order-status" :title="order.source_order_status_modified_at ? `网站状态更新时间：${order.source_order_status_modified_at}` : '尚无网站状态同步记录'">网站真实状态：{{ order.source_order_status || '未同步' }}</span>
-            <span class="ord-identity-badge">{{ order.order_kind_label }}</span>
+            <span v-if="order.source_order_status || order.source_type === 'woocommerce'" class="ord-identity-badge ord-source-order-status" :title="order.source_order_status_modified_at ? `网站状态更新时间：${order.source_order_status_modified_at}` : '尚无网站状态同步记录'" data-testid="source-order-status">网站真实状态：{{ order.source_order_status || '未同步' }}</span>
+            <span class="ord-identity-badge">{{ displayedOrderKind }}</span>
             <span class="ord-identity-badge ord-badge-muted">{{ order.source_label }}</span>
             <span class="ord-identity-badge ord-badge-status">{{ order.order_status_label }}</span>
             <span class="ord-identity-owner">负责人：{{ order.owner?.name ?? '—' }}</span>
@@ -1390,8 +1393,8 @@ onBeforeUnmount(() => {
           </div>
           </div>
           <dl v-if="!editMode" class="ord-summary-grid ord-summary-grid-order" aria-label="订单信息摘要">
-            <div class="ord-summary-field"><dt>订单号</dt><dd>{{ order.erp_order_id ?? '—' }}</dd></div>
-            <div class="ord-summary-field"><dt>订单类型</dt><dd>{{ order.order_kind_label }}</dd></div>
+            <div class="ord-summary-field"><dt>{{ isImportedOrder ? '原始订单号' : '订单号' }}</dt><dd>{{ sourceNumber }}</dd></div>
+            <div class="ord-summary-field"><dt>订单类型</dt><dd>{{ displayedOrderKind }}</dd></div>
             <div class="ord-summary-field"><dt>来源</dt><dd>{{ order.source_label }}</dd></div>
             <div class="ord-summary-field"><dt>负责人</dt><dd>{{ order.owner?.name ?? '—' }}</dd></div>
             <div class="ord-summary-field"><dt>币种</dt><dd>{{ order.currency }}</dd></div>
@@ -1399,8 +1402,8 @@ onBeforeUnmount(() => {
           </dl>
           <div v-else class="erp-form-grid">
             <div class="erp-form-field">
-              <label class="erp-form-label">订单号</label>
-              <input :value="order.erp_order_id ?? '—'" class="erp-input" disabled>
+              <label class="erp-form-label">{{ isImportedOrder ? '原始订单号' : '订单号' }}</label>
+              <input :value="sourceNumber" class="erp-input" disabled>
             </div>
             <div class="erp-form-field">
               <label class="erp-form-label">订单类型</label>

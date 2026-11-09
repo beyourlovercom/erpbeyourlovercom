@@ -10,6 +10,7 @@ export type OrderGridOrder = Record<string, unknown> & {
   id: number
   erp_order_id: string | null
   external_order_number?: string | null
+  source_type?: string
   internal_order_number?: string | null
   source_label?: string
   order_date?: string | null
@@ -87,6 +88,11 @@ export function toOrderOmsRow(order: OrderGridOrder): Record<string, unknown> {
     ...order,
     order_db_id: order.id,
     erp_order_id: order.erp_order_id ?? '—',
+    // Primary visible number is the immutable XLSX source number; ERP identity stays
+    // separate for canonical linking, audit and internal references.
+    display_order_number: ['website', 'kol', 'manual_other'].includes(order.source_type ?? '')
+      ? (order.external_order_number || order.erp_order_id || '—') : (order.erp_order_id || '—'),
+    display_order_kind_label: ({ website: '网站订单', kol: '网红订单', manual_other: '外采订单' } as Record<string, string>)[order.source_type ?? ''] ?? order.order_kind_label ?? '—',
     sku_list: skus.length ? skus.join(', ') : '—',
     order_quantity: quantity,
     sku_quantity_detail: itemDescriptors.length ? itemDescriptors.join('; ') : '—',
