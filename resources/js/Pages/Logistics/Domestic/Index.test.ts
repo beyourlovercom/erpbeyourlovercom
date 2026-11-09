@@ -89,14 +89,31 @@ describe('Domestic logistics production workbench', () => {
 
     const pending = mount(Index,{props:{...baseProps,view:'pending'}})
     const pendingHeaders = pending.findAll('.orders thead th').map(th=>th.text())
-    expect(pendingHeaders).toContain('SKU / 数量')
-    expect(pendingHeaders).not.toContain('SKU')
-    expect(pendingHeaders).not.toContain('数量')
+    expect(pendingHeaders).not.toContain('SKU / 数量')
     expect(pendingHeaders).not.toContain('成交日期')
-    expect(pendingHeaders).not.toContain('金额')
+    expect(pendingHeaders.slice(pendingHeaders.indexOf('国家/地区') + 1, pendingHeaders.indexOf('国家/地区') + 4)).toEqual(['SKU','数量','金额'])
+    const pendingCells = pending.findAll('.orders tbody tr:first-child td')
+    expect(pendingCells[pendingHeaders.indexOf('SKU')].find('div').text()).toBe('M2')
+    expect(pendingCells[pendingHeaders.indexOf('数量')].text()).toBe('1')
+    expect(pendingCells[pendingHeaders.indexOf('金额')].text()).toBe('127.35 EUR')
+    expect(pendingCells[pendingHeaders.indexOf('金额')].attributes('title')).toBe('网站真实订单总金额')
+    const history = mount(Index,{props:{...baseProps,view:'4px'}})
+    const historyHeaders = history.findAll('.orders thead th').map(th=>th.text())
+    expect(historyHeaders).toContain('SKU / 数量')
+    expect(historyHeaders).not.toContain('金额')
+    const missingAmount = mount(Index,{props:{...baseProps,view:'pending',rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],amount:null,amount_currency:null}]}}})
+    const missingHeaders = missingAmount.findAll('.orders thead th').map(th=>th.text())
+    expect(missingAmount.findAll('.orders tbody tr:first-child td')[missingHeaders.indexOf('金额')].text()).toBe('—')
     const noPaid = mount(Index,{props:{...baseProps,view:'review',rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],paid_date:null}]}}})
     const noPaidHeaders = noPaid.findAll('.orders thead th').map(th=>th.text())
     expect(noPaid.findAll('.orders tbody tr:first-child td')[noPaidHeaders.indexOf('成交日期')].text()).toBe('—')
+  })
+
+  it('uses the correct table span in pending, review, and history empty states', () => {
+    for (const [view, expected] of [['pending','16'], ['review','17'], ['today','14']]) {
+      const wrapper = mount(Index,{props:{...baseProps,view,rows:{...baseProps.rows,data:[]}}})
+      expect(wrapper.get('.orders tbody td.empty').attributes('colspan')).toBe(expected)
+    }
   })
 
   it('shows the read-only 今日订单 XLSX download before the 4PX provider button only on the aggregate today tab', () => {
