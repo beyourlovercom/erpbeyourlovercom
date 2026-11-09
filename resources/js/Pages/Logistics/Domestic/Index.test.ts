@@ -37,6 +37,21 @@ const baseProps = {
 describe('Domestic logistics production workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear() })
 
+  it('splits SKU and product quantity into separate columns on the domestic review page only', () => {
+    const review = mount(Index,{props:{...baseProps,view:'review'}})
+    const headers = review.findAll('.orders thead th').map(th=>th.text())
+    const cells = review.findAll('.orders tbody tr:first-child td')
+    expect(headers).toContain('SKU')
+    expect(headers).toContain('数量')
+    expect(cells[headers.indexOf('SKU')].find('div').text()).toBe('M2')
+    expect(cells[headers.indexOf('数量')].text()).toBe('1')
+
+    const pending = mount(Index,{props:{...baseProps,view:'pending'}})
+    const pendingHeaders = pending.findAll('.orders thead th').map(th=>th.text())
+    expect(pendingHeaders).toContain('SKU / 数量')
+    expect(pendingHeaders).not.toContain('数量')
+  })
+
   it('shows the read-only 今日订单 XLSX download before the 4PX provider button only on the aggregate today tab', () => {
     const today=mount(Index,{props:{...baseProps,view:'today'}})
     const links=today.findAll('.provider-card:first-child .actions a').map(a=>a.attributes('href'))
