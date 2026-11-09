@@ -23,6 +23,8 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public const QUEUE = 'shipout-production-batch';
+
     public int $tries = 1;
 
     public int $timeout = 55;
@@ -38,7 +40,7 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
             // Never recurse in sync/test mode; a contention is a recoverable
             // operational pause, not permission to issue a second POST.
             if (config('queue.default') !== 'sync') {
-                self::dispatch($this->batchId)->delay(now()->addSeconds(70));
+                self::dispatch($this->batchId)->onQueue(self::QUEUE)->delay(now()->addSeconds(70));
             }
 
             return;
@@ -80,6 +82,11 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
                     if (! $access->allows($actor)) {
                         throw new RuntimeException('SHIPOUT_V1_OPERATOR_DENIED');
                     }
+                    // Re-check exact order scope at execution time. This blocks
+                    // queued jobs after a Canary id change or a kill-switch flip.
+                    if ((int) config('shipout.production_v1_batch_canary_order_id', 0) !== (int) $item->order_id) {
+                        throw new RuntimeException('SHIPOUT_BATCH_CANARY_SCOPE_DENIED');
+                    }
                     if (! app()->environment('production')
                         || ! (bool) config('shipout.production_v1_batch_enabled', false)
                         || ! (bool) config('shipout.production_v1_batch_owner_approved', false)
@@ -119,7 +126,7 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
                 $this->finish();
             } elseif (DB::table('shipout_production_batch_items')->where('batch_id', $this->batchId)
                 ->where('status', 'queued')->exists()) {
-                self::dispatch($this->batchId)->delay(now()->addSeconds(70));
+                self::dispatch($this->batchId)->onQueue(self::QUEUE)->delay(now()->addSeconds(70));
             } else {
                 $this->finish();
             }

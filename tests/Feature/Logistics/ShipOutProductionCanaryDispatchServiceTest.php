@@ -1514,6 +1514,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         config()->set([
             'shipout.production_v1_batch_enabled' => true,
             'shipout.production_v1_batch_owner_approved' => true,
+            'shipout.production_v1_batch_canary_order_id' => $order->id,
         ]);
         $actor = auth()->user();
         $batchId = '00000000-0000-4000-8000-000000000091';
@@ -1541,6 +1542,32 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->assertSame(1, $this->postInvocations);
     }
 
+    public function test_v1_batch_worker_denies_out_of_scope_order_without_provider_egress(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $this->fakeProvider();
+        config()->set([
+            'shipout.production_v1_batch_enabled' => true,
+            'shipout.production_v1_batch_owner_approved' => true,
+            'shipout.production_v1_batch_canary_order_id' => $order->id + 5,
+        ]);
+        $actor = auth()->user();
+        $batchId = '00000000-0000-4000-8000-000000000093';
+        $this->makeSyntheticBatch((int) $order->id, (int) $actor->id, $batchId);
+        auth()->logout();
+        (new ProcessShipOutProductionBatch($batchId))->handle(
+            app(ShipOutProductionCanaryDispatchService::class),
+            app(ShipOutProductionV1OperatorAccess::class),
+        );
+        $this->assertDatabaseHas('shipout_production_batch_items', [
+            'batch_id' => $batchId, 'status' => 'skipped',
+            'result_code' => 'SHIPOUT_BATCH_CANARY_SCOPE_DENIED',
+        ]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNothingSent();
+    }
+
     public function test_v1_batch_timeout_is_uncertain_and_never_retries(): void
     {
         $order = $this->order();
@@ -1549,6 +1576,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         config()->set([
             'shipout.production_v1_batch_enabled' => true,
             'shipout.production_v1_batch_owner_approved' => true,
+            'shipout.production_v1_batch_canary_order_id' => $order->id,
         ]);
         $actor = auth()->user();
         $batchId = '00000000-0000-4000-8000-000000000092';

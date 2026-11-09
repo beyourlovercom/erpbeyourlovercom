@@ -62,6 +62,9 @@ return [
     // Both must be explicitly enabled after Dev UAT; no production release here.
     'production_v1_batch_enabled' => env('SHIPOUT_PRODUCTION_V1_BATCH_ENABLED', false),
     'production_v1_batch_owner_approved' => env('SHIPOUT_PRODUCTION_V1_BATCH_OWNER_APPROVED', false),
+    // R6 safe launch: fail-closed, exactly one specifically approved ERP order.
+    // A future broad rollout requires a separate, explicit code change.
+    'production_v1_batch_canary_order_id' => (int) env('SHIPOUT_PRODUCTION_V1_BATCH_CANARY_ORDER_ID', 0),
     'production_v1_owner_approved' => filter_var(env('SHIPOUT_PRODUCTION_V1_OWNER_APPROVED', false), FILTER_VALIDATE_BOOL),
     // Legacy single-operator setting retained for safe rollback only.
     // Three-account V1 sends use a separate exact-ID list; no global grants.

@@ -42,7 +42,7 @@ final class ShipOutProductionBatchController
             }
             $id = $batches->start((int) $request->user()->id, $input['fingerprint']);
             try {
-                ProcessShipOutProductionBatch::dispatch($id)->onQueue('default');
+                ProcessShipOutProductionBatch::dispatch($id)->onQueue(ProcessShipOutProductionBatch::QUEUE);
             } catch (Throwable) {
                 DB::table('shipout_production_batches')->where('id', $id)
                     ->update(['status' => 'paused', 'updated_at' => now()]);

@@ -22,8 +22,14 @@ final class ShipOutProductionBatchService
             return [];
         }
         $cutover = max(1, $configuredCutover);
+        $canaryId = (int) config('shipout.production_v1_batch_canary_order_id', 0);
+        if (app()->environment('production') && $canaryId < $cutover) {
+            // Without a configured exact order ID, Production cannot enumerate
+            // an entire live warehouse and accidentally dispatch all candidates.
+            return [];
+        }
 
-        return Shipment::query()
+        $query = Shipment::query()
             ->where('shipment_status', 'pending')
             ->where('carrier', 'USPS')
             ->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', ''))
@@ -35,8 +41,12 @@ final class ShipOutProductionBatchService
                 ->where('order_status', 'pending_shipment')
                 ->whereHas('address', fn ($address) => $address->where('country', 'US')))
             ->whereNotIn('order_id', DB::table('shipout_dispatch_attempts')->select('order_id'))
-            ->where('order_id', '>=', $cutover)
-            ->orderBy('id')->limit(self::MAX_ORDERS + 1)
+            ->where('order_id', '>=', $cutover);
+        if (app()->environment('production')) {
+            $query->where('order_id', $canaryId);
+        }
+
+        return $query->orderBy('id')->limit(self::MAX_ORDERS + 1)
             ->pluck('order_id')->map(fn ($id) => (int) $id)->all();
     }
 

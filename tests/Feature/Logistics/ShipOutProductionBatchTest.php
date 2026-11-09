@@ -8,6 +8,7 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionBatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryReconcileService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOutboundPacer;
+use App\Modules\Logistics\Experience\Jobs\ProcessShipOutProductionBatch;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -123,6 +124,30 @@ final class ShipOutProductionBatchTest extends TestCase
             'confirmation' => 'CONFIRM_MOREPLUS_BATCH_1',
         ])->assertStatus(409)->assertJsonPath('error_code', 'SHIPOUT_BATCH_STALE');
         $this->assertDatabaseCount('shipout_production_batches', 0);
+    }
+
+    public function test_production_batch_has_no_candidate_without_exact_canary_id(): void
+    {
+        $user = $this->operator();
+        $order = $this->approvedOrder($user);
+        $old = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            config()->set('shipout.production_v1_batch_canary_order_id', 0);
+            $this->assertSame([], app(ShipOutProductionBatchService::class)->candidateIds());
+            config()->set('shipout.production_v1_batch_canary_order_id', $order->id + 1);
+            $this->assertSame([], app(ShipOutProductionBatchService::class)->candidateIds());
+            config()->set('shipout.production_v1_batch_canary_order_id', $order->id);
+            $this->assertSame([$order->id], app(ShipOutProductionBatchService::class)->candidateIds());
+        } finally {
+            $this->app->instance('env', $old);
+        }
+    }
+
+    public function test_production_batch_queue_is_separate_from_standard_orders(): void
+    {
+        $this->assertSame('shipout-production-batch',
+            ProcessShipOutProductionBatch::QUEUE);
     }
 
     public function test_production_throttle_prefixes_are_independent(): void
