@@ -52,7 +52,7 @@ const form = useForm<{
 }>({
   external_order_number: props.generatedExternalOrderNumber,
   kol_id: props.defaultOrderKind === 'kol_fulfillment' ? (props.selectedKolId ?? null) : null,
-  order_date: new Date().toISOString().slice(0, 10),
+  order_date: props.defaultOrderKind === 'kol_fulfillment' ? '' : new Date().toISOString().slice(0, 10),
   order_note: '',
   currency: 'USD',
   recipient_name: '',
@@ -173,8 +173,9 @@ const submit = () => {
                 <p v-if="form.errors.kol_id" class="erp-field-error">{{ form.errors.kol_id }}</p>
               </div>
               <div class="erp-form-field">
-                <label class="erp-form-label">订单日期 <span class="erp-form-required">*</span></label>
-                <input v-model="form.order_date" type="date" class="erp-input" :class="{ 'has-error': form.errors.order_date }" required>
+                <label class="erp-form-label">{{ isKol ? '合作日期（可选）' : '订单日期' }} <span v-if="!isKol" class="erp-form-required">*</span></label>
+                <input v-model="form.order_date" type="date" class="erp-input" :class="{ 'has-error': form.errors.order_date }" :required="!isKol">
+                <small v-if="isKol">有合作日期请填写真实日期；留空则使用本订单实际创建日期</small>
                 <p v-if="form.errors.order_date" class="erp-field-error">{{ form.errors.order_date }}</p>
               </div>
               <div class="erp-form-field">

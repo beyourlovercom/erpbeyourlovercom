@@ -82,6 +82,7 @@ describe('Domestic logistics production workbench', () => {
     expect(headers).toContain('数量')
     expect(headers.slice(headers.indexOf('订单状态') + 1,headers.indexOf('订单状态') + 4)).toEqual(['成交日期','SKU','数量'])
     expect(cells[headers.indexOf('成交日期')].text()).toBe('11-09')
+    expect(cells[headers.indexOf('成交日期')].attributes('title')).toBe('')
     expect(cells[headers.indexOf('SKU')].find('div').text()).toBe('M2')
     expect(cells[headers.indexOf('数量')].text()).toBe('1')
 
