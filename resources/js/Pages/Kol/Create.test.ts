@@ -165,7 +165,7 @@ describe('Kol/Create VI contract', () => {
     expect(card.findAll('input[type="password"]')).toHaveLength(2)
     expect(card.text()).toContain('不保存到 ERP')
     expect(card.find('input[placeholder="例如 ANDY15"]').exists()).toBe(true)
-    expect(card.text()).toContain('冲突不会覆盖现有 Coupon')
+    expect(card.text()).toContain('Code 冲突不覆盖')
   })
 
   it('defaults cooperation type, joined date, owner and primary social platforms', () => {
