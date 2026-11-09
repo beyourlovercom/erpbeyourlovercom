@@ -6,6 +6,8 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt;
@@ -31,12 +33,14 @@ final class LogisticsOsV1ClosureTest extends TestCase
         [$user, $order, $carrier] = $this->scenario();
         $warehouse = Warehouse::query()->where('is_active', true)->orderBy('priority')->firstOrFail();
 
+        // Shipping with no allocated/approved overseas warehouse must be rejected.
         $this->actingAs($user)->post("/logistics/orders/{$order->id}/ship", [
             'warehouse_id' => $warehouse->id,
             'carrier' => $carrier->name,
             'service' => 'Ground',
             'shipped_at' => '2026-09-01T08:00:00Z',
-        ])->assertRedirect();
+        ])->assertStatus(409);
+        $this->dispatch($user, $order, $carrier, null);
 
         $this->assertDatabaseHas('shipments', [
             'order_id' => $order->id,
@@ -573,6 +577,17 @@ final class LogisticsOsV1ClosureTest extends TestCase
             ['name' => 'Logistics OS V1 Test Product', 'product_type' => 'simple', 'woocommerce_product_id' => 992001],
         );
 
+        // Reservation-backed allocation requires authoritative inventory in the test warehouse.
+        $warehouse = Warehouse::query()->where('is_active', true)->orderBy('priority')->firstOrFail();
+        InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id, 'source_type' => 'xlsx', 'sync_mode' => 'full',
+            'status' => 'confirmed', 'confirmed_at' => now(),
+        ]);
+        WarehouseInventory::query()->updateOrCreate(
+            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
+            ['quantity_on_hand' => 10, 'quantity_reserved' => 0],
+        );
+
         $this->actingAs($user)->post('/customers/orders', [
             'external_order_number' => 'LOG-OS-'.uniqid(),
             'order_date' => '2026-09-01',
@@ -598,6 +613,13 @@ final class LogisticsOsV1ClosureTest extends TestCase
         if ($tracking !== null) {
             $payload['tracking_number'] = $tracking;
         }
+        // Legacy dispatch fixtures must follow the current allocation -> Dede approval gate.
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/draft", [
+            'warehouse_id' => $warehouse->id,
+            'carrier' => $carrier->name,
+            'service' => 'Ground',
+        ])->assertRedirect();
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
         $this->actingAs($user)->post("/logistics/orders/{$order->id}/ship", $payload)->assertRedirect();
     }
 
