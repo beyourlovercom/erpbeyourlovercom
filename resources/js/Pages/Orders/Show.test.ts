@@ -189,7 +189,7 @@ describe('Orders/Show V2', () => {
     const strip = wrapper.find('.ord-identity-strip')
     expect(strip.exists()).toBe(true)
     expect(strip.text()).toContain('007-0908-c1')
-    expect(wrapper.text()).not.toContain('BIZ-001')
+    expect(wrapper.text()).toContain('源订单号：BIZ-001')
     expect(wrapper.text()).not.toContain('INT-001')
   })
 
@@ -217,7 +217,7 @@ describe('Orders/Show V2', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('.ord-details-disclosure').exists()).toBe(false)
     expect(wrapper.text()).toContain('007-0908-c1')
-    expect(wrapper.text()).not.toContain('BIZ-001')
+    expect(wrapper.text()).toContain('源订单号：BIZ-001')
     expect(wrapper.text()).not.toContain('INT-001')
   })
 
@@ -828,6 +828,14 @@ describe('Orders/Show V2', () => {
     options.onSuccess()
     await nextTick()
     expect(document.body.textContent).not.toContain('确认仍要分仓')
+    wrapper.unmount()
+  })
+
+  it('shows the original source order number and latest synchronized website status in the identity strip', () => {
+    const wrapper = mount(Show, { props: { order: { ...baseOrder, source_type: 'woocommerce', external_order_number: '40414', source_order_status: 'processing', source_order_status_modified_at: '2026-11-09T08:30:00+00:00' }, audit } })
+    expect(wrapper.get('[data-testid="source-order-number"]').text()).toContain('40414')
+    expect(wrapper.get('[data-testid="source-order-status"]').text()).toContain('processing')
+    expect(wrapper.get('[data-testid="source-order-status"]').attributes('title')).toContain('2026-11-09')
     wrapper.unmount()
   })
 
