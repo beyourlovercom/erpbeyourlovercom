@@ -73,6 +73,30 @@ final class OrderFulfillmentM1Test extends TestCase
         }
     }
 
+    public function test_order_detail_exposes_original_source_number_and_latest_provider_status(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create', 'customers.view']);
+        $this->actingAs($user)->post('/customers/orders', $this->payload('WC-40414'))->assertRedirect();
+        $order = Order::query()->firstOrFail();
+        $modifiedAt = now()->subMinute()->startOfSecond();
+        DB::table('order_financials')->insert([
+            'order_id' => $order->id,
+            'provider' => 'woocommerce',
+            'provider_reference' => '40414',
+            'provider_order_status' => 'processing',
+            'provider_modified_at' => $modifiedAt,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($user)->get('/customers/orders/'.$order->id)->assertOk()->assertInertia(
+            fn ($page) => $page->component('Orders/Show')
+                ->where('order.external_order_number', 'WC-40414')
+                ->where('order.source_order_status', 'processing')
+                ->where('order.source_order_status_modified_at', $modifiedAt->toIso8601String())
+        );
+    }
+
     public function test_duplicate_business_order_number_is_rejected(): void
     {
         $user = $this->userWith(['orders.view', 'orders.create']);
