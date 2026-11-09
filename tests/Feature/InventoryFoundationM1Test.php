@@ -52,6 +52,19 @@ final class InventoryFoundationM1Test extends TestCase
     }
 
 
+    public function test_global_grid_dev_inventory_pilot_keeps_authority_and_bounded_page_size(): void
+    {
+        $user = $this->userWith(['inventory.view']);
+        $this->actingAs($user)->get('/inventory/products?global_grid=1&per_page=20')->assertOk()
+            ->assertInertia(fn($p)=>$p->component('Inventory/Products')
+                ->where('globalGridPilotEnabled', true)->where('rows.per_page', 20));
+        $this->actingAs($user)->get('/inventory/products?global_grid=1&per_page=999999')->assertOk()
+            ->assertInertia(fn($p)=>$p->where('rows.per_page', 100));
+        $this->actingAs($user)->get('/inventory/products')->assertOk()
+            ->assertInertia(fn($p)=>$p->where('globalGridPilotEnabled', false));
+        $this->actingAs($user)->post('/inventory/us-la/stock',[])->assertForbidden();
+    }
+
     public function test_dashboard_exposes_seven_master_warehouses_and_six_fulfillment_warehouses(): void
     {
         $user=$this->userWith(['inventory.view']);

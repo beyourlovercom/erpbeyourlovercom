@@ -4,12 +4,24 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { AgGridVue } from 'ag-grid-vue3'
 import OmsServerFloatingFilter from './OmsServerFloatingFilter.vue'
 import {
-  AllCommunityModule, ModuleRegistry, themeBalham,
+  ClientSideRowModelModule, ColumnApiModule, RowApiModule, RenderApiModule,
+  PaginationModule, RowSelectionModule, TextFilterModule, NumberFilterModule,
+  QuickFilterModule, CsvExportModule, TooltipModule, ColumnAutoSizeModule,
+  GridStateModule, EventApiModule, CellApiModule, DragAndDropModule,
+  CellStyleModule, LocaleModule, ModuleRegistry, themeBalham,
   type ColDef, type ColGroupDef, type ColumnState, type GridApi, type GridReadyEvent, type SortChangedEvent,
 } from 'ag-grid-community'
 import { clampPinnedCounts, pinnedStateForVisibleColumns, sanitizeOmsGridPreference, type OmsDensity, type OmsGridPreference } from './omsGridState'
 
-ModuleRegistry.registerModules([AllCommunityModule])
+// Only register features used by the shared table. Unused AG Grid community
+// editors, infinite models and optional modules stay out of its lazy chunk.
+ModuleRegistry.registerModules([
+  ClientSideRowModelModule, ColumnApiModule, RowApiModule, RenderApiModule,
+  PaginationModule, RowSelectionModule, TextFilterModule, NumberFilterModule,
+  QuickFilterModule, CsvExportModule, TooltipModule, ColumnAutoSizeModule,
+  GridStateModule, EventApiModule, CellApiModule, DragAndDropModule,
+  CellStyleModule, LocaleModule,
+])
 type GridRow = Record<string, unknown>
 type GridColumn = ColDef<GridRow> | ColGroupDef<GridRow>
 type ServerPagination = { current_page: number; last_page: number; per_page: number; total: number; page_size_mode?: number | 'all' }
@@ -31,9 +43,14 @@ const props = withDefaults(defineProps<{
   rowIdentityKey?: string
   selectionOrderKey?: string
   selectedOrderIds?: number[]
+  showSearch?: boolean
+  enableSelection?: boolean
+  allowAllRows?: boolean
+  showClientCsvExport?: boolean
 }>(), {
   title: 'OMS Grid', preferenceScope: 'account', defaultPinnedLeft: 1,
   defaultPinnedRight: 1, requiredColumnIds: () => [],
+  showSearch: true, enableSelection: true, allowAllRows: true, showClientCsvExport: true,
 })
 
 const emit = defineEmits<{
@@ -313,6 +330,7 @@ const resetGrid = () => {
 const changePageSize = (event: Event) => {
   const selector = event.target as HTMLSelectElement
   if (selector.value === 'all') {
+    if (!props.allowAllRows) { selector.value = String(pageSize.value); return }
     const count = api.value?.getDisplayedRowCount() ?? props.rows.length
     const confirmed = window.confirm(`“全部”将展示当前筛选结果的 ${count} 条记录。数据过多可能使页面卡顿并增加浏览器负载。是否继续？`)
     if (!confirmed) { selector.value = String(pageSize.value); return }
@@ -330,6 +348,7 @@ const changeServerPageSize = (event: Event) => {
   const selector = event.target as HTMLSelectElement
   const previous = String(props.serverPagination?.page_size_mode ?? props.serverPagination?.per_page ?? 50)
   if (selector.value === 'all') {
+    if (!props.allowAllRows) { selector.value = previous; return }
     const total = props.serverPagination?.total ?? 0
     if (total > 200) {
       window.alert('当前筛选共有 ' + total + ' 条订单，超过 200 条安全上限。请先缩小筛选范围，再选择“全部”；导出仍可使用原有服务器导出功能。')
@@ -381,10 +400,10 @@ onBeforeUnmount(() => {
       <div class="oms-title"><strong>{{ title }}</strong><small>共 {{ (serverPagination?.total ?? rows.length).toLocaleString('zh-CN') }} 条 · 已选 {{ selectedCount }} 条</small></div>
       <div class="oms-actions"><slot name="actions" /></div>
       <div class="oms-spacer" />
-      <input v-model="query" class="oms-search" :aria-label="serverPagination ? '搜索全部订单' : '搜索列表'" :placeholder="serverPagination ? '搜索全部订单 / 收件人 / 来源单号...' : '搜索当前列表...'" @input="searchInput" @keydown.enter.prevent="submitSearch" />
-      <button type="button" @click="submitSearch">搜索</button>
-      <button v-if="query" type="button" aria-label="清空表格搜索" @click="clearSearch">×</button>
-      <button v-if="!serverPagination" type="button" title="导出当前表格为 CSV" @click="api?.exportDataAsCsv()">导出 CSV</button>
+      <input v-if="showSearch" v-model="query" class="oms-search" :aria-label="serverPagination ? '搜索全部订单' : '搜索列表'" :placeholder="serverPagination ? '搜索全部订单 / 收件人 / 来源单号...' : '搜索当前列表...'" @input="searchInput" @keydown.enter.prevent="submitSearch" />
+      <button v-if="showSearch" type="button" @click="submitSearch">搜索</button>
+      <button v-if="showSearch && query" type="button" aria-label="清空表格搜索" @click="clearSearch">×</button>
+      <button v-if="!serverPagination && showClientCsvExport" type="button" title="导出当前表格为 CSV" @click="api?.exportDataAsCsv()">导出 CSV</button>
       <button type="button" :aria-pressed="settingsOpen" @click="settingsOpen = !settingsOpen">⚙ 列设置</button>
       <button type="button" @click="changeDensity">密度：{{ density === 'compact' ? '紧凑' : '标准' }}</button>
       <button type="button" :aria-label="maximized ? '退出最大化' : '最大化列表'" :title="maximized ? '退出最大化 (Esc)' : '最大化列表' " @click="toggleMaximize">{{ maximized ? '⤢ 退出' : '⛶ 最大化' }}</button>
@@ -397,7 +416,7 @@ onBeforeUnmount(() => {
           :row-data="rows"
           :column-defs="leafColumns"
           :default-col-def="effectiveDefaultColDef"
-          :row-selection="rowSelection"
+          :row-selection="enableSelection ? rowSelection : undefined"
           :get-row-id="rowIdentityKey ? getRowId : undefined"
           :row-height="rowHeight"
           :header-height="headerHeight"
@@ -418,9 +437,9 @@ onBeforeUnmount(() => {
           @row-selected="onRowSelected"
           @selection-changed="onSelectionChanged"
         />
-        <div v-if="!serverPagination" class="oms-pagination-size"><label for="oms-grid-page-size">每页</label><select id="oms-grid-page-size" :value="pageSize" aria-label="每页显示条数" @change="changePageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="all">全部</option></select></div>
+        <div v-if="!serverPagination" class="oms-pagination-size"><label for="oms-grid-page-size">每页</label><select id="oms-grid-page-size" :value="pageSize" aria-label="每页显示条数" @change="changePageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option v-if="allowAllRows" value="all">全部</option></select></div>
         <div v-if="serverPagination" class="oms-server-pagination">
-          <label>每页 <select aria-label="服务端每页条数" :value="serverPagination.page_size_mode ?? serverPagination.per_page" @change="changeServerPageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="all">全部</option></select></label>
+          <label>每页 <select aria-label="服务端每页条数" :value="serverPagination.page_size_mode ?? serverPagination.per_page" @change="changeServerPageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option v-if="allowAllRows" value="all">全部</option></select></label>
           <span>共 {{ serverPagination.total }} 条 · 第 {{ serverPagination.current_page }} / {{ Math.max(1, serverPagination.last_page) }} 页</span>
           <button type="button" aria-label="上一页" :disabled="serverPagination.current_page <= 1" @click="emit('page-change', serverPagination.current_page - 1)">‹</button>
           <button type="button" aria-label="下一页" :disabled="serverPagination.current_page >= serverPagination.last_page" @click="emit('page-change', serverPagination.current_page + 1)">›</button>

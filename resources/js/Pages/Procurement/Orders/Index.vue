@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
+import type { ColDef } from 'ag-grid-community'
+import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
+const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../../Composables/useAccountGridPreferences'
@@ -35,6 +38,9 @@ const props = defineProps<{
   filters: Filters
   statusOptions: StatusOption[]
   canOperate: boolean
+  gridOrders?: {data:ProcurementRow[];current_page:number;last_page:number;per_page:number;total:number}|null
+  globalGridPilotAvailable?:boolean
+  globalGridPilotEnabled?:boolean
 }>()
 const search = ref(props.filters.search || '')
 const status = ref(props.filters.status || '')
@@ -42,12 +48,59 @@ const status = ref(props.filters.status || '')
 const apply = () => router.get('/purchase', {
   search: search.value || undefined,
   status: status.value || undefined,
+  ...(props.globalGridPilotEnabled ? {global_grid:'1',per_page:String(props.gridOrders?.per_page??50)} : {}),
 }, { preserveState: true, replace: true })
 const clear = () => {
   search.value = ''
   status.value = ''
   apply()
 }
+
+const visibleOrders = computed(() => props.globalGridPilotEnabled
+  ? (props.gridOrders?.data ?? []) : props.orders)
+const toggleGlobalPilot = () => router.get('/purchase', {
+  search:search.value || undefined,status:status.value || undefined,
+  global_grid:props.globalGridPilotEnabled ? '0':'1',
+}, {preserveState:true,replace:true})
+const globalGridPage = (page:number) => router.get('/purchase', {
+  search:search.value || undefined,status:status.value || undefined,
+  global_grid:'1',per_page:String(props.gridOrders?.per_page??50),page,
+}, {preserveState:true,replace:true})
+const globalGridPageSize = (size:number|'all') => {
+  if(size==='all')return
+  router.get('/purchase',{
+    search:search.value||undefined,status:status.value||undefined,global_grid:'1',
+    per_page:String(size),page:1,
+  },{preserveState:true,replace:true})
+}
+type GridRow = Record<string,unknown>
+const globalRows = computed<GridRow[]>(() => visibleOrders.value.map(order => ({
+  ...order,
+  display_items:order.item_summary + (order.item_count>2 ? ' 等 '+order.item_count+' 项' : ''),
+  display_logistics:[order.carrier,order.tracking_number].filter(Boolean).join(' · ') || '—',
+  display_updated:order.updated_at ? new Date(order.updated_at).toLocaleString('zh-CN') : '—',
+})))
+const globalColumns: ColDef<GridRow>[] = [
+  {colId:'procurement',field:'procurement_number',headerName:'采购单',width:194,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridRow)=>'/purchase/orders/'+r.id}},
+  {colId:'order_number',field:'source_order_erp_id',headerName:'ERP订单号',width:194,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridRow)=>r.source_order_erp_id?'/customers/orders/'+r.source_order_id:null}},
+  {colId:'items',field:'display_items',headerName:'商品',width:245},
+  {colId:'quantity',field:'purchase_quantity',headerName:'数量',width:98},
+  {colId:'status',field:'status_label',headerName:'状态',width:128,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}},
+  {colId:'logistics',field:'display_logistics',headerName:'采购物流',width:205},
+  {colId:'updated',field:'display_updated',headerName:'更新',width:185},
+  {colId:'actions',field:'id',headerName:'操作',width:100,
+    cellRenderer:GlobalGridCell,cellRendererParams:{
+      mode:'actions',actionsFor:(r:GridRow)=>[{label:'查看',href:'/purchase/orders/'+r.id}],
+    }},
+]
+const gridPager = computed(() => props.gridOrders ? ({
+  current_page:props.gridOrders.current_page,last_page:props.gridOrders.last_page,
+  per_page:props.gridOrders.per_page,total:props.gridOrders.total,
+}) : null)
+
 const formatDate = (value: string | null) => value ? new Date(value).toLocaleString('zh-CN') : '—'
 const logistics = (order: ProcurementRow) => {
   if (!order.carrier && !order.tracking_number) return '—'
@@ -64,6 +117,8 @@ const logistics = (order: ProcurementRow) => {
           <p class="mvp-kicker">Purchase OS</p>
           <h2>采购订单</h2>
           <p>跟进真实缺货订单的采购状态与采购物流。</p>
+          <button v-if="globalGridPilotAvailable" type="button" class="erp-btn erp-btn-secondary"
+            data-testid="procurement-global-toggle" @click="toggleGlobalPilot">{{globalGridPilotEnabled?'返回原列表':'Dev · Global Grid'}}</button>
         </div>
       </div>
 
@@ -87,7 +142,13 @@ const logistics = (order: ProcurementRow) => {
         </div>
       </form>
 
-      <div class="mvp-card purchase-table-wrap desktop-list">
+      <div v-if="globalGridPilotEnabled" class="desktop-list">
+        <GlobalGrid namespace="grid.procurement.orders.global.v1" title="采购订单 · Global Grid V1"
+          :columns="globalColumns" :rows="globalRows" :page="gridPager"
+          :required-column-ids="['procurement','order_number','actions']"
+          @page-change="globalGridPage" @page-size-change="globalGridPageSize"/>
+      </div>
+      <div v-else class="mvp-card purchase-table-wrap desktop-list">
         <table class="mvp-table">
           <thead>
             <tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr>
@@ -103,7 +164,7 @@ const logistics = (order: ProcurementRow) => {
       </div>
 
       <div class="mobile-list">
-        <article v-for="order in props.orders" :key="order.id" class="mvp-card purchase-card">
+        <article v-for="order in visibleOrders" :key="order.id" class="mvp-card purchase-card">
           <div class="purchase-card-head">
             <strong>{{ order.procurement_number }}</strong>
             <span class="mvp-status">{{ order.status_label }}</span>
@@ -117,7 +178,7 @@ const logistics = (order: ProcurementRow) => {
           </dl>
           <Link class="erp-btn erp-btn-secondary" :href="`/purchase/orders/${order.id}`">查看采购订单</Link>
         </article>
-        <div v-if="props.orders.length === 0" class="mvp-card mvp-empty">暂无匹配的采购订单</div>
+        <div v-if="visibleOrders.length === 0" class="mvp-card mvp-empty">暂无匹配的采购订单</div>
       </div>
     </section>
   </AuthenticatedLayout>

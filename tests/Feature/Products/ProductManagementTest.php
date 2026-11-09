@@ -9,6 +9,7 @@ use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Application\ProductService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Inertia\Testing\AssertableInertia as Assert;
 
 final class ProductManagementTest extends TestCase
 {
@@ -86,6 +87,28 @@ final class ProductManagementTest extends TestCase
     {
         $user = $this->userWith(['products.view']);
         $this->actingAs($user)->get('/products/list')->assertOk();
+    }
+
+    public function test_global_grid_dev_product_pilot_keeps_existing_product_permissions_and_data(): void
+    {
+        $user = $this->userWith(['products.view']);
+        Product::create(['source_type' => 'manual', 'sku' => 'GRID-PRODUCT-1',
+            'name' => 'Grid Product', 'product_type' => 'simple']);
+
+        $this->actingAs($user)->get('/products/list?global_grid=1&per_page=20')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Products/Index')
+                ->where('globalGridPilotEnabled', true)
+                ->where('products.per_page', 20)
+                ->where('canOperate', false)
+                ->where('products.data.0.sku', 'GRID-PRODUCT-1'));
+        $this->actingAs($user)->get('/products/list')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('globalGridPilotEnabled', false));
+        $this->actingAs($user)->get('/products/list?global_grid=1&view=measurements')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('globalGridPilotEnabled', false));
+        $this->actingAs($user)->post('/products', ['sku' => 'DENIED-GRID', 'name' => 'No'])
+            ->assertForbidden();
+        $this->assertDatabaseMissing('products', ['sku' => 'DENIED-GRID']);
     }
 
     public function test_view_only_can_access_sku_search(): void
