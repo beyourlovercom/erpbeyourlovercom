@@ -239,7 +239,7 @@ final class OrderController
         $authority = $this->detailAuthority($request, $order);
         KolOrderAccessScope::authorize($request->user(), $authority);
         $isDerived = $order->order_kind === OrderKind::FulfillmentDerived;
-        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder', 'fulfillmentAllocation', 'fulfillmentParent', 'fulfillmentChildren.items', 'fulfillmentChildren.shipment.warehouse', 'fulfillmentChildren.fulfillmentOrigin']);
+        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'financials', 'operationalMarkers', 'procurementOrder', 'fulfillmentAllocation', 'fulfillmentParent', 'fulfillmentChildren.items', 'fulfillmentChildren.shipment.warehouse', 'fulfillmentChildren.fulfillmentOrigin']);
         $productIds = $order->items->pluck('product_id')->filter()->unique()->values()->all();
         $inventoryAvailability = $this->availability->forProductIds($productIds);
         $warehouses = $this->availability->activeWarehouses();
@@ -654,6 +654,8 @@ final class OrderController
             'internal_order_number' => $order->internal_order_number,
             'erp_order_id' => $order->erp_order_id,
             'external_order_number' => $order->external_order_number,
+            'source_order_status' => $order->relationLoaded('financials') ? $order->financials?->provider_order_status : null,
+            'source_order_status_modified_at' => $order->relationLoaded('financials') ? $order->financials?->provider_modified_at?->toIso8601String() : null,
             'source_type' => $order->source_type->value,
             'source_label' => $this->sourceLabel($order->source_type),
             'order_kind' => $order->order_kind?->value,
