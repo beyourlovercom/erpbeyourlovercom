@@ -776,3 +776,50 @@ describe('Production ShipOut cancelled OMS readback is an explicit shipping bloc
     }
   })
 })
+
+describe('MorePlus Dev-only one-click batch workbench', () => {
+  it('shows the top-right bulk button only when the separate feature flag is enabled', () => {
+    expect(mountPage().findAll('button').some(b=>b.text()==='一键推送仓库')).toBe(false)
+    expect(mountPage({shipoutProductionBatchUi:true}).findAll('button').some(b=>b.text()==='一键推送仓库')).toBe(true)
+    expect(mountPage({shipoutProductionBatchUi:true,warehouseKey:'us-3sm',warehouse:warehouseOptions[1]})
+      .findAll('button').some(b=>b.text()==='一键推送仓库')).toBe(false)
+  })
+
+  it('previews, confirms once, and reads Dev progress without per-order browser submission', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="DEV-BATCH-TEST">')
+    const fingerprint='a'.repeat(64)
+    const batchId='00000000-0000-4000-8000-000000000123'
+    const confirm=vi.spyOn(window,'confirm').mockReturnValue(true)
+    const mock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({count:2,overflow:false,dry_run:true,fingerprint})})
+      .mockResolvedValueOnce({ok:true,json:async()=>({batch_id:batchId,status:'queued',dry_run:true,total:2})})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        batch_id:batchId,status:'completed',dry_run:true,total:2,processed:2,
+        items:[{order_id:7903,order_no:'007-1109-c42141',status:'simulated',result_code:'DEV_SIMULATED_NO_PROVIDER_IO',provider_order_id:null},
+          {order_id:7904,order_no:'007-1109-c42142',status:'simulated',result_code:'DEV_SIMULATED_NO_PROVIDER_IO',provider_order_id:null}],
+      })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,shipoutProductionBatchDryRun:true,trackingImportPreview:null})
+      await page.findAll('button').find(b=>b.text()==='一键推送仓库')!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('候选 2 单'))
+      await page.findAll('button').find(b=>b.text().includes('确认运行 Dev 模拟'))!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('2 / 2'))
+      expect(page.text()).toContain('Dev 模拟通过')
+      expect(mock.mock.calls.map(call=>call[0])).toEqual([
+        '/logistics/oversea/us-moreplus/shipout/batch/preview',
+        '/logistics/oversea/us-moreplus/shipout/batch/start',
+        '/logistics/oversea/us-moreplus/shipout/batch/'+batchId+'/status',
+      ])
+      expect(JSON.parse(mock.mock.calls[1][1].body)).toEqual({
+        fingerprint,confirmation:'CONFIRM_MOREPLUS_BATCH_2',
+      })
+      expect(confirm).toHaveBeenCalledTimes(1)
+      page.unmount()
+    } finally {
+      vi.unstubAllGlobals()
+      confirm.mockRestore()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+})

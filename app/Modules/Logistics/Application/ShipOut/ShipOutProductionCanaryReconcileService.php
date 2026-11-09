@@ -40,11 +40,29 @@ final class ShipOutProductionCanaryReconcileService
         } catch (\Throwable) {
             throw new RuntimeException('SHIPOUT_R10_ATTEMPT_LEDGER_UNAVAILABLE');
         }
-        if (! $attempt || (string) $attempt->provider_warehouse_id !== '1265864414750314497') {
-            throw new RuntimeException('SHIPOUT_R10_NO_VERIFIED_ATTEMPT');
-        }
         $order = Order::query()->findOrFail($erpOrderId);
         $reference = $this->references->warehouse($order);
+        if (! $attempt) {
+            // Direct signed GET even when no local attempt exists. Never creates a ledger,
+            // never authorizes automatic send, and never claims the order is shipped.
+            $lookup = $this->reader->orderPage('1265864414750314497', $reference, 1, 10);
+            return [
+                'order_id' => $erpOrderId,
+                'order_no' => $reference,
+                'attempt_status' => 'never_submitted',
+                'provider_order_id' => count($lookup['records']) === 1
+                    ? $lookup['records'][0]['orderId'] : null,
+                'provider_status' => count($lookup['records']) === 1
+                    ? $lookup['records'][0]['status'] : null,
+                'reconciliation' => $lookup['total'] === 0 && $lookup['records'] === []
+                    ? 'NO_ERP_ATTEMPT_AND_NO_OMS_ORDER'
+                    : 'OMS_ORDER_WITHOUT_ERP_LEDGER_MANUAL_REVIEW',
+                'shipped' => false, 'tracking_apply' => false,
+            ];
+        }
+        if ((string) $attempt->provider_warehouse_id !== '1265864414750314497') {
+            throw new RuntimeException('SHIPOUT_R10_ORDER_REFERENCE_CHANGED');
+        }
         if ($reference === '' || ! hash_equals((string) $attempt->order_no, $reference)) {
             throw new RuntimeException('SHIPOUT_R10_ORDER_REFERENCE_CHANGED');
         }
