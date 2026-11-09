@@ -4,10 +4,10 @@ namespace App\Modules\Logistics\Infrastructure\ShipOut;
 
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryGate;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1Gate;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
-use Illuminate\Contracts\Auth\Authenticatable;
 
 /**
  * A single hard-scoped Production outbound. Not bound to a route or scheduler.

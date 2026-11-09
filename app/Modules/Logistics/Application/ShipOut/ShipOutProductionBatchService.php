@@ -22,6 +22,7 @@ final class ShipOutProductionBatchService
             return [];
         }
         $cutover = max(1, $configuredCutover);
+
         return Shipment::query()
             ->where('shipment_status', 'pending')
             ->where('carrier', 'USPS')
@@ -42,6 +43,7 @@ final class ShipOutProductionBatchService
     public function preview(): array
     {
         $ids = $this->candidateIds();
+
         return [
             'count' => count($ids),
             'overflow' => count($ids) > self::MAX_ORDERS,
@@ -68,7 +70,7 @@ final class ShipOutProductionBatchService
                 || ! hash_equals($preview['fingerprint'], $fingerprint)) {
                 throw new RuntimeException('SHIPOUT_BATCH_STALE');
             }
-            if (DB::table('shipout_production_batches')->whereIn('status', ['queued','running'])->exists()) {
+            if (DB::table('shipout_production_batches')->whereIn('status', ['queued', 'running'])->exists()) {
                 throw new RuntimeException('SHIPOUT_BATCH_ALREADY_RUNNING');
             }
             $id = (string) Str::uuid();
@@ -95,6 +97,7 @@ final class ShipOutProductionBatchService
                 }
                 DB::table('shipout_production_batch_items')->insert($rows);
             });
+
             return $id;
         } finally {
             $lock->release();
@@ -109,12 +112,13 @@ final class ShipOutProductionBatchService
         }
         $items = DB::table('shipout_production_batch_items')->where('batch_id', $batchId)
             ->orderBy('id')->get(['order_id', 'order_no', 'status', 'result_code', 'provider_order_id']);
+
         return [
             'batch_id' => $batch->id,
             'status' => $batch->status,
             'dry_run' => (bool) $batch->dry_run,
             'total' => $batch->total,
-            'processed' => $items->whereNotIn('status', ['queued','processing'])->count(),
+            'processed' => $items->whereNotIn('status', ['queued', 'processing'])->count(),
             'items' => $items,
         ];
     }

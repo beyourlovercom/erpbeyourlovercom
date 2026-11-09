@@ -52,3 +52,10 @@ Dry-run API observed: preview 2, POST start HTTP 202, status completed with 2/2 
 
 ## Production release gates for a separate approval
 Require dedicated queue worker and Redis shared lock/rate limiter, DB migration, exact operator allowlist, isolated feature flags, and a one-order Production canary with real OMS readback before any mass push.
+
+## Continuation UAT and CI remediation (2026-11-10)
+- First PR CI: MySQL8 runtime PASS, sqlite regression failed only Laravel Pint style check; corrected four original style failures, formatted all new batch PHP.
+- Local exact CI ShipOut suite after formatting: 145/145 PASS, 617 assertions; Pint gate 12/12 PASS.
+- Real local Chromium headless browser: HTTP 200, top-right button visible exactly once, click opens 2-order Dev preview, confirm button visible, browser page errors=0.
+- Production read-only readiness: queue driver redis, cache redis, two queue:work processes observed; new batch flags not present in current release (OFF by default). No settings altered.
+- CI workflow now includes new batch backend tests and additional Pint coverage; hold PR as Draft and do not merge or deploy.

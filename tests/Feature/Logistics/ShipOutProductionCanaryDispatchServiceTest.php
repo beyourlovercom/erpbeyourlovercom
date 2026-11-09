@@ -1491,6 +1491,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         ]);
         Http::assertNotSent(fn ($request) => $request->method() === 'POST');
     }
+
     private function makeSyntheticBatch(int $orderId, int $actorId, string $batchId): void
     {
         DB::table('shipout_production_batches')->insert([
@@ -1571,5 +1572,4 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         );
         $this->assertSame(1, $this->postInvocations);
     }
-
 }

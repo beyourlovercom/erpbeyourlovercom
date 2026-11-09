@@ -24,6 +24,7 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
+
     public int $timeout = 55;
 
     public function __construct(public readonly string $batchId) {}
@@ -39,6 +40,7 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
             if (config('queue.default') !== 'sync') {
                 self::dispatch($this->batchId)->delay(now()->addSeconds(70));
             }
+
             return;
         }
         try {
@@ -50,6 +52,7 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
                 ->where('status', 'queued')->orderBy('id')->first();
             if (! $item) {
                 $this->finish();
+
                 return;
             }
             $claimed = DB::table('shipout_production_batch_items')->where('id', $item->id)

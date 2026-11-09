@@ -19,6 +19,7 @@ final class ShipOutProductionBatchController
         ShipOutProductionV1OperatorAccess $access,
     ): JsonResponse {
         $this->authorize($request, $access);
+
         return response()->json($batches->preview())->header('Cache-Control', 'no-store, private');
     }
 
@@ -45,8 +46,10 @@ final class ShipOutProductionBatchController
             } catch (Throwable) {
                 DB::table('shipout_production_batches')->where('id', $id)
                     ->update(['status' => 'paused', 'updated_at' => now()]);
+
                 return $this->blocked('SHIPOUT_BATCH_QUEUE_UNAVAILABLE', 503);
             }
+
             return response()->json([
                 'batch_id' => $id, 'status' => 'queued', 'dry_run' => $preview['dry_run'],
                 'total' => $preview['count'], 'tracking_apply' => false,
@@ -65,6 +68,7 @@ final class ShipOutProductionBatchController
         try {
             $batch = DB::table('shipout_production_batches')->where('id', $batchId)->first();
             abort_unless($batch && (int) $batch->operator_user_id === (int) $request->user()->id, 404);
+
             return response()->json($batches->status($batchId))
                 ->header('Cache-Control', 'no-store, private');
         } catch (RuntimeException) {

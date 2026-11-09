@@ -3,9 +3,9 @@
 namespace App\Modules\Logistics\Application\ShipOut;
 
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionCanaryOutboundTransport;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
-use Illuminate\Contracts\Auth\Authenticatable;
 
 /**
  * Privileged internal one-shot Canary service. No route, queue, scheduled

@@ -46,6 +46,7 @@ final class ShipOutProductionCanaryReconcileService
             // Direct signed GET even when no local attempt exists. Never creates a ledger,
             // never authorizes automatic send, and never claims the order is shipped.
             $lookup = $this->reader->orderPage('1265864414750314497', $reference, 1, 10);
+
             return [
                 'order_id' => $erpOrderId,
                 'order_no' => $reference,
