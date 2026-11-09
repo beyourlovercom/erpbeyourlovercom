@@ -93,6 +93,7 @@ const accountMessage = ref('')
 const accountPassword = ref('')
 const accountPasswordConfirmation = ref('')
 const accountCouponCode = ref('')
+const accountUsername = ref(props.kol.display_name.trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9_.@-]/g, '').slice(0, 60))
 const passwordResetOpen = ref(false)
 const passwordResetting = ref(false)
 const passwordResetError = ref('')
@@ -113,12 +114,14 @@ const provisionAffiliateAccount = async () => {
   accountError.value = ''
   accountMessage.value = ''
   if (!accountEmail.value) { accountError.value = '请先保存有效联系邮箱，再创建 WordPress / Affiliate 账号。'; return }
+  if (!accountUsername.value.trim()) { accountError.value = 'WordPress Username 必填。'; return }
   if (!validWordpressPassword(accountPassword.value)) { accountError.value = 'Password 需为 12–128 位，并至少包含 1 个英文字母和 1 个数字。'; return }
   if (accountPassword.value !== accountPasswordConfirmation.value) { accountError.value = '两次输入的 Password 不一致。'; return }
   if (!accountCouponCode.value.trim()) { accountError.value = 'Code 必填。'; return }
   accountProvisioning.value = true
   try {
     const response = await axios.post(`/kol/library/${props.kol.id}/affiliate-account`, {
+      wordpress_username: accountUsername.value.trim(),
       password: accountPassword.value,
       password_confirmation: accountPasswordConfirmation.value,
       affiliate_coupon_code: accountCouponCode.value.trim(),
@@ -618,8 +621,13 @@ const breadcrumbs = [
             <template v-else>
               <p v-if="affiliateAccountState?.provisioning_status && affiliateAccountState.provisioning_status !== 'active'" class="kol-account-warning">上次开户状态：{{ affiliateAccountState.provisioning_status }}<span v-if="affiliateAccountState.last_error_code"> · {{ affiliateAccountState.last_error_code }}</span>。可使用原始凭据重试。</p>
               <div class="erp-form-field">
+                <label class="erp-form-label">WordPress Username <span class="erp-form-required">*</span></label>
+                <input v-model="accountUsername" type="text" autocomplete="username" class="erp-input" maxlength="60" placeholder="默认为网红显示名称，可修改">
+                <p class="erp-form-helper">默认读取网红显示名称，开户前允许修改；仅支持英文字母、数字及 . _ @ -。开户后用户名不可更改。</p>
+              </div>
+              <div class="erp-form-field">
                 <label class="erp-form-label">Email <span class="erp-form-required">*</span></label>
-                <input :value="accountEmail" type="email" class="erp-input" readonly placeholder="请先在本页收件地址中保存联系邮箱">
+                <input :value="accountEmail"  type="email" class="erp-input" readonly placeholder="请先在本页收件地址中保存联系邮箱">
                 <p class="erp-form-helper">使用已保存的 KOL 联系邮箱，同时作为 WordPress User 邮箱与 AffiliateWP payment email。若要修改，请先保存 KOL 资料。</p>
               </div>
               <div class="erp-form-grid kol-account-password-grid">
@@ -641,7 +649,7 @@ const breadcrumbs = [
               <p v-if="accountError" class="erp-field-error">{{ accountError }}</p>
               <p v-if="accountMessage" :class="affiliateAccountState?.last_error_code ? 'kol-account-warning' : 'kol-account-success'">{{ accountMessage }}</p>
               <div class="kol-account-actions">
-                <button type="button" class="erp-btn erp-btn-primary" :disabled="accountProvisioning || !accountEmail" @click="provisionAffiliateAccount">{{ accountProvisioning ? '创建中…' : '创建 WordPress / Affiliate 账号' }}</button>
+                <button type="button" class="erp-btn erp-btn-primary" :disabled="accountProvisioning || !accountEmail || !accountUsername.trim()" @click="provisionAffiliateAccount">{{ accountProvisioning ? '创建中…' : '创建 WordPress / Affiliate 账号' }}</button>
               </div>
             </template>
           </div>

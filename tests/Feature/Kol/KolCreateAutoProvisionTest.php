@@ -68,6 +68,7 @@ class KolCreateAutoProvisionTest extends TestCase
             'status' => 'active',
             'relationship_stage' => 'prospect',
             'contact_email' => $email,
+            'wordpress_username' => 'creator-login',
             'wordpress_password' => 'StrongPassword123',
             'wordpress_password_confirmation' => 'StrongPassword123',
             'affiliate_coupon_code' => $code,
@@ -138,6 +139,7 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertSame('StrongPassword123', $capturedAffiliatePayload['password']);
         self::assertSame('reject', $capturedAffiliatePayload['existing_account_policy']);
         self::assertSame('new-kol@example.test', $capturedAffiliatePayload['email']);
+        self::assertSame('creator-login', $capturedAffiliatePayload['preferred_username']);
         self::assertDatabaseCount('notifications', 1);
 
         $persisted = DB::table('audit_records')->get()->toJson()
@@ -180,6 +182,23 @@ class KolCreateAutoProvisionTest extends TestCase
             ->post('/kol/library', $this->payload('coupon-new@example.test', 'USED15'))
             ->assertRedirect('/kol/library/create')
             ->assertSessionHasErrors('affiliate_coupon_code');
+
+        self::assertSame(0, Kol::query()->count());
+    }
+
+    public function test_invalid_wordpress_username_is_rejected_before_kol_creation(): void
+    {
+        $specialist = $this->specialist();
+        $mock = $this->mockGateway();
+        $mock->shouldNotReceive('checkAffiliateIdentity');
+        $mock->shouldNotReceive('provisionAffiliate');
+        $payload = $this->payload();
+        $payload['wordpress_username'] = 'invalid login';
+
+        $this->actingAs($specialist)->from('/kol/library/create')
+            ->post('/kol/library', $payload)
+            ->assertRedirect('/kol/library/create')
+            ->assertSessionHasErrors('wordpress_username');
 
         self::assertSame(0, Kol::query()->count());
     }

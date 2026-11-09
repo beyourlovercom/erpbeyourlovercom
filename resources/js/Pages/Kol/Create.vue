@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
+import { ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
@@ -49,6 +50,7 @@ const form = useForm({
   joined_at: new Date().toISOString().slice(0, 10),
   notes: '',
   contact_email: '',
+  wordpress_username: '',
   wordpress_password: '',
   wordpress_password_confirmation: '',
   affiliate_coupon_code: '',
@@ -92,6 +94,13 @@ const form = useForm({
     source: string
     note: string
   }>,
+})
+
+const usernameManuallyEdited = ref(false)
+watch(() => form.display_name, (value) => {
+  if (!usernameManuallyEdited.value) {
+    form.wordpress_username = value.trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9_.@-]/g, '').slice(0, 60)
+  }
 })
 
 const addSocialAccount = () => {
@@ -291,6 +300,12 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <h2 class="erp-form-card-title">WordPress / Affiliate 账号</h2>
             <p class="erp-form-card-helper">创建 KOL 时同步完成自动审批、WordPress Subscriber、AffiliateWP Affiliate 与 Coupon。已有邮箱或 Code 只阻止，不覆盖。</p>
             <div class="erp-form-grid">
+              <div class="erp-form-field kol-span-2">
+                <label class="erp-form-label">WordPress Username <span class="erp-form-required">*</span></label>
+                <input v-model="form.wordpress_username" type="text" autocomplete="username" class="erp-input" :class="{ 'has-error': form.errors.wordpress_username }" maxlength="60" required placeholder="默认为网红显示名称，可修改" @input="usernameManuallyEdited = true">
+                <p class="erp-form-helper">默认读取网红显示名称，可手工修改；仅支持英文字母、数字及 . _ @ -。WordPress 用户名创建后不可修改。</p>
+                <p v-if="form.errors.wordpress_username" class="erp-field-error">{{ form.errors.wordpress_username }}</p>
+              </div>
               <div class="erp-form-field kol-span-2">
                 <label class="erp-form-label">Email <span class="erp-form-required">*</span></label>
                 <input v-model="form.contact_email" type="email" autocomplete="email" class="erp-input" :class="{ 'has-error': form.errors.contact_email }" maxlength="255" required placeholder="name@example.com">
