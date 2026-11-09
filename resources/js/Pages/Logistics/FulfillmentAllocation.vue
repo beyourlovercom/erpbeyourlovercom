@@ -151,11 +151,11 @@ function giftEmptyLabel(item:Item,source:string){ const opts=giftOptions(item,so
 function chosenGift(item:Item,order:Order){ const id=Number(manualGiftMappings[order.id]?.[item.id]||0); return Object.values(item.gift_options_by_warehouse||{}).flat().find(o=>o.mapping_id===id) }
 function giftStockLabel(item:Item,w:Warehouse){ const opts=giftOptions(item,w.code); if(!opts.length)return '无清仓礼品'; const available=availableGiftOptions(item,w.code); if(available.length)return `有货 ${available[0].quantity_available ?? '未知'}`; return '礼品库全部缺货' }
 function giftStockClass(item:Item,w:Warehouse){ const opts=giftOptions(item,w.code); if(!opts.length)return 'stock-unknown'; return opts.some(o=>o.can_fulfill)?'stock-ok':(opts.some(o=>o.quantity_available!=null)?'stock-short':'stock-unknown') }
-function carrierForItem(order:Order,item:Item){ const source=manualAssignments[order.id]?.[item.id]??''; return source ? (manualCarriers[order.id]?.[source] ?? defaultCarrier(order,source)) : '' }
+function carrierForItem(order:Order,item:Item){ const source=manualAssignments[order.id]?.[item.id]??''; return source==='FACTORY' ? '' : (source ? (manualCarriers[order.id]?.[source] ?? defaultCarrier(order,source)) : '') }
 function carrierIsDefault(order:Order,item:Item){ const source=manualAssignments[order.id]?.[item.id]??''; const selected=carrierForItem(order,item); return !!source && !!selected && selected===defaultCarrier(order,source) }
 function onWarehouseChanged(order:Order,item:Item){
   const source=manualAssignments[order.id][item.id]
-  if(source && !manualCarriers[order.id][source]) manualCarriers[order.id][source]=defaultCarrier(order,source)
+  if(source && source!=='FACTORY' && !manualCarriers[order.id][source]) manualCarriers[order.id][source]=defaultCarrier(order,source)
   if(!item.is_gift)return
   const selected=manualGiftMappings[order.id][item.id]
   if(selected && !giftOptions(item,source).some(o=>String(o.mapping_id)===selected)) manualGiftMappings[order.id][item.id]=''
@@ -170,7 +170,7 @@ function fulfillmentGroups(order:Order){
     suffix:sources.length>1?String.fromCharCode(65+index):'',
     erpOrderId:order.erp_order_id ? `${order.erp_order_id}${sources.length>1?String.fromCharCode(65+index):''}` : '—',
     warehouse:sourceLabel(source),
-    carrier:manualCarriers[order.id]?.[source] ?? defaultCarrier(order,source),
+    carrier:source==='FACTORY' ? '' : (manualCarriers[order.id]?.[source] ?? defaultCarrier(order,source)),
     items:order.items.filter(item=>manualAssignments[order.id]?.[item.id]===source),
   }))
 }
@@ -180,7 +180,7 @@ function splitConstraintError(order:Order){
   const sources=[...new Set(values)]
   const maxSources=order.allocation_decision.policy.max_sources || 26
   if(sources.length>maxSources)return `最多允许 ${maxSources} 个履约来源`
-  for(const source of sources){ if(!(manualCarriers[order.id]?.[source] || defaultCarrier(order,source))) return `发货仓 ${sourceLabel(source)} 需要选择物流承运商` }
+  for(const source of sources){ if(source!=='FACTORY' && !(manualCarriers[order.id]?.[source] || defaultCarrier(order,source))) return `发货仓 ${sourceLabel(source)} 需要选择物流承运商` }
   for(const item of order.items){
     if(!item.is_gift)continue
     const source=manualAssignments[order.id][item.id]
@@ -200,7 +200,7 @@ function matchesRecommendation(order:Order){
     const source=manualAssignments[order.id]?.[item.id]??''
     const carrier=carrierForItem(order,item)
     const recommendedCarrier=segment.carrier ?? defaultCarrier(order,segment.source_code)
-    return canonicalWarehouseCode(source)===canonicalWarehouseCode(segment.source_code) && carrier===(recommendedCarrier??'')
+    return canonicalWarehouseCode(source)===canonicalWarehouseCode(segment.source_code) && (source==='FACTORY' || carrier===(recommendedCarrier??''))
   })
 }
 async function submitRecommended(){ const order=selectedOrder.value,decision=order?.allocation_decision; if(!order||!decision?.recommended_plan_key||!decision.can_use_recommendation||!props.canOperate)return; submitting.value=true; submitError.value=''; try{ const r=await fetch(`/logistics/orders/${order.id}/fulfillment-allocation/recommended`,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},body:JSON.stringify({plan_key:decision.recommended_plan_key,decision_note:decisionNote.value})}); const b=await r.json().catch(()=>({})) as {message?:string;submitted_at?:string}; if(!r.ok)throw new Error(b.message??`提交失败（${r.status}）`); localSubmitted[order.id]={source:'system_recommendation',submittedAt:b.submitted_at??new Date().toISOString()}; closePlan() }catch(e){ submitError.value=e instanceof Error?e.message:'提交失败，请重试' }finally{submitting.value=false} }
@@ -216,12 +216,12 @@ async function submitManual(stockExceptionAcknowledged = false) {
   }
   const assignments = order.items.map(item => {
     const source = manualAssignments[order.id][item.id]
-    const carrier = manualCarriers[order.id]?.[source] || defaultCarrier(order, source)
+    const carrier = source==='FACTORY' ? null : (manualCarriers[order.id]?.[source] || defaultCarrier(order, source))
     const route = order.carrier_routes?.[source]
     return {
       order_item_id: item.id, source_code: source,
       gift_mapping_id: item.is_gift ? Number(manualGiftMappings[order.id][item.id]) : null,
-      carrier, service: carrier === route?.carrier ? route?.service ?? null : null,
+      carrier, service: carrier && carrier === route?.carrier ? route?.service ?? null : null,
     }
   })
   submitting.value = true
@@ -301,7 +301,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
             <td><div class="stock-list"><span v-for="warehouse in warehouseOptions" :key="warehouse.code" :class="item.is_gift?giftStockClass(item,warehouse):availabilityClass(item,warehouse)">{{ warehouse.name }}：{{ item.is_gift?giftStockLabel(item,warehouse):availabilityLabel(item,warehouse) }}</span></div></td>
             <td><div class="warehouse-advice" :class="warehouseAdvice(selectedOrder,item).kind"><strong>{{ warehouseAdvice(selectedOrder,item).label }}</strong><small>{{ warehouseAdvice(selectedOrder,item).detail }}</small></div></td>
             <td><select v-model="manualAssignments[selectedOrder.id][item.id]" @change="onWarehouseChanged(selectedOrder,item)"><option value="">请选择</option><option v-for="warehouse in warehouseOptions" :key="warehouse.code" :value="canonicalWarehouseCode(warehouse.code)">{{ warehouse.name }}</option></select></td>
-            <td><div class="carrier-cell"><select :value="carrierForItem(selectedOrder,item)" :disabled="!manualAssignments[selectedOrder.id][item.id]" @change="onCarrierChanged(selectedOrder,item,$event)"><option value="">请选择承运商</option><option v-for="carrier in props.carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="manualAssignments[selectedOrder.id][item.id] && carrierForItem(selectedOrder,item)" :class="carrierIsDefault(selectedOrder,item)?'auto-route':'manual-route'">{{ carrierIsDefault(selectedOrder,item)?'系统默认':'人工覆盖' }}</small></div></td>
+            <td><div class="carrier-cell"><span v-if="manualAssignments[selectedOrder.id][item.id]==='FACTORY'" class="manual-route">待发货阶段人工确认</span><select v-else :value="carrierForItem(selectedOrder,item)" :disabled="!manualAssignments[selectedOrder.id][item.id]" @change="onCarrierChanged(selectedOrder,item,$event)"><option value="">请选择承运商</option><option v-for="carrier in props.carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="manualAssignments[selectedOrder.id][item.id] && carrierForItem(selectedOrder,item)" :class="carrierIsDefault(selectedOrder,item)?'auto-route':'manual-route'">{{ carrierIsDefault(selectedOrder,item)?'系统默认':'人工覆盖' }}</small></div></td>
             <td><template v-if="item.is_gift"><select v-model="manualGiftMappings[selectedOrder.id][item.id]" :disabled="!manualAssignments[selectedOrder.id][item.id]"><option value="">请选择实际礼品</option><option v-for="option in availableGiftOptions(item,manualAssignments[selectedOrder.id][item.id])" :key="option.mapping_id" :value="String(option.mapping_id)">{{ option.fulfillment_sku }} · {{ option.fulfillment_name }} · 有货 {{option.quantity_available}}</option></select><small v-if="chosenGift(item,selectedOrder)" class="resolved-note">{{ chosenGift(item,selectedOrder)?.fulfillment_sku }} · {{ sourceLabel(manualAssignments[selectedOrder.id][item.id]) }}</small><small v-else-if="manualAssignments[selectedOrder.id][item.id]&&giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])" class="mapping-missing">{{giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])}}</small></template><span v-else>—</span></td>
           </tr>
         </tbody></table></div>

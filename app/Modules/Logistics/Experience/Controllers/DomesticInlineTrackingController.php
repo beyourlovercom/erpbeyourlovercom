@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
+use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\LogisticsTrackingImmediateDispatch;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
@@ -16,9 +17,29 @@ final class DomesticInlineTrackingController
 {
     public function __construct(
         private readonly ShipmentService $shipments,
+        private readonly CarrierServiceCatalog $carrierServices,
         private readonly AssistedFulfillmentService $assistedFulfillment,
         private readonly LogisticsTrackingImmediateDispatch $immediateDispatch,
     ) {}
+
+    /** Staff must confirm both fields explicitly; this never marks shipped. */
+    public function selectCarrierService(Request $request, Order $order): RedirectResponse
+    {
+        $data = $request->validate([
+            'carrier' => ['required', 'string', 'max:120'],
+            'service' => ['required', 'string', 'max:255'],
+        ]);
+        $this->assertApprovedFactoryOrder($order);
+        $services = $this->carrierServices->activeServices($data['carrier']);
+        abort_unless($services->contains('service_value', $data['service']), 422, '请选择启用的物流商及对应服务类型。');
+        $this->shipments->saveDraft($order, [
+            'carrier' => $data['carrier'],
+            'service' => $data['service'],
+            'carrier_selection_source' => 'manual',
+        ], $request->user());
+
+        return back()->with('success', '物流商及服务已人工确认，尚未发货。');
+    }
 
     /** Persist a Tracking draft only; never mark shipped or contact a provider/Woo. */
     public function save(Request $request, Order $order): RedirectResponse
@@ -43,7 +64,11 @@ final class DomesticInlineTrackingController
         $shipment = $this->assertApprovedFactoryOrder($order);
         $tracking = trim($data['tracking_number']);
         $this->assertNotDuplicate($order, $tracking);
-        abort_unless(filled($shipment->carrier), 422, '请先选择国内物流商，再确认发货。');
+        abort_unless(
+            $shipment->carrier_selection_source === 'manual'
+                && filled($shipment->carrier) && filled($shipment->service),
+            422, '请先人工确认国内物流商及服务类型，再确认发货。',
+        );
 
         $shipped = $this->assistedFulfillment->markShipped($order, [
             'warehouse_id' => (int) $shipment->warehouse_id,

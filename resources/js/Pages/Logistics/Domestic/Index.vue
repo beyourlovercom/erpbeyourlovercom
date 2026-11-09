@@ -9,17 +9,19 @@ type Row = {
   line:number; order_id:number; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
   workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
-  carrier:string|null; service:string|null; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
+  carrier:string|null; service:string|null; carrier_selection_source?:string|null; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
   review_status:'approved'|'pending'|'stockout'|'conflict'; export_blockers:string[]; items:Item[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; total:number }
 type PreviewRow = { row:number; order_id:number|null; order_number:string; tracking_number:string; carrier:string; provider_status:string|null; status:string; message:string }
 type Preview = { token:string; rows:PreviewRow[]; apply_count:number; noop_count:number; blocked_count:number }
 type ProviderStatus = Record<'4px'|'weship',{export_ready:boolean;return_ready:boolean;label:string;note?:string;reason?:string}>
+type CarrierOption = {value:string;label:string;services:{value:string;label:string}[]}
 
 const props = defineProps<{
   view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; canReview:boolean; canTrackingSync?:boolean
   trackingImportProvider:'4px'|'weship'|'generic'|null; trackingImportPreview:Preview|null; providerStatus:ProviderStatus
+  carrierOptions:CarrierOption[]
 }>()
 
 const trackingSelection = ref<number[]>([])
@@ -56,6 +58,43 @@ const inlineSaved = ref<Record<number,string>>({})
 const trackingDraft = (row:Row):string => inlineTracking.value[row.order_id] ??= row.tracking_number ?? ''
 const canQuickShip = (row:Row):boolean => props.canOperate && row.review_status === 'approved'
   && row.shipment_status === 'pending'
+type CarrierDraft = {carrier:string;service:string}
+const carrierDrafts = ref<Record<number,CarrierDraft>>({})
+const carrierBusy = ref<Record<number,boolean>>({})
+const carrierErrors = ref<Record<number,string>>({})
+const carrierSaved = ref<Record<number,string>>({})
+const confirmedCarrier = (row:Row):CarrierDraft => row.carrier_selection_source === 'manual'
+  ? {carrier:row.carrier ?? '',service:row.service ?? ''} : {carrier:'',service:''}
+const carrierDraft = (row:Row):CarrierDraft => carrierDrafts.value[row.order_id] ??= confirmedCarrier(row)
+const carrierChanged = (row:Row):boolean => {
+  const saved=confirmedCarrier(row),draft=carrierDraft(row)
+  return draft.carrier!==saved.carrier || draft.service!==saved.service
+}
+const chooseCarrier = (row:Row,event:Event) => {
+  carrierDrafts.value[row.order_id]={carrier:(event.target as HTMLSelectElement).value,service:''}
+  carrierErrors.value[row.order_id]=''
+  carrierSaved.value[row.order_id]=''
+}
+const chooseService = (row:Row,event:Event) => {
+  carrierDraft(row).service=(event.target as HTMLSelectElement).value
+  carrierErrors.value[row.order_id]=''
+  carrierSaved.value[row.order_id]=''
+}
+const serviceOptions = (row:Row) => props.carrierOptions.find(c=>c.value===carrierDraft(row).carrier)?.services ?? []
+const carrierReady = (row:Row) => row.carrier_selection_source === 'manual'
+  && !!row.carrier?.trim() && !!row.service?.trim() && !carrierChanged(row)
+const saveCarrier = (row:Row) => {
+  const draft=carrierDraft(row)
+  if (!canQuickShip(row) || carrierBusy.value[row.order_id] || !draft.carrier || !draft.service || !carrierChanged(row)) return
+  carrierBusy.value[row.order_id]=true
+  carrierErrors.value[row.order_id]=''
+  router.post('/logistics/china/orders/' + row.order_id + '/carrier-service', {...draft}, {
+    preserveScroll:true,preserveState:true,
+    onSuccess:()=>{delete carrierDrafts.value[row.order_id];carrierSaved.value[row.order_id]='已人工确认'},
+    onError:(errors)=>{carrierErrors.value[row.order_id]=errors.carrier ?? errors.service ?? '物流商/服务保存失败'},
+    onFinish:()=>{carrierBusy.value[row.order_id]=false},
+  })
+}
 const trackingTextChanged = (row:Row) => trackingDraft(row).trim() !== (row.tracking_number ?? '')
 const inlineTrackingInput = (row:Row, event:Event) => {
   inlineTracking.value[row.order_id] = (event.target as HTMLInputElement).value
@@ -77,6 +116,7 @@ const saveInlineTracking = (row:Row) => {
 const confirmInlineShip = (row:Row) => {
   if (!canQuickShip(row) || inlineBusy.value[row.order_id]) return
   const tracking = trackingDraft(row).trim()
+  if (!carrierReady(row)) { inlineErrors.value[row.order_id] = '请先人工确认物流商及服务类型。'; return }
   if (!tracking) { inlineErrors.value[row.order_id] = '请先填写真实发货单号。'; return }
   inlineBusy.value[row.order_id] = true
   inlineErrors.value[row.order_id] = ''
@@ -254,7 +294,32 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               </td>
               <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a></td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :can-edit="false" /><span v-else>—</span></td>
               <td><span v-if="row.export_blockers.length" class="danger">{{ row.export_blockers.join(' / ') }}</span><span v-else class="ready">可导出</span></td>
-              <td>{{ row.provider_reference ?? '—' }}</td><td>{{ row.carrier ?? '—' }}</td><td>{{ row.service ?? '—' }}</td>
+              <td>{{ row.provider_reference ?? '—' }}</td>
+              <td class="domestic-carrier-cell">
+                <select v-if="view==='pending' && canQuickShip(row)" :value="carrierDraft(row).carrier"
+                  :aria-label="'选择物流商 '+(row.erp_order_id??row.order_id)" :disabled="!!carrierBusy[row.order_id]"
+                  @change="chooseCarrier(row,$event)">
+                  <option value="">请选择物流商</option>
+                  <option v-for="option in carrierOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+                <span v-else>{{ row.shipment_status==='pending' && row.carrier_selection_source!=='manual' ? '—' : (row.carrier ?? '—') }}</span>
+              </td>
+              <td class="domestic-service-cell">
+                <template v-if="view==='pending' && canQuickShip(row)">
+                  <div class="domestic-service-entry">
+                    <select :value="carrierDraft(row).service" :aria-label="'选择服务类型 '+(row.erp_order_id??row.order_id)"
+                      :disabled="!!carrierBusy[row.order_id] || !carrierDraft(row).carrier" @change="chooseService(row,$event)">
+                      <option value="">请选择服务类型</option>
+                      <option v-for="service in serviceOptions(row)" :key="service.value" :value="service.value">{{ service.label }}</option>
+                    </select>
+                    <button type="button" class="secondary" :disabled="!!carrierBusy[row.order_id] || !carrierDraft(row).carrier || !carrierDraft(row).service || !carrierChanged(row)"
+                      @click="saveCarrier(row)">确认</button>
+                  </div>
+                  <small v-if="carrierErrors[row.order_id]" class="domestic-tracking-error">{{ carrierErrors[row.order_id] }}</small>
+                  <small v-else-if="carrierSaved[row.order_id]" class="domestic-tracking-note">{{ carrierSaved[row.order_id] }}</small>
+                </template>
+                <span v-else>{{ row.shipment_status==='pending' && row.carrier_selection_source!=='manual' ? '—' : (row.service ?? '—') }}</span>
+              </td>
               <td class="domestic-tracking-cell">
                 <div v-if="canQuickShip(row)" class="domestic-tracking-entry">
                   <input :value="trackingDraft(row)" :aria-label="'填写发货单号 '+(row.erp_order_id ?? row.order_id)"
@@ -264,7 +329,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                     @blur="saveInlineTracking(row)" @keyup.enter="($event.target as HTMLInputElement).blur()" />
                   <button type="button" class="secondary" :disabled="!!inlineBusy[row.order_id] || !trackingTextChanged(row)"
                     @mousedown.prevent @click="saveInlineTracking(row)">暂存</button>
-                  <button type="button" class="primary" :disabled="!!inlineBusy[row.order_id] || !trackingDraft(row).trim()"
+                  <button type="button" class="primary" :disabled="!!inlineBusy[row.order_id] || !trackingDraft(row).trim() || !carrierReady(row)"
                     @mousedown.prevent @click="confirmInlineShip(row)">确认发货</button>
                 </div>
                 <span v-else>{{ row.tracking_number || (row.review_status==='pending' ? '待审核' : row.review_status==='stockout' ? '缺货' : row.review_status==='conflict' ? '状态待对账' : '—') }}</span>
@@ -306,6 +371,8 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 <style scoped>
 .domestic-page{padding:20px;min-width:0;color:#111827}.domestic-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.eyebrow{margin:0;color:#0f766e;font-size:11px;font-weight:800;letter-spacing:.08em}.domestic-head h1{margin:4px 0;font-size:30px}.domestic-head p{margin:0;color:#64748b;font-size:13px}.continuity{display:flex;gap:12px;align-items:center;margin:14px 0;padding:10px 12px;border:1px solid #b7ded8;border-radius:9px;background:#f2fbf9;color:#315f59;font-size:12px}.continuity strong{color:#0f766e}.tabs{display:flex;gap:5px;overflow-x:auto;border-bottom:1px solid #e2e8f0;margin-bottom:12px}.tabs button{border:0;background:transparent;padding:9px 12px;color:#536174;font-weight:700;white-space:nowrap;border-bottom:2px solid transparent}.tabs button.active{color:#0f766e;border-bottom-color:#0f766e}.tabs span{color:#94a3b8;margin-left:3px}.pending-batch-card{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px;padding:12px;border:1px solid #b7ded8;border-radius:10px;background:#f2fbf9}.pending-batch-card>div:first-child{display:flex;flex-direction:column;gap:4px}.pending-batch-card small{color:#64748b;max-width:760px}
 .domestic-head-actions{display:flex;gap:8px;align-items:center}
+.domestic-carrier-cell select,.domestic-service-cell select{min-width:138px;max-width:215px;height:34px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1e293b;padding:4px 7px;font-size:12px}
+.domestic-service-entry{display:flex;gap:5px;align-items:center}.domestic-service-entry button{min-height:32px;padding:0 9px;white-space:nowrap}
 .domestic-tracking-cell{min-width:355px}.domestic-tracking-entry{display:flex;gap:5px;align-items:center}.domestic-tracking-input{min-width:155px;width:175px;height:34px;padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#1e293b}.domestic-tracking-entry button{white-space:nowrap;min-height:32px;padding:0 8px}.domestic-tracking-error,.domestic-tracking-note{display:block;font-size:11px;margin-top:4px;white-space:normal}.domestic-tracking-error{color:#b91c1c}.domestic-tracking-note{color:#0f766e}
 .tracking-selection-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:#eef6ff;border:1px solid #c9dffc;border-radius:8px;font-size:12px}
 button:disabled{opacity:.5;cursor:not-allowed}

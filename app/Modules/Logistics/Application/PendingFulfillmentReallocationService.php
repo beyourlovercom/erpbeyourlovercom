@@ -60,7 +60,8 @@ final class PendingFulfillmentReallocationService
                 ])->all(),
                 $stockExceptionAcknowledged,
             );
-            $route = $this->carrierRouting->warehouseRoute($parent->address?->country, (string) $warehouse->code);
+            $route = strtoupper(trim((string) $warehouse->code)) === 'FACTORY'
+                ? [] : $this->carrierRouting->warehouseRoute($parent->address?->country, (string) $warehouse->code);
             $carrier = trim((string) ($route['carrier'] ?? ''));
             $service = trim((string) ($route['service'] ?? ''));
 

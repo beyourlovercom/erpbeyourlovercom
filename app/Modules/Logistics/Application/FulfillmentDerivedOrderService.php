@@ -129,7 +129,10 @@ final class FulfillmentDerivedOrderService
             'warehouse_id' => $warehouseId,
             'warehouse_selection_source' => 'allocation',
         ];
-        if (filled($segment['carrier'] ?? null)) {
+        // Factory assignment only selects the warehouse; Liang chooses the
+        // real carrier and service after domestic stock approval.
+        if (strtoupper(trim((string) ($segment['source_code'] ?? ''))) !== 'FACTORY'
+            && filled($segment['carrier'] ?? null)) {
             $attributes['carrier'] = trim((string) $segment['carrier']);
             $attributes['service'] = filled($segment['service'] ?? null) ? trim((string) $segment['service']) : null;
             $attributes['carrier_selection_source'] = (string) ($segment['carrier_selection_source'] ?? 'automatic');
@@ -173,9 +176,15 @@ final class FulfillmentDerivedOrderService
             'warehouse_id' => $order->shipment?->warehouse_id,
             'warehouse_code' => $order->shipment?->warehouse?->code ?? ($segment['source_code'] ?? null),
             'warehouse_name' => $order->shipment?->warehouse?->name ?? ($segment['warehouse_name'] ?? null),
-            'carrier' => $order->shipment?->carrier ?? ($segment['carrier'] ?? null),
-            'service' => $order->shipment?->service ?? ($segment['service'] ?? null),
-            'carrier_selection_source' => $order->shipment?->carrier_selection_source ?? ($segment['carrier_selection_source'] ?? null),
+            // Allocation estimates can carry a recommended factory provider,
+            // but the actual fulfillment record must reflect the empty draft.
+            'carrier' => strtoupper((string) ($segment['source_code'] ?? '')) === 'FACTORY'
+                ? $order->shipment?->carrier : ($order->shipment?->carrier ?? ($segment['carrier'] ?? null)),
+            'service' => strtoupper((string) ($segment['source_code'] ?? '')) === 'FACTORY'
+                ? $order->shipment?->service : ($order->shipment?->service ?? ($segment['service'] ?? null)),
+            'carrier_selection_source' => strtoupper((string) ($segment['source_code'] ?? '')) === 'FACTORY'
+                ? $order->shipment?->carrier_selection_source
+                : ($order->shipment?->carrier_selection_source ?? ($segment['carrier_selection_source'] ?? null)),
             'items' => $order->items->map(fn ($item): array => [
                 'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
                 'source_sku' => $item->source_sku ?: $item->sku,

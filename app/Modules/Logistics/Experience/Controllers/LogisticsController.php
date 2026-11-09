@@ -149,9 +149,10 @@ final class LogisticsController
             if (! $warehouse || ! in_array(strtoupper((string) $warehouse->code), $allowedCodes, true)) {
                 throw ValidationException::withMessages(['assignments' => '所选仓库不属于待分仓履约仓库。']);
             }
-            $route = $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
+            $route = strtoupper(trim((string) $warehouse->code)) === 'FACTORY'
+                ? [] : $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
             $carrier = trim((string) ($route['carrier'] ?? ''));
-            if ($carrier === '') {
+            if ($carrier === '' && strtoupper(trim((string) $warehouse->code)) !== 'FACTORY') {
                 throw ValidationException::withMessages(['assignments' => "{$warehouse->name} 尚未配置默认承运商，请进入完整待分仓流程。"]);
             }
 
@@ -609,7 +610,8 @@ final class LogisticsController
             ? $this->usZones->resolve($order->address?->postal_code, $destinationContext)
             : null;
         $carrierRoutes = collect((array) config('warehouse_master.fulfillment_codes', []))->mapWithKeys(function (string $code) use ($order): array {
-            $route = $this->carrierRouting->warehouseRoute($order->address?->country, $code);
+            $route = strtoupper(trim($code)) === 'FACTORY'
+                ? [] : $this->carrierRouting->warehouseRoute($order->address?->country, $code);
             $carrier = trim((string) ($route['carrier'] ?? ''));
 
             return [$code => [

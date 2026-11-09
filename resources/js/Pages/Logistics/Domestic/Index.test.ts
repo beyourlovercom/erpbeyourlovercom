@@ -14,12 +14,16 @@ const baseProps = {
   rows:{ data:[{
     line:1,order_id:1,erp_order_id:'007-0923-c50001',provider_reference:'C50001-007',order_url:'/customers/orders/1',
     recipient_name:'A',phone:'123',country:'DE',state:'DE-SN',city:'Dresden',postal_code:'01219',
-    carrier:'4PX',service:'SD经济挂号-带电',tracking_number:null,shipment_status:'pending',shipped_at:null,
+    carrier:'4PX',service:'SD经济挂号-带电',carrier_selection_source:'manual',tracking_number:null,shipment_status:'pending',shipped_at:null,
     review_status:'approved' as const,export_blockers:[],items:[{sku:'M2',quantity:1}],
   }],current_page:1,last_page:1,total:1 },
   viewCounts:{review:0,pending:1,'today-4px':0,'today-weship':0,exceptions:0,today:0,'4px':1,weship:0},
   canOperate:true,
   canReview:true,
+  carrierOptions:[
+    {value:'4PX',label:'4PX / 速达',services:[{value:'SD经济挂号-带电',label:'经济挂号 - 带电'}]},
+    {value:'Weship',label:'纬狮',services:[{value:'标准挂号',label:'标准挂号'}]},
+  ],
   trackingImportProvider:'4px' as const,
   trackingImportPreview:{
     token:'a'.repeat(64),apply_count:1,noop_count:0,blocked_count:1,
@@ -36,6 +40,39 @@ const baseProps = {
 
 describe('Domestic logistics production workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear() })
+
+  it('shows empty dependent carrier/service selects for legacy automatic factory routing and requires manual confirmation', async () => {
+    const legacy={...baseProps.rows.data[0],carrier_selection_source:'automatic',carrier:'4PX',service:'SD经济挂号-带电'}
+    const wrapper=mount(Index,{props:{...baseProps,view:'pending',rows:{...baseProps.rows,data:[legacy]}}})
+    const carrier=wrapper.find('select[aria-label^="选择物流商"]')
+    const service=wrapper.find('select[aria-label^="选择服务类型"]')
+    expect(carrier.exists()).toBe(true)
+    expect(service.exists()).toBe(true)
+    expect((carrier.element as HTMLSelectElement).value).toBe('')
+    expect((service.element as HTMLSelectElement).value).toBe('')
+    expect(service.attributes('disabled')).toBeDefined()
+    const ship=wrapper.findAll('button').find(b=>b.text()==='确认发货')!
+    expect(ship.attributes('disabled')).toBeDefined()
+
+    await carrier.setValue('4PX')
+    expect((service.element as HTMLSelectElement).value).toBe('')
+    await service.setValue('SD经济挂号-带电')
+    expect(ship.attributes('disabled')).toBeDefined()
+    await wrapper.find('.domestic-service-entry button').trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/carrier-service',
+      {carrier:'4PX',service:'SD经济挂号-带电'},
+      expect.objectContaining({preserveState:true,preserveScroll:true}))
+  })
+
+  it('prevents routing writes from readonly or unreviewed domestic rows', () => {
+    const readonly=mount(Index,{props:{...baseProps,canOperate:false}})
+    expect(readonly.find('select[aria-label^="选择物流商"]').exists()).toBe(false)
+    const review=mount(Index,{props:{...baseProps,view:'review'}})
+    expect(review.find('select[aria-label^="选择物流商"]').exists()).toBe(false)
+    const unreviewed=mount(Index,{props:{...baseProps,view:'pending',
+      rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],review_status:'pending' as const}]}}})
+    expect(unreviewed.find('select[aria-label^="选择物流商"]').exists()).toBe(false)
+  })
 
   it('splits SKU and product quantity into separate columns on the domestic review page only', () => {
     const review = mount(Index,{props:{...baseProps,view:'review'}})

@@ -55,6 +55,68 @@ final class DomesticInlineTrackingTest extends TestCase
         );
     }
 
+    public function test_factory_carrier_and_service_require_explicit_authorized_selection_before_shipping(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $viewer = $this->userWith(['logistics.view']);
+        $order = $this->factoryOrder(true);
+        $order->shipment()->update([
+            'carrier_selection_source' => 'automatic',
+            'carrier' => '4PX',
+            'service' => 'SD经济挂号-带电',
+        ]);
+        $route = '/logistics/china/orders/'.$order->id.'/carrier-service';
+        $ship = '/logistics/china/orders/'.$order->id.'/quick-ship';
+
+        $this->actingAs($operator)->get('/logistics/china?view=pending')
+            ->assertInertia(fn($page) => $page
+                ->where('rows.data.0.carrier_selection_source', 'automatic')
+                ->where('rows.data.0.export_blockers.0', '请人工确认物流商和服务类型')
+                ->has('carrierOptions'));
+        $this->actingAs($operator)->post($ship, ['tracking_number'=>'4PX-UNCONFIRMED'])
+            ->assertStatus(422);
+        self::assertSame('pending', $order->fresh()->shipment->shipment_status);
+        $this->actingAs($viewer)->post($route, [
+            'carrier'=>'4PX', 'service'=>'SD经济挂号-带电',
+        ])->assertForbidden();
+        self::assertSame('automatic', $order->fresh()->shipment->carrier_selection_source);
+        $this->actingAs($operator)->post($route, [
+            'carrier'=>'4PX', 'service'=>'NOT-A-REAL-SERVICE',
+        ])->assertStatus(422);
+        self::assertSame('automatic', $order->fresh()->shipment->carrier_selection_source);
+
+        $this->actingAs($operator)->post($route, [
+            'carrier'=>'4PX', 'service'=>'SD经济挂号-带电',
+        ])->assertRedirect();
+        $this->assertDatabaseHas('shipments', [
+            'order_id'=>$order->id, 'carrier'=>'4PX', 'service'=>'SD经济挂号-带电',
+            'carrier_selection_source'=>'manual', 'shipment_status'=>'pending',
+        ]);
+        $this->actingAs($operator)->get('/logistics/china?view=pending')->assertInertia(
+            fn($page) => $page->where('rows.data.0.carrier', '4PX')
+                ->where('rows.data.0.service', 'SD经济挂号-带电')
+                ->where('rows.data.0.carrier_selection_source', 'manual'),
+        );
+        $this->actingAs($operator)->post($ship, ['tracking_number'=>'4PX-CONFIRMED'])
+            ->assertRedirect();
+        self::assertSame('shipped', $order->fresh()->shipment->shipment_status);
+    }
+
+    public function test_factory_warehouse_only_draft_never_infers_a_provider_or_service(): void
+    {
+        $actor=$this->userWith(['logistics.view','logistics.operate']);
+        $order=$this->factoryOrder(true);
+        $order->shipment()->update([
+            'carrier'=>null,'service'=>null,'carrier_service_id'=>null,'carrier_selection_source'=>null,
+        ]);
+        app(\App\Modules\Logistics\Application\ShipmentService::class)
+            ->saveDraft($order->fresh(), ['warehouse_id'=>$order->shipment->warehouse_id], $actor);
+        $shipment=$order->fresh()->shipment;
+        self::assertNull($shipment->carrier);
+        self::assertNull($shipment->service);
+        self::assertNull($shipment->carrier_selection_source);
+    }
+
     public function test_unreviewed_or_stockout_cannot_save_or_ship_even_by_manual_route(): void
     {
         $actor = $this->userWith(['logistics.view', 'logistics.operate']);

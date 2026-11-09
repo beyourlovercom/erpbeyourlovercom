@@ -54,6 +54,27 @@ final class PendingFulfillmentReallocationTest extends TestCase
         $this->assertStringStartsWith('partial:', $allocation->selected_plan_key);
     }
 
+    public function test_reallocation_to_factory_clears_overseas_carrier_and_service(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.edit', 'logistics.operate']);
+        [, , $pending] = $this->splitScenario();
+        $overseas = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $pending->shipment()->update([
+            'warehouse_id' => $overseas->id, 'carrier' => 'USPS',
+            'service' => 'USPS Priority Mail', 'carrier_selection_source' => 'automatic',
+        ]);
+
+        $this->actingAs($user)->postJson(
+            '/logistics/orders/'.$pending->id.'/reallocate-pending-fulfillment',
+            ['warehouse_id' => $factory->id, 'stock_exception_acknowledged' => true],
+        )->assertOk();
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $pending->id, 'warehouse_id' => $factory->id,
+            'carrier' => null, 'service' => null, 'carrier_selection_source' => null,
+        ]);
+    }
+
     public function test_shipped_child_cannot_be_reallocated(): void
     {
         $user = $this->userWith(['orders.view', 'orders.edit', 'logistics.operate']);
