@@ -37,7 +37,7 @@ final class ManualSyncController
         ]);
         $perPage = (int) ($filters['per_page'] ?? 50);
         $paginator = Order::query()->withTrashed()
-            ->with(['address', 'manualSync', 'shipment', 'fulfillmentParent.externalReferences', 'externalReferences', 'operationalMarkers'])
+            ->with(['address', 'manualSync', 'shipment', 'fulfillmentParent' => fn ($query) => $query->withTrashed(), 'fulfillmentParent.externalReferences', 'externalReferences', 'operationalMarkers'])
             ->when($filters['source'] ?? null, fn ($query, $source) => $query->where('source_type', $source))
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($nested) use ($search): void {
@@ -97,7 +97,8 @@ final class ManualSyncController
                 $isWoo = $rootSourceType === 'woocommerce';
                 $proof = $progress->forOrder($order, $trackingState, $isWoo);
                 $number = trim((string) ($order->shipment?->tracking_number ?? ''));
-                $isArchived = $order->trashed() || $order->archived_at !== null || $order->isOperationallyArchived();
+                $isArchived = $order->trashed() || $order->archived_at !== null || $order->isOperationallyArchived()
+                    || ($root?->trashed() ?? false) || $root?->archived_at !== null;
                 $hasWooReference = $isWoo && ($root?->externalReferences ?? collect())->contains(
                     fn ($reference): bool => $reference->provider === 'woocommerce' && ctype_digit((string) $reference->reference)
                 );

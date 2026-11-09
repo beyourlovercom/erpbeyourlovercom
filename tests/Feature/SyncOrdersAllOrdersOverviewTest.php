@@ -77,6 +77,26 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
         $this->actingAs($user)->get('/sync/orders?source=not_a_source')->assertSessionHasErrors('source');
     }
 
+    public function test_split_child_keeps_real_woocommerce_root_identity_after_parent_was_archived(): void
+    {
+        $user = $this->viewer();
+        $parent = $this->makeOrder('woocommerce', 'WOO-ROOT-ARCHIVED');
+        $child = $this->makeOrder('manual', 'SPLIT-CHILD-B');
+        $child->forceFill(['fulfillment_parent_id' => $parent->id, 'fulfillment_suffix' => 'B'])->save();
+        $parent->delete();
+
+        $this->actingAs($user)->get('/sync/orders?search=SPLIT-CHILD-B')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('orders', 1)
+                ->where('orders.0.id', $child->id)
+                ->where('orders.0.root_order_id', $parent->id)
+                ->where('orders.0.source_type', 'woocommerce')
+                ->where('orders.0.fulfillment_suffix', 'B')
+                ->where('orders.0.archived', true)
+                ->where('orders.0.can_sync', false)
+            );
+    }
+
     public function test_verified_remote_tracking_and_customer_note_receipt_have_distinct_statuses(): void
     {
         $projector = app(OrderSyncProgressProjector::class);
