@@ -462,6 +462,7 @@ final class ProductController
                     'notes' => $alias['notes'],
                     'is_active' => (bool) ($alias['is_active'] ?? true),
                     'oms_verified_at' => $alias['oms_verified_at'] ?? null,
+                    'oms_dispatch_approved_at' => $alias['oms_dispatch_approved_at'] ?? null,
                     'oms_identity_evidence' => $alias['oms_identity_evidence'] ?? null,
                     'updated_by' => $editor?->name,
                     'updated_at' => $alias['updated_at'] ?? null,

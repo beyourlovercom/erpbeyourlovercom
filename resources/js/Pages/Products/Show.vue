@@ -27,7 +27,7 @@ const orderGrid = reactive(useAccountGridPreferences<OrderColumn>({ namespace: '
 const shipmentGrid = reactive(useAccountGridPreferences<ShipmentColumn>({ namespace: 'grid.products.show.shipments.v1', definitions: shipmentDefinitions, requiredKeys: ['order_number'] }))
 const relationGrid = reactive(useAccountGridPreferences<RelationColumn>({ namespace: 'grid.products.show.relations.v1', definitions: relationDefinitions, requiredKeys: ['order_number'] }))
 type ProductMedia = { id: number; url: string; alt_text: string | null; position: number; is_primary: boolean }
-type SkuAlias = { id: number; alias_sku: string; source_type: string; source_reference: string | null; notes: string | null; is_active: boolean; oms_verified_at: string | null; oms_identity_evidence: string | null; updated_by: string | null; updated_at: string | null }
+type SkuAlias = { id: number; alias_sku: string; source_type: string; source_reference: string | null; notes: string | null; is_active: boolean; oms_verified_at: string | null; oms_dispatch_approved_at?: string | null; oms_identity_evidence: string | null; updated_by: string | null; updated_at: string | null }
 
 const props = defineProps<{
   product: Record<string, any>
@@ -455,11 +455,11 @@ const selectRelative = async (tab: Tab, delta: number) => {
                 <td><strong>{{ alias.alias_sku }}</strong></td>
                 <td><span>{{ aliasSource(alias.source_type) }}</span><small v-if="alias.source_reference">{{ alias.source_reference }}</small><small v-if="alias.notes">{{ alias.notes }}</small></td>
                 <td><span :class="alias.is_active ? 'product360-alias-good' : 'product360-alias-muted'">{{ alias.is_active ? '启用' : '已停用' }}</span></td>
-                <td><span :class="alias.is_active && alias.oms_verified_at ? 'product360-alias-good' : 'product360-alias-muted'">{{ alias.is_active && alias.oms_verified_at ? '已核实' : '待核实' }}</span><small v-if="alias.oms_verified_at">{{ date(alias.oms_verified_at) }}</small></td>
+                <td><span :class="alias.is_active && alias.oms_dispatch_approved_at ? 'product360-alias-good' : 'product360-alias-muted'">{{ !alias.is_active ? '已停用' : alias.oms_dispatch_approved_at ? '发货映射已核实' : alias.oms_verified_at ? '需补充发货核实' : '待核实' }}</span><small v-if="alias.oms_verified_at">{{ date(alias.oms_verified_at) }}</small></td>
                 <td>{{ alias.updated_by || '—' }}<small>{{ date(alias.updated_at) }}</small></td>
                 <td v-if="canOperate" class="product360-alias-actions">
                   <button type="button" class="mvp-button mvp-button-secondary" @click="toggleAlias(alias)">{{ alias.is_active ? '停用' : '启用' }}</button>
-                  <button v-if="alias.is_active && !alias.oms_verified_at" type="button" class="mvp-button mvp-button-secondary" @click="verifyingAliasId = verifyingAliasId === alias.id ? null : alias.id; aliasVerify.reset()">核实</button>
+                  <button v-if="alias.is_active && !alias.oms_dispatch_approved_at" type="button" class="mvp-button mvp-button-secondary" @click="verifyingAliasId = verifyingAliasId === alias.id ? null : alias.id; aliasVerify.reset()">{{ alias.oms_verified_at ? '补充发货核实' : '核实' }}</button>
                   <button type="button" class="mvp-button mvp-button-secondary" @click="deleteAlias(alias)">删除</button>
                 </td>
               </tr>
