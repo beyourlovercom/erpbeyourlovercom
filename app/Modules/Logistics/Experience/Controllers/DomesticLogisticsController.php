@@ -53,6 +53,7 @@ final class DomesticLogisticsController
             'shipment.warehouse',
             'operationalMarkers',
             'manualSync',
+            'financials',
             'fulfillmentParent',
             'fulfillmentAllocation',
             'shipment.overseaReview',
@@ -298,6 +299,7 @@ final class DomesticLogisticsController
 
         return [
             'line' => $line,
+            'paid_date' => $order->financials?->paid_at?->format('m-d'),
             'order_id' => (int) $order->id,
             'source_type' => ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type) instanceof \BackedEnum
                 ? ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type)->value
