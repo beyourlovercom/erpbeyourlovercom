@@ -44,6 +44,29 @@ final class DomesticBusinessReviewTest extends TestCase
                 ->where('viewCounts.stockout', 0)->where('viewCounts.pending', 1));
     }
 
+    public function test_approval_clears_legacy_automatic_provider_and_service_before_pending(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $reviewer = $this->userWith(['domestic.review', 'logistics.view']);
+        $order = $this->order();
+        $order->shipment()->update([
+            'carrier'=>'4PX', 'service'=>'SD经济挂号-带电',
+            'carrier_selection_source'=>'automatic',
+        ]);
+        $this->actingAs($reviewer)->post('/logistics/china/orders/'.$order->id.'/approve')
+            ->assertRedirect();
+        $this->assertDatabaseHas('shipments', [
+            'order_id'=>$order->id, 'carrier'=>null, 'service'=>null,
+            'carrier_selection_source'=>null, 'shipment_status'=>'pending',
+        ]);
+        $this->actingAs($reviewer)->get('/logistics/china?view=pending')->assertInertia(
+            fn($page) => $page->where('rows.total',1)
+                ->where('rows.data.0.carrier',null)
+                ->where('rows.data.0.service',null)
+        );
+    }
+
     public function test_rejection_returns_to_vita_with_a_persisted_reason_and_cleared_warehouse(): void
     {
         $this->withoutVite();

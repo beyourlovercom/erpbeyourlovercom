@@ -254,7 +254,10 @@ final class OrderController
             'packagingReferences' => $this->packagingReferences->forOrder($order),
             'warehouses' => $warehouses,
             'warehouseRouting' => collect($warehouses)->mapWithKeys(function (array $warehouse) use ($order): array {
-                $route = $this->carrierRouting->warehouseRoute($order->address?->country, (string) ($warehouse['code'] ?? ''));
+                $code = strtoupper(trim((string) ($warehouse['code'] ?? '')));
+                // Factory dispatch carrier/service are confirmed after domestic review.
+                $route = $code === 'FACTORY' ? []
+                    : $this->carrierRouting->warehouseRoute($order->address?->country, $code);
 
                 return [(int) $warehouse['id'] => [
                     'carrier' => $route['carrier'] ?? null,

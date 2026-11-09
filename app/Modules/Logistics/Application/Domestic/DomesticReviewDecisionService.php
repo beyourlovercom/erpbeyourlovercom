@@ -41,8 +41,22 @@ final class DomesticReviewDecisionService
                 409, '已进入实际发货的订单不可撤回审核。');
             abort_if($locked->externalReferences->contains('provider', 'historical_logistics'), 409, '历史物流订单不可操作。');
 
-            $before = ['workflow_status' => $locked->workflow_status, 'warehouse_id' => $locked->shipment->warehouse_id];
+            $before = [
+                'workflow_status' => $locked->workflow_status,
+                'warehouse_id' => $locked->shipment->warehouse_id,
+                'carrier' => $locked->shipment->carrier,
+                'service' => $locked->shipment->service,
+                'carrier_selection_source' => $locked->shipment->carrier_selection_source,
+            ];
             if ($decision === 'approve') {
+                // Legacy allocated-but-unconfirmed provider defaults are not
+                // staff confirmation. Clear them on the review -> pending gate.
+                if ($locked->shipment->carrier_selection_source !== 'manual') {
+                    $locked->shipment->forceFill([
+                        'carrier' => null, 'service' => null,
+                        'carrier_service_id' => null, 'carrier_selection_source' => null,
+                    ])->save();
+                }
                 $locked->operationalMarkers()->where('marker', 'domestic_stockout')->delete();
                 if ($locked->workflow_status === 'out_of_stock') {
                     $this->workflow->set($locked, 'sending', (int) $locked->workflow_revision, $actor);
@@ -89,7 +103,13 @@ final class DomesticReviewDecisionService
             $this->audit->record(
                 AuditActor::user($actor, AuditSource::Web), 'domestic.review_'.$decision,
                 Order::class, $locked->getKey(), $before,
-                ['decision' => $decision, 'review_reason' => $decision === 'reject' ? trim((string) $reason) : null],
+                [
+                    'decision' => $decision,
+                    'review_reason' => $decision === 'reject' ? trim((string) $reason) : null,
+                    'carrier' => $locked->shipment->fresh()?->carrier,
+                    'service' => $locked->shipment->fresh()?->service,
+                    'carrier_selection_source' => $locked->shipment->fresh()?->carrier_selection_source,
+                ],
                 'domestic_business_review',
             );
         });

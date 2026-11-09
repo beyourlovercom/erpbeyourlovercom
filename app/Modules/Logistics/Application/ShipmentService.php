@@ -75,7 +75,7 @@ final class ShipmentService
                 'carrier_service_id' => $normalizedService['carrier_service_id'],
                 'carrier_selection_source' => $selectedCarrier !== ''
                     ? ($automaticSelection ? 'automatic' : ($attributes['carrier_selection_source'] ?? 'manual'))
-                    : $shipment->carrier_selection_source,
+                    : null,
                 'tracking_number' => $trackingNumber,
                 'logistics_note' => array_key_exists('logistics_note', $attributes) ? $attributes['logistics_note'] : $shipment->logistics_note,
                 'handled_by' => $actor?->getAuthIdentifier(),
@@ -486,6 +486,9 @@ final class ShipmentService
         if ($warehouseId <= 0) return [];
         $warehouse = Warehouse::query()->find($warehouseId);
         if (! $warehouse) return [];
+        // Chinese factory carrier/service are an explicit dispatch decision,
+        // never a warehouse-routing fallback (including after table upgrades).
+        if (strtoupper(trim((string) $warehouse->code)) === 'FACTORY') return [];
         return $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
     }
 

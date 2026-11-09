@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewAccess;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
@@ -85,6 +86,7 @@ final class DomesticLogisticsController
             'canOperate' => app(LogisticsExecutionAccess::class)->allows($request->user()),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
+            'carrierOptions' => app(CarrierServiceCatalog::class)->options(),
             'trackingImportProvider' => $previewProvider,
             'trackingImportPreview' => $preview ? [
                 'token' => $preview['token'],
@@ -143,7 +145,8 @@ final class DomesticLogisticsController
         $factory = $this->factory();
         $orders = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id))
             ->with(['address', 'items.product', 'externalReferences', 'operationalMarkers'])
-            ->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', [$carrier]))
+            ->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', [$carrier])
+                ->where('carrier_selection_source', 'manual'))
             ->orderBy('order_date')
             ->orderBy('id')
             ->get();
@@ -319,6 +322,7 @@ final class DomesticLogisticsController
             'postal_code' => $order->address?->postal_code,
             'carrier' => $shipment?->carrier,
             'service' => $shipment?->service,
+            'carrier_selection_source' => $shipment?->carrier_selection_source,
             'tracking_number' => $shipment?->tracking_number,
             'shipment_status' => $shipment?->shipment_status,
             'shipped_at' => $shipment?->shipped_at?->toIso8601String(),
@@ -326,9 +330,11 @@ final class DomesticLogisticsController
             'export_blockers' => $shipment?->shipment_status !== 'pending'
                 ? ['该单已离开待发货队列，禁止重复导出']
                 : ($stockout ? ['缺货，禁止导出'] : (! $approved ? ['商务尚未审核，禁止导出']
-                    : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
+                    : ($shipment?->carrier_selection_source !== 'manual' || blank($shipment?->service)
+                        ? ['请人工确认物流商和服务类型']
+                        : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
                         ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
-                        : ['未选定速达或纬狮承运商']))),
+                        : ['未选定速达或纬狮承运商'])))),
             'items' => $order->items->map(fn ($item) => [
                 'sku' => $item->sku,
                 'quantity' => (int) $item->quantity,
