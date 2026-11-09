@@ -145,6 +145,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             }
             if (str_contains($url, '/product/queryList')) {
                 $skus = (array) $sku;
+
                 return Http::response([
                     'result' => 'OK',
                     'data' => ['total' => count($skus), 'records' => array_map(
@@ -154,6 +155,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             }
             if (str_contains($url, '/stock/list')) {
                 $skus = (array) $sku;
+
                 return Http::response([
                     'result' => 'OK', 'data' => [
                         'total' => count($skus), 'records' => array_map(fn (string $one) => [
