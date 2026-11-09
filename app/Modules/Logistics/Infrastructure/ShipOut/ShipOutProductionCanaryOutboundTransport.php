@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Infrastructure\ShipOut;
 
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryGate;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1Gate;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -42,8 +43,9 @@ final class ShipOutProductionCanaryOutboundTransport
         array $payload,
         string $expectedPayloadHash,
         string $typedConfirmation,
+        ?Authenticatable $operator = null,
     ): array {
-        return $this->submitScoped($orderId, $payload, $expectedPayloadHash, $typedConfirmation, true);
+        return $this->submitScoped($orderId, $payload, $expectedPayloadHash, $typedConfirmation, true, $operator);
     }
 
     /** @param array<int,array<string,mixed>> $payload */
@@ -53,6 +55,7 @@ final class ShipOutProductionCanaryOutboundTransport
         string $expectedPayloadHash,
         string $typedConfirmation,
         bool $v1,
+        ?Authenticatable $operator = null,
     ): array {
         $row = $payload[0] ?? null;
         if (count($payload) !== 1 || ! is_array($row)
@@ -78,10 +81,15 @@ final class ShipOutProductionCanaryOutboundTransport
 
         $ref = trim((string) ($row['orderNo'] ?? ''));
         $hash = hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
-        ($v1 ? $this->v1Gate : $this->gate)->assertExecutionAuthorized(
+        $args = [
             $orderId, $ref, (string) $row['warehouseId'],
             $expectedPayloadHash, $hash, $typedConfirmation,
-        );
+        ];
+        if ($v1) {
+            $this->v1Gate->assertExecutionAuthorized(...[...$args, $operator]);
+        } else {
+            $this->gate->assertExecutionAuthorized(...$args);
+        }
 
         // Atomic one-time state transition. No additional call is allowed
         // after this succeeds; even a process crash creates a manual hold.
