@@ -60,13 +60,19 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         ]);
         $this->assertSame(5, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product->id)->value('quantity_reserved'));
 
-        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', [
+        $shippingPayload = [
             'warehouse_id' => $warehouse->id,
             'carrier' => 'UPS',
             'service' => 'Ground',
             'tracking_number' => 'SHIP-TRACK',
             'shipped_at' => '2026-08-27T05:00:00Z',
-        ])->assertRedirect();
+        ];
+        // Overseas physical dispatch must remain blocked before Dede's explicit approval.
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', $shippingPayload)->assertStatus(409);
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending']);
+        $this->actingAs($user)->post('/logistics/oversea/orders/'.$order->id.'/approve')->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $order->id, 'status' => 'approved', 'reviewed_warehouse_id' => $warehouse->id]);
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', $shippingPayload)->assertRedirect();
 
         $this->assertDatabaseHas('shipments', [
             'order_id' => $order->id,
@@ -136,7 +142,8 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             && str_contains($sql, 'shipping_weight_evidence_id')
         )->count();
 
-        $this->assertSame(1, $externalReferenceLoads, 'Wait-stock page must eager-load external references once for the page.');
+        // One batched page load plus one fresh batched payment-authority snapshot; never N+1 per order.
+        $this->assertSame(2, $externalReferenceLoads, 'Wait-stock external references must use two bounded batch loads including payment verification.');
         $this->assertSame(1, $packagingStandardLoads, 'Wait-stock page must load packaging standards once for the page.');
         $this->assertSame(1, $shippingWeightStandardLoads, 'Wait-stock page must load shipping-weight standards once for the page.');
     }
@@ -453,6 +460,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         );
 
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/adopt-recommendation')->assertRedirect();
+        $this->actingAs($user)->post('/logistics/oversea/orders/'.$order->id.'/approve')->assertRedirect();
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', [
             'warehouse_id' => $warehouse->id,
             'carrier' => 'UPS',
@@ -668,6 +676,10 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             'order_date' => '2026-08-27',
             'recipient_name' => 'Manual Fulfillment UAT',
             'country' => 'US',
+            // A US warehouse recommendation requires an unambiguous destination region.
+            'province_state' => 'CA',
+            'postal_code' => '90001',
+            'city' => 'Los Angeles',
             'items' => [[
                 'product_id' => $product->id,
                 'product_summary' => $product->name,
