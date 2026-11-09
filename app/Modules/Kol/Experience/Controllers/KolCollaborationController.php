@@ -138,7 +138,8 @@ final class KolCollaborationController
                 'status' => 'confirmed',
                 'agreement_amount' => $opportunity->estimated_cost,
                 'currency' => $opportunity->currency ?: 'USD',
-                'agreed_at' => now()->toDateString(),
+                // A conversion is not evidence of the real agreement date. Staff may fill agreed_at later.
+                'agreed_at' => null,
                 'planned_publish_at' => $opportunity->expected_publish_at,
                 'notes' => $opportunity->notes,
             ]);
