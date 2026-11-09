@@ -24,7 +24,8 @@ final class DomesticBusinessReviewTest extends TestCase
         config()->set('inertia.testing.ensure_pages_exist', false);
         $actor = $this->userWith(['logistics.view', 'domestic.review']);
         $root = $this->order();
-        $root->financials()->create(['paid_at' => '2026-10-18 12:00:00']);
+        $root->forceFill(['source_type' => OrderSourceType::WooCommerce])->save();
+        $root->financials()->create(['paid_at' => '2026-10-18 12:00:00', 'provider_order_total' => '145.68', 'currency' => 'EUR']);
         $root->shipment()->delete();
         $child = Order::query()->create([
             'fulfillment_parent_id' => $root->id,
@@ -45,7 +46,10 @@ final class DomesticBusinessReviewTest extends TestCase
             ->assertInertia(fn ($page) => $page->component('Logistics/Domestic/Index')
                 ->where('rows.total', 1)
                 ->where('rows.data.0.paid_date', '10-18')
-                ->where('rows.data.0.paid_date_source', '母订单支付日期'));
+                ->where('rows.data.0.paid_date_source', '母订单支付日期')
+                ->where('rows.data.0.amount', '145.68')
+                ->where('rows.data.0.amount_currency', 'EUR')
+                ->where('rows.data.0.amount_source', '母订单总金额 · 分仓不重复计收'));
         $this->assertNull($child->financials, 'split fulfillment never invents its own payment fact');
     }
 

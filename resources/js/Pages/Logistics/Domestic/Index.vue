@@ -6,7 +6,7 @@ import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowSta
 
 type Item = { sku:string|null; quantity:number }
 type Row = {
-  line:number; order_id:number; paid_date:string|null; paid_date_source?:string|null; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
+  line:number; order_id:number; paid_date:string|null; paid_date_source?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
   workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; carrier_selection_source?:string|null; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
@@ -276,7 +276,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
       </div>
       <div class="table-wrap orders">
         <table>
-          <thead><tr><th v-if="canTrackingSync">选择</th><th>#</th><th>审核</th><th>ERP 订单</th><th>订单状态</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th>导出状态</th><th>承运商单号</th><th>Carrier</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view!=='review'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync">操作</th></tr></thead>
+          <thead><tr><th v-if="canTrackingSync">选择</th><th>#</th><th>审核</th><th>ERP 订单</th><th>订单状态</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>承运商单号</th><th>Carrier</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view!=='review'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync">操作</th></tr></thead>
           <tbody>
             <tr v-for="row in rows.data" :key="row.order_id">
               <td v-if="canTrackingSync"><input v-if="eligibleForBatchTracking(row)" type="checkbox"
@@ -293,7 +293,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                 <span v-else :class="row.review_status==='conflict' ? 'danger' : ''">{{ row.review_status==='conflict' ? '状态待对账' : row.review_status==='stockout' ? '缺货' : '待审核' }}</span>
               </td>
               <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a></td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :can-edit="false" /><span v-else>—</span></td>
-              <td v-if="view==='review'" :title="row.paid_date_source ?? ''">{{ row.paid_date ?? '—' }}</td><td v-if="view==='review'"><div v-for="(item,index) in row.items" :key="item.sku+'-'+index">{{ item.sku ?? '无SKU' }}</div><button v-if="europeanCountries.has((row.country ?? '').toUpperCase())" type="button" class="secondary" :disabled="barcodeLoading" @click="showBarcode(row)">69条码</button><div v-if="barcodePreview?.orderId===row.order_id" class="barcode-preview"><div v-for="item in barcodePreview.items" :key="item.sku">{{ item.sku }} × {{ item.quantity }}：{{ item.barcode_69 }}</div></div><small v-if="barcodeError && barcodeErrorOrderId===row.order_id && !barcodeLoading" class="danger">{{ barcodeError }}</small></td><td v-if="view==='review'"><div v-for="(item,index) in row.items" :key="item.sku+'-'+index">{{ item.quantity }}</div></td>
+              <td v-if="view==='review'" :title="row.paid_date_source ?? ''">{{ row.paid_date ?? '—' }}</td><td v-if="view==='review'"><div v-for="(item,index) in row.items" :key="item.sku+'-'+index">{{ item.sku ?? '无SKU' }}</div><button v-if="europeanCountries.has((row.country ?? '').toUpperCase())" type="button" class="secondary" :disabled="barcodeLoading" @click="showBarcode(row)">69条码</button><div v-if="barcodePreview?.orderId===row.order_id" class="barcode-preview"><div v-for="item in barcodePreview.items" :key="item.sku">{{ item.sku }} × {{ item.quantity }}：{{ item.barcode_69 }}</div></div><small v-if="barcodeError && barcodeErrorOrderId===row.order_id && !barcodeLoading" class="danger">{{ barcodeError }}</small></td><td v-if="view==='review'"><div v-for="(item,index) in row.items" :key="item.sku+'-'+index">{{ item.quantity }}</div></td><td v-if="view==='review'" :title="row.amount_source ?? ''">{{ row.amount !== null && row.amount !== undefined ? `${row.amount} ${row.amount_currency ?? 'USD'}` : '—' }}</td>
               <td><span v-if="row.export_blockers.length" class="danger">{{ row.export_blockers.join(' / ') }}</span><span v-else class="ready">可导出</span></td>
               <td>{{ row.provider_reference ?? '—' }}</td>
               <td class="domestic-carrier-cell">
@@ -344,7 +344,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row)" type="button" class="secondary"
                 :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">{{ (['failed','retry_wait'].includes(row.tracking_sync_status ?? '') || !!row.tracking_sync_reason) ? '重新同步' : '同步官网物流' }}</button><span v-else>—</span></td>
             </tr>
-            <tr v-if="!rows.data.length"><td :colspan="(view==='review'?16:14)+(canTrackingSync?2:0)" class="empty">当前视图暂无订单</td></tr>
+            <tr v-if="!rows.data.length"><td :colspan="(view==='review'?17:14)+(canTrackingSync?2:0)" class="empty">当前视图暂无订单</td></tr>
           </tbody>
         </table>
       </div>

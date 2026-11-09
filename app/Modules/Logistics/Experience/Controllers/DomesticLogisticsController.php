@@ -57,6 +57,7 @@ final class DomesticLogisticsController
             'financials',
             'kolCollaboration',
             'fulfillmentParent.financials',
+            'fulfillmentParent.shipment.warehouse',
             'fulfillmentParent.kolCollaboration',
             'fulfillmentParent',
             'fulfillmentAllocation',
@@ -304,11 +305,15 @@ final class DomesticLogisticsController
         }
 
         $businessDate = app(\App\Modules\Orders\Application\OrderBusinessDateResolver::class)->domesticReview($order);
+        $amount = app(\App\Modules\Orders\Application\DomesticReviewAmountResolver::class)->resolve($order);
 
         return [
             'line' => $line,
             'paid_date' => $businessDate['date'],
             'paid_date_source' => $businessDate['source'],
+            'amount' => $amount['amount'],
+            'amount_currency' => $amount['currency'],
+            'amount_source' => $amount['source'],
             'order_id' => (int) $order->id,
             'source_type' => ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type) instanceof \BackedEnum
                 ? ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type)->value
