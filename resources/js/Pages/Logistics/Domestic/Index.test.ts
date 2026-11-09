@@ -12,7 +12,7 @@ vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default:{ template:
 const baseProps = {
   view:'pending',
   rows:{ data:[{
-    line:1,order_id:1,erp_order_id:'007-0923-c50001',provider_reference:'C50001-007',order_url:'/customers/orders/1',
+    line:1,order_id:1,paid_date:'11-09',erp_order_id:'007-0923-c50001',provider_reference:'C50001-007',order_url:'/customers/orders/1',
     recipient_name:'A',phone:'123',country:'DE',state:'DE-SN',city:'Dresden',postal_code:'01219',
     carrier:'4PX',service:'SD经济挂号-带电',tracking_number:null,shipment_status:'pending',shipped_at:null,
     review_status:'approved' as const,export_blockers:[],items:[{sku:'M2',quantity:1}],
@@ -43,6 +43,8 @@ describe('Domestic logistics production workbench', () => {
     const cells = review.findAll('.orders tbody tr:first-child td')
     expect(headers).toContain('SKU')
     expect(headers).toContain('数量')
+    expect(headers.slice(headers.indexOf('订单状态') + 1,headers.indexOf('订单状态') + 4)).toEqual(['成交日期','SKU','数量'])
+    expect(cells[headers.indexOf('成交日期')].text()).toBe('11-09')
     expect(cells[headers.indexOf('SKU')].find('div').text()).toBe('M2')
     expect(cells[headers.indexOf('数量')].text()).toBe('1')
 
@@ -51,6 +53,10 @@ describe('Domestic logistics production workbench', () => {
     expect(pendingHeaders).toContain('SKU / 数量')
     expect(pendingHeaders).not.toContain('SKU')
     expect(pendingHeaders).not.toContain('数量')
+    expect(pendingHeaders).not.toContain('成交日期')
+    const noPaid = mount(Index,{props:{...baseProps,view:'review',rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],paid_date:null}]}}})
+    const noPaidHeaders = noPaid.findAll('.orders thead th').map(th=>th.text())
+    expect(noPaid.findAll('.orders tbody tr:first-child td')[noPaidHeaders.indexOf('成交日期')].text()).toBe('—')
   })
 
   it('shows the read-only 今日订单 XLSX download before the 4PX provider button only on the aggregate today tab', () => {
