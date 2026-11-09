@@ -97,7 +97,7 @@ final class OrderFulfillmentM1Test extends TestCase
             ->assertRedirect('/kol/orders/'.$kolOrder->id);
     }
 
-    public function test_generic_order_detail_url_for_fulfillment_child_redirects_to_root_order(): void
+    public function test_generic_order_detail_url_for_fulfillment_child_redirects_to_canonical_customer_surface_preserving_child_identity(): void
     {
         $user = $this->userWith(['orders.view', 'orders.create']);
         $this->actingAs($user)->post('/customers/orders', $this->payload('CUS-SPLIT'))->assertRedirect();
@@ -117,7 +117,7 @@ final class OrderFulfillmentM1Test extends TestCase
         ]);
 
         $this->actingAs($user)->get('/orders/'.$child->id)
-            ->assertRedirect('/customers/orders/'.$root->id);
+            ->assertRedirect('/customers/orders/'.$child->id);
     }
 
     public function test_customer_and_kol_lists_are_scoped_server_side_with_no_cross_leak(): void

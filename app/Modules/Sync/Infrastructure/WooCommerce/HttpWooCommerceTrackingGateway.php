@@ -2,6 +2,7 @@
 
 namespace App\Modules\Sync\Infrastructure\WooCommerce;
 
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use App\Modules\Sync\Application\WooCommerceOrderStatusUnsupportedException;
 use App\Modules\Sync\Application\WooCommerceTrackingConflictException;
@@ -10,7 +11,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
-final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
+final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingBatchInspector, WooCommerceTrackingGateway
 {
     private const string UserAgent = 'Mozilla/5.0 (compatible; BYL-ERP-WooCommerce-Inbound/1.0; +https://www.beyourlover.com/)';
 
@@ -46,6 +47,82 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
             'ship_date' => $shipDate,
             'has_tracking' => $state['items'] !== [] || $number !== '' || $provider !== '',
         ];
+    }
+
+    public function inspectTrackingBatch(array $providerOrderIds): array
+    {
+        if (! $this->configured()) {
+            throw new RuntimeException('WooCommerce connection is not configured.');
+        }
+
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', $providerOrderIds),
+            fn (int $id): bool => $id > 0,
+        )));
+        if ($ids === []) {
+            return [];
+        }
+
+        $result = [];
+        foreach (array_chunk($ids, 100) as $chunk) {
+            $payload = $this->client()->get($this->baseUrl().'/wp-json/wc/v3/orders', [
+                'include' => $chunk,
+                'per_page' => count($chunk),
+            ])->throw()->json();
+
+            if (! is_array($payload)) {
+                throw new RuntimeException('WooCommerce order batch response is invalid.');
+            }
+
+            foreach ($payload as $order) {
+                if (! is_array($order) || (int) ($order['id'] ?? 0) <= 0) {
+                    continue;
+                }
+
+                $providerOrderId = (int) $order['id'];
+                $state = $this->trackingState($order);
+                $items = [];
+                foreach ($state['items'] as $item) {
+                    if (! is_array($item)) {
+                        continue;
+                    }
+                    $number = trim((string) ($item['tracking_number'] ?? ''));
+                    if ($number === '') {
+                        continue;
+                    }
+                    $items[] = [
+                        'tracking_number' => $number,
+                        'provider' => trim((string) ($item['slug'] ?? '')),
+                        'ship_date' => trim((string) data_get($item, 'additional_fields.ship_date', '')) ?: null,
+                    ];
+                }
+                if ($items === [] && $state['legacy_number'] !== '') {
+                    $items[] = [
+                        'tracking_number' => $state['legacy_number'],
+                        'provider' => $state['legacy_provider'],
+                        'ship_date' => null,
+                    ];
+                }
+
+                $result[$providerOrderId] = [
+                    'order_status' => strtolower(trim((string) ($order['status'] ?? ''))),
+                    'tracking_items' => $items,
+                    'has_tracking' => $items !== [],
+                    'checked_at' => now()->toIso8601String(),
+                ];
+            }
+        }
+
+        foreach ($ids as $id) {
+            $result[$id] ??= [
+                'order_status' => 'not_found',
+                'tracking_items' => [],
+                'has_tracking' => false,
+                'checked_at' => now()->toIso8601String(),
+            ];
+        }
+
+        return $result;
     }
 
     public function syncTracking(

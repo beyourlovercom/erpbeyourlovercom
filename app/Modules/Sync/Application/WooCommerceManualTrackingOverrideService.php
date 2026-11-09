@@ -5,9 +5,11 @@ namespace App\Modules\Sync\Application;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceCustomerNoteGateway;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 final class WooCommerceManualTrackingOverrideService
@@ -65,7 +67,46 @@ final class WooCommerceManualTrackingOverrideService
         }
 
         $providerId = (int) $reference->reference;
-        $beforeStatus = $this->gateway->inspectOrderStatus($providerId);
+        $slug = $this->carrierSlug((string) $shipment->carrier);
+        $remoteSnapshot = null;
+        if ($this->gateway instanceof WooCommerceTrackingBatchInspector) {
+            $remoteSnapshot = $this->gateway->inspectTrackingBatch([$providerId])[$providerId] ?? null;
+        }
+        $beforeStatus = is_array($remoteSnapshot)
+            ? strtolower(trim((string) ($remoteSnapshot['order_status'] ?? '')))
+            : $this->gateway->inspectOrderStatus($providerId);
+
+        // If the exact Tracking package is already on the website, reconcile
+        // ERP locally only. Do not rewrite Woo metadata, status or customer mail.
+        if (is_array($remoteSnapshot)) {
+            $remoteItems = (array) ($remoteSnapshot['tracking_items'] ?? []);
+            $sameNumber = array_values(array_filter($remoteItems, fn ($item): bool => is_array($item) && trim((string) ($item['tracking_number'] ?? '')) === $number
+            ));
+            $alreadyPublished = array_filter($sameNumber, fn (array $item): bool => $slug !== 'other'
+                && trim((string) ($item['provider'] ?? '')) !== ''
+                && trim((string) ($item['provider'] ?? '')) === $slug
+            );
+            if ($sameNumber !== [] && $alreadyPublished === []) {
+                throw new DomainException('官网已有相同 Tracking，但承运商不一致或无法核验；为避免覆盖现有物流，请人工核对。');
+            }
+            if ($alreadyPublished !== []) {
+                $this->forgetRemoteTrackingSnapshot($connection, $providerId);
+                $this->completeFromExistingWebsiteTracking($order, $actor, $providerId, $number);
+
+                return [
+                    'status' => 'completed',
+                    'written' => false,
+                    'root_order_id' => (int) $root->getKey(),
+                    'provider_order_id' => $providerId,
+                    'order_status_sync' => 'unchanged',
+                    'manual_override' => true,
+                    'customer_note_id' => null,
+                    'customer_note_created' => false,
+                    'notification_channel' => 'existing_website_tracking',
+                ];
+            }
+        }
+
         $parentAlreadyManuallyCompleted = $root->operationalMarkers()
             ->where('marker', 'woo_manual_force_completed')->exists();
         if ($beforeStatus !== 'processing') {
@@ -80,8 +121,7 @@ final class WooCommerceManualTrackingOverrideService
                 );
             }
         }
-        $slug = $this->carrierSlug((string) $shipment->carrier);
-        if ($slug === 'other') {
+        if ($slug === 'other' && ! is_array($remoteSnapshot)) {
             // Keep an already published provider for this exact Tracking.
             // Otherwise, a missing or unknown ERP carrier uses order-level
             // "other" rather than inventing an AfterShip provider.
@@ -129,6 +169,7 @@ final class WooCommerceManualTrackingOverrideService
         if (! ($status['verified'] ?? false) || ($status['status'] ?? '') !== 'completed') {
             throw new \RuntimeException('官网母订单 Completed 状态回读未通过，物流可能已写入，请检查官网。');
         }
+        $this->forgetRemoteTrackingSnapshot($connection, $providerId);
 
         // Persist proof that THIS workflow completed the Woo mother BEFORE
         // attempting email notification. If Woo accepts a completed status
@@ -183,9 +224,9 @@ final class WooCommerceManualTrackingOverrideService
                 ['marker' => 'woo_manual_tracking_verified'],
                 ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()],
             );
+            $this->workflowStatus->setAfterVerifiedWebsiteTracking($order, $actor);
             // Only the clicked ERP fulfillment becomes 2.2 Shared.
             // Other A/B/C children and canonical shipment state are unchanged.
-            $this->workflowStatus->setAfterVerifiedWebsiteTracking($order, $actor);
         });
 
         return [
@@ -202,6 +243,32 @@ final class WooCommerceManualTrackingOverrideService
             'notification_channel' => $shouldSendCustomerNote ? 'customer_note'
                 : ($beforeStatus === 'processing' ? 'woo_completed_email' : 'no_new_notification'),
         ];
+    }
+
+    private function completeFromExistingWebsiteTracking(
+        Order $order,
+        ?Authenticatable $actor,
+        int $providerOrderId,
+        string $trackingNumber,
+    ): void {
+        DB::transaction(function () use ($order, $actor, $providerOrderId, $trackingNumber): void {
+            $fingerprint = hash('sha256', $trackingNumber);
+            $this->manualSync->completeVerifiedManualOverride(
+                $order,
+                $actor,
+                'verified_tracking_sha256:'.$fingerprint.'; 已回读确认 Woo 母订单 #'.$providerOrderId
+                .' 已存在完全一致的 AfterShip Tracking；本次仅核验 ERP 状态，未重复写入官网或发送通知。',
+            );
+            $order->operationalMarkers()->firstOrCreate(
+                ['marker' => 'woo_manual_tracking_verified'],
+                ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()],
+            );
+        });
+    }
+
+    private function forgetRemoteTrackingSnapshot(string $connection, int $providerOrderId): void
+    {
+        Cache::forget('erp:woo-tracking-snapshot:v1:'.sha1($connection).':'.$providerOrderId);
     }
 
     private function carrierSlug(string $carrier): string
