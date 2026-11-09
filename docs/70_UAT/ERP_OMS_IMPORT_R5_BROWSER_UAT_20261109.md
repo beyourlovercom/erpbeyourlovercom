@@ -6,7 +6,7 @@ Owner-approved R2–R5 import correction on GitHub PR #646: select import type (
 
 This is **isolated Dev browser UAT on US Mac mini**, NOT a production browser session and NOT evidence of deployment to an externally hosted Dev site. Real Chromium via the locally installed Chrome channel opened the actual Laravel/Inertia/Vue/AG Grid pages and exercised the real multipart XLSX preview + confirm endpoints.
 
-- Repro command: `BYL_E2E_BROWSER=chrome BYL_E2E_SUITE=oms-import npm run test:e2e`
+- Repro command: `BYL_E2E_BROWSER=chrome BYL_E2E_SUITE=oms-import npm run test:e2e`. The new browser cases are deliberately excluded from the general all-suite shared seed run, and included only under `oms-import`.
 - Worktree: `/Users/a/AI/uat/erp-oms-import-source-20261109`
 - Runtime: loopback `127.0.0.1:<ephemeral port>`; `APP_ENV=testing`; dedicated disposable on-disk SQLite; generated synthetic credentials; test-run bootstrap cache isolation; authenticated Fortify session.
 - External browser traffic blocked; user browser sessions and other Laravel servers untouched.

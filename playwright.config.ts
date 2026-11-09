@@ -25,6 +25,9 @@ export default defineConfig({
         'customers/**/*.spec.ts',
         'orders/**/*.spec.ts',
     ],
+    // Import browser cases create 3 disposable orders and run as a dedicated UAT
+    // suite. Keep the general foundation suite's shared seeded fixtures unchanged.
+    testIgnore: process.env.BYL_E2E_SUITE === 'oms-import' ? [] : ['**/oms-import-browser.spec.ts'],
     fullyParallel: false,
     workers: 1,
     retries: 0,
