@@ -599,14 +599,34 @@ const submitAllocation = () => {
   postAllocation(false)
 }
 const confirmAllocationStockException = () => {
-  allocationStockConfirmOpen.value = false
+  // Keep the acknowledgement dialog open until the server confirms success.
+  // Preflight blocks must be visible in the dialog instead of looking like a dead button.
   postAllocation(true)
 }
 const postAllocation = (stockExceptionAcknowledged: boolean) => {
-  const canSubmit = Boolean(props.allocationUi?.can_operate || (props.allocationUi?.can_reallocate && reallocationOpen.value))
-  if (!canSubmit || props.allocationUi?.requires_full_flow || !allocationReady.value || allocationSubmitting.value) return
   const allocationUi = props.allocationUi
-  if (!allocationUi) return
+  const canSubmit = Boolean(allocationUi?.can_operate || (allocationUi?.can_reallocate && reallocationOpen.value))
+  if (allocationSubmitting.value) return
+  if (!allocationUi) {
+    allocationError.value = '无法读取当前分仓权限，请刷新订单后重试。'
+    allocationServerWarning.value = allocationError.value
+    return
+  }
+  if (!canSubmit) {
+    allocationError.value = '当前账号或订单状态不满足分仓准入条件（可能包括付款状态或操作权限），库存人工确认不能绕过此门禁。请刷新订单并检查订单状态。'
+    allocationServerWarning.value = allocationError.value
+    return
+  }
+  if (allocationUi.requires_full_flow) {
+    allocationError.value = '该订单需要使用完整分仓流程，请点击「完整分仓」继续。'
+    allocationServerWarning.value = allocationError.value
+    return
+  }
+  if (!allocationReady.value) {
+    allocationError.value = '请为订单中的每个商品选择发货仓库后再提交。'
+    allocationServerWarning.value = allocationError.value
+    return
+  }
   allocationError.value = null
   allocationSubmitting.value = true
   const options = {
@@ -617,6 +637,10 @@ const postAllocation = (stockExceptionAcknowledged: boolean) => {
         allocationServerWarning.value = errors.stock_exception_acknowledged
         allocationStockConfirmOpen.value = true
       }
+    },
+    onSuccess: () => {
+      allocationStockConfirmOpen.value = false
+      allocationServerWarning.value = ''
     },
     onFinish: () => { allocationSubmitting.value = false },
   }
