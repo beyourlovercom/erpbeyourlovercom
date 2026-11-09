@@ -13,6 +13,7 @@ const props = withDefaults(defineProps<{
   page?: Pager | null
   rowIdentityKey?: string
   search?: string
+  searchPlaceholder?: string
   sort?: { colId: string; direction: 'asc' | 'desc' }
   filterColumns?: string[]
   filterValues?: Record<string, string>
@@ -20,7 +21,7 @@ const props = withDefaults(defineProps<{
   enableSelection?: boolean
   clientCsvExport?: boolean
 }>(), {
-  page: null, rowIdentityKey: 'id', showSearch: false, enableSelection: false, clientCsvExport: false,
+  page: null, rowIdentityKey: 'id', showSearch: true, enableSelection: false, clientCsvExport: false,
   filterColumns: () => [], filterValues: () => ({}),
 })
 const emit = defineEmits<{
@@ -47,6 +48,8 @@ const emit = defineEmits<{
       :server-filter-columns="filterColumns"
       :server-column-filters="filterValues"
       :show-search="showSearch"
+      search-label="表格内搜索全部记录"
+      :search-placeholder="searchPlaceholder ?? '搜索全部记录...'"
       :enable-selection="enableSelection"
       :allow-all-rows="false"
       :show-client-csv-export="clientCsvExport"

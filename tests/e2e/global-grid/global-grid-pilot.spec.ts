@@ -82,3 +82,48 @@ test('Dev pilot has no effects on the normal procurement mobile card view',async
   await expect(page.locator('.desktop-list')).toBeHidden()
   console.log('GLOBAL_GRID_MOBILE_FALLBACK_PASS')
 })
+
+
+test('R3 single built-in search replaces outer search and queries all server rows',async ({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().authorized)
+  for(const entry of pages){
+    await page.goto(entry.pilot,{waitUntil:'domcontentloaded'})
+    await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toBeVisible()
+    const search=page.getByRole('textbox',{name:'表格内搜索全部记录'})
+    await expect(search).toBeVisible()
+    await expect(search).toHaveCount(1)
+    if(entry.label==='product'){
+      await expect(page.locator('.product-search')).toHaveCount(0)
+    }else if(entry.label==='inventory'){
+      await expect(page.locator('.filters input[placeholder="搜索 SKU / 产品名称"]')).toHaveCount(0)
+      await expect(page.locator('.filters select')).toHaveCount(2)
+    }else{
+      await expect(page.locator('.purchase-filters input')).toHaveCount(0)
+      await expect(page.locator('.purchase-filters select')).toHaveCount(1)
+    }
+    await search.fill('NO-SUCH-ERP-SEARCH-98765')
+    await search.press('Enter')
+    await expect(page).toHaveURL(/search=NO-SUCH-ERP-SEARCH-98765/)
+    await expect(page.getByText(entry.row,{exact:true})).toHaveCount(0)
+    await page.getByRole('button',{name:'清空表格搜索'}).click()
+    await expect(page).not.toHaveURL(/search=NO-SUCH-ERP-SEARCH-98765/)
+    await expect(page.getByText(entry.row,{exact:true}).first()).toBeVisible({timeout:15000})
+    await search.fill('E2E-SKU-0001')
+    await search.press('Enter')
+    await expect(page).toHaveURL(/search=E2E-SKU-0001/)
+    await expect(page.getByText(entry.row,{exact:true}).first()).toBeVisible()
+    // Subsequent pagination/filtering must preserve the server-side search.
+    if(entry.label==='inventory'){
+      await page.locator('.filters select').first().selectOption('us-la')
+      await expect(page).toHaveURL(/search=E2E-SKU-0001/)
+      await expect(page).toHaveURL(/warehouse=us-la/)
+    }
+    if(entry.label==='procurement'){
+      await page.getByLabel('服务端每页条数').selectOption('20')
+      await expect(page).toHaveURL(/search=E2E-SKU-0001/)
+      await expect(page).toHaveURL(/per_page=20/)
+    }
+    console.log('GLOBAL_GRID_SERVER_SEARCH_PASS',entry.label)
+  }
+})

@@ -298,7 +298,7 @@ const doDelete = () => {
           <p>共 {{ products.total }} 件产品 · 数据来自 ERP 产品主表</p>
         </div>
         <div class="product-header-controls">
-          <form class="product-search" role="search" @submit.prevent="applySearch">
+          <form v-if="!globalGridPilotEnabled" class="product-search" role="search" @submit.prevent="applySearch">
             <svg class="product-search-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
               <circle cx="10.8" cy="10.8" r="6.8" />
               <path d="m16 16 5 5" />
@@ -384,10 +384,11 @@ const doDelete = () => {
 
       <GlobalGrid v-if="globalGridPilotEnabled && currentView==='standard'"
         namespace="grid.products.global.v1" title="产品总表 · Global Grid V1" :rows="globalProductRows"
+        :search="filters.search ?? ''" search-placeholder="搜索全部 SKU / 产品名称 / GTIN..."
         :columns="globalProductColumns" :required-column-ids="['sku','name','actions']"
         :page="productGridPager" :sort="productGridSort"
         @page-change="goToPage" @page-size-change="size => go({per_page:String(size),page:1})"
-        @sort-change="productGlobalSort" />
+        @sort-change="productGlobalSort" @search-change="value => {search=value; go({search:value,page:1})}" />
       <template v-else>
       <div class="grid-topbar">
         <span class="grid-hint">点击表头排序 · 右上角 … 调整显示列</span>

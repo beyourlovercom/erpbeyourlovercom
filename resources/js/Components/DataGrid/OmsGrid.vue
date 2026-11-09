@@ -44,6 +44,8 @@ const props = withDefaults(defineProps<{
   selectionOrderKey?: string
   selectedOrderIds?: number[]
   showSearch?: boolean
+  searchLabel?: string
+  searchPlaceholder?: string
   enableSelection?: boolean
   allowAllRows?: boolean
   showClientCsvExport?: boolean
@@ -400,7 +402,7 @@ onBeforeUnmount(() => {
       <div class="oms-title"><strong>{{ title }}</strong><small>共 {{ (serverPagination?.total ?? rows.length).toLocaleString('zh-CN') }} 条 · 已选 {{ selectedCount }} 条</small></div>
       <div class="oms-actions"><slot name="actions" /></div>
       <div class="oms-spacer" />
-      <input v-if="showSearch" v-model="query" class="oms-search" :aria-label="serverPagination ? '搜索全部订单' : '搜索列表'" :placeholder="serverPagination ? '搜索全部订单 / 收件人 / 来源单号...' : '搜索当前列表...'" @input="searchInput" @keydown.enter.prevent="submitSearch" />
+      <input v-if="showSearch" v-model="query" class="oms-search" :aria-label="searchLabel ?? (serverPagination ? '搜索全部订单' : '搜索列表')" :placeholder="searchPlaceholder ?? (serverPagination ? '搜索全部订单 / 收件人 / 来源单号...' : '搜索当前列表...')" @input="searchInput" @keydown.enter.prevent="submitSearch" />
       <button v-if="showSearch" type="button" @click="submitSearch">搜索</button>
       <button v-if="showSearch && query" type="button" aria-label="清空表格搜索" @click="clearSearch">×</button>
       <button v-if="!serverPagination && showClientCsvExport" type="button" title="导出当前表格为 CSV" @click="api?.exportDataAsCsv()">导出 CSV</button>

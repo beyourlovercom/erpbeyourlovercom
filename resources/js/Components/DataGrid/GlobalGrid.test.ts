@@ -30,7 +30,7 @@ describe('Global Grid V1 shared contract', () => {
     expect(underlying.props('allowAllRows')).toBe(false)
     expect(underlying.props('enableSelection')).toBe(false)
     expect(underlying.props('showClientCsvExport')).toBe(false)
-    expect(underlying.props('showSearch')).toBe(false)
+    expect(underlying.props('showSearch')).toBe(true)
     expect(underlying.props('requiredColumnIds')).toEqual(['sku'])
   })
   it('forwards only data navigation intents, not business mutation actions', () => {
@@ -39,6 +39,8 @@ describe('Global Grid V1 shared contract', () => {
     underlying.vm.$emit('page-change',2)
     underlying.vm.$emit('page-size-change',100)
     underlying.vm.$emit('sort-change',{colId:'sku',direction:'asc'})
+    underlying.vm.$emit('search-change','MF414A')
+    expect(wrapper.emitted('search-change')?.[0]).toEqual(['MF414A'])
     expect(wrapper.emitted('page-change')?.[0]).toEqual([2])
     expect(wrapper.emitted('page-size-change')?.[0]).toEqual([100])
     expect(wrapper.emitted('sort-change')?.[0]).toEqual([{colId:'sku',direction:'asc'}])

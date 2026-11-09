@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
 const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
@@ -42,6 +42,15 @@ const props = defineProps<{
 }>()
 
 const search = ref(props.filters.search || '')
+// Keep the legacy filter model coherent with in-grid server-side search.
+watch(() => props.filters.search, value => { search.value = value || '' })
+const globalGridSearch = (value:string) => {
+  search.value = value
+  router.get('/inventory/products', {
+    search:value, warehouse:warehouse.value, stock_status:stockStatus.value,
+    global_grid:'1', per_page:String(props.rows.per_page??100), page:1,
+  }, {preserveState:true,replace:true})
+}
 const warehouse = ref(props.filters.warehouse || '')
 const stockStatus = ref(props.filters.stock_status || '')
 const apply = () => router.get('/inventory/products', {
@@ -134,7 +143,7 @@ const breadcrumbs = [{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/
         </div>
       </div>
       <div class="mvp-card filters">
-        <input v-model="search" placeholder="搜索 SKU / 产品名称" @keyup.enter="apply">
+        <input v-if="!globalGridPilotEnabled" v-model="search" placeholder="搜索 SKU / 产品名称" @keyup.enter="apply">
         <select v-model="warehouse" @change="apply">
           <option value="">全部仓库</option>
           <option v-for="w in warehouses" :key="w.public_slug||w.slug" :value="w.public_slug||w.slug">{{w.name}}</option>
@@ -150,8 +159,9 @@ const breadcrumbs = [{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/
       </div>
       <GlobalGrid v-if="globalGridPilotEnabled" namespace="grid.inventory.products.global.v1"
         title="产品库存 · Global Grid V1" :rows="globalRows" :columns="inventoryColumns"
+        :search="filters.search ?? ''" search-placeholder="搜索全部 SKU / 产品名称..."
         :required-column-ids="['warehouse','sku']" :page="inventoryPager"
-        @page-change="gridPage" @page-size-change="gridPageSize" />
+        @page-change="gridPage" @page-size-change="gridPageSize" @search-change="globalGridSearch" />
       <div v-else class="mvp-card table-wrap">
         <table>
           <thead><tr><th>所属仓库</th><th>SKU</th><th>产品</th><th>上架时间</th><th>停留时间</th><th>Location</th><th>当前库存</th><th>预留</th><th>可用库存</th><th>状态</th><th>90天发货</th><th>月均 / 日均</th><th>可覆盖</th><th>安全库存</th><th>补货点</th><th>建议补货</th><th>Standard QoH</th><th>预计到货</th></tr></thead>

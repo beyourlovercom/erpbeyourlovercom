@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
 const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
@@ -43,6 +43,14 @@ const props = defineProps<{
   globalGridPilotEnabled?:boolean
 }>()
 const search = ref(props.filters.search || '')
+watch(() => props.filters.search, value => { search.value = value || '' })
+const globalGridSearch = (value:string) => {
+  search.value = value
+  router.get('/purchase', {
+    search:value || undefined, status:status.value || undefined,
+    global_grid:'1', per_page:String(props.gridOrders?.per_page??50), page:1,
+  }, {preserveState:true,replace:true})
+}
 const status = ref(props.filters.status || '')
 
 const apply = () => router.get('/purchase', {
@@ -111,7 +119,7 @@ const logistics = (order: ProcurementRow) => {
 <template>
   <Head title="采购订单 · BYL ERP" />
   <AuthenticatedLayout title="采购" :breadcrumbs="[{ label: '采购', href: '/purchase' }]">
-    <section class="mvp-page procurement-index">
+    <section class="mvp-page procurement-index" :class="{'global-grid-active':globalGridPilotEnabled}">
       <div class="mvp-page-heading">
         <div>
           <p class="mvp-kicker">Purchase OS</p>
@@ -123,7 +131,7 @@ const logistics = (order: ProcurementRow) => {
       </div>
 
       <form class="mvp-card purchase-filters" @submit.prevent="apply">
-        <label>
+        <label v-if="!globalGridPilotEnabled">
           <span>搜索</span>
           <input v-model="search" class="erp-input" placeholder="采购单 / 订单 / SKU / 商品" />
         </label>
@@ -145,8 +153,9 @@ const logistics = (order: ProcurementRow) => {
       <div v-if="globalGridPilotEnabled" class="desktop-list">
         <GlobalGrid namespace="grid.procurement.orders.global.v1" title="采购订单 · Global Grid V1"
           :columns="globalColumns" :rows="globalRows" :page="gridPager"
+          :search="filters.search ?? ''" search-placeholder="搜索全部采购单 / 订单号 / SKU / 商品..."
           :required-column-ids="['procurement','order_number','actions']"
-          @page-change="globalGridPage" @page-size-change="globalGridPageSize"/>
+          @page-change="globalGridPage" @page-size-change="globalGridPageSize" @search-change="globalGridSearch"/>
       </div>
       <div v-else class="mvp-card purchase-table-wrap desktop-list">
         <table class="mvp-table">
@@ -185,6 +194,6 @@ const logistics = (order: ProcurementRow) => {
 </template>
 
 <style scoped>
-.purchase-filters{display:grid;grid-template-columns:minmax(220px,1fr) 200px auto;gap:12px;align-items:end;padding:14px;margin-bottom:14px}.purchase-filters label{display:grid;gap:6px;font-size:12px;color:#64748b}.filter-actions{display:flex;gap:8px}.purchase-table-wrap{overflow:auto}.purchase-table-wrap table{width:100%;border-collapse:collapse}.purchase-table-wrap th,.purchase-table-wrap td{padding:12px;border-bottom:1px solid #e5e7eb;text-align:left;white-space:nowrap}.purchase-table-wrap th{font-size:12px;color:#64748b}.logistics-cell{max-width:220px;overflow:hidden;text-overflow:ellipsis}.mobile-list{display:none}.purchase-card{padding:14px;display:grid;gap:12px}.purchase-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.purchase-card dl{display:grid;grid-template-columns:86px 1fr;gap:8px;margin:0}.purchase-card dt{color:#7a8c94}.purchase-card dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.global-grid-active .purchase-filters{grid-template-columns:minmax(180px,260px) auto;max-width:620px}.purchase-filters{display:grid;grid-template-columns:minmax(220px,1fr) 200px auto;gap:12px;align-items:end;padding:14px;margin-bottom:14px}.purchase-filters label{display:grid;gap:6px;font-size:12px;color:#64748b}.filter-actions{display:flex;gap:8px}.purchase-table-wrap{overflow:auto}.purchase-table-wrap table{width:100%;border-collapse:collapse}.purchase-table-wrap th,.purchase-table-wrap td{padding:12px;border-bottom:1px solid #e5e7eb;text-align:left;white-space:nowrap}.purchase-table-wrap th{font-size:12px;color:#64748b}.logistics-cell{max-width:220px;overflow:hidden;text-overflow:ellipsis}.mobile-list{display:none}.purchase-card{padding:14px;display:grid;gap:12px}.purchase-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.purchase-card dl{display:grid;grid-template-columns:86px 1fr;gap:8px;margin:0}.purchase-card dt{color:#7a8c94}.purchase-card dd{margin:0;min-width:0;overflow-wrap:anywhere}
 @media(max-width:767px){.purchase-filters{grid-template-columns:1fr}.filter-actions{display:grid;grid-template-columns:1fr 1fr}.desktop-list{display:none}.mobile-list{display:grid;gap:10px}.purchase-card .erp-btn{width:100%}}
 </style>

@@ -18,7 +18,7 @@
 | TypeScript app / E2E | **PASS / PASS** |
 | Vite build | **PASS** |
 | E2E safety contracts | **16/16 PASS** |
-| Chrome R3 Dev UAT | **2/2 PASS**, covers three desktop listings, legacy fallback, columns/pagination, permissions and procurement mobile cards |
+| Chrome R3 Dev UAT | **3/3 PASS**, covers three desktop listings, legacy fallback, columns/pagination, permissions and procurement mobile cards |
 | Chrome old OMS XLSX importer after modularization | **2/2 PASS**, covers 3 types, original numbers, duplicate rejection and permissions |
 | Temporary SQLite, browser artifacts and synthetic credentials | **E2E_CLEANUP=PASS** |
 
@@ -44,3 +44,15 @@ Original OMS Grid AllCommunityModule: 1,273,960 bytes JS; gzip ~342 KiB. Explici
 - R2 three representative Dev opt-in screens implemented; legacy fallback remains default.
 - R3 automated browser functional and compatibility gates passed, with measured transfer/performance evidence. Owner visual UAT is optional before any request to promote the canary beyond Dev.
 - **Do not merge main or deploy Production without separate Owner PASS.**
+
+
+## 2026-11-10 follow-up — move redundant external keyword search into Global Grid
+- Owner approved using existing in-grid search to replace each canary's extra top-of-page search.
+- `GlobalGrid.vue` now defaults to `showSearch=true`; existing OMS Grid defaults unchanged.
+- Products / Inventory / Procurement pass their effective `filters.search` to `OmsGrid.vue` and handle `search-change` through the **existing Laravel server queries**, resetting page to 1. This includes all matching database rows, not just the 20/50/100 records loaded in the browser.
+- External keyword input hidden *only* in Dev pilot mode. Warehouse selector, inventory stock status, and procurement status filters remain in their original locations. Preserve existing search on subsequent filter/pagination changes.
+- Shared input has a human-readable label “表格内搜索全部记录” and domain-specific placeholder; 450ms debounce/Enter, existing clear button.
+- **New independent Chrome 3/3 PASS:** Product, Inventory, Procurement pilot each verified: exactly one internal search, no external keyword search, non-matching search → empty list, clear → full list, matching search → correct server results, status/warehouse and pagination retain query. Existing procurement mobile view remains intact.
+- Existing OMS import compatibility after search changes: Chrome 2/2 PASS, test artifact cleanup PASS.
+- Focused Vitest 32/32 PASS; app and E2E type checking PASS.
+- No Production deployment, real import, or database schema change. Draft PR remains the sole delivery vehicle.
