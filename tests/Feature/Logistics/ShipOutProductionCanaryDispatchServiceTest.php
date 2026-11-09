@@ -331,6 +331,38 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
     }
 
+    public function test_owner_approved_verified_moreplus_alias_maps_to_provider_sku_read_only(): void
+    {
+        $order = $this->order('us-la', 'BY489A-Lubes');
+        $pid = (int) $order->items->first()->product_id;
+        $alias = ProductSkuAlias::query()->create([
+            'product_id' => $pid,
+            'alias_sku' => 'BY489A',
+            'match_key' => SkuMatchKey::compute('BY489A'),
+            'source_type' => 'manual',
+        ]);
+        $alias->forceFill([
+            'is_active' => true,
+            'oms_verified_at' => now(),
+            'oms_identity_evidence' => 'Synthetic verified identical physical lubricant SKU',
+        ])->save();
+        $this->fakeProvider(8, 'BY489A');
+
+        // A verified alias alone must not change an outbound payload.
+        try {
+            $this->preflight($order);
+            $this->fail('Without explicit pair approval alias substitution must block');
+        } catch (RuntimeException $e) {
+            $this->assertSame('SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE', $e->getMessage());
+        }
+
+        config()->set('shipout.production_verified_alias_pairs', 'BY489A-Lubes=>BY489A');
+        $pre = $this->preflight($order);
+        $this->assertSame([['omsSku' => 'BY489A', 'qty' => 1]], $pre['items']);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
     public function test_r10_exact_model_with_case_only_variation_is_accepted(): void
     {
         $order = $this->order('us-la', 'VA617A-PINK');

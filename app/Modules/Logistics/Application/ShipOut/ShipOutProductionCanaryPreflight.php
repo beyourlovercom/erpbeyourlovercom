@@ -159,19 +159,37 @@ final class ShipOutProductionCanaryPreflight
                 throw new RuntimeException('SHIPOUT_R10_ERP_SKU_UNVERIFIED');
             }
             $options = $eligibleByProductId[$id] ?? [];
-            // First Production Canary: physical SKU must match the requested
-            // ERP order SKU (case-insensitive only), never substitute colors,
-            // model suffixes, package sizes, or a different verified alias.
-            // A different physical SKU requires a later explicit Owner approval.
+            // Preserve exact physical SKU priority. Alias substitution requires
+            // an exact, Owner-approved ERP=>provider pair plus the existing
+            // independent Product OS physical verification and provider stock.
+            // Never infer variants from shared Product IDs or arbitrary aliases.
             $exact = array_values(array_filter(
                 $options, fn (array $r) => strcasecmp($r['omsSku'], $erpSku) === 0
             ));
             if (count($exact) === 1) {
                 $choice = $exact[0];
-            } elseif ($exact === []) {
-                throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE');
-            } else {
+            } elseif (count($exact) > 1) {
                 throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_AMBIGUOUS');
+            } else {
+                $approved = [];
+                foreach (explode(',', (string) config('shipout.production_verified_alias_pairs', '')) as $pair) {
+                    $parts = array_map('trim', explode('=>', $pair, 2));
+                    if (count($parts) !== 2 || strcasecmp($parts[0], $erpSku) !== 0 || $parts[1] === '') {
+                        continue;
+                    }
+                    foreach ($options as $candidate) {
+                        if (strcasecmp($candidate['omsSku'], $parts[1]) === 0) {
+                            $approved[$candidate['omsSku']] = $candidate;
+                        }
+                    }
+                }
+                if (count($approved) === 1) {
+                    $choice = array_values($approved)[0];
+                } elseif ($approved === []) {
+                    throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE');
+                } else {
+                    throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_AMBIGUOUS');
+                }
             }
             $sku = $choice['omsSku'];
             $qty = (int) $item->quantity;
