@@ -39,6 +39,7 @@ final class UnifiedSkuAliasVerificationTest extends TestCase
         $alias = $service->createAlias($product->id, 'A001-W', 'legacy_import');
         $this->assertTrue($alias->fresh()->is_active);
         $this->assertNull($alias->fresh()->oms_verified_at);
+        $this->assertNull($alias->fresh()->oms_dispatch_approved_at);
         $this->assertSame([], $service->approvedAliasesForOms($product->id));
         $this->assertSame(
             SkuResolveResult::ALIAS,
@@ -66,6 +67,9 @@ final class UnifiedSkuAliasVerificationTest extends TestCase
         $rows = $service->approvedAliasesForOms($product->id);
         $this->assertCount(1, $rows);
         $this->assertSame('A001-W', $rows[0]['alias_sku']);
+        $this->assertNotNull($alias->fresh()->oms_dispatch_approved_at);
+        $this->assertSame('ABC-001-WH', $alias->fresh()->oms_dispatch_canonical_sku);
+        $this->assertSame($operator->id, $alias->fresh()->oms_dispatch_approved_by_user_id);
         $this->assertDatabaseHas('audit_records', ['action' => 'product.sku_alias.oms_verified']);
     }
 
@@ -77,6 +81,7 @@ final class UnifiedSkuAliasVerificationTest extends TestCase
         $alias = $service->createAlias($product->id, 'A001-W');
         $service->verifyForOms($alias, 'Same SKU and physical attributes confirmed by warehouse.', $operator);
         $service->setActive($alias, false, $operator);
+        $this->assertNull($alias->fresh()->oms_dispatch_approved_at);
         $this->assertSame([], $service->approvedAliasesForOms($product->id));
         $this->assertSame(
             SkuResolveResult::UNMATCHED,

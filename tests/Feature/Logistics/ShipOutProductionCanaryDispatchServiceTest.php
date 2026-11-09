@@ -127,7 +127,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
 
     private function fakeProvider(
         int $available = 3,
-        string $sku = self::SKU,
+        string|array $sku = self::SKU,
         bool $duplicate = false,
         bool $unknown = false,
         string $postResult = 'ok',
@@ -144,19 +144,22 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
                 ], 200);
             }
             if (str_contains($url, '/product/queryList')) {
+                $skus = (array) $sku;
                 return Http::response([
                     'result' => 'OK',
-                    'data' => ['total' => 1, 'records' => [['omsSku' => $sku, 'status' => 1]]],
+                    'data' => ['total' => count($skus), 'records' => array_map(
+                        fn (string $one) => ['omsSku' => $one, 'status' => 1], $skus
+                    )],
                 ], 200);
             }
             if (str_contains($url, '/stock/list')) {
+                $skus = (array) $sku;
                 return Http::response([
                     'result' => 'OK', 'data' => [
-                        'total' => 1, 'records' => [[
-                            'omsSku' => $sku, 'warehouseId' => self::WAREHOUSE,
-                            'availableQuantity' => $available,
-                            'standardQuantity' => 999,
-                        ]],
+                        'total' => count($skus), 'records' => array_map(fn (string $one) => [
+                            'omsSku' => $one, 'warehouseId' => self::WAREHOUSE,
+                            'availableQuantity' => $available, 'standardQuantity' => 999,
+                        ], $skus),
                     ],
                 ], 200);
             }
@@ -361,6 +364,96 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->assertSame([['omsSku' => 'BY489A', 'qty' => 1]], $pre['items']);
         $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
         Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_future_verified_product_alias_maps_without_a_new_env_allowlist(): void
+    {
+        $order = $this->order('us-la', 'NEW-PRODUCT-ERP');
+        $pid = (int) $order->items->first()->product_id;
+        $alias = ProductSkuAlias::query()->create([
+            'product_id' => $pid,
+            'alias_sku' => 'NEW-PRODUCT-OMS',
+            'match_key' => SkuMatchKey::compute('NEW-PRODUCT-OMS'),
+            'source_type' => 'manual',
+        ]);
+        $alias->forceFill([
+            'is_active' => true,
+            'oms_verified_at' => now(),
+            'oms_identity_evidence' => 'Manually checked identical model, color, size and packaging',
+            'oms_dispatch_approved_at' => now(),
+            'oms_dispatch_canonical_sku' => 'NEW-PRODUCT-ERP',
+        ])->save();
+        $this->fakeProvider(8, 'NEW-PRODUCT-OMS');
+        config()->set('shipout.production_verified_alias_pairs', '');
+        $pre = $this->preflight($order);
+        $this->assertSame([['omsSku' => 'NEW-PRODUCT-OMS', 'qty' => 1]], $pre['items']);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+    }
+
+    public function test_future_multi_sku_order_maps_each_verified_product_independently(): void
+    {
+        $order = $this->order('us-la', 'FIRST-ERP');
+        $firstId = (int) $order->items->first()->product_id;
+        $second = Product::query()->create([
+            'sku' => 'SECOND-ERP', 'name' => 'Second synthetic product',
+            'product_type' => 'simple', 'is_active' => true,
+        ]);
+        $order->items()->create([
+            'product_id' => $second->id, 'sku' => 'SECOND-ERP',
+            'product_summary' => 'Second synthetic product', 'quantity' => 2,
+            'unit_price' => '1.00', 'line_revenue' => '2.00',
+        ]);
+        foreach ([
+            [$firstId, 'FIRST-ERP', 'FIRST-OMS'],
+            [$second->id, 'SECOND-ERP', 'SECOND-OMS'],
+        ] as [$pid, $erp, $oms]) {
+            $alias = ProductSkuAlias::query()->create([
+                'product_id' => $pid, 'alias_sku' => $oms,
+                'match_key' => SkuMatchKey::compute($oms), 'source_type' => 'manual',
+            ]);
+            $alias->forceFill([
+                'is_active' => true, 'oms_verified_at' => now(),
+                'oms_identity_evidence' => 'Warehouse verified identical model, color and packaging',
+                'oms_dispatch_approved_at' => now(),
+                'oms_dispatch_canonical_sku' => $erp,
+            ])->save();
+        }
+        config()->set('shipout.production_verified_alias_pairs', '');
+        $this->fakeProvider(8, ['FIRST-OMS', 'SECOND-OMS']);
+        $pre = $this->preflight($order->fresh());
+        $this->assertSame([
+            ['omsSku' => 'FIRST-OMS', 'qty' => 1],
+            ['omsSku' => 'SECOND-OMS', 'qty' => 2],
+        ], $pre['items']);
+        Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
+    public function test_future_product_sku_change_revokes_original_alias_dispatch(): void
+    {
+        $order = $this->order('us-la', 'NEW-ERP-MODEL');
+        $pid = (int) $order->items->first()->product_id;
+        $alias = ProductSkuAlias::query()->create([
+            'product_id' => $pid, 'alias_sku' => 'NEW-OMS-MODEL',
+            'match_key' => SkuMatchKey::compute('NEW-OMS-MODEL'),
+            'source_type' => 'manual',
+        ]);
+        $alias->forceFill([
+            'is_active' => true, 'oms_verified_at' => now(),
+            'oms_identity_evidence' => 'Same physical SKU confirmed before canonical rename',
+            'oms_dispatch_approved_at' => now(),
+            'oms_dispatch_canonical_sku' => 'OLD-ERP-MODEL',
+        ])->save();
+        $this->fakeProvider(8, 'NEW-OMS-MODEL');
+        config()->set('shipout.production_verified_alias_pairs', '');
+        try {
+            $this->preflight($order);
+            $this->fail('Stale canonical SKU approval must never dispatch');
+        } catch (RuntimeException $e) {
+            $this->assertSame('SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE', $e->getMessage());
+        }
+        Http::assertNotSent(fn ($r) => $r->method() === 'POST');
     }
 
     public function test_r10_exact_model_with_case_only_variation_is_accepted(): void

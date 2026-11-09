@@ -6,6 +6,8 @@ use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionInventoryAudit
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionReadOnlyGateway;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Application\VerifiedOmsProductIdentityResolver;
+use App\Modules\Products\Application\SkuMatchKey;
+use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -171,7 +173,31 @@ final class ShipOutProductionCanaryPreflight
             } elseif (count($exact) > 1) {
                 throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_AMBIGUOUS');
             } else {
+                // New products need no new .env allowlist entry. Product360's
+                // explicit physical-equivalence approval persists on the alias.
+                // Only verified aliases for the same product AND unchanged
+                // canonical SKU are eligible; catalog + signed stock are
+                // independently checked above. A second candidate blocks.
                 $approved = [];
+                $candidateKeys = ProductSkuAlias::query()
+                    ->where('product_id', $id)
+                    ->where('is_active', true)
+                    ->whereNotNull('oms_verified_at')
+                    ->whereNotNull('oms_dispatch_approved_at')
+                    ->where('oms_dispatch_canonical_sku', (string) $verified['canonical_sku'])
+                    ->whereNotNull('oms_identity_evidence')
+                    ->get()
+                    ->filter(fn ($alias) => trim((string) $alias->oms_identity_evidence) !== '')
+                    ->pluck('match_key')
+                    ->all();
+                foreach ($options as $candidate) {
+                    $key = SkuMatchKey::compute((string) $candidate['omsSku']);
+                    if ($key !== null && in_array($key, $candidateKeys, true)) {
+                        $approved[$candidate['omsSku']] = $candidate;
+                    }
+                }
+                // Transitional exact pair for historically approved stock
+                // identities; no wildcard or per-product auto-whitelisting.
                 foreach (explode(',', (string) config('shipout.production_verified_alias_pairs', '')) as $pair) {
                     $parts = array_map('trim', explode('=>', $pair, 2));
                     if (count($parts) !== 2 || strcasecmp($parts[0], $erpSku) !== 0 || $parts[1] === '') {

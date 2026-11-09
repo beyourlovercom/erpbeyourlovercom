@@ -130,8 +130,18 @@ final class SkuAliasService
             if (! (bool) $alias->getAttribute('is_active')) {
                 throw new RuntimeException('SKU_ALIAS_INACTIVE');
             }
+            $canonical = $this->products->findById((int) $alias->getAttribute('product_id'));
+            if (! $canonical || trim((string) $canonical->getAttribute('sku')) === '') {
+                throw new RuntimeException('SKU_ALIAS_CANONICAL_NOT_FOUND');
+            }
             $before = ['oms_verified_at' => $alias->getAttribute('oms_verified_at')];
             $alias->forceFill([
+                // Existing Product360 physical-identity confirmation is the
+                // auditable approval for future warehouse SKU substitution.
+                // Freeze canonical SKU so any later product SKU change revokes it.
+                'oms_dispatch_approved_at' => now(),
+                'oms_dispatch_canonical_sku' => (string) $canonical->getAttribute('sku'),
+                'oms_dispatch_approved_by_user_id' => $actor->getAuthIdentifier(),
                 'oms_verified_at' => now(),
                 'oms_verified_by_user_id' => $actor->getAuthIdentifier(),
                 'updated_by_user_id' => $actor->getAuthIdentifier(),
@@ -169,6 +179,9 @@ final class SkuAliasService
                 'oms_verified_at' => null,
                 'oms_verified_by_user_id' => null,
                 'oms_identity_evidence' => null,
+                'oms_dispatch_approved_at' => null,
+                'oms_dispatch_canonical_sku' => null,
+                'oms_dispatch_approved_by_user_id' => null,
             ])->save();
             $this->audit->record(
                 AuditActor::user($actor, AuditSource::Web),
