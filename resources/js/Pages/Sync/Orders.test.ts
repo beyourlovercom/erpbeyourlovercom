@@ -2,145 +2,123 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Orders from './Orders.vue'
 
-const { post } = vi.hoisted(() => ({ post: vi.fn() }))
-
+const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
-  router: { get: vi.fn(), post },
+  router: { get, post },
 }))
-
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' },
 }))
 
 const woo = {
-  id: 1,
-  erp_order_id: '007-0908-c1',
-  internal_order_number: 'WOO-1',
-  recipient_name: 'Test',
-  status: 'pending',
-  synced_at: null,
-  synced_by: null,
-  tracking_number: 'TRACK-1',
-  shipment_status: 'shipped',
-  carrier: 'DHL',
-  source_type: 'woocommerce',
-  tracking_outbound_status: null,
-  tracking_outbound_attempts: null,
+  id: 1, erp_order_id: '007-0908-c1', external_order_number: 'SOURCE-007',
+  order_date: '2026-11-09', recipient_name: 'Test', source_type: 'woocommerce',
+  fulfillment_suffix: null, root_order_id: 1, archived: false,
+  status: 'pending', synced_at: null, tracking_number: 'TRACK-1',
+  shipment_status: 'shipped', carrier: 'DHL', tracking_outbound_status: null,
+  tracking_outbound_attempts: null, tracking_sync_status: 'pending', tracking_sync_reason: null,
+  tracking_sync_verified_at: null, progress: { code: 'unsynced' as 'unsynced' | 'failed' | 'synced' | 'notified', label: '未同步', reason: '待同步' as string | null },
+  can_sync: true, can_reconcile: true, can_operate: true,
 }
-describe('Sync tracking outbound UI', () => {
-  beforeEach(() => post.mockClear())
+const pagination = { total: 100, current_page: 1, last_page: 2, per_page: 50, from: 1, to: 50 }
+const props = (orders = [woo]) => ({ orders, filters: { search: '', source: '', per_page: 50 }, pagination })
 
-  it('shows the canonical 007 ERP order id instead of the internal number', () => {
-    const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
+describe('Sync all-orders simple status UI', () => {
+  beforeEach(() => { get.mockClear(); post.mockClear(); vi.stubGlobal('confirm', vi.fn(() => true)) })
+
+  it('shows source ERP and original order IDs with the operational progress at the right edge', () => {
+    const wrapper = mount(Orders, { props: props() })
+    expect(wrapper.text()).toContain('订单同步总表')
+    expect(wrapper.text()).toContain('全部订单 100 单')
     expect(wrapper.text()).toContain('007-0908-c1')
-    expect(wrapper.text()).not.toContain('WOO-1')
+    expect(wrapper.text()).toContain('SOURCE-007')
+    expect(wrapper.text()).toContain('未同步')
+    expect(wrapper.findAll('thead th').slice(0, 8).at(-1)?.text()).toBe('同步进度')
+    expect(wrapper.text()).not.toContain('SYNC ORCHESTRATION')
   })
 
-  it('offers the legacy outbound action only for shipped Woo orders with Tracking', async () => {
-    const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
-    expect(wrapper.text()).toContain('官网物流')
-    expect(wrapper.text()).toContain('待同步')
-    const button = wrapper.findAll('button').find((item) => item.text() === '同步官网物流')
-    expect(button?.exists()).toBe(true)
-    await button!.trigger('click')
+  it('distinguishes failed, synced, notified and unsynced without inferring email delivery', () => {
+    const failed = { ...woo, id: 2, progress: { code: 'failed' as const, label: '同步失败', reason: '承运商冲突' }, can_sync: false, can_reconcile: true }
+    const synced = { ...woo, id: 3, progress: { code: 'synced' as const, label: '已同步', reason: null }, can_sync: false }
+    const notified = { ...woo, id: 4, progress: { code: 'notified' as const, label: '已通知', reason: 'Customer Note 回读通过' }, can_sync: false }
+    const wrapper = mount(Orders, { props: props([woo, failed, synced, notified]) })
+    const badges = wrapper.findAll('tbody tr .progress-badge')
+    expect(badges.map((item) => item.text())).toEqual(['未同步', '同步失败', '已同步', '已通知'])
+    expect(wrapper.text()).toContain('不保证邮件到达')
+    expect(wrapper.findAll('.operational-actions button').filter((item) => item.text() === '查看原因')).toHaveLength(1)
+  })
+
+  it('uses only eligible per-order sync actions and never offers write actions on readonly, archived or conflict rows', async () => {
+    const archived = { ...woo, id: 2, archived: true, can_sync: false, can_reconcile: false }
+    const conflict = { ...woo, id: 3, progress: { code: 'failed' as const, label: '同步失败', reason: '承运商冲突' }, can_sync: false, can_reconcile: true }
+    const readonly = { ...woo, id: 4, can_sync: false, can_reconcile: false, can_operate: false }
+    const wrapper = mount(Orders, { props: props([woo, archived, conflict, readonly]) })
+    const buttons = wrapper.findAll('.operational-actions button')
+    expect(buttons.filter((item) => item.text() === '同步物流')).toHaveLength(1)
+    expect(buttons.filter((item) => item.text() === '核对官网')).toHaveLength(1)
+    await buttons.find((item) => item.text() === '同步物流')!.trigger('click')
     expect(post).toHaveBeenCalledWith('/sync/orders/1/tracking-outbound')
+    await buttons.find((item) => item.text() === '核对官网')!.trigger('click')
+    expect(post).toHaveBeenCalledWith('/sync/orchestration/reconcile', { order_ids: [3] })
   })
 
-  it('hides outbound action for non-Woo or unshipped orders', () => {
-    const manual = { ...woo, id: 2, source_type: 'manual' }
-    const unshipped = { ...woo, id: 3, shipment_status: 'pending', tracking_number: null }
-    const wrapper = mount(Orders, { props: { orders: [manual, unshipped], filters: {} } })
-    expect(wrapper.findAll('button').filter((item) => item.text() === '同步官网物流')).toHaveLength(0)
+  it('searches all orders, paginates, and keeps the source filter', async () => {
+    const wrapper = mount(Orders, { props: props() })
+    const search = wrapper.find('input[aria-label="搜索订单"]')
+    await search.setValue('SOURCE-007')
+    await wrapper.find('form.overview-filters').trigger('submit')
+    expect(get).toHaveBeenCalledWith('/sync/orders', expect.objectContaining({ search: 'SOURCE-007', page: 1, per_page: 50 }), expect.any(Object))
+    await wrapper.findAll('.page-controls button').find((item) => item.text() === '下一页')!.trigger('click')
+    expect(get).toHaveBeenCalledWith('/sync/orders', expect.objectContaining({ page: 2, search: 'SOURCE-007' }), expect.any(Object))
+    await wrapper.find('select[aria-label="订单来源"]').setValue('kol')
+    expect(get).toHaveBeenCalledWith('/sync/orders', expect.objectContaining({ source: 'kol', page: 1 }), expect.any(Object))
   })
 
-  it('renders retry and completed outbox states explicitly', () => {
-    const retry = { ...woo, id: 4, tracking_outbound_status: 'pending', tracking_outbound_attempts: 1 }
-    const done = { ...woo, id: 5, status: 'completed', tracking_outbound_status: 'completed', tracking_outbound_attempts: 1 }
-    const wrapper = mount(Orders, { props: { orders: [retry, done], filters: {} } })
-    expect(wrapper.text()).toContain('待重试')
-    expect(wrapper.text()).toContain('已完成')
-  })
-  it('hides the sync action after verified success and restores retry after a failure', () => {
-    const verified = { ...woo, id: 8, tracking_sync_status: 'completed' }
-    const failed = { ...woo, id: 9, tracking_sync_status: 'failed', tracking_sync_reason: 'Woo write failed' }
-    const wrapper = mount(Orders, { props: { orders: [verified, failed], filters: {} } })
-    expect(wrapper.findAll('button').filter((item) => item.text() === '同步官网物流')).toHaveLength(0)
-    expect(wrapper.findAll('button').filter((item) => item.text() === '重新同步')).toHaveLength(1)
-    expect(wrapper.text()).toContain('Woo write failed')
-  })
-
-  it('shows a carrier conflict and prevents retrying or batch-selecting it', () => {
-    const conflict = { ...woo, id: 10, tracking_sync_status: 'conflict', tracking_sync_reason: '官网已有相同 Tracking，但承运商不一致' }
-    const wrapper = mount(Orders, { props: { orders: [conflict], filters: {} } })
-    expect(wrapper.text()).toContain('冲突待核对')
-    expect(wrapper.text()).toContain('承运商不一致')
-    expect(wrapper.findAll('button').filter((item) => ['同步官网物流', '重新同步'].includes(item.text()))).toHaveLength(0)
-    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
-  })
-
-  it('posts selected and orchestration actions to canonical routes', async () => {
-    const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
-    await wrapper.find('input[type="checkbox"]').setValue(true)
-
-    const click = async (label: string) => {
-      const button = wrapper.findAll('button').find((item) => item.text() === label)
-      expect(button?.exists()).toBe(true)
-      await button!.trigger('click')
-    }
-
-    await click('批量写回所选')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/tracking/selected', { order_ids: [1] })
-    await click('写回全部待同步')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/tracking/all-pending', { limit: 100 })
-    await click('重试到期任务')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/retry', { limit: 100 })
-    await click('恢复超时任务')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/recover-stale', { age_seconds: 300, limit: 100 })
-    await click('核对所选 Tracking')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/reconcile', { order_ids: [1] })
-  })
-
-  it('confines Woo health and manual actions to the sync orders workspace', async () => {
+  it('keeps low-level retries and run metrics collapsed rather than before the orders table', () => {
     const wrapper = mount(Orders, { props: {
-      orders: [], filters: {},
-      wooOrderSync: { health: 'failed', last_success_at: null, last_failure: { run_id: 18, at: null, error_code: 'network', message: 'retry' }, can_import_today: true },
+      ...props(),
+      queueSummary: { retry_due: 2, retry_waiting: 3, processing: 4, failed: 5, conflicts: 6 },
+      syncRuns: [{ id: 9, run_type: 'tracking_all_pending', status: 'partial', requested_items: 7,
+        succeeded_items: 4, retrying_items: 1, failed_items: 1, conflict_items: 1, skipped_items: 0, started_at: '2026-11-09T04:00:00Z' }],
     } })
-    expect(wrapper.text()).toContain('网站订单同步')
-    expect(wrapper.text()).toContain('最近执行失败')
-    expect(wrapper.text()).toContain('今日未同步：待核对')
-    expect(wrapper.find('a[href="/sync/runs/18"]').exists()).toBe(true)
-    await wrapper.findAll('button').find((button) => button.text() === '同步网站订单')!.trigger('click')
+    const advanced = wrapper.find('details.advanced-panel')
+    expect(advanced.exists()).toBe(true)
+    expect(advanced.attributes('open')).toBeUndefined()
+    expect(wrapper.find('.overview-table').exists()).toBe(true)
+    expect(wrapper.find('.overview-table').element.compareDocumentPosition(advanced.element)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(advanced.text()).toContain('tracking_all_pending')
+  })
+
+  it('hides privileged actions on viewer-only order rows', () => {
+    const viewer = { ...woo, can_sync: false, can_reconcile: false, can_operate: false }
+    const wrapper = mount(Orders, { props: { ...props([viewer]), canOperate: false } })
+    expect(wrapper.findAll('.operational-actions button')).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('恢复超时任务')
+    expect(wrapper.text()).not.toContain('人工标记完成')
+  })
+
+  it('preserves validated Woo inbound import controls inside advanced tools', async () => {
+    const wrapper = mount(Orders, { props: {
+      ...props([]), canOperate: true,
+      wooOrderSync: { health: 'failed' as const, last_success_at: null, last_failure: { run_id: 18, at: null, error_code: 'network', message: 'retry' }, can_import_today: true },
+    } })
+    const advanced = wrapper.find('details.advanced-panel')
+    expect(advanced.text()).toContain('网站订单导入')
+    expect(advanced.text()).toContain('最近执行失败')
+    expect(advanced.find('a[href="/sync/runs/18"]').exists()).toBe(true)
+    await advanced.findAll('button').find((button) => button.text() === '导入网站新订单')!.trigger('click')
     expect(post).toHaveBeenCalledWith('/sync/woocommerce/incremental', {}, expect.objectContaining({
       preserveScroll: true, onFinish: expect.any(Function),
     }))
   })
 
-  it('never shows Woo manual controls to users without import access', () => {
+  it('never renders Woo inbound action for users without permission', () => {
     const wrapper = mount(Orders, { props: {
-      orders: [], filters: {},
-      wooOrderSync: { health: 'disabled', last_success_at: null, last_failure: null, can_import_today: false },
+      ...props([]), canOperate: false,
+      wooOrderSync: { health: 'disabled' as const, last_success_at: null, last_failure: null, can_import_today: false },
     } })
-    expect(wrapper.text()).toContain('状态：未启用')
-    expect(wrapper.text()).not.toContain('同步网站订单')
-    expect(wrapper.text()).not.toContain('核对网站未同步')
-  })
-
-  it('renders queue summary and recent sync runs', () => {
-    const wrapper = mount(Orders, { props: {
-      orders: [], filters: {},
-      queueSummary: { retry_due: 2, retry_waiting: 3, processing: 4, failed: 5, conflicts: 6 },
-      syncRuns: [{
-        id: 9, run_type: 'tracking_all_pending', status: 'partial', requested_items: 7,
-        succeeded_items: 4, retrying_items: 1, failed_items: 1, conflict_items: 1,
-        skipped_items: 0, started_at: '2026-08-28T04:00:00Z',
-      }],
-    } })
-
-    expect(wrapper.text()).toContain('到期重试')
-    expect(wrapper.text()).toContain('等待重试')
-    expect(wrapper.text()).toContain('tracking_all_pending')
-    expect(wrapper.text()).toContain('partial')
-    expect(wrapper.find('a[href="/sync/runs/9"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('导入网站新订单')
+    expect(wrapper.text()).not.toContain('核对网站未导入订单')
   })
 })

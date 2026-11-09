@@ -3,15 +3,18 @@
 namespace App\Modules\Sync\Experience\Controllers;
 
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
+use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\ManualSyncService;
+use App\Modules\Sync\Application\OrderSyncProgressProjector;
 use App\Modules\Sync\Application\SyncOrchestrationService;
 use App\Modules\Sync\Application\WooOrderSyncHealthReader;
 use App\Modules\Sync\Infrastructure\Models\SyncOutbox;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -24,19 +27,31 @@ final class ManualSyncController
 
     public function index(Request $request): Response
     {
-        $orders = Order::query()->with(['address', 'manualSync.operator', 'shipment', 'fulfillmentParent'])
-            ->whereHas('manualSync', function ($query) use ($request): void {
-                $query->when($request->input('status'), fn ($statusQuery, string $status) => $statusQuery->where('website_sync_status', $status));
-            })
-            ->when($request->input('search'), function ($query, string $search): void {
+        // This is an ALL-ORDERS ledger. Do not require a manual_sync row:
+        // that omitted unsynced orders from the previous implementation.
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:128'],
+            'source' => ['nullable', Rule::in(['woocommerce', 'website', 'kol', 'manual', 'manual_other'])],
+            'per_page' => ['nullable', Rule::in([20, 50, 100, '20', '50', '100'])],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ]);
+        $perPage = (int) ($filters['per_page'] ?? 50);
+        $paginator = Order::query()->withTrashed()
+            ->with(['address', 'manualSync', 'shipment', 'fulfillmentParent.externalReferences', 'externalReferences', 'operationalMarkers'])
+            ->when($filters['source'] ?? null, fn ($query, $source) => $query->where('source_type', $source))
+            ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($nested) use ($search): void {
                     $nested->where('erp_order_id', 'like', "%{$search}%")
                         ->orWhere('external_order_number', 'like', "%{$search}%")
+                        ->orWhere('internal_order_number', 'like', "%{$search}%")
                         ->orWhereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$search}%"));
                 });
-            })->latest('updated_at')->get();
+            })
+            ->orderByDesc('order_date')->orderByDesc('id')
+            ->paginate($perPage)->withQueryString();
 
-        $shipmentIds = $orders->pluck('shipment.id')->filter()->map(fn ($id) => (string) $id)->values();
+        $pageOrders = $paginator->getCollection();
+        $shipmentIds = $pageOrders->pluck('shipment.id')->filter()->map(fn ($id) => (string) $id)->values();
         $trackingOutbox = SyncOutbox::query()
             ->where('operation', 'woocommerce.tracking_outbound')
             ->whereIn('aggregate_id', $shipmentIds)
@@ -44,10 +59,12 @@ final class ManualSyncController
             ->get()
             ->unique('aggregate_id')
             ->keyBy('aggregate_id');
-
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments(
-            $orders->map(fn (Order $order): int => (int) $order->shipment?->id)->all()
+            $pageOrders->pluck('shipment.id')->filter()->map(fn ($id) => (int) $id)->all()
         );
+        $canOperate = (bool) $request->user()?->can('sync.operate');
+        $canPush = $canOperate && app(LogisticsTrackingPushAccess::class)->allows($request->user());
+        $progress = app(OrderSyncProgressProjector::class);
 
         $recentRuns = $this->orchestration->recentRuns(10);
 
@@ -57,6 +74,7 @@ final class ManualSyncController
                 'can_import_today' => app(WooOrderManualSyncAccess::class)->allows($request->user()),
             ],
             'queueSummary' => $this->orchestration->queueSummary(),
+            'canOperate' => $canOperate,
             'syncRuns' => $recentRuns->map(fn ($run): array => [
                 'id' => $run->id,
                 'run_type' => $run->run_type,
@@ -69,41 +87,71 @@ final class ManualSyncController
                 'skipped_items' => $run->skipped_items,
                 'started_at' => $run->started_at?->toIso8601String(),
             ])->values()->all(),
-            'orders' => $orders->map(function (Order $order) use ($trackingStatuses, $trackingOutbox): array {
+            'orders' => $pageOrders->map(function (Order $order) use ($trackingStatuses, $trackingOutbox, $canOperate, $canPush, $progress): array {
                 $trackingState = app(LogisticsTrackingListStatus::class)->currentStatus(
                     $trackingStatuses[(int) $order->shipment?->id] ?? null, $order->manualSync?->website_sync_status
                 );
-                $rootSource = $order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type;
+                $root = $order->fulfillment_parent_id ? $order->fulfillmentParent : $order;
+                $rootSource = $root?->source_type ?? $order->source_type;
                 $rootSourceType = $rootSource instanceof \BackedEnum ? $rootSource->value : (string) $rootSource;
+                $isWoo = $rootSourceType === 'woocommerce';
+                $proof = $progress->forOrder($order, $trackingState, $isWoo);
+                $number = trim((string) ($order->shipment?->tracking_number ?? ''));
+                $isArchived = $order->trashed() || $order->archived_at !== null || $order->isOperationallyArchived();
+                $hasWooReference = $isWoo && ($root?->externalReferences ?? collect())->contains(
+                    fn ($reference): bool => $reference->provider === 'woocommerce' && ctype_digit((string) $reference->reference)
+                );
+                $pushable = $canPush && ! $isArchived && $isWoo && $hasWooReference
+                    && $order->shipment?->shipment_status === 'shipped'
+                    && $number !== '' && ! in_array($trackingState['status'] ?? '', ['completed', 'conflict'], true);
 
                 return [
-                    'id' => $order->id, 'erp_order_id' => $order->erp_order_id, 'external_order_number' => $order->external_order_number,
+                    'id' => $order->id,
+                    'erp_order_id' => $order->erp_order_id,
+                    'external_order_number' => $order->external_order_number,
+                    'order_date' => $order->order_date?->format('Y-m-d'),
                     'recipient_name' => $order->address?->recipient_name,
-                    'status' => $order->manualSync?->website_sync_status->value,
-                    'synced_at' => $order->manualSync?->synced_at?->toIso8601String(),
-                    'synced_by' => $order->manualSync?->synced_by,
+                    'source_type' => $rootSourceType,
+                    'fulfillment_suffix' => $order->fulfillment_suffix,
+                    'root_order_id' => $root?->id,
+                    'archived' => $isArchived,
                     'tracking_number' => $order->shipment?->tracking_number,
                     'shipment_status' => $order->shipment?->shipment_status,
                     'carrier' => $order->shipment?->carrier,
-                    'source_type' => $rootSourceType,
-                    'tracking_outbound_status' => $order->shipment
-                        ? $trackingOutbox->get((string) $order->shipment->id)?->status?->value
-                        : null,
-                    'tracking_outbound_attempts' => $order->shipment
-                        ? $trackingOutbox->get((string) $order->shipment->id)?->attempts
-                        : null,
+                    'status' => $order->manualSync?->website_sync_status?->value ?? 'pending',
+                    'synced_at' => $order->manualSync?->synced_at?->toIso8601String(),
+                    'tracking_outbound_status' => $order->shipment ? $trackingOutbox->get((string) $order->shipment->id)?->status?->value : null,
+                    'tracking_outbound_attempts' => $order->shipment ? $trackingOutbox->get((string) $order->shipment->id)?->attempts : null,
                     'tracking_sync_status' => $trackingState['status'],
-                    'tracking_sync_reason' => $trackingState['reason'],
+                    'tracking_sync_reason' => $trackingState['reason'] ?? null,
                     'tracking_sync_verified_at' => $trackingState['verified_at'] ?? null,
+                    'progress' => $proof,
+                    'can_sync' => $pushable,
+                    'can_reconcile' => $canOperate && ! $isArchived && $hasWooReference && $number !== '',
+                    'can_operate' => $canOperate,
                 ];
             })->values()->all(),
-            'filters' => $request->only(['status', 'search']),
+            'pagination' => [
+                'total' => $paginator->total(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+            'filters' => [
+                'search' => $filters['search'] ?? '',
+                'source' => $filters['source'] ?? '',
+                'per_page' => $perPage,
+            ],
         ]);
     }
 
     public function payload(Order $order): JsonResponse
     {
-        $order->load(['address', 'items', 'shipment']);
+        $order->load(['address', 'items', 'shipment', 'fulfillmentParent']);
+        $rootSource = $order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type;
+        $rootSourceType = $rootSource instanceof \BackedEnum ? $rootSource->value : (string) $rootSource;
 
         return response()->json([
             'order_number' => $order->erp_order_id,
