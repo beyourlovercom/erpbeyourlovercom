@@ -276,6 +276,47 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         $this->assertSame('pending_shipment', $order->fresh()->order_status->value);
     }
 
+    public function test_woocommerce_processing_order_can_be_manually_allocated_after_stock_exception_acknowledgement(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $this->setWooPaymentEvidence($order, 'processing', now());
+        $item = $order->items()->firstOrFail();
+
+        $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/manual', [
+            'assignments' => [['order_item_id' => $item->id, 'source_code' => $warehouse->code]],
+            'stock_exception_acknowledged' => true,
+        ])->assertOk()->assertJsonPath('status', 'submitted');
+
+        $allocation = \App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation::query()
+            ->where('order_id', $order->id)->firstOrFail();
+        $this->assertSame('unknown', $allocation->plan_snapshot['stock_exception_acknowledgement']['warnings'][0]['reason']);
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending', 'warehouse_id' => $warehouse->id]);
+        $this->assertSame('processing', DB::table('order_financials')->where('order_id', $order->id)->value('provider_order_status'));
+    }
+
+    public function test_woocommerce_pending_order_is_blocked_even_when_stock_exception_is_acknowledged(): void
+    {
+        [$user, $order, , $warehouse] = $this->scenario();
+        $this->setWooPaymentEvidence($order, 'pending', null);
+        $item = $order->items()->firstOrFail();
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'source_type' => 'woocommerce', 'order_kind' => 'customer']);
+        $this->assertDatabaseHas('order_financials', ['order_id' => $order->id, 'provider_order_status' => 'pending', 'paid_at' => null]);
+        $decision = app(\App\Modules\Logistics\Application\FulfillmentPaymentGate::class)->evaluate($order->fresh());
+        $this->assertFalse($decision['allowed']);
+        $this->assertSame('payment_pending', $decision['reason_code']);
+
+        $response = $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/manual', [
+            'assignments' => [['order_item_id' => $item->id, 'source_code' => $warehouse->code]],
+            'stock_exception_acknowledged' => true,
+        ]);
+        $this->assertSame(409, $response->getStatusCode(), $response->getContent());
+
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
+        $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
+        $this->assertSame('pending_shipment', $order->fresh()->order_status->value);
+        $this->assertSame('pending', DB::table('order_financials')->where('order_id', $order->id)->value('provider_order_status'));
+    }
+
     public function test_unknown_warehouse_inventory_can_be_allocated_only_after_confirmation(): void
     {
         [$user, $order] = $this->scenario();
@@ -576,6 +617,25 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
             ['quantity_on_hand' => $quantityOnHand, 'quantity_reserved' => $quantityReserved],
         );
+    }
+
+    private function setWooPaymentEvidence(Order $order, string $status, $paidAt): void
+    {
+        DB::table('orders')->where('id', $order->id)->update([
+            'source_type' => 'woocommerce',
+            'order_kind' => 'customer',
+        ]);
+        DB::table('order_financials')->insert([
+            'order_id' => $order->id,
+            'currency' => 'USD',
+            'provider' => 'woocommerce',
+            'provider_reference' => 'UAT-'.$order->id,
+            'provider_order_status' => $status,
+            'provider_modified_at' => now(),
+            'paid_at' => $paidAt,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function scenario(): array
