@@ -248,6 +248,22 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertSame(0, Kol::query()->count());
     }
 
+    public function test_custom_affiliate_url_with_uppercase_is_rejected_before_creating_a_kol(): void
+    {
+        $specialist = $this->specialist();
+        $mock = $this->mockGateway();
+        $mock->shouldNotReceive('checkAffiliateIdentity');
+        $mock->shouldNotReceive('checkCoupon');
+        $mock->shouldNotReceive('provisionAffiliate');
+        $payload = $this->payload();
+        $payload['affiliate_url_slug'] = 'Creator2026';
+        $this->actingAs($specialist)->from('/kol/library/create')
+            ->post('/kol/library', $payload)
+            ->assertRedirect('/kol/library/create')
+            ->assertSessionHasErrors('affiliate_url_slug');
+        self::assertSame(0, Kol::query()->count());
+    }
+
     public function test_password_policy_is_enforced_before_any_provider_call(): void
     {
         $specialist = $this->specialist();

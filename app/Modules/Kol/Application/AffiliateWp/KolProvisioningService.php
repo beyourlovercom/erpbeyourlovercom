@@ -58,9 +58,9 @@ final class KolProvisioningService
         }
         // The official AffiliateWP add-on accepts alphabetic or alphanumeric slugs
         // (not separators or numeric-only aliases). Default WP usernames remain valid.
-        if ($slug !== $username && ! preg_match('/^[A-Za-z][A-Za-z0-9]*$/D', $slug)) {
+        if ($slug !== $username && ! preg_match('/^[a-z][a-z0-9]*$/D', $slug)) {
             throw ValidationException::withMessages([
-                'affiliate_url_slug' => '独立 Affiliate URL 仅允许英文字母、数字，必须以字母开头；默认 Username 可保留原格式。',
+                'affiliate_url_slug' => '独立 Affiliate URL 仅允许小写英文字母、数字，必须以字母开头；默认 Username 可保留原格式。',
             ]);
         }
 
