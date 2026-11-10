@@ -61,7 +61,7 @@ final class OrderOperationalArchiveController
 
     public function archive(Request $request, Order $order): RedirectResponse
     {
-        abort_unless($request->user()?->can('orders.edit'), 403);
+        abort_unless($request->user()?->can('orders.archive'), 403);
         KolOrderAccessScope::authorize($request->user(), $order->fulfillment_parent_id ? $order->fulfillmentParent()->firstOrFail() : $order);
         DB::transaction(function () use ($request, $order): void {
             $locked = Order::query()->with('fulfillmentParent')->whereKey($order->id)->lockForUpdate()->firstOrFail();

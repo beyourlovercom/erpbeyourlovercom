@@ -20,6 +20,7 @@ final class PermissionCatalog
                     ['key' => 'orders.view', 'label' => '查看订单'],
                     ['key' => 'orders.create', 'label' => '创建订单'],
                     ['key' => 'orders.edit', 'label' => '编辑订单'],
+                    ['key' => 'orders.archive', 'label' => '归档订单'],
                 ],
             ],
             '客户' => [
