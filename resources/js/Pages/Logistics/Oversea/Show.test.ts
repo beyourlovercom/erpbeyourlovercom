@@ -727,6 +727,36 @@ describe('R13 official ShipOut status 4, shipment awaiting reconciliation', () =
   })
 })
 
+describe('MorePlus remark-to-Tracking guard', () => {
+  beforeEach(() => {routerPatch.mockClear()})
+  it('routes an exact 22-digit USPS number to backend remark handler and clears local note on success', async () => {
+    const row={...usSmPendingRows.data[0],order_id:8100,warehouse_id:1,note:null,tracking_number:null}
+    const page=mountPage({view:'issued',rows:{...usSmPendingRows,data:[row]}})
+    const note=page.find('.note-input')
+    expect(note.attributes('placeholder')).toContain('USPS单号自动转入Tracking')
+    await note.setValue('9434650105794040132223')
+    await note.trigger('blur')
+    expect(routerPatch).toHaveBeenCalledTimes(1)
+    const args=routerPatch.mock.calls[0]
+    expect(args[0]).toBe('/logistics/oversea/orders/8100/draft')
+    expect(args[1]).toEqual({note:'9434650105794040132223'})
+    args[2].onSuccess()
+    await page.vm.$nextTick()
+    expect((page.find('.tracking-input').element as HTMLInputElement).value).toBe('9434650105794040132223')
+    expect((page.find('.note-input').element as HTMLInputElement).value).toBe('')
+    page.unmount()
+  })
+  it('preserves ordinary note contents without converting to Tracking', async () => {
+    const row={...usSmPendingRows.data[0],order_id:8101,warehouse_id:1,note:null}
+    const page=mountPage({view:'issued',rows:{...usSmPendingRows,data:[row]}})
+    await page.find('.note-input').setValue('请先核对仓库')
+    await page.find('.note-input').trigger('blur')
+    expect(routerPatch).toHaveBeenCalledTimes(1)
+    expect(routerPatch.mock.calls[0][1]).toEqual({note:'请先核对仓库'})
+    page.unmount()
+  })
+})
+
 describe('MorePlus Production ACK pending lifecycle without a second POST', () => {
   const attempt={attempted:true,is_oms_created:false,status:'oms_ack_pending',
     label:'API 已受理 · 待 OMS 核实（禁止重发）',provider_order_id:'2116863614032625665'}

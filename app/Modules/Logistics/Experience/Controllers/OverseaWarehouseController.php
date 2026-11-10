@@ -324,6 +324,33 @@ final class OverseaWarehouseController
             'service' => ['sometimes', 'nullable', 'string', 'max:191'],
             'tracking_number' => ['sometimes', 'nullable', 'string', 'max:128'],
         ]);
+        $movedTracking = false;
+        $remark = trim((string) ($data['note'] ?? ''));
+        // MorePlus: a strict USPS 22-digit tracking value belongs to Tracking,
+        // not free-form review notes. Never alter actual fulfillment status.
+        if (preg_match('/\A(?:92|93|94)[0-9]{20}\z/D', $remark) === 1) {
+            $order->loadMissing('shipment.warehouse');
+            $shipment = $order->shipment;
+            if (strcasecmp((string) ($shipment?->warehouse?->code ?? ''), 'US-LA') === 0) {
+                abort_unless($this->executionAccess->allows($request->user()), 403,
+                    '仅具有发货执行权限的员工可以填写 Tracking');
+                abort_unless($shipment?->shipment_status === 'pending', 409,
+                    '已发货订单不能通过备注改写 Tracking');
+                $existing = trim((string) $shipment->tracking_number);
+                abort_if(($existing !== '' && $existing !== $remark)
+                    || (isset($data['tracking_number'])
+                        && filled($data['tracking_number'])
+                        && trim((string) $data['tracking_number']) !== $remark), 409,
+                    '订单已有不同 Tracking，禁止用备注覆盖');
+                abort_if(DB::table('shipments')->where('tracking_number', $remark)
+                    ->where('order_id', '!=', $order->id)->exists(), 409,
+                    'Tracking 已关联其他订单，禁止重复使用');
+                $data['tracking_number'] = $remark;
+                $data['note'] = null;
+                $movedTracking = true;
+            }
+        }
+
         if (! $this->executionAccess->allows($request->user())) {
             $forbidden = array_diff(array_keys($data), ['warehouse_id', 'note']);
             abort_if($forbidden !== [], 403, '当前账号仅可审核，不可修改发货执行字段');
@@ -331,7 +358,9 @@ final class OverseaWarehouseController
 
         $this->reviews->updateDraft($order, $data, $request->user());
 
-        return back()->with('success', '海外仓审核信息已保存');
+        return back()->with('success', $movedTracking
+            ? '已识别 USPS 单号，自动保存到 Tracking No.；尚未确认实际出库或同步官网'
+            : '海外仓审核信息已保存');
     }
 
     public function approve(Request $request, Order $order): RedirectResponse
