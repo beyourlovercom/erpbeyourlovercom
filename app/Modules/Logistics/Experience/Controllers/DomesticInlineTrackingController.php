@@ -5,7 +5,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
-use App\Modules\Logistics\Application\LogisticsTrackingImmediateDispatch;
+use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -19,7 +19,7 @@ final class DomesticInlineTrackingController
         private readonly ShipmentService $shipments,
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly AssistedFulfillmentService $assistedFulfillment,
-        private readonly LogisticsTrackingImmediateDispatch $immediateDispatch,
+        private readonly ShipmentWebsiteSyncHandoff $syncHandoff,
     ) {}
 
     /** Staff must confirm both fields explicitly; this never marks shipped. */
@@ -78,11 +78,11 @@ final class DomesticInlineTrackingController
             'shipped_at' => now()->utc()->toIso8601String(),
             'logistics_note' => $shipment->logistics_note,
         ], $request->user());
-        $sync = $this->immediateDispatch->afterShipmentSaved($shipped, $request->user());
+        $sync = $this->syncHandoff->afterShipmentSaved($shipped);
 
-        return back()->with('success', ($sync['status'] ?? null) === 'completed'
-            ? '已确认发货，官网物流同步完成。'
-            : '已确认发货，官网物流同步请在列表查看。');
+        return back()->with('success', $sync['status'] === 'handoff_failed'
+            ? '已确认 ERP 发货，但未能登记官网待同步任务，请管理员核对后处理。'
+            : '已确认 ERP 发货，官网物流由同步模块每 30 分钟处理，请查看同步状态。');
     }
 
     private function assertApprovedFactoryOrder(Order $order): Shipment

@@ -45,7 +45,9 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*'),
+            // File-upload actions opt in to JSON so the UI can show inline/Island
+            // Chinese feedback instead of receiving a full HTML error page.
+            fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
         $exceptions->render(function (\Throwable $exception, Request $request) {
             // Keep Laravel's native validation, authentication and authorization

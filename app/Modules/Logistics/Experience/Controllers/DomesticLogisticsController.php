@@ -9,6 +9,7 @@ use App\Modules\Logistics\Application\Domestic\DomesticReviewAccess;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
 use App\Modules\Logistics\Application\Domestic\DomesticTodayOrdersExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
+use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnReader;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
@@ -19,6 +20,8 @@ use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
+use InvalidArgumentException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Inertia\Inertia;
@@ -217,17 +220,29 @@ final class DomesticLogisticsController
         ]);
     }
 
-    public function previewPendingBatch(Request $request): RedirectResponse
+    public function previewUnifiedTrackingReturn(Request $request): RedirectResponse|JsonResponse
+    {
+        $data = $request->validate(['file' => ['required', 'file', 'max:10240']]);
+        try {
+            $provider = app(DomesticTrackingReturnReader::class)->detectProvider($data['file']);
+        } catch (InvalidArgumentException $e) {
+            abort(422, $e->getMessage());
+        }
+
+        return $this->previewTrackingReturn($request, $provider);
+    }
+
+    public function previewPendingBatch(Request $request): RedirectResponse|JsonResponse
     {
         return $this->previewTrackingReturn($request, 'generic');
     }
 
-    public function applyPendingBatch(Request $request): RedirectResponse
+    public function applyPendingBatch(Request $request): RedirectResponse|JsonResponse
     {
         return $this->applyTrackingReturn($request, 'generic');
     }
 
-    public function previewTrackingReturn(Request $request, string $provider): RedirectResponse
+    public function previewTrackingReturn(Request $request, string $provider): RedirectResponse|JsonResponse
     {
         $provider = $this->provider($provider);
         $data = $request->validate(['file' => ['required', 'file', 'max:10240']]);
@@ -236,10 +251,17 @@ final class DomesticLogisticsController
         session()->put("domestic_tracking_preview_{$provider}", $preview);
         session()->put('domestic_tracking_preview_provider', $provider);
 
-        return redirect('/logistics/china?view=pending')->with('success', "已生成{$this->providerLabel($provider)}回传预览；确认前未写业务数据。");
+        $message = "已生成{$this->providerLabel($provider)}回传预览；确认前未写业务数据。";
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message, 'provider' => $provider,
+                'apply_count' => $preview['apply_count'], 'noop_count' => $preview['noop_count'],
+                'blocked_count' => $preview['blocked_count']]);
+        }
+
+        return redirect('/logistics/china?view=pending')->with('success', $message);
     }
 
-    public function applyTrackingReturn(Request $request, string $provider): RedirectResponse
+    public function applyTrackingReturn(Request $request, string $provider): RedirectResponse|JsonResponse
     {
         $provider = $this->provider($provider);
         $data = $request->validate(['token' => ['required', 'string', 'size:64']]);
@@ -259,7 +281,18 @@ final class DomesticLogisticsController
             $result['failed_count'],
         );
 
-        return redirect('/logistics/china?view=today')->with('success', $message);
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message,
+                'applied_count' => $result['applied_count'],
+                'noop_count' => $result['noop_count'],
+                'blocked_count' => $result['blocked_count'],
+                'failed_count' => $result['failed_count'],
+                'sync_pending_count' => collect($result['rows'])->where('sync', 'pending')->count(),
+                'sync_handoff_failed_count' => collect($result['rows'])->where('sync', 'handoff_failed')->count(),
+            ]);
+        }
+
+        return redirect('/logistics/china?view=pending')->with('success', $message);
     }
 
     private function baseQuery(int $factoryId): Builder

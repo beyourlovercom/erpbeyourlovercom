@@ -8,7 +8,6 @@ use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Sync\Application\WooCommerceTrackingOutboundService;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -23,7 +22,7 @@ final class OverseaTrackingReturnService
 
     public function __construct(
         private readonly ShipmentService $shipments,
-        private readonly WooCommerceTrackingOutboundService $trackingOutbound,
+        private readonly ShipmentWebsiteSyncHandoff $syncHandoff,
         private readonly OverseaTrackingReturnFileReader $files,
         private readonly WarehouseOrderReference $references,
     ) {}
@@ -74,17 +73,10 @@ final class OverseaTrackingReturnService
         $sync = [];
         foreach ($appliedIds as $orderId) {
             $order = Order::query()->with(['shipment', 'items', 'externalReferences', 'fulfillmentParent.externalReferences'])->findOrFail($orderId);
-            if (! $this->hasWooRoot($order)) {
-                continue;
-            }
-            try {
-                $result = $this->trackingOutbound->pushOne($order, $actor);
-                $sync[] = ['order_id' => $orderId, 'status' => (string) ($result['status'] ?? 'failed')];
-            } catch (DomainException $e) {
-                $sync[] = ['order_id' => $orderId, 'status' => 'blocked', 'message' => $e->getMessage()];
-            } catch (Throwable $e) {
-                $sync[] = ['order_id' => $orderId, 'status' => 'failed', 'message' => $e->getMessage()];
-            }
+            // No Woo HTTP or immediate queue dispatch from the warehouse request.
+            // Each confirmed Shipment is handed to the independent Sync OS Outbox.
+            $result = $this->syncHandoff->afterShipmentSaved($order);
+            $sync[] = ['order_id' => $orderId, 'status' => $result['status']];
         }
 
         return [
@@ -292,11 +284,4 @@ final class OverseaTrackingReturnService
         }
     }
 
-    private function hasWooRoot(Order $order): bool
-    {
-        $root = $order->fulfillment_parent_id ? $order->fulfillmentParent : $order;
-        $source = $root?->source_type instanceof \BackedEnum ? $root->source_type->value : (string) $root?->source_type;
-
-        return $source === 'woocommerce';
-    }
 }

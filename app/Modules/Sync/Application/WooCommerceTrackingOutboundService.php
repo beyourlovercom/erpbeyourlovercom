@@ -19,6 +19,22 @@ final class WooCommerceTrackingOutboundService
         private readonly WooCommerceOrderStatusOutboundService $orderStatusOutbound,
     ) {}
 
+    /**
+     * Persist a deduplicated Tracking intent for the existing 30-minute Sync OS
+     * scheduler. Does not claim the intent or perform any WooCommerce HTTP call.
+     * This also covers older Shipment IDs below the scheduler discovery baseline.
+     *
+     * @return array{status:string,outbox:Model}
+     */
+    public function enqueueForPeriodicSync(Model $order): array
+    {
+        $prepared = $this->prepare($order);
+        $record = $this->outbox->enqueue($prepared['intent']);
+
+        return ['status' => $record->status instanceof \BackedEnum
+            ? $record->status->value : (string) $record->status, 'outbox' => $record];
+    }
+
     /** @return array<string,mixed> */
     public function pushOne(Model $order, ?Authenticatable $actor, bool $verifyRemote = false, bool $syncOrderStatus = true): array
     {

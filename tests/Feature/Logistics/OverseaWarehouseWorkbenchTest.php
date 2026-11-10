@@ -141,7 +141,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->actingAs($operator)->post(
             "/logistics/oversea/us-3sm/orders/{$order->id}/manual-ship",
             ['tracking_number'=>'9400111899223856928501']
-        )->assertRedirect('/logistics/oversea/us-3sm?view=shipped')->assertSessionHas('warning');
+        )->assertRedirect('/logistics/oversea/us-3sm?view=shipped')->assertSessionHas('success');
         $this->assertDatabaseHas('shipments',[
             'order_id'=>$order->id,'shipment_status'=>'shipped','tracking_number'=>'9400111899223856928501',
         ]);
@@ -889,7 +889,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertDatabaseHas('manual_syncs', ['order_id' => $order->id, 'website_sync_status' => 'pending']);
     }
 
-    public function test_tracking_return_apply_immediately_pushes_woo_tracking_for_derived_package(): void
+    public function test_tracking_return_apply_stages_woo_tracking_for_sync_module(): void
     {
         config([
             'services.woocommerce.url' => 'https://shop.test',
@@ -950,6 +950,19 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             'token' => $stored['token'],
         ])->assertRedirect('/logistics/oversea/us-moreplus?view=shipped');
 
+        // The operator HTTP request must never write WooCommerce.
+        $this->assertSame(0, $gateway->trackingCalls);
+        $this->assertSame(0, $gateway->orderStatusCalls);
+        $this->assertDatabaseHas('manual_syncs', ['order_id' => $child->id, 'website_sync_status' => 'pending']);
+        $this->assertDatabaseHas('sync_outbox', [
+            'operation' => 'woocommerce.tracking_outbound',
+            'aggregate_id' => (string) $child->fresh()->shipment->id,
+            'status' => 'pending',
+            'attempts' => 0,
+        ]);
+        // The independent Sync OS runner performs the remote write later.
+        $run = app(\App\Modules\Sync\Application\SyncOrchestrationService::class)->retryPending(null, 50, 0);
+        $this->assertSame(1, $run->succeeded_items);
         $this->assertSame(1, $gateway->trackingCalls);
         $this->assertSame(99001, $gateway->providerOrderId);
         $this->assertSame('9400111899223856928511', $gateway->trackingNumber);
@@ -958,7 +971,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertDatabaseHas('sync_outbox', ['operation' => 'woocommerce.tracking_outbound', 'status' => 'completed']);
     }
 
-    public function test_us_sm_manual_confirm_marks_shipped_and_pushes_only_aftership_tracking(): void
+    public function test_us_sm_manual_confirm_records_tracking_for_sync_module_without_network(): void
     {
         config([
             'services.woocommerce.url' => 'https://shop.test',
@@ -1034,21 +1047,29 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             'progress' => 'shipped',
         ]);
 
+        $this->assertSame(0, $gateway->trackingCalls);
+        $this->assertSame(0, $gateway->orderStatusCalls);
+        $this->assertDatabaseHas('manual_syncs', ['order_id' => $child->id, 'website_sync_status' => 'pending']);
+        $this->assertDatabaseHas('sync_outbox', [
+            'operation' => 'woocommerce.tracking_outbound',
+            'aggregate_id' => (string) $shipment->id,
+            'status' => 'pending', 'attempts' => 0,
+        ]);
+        // Only Sync OS's 30-minute runner is allowed to contact Woo.
+        $run = app(\App\Modules\Sync\Application\SyncOrchestrationService::class)->retryPending(null, 50, 0);
+        $this->assertSame(1, $run->succeeded_items);
         $this->assertSame(1, $gateway->trackingCalls);
-        $this->assertSame(0, $gateway->orderStatusCalls, 'Only AfterShip Tracking may sync here; never Woo status.');
         $this->assertSame(99101, $gateway->providerOrderId);
         $this->assertSame('9400111899223856928599', $gateway->trackingNumber);
         $this->assertSame([['id' => 991011, 'quantity' => 1]], $gateway->lineItems);
         $this->assertDatabaseHas('manual_syncs', ['order_id' => $child->id, 'website_sync_status' => 'completed']);
         $this->assertDatabaseHas('sync_outbox', ['operation' => 'woocommerce.tracking_outbound', 'status' => 'completed']);
 
-        // Replaying only the verified tracking intent must not add a duplicate
-        // AfterShip package or update the WooCommerce order status.
+        // Replaying the verified Tracking intent must never add a duplicate package.
         $again = app(\App\Modules\Sync\Application\WooCommerceTrackingOutboundService::class)
             ->pushOne($child->fresh(), $user, syncOrderStatus: false);
         $this->assertSame('completed', $again['status']);
         $this->assertSame(1, $gateway->trackingCalls);
-        $this->assertSame(0, $gateway->orderStatusCalls);
         $this->actingAs($user)->post("/logistics/oversea/us-3sm/orders/{$child->id}/manual-ship", [
             'tracking_number' => '9400111899223856928599',
         ])->assertStatus(409);

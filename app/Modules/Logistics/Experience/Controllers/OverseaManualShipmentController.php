@@ -19,15 +19,11 @@ final class OverseaManualShipmentController extends Controller
         $result = $service->confirmUsSm($order, $data['tracking_number'], $request->user());
         $syncStatus = (string) data_get($result, 'sync.status', 'attention');
 
-        $message = match ($syncStatus) {
-            'completed' => 'ERP 已发货；Tracking 已同步到官网 AfterShip。',
-            'processing', 'retry_scheduled', 'retry_wait' =>
-                'ERP 已发货；AfterShip 同步正在处理或等待重试，请到已发货列表查看物流同步状态。',
-            'conflict' => 'ERP 已发货；官网已有冲突的物流单号，AfterShip 未更新，请核对后重试。',
-            default => 'ERP 已发货；AfterShip 同步失败，请到已发货列表核对物流信息并重试。',
-        };
+        $message = $syncStatus === 'handoff_failed'
+            ? 'ERP 已发货，但待同步任务登记失败；请管理员在同步模块核对，勿再次确认发货。'
+            : 'ERP 已保存发货状态和 Tracking；官网由同步模块每 30 分钟处理，最终状态以回执为准。';
 
         return redirect('/logistics/oversea/us-3sm?view=shipped')
-            ->with($syncStatus === 'completed' ? 'success' : 'warning', $message);
+            ->with($syncStatus === 'handoff_failed' ? 'warning' : 'success', $message);
     }
 }

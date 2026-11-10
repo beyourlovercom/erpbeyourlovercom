@@ -41,6 +41,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/china/today/export', [DomesticLogisticsController::class, 'exportTodayOrders'])->middleware('can:logistics.view')->name('logistics.china.today.export');
     Route::get('/logistics/china/export/{provider}', [DomesticLogisticsController::class, 'export'])->middleware('can:logistics.view')->whereIn('provider', ['4px', 'weship'])->name('logistics.china.export');
     Route::get('/logistics/china/pending-batch/export', [DomesticLogisticsController::class, 'exportPendingBatch'])->middleware('can:logistics.view')->name('logistics.china.pending-batch.export');
+    Route::post('/logistics/china/tracking-import/preview', [DomesticLogisticsController::class, 'previewUnifiedTrackingReturn'])->middleware($execution)->name('logistics.china.tracking-import.unified-preview');
     Route::post('/logistics/china/pending-batch/tracking-import/preview', [DomesticLogisticsController::class, 'previewPendingBatch'])->middleware($execution)->name('logistics.china.pending-batch.tracking-import.preview');
     Route::post('/logistics/china/pending-batch/tracking-import/apply', [DomesticLogisticsController::class, 'applyPendingBatch'])->middleware($execution)->name('logistics.china.pending-batch.tracking-import.apply');
     Route::post('/logistics/china/{provider}/tracking-import/preview', [DomesticLogisticsController::class, 'previewTrackingReturn'])->middleware($execution)->whereIn('provider', ['4px', 'weship'])->name('logistics.china.tracking-import.preview');

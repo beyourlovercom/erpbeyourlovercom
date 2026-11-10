@@ -283,11 +283,14 @@ final class OverseaWarehouseController
         abort_unless(is_array($stored), 409, '没有有效的单号表预览，请重新上传。');
         $result = $this->trackingReturns->apply($warehouse, $stored, $data['token'], $request->user());
         $request->session()->forget($key);
-        $syncCompleted = collect($result['sync'])->where('status', 'completed')->count();
-        $syncAttention = collect($result['sync'])->whereNotIn('status', ['completed'])->count();
+        $pending = collect($result['sync'])->where('status', 'pending')->count();
+        $handoffFailed = collect($result['sync'])->where('status', 'handoff_failed')->count();
 
         return redirect("/logistics/oversea/{$warehouse}?view=shipped")
-            ->with('success', sprintf('回传已应用：发货 %d，重复跳过 %d，Woo 已验证 %d，需关注 %d。', $result['applied_count'], $result['noop_count'], $syncCompleted, $syncAttention));
+            ->with($handoffFailed ? 'warning' : 'success', sprintf(
+                'ERP 发货已登记 %d 单，重复跳过 %d 单；官网待同步 %d 单，任务登记异常 %d 单。官网由同步模块每 30 分钟处理，登记异常请管理员核对。',
+                $result['applied_count'], $result['noop_count'], $pending, $handoffFailed
+            ));
     }
 
     public function updateDraft(Request $request, Order $order): RedirectResponse
