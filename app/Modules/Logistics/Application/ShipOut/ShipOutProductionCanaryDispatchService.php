@@ -21,6 +21,7 @@ final class ShipOutProductionCanaryDispatchService
         private readonly ShipOutProductionCanaryGate $gate,
         private readonly ShipOutProductionV1Gate $v1Gate,
         private readonly ShipOutProductionCanaryOutboundTransport $transport,
+        private readonly ShipOutProductionDuplicateRiskGuard $duplicateRisk,
     ) {}
 
     /** @return array<string,mixed> */
@@ -32,7 +33,14 @@ final class ShipOutProductionCanaryDispatchService
     /** Preview one standard Production V1 order after Dede approval. */
     public function previewApproved(int $erpOrderId, string $shipDate): array
     {
-        return $this->preflight->previewApproved($erpOrderId, $shipDate);
+        $prepared = $this->preflight->buildApproved($erpOrderId, $shipDate);
+        $history = $this->duplicateRisk->inspect($prepared['payload']);
+
+        return [
+            ...$prepared['summary'],
+            'history_risk' => $history,
+            'ready' => $history['status'] === 'clear',
+        ];
     }
 
     /** @return array{status:string,provider_order_id:?string,result_code:string} */
@@ -83,6 +91,10 @@ final class ShipOutProductionCanaryDispatchService
         } else {
             $this->gate->assertExecutionAuthorized(...$args);
         }
+
+        // Mandatory R9 signed, complete warehouse history check before the
+        // first and only POST. Never treat missing API history as all-clear.
+        $this->duplicateRisk->assertNoContentRisk($payload);
 
         // A once-per-order and once-per-warehouse-reference durable lock.
         // Never hold a DB transaction open across network I/O.

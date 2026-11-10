@@ -103,7 +103,7 @@ const pushTracking = (ids:number[], manualOverride = false) => {
   })
 }
 const trackingLabel=(status:string|null|undefined)=>status==='completed'?'已同步':status==='failed'?'失败':status==='retry_wait'?'待重试':status==='processing'?'同步中':status==='partial'?'部分同步':status==='conflict'?'冲突待核对':'待同步'
-const drafts = reactive<Record<number,{ note:string; carrier:string; service:string; tracking_number:string }>>({})
+const drafts = reactive<Record<number,{ note:string; carrier:string; service:string; tracking_number:string; outbound_ref:string }>>({})
 const trackingFileInput = ref<HTMLInputElement|null>(null)
 const trackingPreviewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 20) ?? [])
 const canUploadTrackingFile = computed(() => props.warehouseKey !== 'us-3sm')
@@ -249,6 +249,12 @@ async function shipoutProdRequest(row:Row, action:'preflight'|'send'|'status', p
       SHIPOUT_R10_PREFLIGHT_STALE:'订单数据变化，请重新预检',
       SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE:'仓库缺少精确匹配 SKU 的可用库存',
       SHIPOUT_R10_PROVIDER_ORDER_EXISTS:'ShipOut 正式 OMS 已有本单，禁止重复发送',
+      SHIPOUT_R9_14D_CONTENT_DUPLICATE_RISK:'近14天同SKU/数量与收件信息疑似重复，已隔离交 Dede 人工核对',
+      SHIPOUT_R9_HISTORY_UNAVAILABLE:'无法可靠读取海外仓14天历史记录；自动提交已禁止',
+      SHIPOUT_R9_HISTORY_INCOMPLETE:'海外仓历史数据不完整；自动提交已禁止',
+      SHIPOUT_R9_HISTORY_OVERFLOW:'海外仓历史数据超过可核验范围；交 Dede 人工处理',
+      SHIPOUT_R9_HISTORY_DATE_UNVERIFIED:'海外仓历史订单日期不可靠；禁止自动提交',
+      SHIPOUT_R9_HISTORY_CONTENT_UNVERIFIED:'海外仓历史订单缺少 SKU 或收件信息；禁止自动提交',
     }
     throw Error(errors[result?.error_code] ||
       (response.status===429?'请求过于频繁（HTTP 429），当前未下单，请稍后重试':response.status===403?'当前账号没有仓库操作权限':'正式 API 当前不可执行，请联系物流主管'))
@@ -262,8 +268,16 @@ async function shipoutProdPreflight(row:Row) {
   delete shipoutProdPreview[row.order_id]
   try {
     const result=await shipoutProdRequest(row,'preflight') as ShipOutPreflight
-    if(result.order_id!==row.order_id||!result.ready||result.shipping_mode!=='9')
-      throw Error('正式预检未通过，请人工核对')
+    if(result.order_id!==row.order_id||!result.ready||result.shipping_mode!=='9') {
+      const code=result.blockers?.[0] || 'SHIPOUT_R9_HISTORY_UNVERIFIED'
+      const labels:Record<string,string>={
+        SHIPOUT_R9_14D_CONTENT_DUPLICATE_RISK:'近14天相同商品与收件信息存在重复风险，已阻止自动提交，交 Dede 核对',
+        SHIPOUT_R9_HISTORY_UNAVAILABLE:'仓库历史 API 不可用，14天重复风险未核实，禁止自动提交',
+        SHIPOUT_R9_HISTORY_INCOMPLETE:'仓库历史分页不完整，禁止自动提交',
+        SHIPOUT_R9_HISTORY_CONTENT_UNVERIFIED:'仓库历史内容不完整，禁止自动提交',
+      }
+      throw Error(labels[code] || '14天历史风险未通过：'+code+'；交 Dede 人工核对')
+    }
     shipoutProdPreview[row.order_id]=result
   } catch(e) {shipoutProdErrors[row.order_id]=e instanceof Error?e.message:'正式 API 预检失败'}
   finally {shipoutProdBusy[row.order_id]=false}
@@ -750,7 +764,7 @@ const defaultServiceFor = (name:string, country?:string|null) => {
   }
   return carrier.default_service_value ?? ''
 }
-const draft = (row:Row) => drafts[row.order_id] ??= { note:row.note ?? '', carrier:row.carrier ?? '', service:row.service ?? defaultServiceFor(row.carrier ?? '', row.country), tracking_number:row.tracking_number ?? '' }
+const draft = (row:Row) => drafts[row.order_id] ??= { note:row.note ?? '', carrier:row.carrier ?? '', service:row.service ?? defaultServiceFor(row.carrier ?? '', row.country), tracking_number:row.tracking_number ?? '', outbound_ref:'' }
 const viewTabs = [
   ['review','待审核'], ['pending','待发货'], ['pending_dispatch','待下发'], ['dispatched',props.warehouseKey==='us-moreplus'?'API 已受理':'OMS 已建单'], ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
 ] as const
@@ -774,6 +788,22 @@ const manualShipUsSm = (row:Row) => {
   if (!tracking) { rowErrors[row.order_id] = '请先填写真实 Tracking'; return }
   rowErrors[row.order_id] = ''
   router.post(`/logistics/oversea/us-3sm/orders/${row.order_id}/manual-ship`, { tracking_number:tracking }, { preserveScroll:true })
+}
+const manualShipMorePlus = (row:Row) => {
+  if (row.warehouse_dispatch?.failure_code==='PROVIDER_DUPLICATE_ORDER') {
+    rowErrors[row.order_id]='仓库已确认重复订单，禁止再次发货';return
+  }
+  const tracking=draft(row).tracking_number.trim()
+  const outbound=draft(row).outbound_ref.trim()
+  if (!tracking || !outbound) {
+    rowErrors[row.order_id]='先由 Dede 在仓库核实真实出库单，再填写 Tracking 与出库单号'
+    return
+  }
+  rowErrors[row.order_id]=''
+  router.post('/logistics/oversea/us-moreplus/orders/'+row.order_id+'/manual-ship',{
+    tracking_number:tracking, outbound_reference:outbound,
+    confirmation:'CONFIRM_MOREPLUS_MANUAL_SHIPPED_'+row.order_id,
+  },{preserveScroll:true})
 }
 const chooseTrackingFile = () => trackingFileInput.value?.click()
 const previewTrackingFile = (event:Event) => {
@@ -1069,7 +1099,18 @@ const compactPages = computed<(number|string)[]>(() => {
                 <template v-else-if="column.key === 'warehouse'"><select :value="row.warehouse_id" :disabled="!canReview || view !== 'review'" class="cell-select warehouse" @change="changeWarehouseFromEvent(row, $event)"><option v-for="option in warehouseOptions" :key="option.id" :value="option.id">{{ option.label }}</option></select></template>
                 <template v-else-if="column.key === 'carrier'"><select v-model="draft(row).carrier" :disabled="!canOperate || row.shipment_status === 'shipped'" class="cell-select carrier" @change="saveCarrier(row)"><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></template>
                 <template v-else-if="column.key === 'service'"><select v-model="draft(row).service" :disabled="!canOperate || row.shipment_status === 'shipped' || !draft(row).carrier" class="cell-select service" @change="saveService(row)"><option value="">请选择服务类型</option><option v-for="service in serviceOptionsFor(draft(row).carrier)" :key="service.id" :value="service.value">{{ service.label }}</option></select></template>
-                <template v-else-if="column.key === 'tracking'"><div class="tracking-entry"><input v-model="draft(row).tracking_number" :disabled="!canOperate || row.shipment_status === 'shipped'" class="tracking-input" placeholder="填写发货单号" @blur="saveTracking(row)" /><button v-if="canOperate && warehouseKey === 'us-3sm' && view === 'pending' && row.review_status === 'approved' && row.shipment_status === 'pending'" type="button" class="manual-ship-button" @mousedown.prevent @click="manualShipUsSm(row)">确认发货</button></div></template>
+                <template v-else-if="column.key === 'tracking'">
+                <div class="tracking-entry">
+                  <input v-model="draft(row).tracking_number" :disabled="!canOperate || row.shipment_status === 'shipped'" class="tracking-input" placeholder="填写真实 Tracking" @blur="saveTracking(row)" />
+                  <button v-if="canOperate && warehouseKey === 'us-3sm' && view === 'pending' && row.review_status === 'approved' && row.shipment_status === 'pending'" type="button" class="manual-ship-button" @mousedown.prevent @click="manualShipUsSm(row)">确认发货</button>
+                </div>
+                <div v-if="warehouseKey==='us-moreplus' && canOperate && row.review_status==='approved' && row.shipment_status==='pending' && row.shipout_production?.attempted && row.warehouse_dispatch?.failure_code!=='PROVIDER_DUPLICATE_ORDER'"
+                  class="tracking-entry" style="margin-top:5px">
+                  <input v-model="draft(row).outbound_ref" class="tracking-input" placeholder="Dede 核实的人工出库单号" />
+                  <button type="button" class="manual-ship-button" @click="manualShipMorePlus(row)">确认人工出库</button>
+                </div>
+                <small v-if="warehouseKey==='us-moreplus' && row.shipout_production?.attempted && row.shipment_status==='pending' && row.warehouse_dispatch?.failure_code!=='PROVIDER_DUPLICATE_ORDER'" class="xlwms-note">先核对既有 OMS 原单，禁止重复推单；实际出库后再填真实 Tracking。网站由同步模块处理。</small>
+              </template>
                 <template v-else-if="column.key === 'note'"><div class="note-cell"><input v-model="draft(row).note" :disabled="!canEditRow" class="note-input" :class="{ error: !!rowErrors[row.order_id] }" placeholder="等海运 / 等空运 / 缺货 / 太贵 / 送不到…" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></template>
                 <template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template>
                 <template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template>
