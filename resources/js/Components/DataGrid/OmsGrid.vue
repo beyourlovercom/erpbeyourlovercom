@@ -125,6 +125,10 @@ const rowSelection = { mode: 'multiRow' as const, selectAll: 'currentPage' as co
 const localeText = { page: '页', to: '至', of: '共', nextPage: '下一页', previousPage: '上一页', firstPage: '首页', lastPage: '末页', pageSizeSelectorLabel: '每页', noRowsToShow: '暂无数据' }
 const rowHeight = computed(() => density.value === 'compact' ? 32 : 42)
 const headerHeight = computed(() => density.value === 'compact' ? 31 : 38)
+// Few loaded server rows: size the Grid to its content, not to the viewport.
+// Full-screen mode and larger lists retain bounded height + row virtualization.
+const autoHeight = computed(() => !!props.serverPagination && props.rows.length <= 10 && !maximized.value)
+const isEmptyShortList = computed(() => autoHeight.value && props.rows.length === 0)
 const orderedColumns = computed(() => states.value.filter(state => ids.value.includes(state.colId)))
 const visibleColumns = computed(() => orderedColumns.value.filter(column => !column.hide))
 const resolvedPageSize = () => pageSize.value === 'all'
@@ -452,7 +456,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="oms-grid" :class="{ 'is-maximized': maximized }" aria-label="BYL ERP OMS 统一表格">
+  <section class="oms-grid" :class="{ 'is-maximized': maximized, 'is-auto-height': autoHeight, 'is-empty-short-list': isEmptyShortList }" aria-label="BYL ERP OMS 统一表格">
     <div class="oms-toolbar">
       <div class="oms-title"><strong>{{ title }}</strong></div>
       <div class="oms-actions"><slot name="actions" /></div>
@@ -470,6 +474,7 @@ onBeforeUnmount(() => {
         <AgGridVue
           class="oms-ag-grid"
           :style="{visibility:layoutReady ? 'visible' : 'hidden'}"
+          :dom-layout="autoHeight ? 'autoHeight' : 'normal'"
           :theme="theme"
           :row-data="rows"
           :column-defs="leafColumns"
@@ -527,6 +532,11 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .oms-grid{display:flex;flex-direction:column;width:100%;height:calc(100vh - 164px);min-height:500px;background:#fff;border:1px solid #dbe1e9;border-radius:8px;overflow:hidden;color:#1e293b}
+/* AG Grid's autoHeight includes only visible rows and keeps pager immediately
+   below them, without the 500px minimum used for large virtualized lists. */
+.oms-grid.is-auto-height{height:auto;min-height:0}
+.oms-grid.is-auto-height .oms-workspace{flex:0 0 auto}
+.oms-grid.is-auto-height .oms-ag-grid{flex:0 0 auto}
 .oms-grid.is-maximized{position:fixed;inset:0;z-index:10000;width:100vw;height:100dvh;min-height:0;border:0;border-radius:0}
 .oms-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;background:#f8fafc;border-bottom:1px solid #dbe1e9}
 .oms-toolbar button,.oms-pagination-size select,.oms-side button{border:1px solid #cbd5e1;background:white;border-radius:5px;padding:6px 10px;font-size:12px;cursor:pointer;color:#1e293b}

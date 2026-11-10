@@ -477,3 +477,50 @@ test('R4 preference persistence: no default flash, no repeat GET and separate vi
   console.log('DOMESTIC_GRID_PREF_STABLE_FIRST_PAINT_AND_VIEW_ISOLATION_PASS',
     JSON.stringify({getCount,putCount,stockColumnWidth:stockLayout.width,actorId}))
 })
+
+test('R4 compact short-list auto-height: no empty canvas, footer follows last row',async({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().authorized)
+  await page.goto('/logistics/china?view=stockout',{waitUntil:'domcontentloaded'})
+  const grid=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(grid.getByText('007-1110-c99991',{exact:true})).toBeVisible({timeout:15000})
+  await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible')
+  await expect(grid.locator('.oms-grid')).toHaveClass(/is-auto-height/)
+  const measured=await grid.evaluate(root=>{
+    const card=root.querySelector('.oms-grid')!.getBoundingClientRect()
+    const ag=root.querySelector('.oms-ag-grid')!.getBoundingClientRect()
+    const last=[...root.querySelectorAll('.ag-row')].at(-1)?.getBoundingClientRect()
+    const footer=root.querySelector('.oms-server-pagination')!.getBoundingClientRect()
+    return {cardHeight:card.height,agHeight:ag.height,
+      lastRowBottom:last?.bottom,footerTop:footer.top,footerBottom:footer.bottom,
+      cardBottom:card.bottom,remaining:last?footer.top-last.bottom:-1}
+  })
+  expect(measured.cardHeight).toBeLessThan(300)
+  expect(measured.cardHeight).toBeGreaterThan(130)
+  expect(measured.remaining).toBeGreaterThanOrEqual(-2)
+  expect(measured.remaining).toBeLessThan(15)
+  expect(measured.cardBottom-measured.footerBottom).toBeLessThan(4)
+  // The existing layout expand button still takes the whole viewport.
+  await grid.getByRole('button',{name:'最大化列表'}).click()
+  await expect(grid.locator('.oms-grid')).toHaveClass(/is-maximized/)
+  await expect(grid.locator('.oms-grid')).not.toHaveClass(/is-auto-height/)
+  const expanded=await grid.locator('.oms-grid').evaluate(node=>node.getBoundingClientRect().height)
+  expect(expanded).toBeGreaterThan(700)
+  await grid.getByRole('button',{name:'退出最大化'}).click()
+  await expect(grid.locator('.oms-grid')).toHaveClass(/is-auto-height/)
+  // Reload preserves the compact layout, including when personal preferences
+  // were restored from the account-scoped cache.
+  await page.reload({waitUntil:'domcontentloaded'})
+  await expect(page.locator('.oms-ag-grid')).toHaveCSS('visibility','visible')
+  const reloaded=await page.locator('.oms-grid').evaluate(node=>node.getBoundingClientRect().height)
+  expect(reloaded).toBeLessThan(300)
+  // Empty searches remain compact AND retain the native "暂无数据" overlay.
+  await page.goto('/logistics/china?view=stockout&search=E2E-NONEXISTENT-SEARCH',{waitUntil:'domcontentloaded'})
+  const empty=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(empty.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:15000})
+  await expect(empty.locator('.oms-grid')).toHaveClass(/is-empty-short-list/)
+  const emptyHeight=await empty.locator('.oms-grid').evaluate(node=>node.getBoundingClientRect().height)
+  expect(emptyHeight).toBeLessThan(260)
+  await expect(empty.getByText('暂无数据')).toBeVisible()
+  console.log('GLOBAL_GRID_SHORT_LIST_FOOTER_TIGHT_PASS',JSON.stringify({...measured,expanded,reloaded,emptyHeight}))
+})
