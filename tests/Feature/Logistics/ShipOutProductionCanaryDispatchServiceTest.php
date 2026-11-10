@@ -8,6 +8,7 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryDispatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryPreflight;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryReconcileService;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Logistics\Experience\Jobs\ProcessShipOutProductionBatch;
 use App\Modules\Logistics\Experience\Jobs\VerifyShipOutProductionBatchItem;
@@ -136,8 +137,9 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         string $postResult = 'ok',
         ?\Closure $onOrderGet = null,
         string $existingProviderId = 'ALREADY-EXISTS',
+        array $historyRows = [],
     ): void {
-        Http::fake(function ($r) use ($available, $sku, $duplicate, $unknown, $postResult, $onOrderGet, $existingProviderId) {
+        Http::fake(function ($r) use ($available, $sku, $duplicate, $unknown, $postResult, $onOrderGet, $existingProviderId, $historyRows) {
             $url = $r->url();
             if (str_contains($url, '/warehouse/list')) {
                 return Http::response([
@@ -169,6 +171,11 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
                 ], 200);
             }
             if (str_contains($url, '/order/queryListV2')) {
+                if (! str_contains($url, 'orderNO=')) {
+                    return Http::response(['result' => 'OK', 'data' => [
+                        'total' => count($historyRows), 'records' => $historyRows,
+                    ]], 200);
+                }
                 if ($onOrderGet !== null) {
                     $onOrderGet();
                 }
@@ -255,7 +262,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->assertSame('pending', $order->fresh()->shipment->shipment_status);
         $this->assertNull($order->fresh()->shipment->tracking_number);
         $this->assertFalse((bool) config('shipout.production_tracking_apply_enabled'));
-        Http::assertSentCount(9);
+        Http::assertSentCount(10);
         Http::assertSent(fn ($r) => $r->method() === 'POST'
             && $r->url() === 'https://open.shipout.com/api/open-api/oms/order/batchSubmitAsync'
             && ($r->data()[0]['shipmentForms'][0]['outboundInfo']['sysServiceId'] ?? null) === '9'
@@ -268,7 +275,45 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         } catch (RuntimeException $e) {
             $this->assertSame('SHIPOUT_R10_PRIOR_ATTEMPT_BLOCKED', $e->getMessage());
         }
-        Http::assertSentCount(9);
+        Http::assertSentCount(10);
+    }
+
+    public function test_r9_same_sku_qty_recipient_different_ref_is_blocked_before_one_shot_post(): void
+    {
+        $order = $this->order();
+        $previous = [
+            'orderId' => 'SYNTHETIC-PRIOR-OMS',
+            'orderNO' => 'A-DIFFERENT-PROVIDER-REFERENCE',
+            'status' => 4,
+            'orderDate' => now('America/Los_Angeles')->format('Y-m-d H:i:s'),
+            'recipientName' => 'SYNTHETIC TEST',
+            'zipCode' => '90210',
+            'shipTo' => '100 Example Way, Test City, CA 90210',
+            'shipmentList' => [[
+                'warehouseId' => self::WAREHOUSE,
+                'productList' => [['omsSku' => self::SKU, 'qty' => 1]],
+            ]],
+        ];
+        $this->fakeProvider(historyRows: [$previous]);
+        $preview = $this->preflight($order);
+        $this->enableProductionV1();
+        $v1Preview = app(ShipOutProductionCanaryDispatchService::class)
+            ->previewApproved($order->id, $this->shipDate());
+        $this->assertFalse($v1Preview['ready']);
+        $this->assertSame('risk', $v1Preview['history_risk']['status']);
+        $this->assertSame('SHIPOUT_R9_14D_CONTENT_DUPLICATE_RISK',
+            $v1Preview['history_risk']['code']);
+        try {
+            app(ShipOutProductionCanaryDispatchService::class)->dispatchApprovedOrder(
+                $order->id, $this->shipDate(), $preview['payload_hash'],
+                'SUBMIT_SHIPOUT_ORDER_'.$order->id, auth()->user()
+            );
+            $this->fail('Content duplicate must block before first provider POST');
+        } catch (RuntimeException $error) {
+            $this->assertSame('SHIPOUT_R9_14D_CONTENT_DUPLICATE_RISK', $error->getMessage());
+        }
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNotSent(fn ($r) => $r->method() === 'POST');
     }
 
     public function test_r10_wrong_expected_payload_hash_never_inserts_attempt_or_posts(): void
@@ -943,7 +988,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->assertSame([['omsSku' => self::SKU, 'qty' => 1]], $preview['items']);
         $this->assertSame(64, strlen($preview['payload_hash']));
         $this->assertStringNotContainsString('Example Way', json_encode($preview));
-        Http::assertSentCount(4);
+        Http::assertSentCount(5);
         Http::assertNotSent(fn ($request) => $request->method() === 'POST');
         $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
     }
@@ -1573,7 +1618,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             ]]],
         ], 200)]);
         (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
-            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+            ->handle(app(ShipOutProductionOmsReadbackService::class));
         $this->assertDatabaseHas('shipout_production_batch_items', [
             'batch_id' => $batchId, 'status' => 'provider_cancelled',
             'result_code' => 'PROVIDER_DUPLICATE_ORDER',
@@ -1618,7 +1663,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         // Dispatch on the sync queue can execute the two readback passes
         // inline; neither pass may ever create another OMS order.
         (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
-            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+            ->handle(app(ShipOutProductionOmsReadbackService::class));
         $this->assertDatabaseHas('shipout_production_batch_items', [
             'batch_id' => $batchId, 'status' => 'oms_visible',
             'result_code' => 'OMS_VISIBLE_PENDING_REAL_FULFILLMENT',
@@ -1669,7 +1714,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             ], 200);
         });
         (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
-            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+            ->handle(app(ShipOutProductionOmsReadbackService::class));
 
         $this->assertSame(2, $gets);
         $this->assertDatabaseHas('shipout_production_batch_items', [
@@ -1677,7 +1722,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             'result_code' => 'PROVIDER_EZEESHIP_SHIPPING_ERROR',
         ]);
         $this->assertDatabaseHas('shipout_production_batches', [
-            'id' => $batchId, 'status' => 'completed',
+            'id' => $batchId, 'status' => 'completed_partial',
         ]);
         $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
         $this->assertDatabaseHas('shipments', [
@@ -1713,7 +1758,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             ]]],
         ], 200)]);
         (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
-            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+            ->handle(app(ShipOutProductionOmsReadbackService::class));
         $this->assertDatabaseHas('shipout_production_batch_items', [
             'batch_id' => $batchId, 'status' => 'provider_cancelled',
             'result_code' => 'PROVIDER_EZEESHIP_SHIPPING_ERROR',

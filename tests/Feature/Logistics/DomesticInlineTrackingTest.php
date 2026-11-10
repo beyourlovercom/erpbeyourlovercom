@@ -7,6 +7,8 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use Mockery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -53,6 +55,58 @@ final class DomesticInlineTrackingTest extends TestCase
         $this->actingAs($actor)->get('/logistics/china?view=today')->assertInertia(
             fn($page) => $page->where('rows.total', 1)
         );
+    }
+
+    public function test_woocommerce_factory_quick_ship_stages_outbox_without_immediate_network(): void
+    {
+        $gateway = Mockery::mock(WooCommerceTrackingGateway::class);
+        $gateway->shouldReceive('descriptor')->andReturn([
+            'configured' => true, 'connection_key' => 'shop-domestic',
+        ]);
+        $gateway->shouldNotReceive('syncTracking');
+        $gateway->shouldNotReceive('syncOrderStatus');
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $order = $this->factoryOrder(true);
+        $order->update(['source_type' => 'woocommerce']);
+        $order->items()->update(['woocommerce_line_item_id' => 54321]);
+        $order->externalReferences()->create([
+            'provider' => 'woocommerce',
+            'connection_key' => 'shop-domestic',
+            'reference' => '987654',
+            'provider_modified_at' => now(),
+        ]);
+        $order->financials()->create([
+            'currency' => 'USD',
+            'provider' => 'woocommerce',
+            'provider_reference' => '987654',
+            'provider_order_status' => 'processing',
+            'provider_modified_at' => now(),
+            'paid_at' => now(),
+            'provider_order_total' => '10.00',
+            'revenue_provenance' => 'provider_import',
+            'completeness_status' => 'INCOMPLETE',
+        ]);
+
+        $this->actingAs($actor)
+            ->post('/logistics/china/orders/'.$order->id.'/quick-ship', [
+                'tracking_number' => '4PX-PERIODIC-1',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success', '已确认 ERP 发货，官网物流由同步模块每 30 分钟处理，请查看同步状态。');
+
+        self::assertSame('shipped', $order->fresh()->shipment->shipment_status);
+        $this->assertDatabaseHas('sync_outbox', [
+            'operation' => 'woocommerce.tracking_outbound',
+            'aggregate_id' => (string) $order->fresh()->shipment->id,
+            'status' => 'pending',
+            'attempts' => 0,
+        ]);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id,
+            'website_sync_status' => 'pending',
+        ]);
     }
 
     public function test_factory_carrier_and_service_require_explicit_authorized_selection_before_shipping(): void

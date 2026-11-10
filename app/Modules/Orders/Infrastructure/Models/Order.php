@@ -73,6 +73,11 @@ class Order extends Model
         return $this->belongsTo(Kol::class, 'kol_id');
     }
 
+    public function kolCollaboration(): HasOne
+    {
+        return $this->hasOne(\App\Modules\Kol\Infrastructure\Models\KolCollaboration::class, 'order_id');
+    }
+
     public function owner(): BelongsTo
     {
         return $this->belongsTo('App\\Modules\\Identity\\Infrastructure\\Models\\User', 'owner_id');

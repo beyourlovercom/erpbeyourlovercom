@@ -32,6 +32,8 @@ return [
     // R9 independent production credential namespace; never loaded from sandbox.
     // All production operations default OFF, including read, dispatch and apply.
     'production_read_enabled' => filter_var(env('SHIPOUT_PRODUCTION_READ_ENABLED', false), FILTER_VALIDATE_BOOL),
+    // R12 signed GET-only OMS readback, independently gated. Never POST.
+    'oms_reconciliation_enabled' => filter_var(env('SHIPOUT_OMS_RECONCILIATION_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_dispatch_enabled' => filter_var(env('SHIPOUT_PRODUCTION_DISPATCH_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_tracking_apply_enabled' => filter_var(env('SHIPOUT_PRODUCTION_TRACKING_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     // Inventory is a completely separate, default-OFF, Owner-authorized ERP-only write.
@@ -65,6 +67,9 @@ return [
     // R6 safe launch: fail-closed, exactly one specifically approved ERP order.
     // A future broad rollout requires a separate, explicit code change.
     'production_v1_batch_canary_order_id' => (int) env('SHIPOUT_PRODUCTION_V1_BATCH_CANARY_ORDER_ID', 0),
+    // Explicit finite owner-approved order IDs for multi-order controlled rollout.
+    // No configured IDs = no production candidates; global batch flags still default OFF.
+    'production_v1_batch_approved_order_ids' => (string) env('SHIPOUT_PRODUCTION_V1_BATCH_APPROVED_ORDER_IDS', ''),
     'production_v1_owner_approved' => filter_var(env('SHIPOUT_PRODUCTION_V1_OWNER_APPROVED', false), FILTER_VALIDATE_BOOL),
     // Legacy single-operator setting retained for safe rollback only.
     // Three-account V1 sends use a separate exact-ID list; no global grants.

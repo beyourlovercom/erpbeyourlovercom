@@ -533,7 +533,7 @@ describe('ShipOut Production V1 isolated from Sandbox', () => {
   it('shows the real API integration as safely disabled without emitting a send button', () => {
     const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,shipoutProductionUi:true,
       shipoutProductionReadEnabled:false,shipoutProductionDispatchEnabled:false})
-    expect(wrapper.text()).toContain('ShipOut Production V1')
+    expect(wrapper.text()).toContain('待发货 · 可预检')
     expect(wrapper.text()).toContain('当前未开通')
     expect(wrapper.text()).not.toContain('确认提交正式仓')
     expect(wrapper.find('[data-shipout-order-id="99"] button').exists()).toBe(false)
@@ -666,6 +666,44 @@ describe('ShipOut Production V1 three-account scoped UI', () => {
   })
 })
 
+describe('R12 six-list overseas dispatch state without duplicate submission', () => {
+  it('shows exactly six tabs and prominent red anomaly status', () => {
+    const anomaly={...usSmPendingRows.data[0],order_id:7903,
+      shipout_production:{attempted:true,is_oms_created:false,status:'oms_quarantined',
+        label:'EzeeShip 运输服务失败 · 已隔离（禁止自动重发）',provider_order_id:'OMS-ERR-1'},
+      warehouse_dispatch:{status:'oms_quarantined',label:'下发异常',
+        failure_code:'PROVIDER_EZEESHIP_SHIPPING_ERROR',oms_order_no:'OMS-ERR-1',
+        last_checked_at:'2026-11-10T11:00:00Z',detail:'待人工核对',can_retry_local_block:false}}
+    const page=mountPage({view:'exceptions',rows:{...usSmPendingRows,data:[anomaly],total:1},
+      shipoutProductionUi:true,shipoutProductionReadEnabled:true,canOperate:true})
+    expect(page.findAll('button.oversea-tab')).toHaveLength(6)
+    expect(page.text()).toContain('待审核')
+    expect(page.text()).toContain('待发货')
+    expect(page.text()).toContain('已下发')
+    expect(page.text()).not.toContain('待下发 0')
+    expect(page.text()).toContain('下发异常 · EzeeShip')
+    expect(page.find('[data-shipout-order-id="7903"] [role="alert"]').exists()).toBe(true)
+    expect(page.text()).toContain('Dede 核实')
+    expect(page.text()).toContain('确认真实出库')
+    page.unmount()
+  })
+  it('confirmed OMS can show Tracking entry but is not marked shipped', () => {
+    const confirmed={...usSmPendingRows.data[0],order_id:7963,
+      shipout_production:{attempted:true,is_oms_created:true,status:'oms_confirmed',
+        label:'已下发 · OMS 两次回读确认（未出库）',provider_order_id:'OMS-OK'},
+      warehouse_dispatch:{status:'oms_confirmed',label:'已下发',failure_code:null,
+        oms_order_no:'OMS-OK',last_checked_at:'2026-11-10T11:00:00Z',
+        detail:'',can_retry_local_block:false}}
+    const page=mountPage({view:'issued',rows:{...usSmPendingRows,data:[confirmed],total:1},
+      shipoutProductionUi:true,canOperate:true})
+    expect(page.text()).toContain('已下发 · OMS 已核实（未实际出库）')
+    expect(page.find('input[placeholder="填写真实 Tracking"]').exists()).toBe(true)
+    expect(page.text()).toContain('确认真实出库')
+    expect(page.text()).not.toContain('已发货 · 同步官网成功')
+    page.unmount()
+  })
+})
+
 describe('MorePlus Production ACK pending lifecycle without a second POST', () => {
   const attempt={attempted:true,is_oms_created:false,status:'oms_ack_pending',
     label:'API 已受理 · 待 OMS 核实（禁止重发）',provider_order_id:'2116863614032625665'}
@@ -678,9 +716,9 @@ describe('MorePlus Production ACK pending lifecycle without a second POST', () =
       view:'dispatched',rows:{...usSmPendingRows,data:[row]},trackingImportPreview:null,
       shipoutProductionUi:true,shipoutProductionReadEnabled:true,shipoutProductionDispatchEnabled:true,
       shipoutProductionOperatorAllowed:true,shipoutProductionMinOrderId:7791,
-      viewCounts:{review:0,pending:2,pending_dispatch:2,dispatched:1,shipped:577,exceptions:0,all:580},
+      viewCounts:{review:0,pending:2,issued:0,shipped:577,exceptions:0,all:580},
     })
-    expect(page.text()).toContain('API 已受理')
+    expect(page.text()).toContain('下发中 · 禁止重新提交')
     expect(page.text()).toContain('2116863614032625665')
     expect(page.text()).toContain('尚未证实 OMS 有效接单')
     expect(page.text()).not.toContain('确认提交正式仓')
@@ -809,12 +847,207 @@ describe('MorePlus async production acceptance is not final business success', (
   })
 })
 
+describe('MorePlus R9 Dede manual fallback and no duplicate resubmission', () => {
+  it('shows confirmed manual outbound action only for attempted nonduplicate rows', () => {
+    const row={...usSmPendingRows.data[0],order_id:7903,
+      review_status:'approved' as const,shipment_status:'pending',
+      shipout_production:{attempted:true,is_oms_created:false,status:'oms_quarantined',
+        label:'EzeeShip异常 · 交 Dede 人工',provider_order_id:'OMS-EXISTING'},
+      warehouse_dispatch:{status:'oms_quarantined',label:'EzeeShip异常',
+        failure_code:'PROVIDER_EZEESHIP_SHIPPING_ERROR',
+        detail:'',oms_order_no:'OMS-EXISTING',last_checked_at:null,
+        can_retry_local_block:false}}
+    const page=mountPage({warehouseKey:'us-moreplus',view:'exceptions',canOperate:true,
+      shipoutProductionUi:true,rows:{...usSmPendingRows,total:1,data:[row]}})
+    expect(page.text()).toContain('确认真实出库')
+    expect(page.text()).toContain('先核对既有 OMS 原单')
+    expect(page.find('input[placeholder="Dede 核实的人工出库单号"]').exists()).toBe(true)
+    page.unmount()
+  })
+  it('hides manual action for an OMS-confirmed duplicate order', () => {
+    const row={...usSmPendingRows.data[0],order_id:7913,
+      review_status:'approved' as const,shipment_status:'pending',
+      shipout_production:{attempted:true,is_oms_created:false,status:'oms_quarantined',
+        label:'海外仓判定重复订单',provider_order_id:'OMS-DUP'},
+      warehouse_dispatch:{status:'oms_quarantined',label:'海外仓判定重复订单',
+        failure_code:'PROVIDER_DUPLICATE_ORDER',
+        detail:'',oms_order_no:'OMS-DUP',last_checked_at:null,
+        can_retry_local_block:false}}
+    const page=mountPage({warehouseKey:'us-moreplus',view:'exceptions',canOperate:true,
+      shipoutProductionUi:true,rows:{...usSmPendingRows,total:1,data:[row]}})
+    expect(page.text()).not.toContain('确认真实出库')
+    expect(page.find('input[placeholder="Dede 核实的人工出库单号"]').exists()).toBe(false)
+    page.unmount()
+  })
+})
+
+describe('MorePlus per-order quarantine and partial batch completion', () => {
+  it('shows quarantined order and blocks another one-shot send while an unrelated order remains eligible', () => {
+    const failed={...usSmPendingRows.data[0],warehouse_id:1,order_id:7913,
+      shipout_production:{attempted:true,is_oms_created:false,status:'oms_quarantined',
+        label:'海外仓判定重复订单 · 已隔离（禁止自动重发）',provider_order_id:'OMS-FAILED-7913'}}
+    const healthy={...usSmPendingRows.data[0],warehouse_id:1,order_id:7914,
+      erp_order_id:'007-1110-c42150',shipout_production:null}
+    const page=mountPage({view:'exceptions',
+      rows:{...usSmPendingRows,data:[failed,healthy],total:2},
+      shipoutProductionUi:true,shipoutProductionReadEnabled:true,
+      shipoutProductionDispatchEnabled:true,shipoutProductionOperatorAllowed:true})
+    expect(page.text()).toContain('下发异常已隔离')
+    expect(page.text()).toContain('海外仓判定重复订单')
+    expect(page.text()).toContain('禁止自动重发')
+    expect(page.text()).toContain('正式 API 预检')
+    const failedRow=page.find('[data-shipout-order-id="7913"]')
+    expect(failedRow.text()).not.toContain('正式 API 预检')
+    page.unmount()
+  })
+
+  it('shows partial completion without claiming full success', async () => {
+    const id='00000000-0000-4000-8000-000000000124'
+    const mock=vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({
+      batch_id:id,status:'completed_partial',dry_run:false,total:2,processed:2,
+      items:[
+        {order_id:7913,order_no:'007-1110-c42149',status:'provider_cancelled',
+          result_code:'PROVIDER_DUPLICATE_ORDER',provider_order_id:'OMS-FAILED'},
+        {order_id:7914,order_no:'007-1110-c42150',status:'oms_visible',
+          result_code:'OMS_VISIBLE_PENDING_REAL_FULFILLMENT',provider_order_id:'OMS-OK'},
+      ],
+    })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,trackingImportPreview:null,
+        shipoutProductionLatestBatch:{id,status:'completed_partial',dry_run:false,total:2}})
+      await vi.waitFor(()=>expect(page.text()).toContain('本批次结束 · 异常单已隔离'))
+      expect(page.text()).toContain('已核实 2 / 2')
+      expect(page.text()).toContain('OMS 已取消／中止')
+      expect(page.text()).toContain('OMS 订单可见 · 待实际出库')
+      page.unmount()
+    } finally { vi.unstubAllGlobals() }
+  })
+})
+
 describe('MorePlus Dev-only one-click batch workbench', () => {
   it('shows the top-right bulk button only when the separate feature flag is enabled', () => {
     expect(mountPage().findAll('button').some(b=>b.text()==='一键推送仓库')).toBe(false)
     expect(mountPage({shipoutProductionBatchUi:true}).findAll('button').some(b=>b.text()==='一键推送仓库')).toBe(true)
     expect(mountPage({shipoutProductionBatchUi:true,warehouseKey:'us-3sm',warehouse:warehouseOptions[1]})
       .findAll('button').some(b=>b.text()==='一键推送仓库')).toBe(false)
+  })
+
+  it('allows a new batch after completed_partial and blocks one while paused', async () => {
+    const id='00000000-0000-4000-8000-000000000098'
+    const statuses=['completed_partial','paused'] as const
+    for (const status of statuses) {
+      const mock=vi.fn().mockResolvedValue({
+        ok:true,json:async()=>({batch_id:id,status,dry_run:false,total:1,processed:1,
+          items:[{order_id:7913,order_no:'007-1106-c42149',status:'provider_cancelled',
+            result_code:'PROVIDER_DUPLICATE_ORDER',provider_order_id:'OMS-CANCEL-1'}]}),
+      })
+      vi.stubGlobal('fetch',mock)
+      try {
+        const page=mountPage({shipoutProductionBatchUi:true,
+          shipoutProductionLatestBatch:{id,status,dry_run:false,total:1}})
+        await vi.waitFor(()=>expect(page.text()).toContain('仓库异步判定重复订单'))
+        const button=page.findAll('button').find(b=>b.text()==='一键推送仓库')!
+        expect(button.attributes('disabled')===undefined).toBe(status==='completed_partial')
+        page.unmount()
+      } finally {vi.unstubAllGlobals()}
+    }
+  })
+
+  it('shows admin the paused one-click button with read-only preview and prevents POST', async () => {
+    const mock=vi.fn().mockResolvedValue({
+      ok:true,json:async()=>({count:1,overflow:false,dry_run:false,fingerprint:'a'.repeat(64)}),
+    })
+    vi.stubGlobal('fetch',mock)
+    try {
+      const approveAll=vi.spyOn(window,'confirm').mockReturnValue(true)
+      const page=mountPage({shipoutProductionBatchUi:true,shipoutProductionBatchPaused:true,
+        trackingImportPreview:null})
+      expect(page.text()).toContain('一键推送仓库')
+      expect(page.text()).toContain('管理员可查看预览与历史结果，但不可提交新订单')
+      await page.findAll('button').find(b=>b.text()==='一键推送仓库')!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('待逐单校验 1 单'))
+      const send=page.findAll('button').find(b=>b.text().includes('确认逐单推送'))
+      expect(send?.attributes('disabled')).toBeDefined()
+      await send!.trigger('click')
+      expect(mock.mock.calls.map(c=>c[0])).toEqual([
+        '/logistics/oversea/us-moreplus/shipout/batch/preview?scope=all',
+      ])
+      page.unmount()
+      approveAll.mockRestore()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('no selection cancel means no HTTP request and no POST', async () => {
+    const ask=vi.spyOn(window,'confirm').mockReturnValue(false)
+    const fetchMock=vi.fn()
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true})
+      await page.findAll('button').find(b=>b.text()==='一键推送仓库')!.trigger('click')
+      expect(ask).toHaveBeenCalledTimes(1)
+      expect(ask.mock.calls[0][0]).toContain('包含缺货订单')
+      expect(fetchMock).not.toHaveBeenCalled()
+      page.unmount()
+    } finally {ask.mockRestore();vi.unstubAllGlobals()}
+  })
+
+  it('selected rows persist across page changes and only chosen IDs are previewed', async () => {
+    const first={...usSmPendingRows.data[0],order_id:51,warehouse_id:1}
+    const second={...first,order_id:52,erp_order_id:'007-SECOND'}
+    const mock=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      scope:'selected',scan_count:2,excluded_count:0,count:2,overflow:false,
+      dry_run:true,fingerprint:'a'.repeat(64),
+    })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,
+        rows:{...usSmPendingRows,total:2,last_page:2,data:[first]}})
+      await page.find('input[aria-label^="选择推送"]').setValue(true)
+      await page.setProps({rows:{...usSmPendingRows,total:2,last_page:2,current_page:2,data:[second]}})
+      await page.find('input[aria-label^="选择推送"]').setValue(true)
+      expect(page.text()).toContain('已勾选 2 单（跨页保留）')
+      await page.findAll('button').find(b=>b.text()==='仅推送所选订单')!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('手动选择 扫描 2 单'))
+      expect(mock.mock.calls.map(c=>c[0])).toEqual([
+        '/logistics/oversea/us-moreplus/shipout/batch/preview?scope=selected&order_ids=51,52',
+      ])
+      page.unmount()
+    } finally {vi.unstubAllGlobals()}
+  })
+
+  it('switching out of pending clears hidden selected orders', async () => {
+    const item={...usSmPendingRows.data[0],order_id:86,warehouse_id:1}
+    const mock=vi.fn()
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,
+        rows:{...usSmPendingRows,data:[item]}})
+      await page.find('input[aria-label^="选择推送"]').setValue(true)
+      expect(page.text()).toContain('已勾选 1 单')
+      await page.findAll('button.oversea-tab').find(b=>b.text().includes('已发货'))!.trigger('click')
+      expect(page.text()).not.toContain('已勾选 1 单')
+      expect(mock).not.toHaveBeenCalled()
+      page.unmount()
+    } finally {vi.unstubAllGlobals()}
+  })
+
+  it('select current page and clearing selection never trigger provider submission', async () => {
+    const item={...usSmPendingRows.data[0],order_id:83,warehouse_id:1}
+    const mock=vi.fn()
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,
+        rows:{...usSmPendingRows,data:[item,{...item,order_id:84}]}})
+      await page.find('input[aria-label="选择当前页待发货订单"]').setValue(true)
+      expect(page.text()).toContain('已勾选 2 单')
+      await page.findAll('button').find(b=>b.text()==='清空勾选')!.trigger('click')
+      expect(page.text()).not.toContain('已勾选 2 单')
+      expect(mock).not.toHaveBeenCalled()
+      page.unmount()
+    } finally {vi.unstubAllGlobals()}
   })
 
   it('previews, confirms once, and reads Dev progress without per-order browser submission', async () => {
@@ -834,19 +1067,19 @@ describe('MorePlus Dev-only one-click batch workbench', () => {
     try {
       const page=mountPage({shipoutProductionBatchUi:true,shipoutProductionBatchDryRun:true,trackingImportPreview:null})
       await page.findAll('button').find(b=>b.text()==='一键推送仓库')!.trigger('click')
-      await vi.waitFor(()=>expect(page.text()).toContain('候选 2 单'))
+      await vi.waitFor(()=>expect(page.text()).toContain('待逐单校验 2 单'))
       await page.findAll('button').find(b=>b.text().includes('确认运行 Dev 模拟'))!.trigger('click')
       await vi.waitFor(()=>expect(page.text()).toContain('2 / 2'))
       expect(page.text()).toContain('Dev 模拟通过')
       expect(mock.mock.calls.map(call=>call[0])).toEqual([
-        '/logistics/oversea/us-moreplus/shipout/batch/preview',
+        '/logistics/oversea/us-moreplus/shipout/batch/preview?scope=all',
         '/logistics/oversea/us-moreplus/shipout/batch/start',
         '/logistics/oversea/us-moreplus/shipout/batch/'+batchId+'/status',
       ])
       expect(JSON.parse(mock.mock.calls[1][1].body)).toEqual({
-        fingerprint,confirmation:'CONFIRM_MOREPLUS_BATCH_2',
+        fingerprint,confirmation:'CONFIRM_MOREPLUS_BATCH_2',scope:'all',order_ids:'',
       })
-      expect(confirm).toHaveBeenCalledTimes(1)
+      expect(confirm).toHaveBeenCalledTimes(2)
       page.unmount()
     } finally {
       vi.unstubAllGlobals()

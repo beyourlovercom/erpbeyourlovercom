@@ -30,7 +30,7 @@ class KolFulfillmentBridgeTest extends TestCase
         ]);
         $this->bindAffiliate($kol);
         $product = Product::create(['source_type' => 'manual', 'sku' => 'KOL-SAMPLE-1', 'name' => 'Sample One', 'is_active' => true]);
-        $collaboration = KolCollaboration::create(['kol_id' => $kol->id, 'owner_id' => $user->id, 'status' => 'confirmed', 'currency' => 'USD', 'fulfillment_required' => true]);
+        $collaboration = KolCollaboration::create(['kol_id' => $kol->id, 'owner_id' => $user->id, 'status' => 'confirmed', 'currency' => 'USD', 'fulfillment_required' => true, 'agreed_at' => '2026-09-24']);
         $collaboration->products()->create(['product_id' => $product->id, 'sku_snapshot' => $product->sku, 'product_name_snapshot' => $product->name, 'quantity' => 2]);
 
         $response = $this->actingAs($user)->postJson("/kol/library/{$kol->id}/collaborations/{$collaboration->id}/fulfillment-order");
@@ -39,6 +39,7 @@ class KolFulfillmentBridgeTest extends TestCase
         $order = Order::query()->firstOrFail();
         $this->assertSame('kol_fulfillment', $order->order_kind->value);
         $this->assertSame('kol', $order->source_type->value);
+        $this->assertSame('2026-09-24', $order->order_date->toDateString(), 'fulfillment inherits the true collaboration date');
         $this->assertSame('007erp-'.$order->order_date->format('md').'-k'.$kol->id, $order->erp_order_id);
         $this->assertSame($order->id, $collaboration->fresh()->order_id);
         $this->assertSame($kol->id, (int) $order->kol_id, 'new collaboration fulfillment must persist the authoritative KOL ID');
@@ -54,6 +55,7 @@ class KolFulfillmentBridgeTest extends TestCase
         $first->assertCreated();
         $second->assertOk()->assertJsonPath('created', false)->assertJsonPath('order.id', $first->json('order.id'));
         $this->assertDatabaseCount('orders', 1);
+        $this->assertSame(now()->toDateString(), Order::query()->firstOrFail()->order_date->toDateString(), 'no agreed_at means creation date');
     }
 
     public function test_bridge_requires_fulfillment_flag_and_canonical_product(): void

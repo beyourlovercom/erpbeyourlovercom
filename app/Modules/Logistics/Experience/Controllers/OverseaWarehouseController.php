@@ -22,6 +22,7 @@ use App\Modules\Orders\Application\OrderWorkflowStatus;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -38,7 +39,7 @@ final class OverseaWarehouseController
 
     private const PER_PAGE_OPTIONS = [20, 50, 100];
 
-    private const VIEWS = ['review', 'pending', 'pending_dispatch', 'dispatched', 'shipped', 'exceptions', 'all'];
+    private const VIEWS = ['review', 'pending', 'issued', 'shipped', 'exceptions', 'all'];
 
     public function __construct(
         private readonly OverseaWarehouseReviewService $reviews,
@@ -57,7 +58,13 @@ final class OverseaWarehouseController
         $warehouse = in_array($warehouse, ['us-sm', 'us-sj', 'usa-sj'], true) ? 'us-3sm' : $warehouse;
         $warehouseKey = $warehouse ?: 'all';
         abort_unless($warehouseKey === 'all' || array_key_exists($warehouseKey, OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY), 404);
-        $view = in_array((string) $request->query('view'), self::VIEWS, true) ? (string) $request->query('view') : 'review';
+        $requested = (string) $request->query('view');
+        // Existing bookmarks remain usable; there are six visible queues.
+        $view = match ($requested) {
+            'pending_dispatch' => 'pending',
+            'dispatched' => 'issued',
+            default => in_array($requested, self::VIEWS, true) ? $requested : 'review',
+        };
         $perPage = (int) $request->query('per_page', self::DEFAULT_PER_PAGE);
         if (! in_array($perPage, self::PER_PAGE_OPTIONS, true)) {
             $perPage = self::DEFAULT_PER_PAGE;
@@ -99,6 +106,22 @@ final class OverseaWarehouseController
                 ->get(['order_id', 'status', 'provider_order_id', 'provider_warehouse_id'])
                 ->keyBy('order_id')
             : collect();
+        // Read-only, paginated batch audit projection; never calls ShipOut on list render.
+        $shipOutBatchItems = in_array($warehouseKey, ['us-moreplus', 'all'], true)
+            && Schema::hasTable('shipout_production_batch_items')
+            ? DB::table('shipout_production_batch_items')
+                ->whereIn('order_id', $shipments->getCollection()->pluck('order_id')->all())
+                ->orderByDesc('id')->get(['order_id', 'status', 'result_code'])->unique('order_id')->keyBy('order_id')
+            : collect();
+        // Latest durable, sanitized signed OMS evidence: no provider HTTP
+        // while listing, pagination or counting.
+        $shipOutReadbacks = in_array($warehouseKey, ['us-moreplus', 'all'], true)
+            && Schema::hasTable('shipout_oms_readbacks')
+            ? DB::table('shipout_oms_readbacks')
+                ->whereIn('order_id', $shipments->getCollection()->pluck('order_id')->all())
+                ->orderByDesc('id')->get(['order_id', 'provider_order_id', 'provider_status', 'state', 'reason_code', 'checked_at'])
+                ->unique('order_id')->keyBy('order_id')
+            : collect();
         $webDraftAttempts = $warehouseKey === 'us-3sm'
             ? XlwmsWebDraftAttempt::query()->whereIn('order_id', $shipments->getCollection()->pluck('order_id')->all())
                 ->latest('id')->get()->unique('order_id')->keyBy('order_id')
@@ -113,7 +136,7 @@ final class OverseaWarehouseController
             'warehouseOptions' => array_values($warehouseMap),
             'view' => $view,
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => [
-                ...$this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id), $shipOutAttempts->get($shipment->order_id)),
+                ...$this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id), $shipOutAttempts->get($shipment->order_id), $shipOutBatchItems->get($shipment->order_id), $shipOutReadbacks->get($shipment->order_id)),
                 // Logistics access alone is not enough for editing an order's staff workflow progress.
                 'can_edit_workflow_status' => $request->user()->can('orders.view')
                     && $request->user()->can('orders.edit')
@@ -128,21 +151,27 @@ final class OverseaWarehouseController
                 && filled(config('xlwms.oms_web_hmac_key')),
             // Production V1 is visible as a separate, default-OFF workbench;
             // never make Sandbox flags active in Production.
-            // Dev renders a dry-run batch workbench; Production requires separate new approval.
+            // Administrative visibility and read-only history remain available
+            // while the real POST batch gate is OFF after provider duplicates.
+            // Never couple viewing a disabled button to permission to POST.
             'shipoutProductionBatchUi' => $warehouseKey === 'us-moreplus'
                 && (app()->environment(['local', 'testing'])
-                    || (app()->environment('production')
-                        && (bool) config('shipout.production_v1_batch_enabled', false)
-                        && (bool) config('shipout.production_v1_batch_owner_approved', false)))
-                && $request->user()?->can('logistics.view'),
+                    ? $request->user()?->can('logistics.view')
+                    : (app()->environment('production')
+                        && $this->shipOutV1Access->allows($request->user())
+                        && (bool) config('shipout.production_read_enabled', false))),
+            'shipoutProductionBatchPaused' => app()->environment('production')
+                && (! (bool) config('shipout.production_v1_batch_enabled', false)
+                    || ! (bool) config('shipout.production_v1_batch_owner_approved', false)),
             'shipoutProductionBatchDryRun' => ! app()->environment('production'),
             'shipoutProductionLatestBatch' => $warehouseKey === 'us-moreplus'
-                && (app()->environment(['local','testing']) || (bool) config('shipout.production_v1_batch_enabled', false))
+                && (app()->environment(['local', 'testing'])
+                    || (app()->environment('production') && $this->shipOutV1Access->allows($request->user())))
                 && Schema::hasTable('shipout_production_batches')
                 ? DB::table('shipout_production_batches')
                     ->where('operator_user_id', (int) $request->user()->id)
                     ->orderByDesc('created_at')->orderByDesc('id')
-                    ->first(['id','status','dry_run','total'])
+                    ->first(['id', 'status', 'dry_run', 'total'])
                 : null,
             'shipoutProductionUi' => $warehouseKey === 'us-moreplus'
                 && app()->environment('production'),
@@ -276,11 +305,14 @@ final class OverseaWarehouseController
         abort_unless(is_array($stored), 409, '没有有效的单号表预览，请重新上传。');
         $result = $this->trackingReturns->apply($warehouse, $stored, $data['token'], $request->user());
         $request->session()->forget($key);
-        $syncCompleted = collect($result['sync'])->where('status', 'completed')->count();
-        $syncAttention = collect($result['sync'])->whereNotIn('status', ['completed'])->count();
+        $pending = collect($result['sync'])->where('status', 'pending')->count();
+        $handoffFailed = collect($result['sync'])->where('status', 'handoff_failed')->count();
 
         return redirect("/logistics/oversea/{$warehouse}?view=shipped")
-            ->with('success', sprintf('回传已应用：发货 %d，重复跳过 %d，Woo 已验证 %d，需关注 %d。', $result['applied_count'], $result['noop_count'], $syncCompleted, $syncAttention));
+            ->with($handoffFailed ? 'warning' : 'success', sprintf(
+                'ERP 发货已登记 %d 单，重复跳过 %d 单；官网待同步 %d 单，任务登记异常 %d 单。官网由同步模块每 30 分钟处理，登记异常请管理员核对。',
+                $result['applied_count'], $result['noop_count'], $pending, $handoffFailed
+            ));
     }
 
     public function updateDraft(Request $request, Order $order): RedirectResponse
@@ -363,64 +395,102 @@ final class OverseaWarehouseController
     {
         if ($view === 'review') {
             $this->progressQueries->overseasReview($query);
-        } elseif ($view === 'pending') {
+
+            return;
+        }
+        if ($view === 'pending') {
             $this->progressQueries->overseasReady($query)
-                ->where(function ($normalPending): void {
-                    // A former US-LA API attempt does not redefine another
-                    // warehouse's independent queue after manual reassignment.
-                    $normalPending->whereDoesntHave('warehouse', fn ($w) => $w->where('code', 'US-LA'))
-                        ->orWhereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeAttempt($sub));
+                ->where(function ($warehouses): void {
+                    $warehouses->whereHas('warehouse', fn ($w) => $w->whereNotIn('code', ['US-LA', 'US-SM']))
+                        ->orWhere(function ($sm): void {
+                            $sm->whereHas('warehouse', fn ($w) => $w->where('code', 'US-SM'))
+                                ->whereNotExists(fn ($q) => $this->scope3smIssued($q))
+                                ->whereNotExists(fn ($q) => $this->scope3smException($q));
+                        })->orWhere(function ($moreplus): void {
+                            $moreplus->whereHas('warehouse', fn ($w) => $w->where('code', 'US-LA'))
+                                ->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeCreated($sub))
+                                ->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeOmsException($sub))
+                                ->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeBatchQuarantined($sub))
+                                ->whereNotExists(function ($sub): void {
+                                    ShipOutProductionDispatchState::scopeAttempt($sub);
+                                    $sub->where('shipout_attempt.status', '!=', 'acknowledged');
+                                });
+                        });
                 });
-        } elseif (in_array($view, ['pending_dispatch', 'dispatched'], true)) {
+
+            return;
+        }
+        if ($view === 'issued') {
             $query->where('shipment_status', 'pending')
                 ->whereHas('overseaReview', fn ($r) => $r
                     ->where('status', 'approved')
                     ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'))
-                ->where(function ($byWarehouse) use ($view): void {
-                    // Preserve existing 3SM OMS semantics. MorePlus uses its
-                    // separate signed Production ledger; never merge providers.
-                    $byWarehouse->where(function ($usSm) use ($view): void {
-                        $usSm->whereHas('warehouse', fn ($w) => $w->where('code', 'US-SM'));
-                        $matching = fn ($sub) => $sub->select('order_id')->from('xlwms_dispatch_attempts')
-                            ->whereNotNull('oms_order_no')->where('oms_order_no', '!=', '')
-                            ->whereIn('state', [
-                                'batch_created', 'batch_draft_created', 'batch_draft_unverified',
-                                'oms_draft_created', 'oms_draft_unverified', 'batch_existing',
-                                'batch_status_updated', 'submitted_oms', 'found_in_oms',
-                            ]);
-                        if ($view === 'dispatched') {
-                            $usSm->whereIn('order_id', $matching);
-                        } else {
-                            $usSm->whereNotIn('order_id', $matching);
-                        }
-                    })->orWhere(function ($morePlus) use ($view): void {
-                        $morePlus->whereHas('warehouse', fn ($w) => $w->where('code', 'US-LA'));
-                        if ($view === 'dispatched') {
-                            $morePlus->whereExists(fn ($sub) => ShipOutProductionDispatchState::scopeCreated($sub));
-                        } else {
-                            $morePlus->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeAttempt($sub));
-                        }
+                ->where(function ($byWarehouse): void {
+                    $byWarehouse->where(function ($sm): void {
+                        $sm->whereHas('warehouse', fn ($w) => $w->where('code', 'US-SM'))
+                            ->whereExists(fn ($sub) => $this->scope3smIssued($sub));
+                    })->orWhere(function ($moreplus): void {
+                        $moreplus->whereHas('warehouse', fn ($w) => $w->where('code', 'US-LA'))
+                            ->whereExists(fn ($sub) => ShipOutProductionDispatchState::scopeCreated($sub))
+                            ->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeBatchQuarantined($sub));
                     });
                 });
-        } elseif ($view === 'shipped') {
+
+            return;
+        }
+        if ($view === 'shipped') {
             $query->where('shipment_status', 'shipped');
-        } elseif ($view === 'exceptions') {
+
+            return;
+        }
+        if ($view === 'exceptions') {
             $query->where(function ($exceptions): void {
                 $exceptions->where('shipment_status', 'exception')
+                    ->orWhere(function ($sm): void {
+                        $sm->where('shipment_status', 'pending')
+                            ->whereHas('warehouse', fn ($w) => $w->where('code', 'US-SM'))
+                            ->whereExists(fn ($q) => $this->scope3smException($q));
+                    })
                     ->orWhere(function ($unresolved): void {
                         $unresolved->where('shipment_status', 'pending')
                             ->whereHas('warehouse', fn ($w) => $w->where('code', 'US-LA'))
-                            ->whereExists(function ($sub): void {
-                                ShipOutProductionDispatchState::scopeAttempt($sub);
-                                $sub->where(function ($notConfirmed): void {
-                                    $notConfirmed->where('shipout_attempt.status', '!=', 'acknowledged')
-                                        ->orWhereNull('shipout_attempt.provider_order_id')
-                                        ->orWhere('shipout_attempt.provider_order_id', '');
-                                });
+                            ->where(function ($problem): void {
+                                $problem
+                                    ->whereExists(fn ($sub) => ShipOutProductionDispatchState::scopeOmsException($sub))
+                                    ->orWhereExists(function ($sub): void {
+                                        ShipOutProductionDispatchState::scopeAttempt($sub);
+                                        $sub->where(function ($notConfirmed): void {
+                                            $notConfirmed->where('shipout_attempt.status', '!=', 'acknowledged')
+                                                ->orWhereNull('shipout_attempt.provider_order_id')
+                                                ->orWhere('shipout_attempt.provider_order_id', '');
+                                        });
+                                    })
+                                    ->orWhereExists(fn ($sub) => ShipOutProductionDispatchState::scopeBatchQuarantined($sub));
                             });
                     });
             });
         }
+    }
+
+    /** 3SM: an OMS draft (status 0) is not a warehouse-dispatched order. */
+    private function scope3smIssued(Builder $query): void
+    {
+        $query->selectRaw('1')->from('xlwms_dispatch_attempts as sm_issued')
+            ->whereColumn('sm_issued.order_id', 'shipments.order_id')
+            ->whereNotNull('sm_issued.oms_order_no')
+            ->where('sm_issued.oms_order_no', '!=', '')
+            ->whereIn('sm_issued.oms_status_code', ['2', '3'])
+            ->whereNotIn('sm_issued.state', ['oms_draft_unverified', 'batch_draft_unverified']);
+    }
+
+    private function scope3smException(Builder $query): void
+    {
+        $query->selectRaw('1')->from('xlwms_dispatch_attempts as sm_exception')
+            ->whereColumn('sm_exception.order_id', 'shipments.order_id')
+            ->where(function ($exception): void {
+                $exception->whereIn('sm_exception.oms_status_code', ['4', '5'])
+                    ->orWhereIn('sm_exception.state', ['oms_draft_unverified', 'batch_draft_unverified']);
+            });
     }
 
     private function viewCounts(array $warehouseMap, ?array $selectedWarehouse): array
@@ -440,7 +510,7 @@ final class OverseaWarehouseController
         return $counts;
     }
 
-    private function row(Shipment $shipment, int $line, ?XlwmsDispatchAttempt $xlwms = null, ?array $tracking = null, ?XlwmsWebDraftAttempt $webDraft = null, ?object $shipOutAttempt = null): array
+    private function row(Shipment $shipment, int $line, ?XlwmsDispatchAttempt $xlwms = null, ?array $tracking = null, ?XlwmsWebDraftAttempt $webDraft = null, ?object $shipOutAttempt = null, ?object $shipOutBatchItem = null, ?object $shipOutReadback = null): array
     {
         $order = $shipment->order;
         $trackingState = app(LogisticsTrackingListStatus::class)
@@ -469,10 +539,10 @@ final class OverseaWarehouseController
             'workflow_status_projection' => $order ? $this->workflowStatusProjection->for($order) : null,
             'workflow_revision' => (int) ($order?->workflow_revision ?? 0),
             'warehouse_dispatch' => $shipment->warehouse?->code === 'US-LA'
-                ? ShipOutProductionDispatchState::warehouseDispatch($shipOutAttempt, (string) $shipment->shipment_status)
+                ? ShipOutProductionDispatchState::warehouseDispatch($shipOutAttempt, (string) $shipment->shipment_status, $shipOutBatchItem, $shipOutReadback)
                 : WarehouseDispatchStatus::from((string) $shipment->shipment_status, $xlwms),
             'shipout_production' => $shipment->warehouse?->code === 'US-LA'
-                ? ShipOutProductionDispatchState::from($shipOutAttempt) : null,
+                ? ShipOutProductionDispatchState::from($shipOutAttempt, $shipOutBatchItem, $shipOutReadback) : null,
             'source_type' => ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type) instanceof \BackedEnum
                 ? ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type)->value
                 : (string) ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type),

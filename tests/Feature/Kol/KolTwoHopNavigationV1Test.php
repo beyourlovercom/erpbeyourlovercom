@@ -118,6 +118,24 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $this->assertDatabaseHas('orders', ['order_kind' => 'kol_fulfillment', 'kol_id' => $kol->id]);
     }
 
+    public function test_manual_kol_order_without_cooperation_date_defaults_to_creation_date(): void
+    {
+        $staff = $this->viewer(['orders.view', 'orders.create', 'kol.view']);
+        $kol = $this->kol($staff);
+        $this->bindAffiliate($kol);
+        $product = Product::create(['source_type' => 'manual', 'sku' => 'KOL-NO-DATE', 'name' => 'No Date Sample', 'is_active' => true]);
+        $payload = [
+            'external_order_number' => 'KOL-NO-DATE-ORDER', 'kol_id' => $kol->id,
+            'order_date' => '', 'currency' => 'USD',
+            'recipient_name' => 'Creator', 'phone' => '123', 'country' => 'US',
+            'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => 'Test',
+            'items' => [['product_id' => $product->id, 'product_summary' => 'No Date Sample', 'quantity' => 1, 'unit_price' => '0.00']],
+        ];
+        $this->actingAs($staff)->post('/kol/orders', $payload)->assertRedirect();
+        $order = Order::query()->firstOrFail();
+        $this->assertSame(now()->toDateString(), $order->order_date->toDateString());
+    }
+
     public function test_manual_kol_erp_identity_uses_database_order_id_without_numeric_offset(): void
     {
         $staff = $this->viewer(['orders.view', 'orders.create', 'kol.view']);

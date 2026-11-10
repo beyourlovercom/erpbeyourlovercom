@@ -10,6 +10,41 @@ final class DomesticTrackingReturnReader
 {
     private const MAX_ROWS = 1000;
 
+    /** Identify the existing import template by exact column names, never by filename. */
+    public function detectProvider(UploadedFile $file): string
+    {
+        $ext = strtolower(pathinfo($file->getClientOriginalName(), PATHINFO_EXTENSION));
+        if (! in_array($ext, ['xls', 'xlsx'], true)) {
+            throw new InvalidArgumentException('请选择 XLS 或 XLSX 物流单号表。');
+        }
+
+        try {
+            $book = IOFactory::load($file->getRealPath());
+        } catch (\Throwable $e) {
+            throw new InvalidArgumentException('无法读取物流单号表，请检查文件是否损坏。', 0, $e);
+        }
+
+        try {
+            $sheet = $book->getSheet(0);
+            $headers = $sheet->rangeToArray('A1:'.$sheet->getHighestDataColumn().'1', null, true, true, false)[0] ?? [];
+            $names = array_map(static fn ($header): string => trim((string) $header), $headers);
+            if (in_array('原单号', $names, true) && in_array('转单号', $names, true)) {
+                return '4px';
+            }
+            if (in_array('客户单号', $names, true)
+                && (in_array('运单号', $names, true) || in_array('服务商单号', $names, true))) {
+                return 'weship';
+            }
+            if (in_array('ERP订单号', $names, true) && in_array('承运商', $names, true)
+                && in_array('Tracking', $names, true)) {
+                return 'generic';
+            }
+            throw new InvalidArgumentException('无法识别表格，请上传速达、纬狮或 ERP 待发货批量表。');
+        } finally {
+            $book->disconnectWorksheets();
+        }
+    }
+
     /** @return list<array{row:int,order_reference:string,tracking_number:string,carrier:string,provider_status:?string}> */
     public function read(string $provider, UploadedFile $file): array
     {

@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Experience\Jobs;
 
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProductionBatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryDispatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use Illuminate\Bus\Queueable;
@@ -84,7 +85,9 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
                     }
                     // Re-check exact order scope at execution time. This blocks
                     // queued jobs after a Canary id change or a kill-switch flip.
-                    if ((int) config('shipout.production_v1_batch_canary_order_id', 0) !== (int) $item->order_id) {
+                    if (! in_array((int) $item->order_id,
+                        ShipOutProductionBatchService::productionApprovedOrderIds(),
+                        true)) {
                         throw new RuntimeException('SHIPOUT_BATCH_CANARY_SCOPE_DENIED');
                     }
                     if (! app()->environment('production')
@@ -96,6 +99,9 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
                     }
                     $date = now('America/Los_Angeles')->addDay()->format('Y-m-d');
                     $preview = $dispatch->previewApproved((int) $item->order_id, $date);
+                    if (! ($preview['ready'] ?? false)) {
+                        throw new RuntimeException((string) ($preview['history_risk']['code'] ?? 'SHIPOUT_R9_HISTORY_UNVERIFIED'));
+                    }
                     $reply = $dispatch->dispatchApprovedOrder(
                         (int) $item->order_id, $date, $preview['payload_hash'],
                         'SUBMIT_SHIPOUT_ORDER_'.$item->order_id, $actor,
@@ -160,16 +166,54 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
 
     private function finish(): void
     {
+        $exceptions = DB::table('shipout_production_batch_items')
+            ->where('batch_id', $this->batchId)
+            ->whereIn('status', ['skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review'])
+            ->exists();
         DB::table('shipout_production_batches')->where('id', $this->batchId)
-            ->update(['status' => 'completed', 'finished_at' => now(), 'updated_at' => now()]);
+            ->update([
+                'status' => $exceptions ? 'completed_partial' : 'completed',
+                'finished_at' => now(), 'updated_at' => now(),
+            ]);
     }
 
     public function failed(Throwable $error): void
     {
+        // A worker crash isolates the one in-progress order, even if a POST
+        // reached ShipOut. Never requeue that order or reset its attempt ledger.
         DB::table('shipout_production_batch_items')
             ->where('batch_id', $this->batchId)->where('status', 'processing')
             ->update(['status' => 'uncertain', 'result_code' => 'WORKER_INTERRUPTED_MANUAL_CHECK', 'updated_at' => now()]);
-        DB::table('shipout_production_batches')->where('id', $this->batchId)
-            ->update(['status' => 'paused', 'updated_at' => now()]);
+
+        try {
+            $remaining = DB::table('shipout_production_batch_items')
+                ->where('batch_id', $this->batchId)->where('status', 'queued')->exists();
+            if ($remaining) {
+                if (config('queue.default') === 'sync'
+                    || ! (bool) config('shipout.production_v1_batch_enabled', false)
+                    || ! (bool) config('shipout.production_v1_batch_owner_approved', false)) {
+                    DB::table('shipout_production_batches')->where('id', $this->batchId)
+                        ->update(['status' => 'paused', 'updated_at' => now()]);
+
+                    return;
+                }
+                self::dispatch($this->batchId)->onQueue(self::QUEUE)->delay(now()->addSeconds(70));
+
+                return;
+            }
+            $pendingReads = DB::table('shipout_production_batch_items')
+                ->where('batch_id', $this->batchId)
+                ->whereIn('status', ['pending_oms', 'oms_visible_provisional'])->exists();
+            if ($pendingReads) {
+                DB::table('shipout_production_batches')->where('id', $this->batchId)
+                    ->update(['status' => 'awaiting_oms', 'updated_at' => now()]);
+            } else {
+                $this->finish();
+            }
+        } catch (Throwable) {
+            // Shared queue or DB unavailable: stop, do not risk duplicate jobs.
+            DB::table('shipout_production_batches')->where('id', $this->batchId)
+                ->update(['status' => 'paused', 'updated_at' => now()]);
+        }
     }
 }

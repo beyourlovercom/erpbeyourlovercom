@@ -16,6 +16,7 @@ use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
@@ -185,8 +186,12 @@ final class OrderController
         if ($kind === OrderKind::KolFulfillment) {
             abort_unless($request->user()->can('kol.view'), 403);
         }
+        $orderRules = $this->rules();
+        if ($kind === OrderKind::KolFulfillment) {
+            $orderRules['order_date'] = ['nullable', 'date'];
+        }
         $data = $request->validate([
-            ...$this->rules(),
+            ...$orderRules,
             'kol_id' => $kind === OrderKind::KolFulfillment
                 ? ['required', 'integer', Rule::exists('kols', 'id')->whereNull('archived_at')]
                 : ['prohibited'],
@@ -202,6 +207,9 @@ final class OrderController
             }
         } else {
             unset($data['kol_id']);
+        }
+        if ($kind === OrderKind::KolFulfillment && blank($data['order_date'] ?? null)) {
+            $data['order_date'] = now()->toDateString();
         }
         $items = $data['items'];
         unset($data['items']);
@@ -270,6 +278,14 @@ final class OrderController
             'canViewProfit' => ! $isDerived && ($request->user()?->can('analysis.view') ?? false),
             'kolProfile' => $this->kolProfileForOrder($request, $order),
             'canMarkOperational' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
+            'isDomesticFactory' => strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY',
+            'canMarkDomesticStockout' => ! $order->isOperationallyArchived()
+                && ($request->user()?->can('domestic.review') ?? false)
+                && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY'
+                && $order->order_status?->value === 'pending_shipment'
+                && $order->shipment?->shipment_status === 'pending'
+                && blank($order->shipment?->tracking_number)
+                && $order->shipment?->shipped_at === null,
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())
                 ->map(fn (array $definition, string $code): array => [
                     'code' => $code, ...$definition,
@@ -285,7 +301,7 @@ final class OrderController
                     || ($request->user()?->can('domestic.review') && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY')),
             'canManageAuxiliary' => ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canTrashOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
-            'canArchiveOrder' => ! $order->trashed() && $order->archived_at === null && $order->operational_archived_at === null && ($request->user()?->can('orders.edit') ?? false),
+            'canArchiveOrder' => ! $order->trashed() && $order->archived_at === null && $order->operational_archived_at === null && ($request->user()?->can('orders.archive') ?? false),
             'directlyArchived' => $order->operational_archived_at !== null,
             'operationallyArchived' => $order->isOperationallyArchived(),
 
@@ -542,6 +558,19 @@ final class OrderController
         KolOrderAccessScope::authorize($request->user(), $order);
         abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能修改业务标记。');
         $data = $request->validate(['active' => ['required', 'boolean']]);
+
+        // Factory shortage is a fulfillment gate, never an isolated generic
+        // marker. Reuse the same audited transaction as the domestic review page.
+        $order->loadMissing('shipment.warehouse');
+        if ($marker === 'stockout'
+            && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY') {
+            abort_unless($request->user()?->can('domestic.review'), 403, '仅国内商务审核人员可标记缺货。');
+            abort_unless((bool) $data['active'], 409, '请在国内「缺货单」点击「已到货-可发货」恢复。');
+            app(DomesticReviewDecisionService::class)->decide($order, 'stockout', null, $request->user());
+
+            return back()->with('success', '已标记缺货，订单进入国内「缺货单」。');
+        }
+
         $this->orders->setOperationalMarker($order, $marker, (bool) $data['active'], $request->user());
 
         return back()->with('success', '订单业务标记已更新');

@@ -142,6 +142,31 @@ final class ShipOutReadOnlyGatewayTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    public function test_sandbox_r8_async_shipping_error_is_sanitized_without_leaking_original(): void
+    {
+        config()->set('shipout.sandbox_read_enabled', true);
+        Http::fake(['https://opendev.shipout.com/api/*' => Http::response([
+            'result' => 'OK',
+            'data' => ['total' => 1, 'records' => [[
+                'orderNO' => 'BYL-SANDBOX-R8-20261110-001',
+                'orderId' => 'SYNTHETIC-SANDBOX-ID',
+                'status' => 6,
+                'cancelReason' => 'shipping error! PRIVATE_TRACE',
+                'recipientName' => 'PRIVATE_NAME',
+                'shipmentList' => [['shipmentId' => 'S1', 'warehouseId' => null]],
+            ]]],
+        ], 200)]);
+        Http::preventStrayRequests();
+        $page = $this->client()->orderPage('1531580902677626882', 'BYL-SANDBOX-R8-20261110-001');
+        $this->assertSame(6, $page['records'][0]['status']);
+        $this->assertSame('PROVIDER_SHIPPING_ERROR', $page['records'][0]['cancelReasonCode']);
+        $this->assertSame([], $page['records'][0]['shipments']);
+        $this->assertStringNotContainsString('PRIVATE_TRACE', json_encode($page));
+        $this->assertStringNotContainsString('PRIVATE_NAME', json_encode($page));
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn ($req) => $req->method() !== 'GET');
+    }
+
     public function test_order_detail_warehouse_mismatch_is_rejected(): void
     {
         config()->set('shipout.sandbox_read_enabled', true);

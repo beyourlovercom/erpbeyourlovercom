@@ -18,6 +18,41 @@ final class DomesticBusinessReviewTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_review_split_child_uses_parent_payment_date_in_real_inertia_response(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $actor = $this->userWith(['logistics.view', 'domestic.review']);
+        $root = $this->order();
+        $root->forceFill(['source_type' => OrderSourceType::WooCommerce])->save();
+        $root->financials()->create(['paid_at' => '2026-10-18 12:00:00', 'provider_order_total' => '145.68', 'currency' => 'EUR']);
+        $root->shipment()->delete();
+        $child = Order::query()->create([
+            'fulfillment_parent_id' => $root->id,
+            'fulfillment_suffix' => 'A',
+            'fulfillment_role' => 'original',
+            'erp_order_id' => $root->erp_order_id.'A',
+            'internal_order_number' => 'FULF-'.$root->id.'-A',
+            'source_type' => OrderSourceType::ManualOther,
+            'order_kind' => OrderKind::FulfillmentDerived,
+            'order_date' => '2026-11-09',
+            'order_status' => OrderStatus::PendingShipment,
+            'currency' => 'USD',
+        ]);
+        $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $child->shipment()->create(['warehouse_id' => $factory->id, 'shipment_status' => 'pending']);
+        $child->items()->create(['product_summary' => 'Split test SKU', 'sku' => 'SPLIT-DATE', 'quantity' => 2, 'unit_price' => '0.00', 'line_revenue' => '0.00']);
+        $this->actingAs($actor)->get('/logistics/china?view=review')->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Logistics/Domestic/Index')
+                ->where('rows.total', 1)
+                ->where('rows.data.0.paid_date', '10-18')
+                ->where('rows.data.0.paid_date_source', '母订单支付日期')
+                ->where('rows.data.0.amount', '145.68')
+                ->where('rows.data.0.amount_currency', 'EUR')
+                ->where('rows.data.0.amount_source', '母订单总金额 · 分仓不重复计收'));
+        $this->assertNull($child->financials, 'split fulfillment never invents its own payment fact');
+    }
+
     public function test_stockout_goes_to_own_tab_and_approval_returns_to_pending(): void
     {
         $this->withoutVite();
@@ -42,6 +77,142 @@ final class DomesticBusinessReviewTest extends TestCase
         $this->actingAs($actor)->get('/logistics/china?view=pending')->assertOk()
             ->assertInertia(fn ($page) => $page->component('Logistics/Domestic/Index')
                 ->where('viewCounts.stockout', 0)->where('viewCounts.pending', 1));
+    }
+
+    public function test_derived_factory_auxiliary_stockout_uses_domestic_business_workflow(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $actor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'domestic.review']);
+        $root = $this->order();
+        $root->shipment()->delete();
+        $child = Order::query()->create([
+            'fulfillment_parent_id'=>$root->id, 'fulfillment_suffix'=>'A', 'fulfillment_role'=>'original',
+            'erp_order_id'=>$root->erp_order_id.'A', 'internal_order_number'=>'AUX-'.$root->id,
+            'source_type'=>OrderSourceType::ManualOther, 'order_kind'=>OrderKind::FulfillmentDerived,
+            'order_date'=>'2026-11-10', 'order_status'=>OrderStatus::PendingShipment, 'currency'=>'USD',
+        ]);
+        $child->shipment()->create([
+            'warehouse_id'=>Warehouse::query()->where('code','FACTORY')->firstOrFail()->id,
+            'shipment_status'=>'pending',
+        ]);
+
+        $this->actingAs($actor)->get('/customers/orders/'.$child->id)->assertOk()->assertInertia(
+            fn ($page) => $page->component('Orders/Show')
+                ->where('canMarkOperational', false)
+                ->where('isDomesticFactory', true)
+                ->where('canMarkDomesticStockout', true)
+        );
+        // Direct/legacy marker URL must also use the canonical domestic review gate.
+        $this->actingAs($actor)->post('/orders/'.$child->id.'/operational-markers/stockout', [
+            'active'=>true,
+        ])->assertRedirect()->assertSessionHas('success', '已标记缺货，订单进入国内「缺货单」。');
+
+        $this->assertDatabaseHas('orders', [
+            'id'=>$child->id, 'workflow_status'=>'out_of_stock',
+        ]);
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id'=>$child->id,'marker'=>'domestic_stockout','marked_by'=>$actor->id,
+        ]);
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id'=>$child->id,'marker'=>'stockout',
+        ]);
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id'=>$child->id,'marker'=>'domestic_reviewed',
+        ]);
+        $this->assertDatabaseHas('shipments', [
+            'order_id'=>$child->id,'shipment_status'=>'pending','tracking_number'=>null,'shipped_at'=>null,
+        ]);
+        $this->actingAs($actor)->get('/logistics/china?view=stockout')->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Logistics/Domestic/Index')
+                ->where('viewCounts.stockout',1)->where('viewCounts.pending',0));
+
+        // Do not let a second click silently clear the fulfillment shortage gate.
+        $this->actingAs($actor)->post('/orders/'.$child->id.'/operational-markers/stockout', [
+            'active'=>false,
+        ])->assertStatus(409);
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$child->id.'/restock')
+            ->assertRedirect('/logistics/china?view=pending');
+        $this->actingAs($actor)->get('/logistics/china?view=pending')->assertInertia(
+            fn ($page) => $page->where('viewCounts.pending',1)->where('viewCounts.stockout',0)
+        );
+    }
+
+    public function test_factory_auxiliary_stockout_permission_and_shipment_gate_remain_enforced(): void
+    {
+        $order = $this->order();
+        $editor = $this->userWith(['orders.view', 'orders.edit']);
+        $reviewer = $this->userWith(['orders.view', 'orders.edit', 'domestic.review']);
+        $this->actingAs($editor)->post('/orders/'.$order->id.'/operational-markers/stockout', [
+            'active'=>true,
+        ])->assertForbidden();
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id'=>$order->id,'marker'=>'domestic_stockout',
+        ]);
+        $order->shipment()->update(['shipment_status'=>'shipped','shipped_at'=>now(),'tracking_number'=>'LIVE-GATE-1']);
+        $this->actingAs($reviewer)->post('/orders/'.$order->id.'/operational-markers/stockout', [
+            'active'=>true,
+        ])->assertStatus(409);
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id'=>$order->id,'marker'=>'domestic_stockout',
+        ]);
+    }
+
+    public function test_overseas_auxiliary_stockout_remains_annotation_not_domestic_review(): void
+    {
+        $order = $this->order();
+        $order->shipment()->update(['warehouse_id'=>Warehouse::query()->where('code','US-LA')->firstOrFail()->id]);
+        $actor = $this->userWith(['orders.view','orders.edit']);
+        $this->actingAs($actor)->post('/orders/'.$order->id.'/operational-markers/stockout', [
+            'active'=>true,
+        ])->assertRedirect();
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id'=>$order->id,'marker'=>'stockout',
+        ]);
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id'=>$order->id,'marker'=>'domestic_stockout',
+        ]);
+        self::assertNull($order->fresh()->workflow_status);
+    }
+
+    public function test_restock_moves_only_out_of_stock_order_into_pending_without_shipping(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $actor = $this->userWith(['logistics.view', 'domestic.review']);
+        $order = $this->order();
+
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/stockout')->assertRedirect();
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/restock')
+            ->assertRedirect('/logistics/china?view=pending')
+            ->assertSessionHas('success', '已确认到货，订单已进入待发货。');
+        $this->assertDatabaseHas('orders', ['id'=>$order->id, 'workflow_status'=>'sending', 'order_status'=>'pending_shipment']);
+        $this->assertDatabaseMissing('order_operational_markers', ['order_id'=>$order->id, 'marker'=>'domestic_stockout']);
+        $this->assertDatabaseHas('order_operational_markers', ['order_id'=>$order->id, 'marker'=>'domestic_reviewed', 'marked_by'=>$actor->id]);
+        $this->assertDatabaseHas('shipments', [
+            'order_id'=>$order->id, 'shipment_status'=>'pending', 'tracking_number'=>null, 'shipped_at'=>null,
+        ]);
+        $this->assertDatabaseHas('audit_records', [
+            'entity_id'=>$order->id, 'action'=>'domestic.review_restock',
+        ]);
+        $this->actingAs($actor)->get('/logistics/china?view=pending')->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Logistics/Domestic/Index')
+                ->where('viewCounts.stockout',0)->where('viewCounts.pending',1)
+                ->where('rows.data.0.order_id',$order->id));
+    }
+
+    public function test_restock_requires_business_permission_and_actual_stockout_state(): void
+    {
+        $order = $this->order();
+        $actor = $this->userWith(['logistics.view', 'domestic.review']);
+        $logisticsOnly = $this->userWith(['logistics.view', 'logistics.operate']);
+
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/restock')->assertStatus(409);
+        $this->assertDatabaseMissing('order_operational_markers', ['order_id'=>$order->id,'marker'=>'domestic_reviewed']);
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/stockout')->assertRedirect();
+        $this->actingAs($logisticsOnly)->post('/logistics/china/orders/'.$order->id.'/restock')->assertForbidden();
+        $this->assertDatabaseHas('orders', ['id'=>$order->id,'workflow_status'=>'out_of_stock']);
+        $this->assertDatabaseHas('order_operational_markers', ['order_id'=>$order->id,'marker'=>'domestic_stockout']);
     }
 
     public function test_approval_clears_legacy_automatic_provider_and_service_before_pending(): void

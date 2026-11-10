@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
+use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
@@ -14,7 +15,6 @@ use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\GiftSkuResolutionService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
-use App\Modules\Logistics\Application\LogisticsTrackingImmediateDispatch;
 use App\Modules\Logistics\Application\LogisticsStatusSummary;
 use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
 use App\Modules\Logistics\Application\ReplacementFulfillmentService;
@@ -350,11 +350,15 @@ final class LogisticsController
     {
         $data = $request->validate(['tracking_number' => ['required', 'string', 'max:128']]);
         $updated = $this->shipments->updateTracking($order, $data['tracking_number'], $request->user());
-        $sync = app(LogisticsTrackingImmediateDispatch::class)->afterShipmentSaved($updated, $request->user());
+        $sync = $this->handoffAfterShipment($updated);
 
-        return back()->with('success', ($sync['status'] ?? null) === 'completed'
-            ? '追踪号已更新，官网物流写回已验证'
-            : '追踪号已更新，官网同步状态请在发货列表核对');
+        return back()->with('success', ($sync['status'] ?? null) === 'handoff_failed'
+            ? '追踪号已更新，但官网待同步任务登记失败，请管理员核对。'
+            : (($sync['status'] ?? null) === 'pending'
+                ? '追踪号已更新，官网由同步模块每 30 分钟处理。'
+                : (($sync['status'] ?? null) === 'completed'
+                    ? '追踪号已更新，官网物流写回已验证'
+                    : '追踪号已更新，官网同步状态请在发货列表核对')));
     }
 
     public function markException(Request $request, Order $order): RedirectResponse
@@ -383,13 +387,23 @@ final class LogisticsController
             'logistics_note' => ['nullable', 'string', 'max:5000'],
         ]);
         $shipped = $this->assistedFulfillment->markShipped($order, $data, $request->user());
-        $sync = app(LogisticsTrackingImmediateDispatch::class)->afterShipmentSaved($shipped, $request->user());
+        $sync = $this->handoffAfterShipment($shipped);
         $msg = empty($data['tracking_number']) ? '已标记发货，追踪号待填入'
-            : (($sync['status'] ?? null) === 'completed'
-                ? '已标记发货，官网物流写回已验证'
-                : '已标记发货，官网物流待同步或待核对');
+            : (($sync['status'] ?? null) === 'handoff_failed'
+                ? 'ERP 已发货，但官网待同步任务登记失败，请管理员核对。'
+                : (($sync['status'] ?? null) === 'pending'
+                    ? 'ERP 已发货，官网由同步模块每 30 分钟处理。'
+                    : (($sync['status'] ?? null) === 'completed'
+                        ? '已标记发货，官网物流写回已验证'
+                        : '已标记发货，官网物流待同步或待核对')));
 
         return back()->with('success', $msg);
+    }
+
+    /** All ERP shipment/tracking writes only stage an intent for Sync OS. */
+    private function handoffAfterShipment(Order $order): array
+    {
+        return app(ShipmentWebsiteSyncHandoff::class)->afterShipmentSaved($order);
     }
 
     public function reopen(Request $request, Order $order): RedirectResponse

@@ -8,6 +8,11 @@ use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
+use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnReader;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use App\Modules\Sync\Infrastructure\EloquentSyncOrchestrationRepository;
+use Mockery;
+use Illuminate\Support\Facades\Queue;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Orders\Application\OrderKind;
@@ -346,6 +351,93 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         self::assertSame('blocked', $preview['rows'][0]['status']);
         self::assertStringContainsString('运单号与服务商单号不一致', $preview['rows'][0]['message']);
         self::assertSame('pending', $order->fresh()->shipment->shipment_status);
+    }
+
+    public function test_unified_upload_validation_error_is_json_for_island_clients(): void
+    {
+        $this->withoutMiddleware();
+        $this->actingAs(User::factory()->create(['is_active' => true]))
+            ->postJson('/logistics/china/tracking-import/preview', [])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['file']);
+    }
+
+    public function test_unified_upload_detects_speeda_weship_and_generic_by_headers(): void
+    {
+        $reader = app(DomesticTrackingReturnReader::class);
+        $speeda = $this->speedaReturnXls([['C50120-007', '4PX123']]);
+        self::assertSame('4px', $reader->detectProvider($speeda));
+
+        foreach ([
+            ['weship', [['客户单号', '运单号'], ['C50121-007', 'WE123']]],
+            ['generic', [['ERP订单号', '承运商', 'Tracking'], ['C50122-007', '4PX', '4PX124']]],
+        ] as [$expected, $rows]) {
+            $book = new Spreadsheet;
+            $book->getActiveSheet()->fromArray($rows);
+            $path = tempnam(sys_get_temp_dir(), 'domestic-unified-').'.xlsx';
+            (new Xlsx($book))->save($path);
+            $book->disconnectWorksheets();
+            try {
+                $file = new UploadedFile($path, 'unknown-name.xlsx', null, null, true);
+                self::assertSame($expected, $reader->detectProvider($file));
+            } finally {
+                @unlink($path);
+            }
+        }
+    }
+
+    public function test_batch_ship_stages_periodic_outbox_without_http_and_is_idempotent(): void
+    {
+        Queue::fake();
+        $gateway = Mockery::mock(WooCommerceTrackingGateway::class);
+        $gateway->shouldReceive('descriptor')->andReturn(['configured' => true, 'connection_key' => 'shop-test']);
+        $gateway->shouldNotReceive('syncTracking');
+        $gateway->shouldNotReceive('syncOrderStatus');
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        $order = $this->domesticOrder('007-0923-c50123', '4PX', true, '111', 1);
+        $order->update(['source_type' => OrderSourceType::WooCommerce]);
+        $order->items()->update(['woocommerce_line_item_id' => 12345]);
+        $order->externalReferences()->create([
+            'provider' => 'woocommerce',
+            'connection_key' => 'shop-test',
+            'reference' => '912345',
+            'provider_modified_at' => now(),
+        ]);
+        $order->financials()->create([
+            'currency' => 'USD',
+            'provider' => 'woocommerce',
+            'provider_reference' => (string) $order->external_order_number,
+            'provider_order_status' => 'processing',
+            'provider_modified_at' => now(),
+            'paid_at' => now(),
+            'provider_order_total' => '49.00',
+            'revenue_provenance' => 'provider_import',
+            'completeness_status' => 'INCOMPLETE',
+        ]);
+        $file = $this->speedaReturnXls([['C50123-007', '4PX-QUEUED']]);
+        $service = app(DomesticTrackingReturnService::class);
+        $preview = $service->preview('4px', $file);
+
+        $result = $service->apply('4px', $preview, $preview['token'], User::factory()->create(['is_active' => true]));
+        self::assertSame(1, $result['applied_count']);
+        self::assertSame('pending', $result['rows'][0]['sync']);
+        self::assertSame('shipped', $order->fresh()->shipment->shipment_status);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('sync_outbox', [
+            'operation' => 'woocommerce.tracking_outbound',
+            'aggregate_id' => (string) $order->fresh()->shipment->id,
+            'status' => 'pending',
+            'attempts' => 0,
+        ]);
+        $this->assertCount(1, app(EloquentSyncOrchestrationRepository::class)
+            ->dueTrackingOutbox(50, 0), 'Old Shipment IDs must still be picked up by new Outbox IDs');
+
+        $repeated = $service->preview('4px', $file);
+        self::assertSame(0, $repeated['apply_count']);
+        self::assertSame(1, $repeated['noop_count']);
+        $service->apply('4px', $repeated, $repeated['token'], User::factory()->create(['is_active' => true]));
+        Queue::assertNothingPushed();
+        $this->assertDatabaseCount('sync_outbox', 1);
     }
 
     private function logisticsViewer(): User
