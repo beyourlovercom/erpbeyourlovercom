@@ -138,7 +138,8 @@ final class KolCollaborationController
                 'status' => 'confirmed',
                 'agreement_amount' => $opportunity->estimated_cost,
                 'currency' => $opportunity->currency ?: 'USD',
-                'agreed_at' => now()->toDateString(),
+                // A conversion is not evidence of the real agreement date. Staff may fill agreed_at later.
+                'agreed_at' => null,
                 'planned_publish_at' => $opportunity->expected_publish_at,
                 'notes' => $opportunity->notes,
             ]);
@@ -169,13 +170,15 @@ final class KolCollaborationController
             $locked->load('products');
             abort_if($locked->products->isEmpty(), 422, '创建履约订单前必须至少指定一个合作产品');
 
+            $businessDate = $locked->agreed_at?->toDateString() ?? now()->toDateString();
+
             $order = $this->orders->create([
                 'source_type' => OrderSourceType::Kol->value,
                 'order_kind' => OrderKind::KolFulfillment->value,
                 'kol_id' => $kol->id,
-                'erp_order_id' => $this->identities->generate('k', $kol->id, now()->toDateString()),
+                'erp_order_id' => $this->identities->generate('k', $kol->id, $businessDate),
                 'external_order_number' => $this->orders->generateExternalOrderNumber(OrderKind::KolFulfillment),
-                'order_date' => now()->toDateString(),
+                'order_date' => $businessDate,
                 'order_note' => 'KOL Collaboration #'.$locked->id,
                 'currency' => $locked->currency ?: 'USD',
                 'owner_id' => $locked->owner_id ?? $request->user()->getAuthIdentifier(),

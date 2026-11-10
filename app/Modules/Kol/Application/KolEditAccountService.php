@@ -24,7 +24,7 @@ final class KolEditAccountService
     ) {}
 
     /** @return array{success:bool,affiliate_status:?string,coupon_status:?string} */
-    public function provision(Kol $kol, string $password, string $couponCode, Authenticatable $actor): array
+    public function provision(Kol $kol, string $password, string $couponCode, string $username, Authenticatable $actor): array
     {
         if (! KolScope::canOperate($actor)) {
             throw new AuthorizationException('KOL operation permission is required.');
@@ -52,6 +52,7 @@ final class KolEditAccountService
                 (int) $kol->getKey(),
                 $actor,
                 $password,
+                $username,
             );
         } catch (DomainException|RuntimeException $exception) {
             unset($password);

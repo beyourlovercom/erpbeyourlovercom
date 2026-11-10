@@ -73,6 +73,7 @@ final class FulfillmentDerivedOrderService
 
         $child->forceFill([
             'customer_id' => $parent->customer_id,
+            'kol_id' => $parent->kol_id,
             'internal_order_number' => 'FULF-'.$parent->getKey().'-'.$suffix,
             'erp_order_id' => $parent->erp_order_id.$suffix,
             'source_type' => OrderSourceType::ManualOther,

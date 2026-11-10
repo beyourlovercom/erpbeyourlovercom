@@ -35,6 +35,7 @@ final class KolCreateAutoProvisionService
         array $salesPerformanceEntries,
         string $password,
         string $couponCode,
+        string $username,
         Authenticatable $actor,
     ): array {
         if (! KolScope::canOperate($actor)) {
@@ -58,7 +59,7 @@ final class KolCreateAutoProvisionService
         $affiliate = null;
         $coupon = null;
         try {
-            $affiliate = $this->affiliates->provisionForCreate($connectionKey, (int) $kol->getKey(), $actor, $password);
+            $affiliate = $this->affiliates->provisionForCreate($connectionKey, (int) $kol->getKey(), $actor, $password, $username);
             unset($password);
 
             if ($affiliate->provisioning_status !== 'active') {

@@ -104,6 +104,7 @@ final class KolController
             'joined_at' => 'nullable|date',
             'notes' => 'nullable|string|max:5000',
             'contact_email' => 'required|email|max:255',
+            'wordpress_username' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.@-]+$/D'],
             'wordpress_password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
             'wordpress_password_confirmation' => 'required|string|max:128',
             'affiliate_coupon_code' => 'required|string|max:255',
@@ -154,11 +155,15 @@ final class KolController
             $data['finance_owner_id'] = null;
         }
 
+        $username = \App\Modules\Kol\Application\AffiliateWp\KolProvisioningService::resolveUsername(
+            $data['wordpress_username'] ?? null, (string) $data['display_name']
+        );
         $password = (string) $data['wordpress_password'];
         $couponCode = (string) $data['affiliate_coupon_code'];
         $socialAccounts = $data['social_accounts'] ?? [];
         $salesPerformanceEntries = $data['sales_performance_entries'] ?? [];
         unset(
+            $data['wordpress_username'],
             $data['wordpress_password'],
             $data['wordpress_password_confirmation'],
             $data['affiliate_coupon_code'],
@@ -172,6 +177,7 @@ final class KolController
             $salesPerformanceEntries,
             $password,
             $couponCode,
+            $username,
             $user,
         );
         unset($password);
@@ -348,16 +354,21 @@ final class KolController
     {
         $this->authorizeKolAccess($request, $kol);
         $data = $request->validate([
+            'wordpress_username' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.@-]+$/D'],
             'password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
             'password_confirmation' => 'required|string|max:128',
             'affiliate_coupon_code' => 'required|string|max:255',
         ]);
 
+        $username = \App\Modules\Kol\Application\AffiliateWp\KolProvisioningService::resolveUsername(
+            $data['wordpress_username'] ?? null, (string) $kol->display_name
+        );
         $password = (string) $data['password'];
         $result = $this->editAccount->provision(
             $kol,
             $password,
             (string) $data['affiliate_coupon_code'],
+            $username,
             $request->user(),
         );
         unset($password, $data['password'], $data['password_confirmation']);

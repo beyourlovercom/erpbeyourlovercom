@@ -13,7 +13,7 @@ vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default:{ template:
 const baseProps = {
   view:'pending',
   rows:{ data:[{
-    line:1,order_id:1,paid_date:'11-09',erp_order_id:'007-0923-c50001',provider_reference:'C50001-007',order_url:'/customers/orders/1',
+    line:1,order_id:1,paid_date:'11-09',amount:'127.35',amount_currency:'EUR',amount_source:'网站真实订单总金额',erp_order_id:'007-0923-c50001',provider_reference:'C50001-007',order_url:'/customers/orders/1',
     recipient_name:'A',phone:'123',country:'DE',state:'DE-SN',city:'Dresden',postal_code:'01219',
     carrier:'4PX',service:'SD经济挂号-带电',carrier_selection_source:'manual',tracking_number:null,shipment_status:'pending',shipped_at:null,
     review_status:'approved' as const,export_blockers:[],items:[{sku:'M2',quantity:1}],
@@ -81,20 +81,40 @@ describe('Domestic logistics production workbench', () => {
     const cells = review.findAll('.orders tbody tr:first-child td')
     expect(headers).toContain('SKU')
     expect(headers).toContain('数量')
-    expect(headers.slice(headers.indexOf('订单状态') + 1,headers.indexOf('订单状态') + 4)).toEqual(['成交日期','SKU','数量'])
+    expect(headers.slice(headers.indexOf('订单状态') + 1,headers.indexOf('订单状态') + 5)).toEqual(['成交日期','SKU','数量','金额'])
     expect(cells[headers.indexOf('成交日期')].text()).toBe('11-09')
+    expect(cells[headers.indexOf('成交日期')].attributes('title')).toBe('')
     expect(cells[headers.indexOf('SKU')].find('div').text()).toBe('M2')
     expect(cells[headers.indexOf('数量')].text()).toBe('1')
+    expect(cells[headers.indexOf('金额')].text()).toBe('127.35 EUR')
 
     const pending = mount(Index,{props:{...baseProps,view:'pending'}})
     const pendingHeaders = pending.findAll('.orders thead th').map(th=>th.text())
-    expect(pendingHeaders).toContain('SKU / 数量')
-    expect(pendingHeaders).not.toContain('SKU')
-    expect(pendingHeaders).not.toContain('数量')
+    expect(pendingHeaders).not.toContain('SKU / 数量')
     expect(pendingHeaders).not.toContain('成交日期')
+    expect(pendingHeaders.slice(pendingHeaders.indexOf('国家/地区') + 1, pendingHeaders.indexOf('国家/地区') + 4)).toEqual(['SKU','数量','金额'])
+    const pendingCells = pending.findAll('.orders tbody tr:first-child td')
+    expect(pendingCells[pendingHeaders.indexOf('SKU')].find('div').text()).toBe('M2')
+    expect(pendingCells[pendingHeaders.indexOf('数量')].text()).toBe('1')
+    expect(pendingCells[pendingHeaders.indexOf('金额')].text()).toBe('127.35 EUR')
+    expect(pendingCells[pendingHeaders.indexOf('金额')].attributes('title')).toBe('网站真实订单总金额')
+    const history = mount(Index,{props:{...baseProps,view:'4px'}})
+    const historyHeaders = history.findAll('.orders thead th').map(th=>th.text())
+    expect(historyHeaders).toContain('SKU / 数量')
+    expect(historyHeaders).not.toContain('金额')
+    const missingAmount = mount(Index,{props:{...baseProps,view:'pending',rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],amount:null,amount_currency:null}]}}})
+    const missingHeaders = missingAmount.findAll('.orders thead th').map(th=>th.text())
+    expect(missingAmount.findAll('.orders tbody tr:first-child td')[missingHeaders.indexOf('金额')].text()).toBe('—')
     const noPaid = mount(Index,{props:{...baseProps,view:'review',rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],paid_date:null}]}}})
     const noPaidHeaders = noPaid.findAll('.orders thead th').map(th=>th.text())
     expect(noPaid.findAll('.orders tbody tr:first-child td')[noPaidHeaders.indexOf('成交日期')].text()).toBe('—')
+  })
+
+  it('uses the correct table span in pending, review, and history empty states', () => {
+    for (const [view, expected] of [['pending','16'], ['review','17'], ['today','14']]) {
+      const wrapper = mount(Index,{props:{...baseProps,view,rows:{...baseProps.rows,data:[]}}})
+      expect(wrapper.get('.orders tbody td.empty').attributes('colspan')).toBe(expected)
+    }
   })
 
   it('places 今日订单 immediately after 待发货 and renders three concise one-line modules with no commas', () => {

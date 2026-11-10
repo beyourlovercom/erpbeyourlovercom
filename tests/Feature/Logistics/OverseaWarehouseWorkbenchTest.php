@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
@@ -485,6 +486,93 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
             $this->actingAs($user)->get($url)->assertStatus(422);
         }
+    }
+
+    public function test_moreplus_failed_batch_order_is_quarantined_while_another_ack_stays_in_dispatched(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $bad = $this->orderAt($warehouses['US-LA'], '007erp-1110-c42149');
+        $good = $this->orderAt($warehouses['US-LA'], '007erp-1110-c42150');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$bad->id}/approve")->assertRedirect();
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$good->id}/approve")->assertRedirect();
+
+        $wh = ShipOutProductionDispatchState::MOREPLUS_PROVIDER_WAREHOUSE_ID;
+        foreach ([$bad, $good] as $order) {
+            DB::table('shipout_dispatch_attempts')->insert([
+                'order_id' => $order->id,
+                'order_no' => 'C'.$order->id.'-007',
+                'provider_warehouse_id' => $wh,
+                'payload_hash' => str_repeat('a', 64),
+                'status' => 'acknowledged', 'provider_order_id' => 'OMS-ACK-'.$order->id,
+                'result_code' => 'ASYNC_ACCEPTED_QUERY_REQUIRED',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $batchId = '00000000-0000-4000-8000-000000000124';
+        DB::table('shipout_production_batches')->insert([
+            'id' => $batchId, 'operator_user_id' => $user->id,
+            'status' => 'completed_partial', 'dry_run' => false, 'total' => 2,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('shipout_production_batch_items')->insert([
+            'batch_id' => $batchId, 'order_id' => $bad->id,
+            'order_no' => $bad->erp_order_id, 'status' => 'provider_cancelled',
+            'result_code' => 'PROVIDER_DUPLICATE_ORDER',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        Http::preventStrayRequests();
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $bad->id)
+            ->where('rows.data.0.shipout_production.status', 'oms_quarantined')
+            ->where('rows.data.0.warehouse_dispatch.failure_code', 'PROVIDER_DUPLICATE_ORDER'));
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus?view=dispatched')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $good->id)
+            ->where('rows.data.0.shipout_production.status', 'oms_ack_pending'));
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 2);
+        $this->assertDatabaseHas('shipments', ['order_id' => $bad->id, 'shipment_status' => 'pending', 'tracking_number' => null]);
+        $this->assertDatabaseHas('shipments', ['order_id' => $good->id, 'shipment_status' => 'pending', 'tracking_number' => null]);
+        Http::assertNothingSent();
+    }
+
+    public function test_moreplus_preflight_block_without_post_is_only_in_exception_list(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007erp-1110-c42151');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $batchId = '00000000-0000-4000-8000-000000000125';
+        DB::table('shipout_production_batches')->insert([
+            'id' => $batchId, 'operator_user_id' => $user->id,
+            'status' => 'completed_partial', 'dry_run' => false, 'total' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('shipout_production_batch_items')->insert([
+            'batch_id' => $batchId, 'order_id' => $order->id,
+            'order_no' => $order->erp_order_id, 'status' => 'skipped',
+            'result_code' => 'SHIPOUT_SKU_NOT_VERIFIED',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Http::preventStrayRequests();
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.order_id', $order->id)
+                ->where('rows.data.0.shipout_production.status', 'oms_quarantined'));
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus?view=pending_dispatch')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'shipment_status' => 'pending', 'tracking_number' => null,
+        ]);
+        Http::assertNothingSent();
     }
 
     public function test_moreplus_outbound_roundtrip_return_previews_real_tracking_without_apply(): void
@@ -1181,10 +1269,10 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('rows.total', 1)
             ->where('rows.data.0.order_id', $order->id)
-            ->where('rows.data.0.warehouse_dispatch.status', 'oms_created')
-            ->where('rows.data.0.warehouse_dispatch.label', 'OMS 已建单 · 待实际出库')
+            ->where('rows.data.0.warehouse_dispatch.status', 'oms_ack_pending')
+            ->where('rows.data.0.warehouse_dispatch.label', 'API 已受理 · 待 OMS 核实（禁止重发）')
             ->where('rows.data.0.shipout_production.attempted', true)
-            ->where('rows.data.0.shipout_production.is_oms_created', true)
+            ->where('rows.data.0.shipout_production.is_oms_created', false)
             ->where('rows.data.0.shipout_production.provider_order_id', 'SYNTHETIC-OMS-ACK')
             ->where('rows.data.0.shipment_status', 'pending')
             ->where('rows.data.0.tracking_number', null));

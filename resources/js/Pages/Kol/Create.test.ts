@@ -156,11 +156,16 @@ describe('Kol/Create VI contract', () => {
     const card = wrapper.find('.kol-account-card')
     expect(card.exists()).toBe(true)
     expect(card.text()).toContain('WordPress / Affiliate 账号')
-    expect(card.find('input[type="email"]').exists()).toBe(true)
+    const username = card.find('input[autocomplete="username"]')
+    const email = card.find('input[type="email"]')
+    expect(username.exists()).toBe(true)
+    expect(username.attributes('required')).toBeDefined()
+    expect(card.element.querySelector('input[autocomplete="username"]')!.compareDocumentPosition(email.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(email.exists()).toBe(true)
     expect(card.findAll('input[type="password"]')).toHaveLength(2)
     expect(card.text()).toContain('不保存到 ERP')
     expect(card.find('input[placeholder="例如 ANDY15"]').exists()).toBe(true)
-    expect(card.text()).toContain('冲突不会覆盖现有 Coupon')
+    expect(card.text()).toContain('Code 冲突不覆盖')
   })
 
   it('defaults cooperation type, joined date, owner and primary social platforms', () => {

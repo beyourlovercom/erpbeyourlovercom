@@ -809,6 +809,50 @@ describe('MorePlus async production acceptance is not final business success', (
   })
 })
 
+describe('MorePlus per-order quarantine and partial batch completion', () => {
+  it('shows quarantined order and blocks another one-shot send while an unrelated order remains eligible', () => {
+    const failed={...usSmPendingRows.data[0],warehouse_id:1,order_id:7913,
+      shipout_production:{attempted:true,is_oms_created:false,status:'oms_quarantined',
+        label:'海外仓判定重复订单 · 已隔离（禁止自动重发）',provider_order_id:'OMS-FAILED-7913'}}
+    const healthy={...usSmPendingRows.data[0],warehouse_id:1,order_id:7914,
+      erp_order_id:'007-1110-c42150',shipout_production:null}
+    const page=mountPage({view:'exceptions',
+      rows:{...usSmPendingRows,data:[failed,healthy],total:2},
+      shipoutProductionUi:true,shipoutProductionReadEnabled:true,
+      shipoutProductionDispatchEnabled:true,shipoutProductionOperatorAllowed:true})
+    expect(page.text()).toContain('异常单已隔离')
+    expect(page.text()).toContain('海外仓判定重复订单')
+    expect(page.text()).toContain('禁止自动重发')
+    expect(page.text()).toContain('正式 API 预检')
+    const failedRow=page.find('[data-shipout-order-id="7913"]')
+    expect(failedRow.text()).not.toContain('正式 API 预检')
+    page.unmount()
+  })
+
+  it('shows partial completion without claiming full success', async () => {
+    const id='00000000-0000-4000-8000-000000000124'
+    const mock=vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({
+      batch_id:id,status:'completed_partial',dry_run:false,total:2,processed:2,
+      items:[
+        {order_id:7913,order_no:'007-1110-c42149',status:'provider_cancelled',
+          result_code:'PROVIDER_DUPLICATE_ORDER',provider_order_id:'OMS-FAILED'},
+        {order_id:7914,order_no:'007-1110-c42150',status:'oms_visible',
+          result_code:'OMS_VISIBLE_PENDING_REAL_FULFILLMENT',provider_order_id:'OMS-OK'},
+      ],
+    })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,trackingImportPreview:null,
+        shipoutProductionLatestBatch:{id,status:'completed_partial',dry_run:false,total:2}})
+      await vi.waitFor(()=>expect(page.text()).toContain('本批次结束 · 异常单已隔离'))
+      expect(page.text()).toContain('已核实 2 / 2')
+      expect(page.text()).toContain('OMS 已取消／中止')
+      expect(page.text()).toContain('OMS 订单可见 · 待实际出库')
+      page.unmount()
+    } finally { vi.unstubAllGlobals() }
+  })
+})
+
 describe('MorePlus Dev-only one-click batch workbench', () => {
   it('shows the top-right bulk button only when the separate feature flag is enabled', () => {
     expect(mountPage().findAll('button').some(b=>b.text()==='一键推送仓库')).toBe(false)

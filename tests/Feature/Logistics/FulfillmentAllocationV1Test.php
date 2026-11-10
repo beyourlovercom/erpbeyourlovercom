@@ -69,6 +69,8 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertCount(2, $children);
         self::assertSame([$order->erp_order_id.'A', $order->erp_order_id.'B'], $children->pluck('erp_order_id')->all());
         self::assertSame(['A', 'B'], $children->pluck('fulfillment_suffix')->all());
+        self::assertSame([$order->order_date->toDateString(), $order->order_date->toDateString()], $children->map(fn ($child) => $child->order_date->toDateString())->all());
+        self::assertSame([$order->owner_id, $order->owner_id], $children->pluck('owner_id')->all());
         self::assertSame(['fulfillment_derived', 'fulfillment_derived'], $children->map(fn ($child) => $child->order_kind?->value)->all());
         self::assertSame(['US-LA', 'FACTORY'], $children->map(fn ($child) => $child->shipment?->warehouse?->code)->all());
         self::assertSame(['USPS', null], $children->map(fn ($child) => $child->shipment?->carrier)->all());
