@@ -95,6 +95,19 @@ final class ShipOutProductionBatchService
     /** @param list<int>|null $selectedOrderIds */
     public function preview(?array $selectedOrderIds = null): array
     {
+        return $this->snapshot($selectedOrderIds)['preview'];
+    }
+
+    /**
+     * One read snapshot binds the fingerprint and the exact IDs to persist.
+     * Never enumerate the candidates a second time between confirmation
+     * validation and the batch insert.
+     *
+     * @param  list<int>|null  $selectedOrderIds
+     * @return array{ids:list<int>,preview:array<string,mixed>}
+     */
+    private function snapshot(?array $selectedOrderIds): array
+    {
         $ids = $this->candidateIds($selectedOrderIds);
         // ALL means all pending rows in this warehouse, including unreviewed
         // and out-of-stock rows in the scan. It does NOT grant POST permission
@@ -127,22 +140,25 @@ final class ShipOutProductionBatchService
             ->count();
 
         return [
-            'scope' => $selectedOrderIds === null ? 'all' : 'selected',
-            'scan_count' => $scanned,
-            'stockout_count' => $stockouts,
-            'excluded_count' => max(0, $scanned - count($ids)),
-            'count' => count($ids),
-            'overflow' => count($ids) > self::MAX_ORDERS || $scanned > self::MAX_ORDERS,
-            // Bind the confirmation to the exact scope, selected IDs and
-            // full pending count. A new stockout record must invalidate an
-            // earlier all-orders confirmation even if candidate IDs stay same.
-            'fingerprint' => hash('sha256', json_encode([
+            'ids' => $ids,
+            'preview' => [
                 'scope' => $selectedOrderIds === null ? 'all' : 'selected',
-                'selected_ids' => $selectedOrderIds,
-                'scanned' => $scanned,
-                'candidate_ids' => $ids,
-            ], JSON_THROW_ON_ERROR)),
-            'dry_run' => ! app()->environment('production'),
+                'scan_count' => $scanned,
+                'stockout_count' => $stockouts,
+                'excluded_count' => max(0, $scanned - count($ids)),
+                'count' => count($ids),
+                'overflow' => count($ids) > self::MAX_ORDERS || $scanned > self::MAX_ORDERS,
+                // Bind the confirmation to the exact scope, selected IDs and
+                // full pending count. A new stockout record must invalidate an
+                // earlier all-orders confirmation even if candidate IDs stay same.
+                'fingerprint' => hash('sha256', json_encode([
+                    'scope' => $selectedOrderIds === null ? 'all' : 'selected',
+                    'selected_ids' => $selectedOrderIds,
+                    'scanned' => $scanned,
+                    'candidate_ids' => $ids,
+                ], JSON_THROW_ON_ERROR)),
+                'dry_run' => ! app()->environment('production'),
+            ],
         ];
     }
 
@@ -154,8 +170,9 @@ final class ShipOutProductionBatchService
             throw new RuntimeException('SHIPOUT_BATCH_LOCKED');
         }
         try {
-            $ids = $this->candidateIds($selectedOrderIds);
-            $preview = $this->preview($selectedOrderIds);
+            $snapshot = $this->snapshot($selectedOrderIds);
+            $ids = $snapshot['ids'];
+            $preview = $snapshot['preview'];
             if ($preview['overflow'] || $preview['count'] === 0
                 || ! hash_equals($preview['fingerprint'], $fingerprint)) {
                 throw new RuntimeException('SHIPOUT_BATCH_STALE');
