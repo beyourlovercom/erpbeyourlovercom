@@ -150,43 +150,68 @@ test('R4-L1 logistics shared Grid handles domestic, allocation and review withou
   const reviewAction=domestic.locator('.domestic-grid-cell-actions').first()
   const visibleButtons=reviewAction.locator('.domestic-grid-cell-main button')
   await expect(visibleButtons).toHaveCount(3)
-  await expect(reviewAction.getByRole('textbox',{name:'驳回原因'})).toHaveCount(0)
-  await expect(domestic.getByTestId('domestic-inline-reject')).toHaveCount(0)
-  await expect(reviewAction).toHaveCSS('display','flex')
+  await expect(page.getByTestId('domestic-reject-popover')).toHaveCount(0)
   const compactHeight=await reviewAction.locator('xpath=ancestor::*[contains(@class,"ag-row")][1]').evaluate(
     node=>node.getBoundingClientRect().height)
   const top=await reviewAction.locator('.domestic-grid-cell-main').evaluate(root=>{
     const buttons=Array.from(root.querySelectorAll('button'))
     const boxes=buttons.map(node=>node.getBoundingClientRect())
-    return {gaps:boxes.slice(1).map((rect,i)=>rect.left-boxes[i].right),color:getComputedStyle(buttons[0]).backgroundColor}
+    const cell=root.closest('.ag-cell')!.getBoundingClientRect()
+    return {
+      gaps:boxes.slice(1).map((rect,i)=>rect.left-boxes[i].right),
+      color:getComputedStyle(buttons[0]).backgroundColor,
+      lastButtonRight:boxes[2].right,
+      cellRight:cell.right,
+      cellWidth:cell.width,
+    }
   })
   expect(top.gaps).toEqual([8,8])
   expect(top.color).toBe('rgb(0, 143, 124)')
+  // Old width was 330px, with >150px of wasted space.
+  expect(top.cellWidth).toBeLessThanOrEqual(190)
+  expect(top.cellRight-top.lastButtonRight).toBeLessThan(35)
   await reviewAction.getByRole('button',{name:'驳回',exact:true}).click()
-  const inline=reviewAction.getByTestId('domestic-inline-reject')
-  await expect(inline).toBeVisible()
-  await expect(inline.getByRole('textbox',{name:'驳回原因'})).toBeFocused()
-  await expect(inline.getByRole('button',{name:'确认驳回'})).toBeDisabled()
+  const popover=page.getByTestId('domestic-reject-popover')
+  await expect(popover).toBeVisible()
+  await expect(popover.getByRole('textbox',{name:'驳回原因'})).toBeFocused()
+  await expect(popover.getByRole('button',{name:'确认驳回'})).toBeDisabled()
   await expect(reviewAction.getByRole('button',{name:'驳回',exact:true})).toHaveAttribute('aria-expanded','true')
+  await expect(popover).toHaveCSS('position','fixed')
   const expandedHeight=await reviewAction.locator('xpath=ancestor::*[contains(@class,"ag-row")][1]').evaluate(
     node=>node.getBoundingClientRect().height)
-  expect(expandedHeight).toBe(compactHeight+36)
-  await inline.getByRole('textbox',{name:'驳回原因'}).fill('地址')
-  await expect(inline.getByRole('button',{name:'确认驳回'})).toBeDisabled()
-  await inline.getByRole('textbox',{name:'驳回原因'}).fill('客户地址需要再次核对')
-  await expect(inline.getByRole('button',{name:'确认驳回'})).toBeEnabled()
-  const inlineLayout=await inline.evaluate(root=>{
-    const cell=root.closest('.ag-cell')!.getBoundingClientRect()
-    const rightmost=root.lastElementChild!.getBoundingClientRect()
-    return {right:rightmost.right,cellRight:cell.right}
+  expect(expandedHeight).toBe(compactHeight)
+  // Check the overlay is at the top of the browser hit-test stack, not
+  // clipped/covered by the following AG Grid row.
+  const floatLayout=await popover.evaluate(el=>{
+    const rect=el.getBoundingClientRect()
+    const input=el.querySelector('input')!.getBoundingClientRect()
+    const element=document.elementFromPoint(input.x+input.width/2,input.y+input.height/2)
+    return {
+      position:getComputedStyle(el).position,
+      zIndex:Number(getComputedStyle(el).zIndex),
+      width:rect.width,top:rect.top,bottom:rect.bottom,viewportHeight:window.innerHeight,
+      inputOnTop:!!(element && el.contains(element)),
+      inBody:el.parentElement===document.body,
+    }
   })
-  expect(inlineLayout.right).toBeLessThan(inlineLayout.cellRight)
-  await inline.getByRole('button',{name:'取消'}).click()
-  await expect(domestic.getByTestId('domestic-inline-reject')).toHaveCount(0)
+  expect(floatLayout.inputOnTop).toBe(true)
+  expect(floatLayout.inBody).toBe(true)
+  expect(floatLayout.bottom).toBeLessThanOrEqual(floatLayout.viewportHeight)
+  await popover.getByRole('textbox',{name:'驳回原因'}).fill('地址')
+  await expect(popover.getByRole('button',{name:'确认驳回'})).toBeDisabled()
+  await popover.getByRole('textbox',{name:'驳回原因'}).fill('客户地址需要再次核对')
+  await expect(popover.getByRole('button',{name:'确认驳回'})).toBeEnabled()
+  await popover.getByRole('button',{name:'取消'}).click()
+  await expect(page.getByTestId('domestic-reject-popover')).toHaveCount(0)
   const restoredHeight=await reviewAction.locator('xpath=ancestor::*[contains(@class,"ag-row")][1]').evaluate(
     node=>node.getBoundingClientRect().height)
   expect(restoredHeight).toBe(compactHeight)
-  console.log('R4_V12_REJECT_ON_DEMAND_ONE_ROW_PASS',JSON.stringify({compactHeight,expandedHeight,restoredHeight,...top}))
+  // Reopen and close with Escape without calling the write endpoint.
+  await reviewAction.getByRole('button',{name:'驳回',exact:true}).click()
+  await expect(page.getByTestId('domestic-reject-popover')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('domestic-reject-popover')).toHaveCount(0)
+  console.log('R4_V12_REJECT_POPOVER_COMPACT_PINNED_PASS',JSON.stringify({compactHeight,expandedHeight,restoredHeight,...top,...floatLayout}))
   await expect(domestic.locator('.global-cell-badge').first()).toHaveCSS('background-color','rgb(239, 246, 244)')
   await expect(domestic.locator('.global-cell-badge').first()).toHaveCSS('padding','2px 7px')
   await expect(page.locator('#domestic-reject-reason')).toHaveCount(0)

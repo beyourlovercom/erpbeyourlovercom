@@ -50,3 +50,10 @@ Owner requested continuous implementation M1-M5 under the REDUCED 7-13h contract
 - Original backend reject endpoint and mandatory reason validation remain unchanged. Confirmation is blocked until the reason contains at least three characters. Enter confirms an eligible reason.
 - The right-pinned operation column is reduced from 395px to 330px, because the permanent reason input was removed. The 32px compact AG Grid row becomes 68px only while expanded and returns to 32px on cancel.
 - Verified in isolated Chrome Global Grid 6/6 PASS, including computed row heights 32 -> 68 -> 32; button spacing 8px; no visible reason field by default; autofocus; disabled/enabled confirmation; and no modal. TypeScript + Vite build PASS. These are synthetic test records only; Production untouched.
+
+## Owner screenshot: reject reason covered by later rows, right column wastes space — resolved
+- Previous in-AG-Grid inline second row was visibly obscured by other rows despite a Playwright height assertion. Owner rejected that visual behavior. The input is now an on-demand floating, body-teleported popover (z-index 12050), positioned by the actual clicked Reject button. It never expands AG Grid row height and is not clipped by the AG Grid row container.
+- Popup contains mandatory rejection reason, "确认驳回" and "取消" only when Reject is clicked. Clicking Cancel, clicking outside or Escape closes without a write. No extra native table; original audited reject handler remains unchanged.
+- Pinned-right review operation column reduced from 330px to 185px, clamped at 190px even if the user's old saved column preference is wider. The three buttons retain 8px internal gaps.
+- Exact Chrome computed proof: column 185px; rightmost Reject button to cell edge ~22px; row heights 32px both closed and open; popup position:fixed, z-index:12050, width:318px and elementFromPoint confirms input is atop adjacent rows. Verified popover inside document.body, in viewport, 3-character rule, Enter/Escape/cancel. Disposable Chrome 6/6 PASS. Typecheck/build PASS.
+- Owner needs to refresh Dev UAT for new JS/CSS. Production unchanged and PR still Draft.
