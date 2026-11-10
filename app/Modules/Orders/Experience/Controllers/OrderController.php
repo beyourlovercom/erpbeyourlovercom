@@ -185,8 +185,12 @@ final class OrderController
         if ($kind === OrderKind::KolFulfillment) {
             abort_unless($request->user()->can('kol.view'), 403);
         }
+        $orderRules = $this->rules();
+        if ($kind === OrderKind::KolFulfillment) {
+            $orderRules['order_date'] = ['nullable', 'date'];
+        }
         $data = $request->validate([
-            ...$this->rules(),
+            ...$orderRules,
             'kol_id' => $kind === OrderKind::KolFulfillment
                 ? ['required', 'integer', Rule::exists('kols', 'id')->whereNull('archived_at')]
                 : ['prohibited'],
@@ -202,6 +206,9 @@ final class OrderController
             }
         } else {
             unset($data['kol_id']);
+        }
+        if ($kind === OrderKind::KolFulfillment && blank($data['order_date'] ?? null)) {
+            $data['order_date'] = now()->toDateString();
         }
         $items = $data['items'];
         unset($data['items']);

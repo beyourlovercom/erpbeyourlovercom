@@ -138,6 +138,20 @@ describe('Orders/Create V2', () => {
     expect(wrapper.find('input[type="date"]').exists()).toBe(true)
   })
 
+  it('asks for an optional real cooperation date on KOL orders, without fabricating one client-side', () => {
+    const kol = mount(Create, { props: kolProps })
+    const date = kol.get('input[type="date"]')
+    expect((date.element as HTMLInputElement).value).toBe('')
+    expect(date.attributes('required')).toBeUndefined()
+    expect(kol.text()).toContain('合作日期（可选）')
+    expect(kol.text()).toContain('留空则使用本订单实际创建日期')
+    kol.unmount()
+
+    const customer = mount(Create, { props: customerProps })
+    expect(customer.get('input[type="date"]').attributes('required')).toBeDefined()
+    customer.unmount()
+  })
+
   it('pre-fills generated external order number', () => {
     const wrapper = mount(Create, { props: customerProps })
     const input = wrapper.find('#external_order_number')

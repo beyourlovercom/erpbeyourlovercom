@@ -48,6 +48,7 @@ class KolCollaborationTest extends TestCase
 
         $first = $this->actingAs($admin)->postJson("/kol/library/{$kol->id}/opportunities/{$opp->id}/convert-to-collaboration");
         $first->assertCreated()->assertJsonPath('collaboration.opportunity_id',$opp->id);
+        $first->assertJsonPath('collaboration.agreed_at', null);
         $second = $this->actingAs($admin)->postJson("/kol/library/{$kol->id}/opportunities/{$opp->id}/convert-to-collaboration");
         $second->assertOk()->assertJsonPath('already_exists',true);
         $this->assertDatabaseCount('kol_collaborations',1);

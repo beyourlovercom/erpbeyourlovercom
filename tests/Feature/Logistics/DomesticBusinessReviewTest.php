@@ -18,6 +18,41 @@ final class DomesticBusinessReviewTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_review_split_child_uses_parent_payment_date_in_real_inertia_response(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $actor = $this->userWith(['logistics.view', 'domestic.review']);
+        $root = $this->order();
+        $root->forceFill(['source_type' => OrderSourceType::WooCommerce])->save();
+        $root->financials()->create(['paid_at' => '2026-10-18 12:00:00', 'provider_order_total' => '145.68', 'currency' => 'EUR']);
+        $root->shipment()->delete();
+        $child = Order::query()->create([
+            'fulfillment_parent_id' => $root->id,
+            'fulfillment_suffix' => 'A',
+            'fulfillment_role' => 'original',
+            'erp_order_id' => $root->erp_order_id.'A',
+            'internal_order_number' => 'FULF-'.$root->id.'-A',
+            'source_type' => OrderSourceType::ManualOther,
+            'order_kind' => OrderKind::FulfillmentDerived,
+            'order_date' => '2026-11-09',
+            'order_status' => OrderStatus::PendingShipment,
+            'currency' => 'USD',
+        ]);
+        $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $child->shipment()->create(['warehouse_id' => $factory->id, 'shipment_status' => 'pending']);
+        $child->items()->create(['product_summary' => 'Split test SKU', 'sku' => 'SPLIT-DATE', 'quantity' => 2, 'unit_price' => '0.00', 'line_revenue' => '0.00']);
+        $this->actingAs($actor)->get('/logistics/china?view=review')->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Logistics/Domestic/Index')
+                ->where('rows.total', 1)
+                ->where('rows.data.0.paid_date', '10-18')
+                ->where('rows.data.0.paid_date_source', '母订单支付日期')
+                ->where('rows.data.0.amount', '145.68')
+                ->where('rows.data.0.amount_currency', 'EUR')
+                ->where('rows.data.0.amount_source', '母订单总金额 · 分仓不重复计收'));
+        $this->assertNull($child->financials, 'split fulfillment never invents its own payment fact');
+    }
+
     public function test_stockout_goes_to_own_tab_and_approval_returns_to_pending(): void
     {
         $this->withoutVite();

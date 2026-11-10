@@ -262,7 +262,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <div class="kol-collaboration-title-row"><a v-if="currentCollaboration.post_url" :href="currentCollaboration.post_url" target="_blank" rel="noopener noreferrer"><strong>{{ currentCollaboration.post_url }}</strong></a><strong v-else>待补合作发帖 URL</strong><span class="kol-opportunity-stage-pill">{{ collaborationStatusLabel(currentCollaboration.status) }}</span></div>
             <dl class="kol-opportunity-facts">
               <div><dt>合作类型</dt><dd>{{ currentCollaboration.cooperation_type ?? '—' }}</dd></div>
-              <div><dt>确认日期</dt><dd>{{ dateLabel(currentCollaboration.agreed_at) }}</dd></div>
+              <div><dt>合作日期</dt><dd>{{ dateLabel(currentCollaboration.agreed_at) }}</dd></div>
               <div><dt>计划发布时间</dt><dd>{{ dateLabel(currentCollaboration.planned_publish_at) }}</dd></div>
               <div><dt>合作金额</dt><dd>{{ moneyLabel(currentCollaboration.agreement_amount, currentCollaboration.currency) }}</dd></div>
               <div><dt>负责人</dt><dd>{{ currentCollaboration.owner?.name ?? '—' }}</dd></div>
