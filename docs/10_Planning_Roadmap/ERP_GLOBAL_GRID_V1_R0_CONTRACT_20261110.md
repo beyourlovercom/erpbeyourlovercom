@@ -3,6 +3,12 @@
 ## Owner decision
 Adopt a **single shared list/grid engine** for new ERP data lists; do not mandate AG Grid for compact detail tables, audit summaries or mobile cards. The production OMS Grid remains backward compatible: existing routes, account preferences, import/export controls and fulfillment/stock/finance mutations must remain untouched.
 
+## Permanent decision confirmed 2026-11-10
+
+The Owner ratified **Global Grid V1 as the single default component for all future NEW ERP primary business lists**. Implementation is the existing `GlobalGrid.vue` wrapper around `OmsGrid.vue`; preserve the older `BYL_GLOBAL_DATA_GRID_VI_V1_1` visual/data/preference contract. Lightweight small embedded tables on detail pages, confirmation/audit snippets and suitable mobile cards are exempt from mandatory conversion.
+
+This decision **does not authorize** silently replacing all existing lists, changing current Production pilot/allowlist flags or staff defaults, or editing shipment, review, import/export, procurement, inventory, accounting or access-control workflows. Existing page migration is selected separately for R4 batches; preserve old view fallback plus domain-specific UAT, original backend permission gates and explicit Production authorization. The approved source of truth for ERP implementation is `docs/BYL-ERP-GRID-STANDARD-V1.md`; the already-active `AGENTS.md` rule `BYL_GLOBAL_DATA_GRID_VI_V1_1` continues to govern visual, data, query and preference behavior.
+
 ## Architecture contract
 - `GlobalGrid.vue` wraps existing `OmsGrid.vue`; neither fork nor recreate AG Grid internals.
 - A business page supplies column schemas, display projections, links, safe authorized actions and **canonical** server paging. No grid component performs business writes.
