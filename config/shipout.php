@@ -65,6 +65,9 @@ return [
     // R6 safe launch: fail-closed, exactly one specifically approved ERP order.
     // A future broad rollout requires a separate, explicit code change.
     'production_v1_batch_canary_order_id' => (int) env('SHIPOUT_PRODUCTION_V1_BATCH_CANARY_ORDER_ID', 0),
+    // Explicit finite owner-approved order IDs for multi-order controlled rollout.
+    // No configured IDs = no production candidates; global batch flags still default OFF.
+    'production_v1_batch_approved_order_ids' => (string) env('SHIPOUT_PRODUCTION_V1_BATCH_APPROVED_ORDER_IDS', ''),
     'production_v1_owner_approved' => filter_var(env('SHIPOUT_PRODUCTION_V1_OWNER_APPROVED', false), FILTER_VALIDATE_BOOL),
     // Legacy single-operator setting retained for safe rollback only.
     // Three-account V1 sends use a separate exact-ID list; no global grants.

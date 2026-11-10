@@ -132,7 +132,7 @@ onMounted(()=>{
     shipoutBatchStatus.value={batch_id:last.id,status:last.status,dry_run:last.dry_run,
       total:last.total,processed:0,items:[]}
     void shipoutBatchPoll()
-    if(!['completed','paused'].includes(last.status))
+    if(!['completed','completed_with_exceptions','paused'].includes(last.status))
       shipoutBatchTimer=setInterval(()=>{void shipoutBatchPoll()},5000)
   }
 })
@@ -162,7 +162,7 @@ async function shipoutBatchPoll() {
   if(!shipoutBatchStatus.value)return
   try {
     shipoutBatchStatus.value=await shipoutBatchApi('/logistics/oversea/us-moreplus/shipout/batch/'+shipoutBatchStatus.value.batch_id+'/status') as ShipOutBatchStatus
-    if(['completed','paused'].includes(shipoutBatchStatus.value.status)&&shipoutBatchTimer) {
+    if(['completed','completed_with_exceptions','paused'].includes(shipoutBatchStatus.value.status)&&shipoutBatchTimer) {
       clearInterval(shipoutBatchTimer);shipoutBatchTimer=null
     }
   }catch(e){shipoutBatchError.value=e instanceof Error?e.message:'查询批次状态失败'}
@@ -182,7 +182,7 @@ async function shipoutBatchStart() {
       total:reply.total,processed:0,items:[]}
     shipoutBatchPreview.value=null
     await shipoutBatchPoll()
-    if(!shipoutBatchTimer && shipoutBatchStatus.value && !['completed','paused'].includes(shipoutBatchStatus.value.status))
+    if(!shipoutBatchTimer && shipoutBatchStatus.value && !['completed','completed_with_exceptions','paused'].includes(shipoutBatchStatus.value.status))
       shipoutBatchTimer=setInterval(()=>{void shipoutBatchPoll()},5000)
   }catch(e){shipoutBatchError.value=e instanceof Error?e.message:'批次创建失败'}
   finally{shipoutBatchBusy.value=false}
@@ -209,7 +209,7 @@ const shipoutBatchReason=(code:string|null)=>({
 const shipoutBatchState=(status:string)=>({
   queued:'等待队列执行',running:'正在逐单提交',
   awaiting_oms:'等待正式 OMS 异步回读',
-  completed:'本批次检查结束（逐单查看真实结果）',
+  completed:'本批次核实完成',completed_with_exceptions:'本批次结束 · 异常单已隔离',
   paused:'已暂停 · 人工核实',
 } as Record<string,string>)[status]||status
 
@@ -979,7 +979,7 @@ const compactPages = computed<(number|string)[]>(() => {
               <td v-if="warehouseKey === 'us-moreplus'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-shipout-order-id="row.order_id">
                   <template v-if="shipoutProductionUi">
-                    <strong class="xlwms-state">{{row.shipout_production?.provider_order_id?'ShipOut Production V1 · API 已受理／OMS 待核实':'ShipOut Production V1 · 正式仓'}}</strong>
+                    <strong class="xlwms-state">{{row.shipout_production?.status==='oms_quarantined'?'ShipOut · 异常单已隔离':row.shipout_production?.provider_order_id?'ShipOut Production V1 · API 已受理／OMS 待核实':'ShipOut Production V1 · 正式仓'}}</strong>
                     <small class="xlwms-note">只支持美西 US-LA / 已通过 Dede 审核 / 美国地址 / 仓库自动渠道 Mode 9；接单不等于已发货。</small>
                     <template v-if="!shipoutProductionReadEnabled">
                       <small class="xlwms-note">正式 API 已部署，当前未开通；请继续使用人工下载与物流回传流程。</small>
@@ -999,7 +999,10 @@ const compactPages = computed<(number|string)[]>(() => {
                           :disabled="shipoutProdBusy[row.order_id]" @click="shipoutProdSend(row)">确认提交正式仓 · 仅一次</button>
                         <small v-else>正式发货未授权；只能查询和预检，不会发送订单。</small>
                       </div>
-                      <small v-if="row.shipout_production?.provider_order_id && !shipoutProdStatus[row.order_id]" class="xlwms-note">
+                      <small v-if="row.shipout_production?.status==='oms_quarantined'" class="xlwms-error" role="alert">
+                        {{row.shipout_production.label}}。其他合格订单继续处理；本单禁止自动重发。
+                      </small>
+                      <small v-if="row.shipout_production?.provider_order_id && row.shipout_production?.status!=='oms_quarantined' && !shipoutProdStatus[row.order_id]" class="xlwms-note">
                         API ACK：{{row.shipout_production.provider_order_id}} · 尚未证实 OMS 有效接单，禁止再次推送；请查询正式 OMS。
                       </small>
                       <small v-else-if="row.shipout_production?.attempted && !shipoutProdStatus[row.order_id]" class="xlwms-note">

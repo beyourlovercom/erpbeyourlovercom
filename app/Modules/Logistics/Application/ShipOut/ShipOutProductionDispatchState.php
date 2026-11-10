@@ -20,6 +20,15 @@ final class ShipOutProductionDispatchState
             ->where('shipout_attempt.provider_warehouse_id', self::MOREPLUS_PROVIDER_WAREHOUSE_ID);
     }
 
+    public static function scopeBatchQuarantined(Builder $query): void
+    {
+        $query->selectRaw('1')->from('shipout_production_batch_items as q')
+            ->whereColumn('q.order_id', 'shipments.order_id')
+            ->whereIn('q.status', [
+                'skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review',
+            ]);
+    }
+
     public static function scopeCreated(Builder $query): void
     {
         self::scopeAttempt($query);
@@ -37,10 +46,31 @@ final class ShipOutProductionDispatchState
     }
 
     /** @return array{attempted:bool,is_oms_created:bool,status:string,label:string,provider_order_id:?string} */
-    public static function from(?object $attempt): array
+    public static function from(?object $attempt, ?object $batchItem = null): array
     {
         $accepted = self::isOmsCreated($attempt);
         $attempted = $attempt !== null;
+
+        // A terminal batch exception overrides an earlier ACK in the list.
+        // Never use the ACK itself to claim that OMS accepted the order.
+        $quarantine = in_array((string) ($batchItem->status ?? ''), [
+            'provider_cancelled', 'needs_review', 'uncertain', 'failed', 'skipped',
+        ], true);
+        $code = (string) ($batchItem->result_code ?? '');
+        $reason = match ($code) {
+            'PROVIDER_DUPLICATE_ORDER' => '海外仓判定重复订单',
+            'PROVIDER_EZEESHIP_SHIPPING_ERROR' => 'EzeeShip 运输服务失败',
+            default => '订单异常，需人工核对',
+        };
+        if ($quarantine) {
+            return [
+                'attempted' => $attempted || $batchItem !== null,
+                'is_oms_created' => false,
+                'status' => 'oms_quarantined',
+                'label' => $reason.' · 已隔离（禁止自动重发）',
+                'provider_order_id' => $accepted ? (string) $attempt->provider_order_id : null,
+            ];
+        }
 
         // The durable attempt ledger only knows the API ACK. ShipOut may later
         // cancel an async order (status 6/11); a signed OMS GET is required.
@@ -55,18 +85,21 @@ final class ShipOutProductionDispatchState
     }
 
     /** @return array{status:string,label:string,detail:string,oms_order_no:?string,last_checked_at:?string,failure_code:?string,can_retry_local_block:bool} */
-    public static function warehouseDispatch(?object $attempt, string $shipmentStatus): array
+    public static function warehouseDispatch(?object $attempt, string $shipmentStatus, ?object $batchItem = null): array
     {
-        $state = self::from($attempt);
+        $state = self::from($attempt, $batchItem);
         $shipped = in_array($shipmentStatus, ['shipped', 'completed'], true);
 
         return [
             'status' => $shipped ? 'shipped' : $state['status'],
             'label' => $shipped ? '已发货' : $state['label'],
-            'detail' => $shipped ? '' : ($state['status'] === 'oms_ack_pending' ? 'API ACK 非最终业务成功；请通过正式 OMS 只读核实' : ''),
+            'detail' => $shipped ? '' : ($state['status'] === 'oms_quarantined'
+                ? '本单已从自动发货队列隔离，请物流主管核对，不允许直接重发'
+                : ($state['status'] === 'oms_ack_pending' ? 'API ACK 非最终业务成功；请通过正式 OMS 只读核实' : '')),
             'oms_order_no' => $state['provider_order_id'],
             'last_checked_at' => null,
-            'failure_code' => null,
+            'failure_code' => $state['status'] === 'oms_quarantined'
+                ? (string) ($batchItem->result_code ?? 'SHIPOUT_BATCH_ITEM_QUARANTINED') : null,
             'can_retry_local_block' => false,
         ];
     }
