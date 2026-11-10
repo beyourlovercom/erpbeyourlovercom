@@ -117,6 +117,34 @@ final class ShipOutProductionOmsReadbackTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_draft_zero_stays_pending_even_after_two_readbacks(): void
+    {
+        $id = 8804;
+        $attempt = $this->attempt($id);
+        $observer = app(ShipOutProductionOmsReadbackService::class);
+        $draft = $this->providerResult($id, 0);
+        $observer->recordResult($id, $draft);
+        DB::table('shipout_oms_readbacks')->where('order_id', $id)
+            ->update(['checked_at' => now()->subMinutes(10)]);
+        $observer->recordResult($id, $draft);
+        $last = DB::table('shipout_oms_readbacks')->where('order_id', $id)->latest('id')->first();
+        $this->assertSame('pending', $last->state);
+        $this->assertSame('oms_ack_pending',
+            ShipOutProductionDispatchState::from($attempt, null, $last)['status']);
+    }
+
+    public function test_unknown_numeric_code_is_unsafe_not_issued(): void
+    {
+        $id = 8805;
+        $attempt = $this->attempt($id);
+        app(ShipOutProductionOmsReadbackService::class)
+            ->recordResult($id, $this->providerResult($id, 99));
+        $last = DB::table('shipout_oms_readbacks')->where('order_id', $id)->latest('id')->first();
+        $this->assertSame('unverified', $last->state);
+        $this->assertSame('oms_quarantined',
+            ShipOutProductionDispatchState::from($attempt, null, $last)['status']);
+    }
+
     public function test_unknown_readback_is_quarantined_not_treated_as_confirmed(): void
     {
         $id = 8803;

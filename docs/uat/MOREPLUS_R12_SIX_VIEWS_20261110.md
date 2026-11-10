@@ -34,3 +34,8 @@
 ## Pre-merge defense-in-depth
 - The single-order manual shipment backend (not just row-button visibility) checks latest sanitized OMS readback. A direct single-order API dispatch later classified PROVIDER_DUPLICATE_ORDER is blocked with HTTP 409 even when no batch item exists. Regression verifies no Tracking/shipment update, no provider HTTP, and immutable attempt remains one.
 - Scheduled signed GET query removes redundant DISTINCT because the immutable order_id is already unique; MySQL 8 strict rejects SELECT DISTINCT order_id ORDER BY a.id. Ordering remains bounded/chronological.
+
+## Numeric status-code caution
+- The ShipOut public asynchronous documentation separates initial ACK from a later success notification. A visible OMS entry cannot demonstrate physical dispatch.
+- This implementation currently recognizes numeric OMS code 3 for a provisional two-read visibility progression only; draft/early numeric codes 0/1/2 remain pending and unknown numeric codes remain unverified. No such state can by itself mark ERP shipped or send Woo Tracking.
+- Confirm the precise semantics and accepted-state mapping with MorePlus before changing R13/R14 automatic-POST policy.

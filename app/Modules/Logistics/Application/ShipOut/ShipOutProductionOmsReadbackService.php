@@ -66,15 +66,25 @@ final class ShipOutProductionOmsReadbackService
                 'PROVIDER_CANCELLED_OTHER',
             ], true) ? $candidate : 'PROVIDER_CANCELLED_OTHER';
         } elseif ($reconciliation === 'ORDER_VISIBLE_MANUAL_REVIEW_ONLY' && is_int($status)) {
-            // An OMS number or one visible GET is provisional, not success.
-            // Require a second separate signed GET >=120 seconds later.
-            $verifiedAgain = $previous
-                && in_array((string) $previous->state, ['visible', 'confirmed'], true)
-                && $providerId !== ''
-                && (string) $previous->provider_order_id === $providerId
-                && ((string) $previous->state === 'confirmed'
-                    || Carbon::parse($previous->checked_at)->lte(now()->subSeconds(120)));
-            $state = $verifiedAgain ? 'confirmed' : 'visible';
+            // The current observed Production response is numeric OMS code 3.
+            // Unknown codes cannot establish warehouse acceptance. Draft 0
+            // and earlier stages 1/2 must never be marked issued.
+            if (in_array($status, [0, 1, 2], true)) {
+                $state = 'pending';
+            } elseif ($status === 3) {
+                // Two independent signed GETs >=120 seconds apart prove
+                // continuous visibility, NOT physical outbound fulfillment.
+                $verifiedAgain = $previous
+                    && in_array((string) $previous->state, ['visible', 'confirmed'], true)
+                    && $providerId !== ''
+                    && (string) $previous->provider_order_id === $providerId
+                    && ((string) $previous->state === 'confirmed'
+                        || Carbon::parse($previous->checked_at)->lte(now()->subSeconds(120)));
+                $state = $verifiedAgain ? 'confirmed' : 'visible';
+            } else {
+                $state = 'unverified';
+                $reason = 'OMS_READBACK_UNRECOGNIZED_STATUS';
+            }
         } elseif ($reconciliation === 'NOT_YET_VISIBLE_MANUAL_REVIEW') {
             $state = 'pending';
         }
