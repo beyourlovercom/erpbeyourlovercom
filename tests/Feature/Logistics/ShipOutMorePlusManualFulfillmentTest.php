@@ -10,6 +10,7 @@ use App\Modules\Logistics\Infrastructure\Models\CarrierService;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -119,6 +120,63 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
         $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
         $this->assertStringContainsString('MP-MANUAL-OUT-001',
             (string) $order->fresh()->shipment->logistics_note);
+        Http::assertNothingSent();
+    }
+
+    public function test_manual_woo_confirmation_queues_outbox_for_periodic_sync_only(): void
+    {
+        [$user, $order] = $this->prepare();
+        $this->attempt($order);
+        $order->forceFill([
+            'source_type' => 'woocommerce',
+            'external_order_number' => 'WC-99001',
+        ])->save();
+        $order->externalReferences()->create([
+            'provider' => 'woocommerce', 'connection_key' => 'shop-a', 'reference' => '99001',
+        ]);
+        // The actual fulfillment payment gate must remain enforced for Woo
+        // orders; our synthetic fixture supplies real paid-provider semantics.
+        $order->financials()->create([
+            'currency' => 'USD',
+            'provider' => 'woocommerce',
+            'provider_reference' => '99001',
+            'provider_order_status' => 'processing',
+            'provider_modified_at' => now(),
+            'payment_method' => 'woocommerce_payments',
+            'payment_transaction_id' => 'SYNTHETIC-R9-PAY-99001',
+            'paid_at' => now(),
+            'provider_order_total' => '12.00',
+            'revenue_provenance' => 'provider_import',
+            'completeness_status' => 'INCOMPLETE',
+        ]);
+        $order->items()->first()->forceFill(['woocommerce_line_item_id' => 990011])->save();
+        config([
+            'services.woocommerce.url' => 'https://shop.test',
+            'services.woocommerce.consumer_key' => 'ck_test',
+            'services.woocommerce.consumer_secret' => 'cs_test',
+            'services.woocommerce.connection_key' => 'shop-a',
+        ]);
+        $gateway = \Mockery::mock(WooCommerceTrackingGateway::class);
+        $gateway->shouldReceive('descriptor')->andReturn([
+            'configured' => true, 'url' => 'https://shop.test', 'connection_key' => 'shop-a',
+        ]);
+        // No expectation permitting syncTracking or syncOrderStatus: any
+        // immediate Woo call would fail this test and never be sent.
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+
+        Http::preventStrayRequests();
+        $this->actingAs($user)->post('/logistics/oversea/us-moreplus/orders/'.$order->id.'/manual-ship',
+            $this->data($order->id))->assertRedirect('/logistics/oversea/us-moreplus?view=shipped');
+
+        $this->assertDatabaseHas('sync_outbox', [
+            'operation' => 'woocommerce.tracking_outbound',
+            'aggregate_id' => (string) $order->fresh()->shipment->id,
+            'status' => 'pending', 'attempts' => 0,
+        ]);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id, 'website_sync_status' => 'pending',
+        ]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
         Http::assertNothingSent();
     }
 
