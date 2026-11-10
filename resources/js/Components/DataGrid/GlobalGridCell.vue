@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 type Row = Record<string, unknown>
-export type GlobalGridAction = { label: string; href?: string; onClick?: () => void; danger?: boolean }
+export type GlobalGridAction = { label: string; href?: string; onClick?: () => void; danger?: boolean; disabled?: boolean }
 export type GlobalGridCellParams = {
   value?: unknown
   data?: Row
@@ -39,7 +39,7 @@ const urlIsExternal = (url: string | null | undefined) => !!url?.startsWith('htt
     <template v-for="(action, index) in actions" :key="index">
       <a v-if="action.href" :href="action.href" :target="urlIsExternal(action.href) ? '_blank' : undefined"
         :rel="urlIsExternal(action.href) ? 'noopener noreferrer' : undefined">{{ action.label }}</a>
-      <button v-else-if="action.onClick" type="button" :class="{danger:action.danger}" @click.stop="action.onClick()">{{ action.label }}</button>
+      <button v-else-if="action.onClick" type="button" :disabled="action.disabled" :class="{danger:action.danger}" @click.stop="action.onClick()">{{ action.label }}</button>
     </template>
   </div>
   <span v-else>{{ text }}</span>
@@ -55,5 +55,6 @@ const urlIsExternal = (url: string | null | undefined) => !!url?.startsWith('htt
 .global-cell-actions>:not(:first-child){border-left:1px solid #dbe2e6}
 .global-cell-actions button{border-top:0;border-right:0;border-bottom:0;background:transparent;cursor:pointer;color:#176b51}
 .global-cell-actions button.danger{color:#ad352e}
+.global-cell-actions button:disabled{opacity:.5;cursor:not-allowed}
 .global-cell-actions>a:hover,.global-cell-actions>button:hover{background:#f1f6f4;border-radius:3px}
 </style>

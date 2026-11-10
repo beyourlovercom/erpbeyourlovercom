@@ -143,10 +143,23 @@ test('R4-L1 logistics shared Grid handles domestic, allocation and review withou
   await expect(page.locator('.domestic-grid-toggle')).toHaveCount(0)
   await expect(domestic.getByText('007-1110-c99992',{exact:true}).first()).toBeVisible()
   await expect(page.locator('.table-wrap.orders table')).toHaveCount(0)
+  // Owner review requirement: direct native-domain decisions on the Grid row,
+  // not hidden behind the generic '操作此单' gateway.
+  await expect(domestic.getByRole('button',{name:'通过',exact:true})).toBeVisible()
+  await expect(domestic.getByRole('button',{name:'缺货',exact:true})).toBeVisible()
+  await expect(domestic.getByRole('button',{name:'驳回',exact:true})).toBeVisible()
+  await domestic.getByRole('button',{name:'驳回',exact:true}).click()
+  await expect(page.getByText('驳回到 Vita 待分仓')).toBeVisible()
+  await expect(page.locator('#domestic-reject-reason')).toBeVisible()
+  await page.getByRole('button',{name:'取消',exact:true}).click()
+  await expect(page.locator('#domestic-reject-reason')).toHaveCount(0)
+  console.log('R4_L1_DOMESTIC_DIRECT_APPROVE_STOCKOUT_REJECT_DIALOG_PASS')
   await domestic.getByRole('button',{name:'操作此单'}).first().click()
   await expect(page.locator('.table-wrap.orders table')).toBeVisible()
   await expect(page.locator('.table-wrap.orders')).toContainText('007-1110-c99992')
-  await expect(page.getByRole('button',{name:'通过',exact:true})).toBeVisible()
+  // Both direct Grid actions and native legacy controls intentionally
+  // coexist only after opening the original row: scope this assertion.
+  await expect(page.locator('.table-wrap.orders').getByRole('button',{name:'通过',exact:true})).toBeVisible()
   await page.getByTestId('domestic-native-batch-toggle').click()
   await expect(page.locator('.table-wrap.orders table')).toBeVisible()
   await expect(domestic).toBeVisible()

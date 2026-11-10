@@ -3,6 +3,7 @@ import { Head, router } from '@inertiajs/vue3'
 import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
+import { domesticReviewGridActions } from './reviewGridActions'
 import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../../Components/DataGrid/useGlobalGridListAdapter'
 const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
 import { publishGlobalFeedback } from '../../../lib/globalFeedback'
@@ -72,7 +73,29 @@ const domesticGridColumns: ColDef<GridListRow>[] = [
   gridColumn({colId:'order',field:'order_number',headerName:'ERP 订单',width:186,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
   gridColumn({colId:'status',field:'workflow_status',headerName:'订单状态',width:143}),
-  gridColumn({colId:'review',field:'review_status',headerName:'审核',width:116,cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
+  // Preserve the original row-specific review controls directly in the
+  // visible 审核 column. No extra click through 操作此单 is required.
+  gridColumn({colId:'review',field:'review_status',headerName:'审核',width:props.view==='review'?230:170,
+    cellRendererSelector:(params)=>{
+      const source = props.rows.data.find(row=>row.order_id===Number(params.data?.id))
+      const actions = source ? domesticReviewGridActions(props.view,props.canReview,reviewBusy.value,source,{
+        approve:()=>decide(source,'approve'),
+        stockout:()=>decide(source,'stockout'),
+        reject:()=>openReject(source),
+        restock:()=>restock(source),
+        reopen:()=>reopen(source),
+      }) : []
+      return actions.length
+        ? {component:GlobalGridCell,params:{mode:'actions',actionsFor:()=>source
+          ? domesticReviewGridActions(props.view,props.canReview,reviewBusy.value,source,{
+              approve:()=>decide(source,'approve'),
+              stockout:()=>decide(source,'stockout'),
+              reject:()=>openReject(source),
+              restock:()=>restock(source),
+              reopen:()=>reopen(source),
+            }) : []}}
+        : {component:GlobalGridCell,params:{mode:'badge'}}
+    }}),
   gridColumn({colId:'paid_date',field:'paid_date',headerName:'成交日期',width:135}),
   gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:178}),
   gridColumn({colId:'quantity',field:'quantity',headerName:'数量',width:100}),
@@ -87,13 +110,14 @@ const domesticGridColumns: ColDef<GridListRow>[] = [
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',width:132,
-    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'actions',actionsFor:(r:GridListRow)=>[
-      {label:'操作此单',onClick:()=>{
-        activeOperationId.value=Number(r.id)
-        showBatchLegacyOperations.value=false
-        void nextTick(()=>document.querySelector('.table-wrap.orders')?.scrollIntoView({block:'start',behavior:'smooth'}))
-      }},
-    ]}}),
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'actions',actionsFor:(r:GridListRow)=>
+      props.view==='stockout' ? [] : [
+        {label:'操作此单',onClick:()=>{
+          activeOperationId.value=Number(r.id)
+          showBatchLegacyOperations.value=false
+          void nextTick(()=>document.querySelector('.table-wrap.orders')?.scrollIntoView({block:'start',behavior:'smooth'}))
+        }},
+      ]}}),
 ]
 const domesticPager = computed(()=>({
   current_page:props.rows.current_page,
@@ -263,7 +287,7 @@ const restock = (row:Row) => {
   })
 }
 const reopen = (row:Row) => router.post('/logistics/china/orders/' + row.order_id + '/reopen-review', {}, { preserveScroll:true, preserveState:true })
-const openReject = (row:Row) => { rejectTarget.value=row; rejectReason.value=''; reviewError.value='' }
+const openReject = (row:Row) => { if (!props.canReview || reviewBusy.value) return; rejectTarget.value=row; rejectReason.value=''; reviewError.value='' }
 const submitReject = () => {
   if (!rejectTarget.value || reviewBusy.value || !props.canReview) return
   if (rejectReason.value.trim().length<3) { reviewError.value='请填写至少 3 个字的驳回原因。'; return }
