@@ -43,3 +43,10 @@ Owner requested continuous implementation M1-M5 under the REDUCED 7-13h contract
 - Fixed both SFC CSS blocks to target unique class names using unscoped styles; no generic tag selectors, DOM changes, backend changes or new dependencies. Domestic pinned-right review uses flex gap:8px, colored 25px buttons with 9px horizontal padding, inline reason 145px, with no overflow.
 - Actual post-build browser metrics: display:flex; gap:8px; all 3 inter-element gaps exactly 8px; approve background rgb(0,143,124); input width 145px; rightmost input edge inside pinned-right column. Common GlobalGridCell badge background/padding restored. Added pixel-layout and shared-cell CSS assertions to E2E.
 - Chrome Global Grid 6/6 PASS, disposable SQLite cleanup PASS; TypeScript + Vite build PASS. Owner must refresh Dev page to load updated assets. Production untouched.
+
+## Owner UI refinement: show reject reason only after clicking Reject (2026-11-10)
+- In the pinned-right domestic review column, the default row now displays only **通过 / 缺货 / 驳回**, with 8px gaps. The reason field is not rendered at all until the specific row's "驳回" button is clicked.
+- Clicking "驳回" opens **one inline reason row below the three buttons inside the existing right-pinned cell**, with autofocus reason field and "确认驳回 / 取消". Only that AG Grid row expands; no navigation, new native table, modal or new full-page toolbar. Click "驳回" again, Cancel or Escape to collapse without writing.
+- Original backend reject endpoint and mandatory reason validation remain unchanged. Confirmation is blocked until the reason contains at least three characters. Enter confirms an eligible reason.
+- The right-pinned operation column is reduced from 395px to 330px, because the permanent reason input was removed. The 32px compact AG Grid row becomes 68px only while expanded and returns to 32px on cancel.
+- Verified in isolated Chrome Global Grid 6/6 PASS, including computed row heights 32 -> 68 -> 32; button spacing 8px; no visible reason field by default; autofocus; disabled/enabled confirmation; and no modal. TypeScript + Vite build PASS. These are synthetic test records only; Production untouched.

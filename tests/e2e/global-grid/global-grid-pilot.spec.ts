@@ -147,38 +147,48 @@ test('R4-L1 logistics shared Grid handles domestic, allocation and review withou
   await expect(domestic.getByRole('button',{name:'通过',exact:true})).toBeVisible()
   await expect(domestic.locator('.ag-cell[col-id="actions"]').first()).toHaveClass(/ag-cell-first-right-pinned/)
   await expect(domestic.getByRole('button',{name:'缺货',exact:true})).toBeVisible()
-  await expect(domestic.getByRole('button',{name:'驳回',exact:true})).toBeDisabled()
-  // This is a visual regression, not merely a button-exists assertion:
-  // dynamic AG Grid Vue cell renderers must receive the actual CSS.
-  const reviewAction = domestic.locator('.domestic-grid-cell-actions').first()
-  await expect(reviewAction).toHaveCSS('display', 'flex')
-  await expect(reviewAction).toHaveCSS('gap', '8px')
-  const actionLayout = await reviewAction.evaluate((root) => {
-    const nodes = Array.from(root.querySelectorAll('button, input'))
-    const rectangles = nodes.map(node => node.getBoundingClientRect())
-    const gaps = rectangles.slice(1).map((box,index) => box.left - rectangles[index].right)
-    const approve = nodes[0] ? getComputedStyle(nodes[0]) : null
-    return {
-      gaps, inputWidth:rectangles.at(-1)?.width ?? 0,
-      approveBackground:approve?.backgroundColor,
-      buttonPadding:approve?.paddingLeft,
-      maxRight:rectangles.at(-1)?.right ?? 0,
-      cellRight:root.closest('.ag-cell')?.getBoundingClientRect().right ?? 0,
-    }
+  const reviewAction=domestic.locator('.domestic-grid-cell-actions').first()
+  const visibleButtons=reviewAction.locator('.domestic-grid-cell-main button')
+  await expect(visibleButtons).toHaveCount(3)
+  await expect(reviewAction.getByRole('textbox',{name:'驳回原因'})).toHaveCount(0)
+  await expect(domestic.getByTestId('domestic-inline-reject')).toHaveCount(0)
+  await expect(reviewAction).toHaveCSS('display','flex')
+  const compactHeight=await reviewAction.locator('xpath=ancestor::*[contains(@class,"ag-row")][1]').evaluate(
+    node=>node.getBoundingClientRect().height)
+  const top=await reviewAction.locator('.domestic-grid-cell-main').evaluate(root=>{
+    const buttons=Array.from(root.querySelectorAll('button'))
+    const boxes=buttons.map(node=>node.getBoundingClientRect())
+    return {gaps:boxes.slice(1).map((rect,i)=>rect.left-boxes[i].right),color:getComputedStyle(buttons[0]).backgroundColor}
   })
-  expect(actionLayout.gaps.length).toBe(3)
-  expect(actionLayout.gaps.every(gap => gap >= 7)).toBe(true)
-  expect(actionLayout.inputWidth).toBeGreaterThanOrEqual(120)
-  expect(actionLayout.maxRight).toBeLessThan(actionLayout.cellRight)
-  expect(actionLayout.approveBackground).toBe('rgb(0, 143, 124)')
-  expect(actionLayout.buttonPadding).toBe('9px')
-  // The generic GlobalGridCell is also mounted dynamically; preserve its
-  // colored badges and action spacing across future list migrations.
-  await expect(domestic.locator('.global-cell-badge').first()).toHaveCSS('background-color', 'rgb(239, 246, 244)')
-  await expect(domestic.locator('.global-cell-badge').first()).toHaveCSS('padding', '2px 7px')
-  console.log('R4_V12_DOMESTIC_REVIEW_SPACING_VISUAL_PASS',JSON.stringify(actionLayout))
-  await domestic.getByRole('textbox',{name:'驳回原因'}).fill('客户地址需要再次核对')
-  await expect(domestic.getByRole('button',{name:'驳回',exact:true})).toBeEnabled()
+  expect(top.gaps).toEqual([8,8])
+  expect(top.color).toBe('rgb(0, 143, 124)')
+  await reviewAction.getByRole('button',{name:'驳回',exact:true}).click()
+  const inline=reviewAction.getByTestId('domestic-inline-reject')
+  await expect(inline).toBeVisible()
+  await expect(inline.getByRole('textbox',{name:'驳回原因'})).toBeFocused()
+  await expect(inline.getByRole('button',{name:'确认驳回'})).toBeDisabled()
+  await expect(reviewAction.getByRole('button',{name:'驳回',exact:true})).toHaveAttribute('aria-expanded','true')
+  const expandedHeight=await reviewAction.locator('xpath=ancestor::*[contains(@class,"ag-row")][1]').evaluate(
+    node=>node.getBoundingClientRect().height)
+  expect(expandedHeight).toBe(compactHeight+36)
+  await inline.getByRole('textbox',{name:'驳回原因'}).fill('地址')
+  await expect(inline.getByRole('button',{name:'确认驳回'})).toBeDisabled()
+  await inline.getByRole('textbox',{name:'驳回原因'}).fill('客户地址需要再次核对')
+  await expect(inline.getByRole('button',{name:'确认驳回'})).toBeEnabled()
+  const inlineLayout=await inline.evaluate(root=>{
+    const cell=root.closest('.ag-cell')!.getBoundingClientRect()
+    const rightmost=root.lastElementChild!.getBoundingClientRect()
+    return {right:rightmost.right,cellRight:cell.right}
+  })
+  expect(inlineLayout.right).toBeLessThan(inlineLayout.cellRight)
+  await inline.getByRole('button',{name:'取消'}).click()
+  await expect(domestic.getByTestId('domestic-inline-reject')).toHaveCount(0)
+  const restoredHeight=await reviewAction.locator('xpath=ancestor::*[contains(@class,"ag-row")][1]').evaluate(
+    node=>node.getBoundingClientRect().height)
+  expect(restoredHeight).toBe(compactHeight)
+  console.log('R4_V12_REJECT_ON_DEMAND_ONE_ROW_PASS',JSON.stringify({compactHeight,expandedHeight,restoredHeight,...top}))
+  await expect(domestic.locator('.global-cell-badge').first()).toHaveCSS('background-color','rgb(239, 246, 244)')
+  await expect(domestic.locator('.global-cell-badge').first()).toHaveCSS('padding','2px 7px')
   await expect(page.locator('#domestic-reject-reason')).toHaveCount(0)
   await expect(page.locator('.table-wrap.orders table')).toHaveCount(0)
   await expect(domestic.getByTestId('grid-batch-footer')).toHaveCount(0)

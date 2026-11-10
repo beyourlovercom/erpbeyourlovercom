@@ -113,7 +113,7 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'phone',field:'phone',headerName:'电话',width:150}),
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
-  gridColumn({colId:'actions',field:'id',headerName:'操作',width:props.view==='review'?395:210,
+  gridColumn({colId:'actions',field:'id',headerName:'操作',width:props.view==='review'?330:210,
     pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
     cellRenderer:DomesticGridActionCell,cellRendererParams:{
       view:props.view, canReview:props.canReview, canOperate:props.canOperate,
