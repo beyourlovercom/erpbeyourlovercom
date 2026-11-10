@@ -74,3 +74,11 @@ No authenticated browser memory/30-tab profile, SQL slow query capture, or China
 
 ## R1-B stage
 Read-only checks and tool validation complete. Production Worker synchronization and UAT service cleanup remain pending controlled preflight.
+
+
+## Important production gate: OMS reconciliation is not wholly side-effect-free
+- Verified source in ShipOutProductionCanaryReconcileService: the provider integration performs a signed read-only GET and does not issue a new shipment POST, apply Tracking, or mark a shipment shipped.
+- Verified source in ShipOutProductionOmsReadbackService: inspectAndRecord inserts rows into shipout_oms_readbacks, and on cancelled/unverified responses can change shipout_production_batch_items from oms_visible to provider_cancelled/needs_review and completed batches to completed_partial.
+- Therefore a scheduler cutover enabling the 30-minute task is a real Production behavior change, not merely an infrastructure restart. The preview identified ten pending orders; do not activate this job solely because Redis ready/reserved counts are currently zero.
+- A safe next gate must reconcile with the running MorePlus R10 operations, confirm the 10 candidates' current status and history, and validate the local auditing/quarantine state transition against the existing authoritative batch workflow before changing the scheduler.
+- Status as of this review: the diagnostic tool and UAT inventory are tested; the Production scheduler/worker processes remain unchanged and release drift remains open.
