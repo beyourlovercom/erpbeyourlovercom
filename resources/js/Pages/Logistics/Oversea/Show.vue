@@ -117,9 +117,33 @@ type ShipOutProductionStatus = {
   provider_status?:string|number|null; reconciliation:string; provider_failure_code?:string|null; shipped:false
   tracking_apply:false; read_only:true
 }
-type ShipOutBatchPreview = { count:number; overflow:boolean; fingerprint:string; dry_run:boolean }
+type ShipOutBatchPreview = {
+  count:number; overflow:boolean; fingerprint:string; dry_run:boolean
+  scope?:'selected'|'all'; scan_count?:number; excluded_count?:number
+}
 type ShipOutBatchItem = { order_id:number; order_no:string; status:string; result_code:string|null; provider_order_id:string|null }
 type ShipOutBatchStatus = { batch_id:string; status:string; dry_run:boolean; total:number; processed:number; items:ShipOutBatchItem[] }
+const shipoutBatchSelection = ref<number[]>([])
+const shipoutBatchPreviewIds = ref<number[]>([])
+const showShipoutSelection = computed(() => !!props.shipoutProductionBatchUi
+  && props.warehouseKey==='us-moreplus' && props.view==='pending')
+const shipoutPageSelectable = computed(() => props.rows.data
+  .filter(row => row.shipment_status==='pending').map(row=>row.order_id))
+const shipoutPageAllSelected = computed(() => shipoutPageSelectable.value.length>0
+  && shipoutPageSelectable.value.every(id=>shipoutBatchSelection.value.includes(id)))
+function selectShipout(id:number, checked:boolean) {
+  shipoutBatchSelection.value = checked
+    ? [...new Set([...shipoutBatchSelection.value,id])]
+    : shipoutBatchSelection.value.filter(v=>v!==id)
+  shipoutBatchPreview.value=null
+}
+function selectShipoutPage(checked:boolean) {
+  const ids=shipoutPageSelectable.value
+  shipoutBatchSelection.value = checked
+    ? [...new Set([...shipoutBatchSelection.value,...ids])]
+    : shipoutBatchSelection.value.filter(id=>!ids.includes(id))
+  shipoutBatchPreview.value=null
+}
 const shipoutBatchPreview = ref<ShipOutBatchPreview|null>(null)
 const shipoutBatchStatus = ref<ShipOutBatchStatus|null>(null)
 const shipoutBatchBusy = ref(false)
@@ -145,16 +169,22 @@ async function shipoutBatchApi(url:string, data?:Record<string,string>) {
   const result=await response.json().catch(()=>({}))
   if(!response.ok)throw Error(response.status===429?'请求频繁，请稍后重新预览；本次没有提交海外仓':
     ({SHIPOUT_BATCH_STALE:'订单列表已变化，请重新预览',SHIPOUT_BATCH_ALREADY_RUNNING:'已有批次执行中，请勿重复提交',
-      SHIPOUT_BATCH_LOCKED:'正在创建批次，请勿重复点击',SHIPOUT_BATCH_QUEUE_UNAVAILABLE:'任务队列不可用，已暂停，不会自动重试',
+      SHIPOUT_BATCH_LOCKED:'正在创建批次，请勿重复点击',SHIPOUT_BATCH_SELECTION_INVALID:'勾选的订单列表无效，请重新选择',
+      SHIPOUT_BATCH_QUEUE_UNAVAILABLE:'任务队列不可用，已暂停，不会自动重试',
       SHIPOUT_BATCH_ASYNC_QUEUE_REQUIRED:'生产环境缺少异步队列，批量推送已禁止'} as Record<string,string>)[result.error_code]
     || '批量操作未完成：'+(result.error_code||response.status))
   return result
 }
 async function shipoutBatchCheck() {
   if(shipoutBatchBusy.value)return
+  const ids=[...shipoutBatchSelection.value].sort((a,b)=>a-b)
+  if(!ids.length && !window.confirm('未勾选订单。是否选择美西 MorePlus 仓全部待发货订单（包含缺货订单）进入预检？缺货、未审核、已提交及有重复风险的订单会逐单隔离，绝不强制发货。'))return
+  if(ids.length>200){shipoutBatchError.value='单批最多选择 200 单，请分批处理';return}
+  shipoutBatchPreviewIds.value=ids
   shipoutBatchBusy.value=true;shipoutBatchError.value='';shipoutBatchPreview.value=null
   try {
-    shipoutBatchPreview.value=await shipoutBatchApi('/logistics/oversea/us-moreplus/shipout/batch/preview') as ShipOutBatchPreview
+    const query=ids.length ? '?scope=selected&order_ids='+ids.join(',') : '?scope=all'
+    shipoutBatchPreview.value=await shipoutBatchApi('/logistics/oversea/us-moreplus/shipout/batch/preview'+query) as ShipOutBatchPreview
   }catch(e){shipoutBatchError.value=e instanceof Error?e.message:'批次预览失败'}
   finally{shipoutBatchBusy.value=false}
 }
@@ -170,13 +200,17 @@ async function shipoutBatchPoll() {
 async function shipoutBatchStart() {
   const preview=shipoutBatchPreview.value
   if(props.shipoutProductionBatchPaused||!preview||preview.overflow||preview.count<1||shipoutBatchBusy.value)return
+  const ids=shipoutBatchPreviewIds.value
+  if(preview.scope==='selected' && !ids.length)return
   const message=(preview.dry_run?'Dev 模拟批次（不会访问海外仓）':'真实向 MorePlus 仓库逐单推送')
-    +'：共 '+preview.count+' 单。确认只执行一次？'
+    +'：扫描 '+(preview.scan_count??preview.count)+' 单，进入逐单校验 '+preview.count
+    +' 单，排除 '+(preview.excluded_count??0)+' 单；再次确认仅提交安全门禁通过的订单？'
   if(!window.confirm(message))return
   shipoutBatchBusy.value=true;shipoutBatchError.value=''
   try {
     const reply=await shipoutBatchApi('/logistics/oversea/us-moreplus/shipout/batch/start',{
       fingerprint:preview.fingerprint,confirmation:'CONFIRM_MOREPLUS_BATCH_'+preview.count,
+      scope:preview.scope||'all',order_ids:ids.join(','),
     }) as {batch_id:string;status:string;dry_run:boolean;total:number}
     shipoutBatchStatus.value={batch_id:reply.batch_id,status:reply.status,dry_run:reply.dry_run,
       total:reply.total,processed:0,items:[]}
@@ -901,9 +935,13 @@ const compactPages = computed<(number|string)[]>(() => {
         <small v-if="shipoutProductionBatchPaused" class="xlwms-error" role="alert">当前批量推送已安全暂停：仓库重复判定原因待核对。管理员可查看预览与历史结果，但不可提交新订单。</small>
         <strong v-if="shipoutBatchPreview">
           {{shipoutBatchPreview.dry_run?'Dev 模拟预览（不连接真实 OMS）':'MorePlus 真实推送预览'}}
-          · 候选 {{shipoutBatchPreview.count}} 单
+          · {{shipoutBatchPreview.scope==='selected'?'手动选择':'全部待发货'}}
+          扫描 {{shipoutBatchPreview.scan_count??shipoutBatchPreview.count}} 单
+          · 待逐单校验 {{shipoutBatchPreview.count}} 单
+          · 排除 {{shipoutBatchPreview.excluded_count??0}} 单
           <span v-if="shipoutBatchPreview.overflow">（超过单批 200 单限制，请分批处理）</span>
         </strong>
+        <small v-if="shipoutBatchPreview" class="xlwms-note">包含缺货订单的扫描统计；库存不足、未审核、历史已提交及重复风险订单不向仓库提交。</small>
         <button v-if="shipoutBatchPreview && shipoutBatchPreview.count>0 && !shipoutBatchPreview.overflow"
           type="button" class="file-button primary" :disabled="shipoutBatchBusy || shipoutProductionBatchPaused" @click="shipoutBatchStart">
           {{shipoutBatchPreview.dry_run?'确认运行 Dev 模拟':'确认逐单推送 '+shipoutBatchPreview.count+' 单'}}
@@ -957,6 +995,11 @@ const compactPages = computed<(number|string)[]>(() => {
         </button>
       </nav>
 
+      <div v-if="showShipoutSelection && shipoutBatchSelection.length" class="tracking-selection-bar">
+        已勾选 {{ shipoutBatchSelection.length }} 单（跨页保留）
+        <button type="button" class="file-button primary" :disabled="shipoutBatchBusy" @click="shipoutBatchCheck">仅推送所选订单</button>
+        <button type="button" class="file-button" @click="shipoutBatchSelection=[];shipoutBatchPreview=null">清空勾选</button>
+      </div>
       <div v-if="canTrackingSync && trackingSelection.length" class="tracking-selection-bar">
         已选 {{ trackingSelection.length }} 项
         <button type="button" class="file-button primary" :disabled="trackingBusy" @click="pushTracking(trackingSelection)">批量同步官网物流</button>
@@ -966,7 +1009,13 @@ const compactPages = computed<(number|string)[]>(() => {
       <div class="oversea-table-wrap">
         <table class="oversea-table">
           <thead><tr>
-            <th v-if="canTrackingSync">选择</th>
+            <th v-if="canTrackingSync || showShipoutSelection">
+              <label v-if="showShipoutSelection" class="shipout-select-all">
+                <input type="checkbox" aria-label="选择当前页待发货订单"
+                  :checked="shipoutPageAllSelected" @change="selectShipoutPage(($event.target as HTMLInputElement).checked)" />选择
+              </label>
+              <template v-else>选择</template>
+            </th>
             <th class="decision-col sticky-decision">审核</th>
             <th v-if="warehouseKey === 'us-3sm'" class="xlwms-header">世迈仓 · 人工下单</th>
             <th v-if="warehouseKey === 'us-moreplus'" class="xlwms-header">MorePlus ShipOut · API / 物流</th>
@@ -976,9 +1025,15 @@ const compactPages = computed<(number|string)[]>(() => {
           </tr></thead>
           <tbody>
             <tr v-for="row in rows.data" :key="row.order_id">
-              <td v-if="canTrackingSync"><input v-if="eligibleForBatchTracking(row)" type="checkbox"
-                :aria-label="'选择同步 '+(row.erp_order_id??row.order_id)" :checked="trackingSelection.includes(row.order_id)"
-                @change="chooseTracking(row.order_id, ($event.target as HTMLInputElement).checked)" /></td>
+              <td v-if="canTrackingSync || showShipoutSelection">
+                <input v-if="showShipoutSelection && row.shipment_status==='pending'" type="checkbox"
+                  :aria-label="'选择推送 '+(row.erp_order_id??row.order_id)"
+                  :checked="shipoutBatchSelection.includes(row.order_id)"
+                  @change="selectShipout(row.order_id, ($event.target as HTMLInputElement).checked)" />
+                <input v-else-if="canTrackingSync && eligibleForBatchTracking(row)" type="checkbox"
+                  :aria-label="'选择同步 '+(row.erp_order_id??row.order_id)" :checked="trackingSelection.includes(row.order_id)"
+                  @change="chooseTracking(row.order_id, ($event.target as HTMLInputElement).checked)" />
+              </td>
               <td class="decision-cell sticky-decision">
                 <template v-if="canReview && view === 'review'">
                   <button type="button" class="decision approve" @mousedown.prevent @click="approve(row)">通过</button>

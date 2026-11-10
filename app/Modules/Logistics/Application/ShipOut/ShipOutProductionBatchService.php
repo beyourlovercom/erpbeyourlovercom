@@ -40,8 +40,10 @@ final class ShipOutProductionBatchService
         return $ids;
     }
 
-    public function candidateIds(): array
+    /** @param list<int>|null $selectedOrderIds */
+    public function candidateIds(?array $selectedOrderIds = null): array
     {
+        $this->validateSelection($selectedOrderIds);
         $configuredCutover = (int) config('shipout.production_v1_min_order_id', 0);
         if (app()->environment('production') && $configuredCutover < 1) {
             return [];
@@ -63,6 +65,10 @@ final class ShipOutProductionBatchService
                 ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'))
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
                 ->where('order_status', 'pending_shipment')
+                ->where(fn ($workflow) => $workflow->whereNull('workflow_status')
+                    ->orWhere('workflow_status', '!=', 'out_of_stock'))
+                ->whereDoesntHave('operationalMarkers', fn ($markers) => $markers
+                    ->whereIn('marker', ['stockout', 'domestic_stockout']))
                 ->whereHas('address', fn ($address) => $address->where('country', 'US')))
             ->whereNotIn('order_id', DB::table('shipout_dispatch_attempts')->select('order_id'))
             // Batch-level quarantine also covers preflight failures without a POST.
@@ -76,37 +82,57 @@ final class ShipOutProductionBatchService
         if (app()->environment('production')) {
             $query->whereIn('order_id', $approvedIds);
         }
+        if ($selectedOrderIds !== null) {
+            $query->whereIn('order_id', $selectedOrderIds);
+        }
 
         return $query->orderBy('id')->limit(self::MAX_ORDERS + 1)
             ->pluck('order_id')->map(fn ($id) => (int) $id)->all();
     }
 
-    public function preview(): array
+    /** @param list<int>|null $selectedOrderIds */
+    public function preview(?array $selectedOrderIds = null): array
     {
-        $ids = $this->candidateIds();
+        $ids = $this->candidateIds($selectedOrderIds);
+        // ALL means all pending rows in this warehouse, including unreviewed
+        // and out-of-stock rows in the scan. It does NOT grant POST permission
+        // to the excluded rows. Every live order still passes per-order guards.
+        $scanned = $selectedOrderIds === null
+            ? Shipment::query()->where('shipment_status', 'pending')
+                ->whereHas('warehouse', fn ($q) => $q->where('code', 'US-LA'))
+                ->whereHas('order', fn ($q) => $q->eligibleForOperations())
+                ->count()
+            : count($selectedOrderIds);
 
         return [
+            'scope' => $selectedOrderIds === null ? 'all' : 'selected',
+            'scan_count' => $scanned,
+            'excluded_count' => max(0, $scanned - count($ids)),
             'count' => count($ids),
-            'overflow' => count($ids) > self::MAX_ORDERS,
-            'fingerprint' => hash('sha256', implode(',', $ids)),
+            'overflow' => count($ids) > self::MAX_ORDERS || $scanned > self::MAX_ORDERS,
+            // Bind the confirmation to the exact scope, selected IDs and
+            // full pending count. A new stockout record must invalidate an
+            // earlier all-orders confirmation even if candidate IDs stay same.
+            'fingerprint' => hash('sha256', json_encode([
+                'scope' => $selectedOrderIds === null ? 'all' : 'selected',
+                'selected_ids' => $selectedOrderIds,
+                'scanned' => $scanned,
+                'candidate_ids' => $ids,
+            ], JSON_THROW_ON_ERROR)),
             'dry_run' => ! app()->environment('production'),
         ];
     }
 
-    public function start(int $operator, string $fingerprint): string
+    /** @param list<int>|null $selectedOrderIds */
+    public function start(int $operator, string $fingerprint, ?array $selectedOrderIds = null): string
     {
         $lock = cache()->lock('shipout:moreplus:batch:start', 12);
         if (! $lock->get()) {
             throw new RuntimeException('SHIPOUT_BATCH_LOCKED');
         }
         try {
-            $ids = $this->candidateIds();
-            $preview = [
-                'count' => count($ids),
-                'overflow' => count($ids) > self::MAX_ORDERS,
-                'fingerprint' => hash('sha256', implode(',', $ids)),
-                'dry_run' => ! app()->environment('production'),
-            ];
+            $ids = $this->candidateIds($selectedOrderIds);
+            $preview = $this->preview($selectedOrderIds);
             if ($preview['overflow'] || $preview['count'] === 0
                 || ! hash_equals($preview['fingerprint'], $fingerprint)) {
                 throw new RuntimeException('SHIPOUT_BATCH_STALE');
@@ -142,6 +168,23 @@ final class ShipOutProductionBatchService
             return $id;
         } finally {
             $lock->release();
+        }
+    }
+
+    /** @param list<int>|null $selectedOrderIds */
+    private function validateSelection(?array $selectedOrderIds): void
+    {
+        if ($selectedOrderIds === null) {
+            return;
+        }
+        if ($selectedOrderIds === [] || count($selectedOrderIds) > self::MAX_ORDERS
+            || count(array_unique($selectedOrderIds)) !== count($selectedOrderIds)) {
+            throw new RuntimeException('SHIPOUT_BATCH_SELECTION_INVALID');
+        }
+        foreach ($selectedOrderIds as $id) {
+            if (! is_int($id) || $id < 1) {
+                throw new RuntimeException('SHIPOUT_BATCH_SELECTION_INVALID');
+            }
         }
     }
 
