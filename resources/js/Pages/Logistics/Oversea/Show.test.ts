@@ -916,6 +916,30 @@ describe('MorePlus Dev-only one-click batch workbench', () => {
     }
   })
 
+  it('shows admin the paused one-click button with read-only preview and prevents POST', async () => {
+    const mock=vi.fn().mockResolvedValue({
+      ok:true,json:async()=>({count:1,overflow:false,dry_run:false,fingerprint:'a'.repeat(64)}),
+    })
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,shipoutProductionBatchPaused:true,
+        trackingImportPreview:null})
+      expect(page.text()).toContain('一键推送仓库')
+      expect(page.text()).toContain('管理员可查看预览与历史结果，但不可提交新订单')
+      await page.findAll('button').find(b=>b.text()==='一键推送仓库')!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('候选 1 单'))
+      const send=page.findAll('button').find(b=>b.text().includes('确认逐单推送'))
+      expect(send?.attributes('disabled')).toBeDefined()
+      await send!.trigger('click')
+      expect(mock.mock.calls.map(c=>c[0])).toEqual([
+        '/logistics/oversea/us-moreplus/shipout/batch/preview',
+      ])
+      page.unmount()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('previews, confirms once, and reads Dev progress without per-order browser submission', async () => {
     document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="DEV-BATCH-TEST">')
     const fingerprint='a'.repeat(64)
