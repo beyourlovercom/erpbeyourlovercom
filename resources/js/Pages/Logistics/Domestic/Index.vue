@@ -8,6 +8,7 @@ import GridBatchFooterControls from '../../../Components/DataGrid/GridBatchFoote
 import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../../Components/DataGrid/useGlobalGridListAdapter'
 const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
 import { publishGlobalFeedback } from '../../../lib/globalFeedback'
+import { currentCsrfHeaders } from '../../../lib/csrfHeaders'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowStatusPill.vue'
 
@@ -354,22 +355,21 @@ const chooseUpload = () => {
   if (!props.canOperate || uploadBusy.value || applyBusy.value) return
   uploadInput.value?.click()
 }
-const csrfHeaders = (): Record<string,string> => {
-  const token = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
-  if (token) return {'X-CSRF-TOKEN':token}
-  const cookie = document.cookie.split('; ').find(item => item.startsWith('XSRF-TOKEN='))?.split('=')[1]
-  return cookie ? {'X-XSRF-TOKEN':decodeURIComponent(cookie)} : {}
-}
 const importPost = async (url:string, body:BodyInit, isJson = false):Promise<Record<string,any>> => {
   const response = await fetch(url, {
     method:'POST', credentials:'same-origin', cache:'no-store',
-    headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest',...csrfHeaders(),
+    headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest',...currentCsrfHeaders(),
       ...(isJson ? {'Content-Type':'application/json'} : {})},
     body,
   })
   let data:Record<string,any> = {}
   try { data = await response.json() } catch { /* 500 HTML / session expiration */ }
   if (!response.ok) {
+    // Never retry a write automatically: the session may have rotated and
+    // we must not duplicate a partially completed batch operation.
+    if (response.status === 419) {
+      throw new Error('登录安全令牌已过期或会话已更新。本次请求未通过校验，请刷新页面后重试。')
+    }
     const requestId = response.headers.get('X-ERP-Request-ID')
     const validation = response.status < 500
       ? Object.values(data.errors ?? {}).flat().find(value => typeof value === 'string') : null

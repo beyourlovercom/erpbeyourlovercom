@@ -210,3 +210,43 @@ test('R4-L1 logistics shared Grid handles domestic, allocation and review withou
   await expect(page.getByRole('button',{name:'确认复核'})).toHaveCount(0)
   console.log('R4_L1_REVIEW_READONLY_PERMISSION_FALLBACK_PASS')
 })
+
+test('R4-M3 CSRF test: SPA login token versus refreshed session cookie, no real orders',async ({page})=>{
+  await loginThroughUi(page,syntheticUsers().authorized)
+  const diag=await page.evaluate(async()=>{
+    const meta=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content??''
+    const encoded=document.cookie.split('; ').find(v=>v.startsWith('XSRF-TOKEN='))?.slice('XSRF-TOKEN='.length)
+    const cookie=encoded?decodeURIComponent(encoded):''
+    const emptyOperation=async (header:Record<string,string>)=>{
+      const response=await fetch('/orders/archive/batch',{
+        method:'POST',credentials:'same-origin',cache:'no-store',
+        headers:{Accept:'application/json','Content-Type':'application/json',...header},
+        body:JSON.stringify({order_ids:[987654321]}),
+      })
+      return response.status
+    }
+    return {
+      metaPresent:!!meta,cookiePresent:!!cookie,tokenEqual:meta===cookie,
+      metaStatus:meta?await emptyOperation({'X-CSRF-TOKEN':meta}):null,
+      cookieStatus:cookie?await emptyOperation({'X-XSRF-TOKEN':cookie}):null,
+    }
+  })
+  console.log('R4_M3_CSRF_DIAG',JSON.stringify(diag))
+  expect(diag.cookiePresent).toBe(true)
+  expect(diag.cookieStatus).toBe(200)
+})
+
+test('R4-M3 batch archive survives stale Inertia meta token using the current session cookie',async ({page})=>{
+  await loginThroughUi(page,syntheticUsers().authorized)
+  await page.goto('/logistics/china?view=review',{waitUntil:'domcontentloaded'})
+  const grid=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(grid).toBeVisible({timeout:18000})
+  await expect(grid.getByText('007-1110-c99992',{exact:true}).first()).toBeVisible()
+  await page.locator('meta[name="csrf-token"]').evaluate(el=>el.setAttribute('content','OUTDATED-HEAD-TOKEN'))
+  await grid.locator('.ag-selection-checkbox').first().click()
+  const footer=grid.getByTestId('grid-batch-footer')
+  await footer.getByRole('combobox',{name:'批量操作'}).selectOption('archive')
+  await footer.getByRole('button',{name:'应用'}).click()
+  await expect(page.getByText('批量操作：成功 1 条，失败 0 条')).toBeVisible({timeout:15000})
+  console.log('R4_M3_STALE_META_COOKIE_ARCHIVE_SYNTHETIC_PASS')
+})
