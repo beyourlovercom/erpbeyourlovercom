@@ -331,6 +331,105 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ]);
     }
 
+    public function test_moreplus_usps_tracking_entered_as_remark_is_routed_to_draft_tracking_without_shipping(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $w = $this->warehouses();
+        $order = $this->orderAt($w['US-LA'], '007-MOREPLUS-MISPLACED-TRACKING');
+        $this->actingAs($actor)->post("/logistics/oversea/orders/{$order->id}/approve")
+            ->assertRedirect();
+        Http::preventStrayRequests();
+
+        $number = '9434650105794040132223';
+        $this->actingAs($actor)
+            ->patch("/logistics/oversea/orders/{$order->id}/draft", ['note' => $number])
+            ->assertRedirect()
+            ->assertSessionHas('success', fn ($value) => str_contains($value, 'Tracking No.'));
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'tracking_number' => $number,
+            'shipment_status' => 'pending',
+        ]);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id, 'note' => null,
+        ]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_moreplus_tracking_in_remark_cannot_overwrite_existing_or_duplicate_other_order(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $w = $this->warehouses();
+        $first = $this->orderAt($w['US-LA'], '007-TRACKING-SAFE-1');
+        $second = $this->orderAt($w['US-LA'], '007-TRACKING-SAFE-2');
+        $number = '9434650105794040132223';
+        Http::preventStrayRequests();
+        $this->actingAs($actor)
+            ->patch("/logistics/oversea/orders/{$first->id}/draft", ['note' => $number])
+            ->assertRedirect();
+        $this->patch("/logistics/oversea/orders/{$second->id}/draft", ['note' => $number])
+            ->assertStatus(409);
+        $this->patch("/logistics/oversea/orders/{$first->id}/draft", [
+            'note' => '9235990416420904220003',
+        ])->assertStatus(409);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $first->id, 'tracking_number' => $number, 'shipment_status' => 'pending',
+        ]);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $second->id, 'tracking_number' => null, 'shipment_status' => 'pending',
+        ]);
+        Http::assertNothingSent();
+    }
+
+    public function test_review_only_operator_cannot_smuggle_tracking_through_moreplus_note(): void
+    {
+        $viewer = $this->userWith(['logistics.view']);
+        $w = $this->warehouses();
+        $order = $this->orderAt($w['US-LA'], '007-MOREPLUS-TRACKING-PERMISSION');
+        Http::preventStrayRequests();
+        $this->actingAs($viewer)
+            ->patch("/logistics/oversea/orders/{$order->id}/draft", [
+                'note' => '9434650105794040132223',
+            ])->assertForbidden();
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'tracking_number' => null,
+            'shipment_status' => 'pending',
+        ]);
+        $this->assertDatabaseMissing('oversea_warehouse_reviews', [
+            'order_id' => $order->id,
+            'note' => '9434650105794040132223',
+        ]);
+        Http::assertNothingSent();
+    }
+
+    public function test_moreplus_human_note_and_other_warehouse_number_remain_notes(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $w = $this->warehouses();
+        $moreplus = $this->orderAt($w['US-LA'], '007-MOREPLUS-NOTE');
+        $other = $this->orderAt($w['US-NY'], '007-NY-NOTE');
+        Http::preventStrayRequests();
+        $this->actingAs($actor)
+            ->patch("/logistics/oversea/orders/{$moreplus->id}/draft", [
+                'note' => '等海运 / 缺货',
+            ])->assertRedirect();
+        $this->patch("/logistics/oversea/orders/{$other->id}/draft", [
+            'note' => '9434650105794040132223',
+        ])->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $moreplus->id, 'note' => '等海运 / 缺货',
+        ]);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $other->id, 'note' => '9434650105794040132223',
+        ]);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $other->id, 'tracking_number' => null,
+        ]);
+        Http::assertNothingSent();
+    }
+
     public function test_rejection_requires_reason_clears_assignment_and_notifies_all_operations_users(): void
     {
         $dede = $this->userWith(['logistics.view', 'logistics.operate']);

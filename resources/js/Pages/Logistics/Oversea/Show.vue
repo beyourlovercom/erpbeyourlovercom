@@ -821,7 +821,22 @@ const switchWarehouse = (url:string) => router.visit(`${url}?view=${encodeURICom
 const saveDraft = (row:Row, payload:Record<string,string|number|null>) => router.patch(`/logistics/oversea/orders/${row.order_id}/draft`, payload, { preserveScroll:true, preserveState:true })
 const changeWarehouse = (row:Row, warehouseId:number) => saveDraft(row, { warehouse_id:Number(warehouseId) })
 const changeWarehouseFromEvent = (row:Row, event:Event) => changeWarehouse(row, Number((event.target as HTMLSelectElement).value))
-const saveNote = (row:Row) => saveDraft(row, { note:draft(row).note.trim() || null })
+const saveNote = (row:Row) => {
+  const note=draft(row).note.trim()
+  const isUspsNumber=props.warehouseKey==='us-moreplus' && /^(?:92|93|94)\d{20}$/.test(note)
+  if(isUspsNumber){
+    if(!props.canOperate){
+      rowErrors[row.order_id]='这是 USPS Tracking，请交由有发货执行权限的人员填写'
+      return
+    }
+    router.patch('/logistics/oversea/orders/'+row.order_id+'/draft',{note},{
+      preserveScroll:true,preserveState:true,
+      onSuccess:()=>{draft(row).tracking_number=note;draft(row).note='';rowErrors[row.order_id]=''},
+    })
+    return
+  }
+  saveDraft(row,{note:note||null})
+}
 const saveCarrier = (row:Row) => { const d=draft(row); d.service=defaultServiceFor(d.carrier, row.country); saveDraft(row, { carrier:d.carrier, service:d.service || null }) }
 const saveService = (row:Row) => saveDraft(row, { carrier:draft(row).carrier, service:draft(row).service || null })
 const saveTracking = (row:Row) => saveDraft(row, { tracking_number:draft(row).tracking_number.trim() || null })
@@ -1190,7 +1205,7 @@ const compactPages = computed<(number|string)[]>(() => {
                 </div>
                 <small v-if="warehouseKey==='us-moreplus' && ['issued','exceptions'].includes(view) && row.shipout_production?.attempted && row.shipment_status==='pending' && row.warehouse_dispatch?.failure_code!=='PROVIDER_DUPLICATE_ORDER'" class="xlwms-note">先核对既有 OMS 原单，禁止重复推单；实际出库后再填真实 Tracking。网站由同步模块处理。</small>
               </template>
-                <template v-else-if="column.key === 'note'"><div class="note-cell"><input v-model="draft(row).note" :disabled="!canEditRow" class="note-input" :class="{ error: !!rowErrors[row.order_id] }" placeholder="等海运 / 等空运 / 缺货 / 太贵 / 送不到…" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></template>
+                <template v-else-if="column.key === 'note'"><div class="note-cell"><input v-model="draft(row).note" :disabled="!canEditRow" class="note-input" :class="{ error: !!rowErrors[row.order_id] }"  :placeholder="warehouseKey==='us-moreplus'?'仅填备注；USPS单号自动转入Tracking':'等海运 / 等空运 / 缺货 / 太贵 / 送不到…'" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></template>
                 <template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template>
                 <template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template>
                 <template v-else>{{ itemText(row) }}</template>
