@@ -30,3 +30,7 @@
 - MorePlus backend tests 562 assertions, overseas workbench 832 assertions, Vue 55/55, Vite production build and 14-file Pint all PASS.
 - Covered signed-first / second-read transition, cancellation after OMS confirmed, cancellation stickiness, unknown provider status, provider ID mismatch, immutable attempt count, 3SM draft-processing-cancel split, and disabled Dev scheduled job.
 - An unrelated pre-existing XlwmsSingleOrderDispatchTest case expects unauthenticated POST redirect while returning 401 on BOTH original main and R12; not changed here.
+
+## Pre-merge defense-in-depth
+- The single-order manual shipment backend (not just row-button visibility) checks latest sanitized OMS readback. A direct single-order API dispatch later classified PROVIDER_DUPLICATE_ORDER is blocked with HTTP 409 even when no batch item exists. Regression verifies no Tracking/shipment update, no provider HTTP, and immutable attempt remains one.
+- Scheduled signed GET query removes redundant DISTINCT because the immutable order_id is already unique; MySQL 8 strict rejects SELECT DISTINCT order_id ORDER BY a.id. Ordering remains bounded/chronological.

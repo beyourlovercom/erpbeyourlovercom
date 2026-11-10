@@ -198,7 +198,9 @@ Artisan::command('shipout:reconcile-oms {--apply} {--limit=20}', function (): in
         ->join('shipments as s', 's.order_id', '=', 'a.order_id')
         ->where('a.provider_warehouse_id', ShipOutProductionDispatchState::MOREPLUS_PROVIDER_WAREHOUSE_ID)
         ->where('s.shipment_status', 'pending')
-        ->orderBy('a.id')->distinct()->limit($limit)
+        // shipout_dispatch_attempts.order_id is UNIQUE: DISTINCT is not
+        // needed and MySQL 8 rejects DISTINCT ordered by unselected a.id.
+        ->orderBy('a.id')->limit($limit)
         ->pluck('a.order_id')->map(fn ($id) => (int) $id)->all();
 
     if (! $this->option('apply')) {

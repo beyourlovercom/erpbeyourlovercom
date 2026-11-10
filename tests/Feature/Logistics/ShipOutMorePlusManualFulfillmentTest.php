@@ -208,6 +208,30 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_direct_single_order_oms_duplicate_readback_blocks_manual_fulfillment(): void
+    {
+        [$user, $order] = $this->prepare();
+        $this->attempt($order);
+        DB::table('shipout_oms_readbacks')->insert([
+            'order_id' => $order->id,
+            'provider_order_id' => 'OMS-EXISTING-ONE-ONLY',
+            'provider_status' => 6, 'state' => 'cancelled',
+            'reason_code' => 'PROVIDER_DUPLICATE_ORDER',
+            'checked_at' => now(), 'created_at' => now(),
+        ]);
+        Http::preventStrayRequests();
+        $this->actingAs($user)
+            ->post('/logistics/oversea/us-moreplus/orders/'.$order->id.'/manual-ship',
+                $this->data($order->id))
+            ->assertStatus(409);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'shipment_status' => 'pending',
+            'tracking_number' => null,
+        ]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        Http::assertNothingSent();
+    }
+
     public function test_manual_confirm_without_existing_attempt_is_blocked(): void
     {
         [$user, $order] = $this->prepare();
