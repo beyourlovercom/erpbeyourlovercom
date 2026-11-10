@@ -145,6 +145,52 @@ final class ShipOutProductionOmsReadbackTest extends TestCase
             ShipOutProductionDispatchState::from($attempt, null, $last)['status']);
     }
 
+    public function test_official_oms_status_two_is_warehouse_awaiting_and_ten_is_still_submitting(): void
+    {
+        Http::preventStrayRequests();
+        $id = 8810;
+        $attempt = $this->attempt($id);
+        $observer = app(ShipOutProductionOmsReadbackService::class);
+        $observer->recordResult($id, $this->providerResult($id, 10));
+        $first = DB::table('shipout_oms_readbacks')->where('order_id', $id)->latest('id')->first();
+        $this->assertSame('pending', $first->state);
+        $this->assertSame('oms_ack_pending', ShipOutProductionDispatchState::from($attempt, null, $first)['status']);
+        $observer->recordResult($id, $this->providerResult($id, 2));
+        $second = DB::table('shipout_oms_readbacks')->where('order_id', $id)->latest('id')->first();
+        $this->assertSame('warehouse_awaiting', $second->state);
+        $this->assertSame('oms_warehouse_awaiting', ShipOutProductionDispatchState::from($attempt, null, $second)['status']);
+        $this->assertTrue(ShipOutProductionDispatchState::from($attempt, null, $second)['is_oms_created']);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        Http::assertNothingSent();
+    }
+
+    public function test_official_shipped_status_four_corrects_prior_unverified_without_modifying_submission(): void
+    {
+        Http::preventStrayRequests();
+        $id = 8811;
+        $attempt = $this->attempt($id);
+        $observer = app(ShipOutProductionOmsReadbackService::class);
+        DB::table('shipout_oms_readbacks')->insert([
+            'order_id' => $id, 'provider_order_id' => 'OMS-TEST-'.$id,
+            'provider_status' => 4, 'state' => 'unverified',
+            'reason_code' => 'OMS_READBACK_UNRECOGNIZED_STATUS',
+            'checked_at' => now()->subMinutes(10), 'created_at' => now()->subMinutes(10),
+        ]);
+        $observer->recordResult($id, $this->providerResult($id, 4));
+        $latest = DB::table('shipout_oms_readbacks')->where('order_id', $id)->latest('id')->first();
+        $this->assertSame(4, $latest->provider_status);
+        $this->assertSame('provider_shipped', $latest->state);
+        $this->assertNull($latest->reason_code);
+        $projection = ShipOutProductionDispatchState::from($attempt, null, $latest);
+        $this->assertSame('oms_shipped_pending_tracking', $projection['status']);
+        $this->assertStringContainsString('Tracking 待回写', $projection['label']);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id' => $id, 'provider_order_id' => 'OMS-TEST-'.$id, 'status' => 'acknowledged',
+        ]);
+        Http::assertNothingSent();
+    }
+
     public function test_unknown_readback_is_quarantined_not_treated_as_confirmed(): void
     {
         $id = 8803;

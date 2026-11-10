@@ -41,7 +41,7 @@ final class ShipOutProductionDispatchState
     /** A confirmed OMS row is still NOT proof of real physical shipping. */
     public static function scopeCreated(Builder $query): void
     {
-        self::scopeLatestOmsState($query, ['confirmed']);
+        self::scopeLatestOmsState($query, ['confirmed', 'warehouse_awaiting', 'provider_shipped']);
         $query->whereExists(function ($attempt): void {
             self::scopeAttempt($attempt);
             $attempt->where('shipout_attempt.status', 'acknowledged')
@@ -90,11 +90,22 @@ final class ShipOutProductionDispatchState
             ];
         }
 
-        if ($latestOmsState === 'confirmed' && $accepted) {
+        if ($accepted && in_array($latestOmsState, ['confirmed', 'warehouse_awaiting', 'provider_shipped'], true)) {
+            $status = match ($latestOmsState) {
+                'warehouse_awaiting' => 'oms_warehouse_awaiting',
+                'provider_shipped' => 'oms_shipped_pending_tracking',
+                default => 'oms_confirmed',
+            };
+            $label = match ($latestOmsState) {
+                'warehouse_awaiting' => '已下发 · 待仓库处理（未出库）',
+                'provider_shipped' => 'OMS 已发货 · Tracking 待回写 ERP',
+                default => '已下发 · OMS 仓库处理中（未出库）',
+            };
+
             return [
                 'attempted' => true, 'is_oms_created' => true,
-                'status' => 'oms_confirmed',
-                'label' => '已下发 · OMS 两次回读确认（未出库）',
+                'status' => $status,
+                'label' => $label,
                 'provider_order_id' => (string) $attempt->provider_order_id,
             ];
         }
@@ -124,7 +135,10 @@ final class ShipOutProductionDispatchState
             'label' => $shipped ? '已发货' : $state['label'],
             'detail' => $shipped ? '' : ($state['status'] === 'oms_quarantined'
                 ? '本单已从自动发货队列隔离，请物流主管核对，不允许直接重发'
-                : ($state['status'] === 'oms_ack_pending' ? 'API ACK 非最终业务成功；请通过正式 OMS 只读核实' : '')),
+                : ($state['status'] === 'oms_ack_pending' ? 'API ACK 非最终业务成功；请通过正式 OMS 只读核实'
+                    : ($state['status'] === 'oms_shipped_pending_tracking'
+                        ? '官方 OMS status=4 Shipped；须读取仓库真实 Tracking、出库时间和包裹后才可写入 ERP，并交同步模块处理官网'
+                        : ''))),
             'oms_order_no' => $state['provider_order_id'],
             'last_checked_at' => $omsReadback->checked_at ?? null,
             'failure_code' => $state['status'] === 'oms_quarantined'
