@@ -980,6 +980,22 @@ describe('MorePlus Dev-only one-click batch workbench', () => {
     } finally {vi.unstubAllGlobals()}
   })
 
+  it('switching out of pending clears hidden selected orders', async () => {
+    const item={...usSmPendingRows.data[0],order_id:86,warehouse_id:1}
+    const mock=vi.fn()
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,
+        rows:{...usSmPendingRows,data:[item]}})
+      await page.find('input[aria-label^="选择推送"]').setValue(true)
+      expect(page.text()).toContain('已勾选 1 单')
+      await page.findAll('button.oversea-tab').find(b=>b.text().includes('已发货'))!.trigger('click')
+      expect(page.text()).not.toContain('已勾选 1 单')
+      expect(mock).not.toHaveBeenCalled()
+      page.unmount()
+    } finally {vi.unstubAllGlobals()}
+  })
+
   it('select current page and clearing selection never trigger provider submission', async () => {
     const item={...usSmPendingRows.data[0],order_id:83,warehouse_id:1}
     const mock=vi.fn()

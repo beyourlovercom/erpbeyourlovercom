@@ -25,3 +25,7 @@
 - Source Production MorePlus tab count = 15; raw US-LA shipment_status=pending count = 51. These differ because the raw set includes review and other workflow queues.
 - The ALL scope uses the canonical overseas-review approved predicate, operational-archive/historical exclusion, and both immutable ShipOut and quarantined-batch filters. This matches the existing pending tab exactly, not raw status-only matching.
 - Stockout rows in this pending scope are counted but excluded from POST. Unreviewed rows are not pending-tab items and must never enter ALL as eligible or scan count.
+
+## Tab switch safety
+- A selection belongs only to the MorePlus pending tab. Leaving that tab clears its selected IDs and preview; the top batch button must never use a hidden selection from the shipped or exception tab.
+- Dev Vue regression covers this case; 53/53 page tests PASS.

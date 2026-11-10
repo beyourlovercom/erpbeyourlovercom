@@ -177,7 +177,8 @@ async function shipoutBatchApi(url:string, data?:Record<string,string>) {
 }
 async function shipoutBatchCheck() {
   if(shipoutBatchBusy.value)return
-  const ids=[...shipoutBatchSelection.value].sort((a,b)=>a-b)
+  // Never use invisible selections from another workflow tab.
+  const ids=(props.view==='pending' ? [...shipoutBatchSelection.value] : []).sort((a,b)=>a-b)
   if(!ids.length && !window.confirm('未勾选订单。是否选择美西 MorePlus 仓全部待发货订单（包含缺货订单）进入预检？缺货、未审核、已提交及有重复风险的订单会逐单隔离，绝不强制发货。'))return
   if(ids.length>200){shipoutBatchError.value='单批最多选择 200 单，请分批处理';return}
   shipoutBatchPreviewIds.value=ids
@@ -807,7 +808,13 @@ const viewTabs = [
 const pageTitle = computed(() => props.warehouse ? `海外仓发货 · ${props.warehouse.label}` : '海外仓发货 · 全部海外仓')
 const warehousePortal = computed(() => resolveWarehousePortal(props.warehouse?.url ?? ''))
 const basePath = computed(() => props.warehouse ? props.warehouse.url : '/logistics/oversea')
-const switchView = (view:string) => router.visit(`${basePath.value}?view=${encodeURIComponent(view)}&page=1&per_page=${props.rows.per_page || 50}`, { preserveScroll:true, preserveState:true, only:['rows','view','viewCounts','warehouse','warehouseKey','warehouseOptions','canReview','canOperate','carrierOptions'] })
+const switchView = (view:string) => {
+  if(view!=='pending'){
+    shipoutBatchSelection.value=[]
+    shipoutBatchPreview.value=null
+  }
+  router.visit(`${basePath.value}?view=${encodeURIComponent(view)}&page=1&per_page=${props.rows.per_page || 50}`, { preserveScroll:true, preserveState:true, only:['rows','view','viewCounts','warehouse','warehouseKey','warehouseOptions','canReview','canOperate','carrierOptions'] })
+ }
 const switchWarehouse = (url:string) => router.visit(`${url}?view=${encodeURIComponent(props.view)}&page=1&per_page=${props.rows.per_page || 50}`, { preserveScroll:true, preserveState:true })
 const saveDraft = (row:Row, payload:Record<string,string|number|null>) => router.patch(`/logistics/oversea/orders/${row.order_id}/draft`, payload, { preserveScroll:true, preserveState:true })
 const changeWarehouse = (row:Row, warehouseId:number) => saveDraft(row, { warehouse_id:Number(warehouseId) })
