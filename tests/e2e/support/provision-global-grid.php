@@ -98,6 +98,34 @@ DB::transaction(function () use ($product, $warehouse, $owner): void {
         'shipment_status'=>'pending',
         'warehouse_selection_source'=>'manual',
     ]);
+    // Independent R4 stockout view fixture, never a real warehouse/order.
+    // Distinct pending factory shipment with authoritative stockout status.
+    $stockout = Order::query()->create([
+        'internal_order_number'=>'INT-E2E-GG-STOCKOUT-01',
+        'erp_order_id'=>'007-1110-c99991',
+        'source_type'=>OrderSourceType::Manual,
+        'order_kind'=>OrderKind::Customer,
+        'external_order_number'=>'E2E-GG-STOCKOUT-01',
+        'order_date'=>now()->toDateString(),
+        'owner_id'=>$owner->id,
+        'order_status'=>OrderStatus::PendingShipment,
+    ]);
+    $stockout->forceFill(['workflow_status'=>'out_of_stock'])->save();
+    $stockout->address()->create([
+        'recipient_name'=>'E2E Stockout Recipient',
+        'phone'=>'15550005678','country'=>'DE','city'=>'Berlin',
+        'address_line_1'=>'Synthetic Stockout Street 7','postal_code'=>'10002',
+    ]);
+    $stockout->items()->create([
+        'product_id'=>$product->id,'sku'=>'E2E-SKU-0001',
+        'product_summary'=>'E2E Out of Stock Product', 'quantity'=>1,
+        'unit_price'=>'11.00','line_revenue'=>'11.00',
+    ]);
+    $stockout->shipment()->create([
+        'warehouse_id'=>$factory->id,
+        'shipment_status'=>'pending',
+        'warehouse_selection_source'=>'manual',
+    ]);
     LogisticsReview::query()->create([
         'order_id'=>$domestic->id,
         'status'=>'pending',

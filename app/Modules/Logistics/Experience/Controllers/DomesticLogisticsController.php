@@ -72,13 +72,14 @@ final class DomesticLogisticsController
         ]);
 
         $this->applyView($query, $view);
-        // Owner-approved review Grid is the default for authorized viewers.
-        // Carrier/Tracking/dispatch tabs retain their native workbenches
-        // until each has passed its own functionality-parity UAT.
-        $reviewGrid = $view === 'review';
+        // Individually Owner-approved rollout: review + stockout operate via
+        // Global Grid by default, with an explicit native-table fallback.
+        // Other carrier/Tracking/shipping tabs retain their original default
+        // until their respective action-parity UAT has passed.
+        $approvedGridView = in_array($view, ['review', 'stockout'], true);
         $gridSetting = $request->query('global_grid');
-        $gridAvailable = $reviewGrid || GlobalGridPilot::available();
-        $gridPilot = $reviewGrid
+        $gridAvailable = $approvedGridView || GlobalGridPilot::available();
+        $gridPilot = $approvedGridView
             ? ($gridSetting === null || $gridSetting === '1')
             : GlobalGridPilot::enabled($request);
         $search = $gridPilot ? trim(mb_substr((string) $request->query('search', ''), 0, 100)) : '';
