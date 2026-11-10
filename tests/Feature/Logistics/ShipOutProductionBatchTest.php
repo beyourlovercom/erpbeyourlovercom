@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionBatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryReconcileService;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOutboundPacer;
 use App\Modules\Logistics\Experience\Jobs\ProcessShipOutProductionBatch;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
@@ -142,6 +143,53 @@ final class ShipOutProductionBatchTest extends TestCase
         } finally {
             $this->app->instance('env', $old);
         }
+    }
+
+    public function test_async_ack_does_not_count_as_a_verified_batch_result(): void
+    {
+        $user = $this->operator();
+        $order = $this->approvedOrder($user);
+        $id = '00000000-0000-4000-8000-000000000097';
+        DB::table('shipout_production_batches')->insert([
+            'id' => $id, 'operator_user_id' => $user->id,
+            'status' => 'awaiting_oms', 'dry_run' => false,
+            'total' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('shipout_production_batch_items')->insert([
+            'batch_id' => $id, 'order_id' => $order->id,
+            'order_no' => '007-1109-c42141',
+            'status' => 'pending_oms', 'result_code' => 'ASYNC_ACCEPTED_QUERY_REQUIRED',
+            'provider_order_id' => 'OMS-ACK-NOT-FINAL',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $result = app(ShipOutProductionBatchService::class)->status($id);
+        $this->assertSame(0, $result['processed']);
+        $this->assertSame('awaiting_oms', $result['status']);
+        $this->assertSame('pending_oms', $result['items'][0]->status);
+
+        DB::table('shipout_production_batch_items')->where('batch_id', $id)
+            ->update(['status' => 'provider_cancelled', 'result_code' => 'PROVIDER_DUPLICATE_ORDER']);
+        $this->assertSame(1, app(ShipOutProductionBatchService::class)->status($id)['processed']);
+    }
+
+    public function test_immutable_post_ack_is_not_a_verified_oms_creation(): void
+    {
+        $ack = (object) [
+            'provider_warehouse_id' => '1265864414750314497',
+            'status' => 'acknowledged',
+            'provider_order_id' => 'OMS-ACK-ONLY-123',
+        ];
+        $projection = ShipOutProductionDispatchState::from($ack);
+        $this->assertTrue($projection['attempted']);
+        $this->assertFalse($projection['is_oms_created']);
+        $this->assertSame('oms_ack_pending', $projection['status']);
+        $this->assertSame('OMS-ACK-ONLY-123', $projection['provider_order_id']);
+        $this->assertStringContainsString('待 OMS 核实', $projection['label']);
+
+        $warehouse = ShipOutProductionDispatchState::warehouseDispatch($ack, 'pending');
+        $this->assertSame('oms_ack_pending', $warehouse['status']);
+        $this->assertStringNotContainsString('已发货', $warehouse['label']);
+        $this->assertFalse($warehouse['can_retry_local_block']);
     }
 
     public function test_production_batch_queue_is_separate_from_standard_orders(): void

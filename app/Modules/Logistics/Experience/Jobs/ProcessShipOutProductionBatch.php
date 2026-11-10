@@ -101,7 +101,9 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
                         'SUBMIT_SHIPOUT_ORDER_'.$item->order_id, $actor,
                     );
                     $providerId = $reply['provider_order_id'] ?? null;
-                    $resultStatus = ($reply['status'] ?? '') === 'acknowledged' ? 'success' : 'failed';
+                    // A ShipOut async POST ACK is not an OMS accepted order.
+                    // Never display a final success without independent signed GET.
+                    $resultStatus = ($reply['status'] ?? '') === 'acknowledged' ? 'pending_oms' : 'failed';
                     $code = $reply['result_code'] ?? 'PROVIDER_UNCONFIRMED';
                 }
             } catch (Throwable $error) {
@@ -117,6 +119,18 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
                     'status' => $resultStatus, 'result_code' => $code,
                     'provider_order_id' => $providerId, 'updated_at' => now(),
                 ]);
+            if ($resultStatus === 'pending_oms') {
+                // Read-only delayed reconciliation. No second POST is possible:
+                // this job only receives an existing immutable attempt ID.
+                try {
+                    VerifyShipOutProductionBatchItem::dispatch($this->batchId, (int) $item->order_id)
+                        ->onQueue(self::QUEUE)->delay(now()->addSeconds(20));
+                } catch (Throwable) {
+                    DB::table('shipout_production_batch_items')
+                        ->where('id', $item->id)->where('status', 'pending_oms')
+                        ->update(['status' => 'needs_review', 'result_code' => 'OMS_VERIFY_QUEUE_UNAVAILABLE_MANUAL_CHECK', 'updated_at' => now()]);
+                }
+            }
             if ($batch->dry_run && ! app()->environment('production')) {
                 // Sync queues in local tests do not respect delays. Complete the
                 // remaining synthetic items without recursion or external I/O.
@@ -128,7 +142,16 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
                 ->where('status', 'queued')->exists()) {
                 self::dispatch($this->batchId)->onQueue(self::QUEUE)->delay(now()->addSeconds(70));
             } else {
-                $this->finish();
+                $awaitingOms = DB::table('shipout_production_batch_items')
+                    ->where('batch_id', $this->batchId)
+                    ->whereIn('status', ['pending_oms', 'oms_visible_provisional'])
+                    ->exists();
+                if ($awaitingOms) {
+                    DB::table('shipout_production_batches')->where('id', $this->batchId)
+                        ->update(['status' => 'awaiting_oms', 'updated_at' => now()]);
+                } else {
+                    $this->finish();
+                }
             }
         } finally {
             $mutex->release();
