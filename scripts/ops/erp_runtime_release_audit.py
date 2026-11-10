@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import subprocess
+from collections import Counter
 from pathlib import Path
 
 SCHEDULE_COMMAND = re.compile(r"""Schedule::command\(\s*['"]([^'"]+)""")
@@ -126,7 +127,13 @@ def inventory(root: Path, ps_output: str | None = None,
                 current_jobs - scheduled_commands(cwd)
             )
         workers.append(row)
+    roles = Counter(w["role"] for w in workers)
+    minimum_workers_present = (
+        roles["schedule:work"] >= 1
+        and roles["queue:work"] + roles["queue:listen"] >= 2
+    )
     return {
+        "minimum_workers_present": minimum_workers_present,
         "checked_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
         "production_root": str(root),
         "current_release": str(current),
@@ -157,7 +164,8 @@ def main() -> int:
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if args.strict and report["production_worker_drift"]:
         return 2
-    if args.strict_backend and report["production_worker_backend_drift"]:
+    if args.strict_backend and (report["production_worker_backend_drift"]
+                                or not report["minimum_workers_present"]):
         return 2
     return 0
 
