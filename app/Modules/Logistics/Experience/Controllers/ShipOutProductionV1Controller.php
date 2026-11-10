@@ -3,7 +3,7 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryDispatchService;
-use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryReconcileService;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\JsonResponse;
@@ -95,14 +95,14 @@ final class ShipOutProductionV1Controller
         }
     }
 
-    public function status(Order $order, ShipOutProductionCanaryReconcileService $reconcile): JsonResponse
+    public function status(Order $order, ShipOutProductionOmsReadbackService $reconcile): JsonResponse
     {
         $this->guardWarehouse($order);
         if (! $this->readEnabled()) {
             return $this->blocked('SHIPOUT_V1_READ_DISABLED', 423);
         }
         try {
-            $result = $reconcile->inspect((int) $order->id);
+            $result = $reconcile->inspectAndRecord((int) $order->id);
 
             return response()->json($result + [
                 'read_only' => true,

@@ -49,6 +49,15 @@ final class ShipOutMorePlusManualFulfillmentService
             // automatic or manual fulfillment without a separate investigation.
             throw new RuntimeException('SHIPOUT_R9_CONFIRMED_DUPLICATE_BLOCKED');
         }
+        // R12 latest signed OMS cancellation also covers direct single-order
+        // API sends which have no entry in the production batch-items table.
+        $latestReadback = DB::table('shipout_oms_readbacks')
+            ->where('order_id', $order->id)->orderByDesc('id')
+            ->first(['state', 'reason_code']);
+        if (($latestReadback->state ?? null) === 'cancelled'
+            && ($latestReadback->reason_code ?? null) === 'PROVIDER_DUPLICATE_ORDER') {
+            throw new RuntimeException('SHIPOUT_R9_CONFIRMED_DUPLICATE_BLOCKED');
+        }
         if (DB::table('shipments')->where('tracking_number', trim($tracking))
             ->where('order_id', '!=', $order->id)->exists()) {
             throw new RuntimeException('SHIPOUT_R9_TRACKING_ALREADY_USED');

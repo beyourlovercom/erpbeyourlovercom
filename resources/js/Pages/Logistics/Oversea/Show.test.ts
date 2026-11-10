@@ -533,7 +533,7 @@ describe('ShipOut Production V1 isolated from Sandbox', () => {
   it('shows the real API integration as safely disabled without emitting a send button', () => {
     const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,shipoutProductionUi:true,
       shipoutProductionReadEnabled:false,shipoutProductionDispatchEnabled:false})
-    expect(wrapper.text()).toContain('ShipOut Production V1')
+    expect(wrapper.text()).toContain('待发货 · 可预检')
     expect(wrapper.text()).toContain('当前未开通')
     expect(wrapper.text()).not.toContain('确认提交正式仓')
     expect(wrapper.find('[data-shipout-order-id="99"] button').exists()).toBe(false)
@@ -666,6 +666,44 @@ describe('ShipOut Production V1 three-account scoped UI', () => {
   })
 })
 
+describe('R12 six-list overseas dispatch state without duplicate submission', () => {
+  it('shows exactly six tabs and prominent red anomaly status', () => {
+    const anomaly={...usSmPendingRows.data[0],order_id:7903,
+      shipout_production:{attempted:true,is_oms_created:false,status:'oms_quarantined',
+        label:'EzeeShip 运输服务失败 · 已隔离（禁止自动重发）',provider_order_id:'OMS-ERR-1'},
+      warehouse_dispatch:{status:'oms_quarantined',label:'下发异常',
+        failure_code:'PROVIDER_EZEESHIP_SHIPPING_ERROR',oms_order_no:'OMS-ERR-1',
+        last_checked_at:'2026-11-10T11:00:00Z',detail:'待人工核对',can_retry_local_block:false}}
+    const page=mountPage({view:'exceptions',rows:{...usSmPendingRows,data:[anomaly],total:1},
+      shipoutProductionUi:true,shipoutProductionReadEnabled:true,canOperate:true})
+    expect(page.findAll('button.oversea-tab')).toHaveLength(6)
+    expect(page.text()).toContain('待审核')
+    expect(page.text()).toContain('待发货')
+    expect(page.text()).toContain('已下发')
+    expect(page.text()).not.toContain('待下发 0')
+    expect(page.text()).toContain('下发异常 · EzeeShip')
+    expect(page.find('[data-shipout-order-id="7903"] [role="alert"]').exists()).toBe(true)
+    expect(page.text()).toContain('Dede 核实')
+    expect(page.text()).toContain('确认真实出库')
+    page.unmount()
+  })
+  it('confirmed OMS can show Tracking entry but is not marked shipped', () => {
+    const confirmed={...usSmPendingRows.data[0],order_id:7963,
+      shipout_production:{attempted:true,is_oms_created:true,status:'oms_confirmed',
+        label:'已下发 · OMS 两次回读确认（未出库）',provider_order_id:'OMS-OK'},
+      warehouse_dispatch:{status:'oms_confirmed',label:'已下发',failure_code:null,
+        oms_order_no:'OMS-OK',last_checked_at:'2026-11-10T11:00:00Z',
+        detail:'',can_retry_local_block:false}}
+    const page=mountPage({view:'issued',rows:{...usSmPendingRows,data:[confirmed],total:1},
+      shipoutProductionUi:true,canOperate:true})
+    expect(page.text()).toContain('已下发 · OMS 已核实（未实际出库）')
+    expect(page.find('input[placeholder="填写真实 Tracking"]').exists()).toBe(true)
+    expect(page.text()).toContain('确认真实出库')
+    expect(page.text()).not.toContain('已发货 · 同步官网成功')
+    page.unmount()
+  })
+})
+
 describe('MorePlus Production ACK pending lifecycle without a second POST', () => {
   const attempt={attempted:true,is_oms_created:false,status:'oms_ack_pending',
     label:'API 已受理 · 待 OMS 核实（禁止重发）',provider_order_id:'2116863614032625665'}
@@ -678,9 +716,9 @@ describe('MorePlus Production ACK pending lifecycle without a second POST', () =
       view:'dispatched',rows:{...usSmPendingRows,data:[row]},trackingImportPreview:null,
       shipoutProductionUi:true,shipoutProductionReadEnabled:true,shipoutProductionDispatchEnabled:true,
       shipoutProductionOperatorAllowed:true,shipoutProductionMinOrderId:7791,
-      viewCounts:{review:0,pending:2,pending_dispatch:2,dispatched:1,shipped:577,exceptions:0,all:580},
+      viewCounts:{review:0,pending:2,issued:0,shipped:577,exceptions:0,all:580},
     })
-    expect(page.text()).toContain('API 已受理')
+    expect(page.text()).toContain('下发中 · 禁止重新提交')
     expect(page.text()).toContain('2116863614032625665')
     expect(page.text()).toContain('尚未证实 OMS 有效接单')
     expect(page.text()).not.toContain('确认提交正式仓')
@@ -821,7 +859,7 @@ describe('MorePlus R9 Dede manual fallback and no duplicate resubmission', () =>
         can_retry_local_block:false}}
     const page=mountPage({warehouseKey:'us-moreplus',view:'exceptions',canOperate:true,
       shipoutProductionUi:true,rows:{...usSmPendingRows,total:1,data:[row]}})
-    expect(page.text()).toContain('确认人工出库')
+    expect(page.text()).toContain('确认真实出库')
     expect(page.text()).toContain('先核对既有 OMS 原单')
     expect(page.find('input[placeholder="Dede 核实的人工出库单号"]').exists()).toBe(true)
     page.unmount()
@@ -837,7 +875,7 @@ describe('MorePlus R9 Dede manual fallback and no duplicate resubmission', () =>
         can_retry_local_block:false}}
     const page=mountPage({warehouseKey:'us-moreplus',view:'exceptions',canOperate:true,
       shipoutProductionUi:true,rows:{...usSmPendingRows,total:1,data:[row]}})
-    expect(page.text()).not.toContain('确认人工出库')
+    expect(page.text()).not.toContain('确认真实出库')
     expect(page.find('input[placeholder="Dede 核实的人工出库单号"]').exists()).toBe(false)
     page.unmount()
   })
@@ -854,7 +892,7 @@ describe('MorePlus per-order quarantine and partial batch completion', () => {
       rows:{...usSmPendingRows,data:[failed,healthy],total:2},
       shipoutProductionUi:true,shipoutProductionReadEnabled:true,
       shipoutProductionDispatchEnabled:true,shipoutProductionOperatorAllowed:true})
-    expect(page.text()).toContain('异常单已隔离')
+    expect(page.text()).toContain('下发异常已隔离')
     expect(page.text()).toContain('海外仓判定重复订单')
     expect(page.text()).toContain('禁止自动重发')
     expect(page.text()).toContain('正式 API 预检')
