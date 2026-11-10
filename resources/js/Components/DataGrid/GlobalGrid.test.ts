@@ -68,6 +68,17 @@ describe('Global Grid V1 cell links and actions', () => {
       actionsFor:r=>[{label:'查看',href:'/purchase/orders/'+r.id}]}}})
     expect(readOnly.findAll('button')).toHaveLength(0)
     expect(readOnly.find('a').attributes('href')).toBe('/purchase/orders/7')
+    const threeActions=mount(GlobalGridCell,{props:{params:{mode:'actions',data:{id:7},
+      actionsFor:r=>[
+        {label:'查看',href:'/products/'+r.id},
+        {label:'编辑',href:'/products/'+r.id+'/edit'},
+        {label:'删除',onClick:callback,danger:true},
+      ]}}})
+    expect(threeActions.element.children).toHaveLength(3)
+    expect(threeActions.findAll('a')).toHaveLength(2)
+    expect(threeActions.get('button.danger').text()).toBe('删除')
+    expect(threeActions.findAll('a').map(a=>a.attributes('href')))
+      .toEqual(['/products/7','/products/7/edit'])
     const operator=mount(GlobalGridCell,{props:{params:{mode:'actions',data:{id:7},
       actionsFor:()=>[{label:'删除',onClick:callback,danger:true}]}}})
     await operator.get('button').trigger('click')
