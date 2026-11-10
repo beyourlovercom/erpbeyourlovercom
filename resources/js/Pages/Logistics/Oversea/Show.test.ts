@@ -895,6 +895,27 @@ describe('MorePlus Dev-only one-click batch workbench', () => {
       .findAll('button').some(b=>b.text()==='一键推送仓库')).toBe(false)
   })
 
+  it('allows a new batch after completed_partial and blocks one while paused', async () => {
+    const id='00000000-0000-4000-8000-000000000098'
+    const statuses=['completed_partial','paused'] as const
+    for (const status of statuses) {
+      const mock=vi.fn().mockResolvedValue({
+        ok:true,json:async()=>({batch_id:id,status,dry_run:false,total:1,processed:1,
+          items:[{order_id:7913,order_no:'007-1106-c42149',status:'provider_cancelled',
+            result_code:'PROVIDER_DUPLICATE_ORDER',provider_order_id:'OMS-CANCEL-1'}]}),
+      })
+      vi.stubGlobal('fetch',mock)
+      try {
+        const page=mountPage({shipoutProductionBatchUi:true,
+          shipoutProductionLatestBatch:{id,status,dry_run:false,total:1}})
+        await vi.waitFor(()=>expect(page.text()).toContain('仓库异步判定重复订单'))
+        const button=page.findAll('button').find(b=>b.text()==='一键推送仓库')!
+        expect(button.attributes('disabled')===undefined).toBe(status==='completed_partial')
+        page.unmount()
+      } finally {vi.unstubAllGlobals()}
+    }
+  })
+
   it('previews, confirms once, and reads Dev progress without per-order browser submission', async () => {
     document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="DEV-BATCH-TEST">')
     const fingerprint='a'.repeat(64)
