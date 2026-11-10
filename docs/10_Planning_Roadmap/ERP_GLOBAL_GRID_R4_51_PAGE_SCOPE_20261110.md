@@ -14,17 +14,33 @@ Scope freeze: exactly 51 selected route entries. This is an approved R4 migratio
 - Each migrated page has an explicit Dev-only pilot switch in the initial implementation and original legacy list fallback. Pre-existing Production owner-only pilot behavior remains unchanged; no unapproved company-wide Production switch.
 - Existing global VI V1.1 layout/query/preference rules and BYL-ERP-GRID-STANDARD-V1.md stay mandatory.
 
-## Frozen batches and estimated implementation/UAT labor
+## Accelerated R4 plan — Owner cost objection accepted 2026-11-10
 
-| Phase | Selected entries | Work | Estimated effort | Gate |
-|---|---:|---|---:|---|
-| R4-0 | 4 | 既有 OMS / Global Grid 试点统一、默认开关方案 | 4–8 h | Exact-head regression + Dev Chrome + Owner visual PASS |
-| R4-A | 12 | 标准低风险列表，含 SKU、归档、超期库存与普通只读清单 | 12–24 h | Exact-head regression + Dev Chrome + Owner visual PASS |
-| R4-B | 12 | 带查询、权限和领域筛选的日常业务列表 | 24–48 h | Exact-head regression + Dev Chrome + Owner visual PASS |
-| R4-C | 12 | 财务 / 同步 / AffiliateWP 等集成明细、复杂子视图 | 30–60 h | Exact-head regression + Dev Chrome + Owner visual PASS |
-| R4-D | 11 | 国内七视图、海外仓、复核、进口、付款及权限高风险业务 | 55–110 h | Exact-head regression + Dev Chrome + Owner visual PASS |
+**Estimate correction:** Previous *125–250 h* per-page engineering/UAT calculation is **withdrawn** as a working budget, because it double-counted shared component implementation, reused route/controller handlers and per-page regression overhead. Do not reinstate the old estimate as the current plan.
 
-**Total: 125–250 engineering/UAT hours** across all 51 scopes; a preliminary range, NOT spent hours or a completion promise. Re-evaluate after measured first 2–3 real lists. Shared engine reuse and grouping of common routes may reduce total effort. Operational pages may increase high-risk regression cost.
+**Existing verified code base:** One `GlobalGrid.vue` wrapping `OmsGrid.vue` already supplies columns, server pagination, search, presets, action styling and per-account settings. Of the 51 selected entries, 4 are already pilots; 50 exact GET URL patterns matched in the current local Laravel route list, and the 51st (/logistics/oversea) is the documented **optional parameter route** `/logistics/oversea/{warehouse?}`, not a missing page. The four /orders, /customers/orders, /kol/orders and /orders/procurement entries map to the same `OrderController@index` action. Still, many other lists have distinct server data models; do **not** promise a blind one-click codemod.
+
+### One reusable list adapter, not 51 implementations
+
+1. Reuse `GlobalGrid.vue` exactly. Add only a *thin shared page adapter/composable* if at least two page migrations demonstrate duplicated query/pager/column-binding code. No second Grid engine, no new general-purpose permission backend, no automatic rewriting of business actions.
+2. Drive simple pages from a compact, typed declarative column/permission config; use their **existing authorized server GET data**. Preserve existing source numbers, display links, status labels, filters, export/preview actions and the original legacy component as reversible fallback.
+3. Batch 3–5 independently verified views per Dev PR **by common component/controller**, not by arbitrary URL count. One build/typecheck/common Grid test set per batch; page-specific backend authorization and essential Chrome behavior still tested per affected workflow.
+4. For operations-heavy pages (China 7 views, Oversea OMS, KOL payments, audit/import approvals), migrate **only suitable main read-only grid regions**, leave specialized action/toolbars and existing APIs untouched. Never turn a visual migration into a business process rewrite.
+5. Start from the existing R4-A SKU Registry Draft PR #673, whose full synthetic Chrome 4/4, PHP 59/59 and GitHub CI 5/5 are already PASS. Owner visual UAT is **still pending**; never label it approved.
+6. **Calibration gate:** Time the next 3 distinct list conversions (including integration/browser checking), publish actual measured per-list engineering hours and blockers. Re-estimate the remaining 48 by shared-view family after measured samples; if the expected total exceeds the target band, stop new batch expansion and report concrete causes and options before further effort.
+
+### Revised working target — provisional, not elapsed time or guarantee
+
+| Phase | Entries | Accelerated focus | Working effort target |
+|---|---:|---|---:|
+| R4-0 | 4 | Consolidate existing Grid canaries and reversible defaults | 1–3 h |
+| R4-A | 12 | Standard/readonly lists; SKU pilot already built for Owner UAT | 6–12 h |
+| R4-B | 12 | Lists with existing search/filter and role-aware actions | 8–16 h |
+| R4-C | 12 | Finance/sync/KOL reporting list areas only | 10–18 h |
+| R4-D | 11 | High-risk dedicated list areas with unchanged business workflows | 15–31 h |
+| **Total** | **51** | **Target after reusable adapter + batched UAT** | **40–80 h** |
+
+This is a *planning range for front-end list presentation migration and scoped verification only*. It is **not** proof 51 pages can all be converted within the band. Real gaps in server-side search, large-data pagination, permission boundaries, dangerous buttons or API behavior must be reported as blockers; do not silently cut business requirements to meet the estimate. No separate “full redesign” work is approved. Per-page Owner UAT and separate Production release approval remain mandatory, but may be consolidated into a representative batch sign-off when the Owner agrees.
 
 ## Route-by-route frozen checklist
 
@@ -36,7 +52,7 @@ Scope freeze: exactly 51 selected route entries. This is an approved R4 migratio
 | 4 | /orders/procurement | 外采订单 | 中 | R4-B | LOCKED / NOT STARTED |
 | 5 | /orders/archive | 归档订单 | 低 | R4-A | LOCKED / NOT STARTED |
 | 6 | /products/list | 产品总表 | 试点 | R4-0 | LOCKED / NOT STARTED |
-| 7 | /products/skus | SKU 清单 | 低 | R4-A | LOCKED / NOT STARTED |
+| 7 | /products/skus | SKU 清单 | 低 | R4-A | DEV PILOT PR #673: PHP/Chrome/CI PASS; OWNER UAT PENDING |
 | 8 | /products/sku-aliases | SKU 别名管理 | 中 | R4-B | LOCKED / NOT STARTED |
 | 9 | /purchase | 采购订单 | 试点 | R4-0 | LOCKED / NOT STARTED |
 | 10 | /inventory/products | 产品库存 | 试点 | R4-0 | LOCKED / NOT STARTED |
