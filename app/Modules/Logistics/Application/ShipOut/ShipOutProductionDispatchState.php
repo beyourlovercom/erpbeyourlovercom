@@ -39,16 +39,18 @@ final class ShipOutProductionDispatchState
     /** @return array{attempted:bool,is_oms_created:bool,status:string,label:string,provider_order_id:?string} */
     public static function from(?object $attempt): array
     {
-        $created = self::isOmsCreated($attempt);
+        $accepted = self::isOmsCreated($attempt);
         $attempted = $attempt !== null;
 
+        // The durable attempt ledger only knows the API ACK. ShipOut may later
+        // cancel an async order (status 6/11); a signed OMS GET is required.
         return [
             'attempted' => $attempted,
-            'is_oms_created' => $created,
-            'status' => $created ? 'oms_created' : ($attempted ? 'requires_reconciliation' : 'pending_dispatch'),
-            'label' => $created ? 'OMS 已建单 · 待实际出库'
+            'is_oms_created' => false,
+            'status' => $accepted ? 'oms_ack_pending' : ($attempted ? 'requires_reconciliation' : 'pending_dispatch'),
+            'label' => $accepted ? 'API 已受理 · 待 OMS 核实（禁止重发）'
                 : ($attempted ? '提交结果待核对 · 禁止重发' : '待下发'),
-            'provider_order_id' => $created ? (string) $attempt->provider_order_id : null,
+            'provider_order_id' => $accepted ? (string) $attempt->provider_order_id : null,
         ];
     }
 
@@ -61,7 +63,7 @@ final class ShipOutProductionDispatchState
         return [
             'status' => $shipped ? 'shipped' : $state['status'],
             'label' => $shipped ? '已发货' : $state['label'],
-            'detail' => $shipped ? '' : ($state['is_oms_created'] ? '已提交仓库，尚无真实出库 Tracking' : ''),
+            'detail' => $shipped ? '' : ($state['status'] === 'oms_ack_pending' ? 'API ACK 非最终业务成功；请通过正式 OMS 只读核实' : ''),
             'oms_order_no' => $state['provider_order_id'],
             'last_checked_at' => null,
             'failure_code' => null,

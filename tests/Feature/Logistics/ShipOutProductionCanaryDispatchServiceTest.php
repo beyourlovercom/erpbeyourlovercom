@@ -10,6 +10,7 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryPreflight;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryReconcileService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Logistics\Experience\Jobs\ProcessShipOutProductionBatch;
+use App\Modules\Logistics\Experience\Jobs\VerifyShipOutProductionBatchItem;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionCanaryOutboundTransport;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -1510,7 +1511,11 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
     {
         $order = $this->order();
         $this->enableProductionV1();
-        $this->fakeProvider();
+        $this->fakeProvider(onOrderGet: function (): void {
+            if ($this->postInvocations >= 1) {
+                $this->providerVisibleOrderId = 'SYNTHETIC-PROVIDER-ORDER';
+            }
+        });
         config()->set([
             'shipout.production_v1_batch_enabled' => true,
             'shipout.production_v1_batch_owner_approved' => true,
@@ -1527,7 +1532,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             app(ShipOutProductionV1OperatorAccess::class),
         );
         $this->assertDatabaseHas('shipout_production_batch_items', [
-            'batch_id' => $batchId, 'status' => 'success',
+            'batch_id' => $batchId, 'status' => 'oms_visible',
         ]);
         $this->assertDatabaseHas('shipout_dispatch_attempts', [
             'order_id' => $order->id, 'status' => 'acknowledged',
@@ -1540,6 +1545,181 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             app(ShipOutProductionV1OperatorAccess::class),
         );
         $this->assertSame(1, $this->postInvocations);
+    }
+
+    public function test_v1_get_only_readback_rejects_async_duplicate_with_no_second_post(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $batchId = '00000000-0000-4000-8000-000000000094';
+        $this->makeSyntheticBatch((int) $order->id, 1, $batchId);
+        DB::table('shipout_production_batch_items')->where('batch_id', $batchId)
+            ->update(['status' => 'pending_oms', 'provider_order_id' => 'OMS-DUPLICATE-1']);
+        DB::table('shipout_dispatch_attempts')->insert([
+            'order_id' => $order->id, 'order_no' => self::REF,
+            'provider_warehouse_id' => self::WAREHOUSE,
+            'payload_hash' => str_repeat('c', 64), 'status' => 'acknowledged',
+            'provider_order_id' => 'OMS-DUPLICATE-1',
+            'result_code' => 'ASYNC_ACCEPTED_QUERY_REQUIRED',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Http::preventStrayRequests();
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK',
+            'data' => ['total' => 1, 'records' => [[
+                'orderNO' => self::REF, 'orderId' => 'OMS-DUPLICATE-1',
+                'warehouseId' => self::WAREHOUSE, 'status' => 6,
+                'cancelReason' => 'C99999-007 has been detected as duplicated order, please modify and re-submit. SECRET_ADDRESS',
+            ]]],
+        ], 200)]);
+        (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
+            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+        $this->assertDatabaseHas('shipout_production_batch_items', [
+            'batch_id' => $batchId, 'status' => 'provider_cancelled',
+            'result_code' => 'PROVIDER_DUPLICATE_ORDER',
+        ]);
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id' => $order->id, 'status' => 'acknowledged',
+        ]);
+        $this->assertSame(0, $this->postInvocations);
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn ($r) => $r->method() !== 'GET');
+        $this->assertStringNotContainsString('SECRET_ADDRESS', json_encode(
+            DB::table('shipout_production_batch_items')->where('batch_id', $batchId)->first()
+        ));
+    }
+
+    public function test_v1_get_only_readback_rechecks_provisional_oms_before_declaring_visible(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $batchId = '00000000-0000-4000-8000-000000000096';
+        $this->makeSyntheticBatch((int) $order->id, 1, $batchId);
+        DB::table('shipout_production_batches')->where('id', $batchId)
+            ->update(['status' => 'awaiting_oms']);
+        DB::table('shipout_production_batch_items')->where('batch_id', $batchId)
+            ->update(['status' => 'pending_oms', 'provider_order_id' => 'OMS-TWO-PHASE']);
+        DB::table('shipout_dispatch_attempts')->insert([
+            'order_id' => $order->id, 'order_no' => self::REF,
+            'provider_warehouse_id' => self::WAREHOUSE,
+            'payload_hash' => str_repeat('c', 64), 'status' => 'acknowledged',
+            'provider_order_id' => 'OMS-TWO-PHASE',
+            'result_code' => 'ASYNC_ACCEPTED_QUERY_REQUIRED',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Http::preventStrayRequests();
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK',
+            'data' => ['total' => 1, 'records' => [[
+                'orderNO' => self::REF, 'orderId' => 'OMS-TWO-PHASE',
+                'warehouseId' => self::WAREHOUSE, 'status' => 10,
+            ]]],
+        ], 200)]);
+        // Dispatch on the sync queue can execute the two readback passes
+        // inline; neither pass may ever create another OMS order.
+        (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
+            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+        $this->assertDatabaseHas('shipout_production_batch_items', [
+            'batch_id' => $batchId, 'status' => 'oms_visible',
+            'result_code' => 'OMS_VISIBLE_PENDING_REAL_FULFILLMENT',
+        ]);
+        $this->assertDatabaseHas('shipout_production_batches', [
+            'id' => $batchId, 'status' => 'completed',
+        ]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'shipment_status' => 'pending',
+            'tracking_number' => null,
+        ]);
+        Http::assertSentCount(2);
+        Http::assertNotSent(fn ($r) => $r->method() !== 'GET');
+    }
+
+    public function test_v1_late_async_cancellation_overrides_provisional_oms_visibility(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $batchId = '00000000-0000-4000-8000-000000000099';
+        $this->makeSyntheticBatch((int) $order->id, 1, $batchId);
+        DB::table('shipout_production_batches')->where('id', $batchId)
+            ->update(['status' => 'awaiting_oms']);
+        DB::table('shipout_production_batch_items')->where('batch_id', $batchId)
+            ->update(['status' => 'pending_oms', 'provider_order_id' => 'OMS-LATE-ERROR']);
+        DB::table('shipout_dispatch_attempts')->insert([
+            'order_id' => $order->id, 'order_no' => self::REF,
+            'provider_warehouse_id' => self::WAREHOUSE,
+            'payload_hash' => str_repeat('c', 64), 'status' => 'acknowledged',
+            'provider_order_id' => 'OMS-LATE-ERROR',
+            'result_code' => 'ASYNC_ACCEPTED_QUERY_REQUIRED',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $gets = 0;
+        Http::preventStrayRequests();
+        Http::fake(function ($request) use (&$gets) {
+            $gets++;
+
+            return Http::response([
+                'result' => 'OK',
+                'data' => ['total' => 1, 'records' => [[
+                    'orderNO' => self::REF, 'orderId' => 'OMS-LATE-ERROR',
+                    'warehouseId' => self::WAREHOUSE,
+                    'status' => $gets === 1 ? 10 : 6,
+                    'cancelReason' => $gets === 1 ? '' : 'shipping error! [EzeeShip]null',
+                ]]],
+            ], 200);
+        });
+        (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
+            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+
+        $this->assertSame(2, $gets);
+        $this->assertDatabaseHas('shipout_production_batch_items', [
+            'batch_id' => $batchId, 'status' => 'provider_cancelled',
+            'result_code' => 'PROVIDER_EZEESHIP_SHIPPING_ERROR',
+        ]);
+        $this->assertDatabaseHas('shipout_production_batches', [
+            'id' => $batchId, 'status' => 'completed',
+        ]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'shipment_status' => 'pending',
+            'tracking_number' => null,
+        ]);
+        Http::assertNotSent(fn ($r) => $r->method() !== 'GET');
+    }
+
+    public function test_v1_get_only_readback_classifies_ezeeship_shipping_error(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $batchId = '00000000-0000-4000-8000-000000000095';
+        $this->makeSyntheticBatch((int) $order->id, 1, $batchId);
+        DB::table('shipout_production_batch_items')->where('batch_id', $batchId)
+            ->update(['status' => 'pending_oms', 'provider_order_id' => 'OMS-ERROR-1']);
+        DB::table('shipout_dispatch_attempts')->insert([
+            'order_id' => $order->id, 'order_no' => self::REF,
+            'provider_warehouse_id' => self::WAREHOUSE,
+            'payload_hash' => str_repeat('c', 64), 'status' => 'acknowledged',
+            'provider_order_id' => 'OMS-ERROR-1',
+            'result_code' => 'ASYNC_ACCEPTED_QUERY_REQUIRED',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Http::preventStrayRequests();
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK',
+            'data' => ['total' => 1, 'records' => [[
+                'orderNO' => self::REF, 'orderId' => 'OMS-ERROR-1',
+                'warehouseId' => self::WAREHOUSE, 'status' => 6,
+                'cancelReason' => 'shipping error! [EzeeShip]null Trace is PRIVATE_TRACE',
+            ]]],
+        ], 200)]);
+        (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
+            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+        $this->assertDatabaseHas('shipout_production_batch_items', [
+            'batch_id' => $batchId, 'status' => 'provider_cancelled',
+            'result_code' => 'PROVIDER_EZEESHIP_SHIPPING_ERROR',
+        ]);
+        $this->assertSame(0, $this->postInvocations);
+        Http::assertNotSent(fn ($r) => $r->method() !== 'GET');
     }
 
     public function test_v1_batch_worker_denies_out_of_scope_order_without_provider_egress(): void

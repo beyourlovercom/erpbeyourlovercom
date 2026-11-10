@@ -105,6 +105,9 @@ final class ShipOutProductionCanaryReconcileService
             'reconciliation' => $cancelled
                 ? 'PROVIDER_CANCELLED_OR_ABORTED_MANUAL_REVIEW'
                 : 'ORDER_VISIBLE_MANUAL_REVIEW_ONLY',
+            'provider_failure_code' => $cancelled
+                ? ($provider['cancel_category'] ?? 'PROVIDER_CANCELLED_OTHER')
+                : null,
             'shipped' => false,
             'tracking_apply' => false,
         ];

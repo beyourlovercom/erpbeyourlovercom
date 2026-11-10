@@ -114,7 +114,7 @@ const rowErrors = reactive<Record<number,string>>({})
 // MorePlus uses independent Sandbox and Production V1 providers; never the XLWMS route.
 type ShipOutProductionStatus = {
   order_id:number; order_no:string; attempt_status:string; provider_order_id?:string|null
-  provider_status?:string|number|null; reconciliation:string; shipped:false
+  provider_status?:string|number|null; reconciliation:string; provider_failure_code?:string|null; shipped:false
   tracking_apply:false; read_only:true
 }
 type ShipOutBatchPreview = { count:number; overflow:boolean; fingerprint:string; dry_run:boolean }
@@ -188,8 +188,29 @@ async function shipoutBatchStart() {
   finally{shipoutBatchBusy.value=false}
 }
 const shipoutBatchLabel=(status:string)=>({
-  success:'OMS 已接单',skipped:'跳过（未下单）',uncertain:'结果不确定，人工核对',failed:'供应商拒绝（禁止自动重试）',
+  success:'历史 ACK，仅代表 API 受理，未核实 OMS',
+  pending_oms:'API 已受理 · OMS 异步核实中',
+  oms_visible_provisional:'OMS 可见 · 正在再次核实',
+  oms_visible:'OMS 订单可见 · 待实际出库（非发货成功）',
+  provider_cancelled:'OMS 已取消／中止 · 禁止重发',
+  needs_review:'OMS 核实未完成 · 人工处理',
+  skipped:'跳过（未下单）',uncertain:'结果不确定 · 禁止重发',
+  failed:'提交失败（禁止自动重试）',
   simulated:'Dev 模拟通过',processing:'处理中',queued:'待处理',
+} as Record<string,string>)[status]||status
+const shipoutBatchReason=(code:string|null)=>({
+  PROVIDER_DUPLICATE_ORDER:'仓库异步判定重复订单，请与 MorePlus 核对原有记录',
+  PROVIDER_EZEESHIP_SHIPPING_ERROR:'EzeeShip 运输服务异常，请仓库核对账户和渠道',
+  PROVIDER_CANCELLED_OTHER:'仓库异步取消，请人工查看 OMS 原因',
+  OMS_VISIBLE_PENDING_REAL_FULFILLMENT:'OMS 有单，但不代表已经出库',
+  OMS_VISIBLE_PROVISIONAL_RECHECK:'订单可见，等待二次 OMS 复核',
+  ASYNC_ACCEPTED_QUERY_REQUIRED:'接口 ACK 已受理，并非最终业务成功',
+} as Record<string,string>)[code||'']|| (code?'需核对：'+code:'')
+const shipoutBatchState=(status:string)=>({
+  queued:'等待队列执行',running:'正在逐单提交',
+  awaiting_oms:'等待正式 OMS 异步回读',
+  completed:'本批次检查结束（逐单查看真实结果）',
+  paused:'已暂停 · 人工核实',
 } as Record<string,string>)[status]||status
 
 const shipoutProdPreview = reactive<Record<number,ShipOutPreflight>>({})
@@ -260,14 +281,12 @@ async function shipoutProdSend(row:Row) {
       confirmation:'SUBMIT_SHIPOUT_ORDER_'+row.order_id,
     })
     shipoutProdErrors[row.order_id]=result.status==='acknowledged'
-      ? 'ShipOut 正式仓已接收；仅为接单确认，尚未发货，请查询 OMS'
+      ? 'API ACK 已受理 · 等待正式 OMS 异步复核。不是下单最终成功，禁止再次推送。'
       : '供应商未接单：'+(result.result_code||'请人工查询')
     if(result.status==='acknowledged' && result.provider_order_id) {
-      // The server-side immutable ledger now controls the OMS-created tab.
-      // This navigation only reloads Inertia rows; never calls ShipOut POST.
-      router.visit('/logistics/oversea/us-moreplus?view=dispatched', {
-        preserveScroll:true,
-      })
+      // ACK is only a durable request receipt. Stay on the current view and
+      // reload local audit state without claiming a warehouse-created order.
+      router.reload({only:['rows','viewCounts']})
     }
   } catch(e) {
     const message=e instanceof Error?e.message:'结果未知'
@@ -733,7 +752,7 @@ const defaultServiceFor = (name:string, country?:string|null) => {
 }
 const draft = (row:Row) => drafts[row.order_id] ??= { note:row.note ?? '', carrier:row.carrier ?? '', service:row.service ?? defaultServiceFor(row.carrier ?? '', row.country), tracking_number:row.tracking_number ?? '' }
 const viewTabs = [
-  ['review','待审核'], ['pending','待发货'], ['pending_dispatch','待下发'], ['dispatched','OMS 已建单'], ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
+  ['review','待审核'], ['pending','待发货'], ['pending_dispatch','待下发'], ['dispatched',props.warehouseKey==='us-moreplus'?'API 已受理':'OMS 已建单'], ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
 ] as const
 
 
@@ -860,12 +879,12 @@ const compactPages = computed<(number|string)[]>(() => {
         </button>
         <strong v-if="shipoutBatchStatus">
           {{shipoutBatchStatus.dry_run?'Dev 模拟批次':'MorePlus 推送批次'}} ·
-          {{shipoutBatchStatus.processed}} / {{shipoutBatchStatus.total}} · {{shipoutBatchStatus.status}}
+          已核实 {{shipoutBatchStatus.processed}} / {{shipoutBatchStatus.total}} · {{shipoutBatchState(shipoutBatchStatus.status)}}
         </strong>
         <div v-if="shipoutBatchStatus" class="shipout-batch-results">
           <span v-for="item in shipoutBatchStatus.items" :key="item.order_id">
             {{item.order_no}} · {{shipoutBatchLabel(item.status)}}
-            <small v-if="item.result_code">（{{item.result_code}}）</small>
+            <small v-if="item.result_code">（{{shipoutBatchReason(item.result_code)}}）</small>
           </span>
         </div>
         <small v-if="shipoutBatchError" class="xlwms-error" role="alert">{{shipoutBatchError}}</small>
@@ -960,7 +979,7 @@ const compactPages = computed<(number|string)[]>(() => {
               <td v-if="warehouseKey === 'us-moreplus'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-shipout-order-id="row.order_id">
                   <template v-if="shipoutProductionUi">
-                    <strong class="xlwms-state">{{row.shipout_production?.is_oms_created?'ShipOut Production V1 · OMS 已建单':'ShipOut Production V1 · 正式仓'}}</strong>
+                    <strong class="xlwms-state">{{row.shipout_production?.provider_order_id?'ShipOut Production V1 · API 已受理／OMS 待核实':'ShipOut Production V1 · 正式仓'}}</strong>
                     <small class="xlwms-note">只支持美西 US-LA / 已通过 Dede 审核 / 美国地址 / 仓库自动渠道 Mode 9；接单不等于已发货。</small>
                     <template v-if="!shipoutProductionReadEnabled">
                       <small class="xlwms-note">正式 API 已部署，当前未开通；请继续使用人工下载与物流回传流程。</small>
@@ -980,14 +999,14 @@ const compactPages = computed<(number|string)[]>(() => {
                           :disabled="shipoutProdBusy[row.order_id]" @click="shipoutProdSend(row)">确认提交正式仓 · 仅一次</button>
                         <small v-else>正式发货未授权；只能查询和预检，不会发送订单。</small>
                       </div>
-                      <small v-if="row.shipout_production?.is_oms_created && !shipoutProdStatus[row.order_id]" class="xlwms-note">
-                        OMS 已建单 · {{row.shipout_production.provider_order_id}} · 仓库待实际出库，尚无真实 Tracking。
+                      <small v-if="row.shipout_production?.provider_order_id && !shipoutProdStatus[row.order_id]" class="xlwms-note">
+                        API ACK：{{row.shipout_production.provider_order_id}} · 尚未证实 OMS 有效接单，禁止再次推送；请查询正式 OMS。
                       </small>
                       <small v-else-if="row.shipout_production?.attempted && !shipoutProdStatus[row.order_id]" class="xlwms-note">
                         提交结果待人工核对，禁止再次下发；请查询正式 OMS。
                       </small>
                       <small v-if="shipoutProdStatus[row.order_id]?.reconciliation==='PROVIDER_CANCELLED_OR_ABORTED_MANUAL_REVIEW'" class="xlwms-error" role="alert">
-                        OMS 已取消／中止 · {{shipoutProdStatus[row.order_id].provider_order_id||'仓库订单 ID 未返回'}}。禁止再次下发本单；请在 ShipOut 后台核对取消原因。未出库，不能同步 Tracking 或标记已发货。
+                        OMS 已取消／中止 · {{shipoutProdStatus[row.order_id].provider_order_id||'仓库订单 ID 未返回'}}。{{shipoutProdStatus[row.order_id].provider_failure_code==='PROVIDER_DUPLICATE_ORDER'?'仓库判定重复订单':shipoutProdStatus[row.order_id].provider_failure_code==='PROVIDER_EZEESHIP_SHIPPING_ERROR'?'EzeeShip 渠道异常':'请核对仓库取消原因'}}。禁止重发；不能同步 Tracking 或标记已发货。
                       </small>
                       <small v-else-if="shipoutProdStatus[row.order_id]" class="xlwms-note">
                         OMS：{{shipoutProdStatus[row.order_id].reconciliation==='NO_ERP_ATTEMPT_AND_NO_OMS_ORDER'?'ERP 未提交，OMS 无此单':shipoutProdStatus[row.order_id].reconciliation==='OMS_ORDER_WITHOUT_ERP_LEDGER_MANUAL_REVIEW'?'OMS 有单但 ERP 无记录，人工核对':shipoutProdStatus[row.order_id].reconciliation==='ORDER_VISIBLE_MANUAL_REVIEW_ONLY'?'仓库订单可见':'待仓库确认'}} · {{shipoutProdStatus[row.order_id].provider_order_id||'暂无仓库订单 ID'}} · 仍待实际发货

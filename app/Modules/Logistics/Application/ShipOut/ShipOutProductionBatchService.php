@@ -128,7 +128,11 @@ final class ShipOutProductionBatchService
             'status' => $batch->status,
             'dry_run' => (bool) $batch->dry_run,
             'total' => $batch->total,
-            'processed' => $items->whereNotIn('status', ['queued', 'processing'])->count(),
+            // Processed means readback completed or deliberately blocked;
+            // async ACK and provisional OMS visibility are not final.
+            'processed' => $items->whereNotIn('status', [
+                'queued', 'processing', 'pending_oms', 'oms_visible_provisional',
+            ])->count(),
             'items' => $items,
         ];
     }
