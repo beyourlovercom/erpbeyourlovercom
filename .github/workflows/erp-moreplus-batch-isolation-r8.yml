@@ -8,6 +8,10 @@ on:
       - 'app/Modules/Logistics/Infrastructure/ShipOut/**'
       - 'app/Modules/Logistics/Experience/Jobs/*ShipOut*'
       - 'app/Modules/Logistics/Experience/Controllers/OverseaWarehouseController.php'
+      - 'app/Modules/Logistics/Experience/Controllers/ShipOutProductionV1Controller.php'
+      - 'app/Modules/Logistics/Application/WarehouseDispatchStatus.php'
+      - 'database/migrations/*shipout*'
+      - 'routes/console.php'
       - 'config/shipout.php'
       - 'resources/js/Pages/Logistics/Oversea/Show.vue'
       - 'resources/js/Pages/Logistics/Oversea/Show.test.ts'
@@ -31,11 +35,11 @@ jobs:
       - run: composer install --no-interaction --prefer-dist --no-progress
       - name: Verify MorePlus R8/R9 exact allowlist, 14-day content risk and Dede manual fallback
         run: |
-          php artisan test tests/Feature/Logistics/ShipOutProductionBatchTest.php tests/Feature/Logistics/ShipOutProductionCanaryDispatchServiceTest.php tests/Feature/Logistics/ShipOutProductionDuplicateRiskGuardTest.php tests/Feature/Logistics/ShipOutMorePlusManualFulfillmentTest.php --no-ansi
+          php artisan test tests/Feature/Logistics/ShipOutProductionBatchTest.php tests/Feature/Logistics/ShipOutProductionCanaryDispatchServiceTest.php tests/Feature/Logistics/ShipOutProductionDuplicateRiskGuardTest.php tests/Feature/Logistics/ShipOutMorePlusManualFulfillmentTest.php tests/Feature/Logistics/ShipOutProductionOmsReadbackTest.php --no-ansi
           php artisan test tests/Feature/Logistics/OverseaWarehouseWorkbenchTest.php --no-ansi
       - name: Verify changed application code style
         run: |
-          vendor/bin/pint --test config/shipout.php app/Modules/Logistics/Application/ShipOut/ShipOutProductionBatchService.php app/Modules/Logistics/Application/ShipOut/ShipOutProductionDispatchState.php app/Modules/Logistics/Experience/Jobs/ProcessShipOutProductionBatch.php app/Modules/Logistics/Experience/Jobs/VerifyShipOutProductionBatchItem.php app/Modules/Logistics/Experience/Controllers/OverseaWarehouseController.php app/Modules/Logistics/Experience/Controllers/ShipOutProductionV1Controller.php app/Modules/Logistics/Experience/Controllers/ShipOutMorePlusManualFulfillmentController.php app/Modules/Logistics/Experience/Routes/oversea_manual.php app/Modules/Logistics/Application/ShipOut/ShipOutMorePlusManualFulfillmentService.php app/Modules/Logistics/Application/ShipOut/ShipOutProductionDuplicateRiskGuard.php app/Modules/Logistics/Infrastructure/ShipOut/ShipOutProductionReadOnlyGateway.php tests/Feature/Logistics/ShipOutProductionBatchTest.php tests/Feature/Logistics/ShipOutProductionCanaryDispatchServiceTest.php tests/Feature/Logistics/ShipOutProductionDuplicateRiskGuardTest.php tests/Feature/Logistics/ShipOutMorePlusManualFulfillmentTest.php
+          vendor/bin/pint --test config/shipout.php app/Modules/Logistics/Application/ShipOut/ShipOutProductionBatchService.php app/Modules/Logistics/Application/ShipOut/ShipOutProductionDispatchState.php app/Modules/Logistics/Application/ShipOut/ShipOutProductionOmsReadbackService.php app/Modules/Logistics/Application/WarehouseDispatchStatus.php routes/console.php database/migrations/2026_11_10_200000_create_shipout_oms_readbacks.php app/Modules/Logistics/Experience/Jobs/ProcessShipOutProductionBatch.php app/Modules/Logistics/Experience/Jobs/VerifyShipOutProductionBatchItem.php app/Modules/Logistics/Experience/Controllers/OverseaWarehouseController.php app/Modules/Logistics/Experience/Controllers/ShipOutProductionV1Controller.php app/Modules/Logistics/Experience/Controllers/ShipOutMorePlusManualFulfillmentController.php app/Modules/Logistics/Experience/Routes/oversea_manual.php app/Modules/Logistics/Application/ShipOut/ShipOutMorePlusManualFulfillmentService.php app/Modules/Logistics/Application/ShipOut/ShipOutProductionDuplicateRiskGuard.php app/Modules/Logistics/Infrastructure/ShipOut/ShipOutProductionReadOnlyGateway.php tests/Feature/Logistics/ShipOutProductionBatchTest.php tests/Feature/Logistics/ShipOutProductionCanaryDispatchServiceTest.php tests/Feature/Logistics/ShipOutProductionDuplicateRiskGuardTest.php tests/Feature/Logistics/ShipOutMorePlusManualFulfillmentTest.php tests/Feature/Logistics/ShipOutProductionOmsReadbackTest.php tests/Feature/Logistics/OverseaWarehouseWorkbenchTest.php
 
   isolated-frontend:
     runs-on: ubuntu-24.04

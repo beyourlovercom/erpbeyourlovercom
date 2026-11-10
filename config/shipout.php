@@ -32,6 +32,8 @@ return [
     // R9 independent production credential namespace; never loaded from sandbox.
     // All production operations default OFF, including read, dispatch and apply.
     'production_read_enabled' => filter_var(env('SHIPOUT_PRODUCTION_READ_ENABLED', false), FILTER_VALIDATE_BOOL),
+    // R12 signed GET-only OMS readback, independently gated. Never POST.
+    'oms_reconciliation_enabled' => filter_var(env('SHIPOUT_OMS_RECONCILIATION_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_dispatch_enabled' => filter_var(env('SHIPOUT_PRODUCTION_DISPATCH_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_tracking_apply_enabled' => filter_var(env('SHIPOUT_PRODUCTION_TRACKING_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     // Inventory is a completely separate, default-OFF, Owner-authorized ERP-only write.

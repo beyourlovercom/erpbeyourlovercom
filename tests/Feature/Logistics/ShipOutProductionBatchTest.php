@@ -551,7 +551,7 @@ final class ShipOutProductionBatchTest extends TestCase
         $this->assertFalse($projection['is_oms_created']);
         $this->assertSame('oms_ack_pending', $projection['status']);
         $this->assertSame('OMS-ACK-ONLY-123', $projection['provider_order_id']);
-        $this->assertStringContainsString('待 OMS 核实', $projection['label']);
+        $this->assertStringContainsString('下发核实中', $projection['label']);
 
         $warehouse = ShipOutProductionDispatchState::warehouseDispatch($ack, 'pending');
         $this->assertSame('oms_ack_pending', $warehouse['status']);

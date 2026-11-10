@@ -8,6 +8,7 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryDispatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryPreflight;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryReconcileService;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Logistics\Experience\Jobs\ProcessShipOutProductionBatch;
 use App\Modules\Logistics\Experience\Jobs\VerifyShipOutProductionBatchItem;
@@ -1617,7 +1618,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             ]]],
         ], 200)]);
         (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
-            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+            ->handle(app(ShipOutProductionOmsReadbackService::class));
         $this->assertDatabaseHas('shipout_production_batch_items', [
             'batch_id' => $batchId, 'status' => 'provider_cancelled',
             'result_code' => 'PROVIDER_DUPLICATE_ORDER',
@@ -1662,7 +1663,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         // Dispatch on the sync queue can execute the two readback passes
         // inline; neither pass may ever create another OMS order.
         (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
-            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+            ->handle(app(ShipOutProductionOmsReadbackService::class));
         $this->assertDatabaseHas('shipout_production_batch_items', [
             'batch_id' => $batchId, 'status' => 'oms_visible',
             'result_code' => 'OMS_VISIBLE_PENDING_REAL_FULFILLMENT',
@@ -1713,7 +1714,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             ], 200);
         });
         (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
-            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+            ->handle(app(ShipOutProductionOmsReadbackService::class));
 
         $this->assertSame(2, $gets);
         $this->assertDatabaseHas('shipout_production_batch_items', [
@@ -1757,7 +1758,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             ]]],
         ], 200)]);
         (new VerifyShipOutProductionBatchItem($batchId, (int) $order->id))
-            ->handle(app(ShipOutProductionCanaryReconcileService::class));
+            ->handle(app(ShipOutProductionOmsReadbackService::class));
         $this->assertDatabaseHas('shipout_production_batch_items', [
             'batch_id' => $batchId, 'status' => 'provider_cancelled',
             'result_code' => 'PROVIDER_EZEESHIP_SHIPPING_ERROR',

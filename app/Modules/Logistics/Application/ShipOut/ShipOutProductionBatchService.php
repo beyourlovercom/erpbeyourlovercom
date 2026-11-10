@@ -124,8 +124,15 @@ final class ShipOutProductionBatchService
                 ->where('order_status', '!=', 'cancelled')
                 ->whereDoesntHave('externalReferences', fn ($references) => $references
                     ->where('provider', 'historical_logistics')))
-            ->whereNotExists(fn ($query) => ShipOutProductionDispatchState::scopeAttempt($query))
-            ->whereNotExists(fn ($query) => ShipOutProductionDispatchState::scopeBatchQuarantined($query));
+            // R12: scan matches the actual pending tab, including ACK rows
+            // awaiting OMS, but the dispatchable IDs still exclude attempts.
+            ->whereNotExists(fn ($query) => ShipOutProductionDispatchState::scopeCreated($query))
+            ->whereNotExists(fn ($query) => ShipOutProductionDispatchState::scopeOmsException($query))
+            ->whereNotExists(fn ($query) => ShipOutProductionDispatchState::scopeBatchQuarantined($query))
+            ->whereNotExists(function ($query): void {
+                ShipOutProductionDispatchState::scopeAttempt($query);
+                $query->where('shipout_attempt.status', '!=', 'acknowledged');
+            });
         if ($selectedOrderIds !== null) {
             $pending->whereIn('order_id', $selectedOrderIds);
         }

@@ -116,6 +116,8 @@ type ShipOutProductionStatus = {
   order_id:number; order_no:string; attempt_status:string; provider_order_id?:string|null
   provider_status?:string|number|null; reconciliation:string; provider_failure_code?:string|null; shipped:false
   tracking_apply:false; read_only:true
+  oms_persisted_state?:'pending'|'visible'|'confirmed'|'cancelled'|'unverified'
+  oms_checked_at?:string
 }
 type ShipOutBatchPreview = {
   count:number; overflow:boolean; fingerprint:string; dry_run:boolean
@@ -128,7 +130,8 @@ const shipoutBatchPreviewIds = ref<number[]>([])
 const showShipoutSelection = computed(() => !!props.shipoutProductionBatchUi
   && props.warehouseKey==='us-moreplus' && props.view==='pending')
 const shipoutPageSelectable = computed(() => props.rows.data
-  .filter(row => row.shipment_status==='pending').map(row=>row.order_id))
+  .filter(row => row.shipment_status==='pending' && !row.shipout_production?.attempted)
+  .map(row=>row.order_id))
 const shipoutPageAllSelected = computed(() => shipoutPageSelectable.value.length>0
   && shipoutPageSelectable.value.every(id=>shipoutBatchSelection.value.includes(id)))
 function selectShipout(id:number, checked:boolean) {
@@ -352,12 +355,10 @@ async function shipoutProdRefresh(row:Row) {
     if(result.order_id!==row.order_id || result.shipped!==false || result.tracking_apply!==false)
       throw Error('OMS 回读结果不可信')
     shipoutProdStatus[row.order_id]=result
-    if(result.reconciliation==='ORDER_VISIBLE_MANUAL_REVIEW_ONLY'
-      && row.shipout_production?.is_oms_created && props.view==='pending') {
-      router.visit('/logistics/oversea/us-moreplus?view=dispatched', {
-        preserveScroll:true,
-      })
-    }
+    // Reload persisted OMS classification/counters; no navigation based on
+    // first ACK or single OMS visibility. Actual issued state requires two
+    // independent signed GET observations.
+    router.reload({ only:['rows','viewCounts'], preserveScroll:true })
   } catch(e){shipoutProdErrors[row.order_id]=e instanceof Error?e.message:'正式 OMS 查询失败'}
   finally {shipoutProdBusy[row.order_id]=false}
 }
@@ -801,7 +802,8 @@ const defaultServiceFor = (name:string, country?:string|null) => {
 }
 const draft = (row:Row) => drafts[row.order_id] ??= { note:row.note ?? '', carrier:row.carrier ?? '', service:row.service ?? defaultServiceFor(row.carrier ?? '', row.country), tracking_number:row.tracking_number ?? '', outbound_ref:'' }
 const viewTabs = [
-  ['review','待审核'], ['pending','待发货'], ['pending_dispatch','待下发'], ['dispatched',props.warehouseKey==='us-moreplus'?'API 已受理':'OMS 已建单'], ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
+  ['review','待审核'], ['pending','待发货'], ['issued','已下发'],
+  ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
 ] as const
 
 
@@ -1052,14 +1054,14 @@ const compactPages = computed<(number|string)[]>(() => {
               </td>
               <td v-if="warehouseKey === 'us-3sm'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-oms-order-id="row.order_id">
-                  <template v-if="canOperate && row.review_status === 'approved'">
+                  <template v-if="canOperate && row.review_status === 'approved' && view==='pending'">
                     <strong class="xlwms-state">人工导入 OMS</strong>
                     <a class="xlwms-action primary xlwms-manual-download" :href="manualOrderDownload(row)"
                       >{{manualDownloadText(row)}}</a>
                     <small class="xlwms-note">导入前先查看当前草稿箱；已有同一订单就不要重复导入。</small>
                     <small class="xlwms-note">文件使用 USPS 上传面单渠道，仓库人员后续上传真实面单。</small>
                   </template>
-                  <span v-else class="xlwms-note">{{row.review_status !== 'approved' ? '审核通过后可下载' : '请联系物流主管'}}</span>
+                  <span v-else class="xlwms-note">{{row.review_status !== 'approved' ? '审核通过后可下载' : view==='issued'?'已下发 · 等待真实 Tracking，禁止重新导入 OMS':'请联系物流主管'}}</span>
                   <details v-if="hasOmsHistory(row)" class="xlwms-history">
                     <summary>查看历史仓库记录</summary>
                     <small v-if="omsRow(row)?.oms_order_no">历史 OMS 单号：{{omsRow(row)?.oms_order_no}} · {{omsLabel(row)}}</small>
@@ -1073,8 +1075,10 @@ const compactPages = computed<(number|string)[]>(() => {
               <td v-if="warehouseKey === 'us-moreplus'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-shipout-order-id="row.order_id">
                   <template v-if="shipoutProductionUi">
-                    <strong class="xlwms-state">{{row.shipout_production?.status==='oms_quarantined'?'ShipOut · 异常单已隔离':row.shipout_production?.provider_order_id?'ShipOut Production V1 · API 已受理／OMS 待核实':'ShipOut Production V1 · 正式仓'}}</strong>
-                    <small class="xlwms-note">只支持美西 US-LA / 已通过 Dede 审核 / 美国地址 / 仓库自动渠道 Mode 9；接单不等于已发货。</small>
+                    <strong v-if="row.shipout_production?.status==='oms_quarantined'" class="xlwms-error" role="alert">下发异常 · {{ row.shipout_production.label }}</strong>
+                    <strong v-else-if="row.shipout_production?.status==='oms_confirmed'" class="xlwms-state">已下发 · OMS 已核实（未实际出库）</strong>
+                    <strong v-else class="xlwms-state">{{ row.shipout_production?.attempted?'下发中 · 禁止重新提交':'待发货 · 可预检' }}</strong>
+                    <small v-if="row.warehouse_dispatch?.last_checked_at" class="xlwms-note">最近 OMS 回读：{{new Date(row.warehouse_dispatch.last_checked_at).toLocaleString('zh-CN',{hour12:false})}}</small>
                     <template v-if="!shipoutProductionReadEnabled">
                       <small class="xlwms-note">正式 API 已部署，当前未开通；请继续使用人工下载与物流回传流程。</small>
                     </template>
@@ -1094,19 +1098,22 @@ const compactPages = computed<(number|string)[]>(() => {
                         <small v-else>正式发货未授权；只能查询和预检，不会发送订单。</small>
                       </div>
                       <small v-if="row.shipout_production?.status==='oms_quarantined'" class="xlwms-error" role="alert">
-                        {{row.shipout_production.label}}。其他合格订单继续处理；本单禁止自动重发。
+                        下发异常已隔离，其他合格订单不受影响。本单禁止自动重发；请 Dede 核实原 OMS 后人工处理。
                       </small>
-                      <small v-if="row.shipout_production?.provider_order_id && row.shipout_production?.status!=='oms_quarantined' && !shipoutProdStatus[row.order_id]" class="xlwms-note">
+                      <small v-if="row.shipout_production?.provider_order_id && !['oms_quarantined','oms_confirmed'].includes(row.shipout_production?.status??'') && !shipoutProdStatus[row.order_id]" class="xlwms-note">
                         API ACK：{{row.shipout_production.provider_order_id}} · 尚未证实 OMS 有效接单，禁止再次推送；请查询正式 OMS。
                       </small>
-                      <small v-else-if="row.shipout_production?.attempted && !shipoutProdStatus[row.order_id]" class="xlwms-note">
+                      <small v-if="row.shipout_production?.status==='oms_confirmed'" class="xlwms-note">
+                        OMS 已下发并持续可见，但并未证明真实出库。须等仓库提供实际出库单号和 Tracking，随后再确认 ERP 发货。
+                      </small>
+                      <small v-else-if="row.shipout_production?.attempted && !shipoutProdStatus[row.order_id] && !row.shipout_production?.provider_order_id" class="xlwms-note">
                         提交结果待人工核对，禁止再次下发；请查询正式 OMS。
                       </small>
                       <small v-if="shipoutProdStatus[row.order_id]?.reconciliation==='PROVIDER_CANCELLED_OR_ABORTED_MANUAL_REVIEW'" class="xlwms-error" role="alert">
                         OMS 已取消／中止 · {{shipoutProdStatus[row.order_id].provider_order_id||'仓库订单 ID 未返回'}}。{{shipoutProdStatus[row.order_id].provider_failure_code==='PROVIDER_DUPLICATE_ORDER'?'仓库判定重复订单':shipoutProdStatus[row.order_id].provider_failure_code==='PROVIDER_EZEESHIP_SHIPPING_ERROR'?'EzeeShip 渠道异常':'请核对仓库取消原因'}}。禁止重发；不能同步 Tracking 或标记已发货。
                       </small>
                       <small v-else-if="shipoutProdStatus[row.order_id]" class="xlwms-note">
-                        OMS：{{shipoutProdStatus[row.order_id].reconciliation==='NO_ERP_ATTEMPT_AND_NO_OMS_ORDER'?'ERP 未提交，OMS 无此单':shipoutProdStatus[row.order_id].reconciliation==='OMS_ORDER_WITHOUT_ERP_LEDGER_MANUAL_REVIEW'?'OMS 有单但 ERP 无记录，人工核对':shipoutProdStatus[row.order_id].reconciliation==='ORDER_VISIBLE_MANUAL_REVIEW_ONLY'?'仓库订单可见':'待仓库确认'}} · {{shipoutProdStatus[row.order_id].provider_order_id||'暂无仓库订单 ID'}} · 仍待实际发货
+                        OMS：{{shipoutProdStatus[row.order_id].reconciliation==='NO_ERP_ATTEMPT_AND_NO_OMS_ORDER'?'ERP 未提交，OMS 无此单':shipoutProdStatus[row.order_id].reconciliation==='OMS_ORDER_WITHOUT_ERP_LEDGER_MANUAL_REVIEW'?'OMS 有单但 ERP 无记录，人工核对':shipoutProdStatus[row.order_id].reconciliation==='ORDER_VISIBLE_MANUAL_REVIEW_ONLY'?(shipoutProdStatus[row.order_id].oms_persisted_state==='confirmed'?'连续回读确认（待实际出库）':'仓库订单可见 · 核实中'):'待仓库确认'}} · {{shipoutProdStatus[row.order_id].provider_order_id||'暂无仓库订单 ID'}} · 仍待实际发货
                       </small>
                     </template>
                     <small v-if="shipoutProdErrors[row.order_id]" role="alert" class="xlwms-error">{{shipoutProdErrors[row.order_id]}}</small>
@@ -1168,12 +1175,12 @@ const compactPages = computed<(number|string)[]>(() => {
                   <input v-model="draft(row).tracking_number" :disabled="!canOperate || row.shipment_status === 'shipped'" class="tracking-input" placeholder="填写真实 Tracking" @blur="saveTracking(row)" />
                   <button v-if="canOperate && warehouseKey === 'us-3sm' && view === 'pending' && row.review_status === 'approved' && row.shipment_status === 'pending'" type="button" class="manual-ship-button" @mousedown.prevent @click="manualShipUsSm(row)">确认发货</button>
                 </div>
-                <div v-if="warehouseKey==='us-moreplus' && canOperate && row.review_status==='approved' && row.shipment_status==='pending' && row.shipout_production?.attempted && row.warehouse_dispatch?.failure_code!=='PROVIDER_DUPLICATE_ORDER'"
+                <div v-if="warehouseKey==='us-moreplus' && canOperate && ['issued','exceptions'].includes(view) && row.review_status==='approved' && row.shipment_status==='pending' && row.shipout_production?.attempted && row.warehouse_dispatch?.failure_code!=='PROVIDER_DUPLICATE_ORDER'"
                   class="tracking-entry" style="margin-top:5px">
                   <input v-model="draft(row).outbound_ref" class="tracking-input" placeholder="Dede 核实的人工出库单号" />
-                  <button type="button" class="manual-ship-button" @click="manualShipMorePlus(row)">确认人工出库</button>
+                  <button type="button" class="manual-ship-button" @click="manualShipMorePlus(row)">确认真实出库</button>
                 </div>
-                <small v-if="warehouseKey==='us-moreplus' && row.shipout_production?.attempted && row.shipment_status==='pending' && row.warehouse_dispatch?.failure_code!=='PROVIDER_DUPLICATE_ORDER'" class="xlwms-note">先核对既有 OMS 原单，禁止重复推单；实际出库后再填真实 Tracking。网站由同步模块处理。</small>
+                <small v-if="warehouseKey==='us-moreplus' && ['issued','exceptions'].includes(view) && row.shipout_production?.attempted && row.shipment_status==='pending' && row.warehouse_dispatch?.failure_code!=='PROVIDER_DUPLICATE_ORDER'" class="xlwms-note">先核对既有 OMS 原单，禁止重复推单；实际出库后再填真实 Tracking。网站由同步模块处理。</small>
               </template>
                 <template v-else-if="column.key === 'note'"><div class="note-cell"><input v-model="draft(row).note" :disabled="!canEditRow" class="note-input" :class="{ error: !!rowErrors[row.order_id] }" placeholder="等海运 / 等空运 / 缺货 / 太贵 / 送不到…" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></template>
                 <template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template>

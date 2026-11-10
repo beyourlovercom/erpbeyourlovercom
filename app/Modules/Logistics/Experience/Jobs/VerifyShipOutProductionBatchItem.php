@@ -2,7 +2,7 @@
 
 namespace App\Modules\Logistics\Experience\Jobs;
 
-use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryReconcileService;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -30,7 +30,7 @@ final class VerifyShipOutProductionBatchItem implements ShouldQueue
         public readonly int $check = 1,
     ) {}
 
-    public function handle(ShipOutProductionCanaryReconcileService $reconcile): void
+    public function handle(ShipOutProductionOmsReadbackService $reconcile): void
     {
         $row = DB::table('shipout_production_batch_items')
             ->where('batch_id', $this->batchId)
@@ -44,7 +44,7 @@ final class VerifyShipOutProductionBatchItem implements ShouldQueue
         $newStatus = 'pending_oms';
         $code = 'OMS_READBACK_PENDING';
         try {
-            $result = $reconcile->inspect($this->orderId);
+            $result = $reconcile->inspectAndRecord($this->orderId);
             if (filled($row->provider_order_id) && (string) $result['provider_order_id'] !== (string) $row->provider_order_id) {
                 throw new \RuntimeException('OMS_PROVIDER_ID_MISMATCH');
             }
