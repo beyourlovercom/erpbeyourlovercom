@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3'
-import { computed, reactive, ref } from 'vue'
+import { defineAsyncComponent } from 'vue'
+import type { ColDef } from 'ag-grid-community'
+import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
+import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
+const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
+import { computed, reactive, ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import StockExceptionConfirmDialog from '../../Components/Logistics/StockExceptionConfirmDialog.vue'
 import { allocationStockWarnings } from '../../lib/allocationStockWarning'
@@ -24,7 +29,7 @@ type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
 type TabKey = 'pending'|'recommendation'|'inventory'|'manual'|'gift'|'processed'
 
-const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; canOperate:boolean }>()
+const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; canOperate:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string }>()
 const activeTab = ref<TabKey>('pending')
 const selectedOrderId = ref<number|null>(null)
 const decisionNote = ref('')
@@ -37,6 +42,43 @@ const localSubmitted = reactive<Record<number,{source:'system_recommendation'|'m
 const manualAssignments = reactive<Record<number,Record<number,string>>>({})
 const manualGiftMappings = reactive<Record<number,Record<number,string>>>({})
 const manualCarriers = reactive<Record<number,Record<string,string>>>({})
+
+const gridSearchText = ref(props.gridSearch ?? '')
+watch(() => props.gridSearch, value => { gridSearchText.value=value??'' })
+const searchAllocationGrid = (value:string) => { gridSearchText.value=value; gridNavigation.search(value) }
+const gridNavigation = useGlobalGridListAdapter({
+  path: '/logistics/wait-stock',
+  enabled: () => !!props.globalGridPilotEnabled,
+  search: () => gridSearchText.value,
+  pageSize: () => props.orders.per_page,
+})
+const allocationGridRows = computed<GridListRow[]>(() => props.orders.data.map((order,index) => ({
+  id: order.id,
+  line: (props.orders.current_page-1)*props.orders.per_page+index+1,
+  order_number: order.erp_order_id ?? '—',
+  order_url: order.order_url,
+  sku_summary: order.items.map(item => (item.sku ?? item.product_summary ?? '无SKU')+' × '+item.quantity).join(' / ') || '—',
+  recipient: order.recipient_name ?? '—',
+  zone: order.country==='US' ? zoneShort(order) : order.country ?? '—',
+  advice: guidanceFor(order).title,
+  status: guidanceFor(order).status,
+})))
+const allocationGridColumns: ColDef<GridListRow>[] = [
+  gridColumn({colId:'line',field:'line',headerName:'#',width:74}),
+  gridColumn({colId:'order_number',field:'order_number',headerName:'订单号',width:195,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
+  gridColumn({colId:'sku',field:'sku_summary',headerName:'SKU / 数量',width:280}),
+  gridColumn({colId:'recipient',field:'recipient',headerName:'收件人',width:152}),
+  gridColumn({colId:'zone',field:'zone',headerName:'国家 / 区域',width:140}),
+  gridColumn({colId:'advice',field:'advice',headerName:'系统建议',width:165}),
+  gridColumn({colId:'status',field:'status',headerName:'状态',width:132,cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
+  gridColumn({colId:'actions',field:'id',headerName:'操作',width:130,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'actions',actionsFor:(r:GridListRow)=>{
+      const order=props.orders.data.find(item=>item.id===r.id)
+      return order ? [{label:processed(order)?'查看记录':'查看方案',onClick:()=>openPlan(order)}] : []
+    }}}),
+]
+const allocationPager = computed(()=>({current_page:props.orders.current_page,last_page:props.orders.last_page,per_page:props.orders.per_page,total:props.orders.total}))
 
 const selectedOrder = computed(() => props.orders.data.find(order => order.id === selectedOrderId.value) ?? null)
 const selectedStockWarnings = computed(() => {
@@ -263,7 +305,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
   <AuthenticatedLayout title="待分仓" :breadcrumbs="['BYL ERP','物流','待分仓']">
     <section class="allocation-page">
       <header class="page-heading">
-        <div class="title-row"><h1>待分仓</h1><span class="version">V1.2.1</span></div>
+        <div class="title-row"><h1>待分仓</h1><span class="version">V1.2.1</span></div><button v-if="globalGridPilotAvailable" type="button" class="secondary" data-testid="allocation-global-grid-toggle" @click="gridNavigation.toggle()">{{ globalGridPilotEnabled?'返回原表':'体验 Global Grid V1' }}</button>
         <div class="principle"><div><span>System Assisted</span><strong>{{ counts.recommendation }}</strong></div><div><span>Human Confirmed</span><strong>{{ counts.processed }}</strong></div></div>
       </header>
       <nav class="tabs">
@@ -274,7 +316,13 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         <button :class="{active:activeTab==='gift'}" @click="activeTab='gift'">礼品待确认 <span>{{ counts.gift }}</span></button>
         <button :class="{active:activeTab==='processed'}" @click="activeTab='processed'">已处理 <span>{{ counts.processed }}</span></button>
       </nav>
-      <div class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>SKU 摘要</th><th>收件信息摘要</th><th>区域 / 优先仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
+      <GlobalGrid v-if="globalGridPilotEnabled && activeTab==='pending'"
+        namespace="grid.logistics.allocation.global.v1" title="待分仓 · Global Grid V1"
+        :rows="allocationGridRows" :columns="allocationGridColumns" :required-column-ids="['order_number']"
+        :page="allocationPager" :search="gridSearch ?? ''" search-placeholder="搜索全部订单号 / 收件人..."
+        @search-change="searchAllocationGrid($event)" @page-change="gridNavigation.page($event)"
+        @page-size-change="gridNavigation.pageSize($event)" />
+      <div v-else class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>SKU 摘要</th><th>收件信息摘要</th><th>区域 / 优先仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
         <tr v-for="(order,index) in filteredOrders" :key="order.id">
           <td>{{ index+1 }}</td>
           <td><Link v-if="order.order_url" class="order-link" :href="order.order_url">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.domestic_reject_reason" class="domestic-rejection">商务驳回：{{ order.domestic_reject_reason }}</small></td>

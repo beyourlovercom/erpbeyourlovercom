@@ -6,6 +6,7 @@ use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
+use App\Modules\Shell\Application\GlobalGridPilot;
 use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
@@ -64,10 +65,22 @@ final class LogisticsController
 
     public function waitStock(Request $request): Response
     {
-        $orders = $this->statusSummary->pendingAllocationQuery()
-            ->with(['address', 'items.product', 'owner', 'shipment.warehouse', 'fulfillmentAllocation', 'externalReferences:id,order_id,provider'])
-            ->latest('order_date')->latest('id')
-            ->paginate(self::PER_PAGE)->withQueryString();
+        $gridPilot = GlobalGridPilot::enabled($request);
+        $search = $gridPilot ? trim(mb_substr((string) $request->query('search', ''), 0, 100)) : '';
+        $query = $this->statusSummary->pendingAllocationQuery()
+            ->with(['address', 'items.product', 'owner', 'shipment.warehouse', 'fulfillmentAllocation', 'externalReferences:id,order_id,provider']);
+        if ($search !== '') {
+            $term = '%'.addcslashes($search, '%_\\').'%';
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('erp_order_id', 'like', $term)
+                    ->orWhere('external_order_number', 'like', $term)
+                    ->orWhereHas('address', fn ($address) => $address->where('recipient_name', 'like', $term));
+            });
+        }
+        $requestedSize = (int) $request->query('per_page', self::PER_PAGE);
+        $pageSize = $gridPilot && in_array($requestedSize, [20, 50, 100], true) ? $requestedSize : self::PER_PAGE;
+        $orders = $query->latest('order_date')->latest('id')
+            ->paginate($pageSize)->withQueryString();
 
         $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
         $context = array_replace($this->recommendations->prepare($productIds), $this->fulfillmentPlans->prepare($productIds));
@@ -90,6 +103,9 @@ final class LogisticsController
             'carrierOptions' => $this->carrierServices->options(),
             'pendingTotal' => $orders->total(),
             'canOperate' => $this->allocationAccess->allows($request->user()),
+            'globalGridPilotAvailable' => GlobalGridPilot::available(),
+            'globalGridPilotEnabled' => $gridPilot,
+            'gridSearch' => $search,
         ]);
     }
 
@@ -272,11 +288,29 @@ final class LogisticsController
 
     public function review(Request $request): Response
     {
-        $reviews = LogisticsReview::query()->with(['order.address', 'order.items.product', 'order.shipment.warehouse'])
-            ->where('status', 'pending')->whereHas('order', fn ($q) => $q->eligibleForOperations()->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
-            ->latest('requested_at')->paginate(self::PER_PAGE)->withQueryString();
+        $gridPilot = GlobalGridPilot::enabled($request);
+        $search = $gridPilot ? trim(mb_substr((string) $request->query('search', ''), 0, 100)) : '';
+        $query = LogisticsReview::query()->with(['order.address', 'order.items.product', 'order.shipment.warehouse'])
+            ->where('status', 'pending')->whereHas('order', fn ($q) => $q->eligibleForOperations()->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
+        if ($search !== '') {
+            $term = '%'.addcslashes($search, '%_\\').'%';
+            $query->whereHas('order', fn ($order) => $order
+                ->where(fn ($q) => $q->where('erp_order_id', 'like', $term)
+                    ->orWhere('external_order_number', 'like', $term)
+                    ->orWhereHas('address', fn ($address) => $address->where('recipient_name', 'like', $term))));
+        }
+        $requestedSize = (int) $request->query('per_page', self::PER_PAGE);
+        $pageSize = $gridPilot && in_array($requestedSize, [20, 50, 100], true) ? $requestedSize : self::PER_PAGE;
+        $reviews = $query->latest('requested_at')->paginate($pageSize)->withQueryString();
 
-        return Inertia::render('Logistics/Review', ['reviews' => $reviews->through(fn (LogisticsReview $review): array => [...$this->queueRow($review->order->shipment), 'review_id' => $review->id, 'reason' => $review->reason, 'trigger' => $review->trigger, 'requested_at' => $review->requested_at?->toIso8601String()])->toArray(), 'statusBar' => $this->statusSummary->statusBar(), 'canOperate' => $this->executionAccess->allows($request->user())]);
+        return Inertia::render('Logistics/Review', [
+            'reviews' => $reviews->through(fn (LogisticsReview $review): array => [...$this->queueRow($review->order->shipment), 'review_id' => $review->id, 'reason' => $review->reason, 'trigger' => $review->trigger, 'requested_at' => $review->requested_at?->toIso8601String()])->toArray(),
+            'statusBar' => $this->statusSummary->statusBar(),
+            'canOperate' => $this->executionAccess->allows($request->user()),
+            'globalGridPilotAvailable' => GlobalGridPilot::available(),
+            'globalGridPilotEnabled' => $gridPilot,
+            'gridSearch' => $search,
+        ]);
     }
 
     public function completed(Request $request): Response

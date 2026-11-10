@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
+use App\Modules\Shell\Application\GlobalGridPilot;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewAccess;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
@@ -71,7 +72,19 @@ final class DomesticLogisticsController
         ]);
 
         $this->applyView($query, $view);
-        $rows = $query->orderBy('order_date')->orderBy('id')->paginate(50)->withQueryString();
+        $gridPilot = GlobalGridPilot::enabled($request);
+        $search = $gridPilot ? trim(mb_substr((string) $request->query('search', ''), 0, 100)) : '';
+        if ($search !== '') {
+            $term = '%'.addcslashes($search, '%_\\').'%';
+            $query->where(function (Builder $query) use ($term): void {
+                $query->where('erp_order_id', 'like', $term)
+                    ->orWhere('external_order_number', 'like', $term)
+                    ->orWhereHas('address', fn (Builder $address) => $address->where('recipient_name', 'like', $term));
+            });
+        }
+        $requestedSize = (int) $request->query('per_page', 50);
+        $pageSize = $gridPilot && in_array($requestedSize, [20, 50, 100], true) ? $requestedSize : 50;
+        $rows = $query->orderBy('order_date')->orderBy('id')->paginate($pageSize)->withQueryString();
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments($rows->getCollection()
             ->map(fn (Order $order): int => (int) $order->shipment?->id)->all());
         $rows->through(fn (Order $order, int $index): array => $this->row($order, (($rows->currentPage() - 1) * $rows->perPage()) + $index + 1, $trackingStatuses[(int) $order->shipment?->id] ?? null));
@@ -89,6 +102,9 @@ final class DomesticLogisticsController
         return Inertia::render('Logistics/Domestic/Index', [
             'view' => $view,
             'rows' => $rows,
+            'globalGridPilotAvailable' => GlobalGridPilot::available(),
+            'globalGridPilotEnabled' => $gridPilot,
+            'gridSearch' => $search,
             'viewCounts' => $counts,
             'canOperate' => app(LogisticsExecutionAccess::class)->allows($request->user()),
             'canReview' => $this->reviewAccess->allows($request->user()),

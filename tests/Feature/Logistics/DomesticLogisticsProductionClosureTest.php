@@ -56,6 +56,38 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         $this->actingAs($user)->get('/logistics/wait-stock')->assertInertia(fn ($page) => $page->component('Logistics/FulfillmentAllocation'));
     }
 
+    public function test_r4_l1_domestic_grid_uses_real_backend_search_and_bounded_pagination(): void
+    {
+        $this->domesticOrder('007-GRID-L1-ANCHOR', '4PX', false, '13800138011', 2);
+        $viewer = $this->logisticsViewer();
+
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=review&global_grid=1&per_page=20&search=007-GRID-L1-ANCHOR')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Logistics/Domestic/Index')
+                ->where('globalGridPilotEnabled', true)
+                ->where('view', 'review')
+                ->where('rows.per_page', 20)
+                ->where('rows.total', 1)
+                ->where('rows.data.0.erp_order_id', '007-GRID-L1-ANCHOR'));
+
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=review&global_grid=1&per_page=9999&search=R4-L1-NOT-FOUND')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('rows.per_page', 50)
+                ->where('rows.total', 0));
+
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=review&per_page=20&search=R4-L1-NOT-FOUND')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotEnabled', false)
+                ->where('rows.per_page', 50)
+                ->where('rows.total', 1));
+    }
+
     public function test_domestic_daily_views_render_rows_with_enum_manual_sync_status(): void
     {
         $this->withoutVite();
