@@ -62,7 +62,12 @@ final class ShipOutMorePlusManualFulfillmentService
             'service' => (string) ($shipment->service ?: 'Priority'),
             'tracking_number' => trim($tracking),
             'shipped_at' => now()->utc()->toIso8601String(),
-            'logistics_note' => 'MorePlus 人工出库单：'.trim($outboundReference).'；既有 ShipOut 提交流水保留，禁止自动重发',
+            'logistics_note' => trim(
+                (trim((string) $shipment->logistics_note) !== ''
+                    ? trim((string) $shipment->logistics_note).' | ' : '')
+                .'MorePlus 人工出库单：'.trim($outboundReference)
+                .'；既有 ShipOut 提交流水保留，禁止自动重发'
+            ),
         ], $actor);
 
         OverseaWarehouseReview::query()->where('order_id', $order->id)->update(['progress' => 'shipped']);

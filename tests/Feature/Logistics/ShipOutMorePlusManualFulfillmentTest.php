@@ -105,6 +105,7 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
     {
         [$user, $order] = $this->prepare();
         $this->attempt($order);
+        $order->shipment()->update(['logistics_note' => 'Dede 原始审核备注']);
         Http::preventStrayRequests();
         $this->actingAs($user)->post('/logistics/oversea/us-moreplus/orders/'.$order->id.'/manual-ship',
             $this->data($order->id))->assertRedirect('/logistics/oversea/us-moreplus?view=shipped');
@@ -119,6 +120,8 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
         $this->assertSame('pending', $order->fresh()->manualSync?->website_sync_status?->value);
         $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
         $this->assertStringContainsString('MP-MANUAL-OUT-001',
+            (string) $order->fresh()->shipment->logistics_note);
+        $this->assertStringContainsString('Dede 原始审核备注',
             (string) $order->fresh()->shipment->logistics_note);
         Http::assertNothingSent();
     }
