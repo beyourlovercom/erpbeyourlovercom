@@ -103,5 +103,31 @@ class RuntimeAuditTests(unittest.TestCase):
             self.assertTrue(report["production_worker_backend_drift"])
 
 
+    def test_worker_minimums_fail_closed_without_scheduler_or_batch(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            release = root / "releases" / "current"
+            (release / "app").mkdir(parents=True)
+            (release / "routes").mkdir()
+            (release / "app/Example.php").write_text("<?php")
+            (release / "routes/console.php").write_text("<?php")
+            (root / "current").symlink_to(release, target_is_directory=True)
+            one_worker = audit.inventory(
+                root, ps_output="101 20000 php artisan queue:work redis\\n",
+                cwd_lookup=lambda _: release,
+            )
+            self.assertFalse(one_worker["minimum_workers_present"])
+            all_workers = audit.inventory(
+                root, ps_output=(
+                    "101 20000 php artisan queue:work redis\\n"
+                    "102 20000 php artisan queue:work redis --queue=shipout-production-batch\\n"
+                    "103 12000 php artisan schedule:work\\n"
+                ),
+                cwd_lookup=lambda _: release,
+            )
+            self.assertTrue(all_workers["minimum_workers_present"])
+            self.assertFalse(all_workers["production_worker_backend_drift"])
+
+
 if __name__ == "__main__":
     unittest.main()
