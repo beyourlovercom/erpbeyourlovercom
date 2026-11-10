@@ -44,12 +44,14 @@ const urlIsExternal = (url: string | null | undefined) => !!url?.startsWith('htt
   </div>
   <span v-else>{{ text }}</span>
 </template>
-<style scoped>
+<!-- AG Grid creates dynamic cell renderers without Vue scope attributes.
+     Unique global-cell-* classes keep these CSS rules component-specific. -->
+<style>
 .global-cell-link,.global-cell-actions a{color:#116b57;text-decoration:none;font-weight:600}
 .global-cell-link:hover,.global-cell-actions a:hover{text-decoration:underline}
 .global-cell-thumb{width:30px;height:30px;object-fit:contain;border-radius:4px;background:#f7f9f8;vertical-align:middle}
 .global-cell-badge{display:inline-block;background:#eff6f4;color:#176b51;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:600}
-.global-cell-actions{display:inline-flex;align-items:center;white-space:nowrap;max-width:100%;vertical-align:middle}
+.global-cell-actions{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;max-width:100%;vertical-align:middle}
 .global-cell-actions>a,.global-cell-actions>button{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-height:22px;box-sizing:border-box;padding:0 8px;font-size:12px;line-height:20px}
 .global-cell-actions>:first-child{padding-left:2px}
 .global-cell-actions>:not(:first-child){border-left:1px solid #dbe2e6}

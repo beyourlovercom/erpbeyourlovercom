@@ -43,13 +43,15 @@ const reopened = computed(()=>props.params.canReview && props.params.view==='pen
     <span v-else>—</span>
   </div>
 </template>
-<style scoped>
-.domestic-grid-cell-actions{display:flex;align-items:center;gap:5px;min-height:100%;white-space:nowrap;padding:0 4px}
-.domestic-grid-cell-actions button{height:25px;border:1px solid #cbd5e1;border-radius:4px;padding:0 8px;font-size:12px;background:#fff;cursor:pointer;flex-shrink:0}
+<!-- AG Grid mounts Vue cell renderers outside this component's scoped-style
+     ancestry. Target only the unique class instead of relying on data-v-* CSS. -->
+<style>
+.domestic-grid-cell-actions{display:flex;align-items:center;gap:8px;min-height:100%;width:100%;box-sizing:border-box;white-space:nowrap;padding:0 6px}
+.domestic-grid-cell-actions button{height:25px;border:1px solid #cbd5e1;border-radius:4px;padding:0 9px;font-size:12px;background:#fff;cursor:pointer;flex:0 0 auto;line-height:23px}
 .domestic-grid-cell-actions .approve{background:#008f7c;color:white;border-color:#008f7c}
 .domestic-grid-cell-actions .stockout{color:#af5b09;border-color:#edb875}
 .domestic-grid-cell-actions .reject{color:#d73038;border-color:#eab4b4}
 .domestic-grid-cell-actions .native{color:#325475}
 .domestic-grid-cell-actions button:disabled{opacity:.45;cursor:not-allowed}
-.domestic-grid-cell-actions input{width:132px;min-width:0;height:25px;padding:3px 6px;border:1px solid #d0d8e2;border-radius:4px;font-size:11px}
+.domestic-grid-cell-actions input{width:145px;min-width:120px;max-width:145px;box-sizing:border-box;flex:0 1 145px;height:25px;padding:3px 8px;border:1px solid #d0d8e2;border-radius:4px;font-size:11px}
 </style>

@@ -148,6 +148,35 @@ test('R4-L1 logistics shared Grid handles domestic, allocation and review withou
   await expect(domestic.locator('.ag-cell[col-id="actions"]').first()).toHaveClass(/ag-cell-first-right-pinned/)
   await expect(domestic.getByRole('button',{name:'缺货',exact:true})).toBeVisible()
   await expect(domestic.getByRole('button',{name:'驳回',exact:true})).toBeDisabled()
+  // This is a visual regression, not merely a button-exists assertion:
+  // dynamic AG Grid Vue cell renderers must receive the actual CSS.
+  const reviewAction = domestic.locator('.domestic-grid-cell-actions').first()
+  await expect(reviewAction).toHaveCSS('display', 'flex')
+  await expect(reviewAction).toHaveCSS('gap', '8px')
+  const actionLayout = await reviewAction.evaluate((root) => {
+    const nodes = Array.from(root.querySelectorAll('button, input'))
+    const rectangles = nodes.map(node => node.getBoundingClientRect())
+    const gaps = rectangles.slice(1).map((box,index) => box.left - rectangles[index].right)
+    const approve = nodes[0] ? getComputedStyle(nodes[0]) : null
+    return {
+      gaps, inputWidth:rectangles.at(-1)?.width ?? 0,
+      approveBackground:approve?.backgroundColor,
+      buttonPadding:approve?.paddingLeft,
+      maxRight:rectangles.at(-1)?.right ?? 0,
+      cellRight:root.closest('.ag-cell')?.getBoundingClientRect().right ?? 0,
+    }
+  })
+  expect(actionLayout.gaps.length).toBe(3)
+  expect(actionLayout.gaps.every(gap => gap >= 7)).toBe(true)
+  expect(actionLayout.inputWidth).toBeGreaterThanOrEqual(120)
+  expect(actionLayout.maxRight).toBeLessThan(actionLayout.cellRight)
+  expect(actionLayout.approveBackground).toBe('rgb(0, 143, 124)')
+  expect(actionLayout.buttonPadding).toBe('9px')
+  // The generic GlobalGridCell is also mounted dynamically; preserve its
+  // colored badges and action spacing across future list migrations.
+  await expect(domestic.locator('.global-cell-badge').first()).toHaveCSS('background-color', 'rgb(239, 246, 244)')
+  await expect(domestic.locator('.global-cell-badge').first()).toHaveCSS('padding', '2px 7px')
+  console.log('R4_V12_DOMESTIC_REVIEW_SPACING_VISUAL_PASS',JSON.stringify(actionLayout))
   await domestic.getByRole('textbox',{name:'驳回原因'}).fill('客户地址需要再次核对')
   await expect(domestic.getByRole('button',{name:'驳回',exact:true})).toBeEnabled()
   await expect(page.locator('#domestic-reject-reason')).toHaveCount(0)
