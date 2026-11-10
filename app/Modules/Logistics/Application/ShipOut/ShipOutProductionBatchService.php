@@ -15,6 +15,31 @@ final class ShipOutProductionBatchService
 {
     public const MAX_ORDERS = 200;
 
+    /**
+     * Fail closed: production can act only on explicit exact order IDs.
+     * The one-order Canary takes priority over the new finite multi-order list.
+     *
+     * @return list<int>
+     */
+    public static function productionApprovedOrderIds(): array
+    {
+        $canaryId = (int) config('shipout.production_v1_batch_canary_order_id', 0);
+        if ($canaryId > 0) {
+            return [$canaryId];
+        }
+
+        $raw = trim((string) config('shipout.production_v1_batch_approved_order_ids', ''));
+        if ($raw === '' || preg_match('/^[1-9][0-9]*(?:,[1-9][0-9]*)*$/D', $raw) !== 1) {
+            return [];
+        }
+        $ids = array_values(array_unique(array_map('intval', explode(',', $raw))));
+        if (count($ids) > self::MAX_ORDERS || in_array(0, $ids, true)) {
+            return [];
+        }
+
+        return $ids;
+    }
+
     public function candidateIds(): array
     {
         $configuredCutover = (int) config('shipout.production_v1_min_order_id', 0);
@@ -22,10 +47,9 @@ final class ShipOutProductionBatchService
             return [];
         }
         $cutover = max(1, $configuredCutover);
-        $canaryId = (int) config('shipout.production_v1_batch_canary_order_id', 0);
-        if (app()->environment('production') && $canaryId < $cutover) {
-            // Without a configured exact order ID, Production cannot enumerate
-            // an entire live warehouse and accidentally dispatch all candidates.
+        $approvedIds = app()->environment('production') ? self::productionApprovedOrderIds() : [];
+        if (app()->environment('production') && $approvedIds === []) {
+            // No live warehouse-wide enumeration without explicit exact IDs.
             return [];
         }
 
@@ -41,9 +65,16 @@ final class ShipOutProductionBatchService
                 ->where('order_status', 'pending_shipment')
                 ->whereHas('address', fn ($address) => $address->where('country', 'US')))
             ->whereNotIn('order_id', DB::table('shipout_dispatch_attempts')->select('order_id'))
+            // Batch-level quarantine also covers preflight failures without a POST.
+            // Operators must resolve errors deliberately; a new batch never silently retries.
+            ->whereNotIn('order_id', DB::table('shipout_production_batch_items')
+                ->whereIn('status', [
+                    'queued', 'processing', 'pending_oms', 'oms_visible_provisional',
+                    'oms_visible', 'skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review',
+                ])->select('order_id'))
             ->where('order_id', '>=', $cutover);
         if (app()->environment('production')) {
-            $query->where('order_id', $canaryId);
+            $query->whereIn('order_id', $approvedIds);
         }
 
         return $query->orderBy('id')->limit(self::MAX_ORDERS + 1)
@@ -80,7 +111,7 @@ final class ShipOutProductionBatchService
                 || ! hash_equals($preview['fingerprint'], $fingerprint)) {
                 throw new RuntimeException('SHIPOUT_BATCH_STALE');
             }
-            if (DB::table('shipout_production_batches')->whereIn('status', ['queued', 'running'])->exists()) {
+            if (DB::table('shipout_production_batches')->whereIn('status', ['queued', 'running', 'awaiting_oms', 'paused'])->exists()) {
                 throw new RuntimeException('SHIPOUT_BATCH_ALREADY_RUNNING');
             }
             $id = (string) Str::uuid();

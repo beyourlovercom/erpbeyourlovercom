@@ -107,10 +107,17 @@ final class VerifyShipOutProductionBatchItem implements ShouldQueue
             ->whereIn('status', ['queued', 'processing', 'pending_oms', 'oms_visible_provisional'])
             ->exists();
         if (! $outstanding) {
+            $exceptions = DB::table('shipout_production_batch_items')
+                ->where('batch_id', $this->batchId)
+                ->whereIn('status', ['skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review'])
+                ->exists();
             DB::table('shipout_production_batches')
                 ->where('id', $this->batchId)
                 ->whereIn('status', ['running', 'awaiting_oms'])
-                ->update(['status' => 'completed', 'finished_at' => now(), 'updated_at' => now()]);
+                ->update([
+                    'status' => $exceptions ? 'completed_with_exceptions' : 'completed',
+                    'finished_at' => now(), 'updated_at' => now(),
+                ]);
         }
     }
 

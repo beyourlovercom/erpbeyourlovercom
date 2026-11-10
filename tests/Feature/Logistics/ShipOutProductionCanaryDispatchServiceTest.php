@@ -1677,7 +1677,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             'result_code' => 'PROVIDER_EZEESHIP_SHIPPING_ERROR',
         ]);
         $this->assertDatabaseHas('shipout_production_batches', [
-            'id' => $batchId, 'status' => 'completed',
+            'id' => $batchId, 'status' => 'completed_with_exceptions',
         ]);
         $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
         $this->assertDatabaseHas('shipments', [
