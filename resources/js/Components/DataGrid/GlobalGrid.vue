@@ -77,5 +77,12 @@ const emit = defineEmits<{
 <style scoped>
 .erp-global-grid-v1{width:100%;min-width:0}
 :deep(.oms-grid){height:clamp(460px,65vh,800px)}
+/* Short server-backed lists override the large-list height. */
+:deep(.oms-grid.is-auto-height){height:auto;min-height:0}
+/* AG Grid autoHeight keeps a 150px internal scrolling-row minimum even
+   when only one record exists. Override it ONLY for short server lists. */
+:deep(.oms-grid.is-auto-height .ag-grid-scrolling-rows){min-height:0}
+/* Empty results still need room for AG Grid's "暂无数据" overlay. */
+:deep(.oms-grid.is-auto-height.is-empty-short-list .ag-grid-scrolling-rows){min-height:72px}
 @media(max-width:767px){:deep(.oms-grid){height:clamp(400px,61vh,650px)}}
 </style>
