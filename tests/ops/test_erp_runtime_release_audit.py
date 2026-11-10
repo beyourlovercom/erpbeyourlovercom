@@ -25,6 +25,8 @@ class RuntimeAuditTests(unittest.TestCase):
             new = root / "releases" / "new"
             for release in (old, new):
                 (release / "routes").mkdir(parents=True)
+                (release / "app").mkdir(parents=True)
+                (release / "app/Example.php").write_text("<?php // shared backend\\n")
             (old / "routes/console.php").write_text(
                 "Schedule::command('orders:sync-woocommerce --apply')->hourly();\n"
             )
@@ -46,6 +48,7 @@ class RuntimeAuditTests(unittest.TestCase):
                                      cwd_lookup=lambda pid: mapping.get(pid))
             self.assertEqual(len(report["production_workers"]), 2)
             self.assertTrue(report["production_worker_drift"])
+            self.assertTrue(report["production_worker_backend_drift"])
             scheduler = next(w for w in report["production_workers"]
                              if w["role"] == "schedule:work")
             self.assertEqual(scheduler["missing_scheduled_commands"],
@@ -53,6 +56,51 @@ class RuntimeAuditTests(unittest.TestCase):
             self.assertEqual(report["dev_artisan_launchers"], 1)
             self.assertEqual(report["dev_php_http_processes"], 1)
             self.assertTrue(report["read_only"])
+
+
+    def test_ui_only_release_has_path_drift_but_backend_parity(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            old = root / "releases" / "pr692"
+            new = root / "releases" / "pr693"
+            for release in (old, new):
+                (release / "routes").mkdir(parents=True)
+                (release / "app").mkdir(parents=True)
+                (release / "app/Example.php").write_text("<?php // same worker code")
+                (release / "routes/console.php").write_text(
+                    "Schedule::command('orders:sync-woocommerce')->hourly();"
+                )
+            (new / "resources/js").mkdir(parents=True)
+            (new / "resources/js/app.ts").write_text("const newGridHeight = 159")
+            (root / "current").symlink_to(new, target_is_directory=True)
+            output = "101 10240 php artisan queue:work redis\\n"
+            report = audit.inventory(root, ps_output=output,
+                                     cwd_lookup=lambda pid: old)
+            self.assertTrue(report["production_worker_drift"])
+            self.assertFalse(report["production_worker_backend_drift"])
+            self.assertTrue(report["production_workers"][0]["backend_compatible"])
+
+            (new / "app/Example.php").write_text("<?php // changed worker code")
+            report = audit.inventory(root, ps_output=output,
+                                     cwd_lookup=lambda pid: old)
+            self.assertTrue(report["production_worker_backend_drift"])
+            self.assertFalse(report["production_workers"][0]["backend_compatible"])
+
+    def test_missing_backend_source_fails_closed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            old = root / "releases" / "old"
+            new = root / "releases" / "new"
+            (old / "routes").mkdir(parents=True)
+            (new / "app").mkdir(parents=True)
+            (new / "routes").mkdir()
+            (new / "app/Example.php").write_text("<?php")
+            (root / "current").symlink_to(new, target_is_directory=True)
+            report = audit.inventory(
+                root, ps_output="20 10000 php artisan schedule:work\\n",
+                cwd_lookup=lambda pid: old,
+            )
+            self.assertTrue(report["production_worker_backend_drift"])
 
 
 if __name__ == "__main__":
