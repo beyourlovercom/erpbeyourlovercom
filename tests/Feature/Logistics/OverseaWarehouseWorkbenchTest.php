@@ -1328,6 +1328,43 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_r13_official_status_four_is_issued_tracking_pending_not_red_exception_or_erp_shipped(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007-R13-OMS-STATUS4');
+        $this->actingAs($actor)->post("/logistics/oversea/orders/{$order->id}/approve")
+            ->assertRedirect();
+        $this->storeSignedShipOutAttempt($order);
+        $observer = app(ShipOutProductionOmsReadbackService::class);
+        $observer->recordResult((int) $order->id, [
+            'order_id' => $order->id,
+            'attempt_status' => 'acknowledged',
+            'provider_order_id' => 'SYNTHETIC-OMS-ACK',
+            'provider_status' => 4,
+            'reconciliation' => 'ORDER_VISIBLE_MANUAL_REVIEW_ONLY',
+            'shipped' => false,
+            'tracking_apply' => false,
+        ]);
+        Http::preventStrayRequests();
+        $this->actingAs($actor)->get('/logistics/oversea/us-moreplus?view=exceptions')
+            ->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->get('/logistics/oversea/us-moreplus?view=issued')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.order_id', $order->id)
+                ->where('rows.data.0.shipout_production.status', 'oms_shipped_pending_tracking')
+                ->where('rows.data.0.shipment_status', 'pending')
+                ->where('rows.data.0.tracking_number', null));
+        $this->get('/logistics/oversea/us-moreplus?view=shipped')
+            ->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'shipment_status' => 'pending', 'tracking_number' => null,
+        ]);
+        Http::assertNothingSent();
+    }
+
     public function test_r12_two_oms_readbacks_enter_issued_and_later_cancel_moves_to_exception_without_shipment_write(): void
     {
         $actor = $this->userWith(['logistics.view', 'logistics.operate']);

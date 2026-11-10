@@ -704,6 +704,29 @@ describe('R12 six-list overseas dispatch state without duplicate submission', ()
   })
 })
 
+describe('R13 official ShipOut status 4, shipment awaiting reconciliation', () => {
+  it('shows provider shipped while ERP remains pending and demands real Tracking', () => {
+    const row={...usSmPendingRows.data[0],order_id:7952,review_status:'approved' as const,
+      shipment_status:'pending',tracking_number:null,
+      shipout_production:{attempted:true,is_oms_created:true,
+        status:'oms_shipped_pending_tracking',
+        label:'OMS 已发货 · Tracking 待回写 ERP',provider_order_id:'OMS-7952'},
+      warehouse_dispatch:{status:'oms_shipped_pending_tracking',
+        label:'OMS 已发货 · Tracking 待回写 ERP',
+        detail:'须读取真实 Tracking',failure_code:null,oms_order_no:'OMS-7952',
+        last_checked_at:'2026-11-10T11:00:00Z',can_retry_local_block:false}}
+    const page=mountPage({view:'issued',rows:{...usSmPendingRows,data:[row],total:1},
+      shipoutProductionUi:true,shipoutProductionReadEnabled:true,canOperate:true})
+    expect(page.text()).toContain('OMS 已发货 · Tracking 待回写')
+    expect(page.text()).toContain('OMS 状态 4：Shipped')
+    expect(page.text()).toContain('确认真实出库')
+    expect(page.find('input[placeholder="填写真实 Tracking"]').exists()).toBe(true)
+    expect(page.text()).not.toContain('下发异常已隔离')
+    expect(page.text()).not.toContain('确认提交正式仓 · 仅一次')
+    page.unmount()
+  })
+})
+
 describe('MorePlus Production ACK pending lifecycle without a second POST', () => {
   const attempt={attempted:true,is_oms_created:false,status:'oms_ack_pending',
     label:'API 已受理 · 待 OMS 核实（禁止重发）',provider_order_id:'2116863614032625665'}

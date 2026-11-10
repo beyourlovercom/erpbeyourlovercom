@@ -66,10 +66,15 @@ final class ShipOutProductionOmsReadbackService
                 'PROVIDER_CANCELLED_OTHER',
             ], true) ? $candidate : 'PROVIDER_CANCELLED_OTHER';
         } elseif ($reconciliation === 'ORDER_VISIBLE_MANUAL_REVIEW_ONLY' && is_int($status)) {
-            // The current observed Production response is numeric OMS code 3.
-            // Unknown codes cannot establish warehouse acceptance. Draft 0
-            // and earlier stages 1/2 must never be marked issued.
-            if (in_array($status, [0, 1, 2], true)) {
+            // Official ShipOut OpenAPI /JSON/order.json OpenOrderListVO.status:
+            // 2 Awaiting Fulfillment, 3 Being Fulfilled, 4 Shipped,
+            // 6 Cancelled, 10 Submitting, 11 Aborted (v2).
+            // The provider's Shipped does NOT auto-confirm ERP/Tracking/Woo.
+            if ($status === 2) {
+                $state = 'warehouse_awaiting';
+            } elseif ($status === 4) {
+                $state = 'provider_shipped';
+            } elseif (in_array($status, [0, 1, 10], true)) {
                 $state = 'pending';
             } elseif ($status === 3) {
                 // Two independent signed GETs >=120 seconds apart prove
