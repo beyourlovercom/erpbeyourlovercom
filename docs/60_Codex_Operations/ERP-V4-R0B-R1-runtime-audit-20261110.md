@@ -114,3 +114,13 @@ Read-only checks and tool validation complete. Production Worker synchronization
 
 ### Remaining acceptance criterion
 R1-C cannot be called completely closed until actual half-hourly OMS reconciliation run is observed, resulting local readback changes are accounted for and no duplicate dispatch attempt is detected. All Production worker version drift is resolved as of post-cutover verification.
+
+## R1-C final Production readback PASS — 2026-11-10 15:30 UTC
+- Production scheduler execution receipt: 2026-11-10 15:30:13 Running shipout:reconcile-oms --apply --no-interaction, 2s DONE. This is an automatic scheduled run, not a manually triggered replay.
+- `shipout_oms_readbacks` changed from total 38/max_id 38 to total 48/max_id 48, checked_at max 2026-11-10 15:30:16: exactly 10 new readbacks, states cancelled=6, confirmed=3, warehouse_awaiting=1.
+- Immutable `shipout_dispatch_attempts` remained count=22/max_id=22, no new ShipOut provider submission ledger rows.
+- Production batches remained completed_partial=3 and completed=1; batch items provider_cancelled=3 and oms_visible=2, unchanged. The ten observed shipments remained pending.
+- Queue::size(default)=0 and Queue::size(shipout-production-batch)=0. Production Web, Scheduler, default Queue, ShipOut Queue matched Release PR #692; read-only strict audit exited 0, and all 4 Python tests passed.
+- R1-C Production gate **PASS / closed**. This establishes that the observed execution wrote only expected readback evidence, not proof about every external provider action unrelated to this command.
+- Separate existing errors: orders:sync-woocommerce and xlwms:sync-inventory had exit 1 before these process cutovers and remain separate production health findings for scoped investigation.
+- Diagnostic PR is source-only; merging it does not automatically deploy or restart Production.
