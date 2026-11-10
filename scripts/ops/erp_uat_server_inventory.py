@@ -58,8 +58,9 @@ def inventory(root: Path, ps_output: str | None = None,
         if not ARTISAN.search(proc["args"]):
             continue
         cwd = cwd_lookup(proc["pid"])
-        if cwd is None or not under_root(cwd, root):
+        if cwd is None or not under_root(cwd.resolve(), root):
             continue
+        cwd = cwd.resolve()
         match = PORT.search(proc["args"])
         launchers[proc["pid"]] = {
             "pid": proc["pid"],
@@ -81,7 +82,9 @@ def inventory(root: Path, ps_output: str | None = None,
         # Unparented HTTP processes can be UAT services too. Only include
         # if their server script lives under the permitted UAT root.
         args = proc["args"]
-        if str(root) not in args:
+        # Resolve possible macOS /tmp -> /private/tmp aliases before scoping.
+        path_parts = [Path(part).resolve() for part in args.split() if part.startswith("/")]
+        if not any(under_root(part, root) for part in path_parts):
             continue
         orphans.append({
             "pid": proc["pid"], "ppid": proc["ppid"],
