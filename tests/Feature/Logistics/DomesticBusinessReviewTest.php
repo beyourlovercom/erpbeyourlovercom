@@ -79,6 +79,46 @@ final class DomesticBusinessReviewTest extends TestCase
                 ->where('viewCounts.stockout', 0)->where('viewCounts.pending', 1));
     }
 
+    public function test_restock_moves_only_out_of_stock_order_into_pending_without_shipping(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $actor = $this->userWith(['logistics.view', 'domestic.review']);
+        $order = $this->order();
+
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/stockout')->assertRedirect();
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/restock')
+            ->assertRedirect('/logistics/china?view=pending')
+            ->assertSessionHas('success', '已确认到货，订单已进入待发货。');
+        $this->assertDatabaseHas('orders', ['id'=>$order->id, 'workflow_status'=>'sending', 'order_status'=>'pending_shipment']);
+        $this->assertDatabaseMissing('order_operational_markers', ['order_id'=>$order->id, 'marker'=>'domestic_stockout']);
+        $this->assertDatabaseHas('order_operational_markers', ['order_id'=>$order->id, 'marker'=>'domestic_reviewed', 'marked_by'=>$actor->id]);
+        $this->assertDatabaseHas('shipments', [
+            'order_id'=>$order->id, 'shipment_status'=>'pending', 'tracking_number'=>null, 'shipped_at'=>null,
+        ]);
+        $this->assertDatabaseHas('audit_records', [
+            'entity_id'=>$order->id, 'action'=>'domestic.review_restock',
+        ]);
+        $this->actingAs($actor)->get('/logistics/china?view=pending')->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Logistics/Domestic/Index')
+                ->where('viewCounts.stockout',0)->where('viewCounts.pending',1)
+                ->where('rows.data.0.order_id',$order->id));
+    }
+
+    public function test_restock_requires_business_permission_and_actual_stockout_state(): void
+    {
+        $order = $this->order();
+        $actor = $this->userWith(['logistics.view', 'domestic.review']);
+        $logisticsOnly = $this->userWith(['logistics.view', 'logistics.operate']);
+
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/restock')->assertStatus(409);
+        $this->assertDatabaseMissing('order_operational_markers', ['order_id'=>$order->id,'marker'=>'domestic_reviewed']);
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/stockout')->assertRedirect();
+        $this->actingAs($logisticsOnly)->post('/logistics/china/orders/'.$order->id.'/restock')->assertForbidden();
+        $this->assertDatabaseHas('orders', ['id'=>$order->id,'workflow_status'=>'out_of_stock']);
+        $this->assertDatabaseHas('order_operational_markers', ['order_id'=>$order->id,'marker'=>'domestic_stockout']);
+    }
+
     public function test_approval_clears_legacy_automatic_provider_and_service_before_pending(): void
     {
         $this->withoutVite();

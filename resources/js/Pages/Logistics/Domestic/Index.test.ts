@@ -110,6 +110,31 @@ describe('Domestic logistics production workbench', () => {
     expect(noPaid.findAll('.orders tbody tr:first-child td')[noPaidHeaders.indexOf('成交日期')].text()).toBe('—')
   })
 
+  it('has exactly one stockout action and restores a business-approved pending order', async () => {
+    const stockoutRow = {
+      ...baseProps.rows.data[0],review_status:'stockout' as const,
+      tracking_sync_status:'failed' as const,
+      tracking_sync_reason:'旧异常',
+    }
+    const wrapper=mount(Index,{props:{...baseProps,view:'stockout',canTrackingSync:true,
+      rows:{...baseProps.rows,data:[stockoutRow]},trackingImportPreview:null,trackingImportProvider:null}})
+    const headers=wrapper.findAll('.orders thead th').map(th=>th.text())
+    expect(headers).toContain('操作')
+    expect(headers).not.toContain('选择')
+    expect(headers.filter(th=>th==='操作')).toHaveLength(1)
+    expect(wrapper.findAll('.orders tbody tr:first-child button').map(button=>button.text())).toEqual(['已到货-可发货'])
+    expect(wrapper.find('.tracking-selection-bar').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('重新审核')
+    expect(wrapper.find('.review-reject-backdrop').exists()).toBe(false)
+    await wrapper.find('.orders tbody tr:first-child button').trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/restock',{},
+      expect.objectContaining({preserveScroll:false,onFinish:expect.any(Function)}))
+
+    const readOnly=mount(Index,{props:{...baseProps,view:'stockout',canReview:false,canTrackingSync:true,
+      rows:{...baseProps.rows,data:[stockoutRow]}}})
+    expect(readOnly.findAll('.orders tbody tr:first-child button')).toHaveLength(0)
+  })
+
   it('uses the correct table span in pending, review, and history empty states', () => {
     for (const [view, expected] of [['pending','16'], ['review','17'], ['today','14']]) {
       const wrapper = mount(Index,{props:{...baseProps,view,rows:{...baseProps.rows,data:[]}}})
@@ -311,8 +336,9 @@ describe('Domestic logistics production workbench', () => {
       rows:{...baseProps.rows,data:[{...unreviewed,review_status:'stockout' as const}]}}})
     expect(stockout.find('button.stockout-btn').exists()).toBe(false)
     await stockout.find('button.approve').trigger('click')
-    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/approve', {},
-      expect.objectContaining({preserveScroll:true,preserveState:true}))
+    expect(stockout.findAll('.orders tbody tr:first-child button').map(button=>button.text())).toEqual(['已到货-可发货'])
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/restock', {},
+      expect.objectContaining({preserveScroll:false,onFinish:expect.any(Function)}))
   })
 
   it('requires a rejection reason and hides business review from logistics-only accounts', async () => {

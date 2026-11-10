@@ -23,7 +23,7 @@ final class DomesticReviewDecisionService
 
     public function decide(Order $order, string $decision, ?string $reason, Authenticatable $actor): void
     {
-        abort_unless(in_array($decision, ['approve', 'stockout', 'reject'], true), 422);
+        abort_unless(in_array($decision, ['approve', 'restock', 'stockout', 'reject'], true), 422);
         if ($decision === 'reject') {
             abort_unless(mb_strlen(trim((string) $reason)) >= 3, 422, '驳回必须填写原因（至少 3 个字）。');
         }
@@ -48,7 +48,15 @@ final class DomesticReviewDecisionService
                 'service' => $locked->shipment->service,
                 'carrier_selection_source' => $locked->shipment->carrier_selection_source,
             ];
-            if ($decision === 'approve') {
+            if ($decision === 'restock') {
+                abort_unless(
+                    $locked->workflow_status === 'out_of_stock'
+                    || $locked->operationalMarkers->contains('marker', 'domestic_stockout'),
+                    409, '仅缺货订单可以确认已到货。',
+                );
+            }
+
+            if (in_array($decision, ['approve', 'restock'], true)) {
                 // Legacy allocated-but-unconfirmed provider defaults are not
                 // staff confirmation. Clear them on the review -> pending gate.
                 if ($locked->shipment->carrier_selection_source !== 'manual') {

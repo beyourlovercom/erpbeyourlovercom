@@ -117,6 +117,15 @@ final class DomesticLogisticsController
         return back()->with('success', '有货确认通过，订单已进入待发货。');
     }
 
+    public function restock(Request $request, Order $order): RedirectResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $this->decisions->decide($order, 'restock', null, $request->user());
+
+        return redirect('/logistics/china?view=pending')
+            ->with('success', '已确认到货，订单已进入待发货。');
+    }
+
     public function stockout(Request $request, Order $order): RedirectResponse
     {
         abort_unless($this->reviewAccess->allows($request->user()), 403);
