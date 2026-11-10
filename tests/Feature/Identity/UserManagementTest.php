@@ -214,7 +214,7 @@ final class UserManagementTest extends TestCase
     public function test_all_eight_role_presets_map_to_documented_permission_sets(): void
     {
         $expected = [
-            RolePreset::Logistics->value => ['dashboard.view', 'inventory.view', 'logistics.operate', 'logistics.view', 'orders.view', 'products.view', 'sync.operate', 'sync.view'],
+            RolePreset::Logistics->value => ['dashboard.view', 'inventory.view', 'logistics.operate', 'logistics.view', 'orders.archive', 'orders.view', 'products.view', 'sync.operate', 'sync.view'],
             RolePreset::SalesRepresentative->value => ['customers.operate', 'customers.view', 'dashboard.view', 'inventory.view', 'orders.create', 'orders.edit', 'orders.view', 'products.view'],
             RolePreset::KolSpecialist->value => ['dashboard.view', 'inventory.view', 'kol.operate', 'kol.payouts.request', 'kol.view', 'orders.create', 'orders.edit', 'orders.view', 'products.view'],
             RolePreset::KolManager->value => ['dashboard.view', 'inventory.view', 'kol.affiliates.manage', 'kol.approvals.manage', 'kol.operate', 'kol.payouts.approve', 'kol.payouts.request', 'kol.view', 'kol.views.manage', 'orders.create', 'orders.edit', 'orders.view', 'products.view'],

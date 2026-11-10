@@ -301,7 +301,7 @@ final class OrderController
                     || ($request->user()?->can('domestic.review') && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY')),
             'canManageAuxiliary' => ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canTrashOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
-            'canArchiveOrder' => ! $order->trashed() && $order->archived_at === null && $order->operational_archived_at === null && ($request->user()?->can('orders.edit') ?? false),
+            'canArchiveOrder' => ! $order->trashed() && $order->archived_at === null && $order->operational_archived_at === null && ($request->user()?->can('orders.archive') ?? false),
             'directlyArchived' => $order->operational_archived_at !== null,
             'operationallyArchived' => $order->isOperationallyArchived(),
 

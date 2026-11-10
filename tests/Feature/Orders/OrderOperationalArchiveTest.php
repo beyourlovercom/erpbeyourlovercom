@@ -24,14 +24,16 @@ final class OrderOperationalArchiveTest extends TestCase
 
     public function test_archive_separates_order_from_operational_queues_without_destroying_evidence_and_admin_restores(): void
     {
-        $staff = $this->userWith(['orders.view', 'orders.edit']);
-        $admin = $this->userWith(['orders.view', 'orders.edit', 'system.permissions.manage']);
+        $staff = $this->userWith(['orders.view', 'orders.archive']);
+        $admin = $this->userWith(['orders.view', 'orders.archive', 'system.permissions.manage']);
         $order = $this->makeOrder($staff, 'main');
         $order->externalReferences()->create(['provider' => 'test', 'reference' => 'OP-ARCH-MAIN']);
         $order->shipment()->create(['shipment_status' => 'pending']);
 
         $this->actingAs($staff)->get('/customers/orders/'.$order->id)
             ->assertOk()->assertInertia(fn ($page) => $page->where('canArchiveOrder', true));
+        $this->actingAs($staff)->patch('/customers/orders/'.$order->id, [])->assertForbidden();
+        $this->actingAs($staff)->delete('/orders/'.$order->id.'/trash')->assertForbidden();
         $this->actingAs($staff)->post('/orders/'.$order->id.'/archive')->assertRedirect('/orders/archive');
         $this->assertDatabaseHas('orders', ['id' => $order->id, 'deleted_at' => null, 'archived_at' => null, 'operational_archived_by' => $staff->id]);
         $this->assertNotNull($order->fresh()->operational_archived_at);
@@ -49,8 +51,8 @@ final class OrderOperationalArchiveTest extends TestCase
         $this->actingAs($staff)->get('/orders/trash')->assertForbidden();
         $this->actingAs($staff)->post('/orders/archive/'.$order->id.'/restore')->assertForbidden();
         $this->actingAs($staff)->post('/orders/'.$order->id.'/archive')->assertStatus(409);
-        $this->actingAs($staff)->patch('/customers/orders/'.$order->id, [])->assertStatus(409);
-        $this->actingAs($staff)->delete('/orders/'.$order->id.'/trash')->assertStatus(409);
+        $this->actingAs($staff)->patch('/customers/orders/'.$order->id, [])->assertForbidden();
+        $this->actingAs($staff)->delete('/orders/'.$order->id.'/trash')->assertForbidden();
 
         $this->actingAs($admin)->post('/orders/archive/'.$order->id.'/restore')->assertRedirect();
         $this->assertDatabaseHas('orders', ['id' => $order->id, 'operational_archived_at' => null, 'operational_archived_by' => null]);
@@ -59,8 +61,8 @@ final class OrderOperationalArchiveTest extends TestCase
 
     public function test_derived_fulfillment_can_be_archived_independently_and_restored_without_affecting_siblings(): void
     {
-        $staff = $this->userWith(['orders.view', 'orders.edit']);
-        $admin = $this->userWith(['orders.view', 'orders.edit', 'system.permissions.manage']);
+        $staff = $this->userWith(['orders.view', 'orders.archive']);
+        $admin = $this->userWith(['orders.view', 'orders.archive', 'system.permissions.manage']);
         $root = $this->makeOrder($staff, 'parent');
         $child = $this->makeOrder($staff, 'derived');
         $sibling = $this->makeOrder($staff, 'sibling');
@@ -102,15 +104,20 @@ final class OrderOperationalArchiveTest extends TestCase
         $this->assertSame(3, Order::query()->eligibleForOperations()->whereIn('id', [$root->id, $child->id, $sibling->id])->count());
     }
 
-    public function test_archive_requires_edit_permission_and_enforces_kol_owner_boundary(): void
+    public function test_archive_requires_archive_permission_and_enforces_kol_owner_boundary(): void
     {
         $reader = $this->userWith(['orders.view']);
         $order = $this->makeOrder($reader, 'readonly');
         $this->actingAs($reader)->post('/orders/'.$order->id.'/archive')->assertForbidden();
         $this->assertNull($order->fresh()->operational_archived_at);
+        $editor = $this->userWith(['orders.view', 'orders.edit']);
+        $this->actingAs($editor)->get('/customers/orders/'.$order->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('canArchiveOrder', false));
+        $this->actingAs($editor)->post('/orders/'.$order->id.'/archive')->assertForbidden();
+        $this->assertNull($order->fresh()->operational_archived_at);
 
-        $owner = $this->userWith(['orders.view', 'orders.edit', 'kol.view']);
-        $other = $this->userWith(['orders.view', 'orders.edit', 'kol.view']);
+        $owner = $this->userWith(['orders.view', 'orders.archive', 'kol.view']);
+        $other = $this->userWith(['orders.view', 'orders.archive', 'kol.view']);
         $kolOrder = $this->makeOrder($other, 'kol');
         $kolOrder->forceFill(['order_kind' => 'kol_fulfillment'])->save();
         $this->actingAs($owner)->post('/orders/'.$kolOrder->id.'/archive')->assertForbidden();
@@ -119,7 +126,7 @@ final class OrderOperationalArchiveTest extends TestCase
 
     public function test_archived_order_refuses_shipment_draft_even_when_called_directly(): void
     {
-        $staff = $this->userWith(['orders.view', 'orders.edit']);
+        $staff = $this->userWith(['orders.view', 'orders.archive']);
         $order = $this->makeOrder($staff, 'fulfillment');
         $this->actingAs($staff)->post('/orders/'.$order->id.'/archive')->assertRedirect('/orders/archive');
         try {
