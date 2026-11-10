@@ -102,3 +102,15 @@ Read-only checks and tool validation complete. Production Worker synchronization
 2. Review cancelled/exception batch transitions, in-flight ShipOut dispatch ledger and no duplicate POST attempts.
 3. Confirm default queue continues to process normal jobs; no unexpected worker CWD mismatch after future Web deployments.
 4. Only after MorePlus R10 owner/UAT confirms batch safety, propose a separate graceful cutover of the dedicated batch queue. Leave PR #691 Draft meanwhile.
+
+
+## R1-C guarded dedicated ShipOut worker cutover — 2026-11-10 15:25 UTC
+- Before changing the dedicated worker, verified that the ShipOut Application directory's 20 PHP files, Infrastructure gateway directory's 6 PHP files, both queued Job files and config/shipout.php are byte-for-byte identical between PR #679 and current PR #692.
+- Verified live Production DB returned zero nonterminal batch items (queued, processing, pending_oms, oms_visible_provisional), zero nonterminal batches (queued, running, awaiting_oms, paused), and zero potentially submitting dispatch attempts; Laravel Redis queue size(shipout-production-batch) returned zero.
+- Under guards for exact Production release and old PID 37680, sent SIGTERM to dedicated worker only; launchd KeepAlive started new worker PID 49482 with CWD pointing to PR #692. No global queue:restart and no replay.
+- Follow-up confirmed Web, Scheduler, default queue and dedicated ShipOut queue all running on PR #692; both queues had size zero. Live orders remain unaffected by the worker restart.
+- The observed first half-hour OMS scheduled execution receipt is still pending at the time of this note. Before that execution, shipout_oms_readbacks contained 38 records (max id 38) and immutable shipout_dispatch_attempts contained 22 records (max id 22). After the first execution, compare both counts and inspect batch outcomes.
+- Separately identified historical failures in Production scheduler output during the same day: orders:sync-woocommerce 17 instances of exit 1 as of 15:00 UTC and xlwms:sync-inventory 93 instances of exit 1 as of 15:20 UTC. These errors predate the Worker cutovers. Investigate under a separate scoped issue; do not conflate with R1 worker version drift or manually replay synchronization tasks.
+
+### Remaining acceptance criterion
+R1-C cannot be called completely closed until actual half-hourly OMS reconciliation run is observed, resulting local readback changes are accounted for and no duplicate dispatch attempt is detected. All Production worker version drift is resolved as of post-cutover verification.
