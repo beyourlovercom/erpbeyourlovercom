@@ -8,7 +8,7 @@ Scope: 3 of the 51 Owner-selected list entries, in canonical execution priority:
 ## Engineering design
 
 - Reuse GlobalGrid.vue / OmsGrid.vue and existing GlobalGridCell; one thin useGlobalGridListAdapter.ts for canonical route query/search/paging/toggle, preserving exact URLs and server-authorized data. No new Grid engine.
-- All three screens default to legacy. Only existing GlobalGridPilot (local/test/dev or Production Owner ID1 when explicitly enabled) may opt into ?global_grid=1. No employee-wide default.
+- The initial L1 build used opt-in for all three screens. After the Owner adjustment, China domestic ONLY defaults to Global Grid for existing authorized logistics users and retains explicit ?global_grid=0 fallback. Allocation and review retain the prior owner opt-in gate. No new permissions or current Production rollout.
 - Backend search is server-side over the authorized query before pagination: ERP order number, original external number and recipient name. Existing business view filters run first; search never crosses authorized warehouse/role boundaries.
 - Paging 20/50/100 only inside canary, legacy 50 intact. Existing source order numbers, domestic SKU/quantity/amount, carrier, Tracking and sync-status data are projected. No business mutation or schema.
 - China: all existing tabs can display read-only Global Grid as the main listing. Each Grid action opens the exact original operational row below; the original full-batch table is still available through Use Original Batch Operations. This is an operational bridge, not a reimplementation of carrier selection, stockout/restock, Tracking draft/confirm, batch export/upload or web sync. Existing native actions remain connected to original routes.
@@ -25,6 +25,13 @@ Scope: 3 of the 51 Owner-selected list entries, in canonical execution priority:
 - Real local Chrome + disposable SQLite synthetic fixture: old/new domestic, original row actions/batch toggle, allocation search and fallback, super-admin review read-only, old table fallback; whole Global Grid suite 4/4 PASS, external disposable test files cleaned.
 - Owner **visual UAT pending**. CI for exact final PR head pending until GitHub PR is created.
 - Dev PR must remain Draft. Do not merge or deploy Production unless separately authorized after Owner UAT.
+
+## Owner's two domestic workbench adjustments - 2026-11-10
+
+1. Domestic-only default: The authorized domestic logistics GET /logistics/china chooses Global Grid V1 when no global_grid query is present, including an eventual approved Production release for existing authorized logistics employees. Explicit ?global_grid=0 is a one-click legacy fallback. Other list pages retain their original GlobalGridPilot canary restrictions. No Production deployment occurs here.
+2. Title-row placement: The '返回原表' button is now the final, rightmost button in the top domestic page header (.domestic-head-actions, beside 待分配 →), not a separate strip immediately above the data table. In legacy mode the same location reads '切换新版表'.
+3. Tab persistence: China shipping views preserve ?global_grid=0 when using the legacy table. New navigation without opt-out defaults to new Grid. Roles, shipment, review, XLSX import/export, OMS and Tracking writes unchanged.
+4. Verified: PHP focused test 1 PASS (58 assertions), Vitest 24/24 PASS, Vue typecheck PASS, Vite build PASS, Chrome all Grid pilot suite 4/4 PASS including default, header placement, original fallback and cross-tab retention. CI to rerun on updated PR head.
 
 ## Owner UAT checklist
 

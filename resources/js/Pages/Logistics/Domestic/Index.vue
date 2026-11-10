@@ -238,8 +238,8 @@ const switchView = (view:string) => {
   activeOperationId.value=null
   showBatchLegacyOperations.value=false
   router.visit('/logistics/china?view=' + encodeURIComponent(view)
-    + (props.globalGridPilotEnabled?'&global_grid=1':'')
-    + (domesticGridSearch.value?'&search='+encodeURIComponent(domesticGridSearch.value):''), {
+    + (props.globalGridPilotEnabled?'&global_grid=1':'&global_grid=0')
+    + (props.globalGridPilotEnabled && domesticGridSearch.value?'&search='+encodeURIComponent(domesticGridSearch.value):''), {
     preserveScroll:true,preserveState:true,
   })
 }
@@ -369,6 +369,10 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         </div>
         <div class="domestic-head-actions">
           <a class="secondary" href="/logistics/wait-stock">待分配 →</a>
+          <button v-if="globalGridPilotAvailable" type="button" class="secondary"
+            data-testid="domestic-global-grid-toggle" @click="gridNavigation.toggle()">
+            {{ globalGridPilotEnabled ? '返回原表' : '切换新版表' }}
+          </button>
         </div>
       </header>
 
@@ -447,9 +451,6 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         已选 {{ trackingSelection.length }} 项
         <button type="button" class="primary" :disabled="trackingBusy" @click="pushTracking(trackingSelection)">批量同步官网物流</button>
         <button type="button" class="secondary" @click="trackingSelection=[]">清除选择</button>
-      </div>
-      <div v-if="globalGridPilotAvailable" class="domestic-grid-toggle">
-        <button type="button" class="secondary" data-testid="domestic-global-grid-toggle" @click="gridNavigation.toggle()">{{ globalGridPilotEnabled?'返回原表':'体验 Global Grid V1' }}</button>
       </div>
       <div v-if="globalGridPilotEnabled" class="domestic-grid-main">
         <GlobalGrid namespace="grid.logistics.domestic.global.v1"
@@ -568,12 +569,11 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 </template>
 
 <style scoped>
-.domestic-grid-toggle{display:flex;justify-content:flex-end;margin:8px 0}
 .domestic-grid-main{margin:8px 0 14px;min-width:0}
 .domestic-grid-legacy-tools{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
 
 .domestic-page{padding:20px;min-width:0;color:#111827}.domestic-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.eyebrow{margin:0;color:#0f766e;font-size:11px;font-weight:800;letter-spacing:.08em}.domestic-head h1{margin:4px 0;font-size:30px}.domestic-head p{margin:0;color:#64748b;font-size:13px}.continuity{display:flex;gap:12px;align-items:center;margin:14px 0;padding:10px 12px;border:1px solid #b7ded8;border-radius:9px;background:#f2fbf9;color:#315f59;font-size:12px}.continuity strong{color:#0f766e}.tabs{display:flex;gap:5px;overflow-x:auto;border-bottom:1px solid #e2e8f0;margin-bottom:12px}.tabs button{border:0;background:transparent;padding:9px 12px;color:#536174;font-weight:700;white-space:nowrap;border-bottom:2px solid transparent}.tabs button.active{color:#0f766e;border-bottom-color:#0f766e}.tabs span{color:#94a3b8;margin-left:3px}.pending-batch-card{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px;padding:12px;border:1px solid #b7ded8;border-radius:10px;background:#f2fbf9}.pending-batch-card>div:first-child{display:flex;flex-direction:column;gap:4px}.pending-batch-card small{color:#64748b;max-width:760px}
-.domestic-head-actions{display:flex;gap:8px;align-items:center}
+.domestic-head-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex:0 0 auto;white-space:nowrap}
 .domestic-carrier-cell select,.domestic-service-cell select{min-width:138px;max-width:215px;height:34px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1e293b;padding:4px 7px;font-size:12px}
 .domestic-service-entry{display:flex;gap:5px;align-items:center}.domestic-service-entry button{min-height:32px;padding:0 9px;white-space:nowrap}
 .domestic-tracking-cell{min-width:355px}.domestic-tracking-entry{display:flex;gap:5px;align-items:center}.domestic-tracking-input{min-width:155px;width:175px;height:34px;padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#1e293b}.domestic-tracking-entry button{white-space:nowrap;min-height:32px;padding:0 8px}.domestic-tracking-error,.domestic-tracking-note{display:block;font-size:11px;margin-top:4px;white-space:normal}.domestic-tracking-error{color:#b91c1c}.domestic-tracking-note{color:#0f766e}

@@ -61,6 +61,18 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         $this->domesticOrder('007-GRID-L1-ANCHOR', '4PX', false, '13800138011', 2);
         $viewer = $this->logisticsViewer();
 
+        // Owner-approved rollout contract: domestic opens in Global Grid by default,
+        // with an explicit legacy escape hatch for any authorized logistics viewer.
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=review')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Logistics/Domestic/Index')
+                ->where('globalGridPilotAvailable', true)
+                ->where('globalGridPilotEnabled', true)
+                ->where('rows.per_page', 50)
+                ->where('rows.total', 1));
+
         $this->actingAs($viewer)
             ->get('/logistics/china?view=review&global_grid=1&per_page=20&search=007-GRID-L1-ANCHOR')
             ->assertOk()
@@ -80,7 +92,7 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
                 ->where('rows.total', 0));
 
         $this->actingAs($viewer)
-            ->get('/logistics/china?view=review&per_page=20&search=R4-L1-NOT-FOUND')
+            ->get('/logistics/china?view=review&global_grid=0&per_page=20&search=R4-L1-NOT-FOUND')
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('globalGridPilotEnabled', false)
