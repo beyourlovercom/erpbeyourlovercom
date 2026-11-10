@@ -26,7 +26,7 @@ class RuntimeAuditTests(unittest.TestCase):
             for release in (old, new):
                 (release / "routes").mkdir(parents=True)
                 (release / "app").mkdir(parents=True)
-                (release / "app/Example.php").write_text("<?php // shared backend\\n")
+                (release / "app/Example.php").write_text("<?php // shared backend\n")
             (old / "routes/console.php").write_text(
                 "Schedule::command('orders:sync-woocommerce --apply')->hourly();\n"
             )
@@ -73,7 +73,7 @@ class RuntimeAuditTests(unittest.TestCase):
             (new / "resources/js").mkdir(parents=True)
             (new / "resources/js/app.ts").write_text("const newGridHeight = 159")
             (root / "current").symlink_to(new, target_is_directory=True)
-            output = "101 10240 php artisan queue:work redis\\n"
+            output = "101 10240 php artisan queue:work redis\n"
             report = audit.inventory(root, ps_output=output,
                                      cwd_lookup=lambda pid: old)
             self.assertTrue(report["production_worker_drift"])
@@ -97,7 +97,7 @@ class RuntimeAuditTests(unittest.TestCase):
             (new / "app/Example.php").write_text("<?php")
             (root / "current").symlink_to(new, target_is_directory=True)
             report = audit.inventory(
-                root, ps_output="20 10000 php artisan schedule:work\\n",
+                root, ps_output="20 10000 php artisan schedule:work\n",
                 cwd_lookup=lambda pid: old,
             )
             self.assertTrue(report["production_worker_backend_drift"])
@@ -113,15 +113,15 @@ class RuntimeAuditTests(unittest.TestCase):
             (release / "routes/console.php").write_text("<?php")
             (root / "current").symlink_to(release, target_is_directory=True)
             one_worker = audit.inventory(
-                root, ps_output="101 20000 php artisan queue:work redis\\n",
+                root, ps_output="101 20000 php artisan queue:work redis\n",
                 cwd_lookup=lambda _: release,
             )
             self.assertFalse(one_worker["minimum_workers_present"])
             all_workers = audit.inventory(
                 root, ps_output=(
-                    "101 20000 php artisan queue:work redis\\n"
-                    "102 20000 php artisan queue:work redis --queue=shipout-production-batch\\n"
-                    "103 12000 php artisan schedule:work\\n"
+                    "101 20000 php artisan queue:work redis\n"
+                    "102 20000 php artisan queue:work redis --queue=shipout-production-batch\n"
+                    "103 12000 php artisan schedule:work\n"
                 ),
                 cwd_lookup=lambda _: release,
             )
