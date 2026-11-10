@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Logistics\Application\Domestic;
+namespace App\Modules\Logistics\Application;
 
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\WooCommerceTrackingOutboundService;
@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /** Record sync intent only; Sync OS executes it on its existing 30-minute schedule. */
-final class DomesticTrackingSyncHandoff
+final class ShipmentWebsiteSyncHandoff
 {
     public function __construct(private readonly WooCommerceTrackingOutboundService $outbound) {}
 
@@ -35,7 +35,7 @@ final class DomesticTrackingSyncHandoff
         } catch (Throwable $e) {
             // Actual ERP shipment is already committed. The Sync OS needs manual
             // investigation, but logistics staff must not resubmit the shipment.
-            Log::warning('domestic.tracking.periodic_handoff_failed', [
+            Log::warning('shipment.tracking.periodic_handoff_failed', [
                 'order_id' => (int) $order->id,
                 'error_class' => $e::class,
             ]);

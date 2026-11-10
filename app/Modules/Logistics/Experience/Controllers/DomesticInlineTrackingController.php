@@ -5,7 +5,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
-use App\Modules\Logistics\Application\Domestic\DomesticTrackingSyncHandoff;
+use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -19,7 +19,7 @@ final class DomesticInlineTrackingController
         private readonly ShipmentService $shipments,
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly AssistedFulfillmentService $assistedFulfillment,
-        private readonly DomesticTrackingSyncHandoff $syncHandoff,
+        private readonly ShipmentWebsiteSyncHandoff $syncHandoff,
     ) {}
 
     /** Staff must confirm both fields explicitly; this never marks shipped. */

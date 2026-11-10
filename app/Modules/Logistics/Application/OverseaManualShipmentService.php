@@ -4,16 +4,15 @@ namespace App\Modules\Logistics\Application;
 
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Sync\Application\WooCommerceTrackingOutboundService;
+use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
-use Throwable;
 
 final class OverseaManualShipmentService
 {
     public function __construct(
         private readonly ShipmentService $shipments,
-        private readonly WooCommerceTrackingOutboundService $trackingOutbound,
+        private readonly ShipmentWebsiteSyncHandoff $syncHandoff,
     ) {}
 
     /**
@@ -70,15 +69,8 @@ final class OverseaManualShipmentService
             ]);
         });
 
-        try {
-            $sync = $this->trackingOutbound->pushOne($shipped, $actor, syncOrderStatus: false);
-        } catch (Throwable $e) {
-            $sync = [
-                'status' => 'attention',
-                'reason' => 'woocommerce_tracking_push_exception',
-                'message' => $e->getMessage(),
-            ];
-        }
+        // Shipment persistence is complete. Sync OS owns remote Tracking + order status.
+        $sync = $this->syncHandoff->afterShipmentSaved($shipped);
 
         return [
             'order' => $shipped->fresh(['shipment.overseaReview']),

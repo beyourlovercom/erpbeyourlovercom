@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Application\Domestic;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\ShipmentService;
+use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -18,7 +19,7 @@ final class DomesticTrackingReturnService
         private readonly DomesticTrackingReturnReader $reader,
         private readonly WarehouseOrderReference $references,
         private readonly ShipmentService $shipments,
-        private readonly DomesticTrackingSyncHandoff $syncHandoff,
+        private readonly ShipmentWebsiteSyncHandoff $syncHandoff,
     ) {}
 
     /** @return array<string,mixed> */
