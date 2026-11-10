@@ -119,7 +119,7 @@ type ShipOutProductionStatus = {
 }
 type ShipOutBatchPreview = {
   count:number; overflow:boolean; fingerprint:string; dry_run:boolean
-  scope?:'selected'|'all'; scan_count?:number; excluded_count?:number
+  scope?:'selected'|'all'; scan_count?:number; stockout_count?:number; excluded_count?:number
 }
 type ShipOutBatchItem = { order_id:number; order_no:string; status:string; result_code:string|null; provider_order_id:string|null }
 type ShipOutBatchStatus = { batch_id:string; status:string; dry_run:boolean; total:number; processed:number; items:ShipOutBatchItem[] }
@@ -937,6 +937,7 @@ const compactPages = computed<(number|string)[]>(() => {
           {{shipoutBatchPreview.dry_run?'Dev 模拟预览（不连接真实 OMS）':'MorePlus 真实推送预览'}}
           · {{shipoutBatchPreview.scope==='selected'?'手动选择':'全部待发货'}}
           扫描 {{shipoutBatchPreview.scan_count??shipoutBatchPreview.count}} 单
+          · 其中缺货 {{shipoutBatchPreview.stockout_count??0}} 单
           · 待逐单校验 {{shipoutBatchPreview.count}} 单
           · 排除 {{shipoutBatchPreview.excluded_count??0}} 单
           <span v-if="shipoutBatchPreview.overflow">（超过单批 200 单限制，请分批处理）</span>

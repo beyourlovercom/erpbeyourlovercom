@@ -180,8 +180,8 @@ final class ShipOutProductionBatchTest extends TestCase
         $this->actingAs($user);
         $preview = $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview?scope=all')
             ->assertOk()->assertJsonPath('scope', 'all')
-            ->assertJsonPath('scan_count', 2)->assertJsonPath('count', 1)
-            ->assertJsonPath('excluded_count', 1)->json();
+            ->assertJsonPath('scan_count', 2)->assertJsonPath('stockout_count', 1)
+            ->assertJsonPath('count', 1)->assertJsonPath('excluded_count', 1)->json();
 
         $reply = $this->postJson('/logistics/oversea/us-moreplus/shipout/batch/start', [
             'fingerprint' => $preview['fingerprint'],

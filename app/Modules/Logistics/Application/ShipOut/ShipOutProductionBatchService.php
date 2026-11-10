@@ -97,16 +97,26 @@ final class ShipOutProductionBatchService
         // ALL means all pending rows in this warehouse, including unreviewed
         // and out-of-stock rows in the scan. It does NOT grant POST permission
         // to the excluded rows. Every live order still passes per-order guards.
+        $pending = Shipment::query()->where('shipment_status', 'pending')
+            ->whereHas('warehouse', fn ($q) => $q->where('code', 'US-LA'))
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations());
+        if ($selectedOrderIds !== null) {
+            $pending->whereIn('order_id', $selectedOrderIds);
+        }
         $scanned = $selectedOrderIds === null
-            ? Shipment::query()->where('shipment_status', 'pending')
-                ->whereHas('warehouse', fn ($q) => $q->where('code', 'US-LA'))
-                ->whereHas('order', fn ($q) => $q->eligibleForOperations())
-                ->count()
+            ? (clone $pending)->count()
             : count($selectedOrderIds);
+        $stockouts = (clone $pending)
+            ->whereHas('order', fn ($order) => $order
+                ->where(fn ($query) => $query->where('workflow_status', 'out_of_stock')
+                    ->orWhereHas('operationalMarkers', fn ($marker) => $marker
+                        ->whereIn('marker', ['stockout', 'domestic_stockout']))))
+            ->count();
 
         return [
             'scope' => $selectedOrderIds === null ? 'all' : 'selected',
             'scan_count' => $scanned,
+            'stockout_count' => $stockouts,
             'excluded_count' => max(0, $scanned - count($ids)),
             'count' => count($ids),
             'overflow' => count($ids) > self::MAX_ORDERS || $scanned > self::MAX_ORDERS,

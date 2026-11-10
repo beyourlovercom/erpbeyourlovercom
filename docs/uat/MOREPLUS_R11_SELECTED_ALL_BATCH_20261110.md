@@ -5,7 +5,7 @@
 - MorePlus pending view has one selection column with a check-current-page control and an independent list of selected ERP order IDs. Selection persists while existing Inertia component navigates pages; it is not the Tracking website-sync selection.
 - When selected: preview and batch start are scoped to those exact IDs; the server intersects them with secure existing candidate checks and the Production finite operator allowlist. Out-of-scope IDs never bypass controls.
 - When no selection: first native confirmation asks whether to scan ALL pending MorePlus orders, including stockout ones. Cancel results in zero HTTP and zero batch creation. Confirm performs GET-only preview of all pending MorePlus shipments, including stockout/unreviewed rows in scan_count but not submitting them to provider.
-- Preview displays scanned count, eligible count, excluded count, and max 200; no immediate ShipOut calls.
+- Preview displays scanned count, explicit stockout count, eligible count, excluded count, and max 200; no immediate ShipOut calls.
 - Second confirmation explicitly states scanned/candidate/excluded numbers. Server still requires fixed confirmation, fingerprint, operator scope, and existing Production batch/owner kill switches.
 - Preview fingerprint binds full pending count, selection IDs, scope, and candidate IDs: stale changes cause 409 without provider POST.
 - Explicit out_of_stock workflow and stockout or domestic_stockout markers are excluded from candidate IDs even with earlier approval. Worker repeats real stock and 14-day content risk before any real POST.
