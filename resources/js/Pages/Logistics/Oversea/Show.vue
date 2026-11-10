@@ -132,7 +132,7 @@ onMounted(()=>{
     shipoutBatchStatus.value={batch_id:last.id,status:last.status,dry_run:last.dry_run,
       total:last.total,processed:0,items:[]}
     void shipoutBatchPoll()
-    if(!['completed','completed_with_exceptions','paused'].includes(last.status))
+    if(!['completed','completed_partial','paused'].includes(last.status))
       shipoutBatchTimer=setInterval(()=>{void shipoutBatchPoll()},5000)
   }
 })
@@ -162,7 +162,7 @@ async function shipoutBatchPoll() {
   if(!shipoutBatchStatus.value)return
   try {
     shipoutBatchStatus.value=await shipoutBatchApi('/logistics/oversea/us-moreplus/shipout/batch/'+shipoutBatchStatus.value.batch_id+'/status') as ShipOutBatchStatus
-    if(['completed','completed_with_exceptions','paused'].includes(shipoutBatchStatus.value.status)&&shipoutBatchTimer) {
+    if(['completed','completed_partial','paused'].includes(shipoutBatchStatus.value.status)&&shipoutBatchTimer) {
       clearInterval(shipoutBatchTimer);shipoutBatchTimer=null
     }
   }catch(e){shipoutBatchError.value=e instanceof Error?e.message:'查询批次状态失败'}
@@ -182,7 +182,7 @@ async function shipoutBatchStart() {
       total:reply.total,processed:0,items:[]}
     shipoutBatchPreview.value=null
     await shipoutBatchPoll()
-    if(!shipoutBatchTimer && shipoutBatchStatus.value && !['completed','completed_with_exceptions','paused'].includes(shipoutBatchStatus.value.status))
+    if(!shipoutBatchTimer && shipoutBatchStatus.value && !['completed','completed_partial','paused'].includes(shipoutBatchStatus.value.status))
       shipoutBatchTimer=setInterval(()=>{void shipoutBatchPoll()},5000)
   }catch(e){shipoutBatchError.value=e instanceof Error?e.message:'批次创建失败'}
   finally{shipoutBatchBusy.value=false}
@@ -209,7 +209,7 @@ const shipoutBatchReason=(code:string|null)=>({
 const shipoutBatchState=(status:string)=>({
   queued:'等待队列执行',running:'正在逐单提交',
   awaiting_oms:'等待正式 OMS 异步回读',
-  completed:'本批次核实完成',completed_with_exceptions:'本批次结束 · 异常单已隔离',
+  completed:'本批次核实完成',completed_partial:'本批次结束 · 异常单已隔离',
   paused:'已暂停 · 人工核实',
 } as Record<string,string>)[status]||status
 

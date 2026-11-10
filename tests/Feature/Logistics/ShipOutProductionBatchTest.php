@@ -222,7 +222,7 @@ final class ShipOutProductionBatchTest extends TestCase
 
             DB::table('shipout_production_batches')->insert([
                 'id' => '00000000-0000-4000-8000-000000000121',
-                'operator_user_id' => $user->id, 'status' => 'completed_with_exceptions',
+                'operator_user_id' => $user->id, 'status' => 'completed_partial',
                 'dry_run' => false, 'total' => 1, 'created_at' => now(), 'updated_at' => now(),
             ]);
             DB::table('shipout_production_batch_items')->insert([
@@ -316,7 +316,7 @@ final class ShipOutProductionBatchTest extends TestCase
             'batch_id' => $bid, 'order_id' => $good->id, 'status' => 'simulated',
         ]);
         $this->assertDatabaseHas('shipout_production_batches', [
-            'id' => $bid, 'status' => 'completed_with_exceptions',
+            'id' => $bid, 'status' => 'completed_partial',
         ]);
         $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
         Http::assertNothingSent();
@@ -367,6 +367,16 @@ final class ShipOutProductionBatchTest extends TestCase
         $this->assertSame('oms_ack_pending', $warehouse['status']);
         $this->assertStringNotContainsString('已发货', $warehouse['label']);
         $this->assertFalse($warehouse['can_retry_local_block']);
+    }
+
+    public function test_all_batch_terminal_status_codes_fit_mysql_varchar_24(): void
+    {
+        // Database migration creates shipout_production_batches.status VARCHAR(24).
+        // Previous completed_with_exceptions had 25 characters and failed real MySQL.
+        foreach (['queued', 'running', 'awaiting_oms', 'paused',
+            'completed', 'completed_partial'] as $status) {
+            $this->assertLessThanOrEqual(24, strlen($status), $status);
+        }
     }
 
     public function test_production_batch_queue_is_separate_from_standard_orders(): void

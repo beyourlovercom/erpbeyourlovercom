@@ -512,7 +512,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $batchId = '00000000-0000-4000-8000-000000000124';
         DB::table('shipout_production_batches')->insert([
             'id' => $batchId, 'operator_user_id' => $user->id,
-            'status' => 'completed_with_exceptions', 'dry_run' => false, 'total' => 2,
+            'status' => 'completed_partial', 'dry_run' => false, 'total' => 2,
             'created_at' => now(), 'updated_at' => now(),
         ]);
         DB::table('shipout_production_batch_items')->insert([
@@ -549,7 +549,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $batchId = '00000000-0000-4000-8000-000000000125';
         DB::table('shipout_production_batches')->insert([
             'id' => $batchId, 'operator_user_id' => $user->id,
-            'status' => 'completed_with_exceptions', 'dry_run' => false, 'total' => 1,
+            'status' => 'completed_partial', 'dry_run' => false, 'total' => 1,
             'created_at' => now(), 'updated_at' => now(),
         ]);
         DB::table('shipout_production_batch_items')->insert([
