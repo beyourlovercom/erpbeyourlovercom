@@ -191,6 +191,78 @@ final class ShipOutProductionOmsReadbackTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_late_cancel_after_completed_batch_is_moved_into_exception_without_resubmitting(): void
+    {
+        Http::preventStrayRequests();
+        $id = 8820;
+        $this->attempt($id);
+        $batchId = '00000000-0000-4000-8000-000000000820';
+        DB::table('shipout_production_batches')->insert([
+            'id' => $batchId, 'operator_user_id' => 1,
+            'status' => 'completed', 'dry_run' => false, 'total' => 1,
+            'finished_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('shipout_production_batch_items')->insert([
+            'batch_id' => $batchId, 'order_id' => $id,
+            'order_no' => 'R12-TEST-'.$id, 'status' => 'oms_visible',
+            'provider_order_id' => 'OMS-TEST-'.$id,
+            'result_code' => 'OMS_VISIBLE_PENDING_REAL_FULFILLMENT',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $svc = app(ShipOutProductionOmsReadbackService::class);
+        $svc->recordResult($id, $this->providerResult($id, 6));
+        $this->assertDatabaseHas('shipout_production_batch_items', [
+            'batch_id' => $batchId, 'order_id' => $id,
+            'status' => 'provider_cancelled',
+            'result_code' => 'PROVIDER_DUPLICATE_ORDER',
+        ]);
+        $this->assertDatabaseHas('shipout_production_batches', [
+            'id' => $batchId, 'status' => 'completed_partial',
+        ]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id' => $id, 'status' => 'acknowledged',
+        ]);
+        $svc->recordResult($id, $this->providerResult($id, 3));
+        $this->assertDatabaseHas('shipout_production_batch_items', [
+            'order_id' => $id, 'status' => 'provider_cancelled',
+        ]);
+        Http::assertNothingSent();
+    }
+
+    public function test_unknown_status_after_completed_batch_requires_manual_review_without_new_post(): void
+    {
+        Http::preventStrayRequests();
+        $id = 8821;
+        $this->attempt($id);
+        $batchId = '00000000-0000-4000-8000-000000000821';
+        DB::table('shipout_production_batches')->insert([
+            'id' => $batchId, 'operator_user_id' => 1,
+            'status' => 'completed', 'dry_run' => false, 'total' => 1,
+            'finished_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('shipout_production_batch_items')->insert([
+            'batch_id' => $batchId, 'order_id' => $id,
+            'order_no' => 'R12-TEST-'.$id, 'status' => 'oms_visible',
+            'provider_order_id' => 'OMS-TEST-'.$id,
+            'result_code' => 'OMS_VISIBLE_PENDING_REAL_FULFILLMENT',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        app(ShipOutProductionOmsReadbackService::class)->recordResult(
+            $id, $this->providerResult($id, 99)
+        );
+        $this->assertDatabaseHas('shipout_production_batch_items', [
+            'batch_id' => $batchId, 'order_id' => $id,
+            'status' => 'needs_review',
+            'result_code' => 'OMS_READBACK_UNAVAILABLE_MANUAL_CHECK',
+        ]);
+        $this->assertDatabaseHas('shipout_production_batches', [
+            'id' => $batchId, 'status' => 'completed_partial',
+        ]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        Http::assertNothingSent();
+    }
+
     public function test_unknown_readback_is_quarantined_not_treated_as_confirmed(): void
     {
         $id = 8803;

@@ -40,6 +40,20 @@ final class ShipOutProductionBatchService
         return $ids;
     }
 
+    /**
+     * R14 Owner-authorized rollout: trusted operators can select actual
+     * approved pending orders in the UI, without an engineer editing IDs.
+     * Never override a nonzero Canary or a static finite allowlist.
+     */
+    public static function productionAllowsOperatorSelection(): bool
+    {
+        return app()->environment('production')
+            && (bool) config('shipout.production_v1_batch_operator_selection_enabled', false)
+            && (int) config('shipout.production_v1_batch_canary_order_id', 0) === 0
+            && trim((string) config('shipout.production_v1_batch_approved_order_ids', '')) === ''
+            && (int) config('shipout.production_v1_min_order_id', 0) > 0;
+    }
+
     /** @param list<int>|null $selectedOrderIds */
     public function candidateIds(?array $selectedOrderIds = null): array
     {
@@ -50,8 +64,10 @@ final class ShipOutProductionBatchService
         }
         $cutover = max(1, $configuredCutover);
         $approvedIds = app()->environment('production') ? self::productionApprovedOrderIds() : [];
-        if (app()->environment('production') && $approvedIds === []) {
-            // No live warehouse-wide enumeration without explicit exact IDs.
+        if (app()->environment('production') && $approvedIds === []
+            && ! self::productionAllowsOperatorSelection()) {
+            // The broad UI mode must be explicitly owner-enabled; default
+            // production remains blocked without exact IDs.
             return [];
         }
 
@@ -81,7 +97,7 @@ final class ShipOutProductionBatchService
                     'oms_visible', 'skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review',
                 ])->select('order_id'))
             ->where('order_id', '>=', $cutover);
-        if (app()->environment('production')) {
+        if (app()->environment('production') && $approvedIds !== []) {
             $query->whereIn('order_id', $approvedIds);
         }
         if ($selectedOrderIds !== null) {
