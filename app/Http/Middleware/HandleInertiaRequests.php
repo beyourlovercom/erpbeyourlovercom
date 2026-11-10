@@ -28,8 +28,10 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'auth' => ['user' => $user?->only(['id', 'name', 'email'])],
-            'shellNavigation' => $user ? app(ErpShellNavigation::class)->for($user) : [],
-            'notificationCenter' => $user ? app(NotificationCenterProjector::class)->summary($user) : ['unread_count'=>0, 'items'=>[]],
+            // Only execute shared shell queries when Inertia actually requests these props.
+            // Partial reloads of a table/order must not re-query navigation and notifications.
+            'shellNavigation' => fn () => $user ? app(ErpShellNavigation::class)->for($user) : [],
+            'notificationCenter' => fn () => $user ? app(NotificationCenterProjector::class)->summary($user) : ['unread_count'=>0, 'items'=>[]],
             'flash' => [
                 'feedback_id' => $hasFeedback ? (string) Str::uuid() : null,
                 ...$flash,
