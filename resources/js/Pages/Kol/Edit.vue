@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import axios from 'axios'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
@@ -35,6 +35,8 @@ type AffiliateAccount = {
   affiliate_id: number | null
   wordpress_user_id: number | null
   wordpress_user_login: string | null
+  affiliate_name: string | null
+  affiliate_url_slug: string | null
   wordpress_user_email: string | null
   provider_status: string | null
   provisioning_status: string | null
@@ -94,6 +96,14 @@ const accountPassword = ref('')
 const accountPasswordConfirmation = ref('')
 const accountCouponCode = ref('')
 const accountUsername = ref(props.kol.display_name.trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9_.@-]/g, '').slice(0, 60))
+const accountAffiliateName = ref(accountUsername.value)
+const accountAffiliateUrl = ref(accountUsername.value)
+const affiliateNameManuallyEdited = ref(false)
+const affiliateUrlManuallyEdited = ref(false)
+watch(accountUsername, value => {
+  if (!affiliateNameManuallyEdited.value) accountAffiliateName.value = value
+  if (!affiliateUrlManuallyEdited.value) accountAffiliateUrl.value = value
+})
 const passwordResetOpen = ref(false)
 const passwordResetting = ref(false)
 const passwordResetError = ref('')
@@ -115,6 +125,8 @@ const provisionAffiliateAccount = async () => {
   accountMessage.value = ''
   if (!accountEmail.value) { accountError.value = '请先保存有效联系邮箱，再创建 WordPress / Affiliate 账号。'; return }
   if (!accountUsername.value.trim()) { accountError.value = 'WordPress Username 必填。'; return }
+  if (!accountAffiliateName.value.trim()) { accountError.value = 'Affiliate Name 必填。'; return }
+  if (!accountAffiliateUrl.value.trim()) { accountError.value = 'Affiliate URL 必填。'; return }
   if (!validWordpressPassword(accountPassword.value)) { accountError.value = 'Password 需为 12–128 位，并至少包含 1 个英文字母和 1 个数字。'; return }
   if (accountPassword.value !== accountPasswordConfirmation.value) { accountError.value = '两次输入的 Password 不一致。'; return }
   if (!accountCouponCode.value.trim()) { accountError.value = 'Code 必填。'; return }
@@ -122,6 +134,8 @@ const provisionAffiliateAccount = async () => {
   try {
     const response = await axios.post(`/kol/library/${props.kol.id}/affiliate-account`, {
       wordpress_username: accountUsername.value.trim(),
+      affiliate_name: accountAffiliateName.value.trim(),
+      affiliate_url_slug: accountAffiliateUrl.value.trim(),
       password: accountPassword.value,
       password_confirmation: accountPasswordConfirmation.value,
       affiliate_coupon_code: accountCouponCode.value.trim(),
@@ -588,6 +602,8 @@ const breadcrumbs = [
             <template v-if="accountIsBound && affiliateAccountState">
               <div class="kol-account-facts">
                 <div><span>WordPress Username</span><strong>{{ affiliateAccountState.wordpress_user_login || '—' }}</strong></div>
+                <div><span>Affiliate Name（开户记录）</span><strong>{{ affiliateAccountState.affiliate_name || '—' }}</strong></div>
+                <div><span>Affiliate URL 标识（Username）</span><strong>{{ affiliateAccountState.affiliate_url_slug || '—' }}</strong></div>
                 <div><span>WordPress User ID</span><strong>{{ affiliateAccountState.wordpress_user_id ? `#${affiliateAccountState.wordpress_user_id}` : '—' }}</strong></div>
                 <div><span>WordPress Email</span><strong>{{ affiliateAccountState.wordpress_user_email || kol.contact_email || '—' }}</strong></div>
                 <div><span>AffiliateWP ID</span><strong>{{ affiliateAccountState.affiliate_id ? `#${affiliateAccountState.affiliate_id}` : '—' }}</strong></div>
@@ -625,6 +641,14 @@ const breadcrumbs = [
                   <label class="erp-form-label">Username <span class="erp-form-required">*</span></label>
                   <input v-model="accountUsername" type="text" autocomplete="username" class="erp-input" maxlength="60" required placeholder="网红用户名，可修改">
                 </div>
+                <div class="erp-form-field">
+                  <label class="erp-form-label">Affiliate Name <span class="erp-form-required">*</span></label>
+                  <input v-model="accountAffiliateName" type="text" autocomplete="off" class="erp-input" maxlength="120" required placeholder="默认与 Username 相同" @input="affiliateNameManuallyEdited = true">
+                </div>
+                <div class="erp-form-field">
+                  <label class="erp-form-label">Affiliate URL <span class="erp-form-required">*</span></label>
+                  <input v-model="accountAffiliateUrl" type="text" autocomplete="off" class="erp-input" maxlength="60" required placeholder="推广链接标识" @input="affiliateUrlManuallyEdited = true">
+                </div>
                 <div class="kol-password-pair">
                   <div class="erp-form-field">
                     <label class="erp-form-label">Password <span class="erp-form-required">*</span></label>
@@ -635,16 +659,16 @@ const breadcrumbs = [
                     <input v-model="accountPasswordConfirmation" type="password" autocomplete="new-password" class="erp-input" minlength="12" maxlength="128">
                   </div>
                 </div>
-                <div class="erp-form-field">
+                <div class="erp-form-field kol-credential-secondary">
                   <label class="erp-form-label">Email <span class="erp-form-required">*</span></label>
                   <input :value="accountEmail" type="email" class="erp-input" readonly placeholder="请先保存 KOL 联系邮箱">
                 </div>
-                <div class="erp-form-field">
+                <div class="erp-form-field kol-credential-secondary">
                   <label class="erp-form-label">Code <span class="erp-form-required">*</span></label>
                   <input v-model="accountCouponCode" type="text" autocomplete="off" class="erp-input" maxlength="255" placeholder="例如 ANDY15">
                 </div>
               </div>
-              <p class="erp-form-helper">用户名开户后不可修改；密码 12–128 位（字母+数字），不保存到 ERP；Email 修改请先保存 KOL 资料，Code 冲突不覆盖。</p>
+              <p class="erp-form-helper">前三项默认与 Username 相同，可单独覆盖；独立 Affiliate URL 需要 Custom Affiliate Slugs。用户名开户后不可修改，密码不保存到 ERP。</p>
               <p v-if="accountError" class="erp-field-error">{{ accountError }}</p>
               <p v-if="accountMessage" :class="affiliateAccountState?.last_error_code ? 'kol-account-warning' : 'kol-account-success'">{{ accountMessage }}</p>
               <div class="kol-account-actions">
@@ -1282,7 +1306,10 @@ const breadcrumbs = [
 }
 
 .kol-collaboration-list{display:grid;gap:10px;margin-top:14px}.kol-collaboration-row{display:flex;justify-content:space-between;gap:16px;padding:12px 14px;border:1px solid var(--erp-border);border-radius:12px}.kol-collaboration-row>div{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.kol-collaboration-row span{color:var(--erp-text-muted);font-size:13px}.kol-collab-product-row{display:grid;grid-template-columns:minmax(0,1fr) 110px auto;gap:8px;margin-bottom:8px}.erp-checkbox-label{display:flex;align-items:center;gap:8px}@media(max-width:800px){.kol-collaboration-row{flex-direction:column}.kol-collab-product-row{grid-template-columns:1fr}}
-.kol-credential-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 12px 18px; align-items: start; }
-.kol-password-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-@media (max-width: 767px) { .kol-credential-rows { grid-template-columns: 1fr; } .kol-password-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kol-credential-rows { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px 18px; align-items: start; }
+.kol-credential-rows > .erp-form-field { grid-column: span 4; min-width: 0; }
+.kol-credential-rows > .kol-credential-secondary { grid-column: span 3; }
+.kol-password-pair { grid-column: span 6; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .kol-credential-rows > .erp-form-field { grid-column: span 6; } .kol-password-pair { grid-column: span 12; } }
+@media (max-width: 560px) { .kol-credential-rows > .erp-form-field { grid-column: span 12; } .kol-password-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

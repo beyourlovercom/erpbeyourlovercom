@@ -73,6 +73,18 @@ const defaultProps = {
 }
 
 describe('Kol/Edit VI contract', () => {
+  it('reserves three independently editable Affiliate credential fields', () => {
+    const wrapper = mount(Edit, { props: defaultProps })
+    const card = wrapper.find('.kol-account-card')
+    expect(card.exists()).toBe(true)
+    expect(card.text()).toContain('Affiliate Name')
+    expect(card.text()).toContain('Affiliate URL')
+    expect(card.find('input[autocomplete="username"]').exists()).toBe(true)
+    expect(card.find('input[placeholder="默认与 Username 相同"]').exists()).toBe(true)
+    expect(card.find('input[placeholder="推广链接标识"]').exists()).toBe(true)
+    expect(card.findAll('.kol-credential-rows > .erp-form-field')).toHaveLength(5)
+  })
+
   it('uses erp-form-page wrapper — no mvp-page', () => {
     const wrapper = mount(Edit, { props: defaultProps })
     expect(wrapper.find('.erp-form-page').exists()).toBe(true)

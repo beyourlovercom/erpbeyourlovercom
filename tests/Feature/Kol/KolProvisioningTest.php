@@ -542,7 +542,7 @@ class KolProvisioningTest extends TestCase
         self::assertSame([
             'erp_kol_id' => $kol->id,
             'email' => 'kol@example.com',
-            'display_name' => 'Provision KOL',
+            'display_name' => 'Provision-KOL',
             'preferred_username' => 'Provision-KOL',
             'requested_affiliate_status' => 'active',
             'payment_email' => 'kol@example.com',

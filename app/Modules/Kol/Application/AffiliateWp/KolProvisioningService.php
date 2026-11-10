@@ -40,6 +40,32 @@ final class KolProvisioningService
     }
 
     /**
+     * Resolve independent Affiliate profile inputs without pretending that an unsupported
+     * custom referral slug has actually been saved. AffiliateWP Custom Slugs must be
+     * integrated before accepting a value different from the WordPress username.
+     *
+     * @return array{name:string,slug:string}
+     */
+    public static function resolveAffiliateProfile(?string $requestedName, ?string $requestedSlug, string $username): array
+    {
+        $name = trim((string) ($requestedName === null || trim($requestedName) === '' ? $username : $requestedName));
+        $slug = trim((string) ($requestedSlug === null || trim($requestedSlug) === '' ? $username : $requestedSlug));
+        if ($name === '' || mb_strlen($name) > 120 || $name !== strip_tags($name)) {
+            throw ValidationException::withMessages(['affiliate_name' => 'Affiliate Name 必填，最多 120 字符，不可包含 HTML 标签。']);
+        }
+        if (! preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/D', $slug) || strlen($slug) > 60) {
+            throw ValidationException::withMessages(['affiliate_url_slug' => 'Affiliate URL 只能包含字母、数字和 . _ -，最多 60 位。']);
+        }
+        if ($slug !== $username) {
+            throw ValidationException::withMessages([
+                'affiliate_url_slug' => '正式站尚未配置 Custom Affiliate Slugs；独立推广 URL 暂不能生效，请先保持与 Username 相同。',
+            ]);
+        }
+
+        return ['name' => $name, 'slug' => $slug];
+    }
+
+    /**
      * Provision an approved KOL into WordPress User + active AffiliateWP Affiliate.
      *
      * Creates or reuses a stable placeholder row keyed by (connection_key, kol_id),
@@ -52,10 +78,10 @@ final class KolProvisioningService
             throw new AuthorizationException;
         }
 
-        return $this->provisionInternal($connectionKey, $kolId, $actor, null, true, null);
+        return $this->provisionInternal($connectionKey, $kolId, $actor, null, true, null, null);
     }
 
-    public function provisionForCreate(string $connectionKey, int $kolId, Authenticatable $actor, string $password, ?string $username = null): Model
+    public function provisionForCreate(string $connectionKey, int $kolId, Authenticatable $actor, string $password, ?string $username = null, ?string $affiliateName = null): Model
     {
         if (! $actor->can('kol.operate')) {
             throw new AuthorizationException;
@@ -64,10 +90,10 @@ final class KolProvisioningService
             throw new DomainException('WordPress password does not satisfy the create-provision policy.');
         }
 
-        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, true, $username);
+        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, true, $username, $affiliateName);
     }
 
-    public function provisionForExisting(string $connectionKey, int $kolId, Authenticatable $actor, string $password, ?string $username = null): Model
+    public function provisionForExisting(string $connectionKey, int $kolId, Authenticatable $actor, string $password, ?string $username = null, ?string $affiliateName = null): Model
     {
         if (! $actor->can('kol.operate')) {
             throw new AuthorizationException;
@@ -76,10 +102,10 @@ final class KolProvisioningService
             throw new DomainException('WordPress password does not satisfy the provision policy.');
         }
 
-        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, false, $username);
+        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, false, $username, $affiliateName);
     }
 
-    private function provisionInternal(string $connectionKey, int $kolId, Authenticatable $actor, ?string $password, bool $requireApproval, ?string $username): Model
+    private function provisionInternal(string $connectionKey, int $kolId, Authenticatable $actor, ?string $password, bool $requireApproval, ?string $username, ?string $affiliateName): Model
     {
         $kolClass = self::KOL;
         $query = $kolClass::query()->whereKey($kolId)->whereNull('archived_at');
@@ -97,8 +123,9 @@ final class KolProvisioningService
         }
 
         $username = self::resolveUsername($username, (string) $kol->display_name);
+        $affiliateName = self::resolveAffiliateProfile($affiliateName, $username, $username)['name'];
 
-        [$account, $idempotencyKey] = DB::transaction(function () use ($connectionKey, $kolId, $kol, $username): array {
+        [$account, $idempotencyKey] = DB::transaction(function () use ($connectionKey, $kolId, $kol, $username, $affiliateName): array {
             $accountClass = self::ACCOUNT;
 
             $existing = $accountClass::query()
@@ -126,6 +153,13 @@ final class KolProvisioningService
                     throw new DomainException('Retry must use the original WordPress Username.');
                 }
 
+                // The old ERP did not separately supply Affiliate Name. Preserve its
+                // stored name on an idempotent retry when the operator left the
+                // new field on the username-derived default. Never rewrite it.
+                if ($existing->display_name !== $affiliateName && $affiliateName !== $username) {
+                    throw new DomainException('Retry must use the original Affiliate Name.');
+                }
+
                 // Reuse the persisted idempotency key so retries never generate a second Affiliate.
                 $key = $existing->provision_idempotency_key ?? Str::uuid()->toString();
                 $existing->update([
@@ -142,7 +176,7 @@ final class KolProvisioningService
                 'connection_key' => $connectionKey,
                 'affiliate_id' => null,
                 'kol_id' => $kolId,
-                'display_name' => $kol->display_name,
+                'display_name' => $affiliateName,
                 'email' => $kol->contact_email,
                 'wordpress_user_login' => $username,
                 'provider_status' => null,
@@ -157,10 +191,12 @@ final class KolProvisioningService
         });
 
         $email = trim((string) $kol->contact_email);
+        // The persisted row is the authoritative payload for retries.
+        $affiliateName = (string) $account->display_name;
         $payload = [
             'erp_kol_id' => $kolId,
             'email' => $email,
-            'display_name' => (string) $kol->display_name,
+            'display_name' => $affiliateName,
             'preferred_username' => $username,
             'requested_affiliate_status' => 'active',
             'payment_email' => $email,
