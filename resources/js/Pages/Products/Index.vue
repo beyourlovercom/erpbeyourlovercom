@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
+import type { ColDef } from 'ag-grid-community'
+import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
+const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
@@ -40,6 +43,8 @@ const props = defineProps<{
   canOperate: boolean
   parameterCounts?: Record<string,number>
   parameterFactoryUsers?: {id:number;name:string}[]
+  globalGridPilotAvailable?: boolean
+  globalGridPilotEnabled?: boolean
 }>()
 const search = ref(props.filters.search ?? '')
 const perPage = ref(props.filters.per_page ?? '50')
@@ -178,6 +183,7 @@ const query = (extra: Record<string, string | number> = {}) => ({
   view: currentView.value ?? 'standard',
   parameter_status: props.filters.parameter_status ?? '',
   attention: props.filters.attention ?? '',
+  ...(props.globalGridPilotEnabled ? { global_grid: '1' } : {}),
   ...extra,
 })
 const go = (extra: Record<string, string | number>) => {
@@ -215,6 +221,66 @@ const exportUrl = computed(() => {
 })
 const fmt = (value: unknown) => value === null || value === undefined || value === '' ? '—' : String(value)
 const cellValue = (p: Product, key: ColumnKey) => key === 'source' && p.source == null ? (p.source_type === 'manual' ? '手动' : 'Woo') : fmt(p[key])
+
+type GridRow = Record<string, unknown>
+const globalProductRows = computed<GridRow[]>(() => props.products.data.map(product => ({
+  ...product,
+  display_status: product.is_active ? '启用' : '停用',
+  display_source: cellValue(product, 'source'),
+})))
+const globalProductColumns = computed<ColDef<GridRow>[]>(() => [
+  ...definitions.map(def => {
+    const key = def.key
+    const common: ColDef<GridRow> = {
+      colId: key, field: key === 'status' ? 'display_status' : key === 'source' ? 'display_source' : key,
+      headerName: def.label, width: key === 'name' ? 250 : key === 'image_url' ? 92 : 144,
+      hide: def.defaultVisible === false,
+      sortable: sortable.has(key),
+      filter: false,
+    }
+    if (key === 'sku' || key === 'name') return {
+      ...common, cellRenderer: GlobalGridCell,
+      cellRendererParams: { mode:'link', hrefFor:(row:GridRow)=>'/products/'+row.id },
+    }
+    if (key === 'woo_url') return {
+      ...common, cellRenderer: GlobalGridCell,
+      cellRendererParams: { mode:'link', hrefFor:(row:GridRow)=>typeof row.woo_url==='string'?row.woo_url:null },
+    }
+    if (key === 'image_url') return {
+      ...common, cellRenderer: GlobalGridCell,
+      cellRendererParams: { mode:'image', hrefFor:(row:GridRow)=>typeof row.image_url==='string'?row.image_url:null, imageAltFor:(row:GridRow)=>String(row.name ?? '') },
+    }
+    if (key === 'status' || key === 'parameter_status') return {
+      ...common, cellRenderer: GlobalGridCell, cellRendererParams: { mode:'badge' },
+    }
+    return common
+  }),
+  {
+    colId:'actions', field:'id', headerName:'操作', width:170, filter:false, sortable:false,
+    cellRenderer:GlobalGridCell,
+    cellRendererParams:{ mode:'actions', actionsFor:(row:GridRow)=>[
+      {label:'查看',href:'/products/'+row.id},
+      ...(props.canOperate ? [
+        {label:'编辑',href:'/products/'+row.id+'/edit'},
+        {label:'删除',danger:true,onClick:()=>{confirmDeleteId.value=Number(row.id)}},
+      ] : []),
+    ]},
+  },
+])
+const productGridPager = computed(() => ({
+  current_page:props.products.current_page, last_page:props.products.last_page,
+  per_page:props.products.per_page, total:props.products.total,
+}))
+const productGridSort = computed(() => ({
+  colId: sortable.has(props.filters.sort as ColumnKey) ? props.filters.sort! : 'name',
+  direction:props.filters.direction === 'desc' ? 'desc' as const : 'asc' as const,
+}))
+const productGlobalSort = ({ colId, direction }: { colId:string; direction:'asc'|'desc'|null }) => {
+  if (!sortable.has(colId as ColumnKey)) return
+  go({sort:colId,direction:direction??'asc',page:1})
+}
+const toggleGlobalPilot = () => go({global_grid:props.globalGridPilotEnabled?'0':'1',page:1})
+
 const doDelete = () => {
   if (confirmDeleteId.value === null) return
   router.delete('/products/' + confirmDeleteId.value, { onFinish: () => { confirmDeleteId.value = null } })
@@ -232,7 +298,7 @@ const doDelete = () => {
           <p>共 {{ products.total }} 件产品 · 数据来自 ERP 产品主表</p>
         </div>
         <div class="product-header-controls">
-          <form class="product-search" role="search" @submit.prevent="applySearch">
+          <form v-if="!globalGridPilotEnabled" class="product-search" role="search" @submit.prevent="applySearch">
             <svg class="product-search-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
               <circle cx="10.8" cy="10.8" r="6.8" />
               <path d="m16 16 5 5" />
@@ -241,6 +307,7 @@ const doDelete = () => {
             <button class="product-search-submit" type="submit">搜索</button>
           </form>
           <div class="mvp-page-actions page-header-actions">
+            <button v-if="globalGridPilotAvailable" type="button" class="mvp-button mvp-button-secondary" data-testid="products-global-toggle" @click="toggleGlobalPilot">{{ globalGridPilotEnabled ? '返回原列表' : 'Dev · Global Grid' }}</button>
             <a v-if="currentView==='standard'" class="mvp-button mvp-button-secondary" :href="exportUrl" download>下载 XLSX</a>
             <template v-if="canOperate">
               <a href="/products/import" class="mvp-button mvp-button-secondary">导入 CSV</a>
@@ -315,6 +382,14 @@ const doDelete = () => {
         </div>
       </div>
 
+      <GlobalGrid v-if="globalGridPilotEnabled && currentView==='standard'"
+        namespace="grid.products.global.v1" title="产品总表 · Global Grid V1" :rows="globalProductRows"
+        :search="filters.search ?? ''" search-placeholder="搜索全部 SKU / 产品名称 / GTIN..."
+        :columns="globalProductColumns" :required-column-ids="['sku','name','actions']"
+        :page="productGridPager" :sort="productGridSort"
+        @page-change="goToPage" @page-size-change="size => go({per_page:String(size),page:1})"
+        @sort-change="productGlobalSort" @search-change="value => {search=value; go({search:value,page:1})}" />
+      <template v-else>
       <div class="grid-topbar">
         <span class="grid-hint">点击表头排序 · 右上角 … 调整显示列</span>
         <nav class="grid-pages" aria-label="产品列表顶部分页">
@@ -394,6 +469,7 @@ const doDelete = () => {
           </select> 条
         </label>
       </div>
+      </template>
       <p class="grid-data-note">CNF、物料名称、包装尺寸、品牌尚未建立可靠的数据映射，可在列设置中开启查看；未知库存保持空白，不按 0 计算。包装箱数仅引用已保存的包装方案。</p>
     </section>
   </AuthenticatedLayout>

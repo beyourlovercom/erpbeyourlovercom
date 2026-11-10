@@ -6,6 +6,7 @@ use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\WarehouseOverdueInventoryService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Identity\Application\AuthorizationKeys;
+use App\Modules\Shell\Application\GlobalGridPilot;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,7 +20,9 @@ final class InventoryController
     public function warehouses(): Response { return Inertia::render('Inventory/WarehouseList', ['warehouses'=>$this->inventory->warehouses(),'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false]); }
     public function products(Request $request): Response|RedirectResponse
     {
-        $page=$this->inventory->productInventory($request->only(['search','warehouse','stock_status']));
+        $pageSize = in_array((string) $request->query('per_page', '100'), ['20', '50', '100'], true)
+            ? (int) $request->query('per_page', 100) : 100;
+        $page=$this->inventory->productInventory($request->only(['search','warehouse','stock_status']), $pageSize);
         $warehouseFilter=trim((string)$request->input('warehouse',''));
         $canonicalWarehouse=$warehouseFilter===''?'':($this->inventory->canonicalWarehouseSlug($warehouseFilter) ?? $warehouseFilter);
         if($warehouseFilter!=='' && $canonicalWarehouse!==$warehouseFilter){
@@ -37,6 +40,8 @@ final class InventoryController
                 'replenishment'=>$this->inventory->replenishmentMetrics($i),
             ])->toArray(),
             'warehouses'=>$this->inventory->warehouses(),'filters'=>['search'=>$request->input('search'),'warehouse'=>$canonicalWarehouse,'stock_status'=>$request->input('stock_status')],
+            'globalGridPilotAvailable'=>GlobalGridPilot::available(),
+            'globalGridPilotEnabled'=>GlobalGridPilot::enabled($request),
         ]);
     }
     public function productSearch(Request $request): JsonResponse

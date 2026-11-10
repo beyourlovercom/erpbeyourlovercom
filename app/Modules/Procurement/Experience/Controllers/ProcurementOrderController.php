@@ -8,6 +8,7 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Procurement\Application\ProcurementOrderService;
 use App\Modules\Procurement\Application\ProcurementOrderStatus;
 use App\Modules\Procurement\Infrastructure\Models\ProcurementOrder;
+use App\Modules\Shell\Application\GlobalGridPilot;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -39,7 +40,7 @@ final class ProcurementOrderController
             });
         }
 
-        $orders = $query->orderByDesc('created_at')->orderByDesc('id')->get()->map(function (ProcurementOrder $order): array {
+        $toRow = function (ProcurementOrder $order): array {
             $status = ProcurementOrderStatus::tryFrom($order->status);
             return [
                 'id' => $order->id,
@@ -57,10 +58,21 @@ final class ProcurementOrderController
                 'tracking_number' => $order->tracking_number,
                 'updated_at' => $order->updated_at?->toIso8601String(),
             ];
-        })->values()->all();
+        };
+        $query->orderByDesc('created_at')->orderByDesc('id');
+        // Only the isolated Dev pilot uses bounded server pagination. The legacy
+        // response and permissions remain unchanged for all other requests.
+        $pilot = GlobalGridPilot::enabled($request);
+        $gridPageSize = in_array((string) $request->query('per_page', '50'), ['20', '50', '100'], true)
+            ? (int) $request->query('per_page', 50) : 50;
+        $gridOrders = $pilot ? $query->paginate($gridPageSize)->through($toRow)->toArray() : null;
+        $orders = $pilot ? [] : $query->get()->map($toRow)->values()->all();
 
         return Inertia::render('Procurement/Orders/Index', [
             'orders' => $orders,
+            'gridOrders' => $gridOrders,
+            'globalGridPilotAvailable' => GlobalGridPilot::available(),
+            'globalGridPilotEnabled' => $pilot,
             'filters' => ['status' => $rawStatus, 'search' => $search],
             'statusOptions' => ProcurementOrderStatus::options(),
             'canOperate' => $request->user()->can(AuthorizationKeys::ProcurementOperate->value),

@@ -28,7 +28,7 @@ final class InventoryService
 
     public function dashboard(): array { return $this->inventory->dashboard(); }
     public function warehouses(): array { return $this->inventory->warehouseList(); }
-    public function productInventory(array $filters = []): mixed { return $this->inventory->productInventory($filters); }
+    public function productInventory(array $filters = [], int $perPage = 100): mixed { return $this->inventory->productInventory($filters, $perPage); }
     public function searchProducts(string $query): array { return $this->products->searchSkus($query, 20); }
     public function warehousePublicSlug(Model $warehouse): string { return $this->warehouseMaster->publicSlugForCode((string) $warehouse->code, (string) $warehouse->slug); }
     public function canonicalWarehouseSlug(string $slug): ?string
