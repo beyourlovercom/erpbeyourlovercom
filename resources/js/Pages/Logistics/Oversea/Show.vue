@@ -358,7 +358,7 @@ async function shipoutProdRefresh(row:Row) {
     // Reload persisted OMS classification/counters; no navigation based on
     // first ACK or single OMS visibility. Actual issued state requires two
     // independent signed GET observations.
-    router.reload({ only:['rows','viewCounts'], preserveScroll:true })
+    router.reload({ only:['rows','viewCounts'] })
   } catch(e){shipoutProdErrors[row.order_id]=e instanceof Error?e.message:'正式 OMS 查询失败'}
   finally {shipoutProdBusy[row.order_id]=false}
 }
