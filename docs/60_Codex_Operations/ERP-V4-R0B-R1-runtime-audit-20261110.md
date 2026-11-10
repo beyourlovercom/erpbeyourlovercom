@@ -82,3 +82,23 @@ Read-only checks and tool validation complete. Production Worker synchronization
 - Therefore a scheduler cutover enabling the 30-minute task is a real Production behavior change, not merely an infrastructure restart. The preview identified ten pending orders; do not activate this job solely because Redis ready/reserved counts are currently zero.
 - A safe next gate must reconcile with the running MorePlus R10 operations, confirm the 10 candidates' current status and history, and validate the local auditing/quarantine state transition against the existing authoritative batch workflow before changing the scheduler.
 - Status as of this review: the diagnostic tool and UAT inventory are tested; the Production scheduler/worker processes remain unchanged and release drift remains open.
+
+
+## R1 Production cutover execution — 2026-11-10 15:12–15:15 UTC
+**This section supersedes earlier operational status that Scheduler and Queue had not been changed.** Live Production Web release changed concurrently from PR #690 to PR #692 before the cutover; all commands guarded the exact new release.
+
+- Production Web current: global-grid-pref-stability-pr692-d9cea59d-20261110.
+- Scheduler LaunchAgent com.byl.erp.production.scheduler: launchctl kickstart -k performed once with safety guards for exact Release, previous PID/CWD, running service, and absence of active artisan schedule:run and OMS reconciliation commands. PID 91401 (PR #659) -> PID 46979 (PR #692). LaunchAgent running; lsof CWD verified PR #692. No second scheduler launched.
+- Default Queue LaunchAgent com.byl.erp.production.queue: Laravel Queue::connection('redis')->size('default') returned 0. A TERM signal was sent to old worker PID 91369 for graceful exit, and KeepAlive restarted PID 47320 from PR #692. Postcheck LaunchAgent running and CWD verified PR #692. No global queue:restart issued.
+- Dedicated ShipOut batch queue PID 37680 remains from PR #679 deliberately. Laravel queue size('shipout-production-batch') returned 0 at read time; empty snapshot does not exclude external in-flight state. Never force-switch or auto-retry this worker without separate batch reconciliation.
+- Both Production flags SHIPOUT_PRODUCTION_READ_ENABLED and SHIPOUT_OMS_RECONCILIATION_ENABLED are true. The first 30-minute scheduled OMS reconciliation after cutover is expected at 2026-11-10 15:30 UTC. Its **real execution result has not been observed yet**.
+- Read-only Production DB preview returned 10 candidate orders, all with acknowledged one-shot attempts and pending ERP shipment status; latest OMS audit states were 6 cancelled, 3 confirmed, 1 warehouse_awaiting. Provider IDs were present for all ten. Current batch item statuses in the candidate cohort include three provider_cancelled and two oms_visible; others had no batch item rows. An enabled reconciliation may append readback rows and quarantine anomalous batch statuses but must not submit a shipment.
+- Recheck at 2026-11-10 15:15 UTC: Web / Scheduler / default queue all same PR #692 release; all relevant LaunchAgents running; specialized ShipOut batch remains PR #679. Laravel queues default and shipout-production-batch both size 0; scheduler.err.log size 0; job execution after the next due time not yet verified.
+- The automation tool rejected scheduling a one-time 15:35 UTC post-run check because the user's 5-task plan limit was reached. No monitoring automation was created. Do not claim future completion or automatic follow-up.
+- PR #691 still Draft; its checker should continue reporting drift for intentionally pinned ShipOut batch worker until the owner decides the batch-specific upgrade gate. No merge or deploy of PR #691 occurred here.
+
+### Cutover acceptance gate (pending)
+1. After the next due time, read-only verify scheduler output contains real run and no new errors, plus newly recorded OMS audit state/quantity; compare with pre-cutover rows.
+2. Review cancelled/exception batch transitions, in-flight ShipOut dispatch ledger and no duplicate POST attempts.
+3. Confirm default queue continues to process normal jobs; no unexpected worker CWD mismatch after future Web deployments.
+4. Only after MorePlus R10 owner/UAT confirms batch safety, propose a separate graceful cutover of the dedicated batch queue. Leave PR #691 Draft meanwhile.
