@@ -37,7 +37,9 @@ final class OrderWorkflowStatusV1Test extends TestCase
         $response = $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'missing_info',
         ])->getStatusCode();
-        self::assertSame(302, $response);
+        // patchJson must return native Laravel HTTP 422 for a missing required
+        // revision; JSON requests must never be treated as HTML redirects.
+        self::assertSame(422, $response);
         self::assertNull($order->fresh()->workflow_status);
 
         $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [

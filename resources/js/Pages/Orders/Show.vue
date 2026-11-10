@@ -144,6 +144,8 @@ const props = withDefaults(defineProps<{
   allocationUi?: AllocationUi
   audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
   canMarkOperational?: boolean
+  isDomesticFactory?: boolean
+  canMarkDomesticStockout?: boolean
   canEditOrder?: boolean
   canEditWorkflowStatus?: boolean
   canManageAuxiliary?: boolean
@@ -163,7 +165,7 @@ const props = withDefaults(defineProps<{
   wooAdminEditUrl?: string | null
   kolProfile?: { id: number; display_name: string; url: string } | null
 
-}>(), { canMarkOperational: false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
+}>(), { canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
 
 
 const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
@@ -514,8 +516,21 @@ const operationalMarkerOptions = [
   { key: 'return', label: '退货' },
   { key: 'stockout', label: '缺货' },
 ]
-const markerActive = (key: string) => props.order.operational_markers?.includes(key) ?? false
-const toggleMarker = (key: string) => router.post(`/orders/${props.order.id}/operational-markers/${key}`, { active: !markerActive(key) }, { preserveScroll: true })
+const markerActive = (key: string) => key === 'stockout' && props.isDomesticFactory
+  ? ((props.order.operational_markers?.includes('domestic_stockout') ?? false)
+    || props.order.workflow_status_projection?.code === 'out_of_stock')
+  : (props.order.operational_markers?.includes(key) ?? false)
+const markerDisabled = (key:string) => key === 'stockout' && props.isDomesticFactory
+  ? (!props.canMarkDomesticStockout || markerActive(key))
+  : !props.canMarkOperational
+const toggleMarker = (key: string) => {
+  if (key === 'stockout' && props.isDomesticFactory) {
+    if (markerDisabled(key)) return
+    router.post('/logistics/china/orders/' + props.order.id + '/stockout', {}, { preserveScroll:true })
+    return
+  }
+  router.post('/orders/' + props.order.id + '/operational-markers/' + key, { active: !markerActive(key) }, { preserveScroll: true })
+}
 const archiveOrder = () => {
   if (!props.canArchiveOrder || !window.confirm('确认归档此订单？归档后订单将退出所有分配、发货和仓库操作序列，仅保留在归档清单；财务、物流、同步和历史记录不会删除。')) return
   router.post('/orders/' + props.order.id + '/archive')
@@ -1285,9 +1300,9 @@ onBeforeUnmount(() => {
               :aria-expanded="!isSectionCollapsed('order-section-flags')" @click="toggleSection('order-section-flags')">{{ isSectionCollapsed('order-section-flags') ? '▸' : '▾' }}</button>
           </div>
           </div>
-          <p class="ord-inventory-help">异常、运输中、退货、缺货属于辅助标记；发货、重发、补发仍在上方“履约状态”处理。“归档订单”是独立操作，主订单与子订单都可独立归档；归档后进入归档清单并退出分仓和发货队列，不会永久删除。</p>
+          <p class="ord-inventory-help">异常、运输中、退货为辅助标记；中国工厂订单点击「缺货」将进入国内缺货审核队列，恢复请在「缺货单」点击「已到货-可发货」。发货、重发、补发仍在上方“履约状态”处理。“归档订单”是独立操作，主订单与子订单都可独立归档；归档后进入归档清单并退出分仓和发货队列，不会永久删除。</p>
           <div class="ord-marker-row">
-            <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="!canMarkOperational" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
+            <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="markerDisabled(marker.key)" :title="marker.key==='stockout' && isDomesticFactory && markerActive(marker.key) ? '已在国内缺货单；请在缺货列表确认已到货' : undefined" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
             <button type="button" class="erp-btn erp-btn-secondary ord-marker" :disabled="!canArchiveOrder" :aria-label="directlyArchived ? '订单已归档' : '归档订单'" @click="archiveOrder">{{ directlyArchived ? '已归档' : '归档订单' }}</button>
           </div>
           <p v-if="operationallyArchived" class="ord-operational-archive-warning" role="status">运营归档：已退出分配、发货和仓库操作序列。财务、物流、同步和历史记录仍予保留。</p>
