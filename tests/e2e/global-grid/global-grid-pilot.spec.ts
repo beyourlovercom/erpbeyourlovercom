@@ -145,7 +145,7 @@ test('R4-L1 logistics shared Grid handles domestic, allocation and review withou
   await expect(page.locator('.table-wrap.orders table')).toHaveCount(0)
   // Direct pinned-right review controls: no second native table or popup.
   await expect(domestic.getByRole('button',{name:'通过',exact:true})).toBeVisible()
-  await expect(domestic.locator('.ag-pinned-right-cols-container [col-id="actions"]')).toBeVisible()
+  await expect(domestic.locator('.ag-cell[col-id="actions"]').first()).toHaveClass(/ag-cell-first-right-pinned/)
   await expect(domestic.getByRole('button',{name:'缺货',exact:true})).toBeVisible()
   await expect(domestic.getByRole('button',{name:'驳回',exact:true})).toBeDisabled()
   await domestic.getByRole('textbox',{name:'驳回原因'}).fill('客户地址需要再次核对')
