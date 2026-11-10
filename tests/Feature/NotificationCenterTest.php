@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Modules\Identity\Infrastructure\Models\Permission;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
@@ -43,6 +44,7 @@ final class NotificationCenterTest extends TestCase
 
         $response = $this->actingAs($user)->withHeaders([
             'X-Inertia' => 'true',
+            'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(request()) ?? '',
             'X-Inertia-Partial-Component' => 'Dashboard/Index',
             'X-Inertia-Partial-Data' => 'auth',
         ])->get('/dashboard');
