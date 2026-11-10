@@ -22,3 +22,10 @@ Owner requested continuous implementation M1-M5 under the REDUCED 7-13h contract
 - Finance exclusion is active reports only and does not erase settled historical evidence.
 - **Known parity limitation:** Other China logistics tabs still use their original specialized carrier/Tracking controls via the native table bridge. These tabs have NOT achieved full no-accordion parity. This delivery is review/stockout canary only, not approval to switch all operational tabs on Production.
 - Keep L2/L3 migration and unconditional Production default behind Owner UAT and per-view parity gates.
+
+## Owner reproducible UAT environment, verified after latest commit
+- Temporary Tailscale URL: http://100.94.52.109:18784/logistics/china?view=review
+- Testing-only login: admin@local.test / password. This login exists ONLY inside the fail-closed, disposable SQLite E2E UAT database; never uses the Production database or changes Production credentials.
+- Nine synthetic pending-review rows verified visible in the current Dev Grid. Zero selected = no batch controls. Selecting one synthetic order => one footer indicator and four choices: approve, stockout, reject, archive. The excluded-logistics operation is absent.
+- Actual AG Grid v34 pinned action class (ag-cell-first-right-pinned) verified and full real Chrome Grid suite 4/4 PASS with corresponding assertion on branch after rebase.
+- The UAT page permits execution against **synthetic test records** only; do not confuse results with real Production transactions. Owner visual PASS still pending. The permanent source of truth is exact GitHub Draft PR #679 head.
