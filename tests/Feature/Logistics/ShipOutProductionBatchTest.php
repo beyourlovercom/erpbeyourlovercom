@@ -200,6 +200,22 @@ final class ShipOutProductionBatchTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_all_scope_is_exact_pending_tab_and_does_not_expand_to_unreviewed_orders(): void
+    {
+        Http::preventStrayRequests();
+        $user = $this->operator();
+        $this->approvedOrder($user, '1');
+        $unreviewed = $this->approvedOrder($user, '2');
+        OverseaWarehouseReview::query()->where('order_id', $unreviewed->id)
+            ->update(['status' => 'pending']);
+        $this->actingAs($user);
+        $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview?scope=all')
+            ->assertOk()->assertJsonPath('scan_count', 1)
+            ->assertJsonPath('count', 1)->assertJsonPath('excluded_count', 0);
+        $this->assertDatabaseCount('shipout_production_batches', 0);
+        Http::assertNothingSent();
+    }
+
     public function test_all_scope_fingerprint_expires_when_another_stockout_is_added(): void
     {
         Http::preventStrayRequests();

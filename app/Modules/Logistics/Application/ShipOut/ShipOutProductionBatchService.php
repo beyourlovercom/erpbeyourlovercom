@@ -69,6 +69,8 @@ final class ShipOutProductionBatchService
                     ->orWhere('workflow_status', '!=', 'out_of_stock'))
                 ->whereDoesntHave('operationalMarkers', fn ($markers) => $markers
                     ->whereIn('marker', ['stockout', 'domestic_stockout']))
+                ->whereDoesntHave('externalReferences', fn ($references) => $references
+                    ->where('provider', 'historical_logistics'))
                 ->whereHas('address', fn ($address) => $address->where('country', 'US')))
             ->whereNotIn('order_id', DB::table('shipout_dispatch_attempts')->select('order_id'))
             // Batch-level quarantine also covers preflight failures without a POST.
@@ -97,9 +99,20 @@ final class ShipOutProductionBatchService
         // ALL means all pending rows in this warehouse, including unreviewed
         // and out-of-stock rows in the scan. It does NOT grant POST permission
         // to the excluded rows. Every live order still passes per-order guards.
+        // Match the existing MorePlus "待发货" tab exactly, NOT every
+        // warehouse shipment whose raw status happens to be pending.
+        // The latter also includes review and other queues (51 instead of
+        // the actual 15 pending-tab orders in the Production readback).
         $pending = Shipment::query()->where('shipment_status', 'pending')
             ->whereHas('warehouse', fn ($q) => $q->where('code', 'US-LA'))
-            ->whereHas('order', fn ($q) => $q->eligibleForOperations());
+            ->whereHas('overseaReview', fn ($q) => $q->where('status', 'approved')
+                ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'))
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()
+                ->where('order_status', '!=', 'cancelled')
+                ->whereDoesntHave('externalReferences', fn ($references) => $references
+                    ->where('provider', 'historical_logistics')))
+            ->whereNotExists(fn ($query) => ShipOutProductionDispatchState::scopeAttempt($query))
+            ->whereNotExists(fn ($query) => ShipOutProductionDispatchState::scopeBatchQuarantined($query));
         if ($selectedOrderIds !== null) {
             $pending->whereIn('order_id', $selectedOrderIds);
         }
