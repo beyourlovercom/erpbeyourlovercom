@@ -148,6 +148,11 @@ final class OrderAnalysisController
                 'items:id,order_id,product_id,sku,product_summary',
             ])
             ->where('order_kind', 'customer')
+            // Operational archive removes current finance worklist/dashboard
+            // entries; settled historic financial evidence remains unchanged.
+            ->whereNull('orders.operational_archived_at')
+            ->whereDoesntHave('fulfillmentParent', fn (Builder $parent) => $parent
+                ->whereNotNull('operational_archived_at'))
             ->when($request->integer('edit_order') > 0, fn (Builder $orders) => $orders->whereKey($request->integer('edit_order')))
             ->whereDoesntHave('externalReferences', fn (Builder $references) => $references->where('provider', 'historical_logistics'))
             ->when($request->input('source_type'), fn (Builder $orders, string $source) => $orders->where('source_type', $source))

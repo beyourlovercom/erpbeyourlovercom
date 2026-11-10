@@ -46,6 +46,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/china/pending-batch/tracking-import/apply', [DomesticLogisticsController::class, 'applyPendingBatch'])->middleware($execution)->name('logistics.china.pending-batch.tracking-import.apply');
     Route::post('/logistics/china/{provider}/tracking-import/preview', [DomesticLogisticsController::class, 'previewTrackingReturn'])->middleware($execution)->whereIn('provider', ['4px', 'weship'])->name('logistics.china.tracking-import.preview');
     Route::post('/logistics/china/{provider}/tracking-import/apply', [DomesticLogisticsController::class, 'applyTrackingReturn'])->middleware($execution)->whereIn('provider', ['4px', 'weship'])->name('logistics.china.tracking-import.apply');
+    Route::post('/logistics/china/batch-review', [DomesticLogisticsController::class, 'batchReview'])
+        ->middleware(['can:domestic.review', 'throttle:15,1'])->name('logistics.china.batch-review');
     Route::post('/logistics/china/orders/{order}/approve', [DomesticLogisticsController::class, 'approve'])->middleware('can:domestic.review')->name('logistics.china.approve');
     Route::post('/logistics/china/orders/{order}/stockout', [DomesticLogisticsController::class, 'stockout'])->middleware('can:domestic.review')->name('logistics.china.stockout');
     Route::post('/logistics/china/orders/{order}/restock', [DomesticLogisticsController::class, 'restock'])->middleware('can:domestic.review')->name('logistics.china.restock');

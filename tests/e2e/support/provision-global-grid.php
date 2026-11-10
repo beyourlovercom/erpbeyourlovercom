@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
@@ -70,5 +71,39 @@ DB::transaction(function () use ($product, $warehouse, $owner): void {
         'sku'=>'E2E-SKU-0001','product_summary'=>'E2E Synthetic Product',
         'source_quantity'=>2,'purchase_quantity'=>2,
     ]);
+    // R4-L1 Logistics: isolated synthetic domestic and review fixtures.
+    $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+    $domestic = Order::query()->create([
+        'internal_order_number'=>'INT-E2E-GG-DOM-01',
+        'erp_order_id'=>'007-1110-c99992',
+        'source_type'=>OrderSourceType::Manual,
+        'order_kind'=>OrderKind::Customer,
+        'external_order_number'=>'E2E-GG-DOM-01',
+        'order_date'=>now()->toDateString(),
+        'owner_id'=>$owner->id,
+        'order_status'=>OrderStatus::PendingShipment,
+    ]);
+    $domestic->address()->create([
+        'recipient_name'=>'E2E Domestic Recipient',
+        'phone'=>'15550001234','country'=>'DE','city'=>'Berlin',
+        'address_line_1'=>'Synthetic Address 12','postal_code'=>'10001',
+    ]);
+    $domestic->items()->create([
+        'product_id'=>$product->id,'sku'=>'E2E-SKU-0001',
+        'product_summary'=>'E2E Domestic Product', 'quantity'=>1,
+        'unit_price'=>'12.00','line_revenue'=>'12.00',
+    ]);
+    $domestic->shipment()->create([
+        'warehouse_id'=>$factory->id,
+        'shipment_status'=>'pending',
+        'warehouse_selection_source'=>'manual',
+    ]);
+    LogisticsReview::query()->create([
+        'order_id'=>$domestic->id,
+        'status'=>'pending',
+        'requested_at'=>now(),
+        'reason'=>'E2E Synthetic Review',
+        'trigger'=>'redispatch',
+    ]);
 });
-fwrite(STDOUT, "GLOBAL_GRID_SYNTHETIC_FIXTURES_PASS: 1 product, 1 inventory, 1 procurement; disposable SQLite only\n");
+fwrite(STDOUT, "GLOBAL_GRID_SYNTHETIC_FIXTURES_PASS: 1 product, 1 inventory, 1 procurement, 1 domestic review; disposable SQLite only\n");

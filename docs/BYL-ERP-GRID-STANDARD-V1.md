@@ -13,6 +13,35 @@ Scope: BYL ERP front-end list / table pages; this is the single standard for new
 - Preserve existing account-scoped column preferences and their unique namespaces; current canary flags/Owner ID 1 opt-in and legacy fallback remain effective. Changing company-wide defaults or migrating already-existing pages is a separate Owner-approved batch and UAT/release decision.
 - The existing top-level `AGENTS.md` rule `BYL_GLOBAL_DATA_GRID_VI_V1_1` remains mandatory; this document names its ERP-specific reusable implementation. Full visual/data contract: `docs/10_Planning_Roadmap/26_BYL_ERP_GLOBAL_DATA_GRID_VI_V1_1.md`.
 
+## Permanent approval/action UI standard - Owner PASS 2026-11-10
+
+Every future ERP business list with row-level approval, review, rejection,
+stockout, confirmation or a comparable domain-specific decision MUST:
+
+- Show authorized domain actions **directly in a fixed rightmost operation
+  column**, one click per common decision; no generic expand-row gateway,
+  second native table, page navigation or permanent reject-reason field.
+- Keep compact row height and action column width. Size to actual buttons,
+  avoiding excess blank space, with 8px or similarly compact button spacing.
+- If a reason is required, clicking only THAT order's action opens an
+  anchored, floating, body-teleported panel over the Grid (no row expansion,
+  clipping or overlap with later rows). Confirm/Cancel, Escape and outside
+  click must work; keep original server validation and auditable endpoint.
+- Maintain a page-specific operation/permission matrix, including payment,
+  warehouse, current workflow and staff role. Do not manufacture permission
+  or invent a new business status. Out-of-stock has the original single
+  "已到货-可发货" button.
+- Run real Chrome computed CSS/pixel tests of right pinning, button spacing,
+  floating overlay hit-test above adjacent rows, narrow viewport and final
+  row, mandatory-reason and cancellation, permission and legacy fallback.
+- Bulk checkboxes belong left; selected count, allowed bulk dropdown and
+  Apply appear only in the existing single bottom pager row and only when
+  selected. No extra toolbar or logistics-exclusion action.
+- Apply the standard to NEW list development by default. Existing pages
+  must separately pass page-by-page Dev UAT and Owner acceptance before
+  Production default migration. Domestic review acceptance does NOT
+  approve automatic switch of the eight carrier/tracking/dispatch tabs.
+
 ## 1. Core standard
 - Use `ag-grid-community` + `ag-grid-vue3`, Balham theme, via the shared `OmsGrid` component.
 - Do not create per-page standalone table frameworks. Domain pages supply column definitions, data adapters, authorized actions and links.

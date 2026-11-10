@@ -26,6 +26,34 @@ final class LogisticsOsV1ClosureTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_r4_l1_wait_stock_and_review_grid_pilot_preserve_access_and_legacy(): void
+    {
+        $viewer = $this->userWith(['orders.view', 'logistics.view']);
+
+        foreach ([
+            ['/logistics/wait-stock', 'Logistics/FulfillmentAllocation', 'orders'],
+            ['/logistics/review', 'Logistics/Review', 'reviews'],
+        ] as [$url, $component, $dataKey]) {
+            $this->actingAs($viewer)->get($url.'?global_grid=1&per_page=20')
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->component($component)
+                    ->where('globalGridPilotEnabled', true)
+                    ->where($dataKey.'.per_page', 20));
+            $this->actingAs($viewer)->get($url.'?global_grid=1&per_page=9999&search=NO-SUCH-ORDER-L1-424')
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->where($dataKey.'.per_page', 50)
+                    ->where($dataKey.'.total', 0));
+            $this->actingAs($viewer)->get($url.'?per_page=20&search=NO-SUCH-ORDER-L1-424')
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->where('globalGridPilotEnabled', false)
+                    ->where($dataKey.'.per_page', 50));
+        }
+
+        $restricted = $this->userWith(['dashboard.view']);
+        $this->actingAs($restricted)->get('/logistics/review?global_grid=1')
+            ->assertForbidden();
+    }
+
     // ── Acceptance criteria 2 & 3: dispatch without tracking ──────────────────
 
     public function test_dispatch_without_tracking_is_accepted(): void

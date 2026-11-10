@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Shell\Application\GlobalGridPilot;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
@@ -71,7 +72,27 @@ final class DomesticLogisticsController
         ]);
 
         $this->applyView($query, $view);
-        $rows = $query->orderBy('order_date')->orderBy('id')->paginate(50)->withQueryString();
+        // Owner-approved review Grid is the default for authorized viewers.
+        // Carrier/Tracking/dispatch tabs retain their native workbenches
+        // until each has passed its own functionality-parity UAT.
+        $reviewGrid = $view === 'review';
+        $gridSetting = $request->query('global_grid');
+        $gridAvailable = $reviewGrid || GlobalGridPilot::available();
+        $gridPilot = $reviewGrid
+            ? ($gridSetting === null || $gridSetting === '1')
+            : GlobalGridPilot::enabled($request);
+        $search = $gridPilot ? trim(mb_substr((string) $request->query('search', ''), 0, 100)) : '';
+        if ($search !== '') {
+            $term = '%'.addcslashes($search, '%_\\').'%';
+            $query->where(function (Builder $query) use ($term): void {
+                $query->where('erp_order_id', 'like', $term)
+                    ->orWhere('external_order_number', 'like', $term)
+                    ->orWhereHas('address', fn (Builder $address) => $address->where('recipient_name', 'like', $term));
+            });
+        }
+        $requestedSize = (int) $request->query('per_page', 50);
+        $pageSize = $gridPilot && in_array($requestedSize, [20, 50, 100], true) ? $requestedSize : 50;
+        $rows = $query->orderBy('order_date')->orderBy('id')->paginate($pageSize)->withQueryString();
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments($rows->getCollection()
             ->map(fn (Order $order): int => (int) $order->shipment?->id)->all());
         $rows->through(fn (Order $order, int $index): array => $this->row($order, (($rows->currentPage() - 1) * $rows->perPage()) + $index + 1, $trackingStatuses[(int) $order->shipment?->id] ?? null));
@@ -89,9 +110,13 @@ final class DomesticLogisticsController
         return Inertia::render('Logistics/Domestic/Index', [
             'view' => $view,
             'rows' => $rows,
+            'globalGridPilotAvailable' => $gridAvailable,
+            'globalGridPilotEnabled' => $gridPilot,
+            'gridSearch' => $search,
             'viewCounts' => $counts,
             'canOperate' => app(LogisticsExecutionAccess::class)->allows($request->user()),
             'canReview' => $this->reviewAccess->allows($request->user()),
+            'canArchive' => (bool) $request->user()?->can('orders.archive'),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
             'carrierOptions' => app(CarrierServiceCatalog::class)->options(),
             'trackingImportProvider' => $previewProvider,
@@ -106,6 +131,37 @@ final class DomesticLogisticsController
                 '4px' => ['export_ready' => true, 'return_ready' => true, 'label' => '速达 / 4PX'],
                 'weship' => ['export_ready' => true, 'return_ready' => true, 'label' => '纬狮 / Weship', 'note' => '纬狮独立保留原 24 列模板 · XLSX 下载 · XLS/XLSX 回传'],
             ],
+        ]);
+    }
+
+    /** Run the existing authorized per-order review service, without bulk bypass. */
+    public function batchReview(Request $request): \Illuminate\Http\JsonResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $data = $request->validate([
+            'order_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'action' => ['required', 'in:approve,stockout,reject,restock'],
+            'reason' => ['required_if:action,reject', 'nullable', 'string', 'min:3', 'max:500'],
+        ]);
+        $results = [];
+        foreach ($data['order_ids'] as $id) {
+            $id = (int) $id;
+            try {
+                $order = Order::query()->findOrFail($id);
+                $this->decisions->decide($order, $data['action'], $data['reason'] ?? null, $request->user());
+                $results[] = ['order_id' => $id, 'ok' => true, 'message' => '已处理'];
+            } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
+                $results[] = ['order_id' => $id, 'ok' => false,
+                    'message' => $exception->getStatusCode() === 403 ? '无操作权限' : ($exception->getMessage() ?: '状态已变化，无法执行')];
+            } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => '订单不存在'];
+            }
+        }
+        return response()->json([
+            'results' => $results,
+            'success_count' => count(array_filter($results, fn (array $row): bool => $row['ok'])),
+            'failed_count' => count(array_filter($results, fn (array $row): bool => ! $row['ok'])),
         ]);
     }
 

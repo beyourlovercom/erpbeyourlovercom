@@ -127,3 +127,190 @@ test('R3 single built-in search replaces outer search and queries all server row
     console.log('GLOBAL_GRID_SERVER_SEARCH_PASS',entry.label)
   }
 })
+
+
+test('R4-L1 logistics shared Grid handles domestic, allocation and review without changing native operations',async ({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().authorized)
+  // China business review: V1 display plus native per-order workflow controls.
+  await page.goto('/logistics/china?view=review',{waitUntil:'domcontentloaded'})
+  const domestic=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(domestic).toBeVisible({timeout:20000})
+  const titleActions=page.locator('.domestic-head .domestic-head-actions')
+  const returnOriginal=titleActions.getByTestId('domestic-global-grid-toggle')
+  await expect(returnOriginal).toHaveText('返回原表')
+  await expect(titleActions.locator('button').last()).toHaveAttribute('data-testid','domestic-global-grid-toggle')
+  await expect(page.locator('.domestic-grid-toggle')).toHaveCount(0)
+  await expect(domestic.getByText('007-1110-c99992',{exact:true}).first()).toBeVisible()
+  await expect(page.locator('.table-wrap.orders table')).toHaveCount(0)
+  // Direct pinned-right review controls: no second native table or popup.
+  await expect(domestic.getByRole('button',{name:'通过',exact:true})).toBeVisible()
+  await expect(domestic.locator('.ag-cell[col-id="actions"]').first()).toHaveClass(/ag-cell-first-right-pinned/)
+  await expect(domestic.getByRole('button',{name:'缺货',exact:true})).toBeVisible()
+  const reviewAction=domestic.locator('.domestic-grid-cell-actions').first()
+  const visibleButtons=reviewAction.locator('.domestic-grid-cell-main button')
+  await expect(visibleButtons).toHaveCount(3)
+  await expect(page.getByTestId('domestic-reject-popover')).toHaveCount(0)
+  const compactHeight=await reviewAction.locator('xpath=ancestor::*[contains(@class,"ag-row")][1]').evaluate(
+    node=>node.getBoundingClientRect().height)
+  const top=await reviewAction.locator('.domestic-grid-cell-main').evaluate(root=>{
+    const buttons=Array.from(root.querySelectorAll('button'))
+    const boxes=buttons.map(node=>node.getBoundingClientRect())
+    const cell=root.closest('.ag-cell')!.getBoundingClientRect()
+    return {
+      gaps:boxes.slice(1).map((rect,i)=>rect.left-boxes[i].right),
+      color:getComputedStyle(buttons[0]).backgroundColor,
+      lastButtonRight:boxes[2].right,
+      cellRight:cell.right,
+      cellWidth:cell.width,
+    }
+  })
+  expect(top.gaps).toEqual([8,8])
+  expect(top.color).toBe('rgb(0, 143, 124)')
+  // Old width was 330px, with >150px of wasted space.
+  expect(top.cellWidth).toBeLessThanOrEqual(190)
+  expect(top.cellRight-top.lastButtonRight).toBeLessThan(35)
+  await reviewAction.getByRole('button',{name:'驳回',exact:true}).click()
+  const popover=page.getByTestId('domestic-reject-popover')
+  await expect(popover).toBeVisible()
+  await expect(popover.getByRole('textbox',{name:'驳回原因'})).toBeFocused()
+  await expect(popover.getByRole('button',{name:'确认驳回'})).toBeDisabled()
+  await expect(reviewAction.getByRole('button',{name:'驳回',exact:true})).toHaveAttribute('aria-expanded','true')
+  await expect(popover).toHaveCSS('position','fixed')
+  const expandedHeight=await reviewAction.locator('xpath=ancestor::*[contains(@class,"ag-row")][1]').evaluate(
+    node=>node.getBoundingClientRect().height)
+  expect(expandedHeight).toBe(compactHeight)
+  // Check the overlay is at the top of the browser hit-test stack, not
+  // clipped/covered by the following AG Grid row.
+  const floatLayout=await popover.evaluate(el=>{
+    const rect=el.getBoundingClientRect()
+    const input=el.querySelector('input')!.getBoundingClientRect()
+    const element=document.elementFromPoint(input.x+input.width/2,input.y+input.height/2)
+    return {
+      position:getComputedStyle(el).position,
+      zIndex:Number(getComputedStyle(el).zIndex),
+      width:rect.width,top:rect.top,bottom:rect.bottom,viewportHeight:window.innerHeight,
+      inputOnTop:!!(element && el.contains(element)),
+      inBody:el.parentElement===document.body,
+    }
+  })
+  expect(floatLayout.inputOnTop).toBe(true)
+  expect(floatLayout.inBody).toBe(true)
+  expect(floatLayout.bottom).toBeLessThanOrEqual(floatLayout.viewportHeight)
+  await popover.getByRole('textbox',{name:'驳回原因'}).fill('地址')
+  await expect(popover.getByRole('button',{name:'确认驳回'})).toBeDisabled()
+  await popover.getByRole('textbox',{name:'驳回原因'}).fill('客户地址需要再次核对')
+  await expect(popover.getByRole('button',{name:'确认驳回'})).toBeEnabled()
+  await popover.getByRole('button',{name:'取消'}).click()
+  await expect(page.getByTestId('domestic-reject-popover')).toHaveCount(0)
+  const restoredHeight=await reviewAction.locator('xpath=ancestor::*[contains(@class,"ag-row")][1]').evaluate(
+    node=>node.getBoundingClientRect().height)
+  expect(restoredHeight).toBe(compactHeight)
+  // Reopen and close with Escape without calling the write endpoint.
+  await reviewAction.getByRole('button',{name:'驳回',exact:true}).click()
+  await expect(page.getByTestId('domestic-reject-popover')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('domestic-reject-popover')).toHaveCount(0)
+  console.log('R4_V12_REJECT_POPOVER_COMPACT_PINNED_PASS',JSON.stringify({compactHeight,expandedHeight,restoredHeight,...top,...floatLayout}))
+  await expect(domestic.locator('.global-cell-badge').first()).toHaveCSS('background-color','rgb(239, 246, 244)')
+  await expect(domestic.locator('.global-cell-badge').first()).toHaveCSS('padding','2px 7px')
+  await expect(page.locator('#domestic-reject-reason')).toHaveCount(0)
+  await expect(page.locator('.table-wrap.orders table')).toHaveCount(0)
+  await expect(domestic.getByTestId('grid-batch-footer')).toHaveCount(0)
+  // A selected row activates exactly ONE existing footer, with Apply conditional.
+  const selection=domestic.locator('.ag-selection-checkbox').first()
+  await selection.click()
+  const footer=domestic.getByTestId('grid-batch-footer')
+  await expect(footer).toContainText('已选 1 条')
+  await expect(footer.getByRole('button',{name:'应用'})).toHaveCount(0)
+  await footer.getByRole('combobox',{name:'批量操作'}).selectOption('approve')
+  await expect(footer.getByRole('button',{name:'应用'})).toBeVisible()
+  await footer.getByRole('combobox',{name:'批量操作'}).selectOption('reject')
+  await expect(footer.getByRole('textbox',{name:'批量驳回原因'})).toBeVisible()
+  await expect(footer.getByRole('button',{name:'应用'})).toBeDisabled()
+  await footer.getByRole('textbox',{name:'批量驳回原因'}).fill('收件信息需要复核')
+  await expect(footer.getByRole('button',{name:'应用'})).toBeEnabled()
+  await expect(domestic.locator('.oms-toolbar .oms-title small')).toHaveCount(0)
+  console.log('R4_M1_M2_FOOTER_SELECTION_DIRECT_REVIEW_NO_MODAL_PASS')
+  await returnOriginal.click()
+  await expect(page).toHaveURL(/global_grid=0/)
+  await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toHaveCount(0)
+  await expect(page.locator('.table-wrap.orders table')).toBeVisible()
+  await expect(titleActions.getByTestId('domestic-global-grid-toggle')).toHaveText('切换新版表')
+  // Legacy escape hatch remains active when the employee changes a view tab.
+  await page.getByRole('button',{name:/待发货/}).first().click()
+  await expect(page).toHaveURL(/global_grid=0/)
+  await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toHaveCount(0)
+  await titleActions.getByTestId('domestic-global-grid-toggle').click()
+  await expect(page).toHaveURL(/global_grid=1/)
+  await expect(domestic).toBeVisible()
+  console.log('R4_L1_DOMESTIC_GRID_DEFAULT_HEADER_TOGGLE_AND_NATIVE_ACTIONS_PASS')
+
+  await page.goto('/logistics/wait-stock?global_grid=1',{waitUntil:'domcontentloaded'})
+  const allocation=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(allocation).toBeVisible({timeout:20000})
+  await expect(page.locator('.allocation-table')).toHaveCount(0)
+  await allocation.getByRole('textbox',{name:'表格内搜索全部记录'}).fill('IMPOSSIBLE-ORDER-327')
+  await allocation.getByRole('textbox',{name:'表格内搜索全部记录'}).press('Enter')
+  await expect(page).toHaveURL(/search=IMPOSSIBLE-ORDER-327/)
+  await expect(allocation.getByText('007-1110-c99990')).toHaveCount(0)
+  await page.getByTestId('allocation-global-grid-toggle').click()
+  await expect(page.locator('.allocation-table')).toBeVisible()
+  console.log('R4_L1_ALLOCATION_SERVER_SEARCH_FALLBACK_PASS')
+
+  await page.goto('/logistics/review?global_grid=1',{waitUntil:'domcontentloaded'})
+  const review=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(review).toBeVisible({timeout:20000})
+  await expect(review.getByText('007-1110-c99992',{exact:true}).first()).toBeVisible()
+  await expect(page.locator('.mvp-table-wrap table')).toHaveCount(0)
+  // The E2E authorized user is super_admin, which is deliberately read-only
+  // under LogisticsExecutionAccess. Never reveal edit forms to that role.
+  await expect(review.getByRole('button',{name:'填写复核'})).toHaveCount(0)
+  await expect(page.locator('.mvp-table-wrap table')).toHaveCount(0)
+  await page.getByTestId('review-global-grid-toggle').click()
+  await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toHaveCount(0)
+  await expect(page.locator('.mvp-table-wrap table')).toBeVisible()
+  await expect(page.locator('.mvp-table-wrap')).toContainText('E2E Synthetic Review')
+  await expect(page.getByRole('button',{name:'确认复核'})).toHaveCount(0)
+  console.log('R4_L1_REVIEW_READONLY_PERMISSION_FALLBACK_PASS')
+})
+
+test('R4-M3 CSRF test: SPA login token versus refreshed session cookie, no real orders',async ({page})=>{
+  await loginThroughUi(page,syntheticUsers().authorized)
+  const diag=await page.evaluate(async()=>{
+    const meta=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content??''
+    const encoded=document.cookie.split('; ').find(v=>v.startsWith('XSRF-TOKEN='))?.slice('XSRF-TOKEN='.length)
+    const cookie=encoded?decodeURIComponent(encoded):''
+    const emptyOperation=async (header:Record<string,string>)=>{
+      const response=await fetch('/orders/archive/batch',{
+        method:'POST',credentials:'same-origin',cache:'no-store',
+        headers:{Accept:'application/json','Content-Type':'application/json',...header},
+        body:JSON.stringify({order_ids:[987654321]}),
+      })
+      return response.status
+    }
+    return {
+      metaPresent:!!meta,cookiePresent:!!cookie,tokenEqual:meta===cookie,
+      metaStatus:meta?await emptyOperation({'X-CSRF-TOKEN':meta}):null,
+      cookieStatus:cookie?await emptyOperation({'X-XSRF-TOKEN':cookie}):null,
+    }
+  })
+  console.log('R4_M3_CSRF_DIAG',JSON.stringify(diag))
+  expect(diag.cookiePresent).toBe(true)
+  expect(diag.cookieStatus).toBe(200)
+})
+
+test('R4-M3 batch archive survives stale Inertia meta token using the current session cookie',async ({page})=>{
+  await loginThroughUi(page,syntheticUsers().authorized)
+  await page.goto('/logistics/china?view=review',{waitUntil:'domcontentloaded'})
+  const grid=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(grid).toBeVisible({timeout:18000})
+  await expect(grid.getByText('007-1110-c99992',{exact:true}).first()).toBeVisible()
+  await page.locator('meta[name="csrf-token"]').evaluate(el=>el.setAttribute('content','OUTDATED-HEAD-TOKEN'))
+  await grid.locator('.ag-selection-checkbox').first().click()
+  const footer=grid.getByTestId('grid-batch-footer')
+  await footer.getByRole('combobox',{name:'批量操作'}).selectOption('archive')
+  await footer.getByRole('button',{name:'应用'}).click()
+  await expect(page.getByText('批量操作：成功 1 条，失败 0 条')).toBeVisible({timeout:15000})
+  console.log('R4_M3_STALE_META_COOKIE_ARCHIVE_SYNTHETIC_PASS')
+})

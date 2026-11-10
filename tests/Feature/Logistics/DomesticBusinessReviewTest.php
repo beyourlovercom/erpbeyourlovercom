@@ -53,6 +53,32 @@ final class DomesticBusinessReviewTest extends TestCase
         $this->assertNull($child->financials, 'split fulfillment never invents its own payment fact');
     }
 
+    public function test_r4_bulk_review_reuses_original_domestic_gates_and_reports_mixed_rows(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'domestic.review']);
+        $first = $this->order();
+        $second = $this->order();
+        $this->actingAs($actor)->postJson('/logistics/china/batch-review', [
+            'order_ids' => [$first->id, $second->id, 987654321],
+            'action' => 'stockout',
+        ])->assertOk()->assertJsonPath('success_count', 2)
+            ->assertJsonPath('failed_count', 1);
+        $this->assertDatabaseHas('orders', ['id' => $first->id, 'workflow_status' => 'out_of_stock']);
+        $this->assertDatabaseHas('orders', ['id' => $second->id, 'workflow_status' => 'out_of_stock']);
+        $this->actingAs($actor)->postJson('/logistics/china/batch-review', [
+            'order_ids' => [$first->id, $second->id],
+            'action' => 'restock',
+        ])->assertOk()->assertJsonPath('success_count', 2);
+        $this->actingAs($actor)->postJson('/logistics/china/batch-review', [
+            'order_ids' => [$first->id],
+            'action' => 'reject', 'reason' => 'a',
+        ])->assertUnprocessable();
+        $unauthorized = $this->userWith(['logistics.view']);
+        $this->actingAs($unauthorized)->postJson('/logistics/china/batch-review', [
+            'order_ids' => [$first->id], 'action' => 'approve',
+        ])->assertForbidden();
+    }
+
     public function test_stockout_goes_to_own_tab_and_approval_returns_to_pending(): void
     {
         $this->withoutVite();

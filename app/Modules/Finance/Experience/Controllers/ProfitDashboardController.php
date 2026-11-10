@@ -18,6 +18,11 @@ final class ProfitDashboardController
         $filters = $this->dashboard->filters($request);
         $orders = Order::query()->with(['address', 'financials', 'costEntries', 'items'])
             ->where('order_kind', 'customer')
+            // Operational archive removes current finance worklist/dashboard
+            // entries; settled historic financial evidence remains unchanged.
+            ->whereNull('orders.operational_archived_at')
+            ->whereDoesntHave('fulfillmentParent', fn (Builder $parent) => $parent
+                ->whereNotNull('operational_archived_at'))
             ->whereDoesntHave('externalReferences', fn (Builder $references) => $references->where('provider', 'historical_logistics'))
             ->whereDate('order_date', '>=', $filters['date_from'])
             ->whereDate('order_date', '<=', $filters['date_to'])
