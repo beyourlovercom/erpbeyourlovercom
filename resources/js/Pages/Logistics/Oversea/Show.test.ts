@@ -832,7 +832,7 @@ describe('MorePlus per-order quarantine and partial batch completion', () => {
   it('shows partial completion without claiming full success', async () => {
     const id='00000000-0000-4000-8000-000000000124'
     const mock=vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({
-      batch_id:id,status:'completed_with_exceptions',dry_run:false,total:2,processed:2,
+      batch_id:id,status:'completed_partial',dry_run:false,total:2,processed:2,
       items:[
         {order_id:7913,order_no:'007-1110-c42149',status:'provider_cancelled',
           result_code:'PROVIDER_DUPLICATE_ORDER',provider_order_id:'OMS-FAILED'},
@@ -843,7 +843,7 @@ describe('MorePlus per-order quarantine and partial batch completion', () => {
     vi.stubGlobal('fetch',mock)
     try {
       const page=mountPage({shipoutProductionBatchUi:true,trackingImportPreview:null,
-        shipoutProductionLatestBatch:{id,status:'completed_with_exceptions',dry_run:false,total:2}})
+        shipoutProductionLatestBatch:{id,status:'completed_partial',dry_run:false,total:2}})
       await vi.waitFor(()=>expect(page.text()).toContain('本批次结束 · 异常单已隔离'))
       expect(page.text()).toContain('已核实 2 / 2')
       expect(page.text()).toContain('OMS 已取消／中止')

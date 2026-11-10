@@ -115,7 +115,7 @@ final class VerifyShipOutProductionBatchItem implements ShouldQueue
                 ->where('id', $this->batchId)
                 ->whereIn('status', ['running', 'awaiting_oms'])
                 ->update([
-                    'status' => $exceptions ? 'completed_with_exceptions' : 'completed',
+                    'status' => $exceptions ? 'completed_partial' : 'completed',
                     'finished_at' => now(), 'updated_at' => now(),
                 ]);
         }

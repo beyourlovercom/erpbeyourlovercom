@@ -169,7 +169,7 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
             ->exists();
         DB::table('shipout_production_batches')->where('id', $this->batchId)
             ->update([
-                'status' => $exceptions ? 'completed_with_exceptions' : 'completed',
+                'status' => $exceptions ? 'completed_partial' : 'completed',
                 'finished_at' => now(), 'updated_at' => now(),
             ]);
     }
