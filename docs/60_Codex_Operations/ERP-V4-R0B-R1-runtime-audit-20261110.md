@@ -124,3 +124,11 @@ R1-C cannot be called completely closed until actual half-hourly OMS reconciliat
 - R1-C Production gate **PASS / closed**. This establishes that the observed execution wrote only expected readback evidence, not proof about every external provider action unrelated to this command.
 - Separate existing errors: orders:sync-woocommerce and xlwms:sync-inventory had exit 1 before these process cutovers and remain separate production health findings for scoped investigation.
 - Diagnostic PR is source-only; merging it does not automatically deploy or restart Production.
+
+## R1 release parity guard follow-up — PR #693 UI-only rollout
+- After R1-C completed against PR #692, another owner-authorized ERP UI release PR #693 changed the `current` pointer. Existing backend workers remained on PR #692, so a path-only `--strict` check correctly raised a directory mismatch even though this was only an AG Grid short-list presentation change.
+- Byte comparison between PR #692 and PR #693 found **no changes** in 887 app PHP files, routes PHP files, config PHP files, migrations, or composer.lock. No unnecessary Production Worker restart was performed for this UI-only release.
+- The existing read-only checker now computes a deterministic fingerprint of worker-relevant PHP source (app, routes, config, migrations, Blade views, PHP translations, bootstrap entry points and Composer manifests), without reading `.env` or generated frontend JS/CSS assets.
+- `--strict` continues to fail on any release-directory mismatch (unchanged behavior); `--strict-backend` fails only on backend fingerprint mismatch or absence of the minimum 1 Production scheduler + 2 Production queue workers. Both outputs include path and backend flags for transparent review.
+- Backend source parity is a necessary but not sufficient condition: new runtime feature flags, dynamic configuration, out-of-band vendor changes, in-flight work, or schema deployment may still require an operator-approved restart. Never automatically restart merely because the fingerprint differs.
+- Validation is based on unit tests and live read-only checks. No new Production process, code, queue, order, or config change is made by this tool enhancement.
