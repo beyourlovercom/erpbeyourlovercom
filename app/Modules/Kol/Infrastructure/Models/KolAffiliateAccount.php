@@ -15,6 +15,8 @@ class KolAffiliateAccount extends Model
         'kol_id',
         'wordpress_user_id',
         'wordpress_user_login',
+        'affiliate_url_slug',
+        'affiliate_referral_url',
         'wordpress_user_email',
         'display_name',
         'email',

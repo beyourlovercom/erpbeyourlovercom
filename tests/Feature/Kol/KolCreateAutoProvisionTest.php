@@ -95,6 +95,7 @@ class KolCreateAutoProvisionTest extends TestCase
                     'affiliate_id' => 91001,
                     'wp_user_id' => 71001,
                     'affiliate_status' => 'active',
+                    'affiliate_url_slug' => 'creator-login',
                     'created_user' => true,
                     'created_affiliate' => true,
                 ], 'affiliate-provision');
@@ -140,6 +141,8 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertSame('reject', $capturedAffiliatePayload['existing_account_policy']);
         self::assertSame('new-kol@example.test', $capturedAffiliatePayload['email']);
         self::assertSame('creator-login', $capturedAffiliatePayload['preferred_username']);
+        self::assertSame('creator-login', $capturedAffiliatePayload['display_name']);
+
         self::assertDatabaseCount('notifications', 1);
 
         $persisted = DB::table('audit_records')->get()->toJson()
@@ -200,6 +203,48 @@ class KolCreateAutoProvisionTest extends TestCase
             ->assertRedirect('/kol/library/create')
             ->assertSessionHasErrors('wordpress_username');
 
+        self::assertSame(0, Kol::query()->count());
+    }
+
+    public function test_custom_affiliate_name_overrides_wordpress_display_name(): void
+    {
+        $specialist = $this->specialist();
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('checkAffiliateIdentity')->once()
+            ->andReturn($this->response(['available' => true], 'identity-ok'));
+        $mock->shouldReceive('checkCoupon')->twice()
+            ->andReturn($this->response(['available' => true], 'coupon-ok'));
+        $mock->shouldReceive('provisionAffiliate')->once()
+            ->withArgs(fn (array $payload) => $payload['preferred_username'] === 'creator-login'
+                && $payload['display_name'] === 'Custom Affiliate Name')
+            ->andReturn($this->response(['affiliate_id' => 93011, 'wp_user_id' => 73011, 'affiliate_status' => 'active', 'affiliate_url_slug' => 'creator-login'], 'affiliate-ok'));
+        $mock->shouldReceive('provisionCoupon')->once()
+            ->andReturn($this->response([
+                'coupon_id' => 94011, 'code' => 'NEWKOL15', 'normalized_code' => 'newkol15',
+                'affiliate_id' => 93011, 'discount_type' => 'percent', 'amount' => '15',
+                'date_expires' => null,
+            ], 'coupon-ok'));
+        $payload = $this->payload();
+        $payload['affiliate_name'] = 'Custom Affiliate Name';
+        $payload['affiliate_url_slug'] = 'creator-login';
+        $this->actingAs($specialist)->post('/kol/library', $payload)->assertSessionHas('success');
+        self::assertSame('Custom Affiliate Name', KolAffiliateAccount::query()->sole()->display_name);
+    }
+
+    public function test_independent_affiliate_url_slug_without_provider_support_is_rejected_before_create(): void
+    {
+        $specialist = $this->specialist();
+        $mock = $this->mockGateway();
+        $mock->shouldNotReceive('checkAffiliateIdentity');
+        $mock->shouldNotReceive('checkCoupon');
+        $mock->shouldNotReceive('provisionAffiliate');
+        $mock->shouldNotReceive('provisionCoupon');
+        $payload = $this->payload();
+        $payload['affiliate_url_slug'] = 'different-link';
+        $this->actingAs($specialist)->from('/kol/library/create')
+            ->post('/kol/library', $payload)
+            ->assertRedirect('/kol/library/create')
+            ->assertSessionHasErrors('affiliate_url_slug');
         self::assertSame(0, Kol::query()->count());
     }
 

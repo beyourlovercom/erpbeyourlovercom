@@ -24,12 +24,15 @@ final class KolEditAccountService
     ) {}
 
     /** @return array{success:bool,affiliate_status:?string,coupon_status:?string} */
-    public function provision(Kol $kol, string $password, string $couponCode, string $username, Authenticatable $actor): array
+    public function provision(Kol $kol, string $password, string $couponCode, string $username, Authenticatable $actor, ?string $affiliateName = null, ?string $affiliateUrlSlug = null): array
     {
         if (! KolScope::canOperate($actor)) {
             throw new AuthorizationException('KOL operation permission is required.');
         }
 
+        $profile = \App\Modules\Kol\Application\AffiliateWp\KolProvisioningService::resolveAffiliateProfile(
+            $affiliateName, $affiliateUrlSlug, $username
+        );
         $connectionKey = $this->connectionKey();
         $existing = KolAffiliateAccount::query()
             ->where('connection_key', $connectionKey)
@@ -53,6 +56,8 @@ final class KolEditAccountService
                 $actor,
                 $password,
                 $username,
+                $profile['name'],
+                $profile['slug'],
             );
         } catch (DomainException|RuntimeException $exception) {
             unset($password);

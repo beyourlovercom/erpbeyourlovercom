@@ -37,11 +37,14 @@ final class KolCreateAutoProvisionService
         string $couponCode,
         string $username,
         Authenticatable $actor,
+        ?string $affiliateName = null,
+        ?string $affiliateUrlSlug = null,
     ): array {
         if (! KolScope::canOperate($actor)) {
             throw new AuthorizationException('KOL operation permission is required.');
         }
 
+        $profile = KolProvisioningService::resolveAffiliateProfile($affiliateName, $affiliateUrlSlug, $username);
         $email = mb_strtolower(trim((string) ($data['contact_email'] ?? '')));
         $code = trim($couponCode);
         $connectionKey = (string) ($this->gateway->descriptor()['connection_key'] ?? '');
@@ -59,7 +62,7 @@ final class KolCreateAutoProvisionService
         $affiliate = null;
         $coupon = null;
         try {
-            $affiliate = $this->affiliates->provisionForCreate($connectionKey, (int) $kol->getKey(), $actor, $password, $username);
+            $affiliate = $this->affiliates->provisionForCreate($connectionKey, (int) $kol->getKey(), $actor, $password, $username, $profile['name'], $profile['slug']);
             unset($password);
 
             if ($affiliate->provisioning_status !== 'active') {

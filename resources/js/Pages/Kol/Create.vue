@@ -51,6 +51,8 @@ const form = useForm({
   notes: '',
   contact_email: '',
   wordpress_username: '',
+  affiliate_name: '',
+  affiliate_url_slug: '',
   wordpress_password: '',
   wordpress_password_confirmation: '',
   affiliate_coupon_code: '',
@@ -97,6 +99,12 @@ const form = useForm({
 })
 
 const usernameManuallyEdited = ref(false)
+const affiliateNameManuallyEdited = ref(false)
+const affiliateUrlManuallyEdited = ref(false)
+watch(() => form.wordpress_username, (value) => {
+  if (!affiliateNameManuallyEdited.value) form.affiliate_name = value
+  if (!affiliateUrlManuallyEdited.value) form.affiliate_url_slug = value
+})
 watch(() => form.display_name, (value) => {
   if (!usernameManuallyEdited.value) {
     form.wordpress_username = value.trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9_.@-]/g, '').slice(0, 60)
@@ -305,6 +313,16 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <input v-model="form.wordpress_username" type="text" autocomplete="username" class="erp-input" :class="{ 'has-error': form.errors.wordpress_username }" maxlength="60" required placeholder="网红用户名，可修改" @input="usernameManuallyEdited = true">
                 <p v-if="form.errors.wordpress_username" class="erp-field-error">{{ form.errors.wordpress_username }}</p>
               </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">Affiliate Name <span class="erp-form-required">*</span></label>
+                <input v-model="form.affiliate_name" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_name }" maxlength="120" required placeholder="默认与 Username 相同" @input="affiliateNameManuallyEdited = true">
+                <p v-if="form.errors.affiliate_name" class="erp-field-error">{{ form.errors.affiliate_name }}</p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">Affiliate URL <span class="erp-form-required">*</span></label>
+                <input v-model="form.affiliate_url_slug" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_url_slug }" maxlength="60" required placeholder="推广链接标识" @input="affiliateUrlManuallyEdited = true">
+                <p v-if="form.errors.affiliate_url_slug" class="erp-field-error">{{ form.errors.affiliate_url_slug }}</p>
+              </div>
               <div class="kol-password-pair">
                 <div class="erp-form-field">
                   <label class="erp-form-label">Password <span class="erp-form-required">*</span></label>
@@ -317,18 +335,18 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                   <p v-if="form.errors.wordpress_password_confirmation" class="erp-field-error">{{ form.errors.wordpress_password_confirmation }}</p>
                 </div>
               </div>
-              <div class="erp-form-field">
+              <div class="erp-form-field kol-credential-secondary">
                 <label class="erp-form-label">Email <span class="erp-form-required">*</span></label>
                 <input v-model="form.contact_email" type="email" autocomplete="email" class="erp-input" :class="{ 'has-error': form.errors.contact_email }" maxlength="255" required placeholder="name@example.com">
                 <p v-if="form.errors.contact_email" class="erp-field-error">{{ form.errors.contact_email }}</p>
               </div>
-              <div class="erp-form-field">
+              <div class="erp-form-field kol-credential-secondary">
                 <label class="erp-form-label">Code <span class="erp-form-required">*</span></label>
                 <input v-model="form.affiliate_coupon_code" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_coupon_code }" maxlength="255" required placeholder="例如 ANDY15">
                 <p v-if="form.errors.affiliate_coupon_code" class="erp-field-error">{{ form.errors.affiliate_coupon_code }}</p>
               </div>
             </div>
-            <p class="erp-form-helper">用户名默认取网红名称，开户后不可修改；密码 12–128 位（字母+数字），不保存到 ERP；Email 用于 Affiliate 收款，Code 冲突不覆盖。</p>
+            <p class="erp-form-helper">前三项默认继承网红 Username，可单独覆盖；Affiliate URL 为推广链接标识，独立标识需 Custom Affiliate Slugs 支持。用户名开户后不可修改；密码不保存到 ERP。</p>
           </div>
 
           <!-- Card 4: 社交账号 -->
@@ -613,7 +631,10 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
     grid-template-columns: 1fr;
   }
 }
-.kol-credential-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 12px 18px; align-items: start; }
-.kol-password-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-@media (max-width: 767px) { .kol-credential-rows { grid-template-columns: 1fr; } .kol-password-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kol-credential-rows { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px 18px; align-items: start; }
+.kol-credential-rows > .erp-form-field { grid-column: span 4; min-width: 0; }
+.kol-credential-rows > .kol-credential-secondary { grid-column: span 3; }
+.kol-password-pair { grid-column: span 6; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .kol-credential-rows > .erp-form-field { grid-column: span 6; } .kol-password-pair { grid-column: span 12; } }
+@media (max-width: 560px) { .kol-credential-rows > .erp-form-field { grid-column: span 12; } .kol-password-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

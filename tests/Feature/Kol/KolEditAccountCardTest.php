@@ -134,6 +134,7 @@ final class KolEditAccountCardTest extends TestCase
             ->withArgs(fn (array $payload, string $key) => $payload['erp_kol_id'] === $kol->id
                 && $payload['email'] === 'existing-kol@example.test'
                 && $payload['preferred_username'] === 'editor-choice'
+                && $payload['display_name'] === 'Edited Affiliate Name'
                 && $payload['password'] === 'NewAccountPassword123'
                 && $payload['existing_account_policy'] === 'reject'
                 && $key !== '')
@@ -142,6 +143,7 @@ final class KolEditAccountCardTest extends TestCase
                 'wp_user_id' => 72001,
                 'user_email' => 'existing-kol@example.test',
                 'affiliate_status' => 'active',
+                'affiliate_url_slug' => 'editor-choice',
             ], 'affiliate-created'));
         $mock->shouldReceive('provisionCoupon')->once()
             ->andReturn($this->response([
@@ -159,6 +161,8 @@ final class KolEditAccountCardTest extends TestCase
             'password_confirmation' => 'NewAccountPassword123',
             'affiliate_coupon_code' => 'EXISTING15',
             'wordpress_username' => 'editor-choice',
+            'affiliate_name' => 'Edited Affiliate Name',
+            'affiliate_url_slug' => 'editor-choice',
         ])->assertOk()->assertJsonPath('success', true)
             ->assertJsonPath('affiliate_account.wordpress_user_id', 72001)
             ->assertJsonPath('affiliate_account.affiliate_id', 82001)

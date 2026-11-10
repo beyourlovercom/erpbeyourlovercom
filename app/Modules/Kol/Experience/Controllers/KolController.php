@@ -105,6 +105,8 @@ final class KolController
             'notes' => 'nullable|string|max:5000',
             'contact_email' => 'required|email|max:255',
             'wordpress_username' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.@-]+$/D'],
+            'affiliate_name' => ['nullable', 'string', 'max:120'],
+            'affiliate_url_slug' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/D'],
             'wordpress_password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
             'wordpress_password_confirmation' => 'required|string|max:128',
             'affiliate_coupon_code' => 'required|string|max:255',
@@ -158,12 +160,17 @@ final class KolController
         $username = \App\Modules\Kol\Application\AffiliateWp\KolProvisioningService::resolveUsername(
             $data['wordpress_username'] ?? null, (string) $data['display_name']
         );
+        $profile = \App\Modules\Kol\Application\AffiliateWp\KolProvisioningService::resolveAffiliateProfile(
+            $data['affiliate_name'] ?? null, $data['affiliate_url_slug'] ?? null, $username
+        );
         $password = (string) $data['wordpress_password'];
         $couponCode = (string) $data['affiliate_coupon_code'];
         $socialAccounts = $data['social_accounts'] ?? [];
         $salesPerformanceEntries = $data['sales_performance_entries'] ?? [];
         unset(
             $data['wordpress_username'],
+            $data['affiliate_name'],
+            $data['affiliate_url_slug'],
             $data['wordpress_password'],
             $data['wordpress_password_confirmation'],
             $data['affiliate_coupon_code'],
@@ -179,6 +186,8 @@ final class KolController
             $couponCode,
             $username,
             $user,
+            $profile['name'],
+            $profile['slug'],
         );
         unset($password);
 
@@ -355,6 +364,8 @@ final class KolController
         $this->authorizeKolAccess($request, $kol);
         $data = $request->validate([
             'wordpress_username' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.@-]+$/D'],
+            'affiliate_name' => ['nullable', 'string', 'max:120'],
+            'affiliate_url_slug' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/D'],
             'password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
             'password_confirmation' => 'required|string|max:128',
             'affiliate_coupon_code' => 'required|string|max:255',
@@ -363,6 +374,9 @@ final class KolController
         $username = \App\Modules\Kol\Application\AffiliateWp\KolProvisioningService::resolveUsername(
             $data['wordpress_username'] ?? null, (string) $kol->display_name
         );
+        $profile = \App\Modules\Kol\Application\AffiliateWp\KolProvisioningService::resolveAffiliateProfile(
+            $data['affiliate_name'] ?? null, $data['affiliate_url_slug'] ?? null, $username
+        );
         $password = (string) $data['password'];
         $result = $this->editAccount->provision(
             $kol,
@@ -370,6 +384,8 @@ final class KolController
             (string) $data['affiliate_coupon_code'],
             $username,
             $request->user(),
+            $profile['name'],
+            $profile['slug'],
         );
         unset($password, $data['password'], $data['password_confirmation']);
 
@@ -466,6 +482,9 @@ final class KolController
             'affiliate_id' => $account?->affiliate_id !== null ? (int) $account->affiliate_id : null,
             'wordpress_user_id' => $account?->wordpress_user_id !== null ? (int) $account->wordpress_user_id : null,
             'wordpress_user_login' => $account?->wordpress_user_login,
+            'affiliate_name' => $account?->display_name,
+            'affiliate_url_slug' => $account?->affiliate_url_slug ?: $account?->wordpress_user_login,
+            'affiliate_referral_url' => $account?->affiliate_referral_url,
             'wordpress_user_email' => $account?->wordpress_user_email,
             'provider_status' => $account?->provider_status,
             'provisioning_status' => $account?->provisioning_status,

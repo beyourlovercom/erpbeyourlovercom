@@ -165,7 +165,12 @@ describe('Kol/Create VI contract', () => {
     expect(card.findAll('input[type="password"]')).toHaveLength(2)
     expect(card.text()).toContain('不保存到 ERP')
     expect(card.find('input[placeholder="例如 ANDY15"]').exists()).toBe(true)
-    expect(card.text()).toContain('Code 冲突不覆盖')
+    expect(card.text()).toContain('Affiliate Name')
+    expect(card.text()).toContain('Affiliate URL')
+    expect(card.find('input[placeholder="默认与 Username 相同"]').exists()).toBe(true)
+    expect(card.find('input[placeholder="推广链接标识"]').exists()).toBe(true)
+    expect(card.findAll('.kol-credential-rows > .erp-form-field')).toHaveLength(5)
+    expect(card.text()).toContain('独立标识需 Custom Affiliate Slugs')
   })
 
   it('defaults cooperation type, joined date, owner and primary social platforms', () => {
