@@ -86,6 +86,10 @@ Owner clarification for the upcoming pinned right-hand action buttons and left-s
 
 Owner explicitly forbids redundant count/selection under the table title or a second batch toolbar. Conditional selection count, bulk action dropdown and Apply must appear only on the existing bottom pagination row. See [ERP_GLOBAL_GRID_V12_SINGLE_FOOTER_OPERATIONS_20261110.md](ERP_GLOBAL_GRID_V12_SINGLE_FOOTER_OPERATIONS_20261110.md) for exact layout and incremental 23–46h planned work (no duplicate counting of the 51-page migration).
 
+## V1.2 minimum scope - later Owner reduction
+
+Owner cancelled all logistics-exclusion functionality, reduced archive to original single-order API semantics via a lightweight batch adapter, and limited finance edits to active order-cost and profit-dashboard filters. The original 23-46h V1.2 estimate is no longer current; the authoritative [ERP_GLOBAL_GRID_V12_FAST_MINIMUM_20261110.md](ERP_GLOBAL_GRID_V12_FAST_MINIMUM_20261110.md) estimates **7-13h** new MVP work. The 51 selected list migration scopes and Production UAT gates remain unchanged.
+
 ## Safeguards and rollout behavior
 
 - Execute logistics L1, L2, L3 first. A safe readonly logistics-list canary may be used inside L1 to prove the adapter before enabling a high-impact operational table. Priority is not authorization for live shipping.

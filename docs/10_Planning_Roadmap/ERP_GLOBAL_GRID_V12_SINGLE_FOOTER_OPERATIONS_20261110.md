@@ -2,6 +2,10 @@
 
 Owner instruction: eliminate the duplicate header subtitle "共128条，已选3条" under "国内发货 · 待审核". The table header has one title only and unchanged search/columns/density/maximize tools. NO extra batch-action row.
 
+## Scope reduction - latest Owner decision (2026-11-10)
+
+The original 23-46h plan is SUPERSEDED. U4 logistics-exclusion is CANCELLED and must not appear in any batch dropdown or implementation. Archive reuses existing authorized single-order archive semantics, and finance is limited to two active report query filters. Current MVP roadmap and estimate: [ERP_GLOBAL_GRID_V12_FAST_MINIMUM_20261110.md](ERP_GLOBAL_GRID_V12_FAST_MINIMUM_20261110.md), **7-13h** incremental work. Earlier details retained only as historical reference.
+
 ## Frozen UX requirements
 - The ONE existing bottom pagination/footer row contains all selection and bulk controls. No toolbar above the table, below the table, or duplicated in the title.
 - When zero orders selected: hide selected count, bulk-action dropdown, inline reason, Apply. Still show original pager, per-page and total on right.
