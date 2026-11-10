@@ -540,6 +540,41 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_moreplus_preflight_block_without_post_is_only_in_exception_list(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007erp-1110-c42151');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $batchId = '00000000-0000-4000-8000-000000000125';
+        DB::table('shipout_production_batches')->insert([
+            'id' => $batchId, 'operator_user_id' => $user->id,
+            'status' => 'completed_with_exceptions', 'dry_run' => false, 'total' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('shipout_production_batch_items')->insert([
+            'batch_id' => $batchId, 'order_id' => $order->id,
+            'order_no' => $order->erp_order_id, 'status' => 'skipped',
+            'result_code' => 'SHIPOUT_SKU_NOT_VERIFIED',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Http::preventStrayRequests();
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.order_id', $order->id)
+                ->where('rows.data.0.shipout_production.status', 'oms_quarantined'));
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus?view=pending_dispatch')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'shipment_status' => 'pending', 'tracking_number' => null,
+        ]);
+        Http::assertNothingSent();
+    }
+
     public function test_moreplus_outbound_roundtrip_return_previews_real_tracking_without_apply(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);

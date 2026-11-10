@@ -20,6 +20,15 @@ final class ShipOutProductionDispatchState
             ->where('shipout_attempt.provider_warehouse_id', self::MOREPLUS_PROVIDER_WAREHOUSE_ID);
     }
 
+    public static function scopeBatchQuarantined(Builder $query): void
+    {
+        $query->selectRaw('1')->from('shipout_production_batch_items as q')
+            ->whereColumn('q.order_id', 'shipments.order_id')
+            ->whereIn('q.status', [
+                'skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review',
+            ]);
+    }
+
     public static function scopeCreated(Builder $query): void
     {
         self::scopeAttempt($query);

@@ -8,7 +8,8 @@
 - Signed sandbox GET stock/list returned HTTP 200, result OK for the synthetic SKU BYL-SHIPOUT-UAT-20261028-001, availableQuantity 2 before the new test.
 - Signed sandbox GET queryListV2 returned HTTP 200, result OK and OMS status 4 for the existing prior sandbox orders 004/005/006.
 - A fresh, sandbox-only reference BYL-SANDBOX-R8-20261110-001 was signed-GET preflighted as absent from OMS with available stock before submission. Exactly one real sandbox POST was issued to batchSubmitAsync, Mode 10, quantity 1, synthetic recipient data, and the known sandbox-only USPS GA service group. Result: HTTP 200, result OK, returned reference match and nonempty OMS ID. An exclusive 0600 one-shot marker was written on China Mac before the POST.
-- That POST is an ASYNCHRONOUS ACK only. Its final OMS status and callback are not yet independently confirmed. No second POST or auto retry was attempted; no customer data or secret was used.
+- CRITICAL: subsequent independent authenticated signed GET queryListV2 returned HTTP 200, result OK, exactly one OMS matching row, status=6 (cancelled). Its cancelReason was populated; sanitized keyword classification was SHIPPING_ERROR_OTHER, with 'shipping error' present but no duplicate/balance/EzeeShip marker. No sensitive provider text or recipient information was printed or persisted. The sandbox has NOT passed final OMS business acceptance.
+- The exclusive sandbox one-shot marker remains; there was no second sandbox POST and no Production POST. Provider investigation is necessary before any new test order.
 - Real Production batch enabled/owner-approved/canary-order flags remain OFF; no Production write or new Production ShipOut POST in this branch.
 
 ## Source changes
@@ -26,7 +27,7 @@
 - A dedicated GitHub CI workflow gates backend and frontend together.
 
 ## Remaining gates
-- New sandbox R8 test order final async OMS status needs signed GET readback; do not confuse immediate ACK with final provider acceptance.
+- New sandbox R8 test order returned OMS status 6 (cancelled). Obtain ShipOut sandbox logs for reference BYL-SANDBOX-R8-20261110-001, Mode 10 serviceGroup 1993981773496696833, before any new sandbox POST.
 - A protected test callback receiver is still needed to verify optional ShipOut async callback delivery.
 - MorePlus/EzeeShip support must explain real Production duplicate-order and shipping cancellation logs, independently of sandbox. Production Mode 9 is not equivalent to the successful sandbox Mode 10 channel.
 

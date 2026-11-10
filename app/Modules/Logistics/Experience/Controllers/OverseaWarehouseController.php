@@ -376,7 +376,9 @@ final class OverseaWarehouseController
                     // A former US-LA API attempt does not redefine another
                     // warehouse's independent queue after manual reassignment.
                     $normalPending->whereDoesntHave('warehouse', fn ($w) => $w->where('code', 'US-LA'))
-                        ->orWhereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeAttempt($sub));
+                        ->orWhere(fn ($moreplus) => $moreplus
+                            ->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeAttempt($sub))
+                            ->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeBatchQuarantined($sub)));
                 });
         } elseif (in_array($view, ['pending_dispatch', 'dispatched'], true)) {
             $query->where('shipment_status', 'pending')
@@ -412,7 +414,8 @@ final class OverseaWarehouseController
                                         'provider_cancelled', 'needs_review',
                                     ]));
                         } else {
-                            $morePlus->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeAttempt($sub));
+                            $morePlus->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeAttempt($sub))
+                                ->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeBatchQuarantined($sub));
                         }
                     });
                 });

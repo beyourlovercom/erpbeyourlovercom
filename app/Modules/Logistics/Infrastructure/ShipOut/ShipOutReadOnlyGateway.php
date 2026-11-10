@@ -13,10 +13,15 @@ use RuntimeException;
 final class ShipOutReadOnlyGateway
 {
     private const BASE = 'https://opendev.shipout.com/api';
+
     private const WAREHOUSES = '/open-api/oms/info/warehouse/list';
+
     private const STOCK = '/open-api/oms/stock/list';
+
     private const PRODUCTS = '/open-api/oms/product/queryList';
+
     private const ORDER_LIST = '/open-api/oms/order/queryListV2';
+
     private const ORDER_DETAIL = '/open-api/oms/order/query';
 
     public function __construct(
@@ -75,6 +80,7 @@ final class ShipOutReadOnlyGateway
                 'warehouseIds' => $row['warehouseIds'] ?? [],
             ];
         }
+
         return ['records' => $rows, 'total' => $total];
     }
 
@@ -122,6 +128,7 @@ final class ShipOutReadOnlyGateway
                     ? [] : $this->sanitizeShipments($row['shipmentList'] ?? [], $warehouseId),
             ];
         }
+
         return ['records' => $rows, 'total' => $total];
     }
 
@@ -139,6 +146,7 @@ final class ShipOutReadOnlyGateway
             || trim((string) ($data['orderNO'] ?? '')) === '') {
             throw new RuntimeException('SHIPOUT_ORDER_DETAIL_UNTRUSTED');
         }
+
         return [
             'orderId' => $orderId,
             'orderNO' => (string) $data['orderNO'],
@@ -163,6 +171,18 @@ final class ShipOutReadOnlyGateway
             || str_contains($reason, '账户余额或信用额度不足')) {
             return 'PROVIDER_ACCOUNT_BALANCE_INSUFFICIENT';
         }
+
+        if (stripos($reason, 'duplicated order') !== false
+            || stripos($reason, 'duplicate order') !== false) {
+            return 'PROVIDER_DUPLICATE_ORDER';
+        }
+        if (stripos($reason, 'EzeeShip') !== false) {
+            return 'PROVIDER_EZEESHIP_SHIPPING_ERROR';
+        }
+        if (stripos($reason, 'shipping error') !== false) {
+            return 'PROVIDER_SHIPPING_ERROR';
+        }
+
         return 'PROVIDER_CANCELLED_OTHER';
     }
 
@@ -187,6 +207,7 @@ final class ShipOutReadOnlyGateway
                 'shippedTime' => $row['shippedTime'] ?? null,
             ];
         }
+
         return $result;
     }
 
