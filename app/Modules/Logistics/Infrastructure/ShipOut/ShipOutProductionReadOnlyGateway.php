@@ -116,6 +116,36 @@ final class ShipOutProductionReadOnlyGateway
         return ['records' => $rows, 'total' => $data['total']];
     }
 
+    /**
+     * R9 INTERNAL ONLY: bounded, fully paginated warehouse history.
+     *
+     * Returned rows contain provider recipient fields: DO NOT return them to
+     * HTTP controllers, persist in audits, logs, exceptions or job payloads.
+     * Only ShipOutProductionDuplicateRiskGuard may consume this method.
+     *
+     * @return array{records:list<array<string,mixed>>,total:int}
+     */
+    public function contentRiskHistoryPage(int $page, int $size = 100): array
+    {
+        if (! app()->environment('production')) {
+            throw new RuntimeException('SHIPOUT_R9_HISTORY_ENV_DENIED');
+        }
+        $warehouse = trim((string) config('shipout.production_warehouse_id', ''));
+        $organization = trim((string) config('shipout.production_client_org_id', ''));
+        if ($warehouse !== '1265864414750314497' || $organization !== '57893') {
+            throw new RuntimeException('SHIPOUT_R9_HISTORY_IDENTITY_UNVERIFIED');
+        }
+
+        // No orderNO filter. Query the whole bounded warehouse history, not
+        // just this ERP order's provider reference (which misses content dupes).
+        return $this->page(self::ORDER_LIST, [
+            'warehouseId' => $warehouse,
+            'version' => 'v2',
+            'curPageNo' => $page,
+            'pageSize' => $size,
+        ], $page, $size);
+    }
+
     /** @return array{records:list<array<string,mixed>>,total:int} */
     public function stock(int $page = 1, int $size = 100, bool $includePhysical = false): array
     {

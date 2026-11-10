@@ -99,6 +99,9 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
                     }
                     $date = now('America/Los_Angeles')->addDay()->format('Y-m-d');
                     $preview = $dispatch->previewApproved((int) $item->order_id, $date);
+                    if (! ($preview['ready'] ?? false)) {
+                        throw new RuntimeException((string) ($preview['history_risk']['code'] ?? 'SHIPOUT_R9_HISTORY_UNVERIFIED'));
+                    }
                     $reply = $dispatch->dispatchApprovedOrder(
                         (int) $item->order_id, $date, $preview['payload_hash'],
                         'SUBMIT_SHIPOUT_ORDER_'.$item->order_id, $actor,

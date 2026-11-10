@@ -809,6 +809,40 @@ describe('MorePlus async production acceptance is not final business success', (
   })
 })
 
+describe('MorePlus R9 Dede manual fallback and no duplicate resubmission', () => {
+  it('shows confirmed manual outbound action only for attempted nonduplicate rows', () => {
+    const row={...usSmPendingRows.data[0],order_id:7903,
+      review_status:'approved' as const,shipment_status:'pending',
+      shipout_production:{attempted:true,is_oms_created:false,status:'oms_quarantined',
+        label:'EzeeShip异常 · 交 Dede 人工',provider_order_id:'OMS-EXISTING'},
+      warehouse_dispatch:{status:'oms_quarantined',label:'EzeeShip异常',
+        failure_code:'PROVIDER_EZEESHIP_SHIPPING_ERROR',
+        detail:'',oms_order_no:'OMS-EXISTING',last_checked_at:null,
+        can_retry_local_block:false}}
+    const page=mountPage({warehouseKey:'us-moreplus',view:'exceptions',canOperate:true,
+      shipoutProductionUi:true,rows:{...usSmPendingRows,total:1,data:[row]}})
+    expect(page.text()).toContain('确认人工出库')
+    expect(page.text()).toContain('先核对既有 OMS 原单')
+    expect(page.find('input[placeholder="Dede 核实的人工出库单号"]').exists()).toBe(true)
+    page.unmount()
+  })
+  it('hides manual action for an OMS-confirmed duplicate order', () => {
+    const row={...usSmPendingRows.data[0],order_id:7913,
+      review_status:'approved' as const,shipment_status:'pending',
+      shipout_production:{attempted:true,is_oms_created:false,status:'oms_quarantined',
+        label:'海外仓判定重复订单',provider_order_id:'OMS-DUP'},
+      warehouse_dispatch:{status:'oms_quarantined',label:'海外仓判定重复订单',
+        failure_code:'PROVIDER_DUPLICATE_ORDER',
+        detail:'',oms_order_no:'OMS-DUP',last_checked_at:null,
+        can_retry_local_block:false}}
+    const page=mountPage({warehouseKey:'us-moreplus',view:'exceptions',canOperate:true,
+      shipoutProductionUi:true,rows:{...usSmPendingRows,total:1,data:[row]}})
+    expect(page.text()).not.toContain('确认人工出库')
+    expect(page.find('input[placeholder="Dede 核实的人工出库单号"]').exists()).toBe(false)
+    page.unmount()
+  })
+})
+
 describe('MorePlus per-order quarantine and partial batch completion', () => {
   it('shows quarantined order and blocks another one-shot send while an unrelated order remains eligible', () => {
     const failed={...usSmPendingRows.data[0],warehouse_id:1,order_id:7913,
