@@ -626,6 +626,42 @@ describe('Orders/Show V2', () => {
     expect(wrapper.text()).toContain('待发货')
   })
 
+  it('lets authorized factory derived orders mark stockout through business review route, not isolated marker', async () => {
+    vi.mocked(router.post).mockClear()
+    const derived={...baseOrder, order_kind:'fulfillment_derived', operational_markers:[]}
+    const wrapper=mount(Show,{props:{order:derived,audit,canMarkOperational:false,
+      isDomesticFactory:true,canMarkDomesticStockout:true}})
+    const stock=wrapper.findAll('.ord-marker-row button').find(b=>b.text()==='缺货')!
+    expect(stock).toBeTruthy()
+    expect(stock.attributes('disabled')).toBeUndefined()
+    expect(wrapper.findAll('.ord-marker-row button').find(b=>b.text()==='异常')?.attributes('disabled')).toBeDefined()
+    await stock.trigger('click')
+    expect(router.post).toHaveBeenCalledWith('/logistics/china/orders/1/stockout',{},expect.objectContaining({preserveScroll:true}))
+    expect(router.post).not.toHaveBeenCalledWith('/orders/1/operational-markers/stockout',expect.anything(),expect.anything())
+
+    const blocked=mount(Show,{props:{order:derived,audit,canMarkOperational:false,
+      isDomesticFactory:true,canMarkDomesticStockout:false}})
+    expect(blocked.findAll('.ord-marker-row button').find(b=>b.text()==='缺货')?.attributes('disabled')).toBeDefined()
+  })
+
+  it('shows canonical domestic stockout as active and requires restock from stockout workbench', async () => {
+    vi.mocked(router.post).mockClear()
+    const stockout={...baseOrder, operational_markers:['domestic_stockout']}
+    const wrapper=mount(Show,{props:{order:stockout,audit,
+      isDomesticFactory:true,canMarkDomesticStockout:true}})
+    const btn=wrapper.findAll('.ord-marker-row button').find(b=>b.text().includes('缺货'))!
+    expect(btn.text()).toBe('✓ 缺货')
+    expect(btn.attributes('disabled')).toBeDefined()
+    await btn.trigger('click')
+    expect(router.post).not.toHaveBeenCalled()
+
+    const overseas=mount(Show,{props:{order:baseOrder,audit,canMarkOperational:true,isDomesticFactory:false}})
+    const legacy=overseas.findAll('.ord-marker-row button').find(b=>b.text()==='缺货')!
+    await legacy.trigger('click')
+    expect(router.post).toHaveBeenCalledWith('/orders/1/operational-markers/stockout',
+      {active:true},expect.objectContaining({preserveScroll:true}))
+  })
+
   // Immutable identity always read-only
   it('immutable identity fields are displayed as text, without disabled inputs in View Mode', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
