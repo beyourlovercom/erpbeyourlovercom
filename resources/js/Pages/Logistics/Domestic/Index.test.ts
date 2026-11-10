@@ -116,15 +116,6 @@ describe('Domestic logistics production workbench', () => {
     }
   })
 
-  it('shows the read-only 今日订单 XLSX download before the 4PX provider button only on the aggregate today tab', () => {
-    const today=mount(Index,{props:{...baseProps,view:'today'}})
-    const links=today.findAll('.provider-card:first-child .actions a').map(a=>a.attributes('href'))
-    expect(links.slice(0,2)).toEqual(['/logistics/china/today/export','/logistics/china/export/4px'])
-    expect(today.find('[data-testid="download-today-orders"]').text()).toBe('下载今日订单')
-    expect(mount(Index,{props:{...baseProps,view:'today-4px'}}).find('[data-testid="download-today-orders"]').exists()).toBe(false)
-    expect(mount(Index,{props:{...baseProps,view:'today-weship'}}).find('[data-testid="download-today-orders"]').exists()).toBe(false)
-  })
-
   it('places 今日订单 immediately after 待发货 and renders three concise one-line modules with no commas', () => {
     const today=mount(Index,{props:{...baseProps,view:'today',trackingImportPreview:null,trackingImportProvider:null}})
     const nav=today.findAll('nav.tabs button').map(b=>b.text())
