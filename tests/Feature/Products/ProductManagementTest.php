@@ -111,6 +111,61 @@ final class ProductManagementTest extends TestCase
         $this->assertDatabaseMissing('products', ['sku' => 'DENIED-GRID']);
     }
 
+    public function test_r4_sku_list_global_grid_uses_server_search_bounded_paging_and_original_rights(): void
+    {
+        $viewer = $this->userWith(['products.view']);
+        Product::create(['source_type' => 'manual', 'sku' => 'R4-SKU-ALPHA',
+            'name' => 'Alpha R4 Product', 'product_type' => 'simple']);
+        for ($i = 1; $i <= 25; $i++) {
+            Product::create(['source_type' => 'manual', 'sku' => 'R4-BULK-'.str_pad((string) $i, 3, '0', STR_PAD_LEFT),
+                'name' => 'Bulk R4 '.str_pad((string) $i, 3, '0', STR_PAD_LEFT), 'product_type' => 'simple']);
+        }
+
+        $this->actingAs($viewer)
+            ->get('/products/skus?global_grid=1&per_page=20')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Products/Skus')
+                ->where('globalGridPilotAvailable', true)
+                ->where('globalGridPilotEnabled', true)
+                ->where('products.per_page', 20)
+                ->where('products.total', 26)
+                ->has('products.data', 20)
+                ->where('products.data.0.sku', 'R4-SKU-ALPHA')
+                ->where('products.data.0.alias_count', 0));
+
+        $this->actingAs($viewer)
+            ->get('/products/skus?global_grid=1&per_page=100&search=R4-SKU-ALPHA')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Products/Skus')
+                ->where('products.per_page', 100)
+                ->where('products.total', 1)
+                ->where('products.data.0.sku', 'R4-SKU-ALPHA'));
+
+        $this->actingAs($viewer)
+            ->get('/products/skus?global_grid=1&per_page=9999')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('products.per_page', 50));
+
+        $this->actingAs($viewer)
+            ->get('/products/skus?per_page=20')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('globalGridPilotEnabled', false)
+                ->where('products.per_page', 50));
+
+        $this->actingAs($viewer)
+            ->post('/products', ['sku' => 'R4-SKU-DENIED', 'name' => 'Not allowed'])
+            ->assertForbidden();
+        $this->assertDatabaseMissing('products', ['sku' => 'R4-SKU-DENIED']);
+
+        $unauthorized = $this->userWith(['dashboard.view']);
+        $this->actingAs($unauthorized)
+            ->get('/products/skus?global_grid=1')
+            ->assertForbidden();
+    }
+
     public function test_view_only_can_access_sku_search(): void
     {
         $user = $this->userWith(['products.view']);
