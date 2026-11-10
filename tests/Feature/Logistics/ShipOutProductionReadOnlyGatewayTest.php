@@ -202,6 +202,22 @@ final class ShipOutProductionReadOnlyGatewayTest extends TestCase
             && str_contains($req->url(), 'orderNO=C99999-007'));
     }
 
+    public function test_r10_cancel_reason_is_classified_without_exposing_original_text(): void
+    {
+        config()->set('shipout.production_read_enabled', true);
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK', 'data' => ['total' => 1, 'records' => [[
+                'orderNO' => 'C99999-007', 'orderId' => 'ORDER-123',
+                'warehouseId' => 'PROD-W-1', 'status' => 6,
+                'cancelReason' => 'C99999-007 has been detected as duplicated order PRIVATE CUSTOMER TEXT',
+            ]]],
+        ], 200)]);
+        $result = $this->gateway()->orderPage('PROD-W-1', 'C99999-007');
+        $this->assertSame('PROVIDER_DUPLICATE_ORDER', $result['records'][0]['cancel_category']);
+        $this->assertStringNotContainsString('PRIVATE CUSTOMER', json_encode($result));
+        Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+    }
+
     public function test_r10_missing_or_cross_warehouse_order_identity_never_egresses(): void
     {
         config()->set('shipout.production_read_enabled', true);

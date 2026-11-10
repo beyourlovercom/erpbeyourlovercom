@@ -87,6 +87,37 @@ final class ProcurementOrderBridgeTest extends TestCase
         $this->actingAs($restricted)->get('/purchase/orders/'.$procurement->id)->assertForbidden();
     }
 
+    public function test_global_grid_dev_procurement_pilot_is_paginated_readonly_and_preserves_legacy_contract(): void
+    {
+        $user = $this->userWith(['orders.view', 'procurement.view'], 'global-grid-procurement');
+        $order = $this->order($user);
+        ProcurementOrder::create([
+            'procurement_number' => 'PO-GRID-0001',
+            'source_order_id' => $order->id,
+            'status' => 'pending',
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)->get('/purchase?global_grid=1&per_page=20')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Procurement/Orders/Index')
+                ->where('globalGridPilotEnabled', true)
+                ->has('orders', 0)
+                ->where('gridOrders.per_page', 20)
+                ->where('gridOrders.total', 1)
+                ->where('gridOrders.data.0.procurement_number', 'PO-GRID-0001'));
+
+        $this->actingAs($user)->get('/purchase')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('globalGridPilotEnabled', false)
+                ->where('gridOrders', null)
+                ->where('orders.0.procurement_number', 'PO-GRID-0001'));
+
+        $this->actingAs($user)->get('/purchase?global_grid=1&per_page=999999')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('gridOrders.per_page', 50));
+        $this->assertDatabaseCount('procurement_orders', 1);
+    }
+
     public function test_purchase_index_and_legacy_urls_use_the_canonical_purchase_contract(): void
     {
         $user = $this->userWith(['orders.view', 'procurement.view', 'procurement.create']);

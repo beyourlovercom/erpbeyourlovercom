@@ -577,7 +577,7 @@ describe('ShipOut Production V1 isolated from Sandbox', () => {
       await wrapper.findAll('button').find(b=>b.text()==='正式 API 预检')!.trigger('click')
       await vi.waitFor(()=>expect(wrapper.text()).toContain('确认提交正式仓 · 仅一次'))
       await wrapper.findAll('button').find(b=>b.text().includes('确认提交正式仓'))!.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('尚未发货'))
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('API ACK 已受理'))
       expect(fetchMock).toHaveBeenCalledTimes(2)
       const [url,opts]=fetchMock.mock.calls[1]
       expect(url).toContain('/shipout/production/send')
@@ -645,7 +645,7 @@ describe('ShipOut Production V1 three-account scoped UI', () => {
       await page.findAll('button').find(b=>b.text()==='正式 API 预检')!.trigger('click')
       await vi.waitFor(()=>expect(page.text()).toContain('确认提交正式仓 · 仅一次'))
       await page.findAll('button').find(b=>b.text().includes('确认提交正式仓'))!.trigger('click')
-      await vi.waitFor(()=>expect(page.text()).toContain('尚未发货'))
+      await vi.waitFor(()=>expect(page.text()).toContain('API ACK 已受理'))
       expect(mock).toHaveBeenCalledTimes(2)
       expect(mock.mock.calls[1][1].method).toBe('POST')
       expect(page.text()).not.toContain('确认提交正式仓 · 仅一次')
@@ -666,9 +666,9 @@ describe('ShipOut Production V1 three-account scoped UI', () => {
   })
 })
 
-describe('MorePlus Production OMS-created lifecycle after one-shot ACK', () => {
-  const attempt={attempted:true,is_oms_created:true,status:'oms_created',
-    label:'OMS 已建单 · 待实际出库',provider_order_id:'2116863614032625665'}
+describe('MorePlus Production ACK pending lifecycle without a second POST', () => {
+  const attempt={attempted:true,is_oms_created:false,status:'oms_ack_pending',
+    label:'API 已受理 · 待 OMS 核实（禁止重发）',provider_order_id:'2116863614032625665'}
   const row={...usSmPendingRows.data[0],warehouse_id:1,
     warehouse_name:'美西 MorePlus 仓',order_id:7791,
     erp_order_id:'007-1030-c41941',shipout_production:attempt}
@@ -680,9 +680,9 @@ describe('MorePlus Production OMS-created lifecycle after one-shot ACK', () => {
       shipoutProductionOperatorAllowed:true,shipoutProductionMinOrderId:7791,
       viewCounts:{review:0,pending:2,pending_dispatch:2,dispatched:1,shipped:577,exceptions:0,all:580},
     })
-    expect(page.text()).toContain('OMS 已建单')
+    expect(page.text()).toContain('API 已受理')
     expect(page.text()).toContain('2116863614032625665')
-    expect(page.text()).toContain('仓库待实际出库')
+    expect(page.text()).toContain('尚未证实 OMS 有效接单')
     expect(page.text()).not.toContain('确认提交正式仓')
     expect(page.text()).not.toContain('正式 API 预检')
     expect(page.findAll('button').some(b=>b.text()==='查询正式 OMS')).toBe(true)
@@ -729,8 +729,10 @@ describe('MorePlus Production OMS-created lifecycle after one-shot ACK', () => {
       await page.findAll('button').find(b=>b.text()==='正式 API 预检')!.trigger('click')
       await vi.waitFor(()=>expect(page.text()).toContain('确认提交正式仓 · 仅一次'))
       await page.findAll('button').find(b=>b.text().includes('确认提交正式仓'))!.trigger('click')
-      await vi.waitFor(()=>expect(routerVisit).toHaveBeenCalledWith(
-        '/logistics/oversea/us-moreplus?view=dispatched',expect.any(Object)))
+      await vi.waitFor(()=>expect(routerReload).toHaveBeenCalledWith(
+        expect.objectContaining({only:['rows','viewCounts']})))
+      expect(routerVisit).not.toHaveBeenCalledWith(
+        '/logistics/oversea/us-moreplus?view=dispatched',expect.any(Object))
       expect(mock).toHaveBeenCalledTimes(2)
       expect(mock.mock.calls[1][1].method).toBe('POST')
       expect(page.text()).not.toContain('确认提交正式仓 · 仅一次')
@@ -753,6 +755,7 @@ describe('Production ShipOut cancelled OMS readback is an explicit shipping bloc
       order_id:7791,order_no:'C41941-007',attempt_status:'acknowledged',
       provider_order_id:'2116863614032625665',provider_status:6,
       reconciliation:'PROVIDER_CANCELLED_OR_ABORTED_MANUAL_REVIEW',
+      provider_failure_code:'PROVIDER_DUPLICATE_ORDER',
       shipped:false,tracking_apply:false,read_only:true,
     })})
     vi.stubGlobal('fetch',mock)
@@ -763,7 +766,7 @@ describe('Production ShipOut cancelled OMS readback is an explicit shipping bloc
         shipoutProductionMinOrderId:7791})
       await page.findAll('button').find(b=>b.text()==='查询正式 OMS')!.trigger('click')
       await vi.waitFor(()=>expect(page.text()).toContain('OMS 已取消／中止'))
-      expect(page.text()).toContain('禁止再次下发本单')
+      expect(page.text()).toContain('禁止重发')
       expect(page.text()).toContain('不能同步 Tracking 或标记已发货')
       expect(page.text()).not.toContain('OMS：仓库订单可见')
       expect(page.text()).not.toContain('确认提交正式仓')
@@ -772,6 +775,82 @@ describe('Production ShipOut cancelled OMS readback is an explicit shipping bloc
       expect(routerPost).not.toHaveBeenCalledWith(expect.stringContaining('tracking-outbound'),expect.anything(),expect.anything())
     } finally {
       vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+})
+
+describe('MorePlus async production acceptance is not final business success', () => {
+  it('shows queued readback as pending, provider cancellation as blocked, and never says success', async () => {
+    const mock=vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({
+      batch_id:'00000000-0000-4000-8000-000000000098',status:'awaiting_oms',
+      dry_run:false,total:2,processed:1,
+      items:[
+        {order_id:7913,order_no:'007-1106-c42149',status:'provider_cancelled',
+          result_code:'PROVIDER_DUPLICATE_ORDER',provider_order_id:'OMS-CANCEL-1'},
+        {order_id:7914,order_no:'007-1106-c42148',status:'pending_oms',
+          result_code:'ASYNC_ACCEPTED_QUERY_REQUIRED',provider_order_id:'OMS-ACK-2'},
+      ],
+    })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const rendered=mountPage({shipoutProductionBatchUi:true,trackingImportPreview:null,
+        shipoutProductionLatestBatch:{id:'00000000-0000-4000-8000-000000000098',
+          status:'awaiting_oms',dry_run:false,total:2}})
+      await vi.waitFor(()=>expect(rendered.text()).toContain('仓库异步判定重复订单'))
+      expect(rendered.text()).toContain('OMS 异步核实中')
+      expect(rendered.text()).toContain('等待正式 OMS 异步回读')
+      expect(rendered.text()).toContain('已核实 1 / 2')
+      expect(rendered.text()).not.toContain('OMS 已接单 ·')
+      rendered.unmount()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('MorePlus Dev-only one-click batch workbench', () => {
+  it('shows the top-right bulk button only when the separate feature flag is enabled', () => {
+    expect(mountPage().findAll('button').some(b=>b.text()==='一键推送仓库')).toBe(false)
+    expect(mountPage({shipoutProductionBatchUi:true}).findAll('button').some(b=>b.text()==='一键推送仓库')).toBe(true)
+    expect(mountPage({shipoutProductionBatchUi:true,warehouseKey:'us-3sm',warehouse:warehouseOptions[1]})
+      .findAll('button').some(b=>b.text()==='一键推送仓库')).toBe(false)
+  })
+
+  it('previews, confirms once, and reads Dev progress without per-order browser submission', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="DEV-BATCH-TEST">')
+    const fingerprint='a'.repeat(64)
+    const batchId='00000000-0000-4000-8000-000000000123'
+    const confirm=vi.spyOn(window,'confirm').mockReturnValue(true)
+    const mock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({count:2,overflow:false,dry_run:true,fingerprint})})
+      .mockResolvedValueOnce({ok:true,json:async()=>({batch_id:batchId,status:'queued',dry_run:true,total:2})})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        batch_id:batchId,status:'completed',dry_run:true,total:2,processed:2,
+        items:[{order_id:7903,order_no:'007-1109-c42141',status:'simulated',result_code:'DEV_SIMULATED_NO_PROVIDER_IO',provider_order_id:null},
+          {order_id:7904,order_no:'007-1109-c42142',status:'simulated',result_code:'DEV_SIMULATED_NO_PROVIDER_IO',provider_order_id:null}],
+      })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,shipoutProductionBatchDryRun:true,trackingImportPreview:null})
+      await page.findAll('button').find(b=>b.text()==='一键推送仓库')!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('候选 2 单'))
+      await page.findAll('button').find(b=>b.text().includes('确认运行 Dev 模拟'))!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('2 / 2'))
+      expect(page.text()).toContain('Dev 模拟通过')
+      expect(mock.mock.calls.map(call=>call[0])).toEqual([
+        '/logistics/oversea/us-moreplus/shipout/batch/preview',
+        '/logistics/oversea/us-moreplus/shipout/batch/start',
+        '/logistics/oversea/us-moreplus/shipout/batch/'+batchId+'/status',
+      ])
+      expect(JSON.parse(mock.mock.calls[1][1].body)).toEqual({
+        fingerprint,confirmation:'CONFIRM_MOREPLUS_BATCH_2',
+      })
+      expect(confirm).toHaveBeenCalledTimes(1)
+      page.unmount()
+    } finally {
+      vi.unstubAllGlobals()
+      confirm.mockRestore()
       document.head.querySelector('meta[name="csrf-token"]')?.remove()
     }
   })

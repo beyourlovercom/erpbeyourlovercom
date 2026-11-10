@@ -5,12 +5,13 @@ namespace App\Modules\Orders\Experience\Controllers;
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
-use App\Modules\Orders\Application\OrderOmsBatchImport;
 use App\Modules\Orders\Application\OrderOmsAvailability;
+use App\Modules\Orders\Application\OrderOmsBatchImport;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -49,8 +50,12 @@ final class OrderOmsTransferController
         $this->pilot($request, 'preview');
         KolOrderAccessScope::authorizeCreate($request->user(), OrderKind::Customer);
         try {
-            $payload = $request->validate(['file' => ['required', 'file', 'extensions:xlsx', 'max:5120']]);
-            $result = $this->import->inspect($payload['file'], $request->user());
+            $payload = $request->validate([
+                'file' => ['required', 'file', 'extensions:xlsx', 'max:5120'],
+                'import_type' => ['required', Rule::in(OrderOmsBatchImport::IMPORT_TYPES)],
+            ]);
+            KolOrderAccessScope::authorizeCreate($request->user(), OrderOmsBatchImport::importKind($payload['import_type']));
+            $result = $this->import->inspect($payload['file'], $request->user(), $payload['import_type']);
             unset($result['orders']);
 
             return response()->json($result);
@@ -67,10 +72,13 @@ final class OrderOmsTransferController
             $payload = $request->validate([
                 'file' => ['required', 'file', 'extensions:xlsx', 'max:5120'],
                 'token' => ['required', 'string', 'max:8000'],
+                'import_type' => ['required', Rule::in(OrderOmsBatchImport::IMPORT_TYPES)],
                 'confirm' => ['required', 'accepted'],
             ]);
 
-            return response()->json($this->import->commit($payload['file'], $payload['token'], $request->user()));
+            KolOrderAccessScope::authorizeCreate($request->user(), OrderOmsBatchImport::importKind($payload['import_type']));
+
+            return response()->json($this->import->commit($payload['file'], $payload['token'], $request->user(), $payload['import_type']));
         } catch (ValidationException $e) {
             return response()->json(['message' => '批量创建失败，请重新预检', 'errors' => $e->errors()], 422);
         }
@@ -133,6 +141,7 @@ final class OrderOmsTransferController
                     foreach ($this->exportRows($order, $columns) as $raw) {
                         $line = array_map(function ($value): string {
                             $text = (string) ($value ?? '');
+
                             // Neutralize Excel formula injection in untrusted text cells.
                             return preg_match('/^\s*[=+@-]/u', $text) ? "'".$text : $text;
                         }, $raw);
@@ -167,7 +176,6 @@ final class OrderOmsTransferController
         ]);
     }
 
-
     /** @return list<list<mixed>> */
     private function exportRows(Order $order, array $lineFilters = []): array
     {
@@ -180,9 +188,15 @@ final class OrderOmsTransferController
         $name = mb_strtolower((string) ($lineFilters['grid_product_names'] ?? ''));
         $qtyText = (string) ($lineFilters['grid_quantity'] ?? '');
         $items = $allItems->filter(function ($item) use ($sku, $name, $qtyText): bool {
-            if ($sku !== '' && ! str_contains(mb_strtolower((string) $item->sku), $sku)) return false;
-            if ($name !== '' && ! str_contains(mb_strtolower((string) $item->product_summary), $name)) return false;
-            if ($qtyText !== '' && (int) $item->quantity !== (int) $qtyText) return false;
+            if ($sku !== '' && ! str_contains(mb_strtolower((string) $item->sku), $sku)) {
+                return false;
+            }
+            if ($name !== '' && ! str_contains(mb_strtolower((string) $item->product_summary), $name)) {
+                return false;
+            }
+            if ($qtyText !== '' && (int) $item->quantity !== (int) $qtyText) {
+                return false;
+            }
 
             return true;
         })->values();

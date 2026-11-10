@@ -25,6 +25,7 @@ use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -127,6 +128,22 @@ final class OverseaWarehouseController
                 && filled(config('xlwms.oms_web_hmac_key')),
             // Production V1 is visible as a separate, default-OFF workbench;
             // never make Sandbox flags active in Production.
+            // Dev renders a dry-run batch workbench; Production requires separate new approval.
+            'shipoutProductionBatchUi' => $warehouseKey === 'us-moreplus'
+                && (app()->environment(['local', 'testing'])
+                    || (app()->environment('production')
+                        && (bool) config('shipout.production_v1_batch_enabled', false)
+                        && (bool) config('shipout.production_v1_batch_owner_approved', false)))
+                && $request->user()?->can('logistics.view'),
+            'shipoutProductionBatchDryRun' => ! app()->environment('production'),
+            'shipoutProductionLatestBatch' => $warehouseKey === 'us-moreplus'
+                && (app()->environment(['local','testing']) || (bool) config('shipout.production_v1_batch_enabled', false))
+                && Schema::hasTable('shipout_production_batches')
+                ? DB::table('shipout_production_batches')
+                    ->where('operator_user_id', (int) $request->user()->id)
+                    ->orderByDesc('created_at')->orderByDesc('id')
+                    ->first(['id','status','dry_run','total'])
+                : null,
             'shipoutProductionUi' => $warehouseKey === 'us-moreplus'
                 && app()->environment('production'),
             'shipoutProductionReadEnabled' => $warehouseKey === 'us-moreplus'

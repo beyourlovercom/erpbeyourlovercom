@@ -60,13 +60,19 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         ]);
         $this->assertSame(5, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product->id)->value('quantity_reserved'));
 
-        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', [
+        $shippingPayload = [
             'warehouse_id' => $warehouse->id,
             'carrier' => 'UPS',
             'service' => 'Ground',
             'tracking_number' => 'SHIP-TRACK',
             'shipped_at' => '2026-08-27T05:00:00Z',
-        ])->assertRedirect();
+        ];
+        // Overseas physical dispatch must remain blocked before Dede's explicit approval.
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', $shippingPayload)->assertStatus(409);
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending']);
+        $this->actingAs($user)->post('/logistics/oversea/orders/'.$order->id.'/approve')->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $order->id, 'status' => 'approved', 'reviewed_warehouse_id' => $warehouse->id]);
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', $shippingPayload)->assertRedirect();
 
         $this->assertDatabaseHas('shipments', [
             'order_id' => $order->id,
@@ -136,7 +142,8 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             && str_contains($sql, 'shipping_weight_evidence_id')
         )->count();
 
-        $this->assertSame(1, $externalReferenceLoads, 'Wait-stock page must eager-load external references once for the page.');
+        // One batched page load plus one fresh batched payment-authority snapshot; never N+1 per order.
+        $this->assertSame(2, $externalReferenceLoads, 'Wait-stock external references must use two bounded batch loads including payment verification.');
         $this->assertSame(1, $packagingStandardLoads, 'Wait-stock page must load packaging standards once for the page.');
         $this->assertSame(1, $shippingWeightStandardLoads, 'Wait-stock page must load shipping-weight standards once for the page.');
     }
@@ -276,6 +283,47 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         $this->assertSame('pending_shipment', $order->fresh()->order_status->value);
     }
 
+    public function test_woocommerce_processing_order_can_be_manually_allocated_after_stock_exception_acknowledgement(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $this->setWooPaymentEvidence($order, 'processing', now());
+        $item = $order->items()->firstOrFail();
+
+        $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/manual', [
+            'assignments' => [['order_item_id' => $item->id, 'source_code' => $warehouse->code]],
+            'stock_exception_acknowledged' => true,
+        ])->assertOk()->assertJsonPath('status', 'submitted');
+
+        $allocation = \App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation::query()
+            ->where('order_id', $order->id)->firstOrFail();
+        $this->assertSame('unknown', $allocation->plan_snapshot['stock_exception_acknowledgement']['warnings'][0]['reason']);
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending', 'warehouse_id' => $warehouse->id]);
+        $this->assertSame('processing', DB::table('order_financials')->where('order_id', $order->id)->value('provider_order_status'));
+    }
+
+    public function test_woocommerce_pending_order_is_blocked_even_when_stock_exception_is_acknowledged(): void
+    {
+        [$user, $order, , $warehouse] = $this->scenario();
+        $this->setWooPaymentEvidence($order, 'pending', null);
+        $item = $order->items()->firstOrFail();
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'source_type' => 'woocommerce', 'order_kind' => 'customer']);
+        $this->assertDatabaseHas('order_financials', ['order_id' => $order->id, 'provider_order_status' => 'pending', 'paid_at' => null]);
+        $decision = app(\App\Modules\Logistics\Application\FulfillmentPaymentGate::class)->evaluate($order->fresh());
+        $this->assertFalse($decision['allowed']);
+        $this->assertSame('payment_pending', $decision['reason_code']);
+
+        $response = $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/manual', [
+            'assignments' => [['order_item_id' => $item->id, 'source_code' => $warehouse->code]],
+            'stock_exception_acknowledged' => true,
+        ]);
+        $this->assertSame(409, $response->getStatusCode(), $response->getContent());
+
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
+        $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
+        $this->assertSame('pending_shipment', $order->fresh()->order_status->value);
+        $this->assertSame('pending', DB::table('order_financials')->where('order_id', $order->id)->value('provider_order_status'));
+    }
+
     public function test_unknown_warehouse_inventory_can_be_allocated_only_after_confirmation(): void
     {
         [$user, $order] = $this->scenario();
@@ -412,6 +460,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         );
 
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/adopt-recommendation')->assertRedirect();
+        $this->actingAs($user)->post('/logistics/oversea/orders/'.$order->id.'/approve')->assertRedirect();
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', [
             'warehouse_id' => $warehouse->id,
             'carrier' => 'UPS',
@@ -578,6 +627,25 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         );
     }
 
+    private function setWooPaymentEvidence(Order $order, string $status, $paidAt): void
+    {
+        DB::table('orders')->where('id', $order->id)->update([
+            'source_type' => 'woocommerce',
+            'order_kind' => 'customer',
+        ]);
+        DB::table('order_financials')->insert([
+            'order_id' => $order->id,
+            'currency' => 'USD',
+            'provider' => 'woocommerce',
+            'provider_reference' => 'UAT-'.$order->id,
+            'provider_order_status' => $status,
+            'provider_modified_at' => now(),
+            'paid_at' => $paidAt,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     private function scenario(): array
     {
         $user = $this->userWith(['orders.view', 'orders.create', 'logistics.view', 'logistics.operate']);
@@ -608,6 +676,10 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             'order_date' => '2026-08-27',
             'recipient_name' => 'Manual Fulfillment UAT',
             'country' => 'US',
+            // A US warehouse recommendation requires an unambiguous destination region.
+            'province_state' => 'CA',
+            'postal_code' => '90001',
+            'city' => 'Los Angeles',
             'items' => [[
                 'product_id' => $product->id,
                 'product_summary' => $product->name,

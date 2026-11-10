@@ -26,6 +26,7 @@ use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
 use App\Modules\Products\Infrastructure\Models\ProductParameterSubmission;
 use App\Modules\Products\Infrastructure\Models\ProductParameterAccessory;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Shell\Application\GlobalGridPilot;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -169,6 +170,8 @@ final class ProductController
                     ->map(fn ($u) => ['id' => (int) $u->id, 'name' => $u->name])->values()->all()
                 : [],
             'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
+            'globalGridPilotAvailable' => GlobalGridPilot::available(),
+            'globalGridPilotEnabled' => $view === 'standard' && GlobalGridPilot::enabled($request),
         ]);
     }
 
@@ -462,6 +465,7 @@ final class ProductController
                     'notes' => $alias['notes'],
                     'is_active' => (bool) ($alias['is_active'] ?? true),
                     'oms_verified_at' => $alias['oms_verified_at'] ?? null,
+                    'oms_dispatch_approved_at' => $alias['oms_dispatch_approved_at'] ?? null,
                     'oms_identity_evidence' => $alias['oms_identity_evidence'] ?? null,
                     'updated_by' => $editor?->name,
                     'updated_at' => $alias['updated_at'] ?? null,

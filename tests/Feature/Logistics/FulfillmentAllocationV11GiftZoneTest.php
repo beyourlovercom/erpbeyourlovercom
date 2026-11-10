@@ -128,8 +128,9 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
         self::assertSame('automatic', $giftChild->shipment?->carrier_selection_source);
         $factoryChild = $children->first(fn (Order $child): bool => $child->shipment?->warehouse?->code === 'FACTORY');
         self::assertNotNull($factoryChild);
-        self::assertSame('4PX', $factoryChild->shipment?->carrier);
-        self::assertSame('automatic', $factoryChild->shipment?->carrier_selection_source);
+        self::assertNull($factoryChild->shipment?->carrier);
+        self::assertNull($factoryChild->shipment?->service);
+        self::assertNull($factoryChild->shipment?->carrier_selection_source);
     }
 
     /** @return array{User,Order,\App\Modules\Orders\Infrastructure\Models\OrderItem,Product,WarehouseGiftSkuMapping} */

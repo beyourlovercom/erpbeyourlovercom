@@ -17,10 +17,13 @@ const csvUrl = computed(() => activeExportUrl.value + (activeExportUrl.value.inc
 const open = ref(false)
 const busy = ref(false)
 const file = ref<File | null>(null)
+const importType = ref('')
+const typeLabels: Record<string, string> = { website: '网站订单', kol: '网红订单', manual_other: '外采订单' }
+const changeImportType = () => { preview.value = null; committed.value = null; message.value = '' }
 const preview = ref<Preview | null>(null)
 const message = ref('')
 const committed = ref<{ created: number; orders: Array<{ id: number; erp_order_id: string }> } | null>(null)
-const canConfirm = computed(() => props.canConfirmImport === true && file.value !== null && preview.value?.errors.length === 0 && !!preview.value?.token && !busy.value)
+const canConfirm = computed(() => props.canConfirmImport === true && !!importType.value && file.value !== null && preview.value?.errors.length === 0 && !!preview.value?.token && !busy.value)
 const close = () => { if (busy.value) return; open.value = false }
 const chooseFile = (event: Event) => {
   file.value = (event.target as HTMLInputElement).files?.[0] ?? null
@@ -37,29 +40,31 @@ const errorMessage = (error: unknown): string => {
   return '请求失败，请检查文件内容'
 }
 async function inspect() {
-  if (!file.value || busy.value) return
+  if (!file.value || !importType.value || busy.value) return
   busy.value = true
   preview.value = null
   message.value = ''
   const payload = new FormData()
   payload.append('file', file.value)
+  payload.append('import_type', importType.value)
   try {
     const { data } = await axios.post<Preview>('/orders/oms/import/preview', payload)
     preview.value = data
     message.value = data.errors.length
       ? '预检发现 ' + data.errors.length + ' 项问题，请修改 XLSX 后重新上传。'
-      : '预检通过：' + data.count + ' 个客户订单、共 ' + data.row_count + ' 个 SKU 行；不会修改现有订单。'
+      : '预检通过：' + data.count + ' 个' + typeLabels[importType.value] + '、共 ' + data.row_count + ' 个 SKU 行；不会修改现有订单。'
   } catch (error) { message.value = errorMessage(error) }
   finally { busy.value = false }
 }
 async function confirm() {
   if (!canConfirm.value || !file.value || !preview.value?.token) return
-  if (!window.confirm('确定批量创建 ' + preview.value.count + ' 个真实 ERP 手动客户订单吗？该操作会产生订单编号及审计记录，无法通过取消导入直接撤销。')) return
+  if (!window.confirm('确定批量创建 ' + preview.value.count + ' 个真实 ERP ' + typeLabels[importType.value] + '吗？该操作会产生订单编号及审计记录，无法通过取消导入直接撤销。')) return
   busy.value = true
   message.value = ''
   const payload = new FormData()
   payload.append('file', file.value)
   payload.append('token', preview.value.token)
+  payload.append('import_type', importType.value)
   payload.append('confirm', '1')
   try {
     const { data } = await axios.post<{ created: number; orders: Array<{ id: number; erp_order_id: string }> }>('/orders/oms/import/confirm', payload)
@@ -88,11 +93,18 @@ async function confirm() {
     <div v-if="open" class="oms-import-overlay" role="presentation" @click.self="close">
       <section class="oms-import-dialog" role="dialog" aria-modal="true" aria-label="导入订单" tabindex="-1">
         <header class="oms-import-head">
-          <strong>批量导入客户订单</strong>
+          <strong>批量导入订单</strong>
           <button type="button" aria-label="关闭导入弹窗" :disabled="busy" @click="close">×</button>
         </header>
         <main class="oms-import-body">
           <div class="oms-template-panel">
+            <label for="oms-import-type"><strong>订单类型</strong></label>
+            <select id="oms-import-type" v-model="importType" :disabled="busy" @change="changeImportType">
+              <option value="" disabled>请选择订单类型</option>
+              <option value="website">网站订单</option>
+              <option value="kol">网红订单</option>
+              <option value="manual_other">外采订单</option>
+            </select>
             <strong>模板 1 · 一行一个 SKU</strong>
             <p>同一个来源订单号的多行 SKU 归为一张订单；首行填写收件信息，后续行重复订单号、SKU、数量、单价即可。黄色表头为必填。XLSX 最多 200 单、2000 个 SKU 行。</p>
             <div class="oms-import-file">
@@ -124,7 +136,7 @@ async function confirm() {
         </main>
         <footer class="oms-import-footer">
           <button type="button" :disabled="busy" @click="close">关闭</button>
-          <button type="button" :disabled="!file || busy" @click="inspect">{{ busy ? '处理中...' : '上传并预检' }}</button>
+          <button type="button" :disabled="!file || !importType || busy" @click="inspect">{{ busy ? '处理中...' : '上传并预检' }}</button>
           <span v-if="!canConfirmImport" class="oms-import-readonly" role="status">预检模式：创建订单未开放</span>
           <button v-else type="button" class="oms-import-commit" :disabled="!canConfirm" @click="confirm">确认创建 {{ preview?.count ?? 0 }} 单</button>
         </footer>
@@ -143,6 +155,7 @@ async function confirm() {
 .oms-import-head button{font-size:25px;color:#64748b;border:0;background:transparent;cursor:pointer}
 .oms-import-body{padding:24px;overflow:auto;display:flex;flex-direction:column;gap:14px;font-size:13px}
 .oms-template-panel{border:1px solid #dbe0e8;border-radius:6px;padding:20px;max-width:640px;display:flex;flex-direction:column;gap:10px}
+.oms-template-panel select{max-width:220px;padding:8px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#334155}
 .oms-template-panel strong{font-size:17px}.oms-template-panel p{color:#64748b;font-size:12px;line-height:1.6;margin:0}
 .oms-import-file{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
 .oms-file-button{cursor:pointer;background:#2252f5;color:#fff;padding:9px 16px;border-radius:5px}

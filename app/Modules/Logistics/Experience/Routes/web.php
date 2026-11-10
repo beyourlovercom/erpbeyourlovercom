@@ -10,6 +10,7 @@ use App\Modules\Logistics\Experience\Controllers\LogisticsTrackingPushController
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
 use App\Modules\Logistics\Experience\Controllers\ShipOutMorePlusController;
 use App\Modules\Logistics\Experience\Controllers\ShipOutProductionV1Controller;
+use App\Modules\Logistics\Experience\Controllers\ShipOutProductionBatchController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsReshipmentController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsSingleOrderController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsWarehouseBatchController;
@@ -29,6 +30,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/wait-stock', [LogisticsController::class, 'waitStock'])->middleware('can:logistics.view')->name('logistics.wait-stock');
     Route::get('/logistics/china/orders/{order}/barcode-69', ChinaSmallPacketBarcode69Controller::class)->middleware('can:logistics.view')->whereNumber('order')->name('logistics.china.barcode-69');
     Route::get('/logistics/china', [DomesticLogisticsController::class, 'index'])->middleware('can:logistics.view')->name('logistics.china');
+    Route::post('/logistics/china/orders/{order}/carrier-service', [DomesticInlineTrackingController::class, 'selectCarrierService'])
+        ->middleware($execution)->whereNumber('order')->name('logistics.china.carrier-service');
     Route::post('/logistics/china/orders/{order}/tracking-draft', [DomesticInlineTrackingController::class, 'save'])
         ->middleware($execution)->whereNumber('order')->name('logistics.china.tracking-draft');
     Route::post('/logistics/china/orders/{order}/quick-ship', [DomesticInlineTrackingController::class, 'ship'])
@@ -136,16 +139,28 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     // Independent default-OFF flags; no sandbox endpoint or bulk/automatic retries.
     Route::get('/logistics/oversea/us-moreplus/orders/{order}/shipout/production/preflight',
         [ShipOutProductionV1Controller::class, 'preflight'])
-        ->middleware(['can:logistics.view', 'throttle:8,1'])
+        ->middleware(['can:logistics.view', 'throttle:8,1,shipout-prod-preflight:'])
         ->whereNumber('order')->name('logistics.shipout.production.preflight');
     Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/production/send',
         [ShipOutProductionV1Controller::class, 'send'])
-        ->middleware(['can:logistics.view', RequireShipOutProductionV1Operator::class, 'throttle:2,1'])
+        ->middleware(['can:logistics.view', RequireShipOutProductionV1Operator::class, 'throttle:2,1,shipout-prod-send:'])
         ->whereNumber('order')->name('logistics.shipout.production.send');
     Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/production/status',
         [ShipOutProductionV1Controller::class, 'status'])
-        ->middleware(['can:logistics.view', 'throttle:5,1'])
+        ->middleware(['can:logistics.view', 'throttle:5,1,shipout-prod-status:'])
         ->whereNumber('order')->name('logistics.shipout.production.status');
+    Route::get('/logistics/oversea/us-moreplus/shipout/batch/preview',
+        [ShipOutProductionBatchController::class, 'preview'])
+        ->middleware(['can:logistics.view', 'throttle:8,1,shipout-batch-preview:'])
+        ->name('logistics.shipout.production.batch.preview');
+    Route::post('/logistics/oversea/us-moreplus/shipout/batch/start',
+        [ShipOutProductionBatchController::class, 'start'])
+        ->middleware(['can:logistics.view', 'throttle:2,1,shipout-batch-start:'])
+        ->name('logistics.shipout.production.batch.start');
+    Route::get('/logistics/oversea/us-moreplus/shipout/batch/{batchId}/status',
+        [ShipOutProductionBatchController::class, 'status'])
+        ->middleware(['can:logistics.view', 'throttle:30,1,shipout-batch-status:'])
+        ->whereUuid('batchId')->name('logistics.shipout.production.batch.status');
     Route::get('/logistics/oversea/{warehouse}/export', [OverseaWarehouseController::class, 'export'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.export');
     Route::post('/logistics/oversea/{warehouse}/tracking-import/preview', [OverseaWarehouseController::class, 'previewTrackingReturn'])->middleware($execution)->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.tracking-import.preview');
     Route::post('/logistics/oversea/{warehouse}/tracking-import/apply', [OverseaWarehouseController::class, 'applyTrackingReturn'])->middleware($execution)->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.tracking-import.apply');

@@ -89,11 +89,14 @@ final class FulfillmentAllocationSubmissionService
                     ])->save();
                 }
 
-                $route = $this->carrierRouting->warehouseRoute($locked->address?->country, $row['source_code']);
+                // Warehouse allocation must not preselect domestic dispatch logistics.
+                // Overseas allocation retains its existing recommended routing.
+                $isFactory = $row['source_code'] === 'FACTORY';
+                $route = $isFactory ? [] : $this->carrierRouting->warehouseRoute($locked->address?->country, $row['source_code']);
                 $defaultCarrier = trim((string) ($route['carrier'] ?? ''));
-                $providedCarrier = trim((string) ($row['carrier'] ?? ''));
+                $providedCarrier = $isFactory ? '' : trim((string) ($row['carrier'] ?? ''));
                 $carrier = $providedCarrier !== '' ? $providedCarrier : $defaultCarrier;
-                abort_if($carrier === '', 422, "发货仓 {$row['source_code']} 无法自动确定承运商，请 Vita 人工选择");
+                abort_if($carrier === '' && ! $isFactory, 422, "发货仓 {$row['source_code']} 无法自动确定承运商，请 Vita 人工选择");
                 if ($providedCarrier !== '') {
                     abort_unless(Carrier::query()->where('name', $providedCarrier)->where('is_active', true)->exists(), 422, "承运商 {$providedCarrier} 未启用");
                 }
@@ -104,11 +107,11 @@ final class FulfillmentAllocationSubmissionService
 
                 return [
                     ...$row,
-                    'carrier' => $carrier,
-                    'service' => $service,
-                    'carrier_selection_source' => $providedCarrier !== '' && ($defaultCarrier === '' || strcasecmp($providedCarrier, $defaultCarrier) !== 0)
+                    'carrier' => $carrier !== '' ? $carrier : null,
+                    'service' => $isFactory ? null : $service,
+                    'carrier_selection_source' => $isFactory ? null : ($providedCarrier !== '' && ($defaultCarrier === '' || strcasecmp($providedCarrier, $defaultCarrier) !== 0)
                         ? 'manual'
-                        : 'automatic',
+                        : 'automatic'),
                     'resolution' => $resolution,
                 ];
             })->values();

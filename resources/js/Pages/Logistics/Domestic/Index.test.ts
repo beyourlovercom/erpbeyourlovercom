@@ -12,14 +12,18 @@ vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default:{ template:
 const baseProps = {
   view:'pending',
   rows:{ data:[{
-    line:1,order_id:1,erp_order_id:'007-0923-c50001',provider_reference:'C50001-007',order_url:'/customers/orders/1',
+    line:1,order_id:1,paid_date:'11-09',erp_order_id:'007-0923-c50001',provider_reference:'C50001-007',order_url:'/customers/orders/1',
     recipient_name:'A',phone:'123',country:'DE',state:'DE-SN',city:'Dresden',postal_code:'01219',
-    carrier:'4PX',service:'SD经济挂号-带电',tracking_number:null,shipment_status:'pending',shipped_at:null,
+    carrier:'4PX',service:'SD经济挂号-带电',carrier_selection_source:'manual',tracking_number:null,shipment_status:'pending',shipped_at:null,
     review_status:'approved' as const,export_blockers:[],items:[{sku:'M2',quantity:1}],
   }],current_page:1,last_page:1,total:1 },
   viewCounts:{review:0,pending:1,'today-4px':0,'today-weship':0,exceptions:0,today:0,'4px':1,weship:0},
   canOperate:true,
   canReview:true,
+  carrierOptions:[
+    {value:'4PX',label:'4PX / 速达',services:[{value:'SD经济挂号-带电',label:'经济挂号 - 带电'}]},
+    {value:'Weship',label:'纬狮',services:[{value:'标准挂号',label:'标准挂号'}]},
+  ],
   trackingImportProvider:'4px' as const,
   trackingImportPreview:{
     token:'a'.repeat(64),apply_count:1,noop_count:0,blocked_count:1,
@@ -37,12 +41,47 @@ const baseProps = {
 describe('Domestic logistics production workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear() })
 
+  it('shows empty dependent carrier/service selects for legacy automatic factory routing and requires manual confirmation', async () => {
+    const legacy={...baseProps.rows.data[0],carrier_selection_source:'automatic',carrier:'4PX',service:'SD经济挂号-带电'}
+    const wrapper=mount(Index,{props:{...baseProps,view:'pending',rows:{...baseProps.rows,data:[legacy]}}})
+    const carrier=wrapper.find('select[aria-label^="选择物流商"]')
+    const service=wrapper.find('select[aria-label^="选择服务类型"]')
+    expect(carrier.exists()).toBe(true)
+    expect(service.exists()).toBe(true)
+    expect((carrier.element as HTMLSelectElement).value).toBe('')
+    expect((service.element as HTMLSelectElement).value).toBe('')
+    expect(service.attributes('disabled')).toBeDefined()
+    const ship=wrapper.findAll('button').find(b=>b.text()==='确认发货')!
+    expect(ship.attributes('disabled')).toBeDefined()
+
+    await carrier.setValue('4PX')
+    expect((service.element as HTMLSelectElement).value).toBe('')
+    await service.setValue('SD经济挂号-带电')
+    expect(ship.attributes('disabled')).toBeDefined()
+    await wrapper.find('.domestic-service-entry button').trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/carrier-service',
+      {carrier:'4PX',service:'SD经济挂号-带电'},
+      expect.objectContaining({preserveState:true,preserveScroll:true}))
+  })
+
+  it('prevents routing writes from readonly or unreviewed domestic rows', () => {
+    const readonly=mount(Index,{props:{...baseProps,canOperate:false}})
+    expect(readonly.find('select[aria-label^="选择物流商"]').exists()).toBe(false)
+    const review=mount(Index,{props:{...baseProps,view:'review'}})
+    expect(review.find('select[aria-label^="选择物流商"]').exists()).toBe(false)
+    const unreviewed=mount(Index,{props:{...baseProps,view:'pending',
+      rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],review_status:'pending' as const}]}}})
+    expect(unreviewed.find('select[aria-label^="选择物流商"]').exists()).toBe(false)
+  })
+
   it('splits SKU and product quantity into separate columns on the domestic review page only', () => {
     const review = mount(Index,{props:{...baseProps,view:'review'}})
     const headers = review.findAll('.orders thead th').map(th=>th.text())
     const cells = review.findAll('.orders tbody tr:first-child td')
     expect(headers).toContain('SKU')
     expect(headers).toContain('数量')
+    expect(headers.slice(headers.indexOf('订单状态') + 1,headers.indexOf('订单状态') + 4)).toEqual(['成交日期','SKU','数量'])
+    expect(cells[headers.indexOf('成交日期')].text()).toBe('11-09')
     expect(cells[headers.indexOf('SKU')].find('div').text()).toBe('M2')
     expect(cells[headers.indexOf('数量')].text()).toBe('1')
 
@@ -51,15 +90,62 @@ describe('Domestic logistics production workbench', () => {
     expect(pendingHeaders).toContain('SKU / 数量')
     expect(pendingHeaders).not.toContain('SKU')
     expect(pendingHeaders).not.toContain('数量')
+    expect(pendingHeaders).not.toContain('成交日期')
+    const noPaid = mount(Index,{props:{...baseProps,view:'review',rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],paid_date:null}]}}})
+    const noPaidHeaders = noPaid.findAll('.orders thead th').map(th=>th.text())
+    expect(noPaid.findAll('.orders tbody tr:first-child td')[noPaidHeaders.indexOf('成交日期')].text()).toBe('—')
   })
 
-  it('shows the read-only 今日订单 XLSX download before the 4PX provider button only on the aggregate today tab', () => {
-    const today=mount(Index,{props:{...baseProps,view:'today'}})
-    const links=today.findAll('.provider-card:first-child .actions a').map(a=>a.attributes('href'))
-    expect(links.slice(0,2)).toEqual(['/logistics/china/today/export','/logistics/china/export/4px'])
-    expect(today.find('[data-testid="download-today-orders"]').text()).toBe('下载今日订单')
-    expect(mount(Index,{props:{...baseProps,view:'today-4px'}}).find('[data-testid="download-today-orders"]').exists()).toBe(false)
-    expect(mount(Index,{props:{...baseProps,view:'today-weship'}}).find('[data-testid="download-today-orders"]').exists()).toBe(false)
+  it('places 今日订单 immediately after 待发货 and renders three concise one-line modules with no commas', () => {
+    const today=mount(Index,{props:{...baseProps,view:'today',trackingImportPreview:null,trackingImportProvider:null}})
+    const nav=today.findAll('nav.tabs button').map(b=>b.text())
+    expect(nav[2]).toContain('待发货')
+    expect(nav[3]).toContain('今日订单')
+    const cards=today.findAll('.today-shortcut')
+    expect(cards).toHaveLength(3)
+    expect(cards[0].text()).toBe('⬇️这批订单')
+    expect(cards[1].text()).toBe('⏬今日速达⏫速达物流单号')
+    expect(cards[2].text()).toBe('⏬今日纬狮⏫纬狮物流单号')
+    expect(today.find('.today-shortcuts').text()).not.toMatch(/[,，]/)
+    expect(today.findAll('.today-shortcut a').map(a=>a.attributes('href'))).toEqual([
+      '/logistics/china/today/export',
+      '/logistics/china/export/4px',
+      '/logistics/china/export/weship',
+    ])
+    expect(today.find('[data-testid="download-today-orders"]').exists()).toBe(true)
+    expect(today.findAll('.today-shortcut button')).toHaveLength(2)
+    expect(today.text()).not.toContain('上传速达单号表')
+    expect(today.text()).not.toContain('上传纬狮单号表')
+    expect(mount(Index,{props:{...baseProps,view:'today-4px'}}).find('.today-shortcuts').exists()).toBe(false)
+    expect(mount(Index,{props:{...baseProps,view:'today-weship'}}).find('.today-shortcuts').exists()).toBe(false)
+  })
+
+  it('treats the labels 速达物流单号 and 纬狮物流单号 themselves as upload actions', async () => {
+    const wrapper=mount(Index,{props:{...baseProps,view:'today'}})
+    const fileInput=wrapper.find('input[type="file"]')
+    expect(fileInput.exists()).toBe(true)
+    const click=vi.spyOn(fileInput.element as HTMLInputElement,'click').mockImplementation(()=>{})
+    try {
+      const file=new File(['test'],'tracking.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
+      await wrapper.find('[data-testid="upload-today-4px"]').trigger('click')
+      expect(click).toHaveBeenCalledTimes(1)
+      Object.defineProperty(fileInput.element,'files',{configurable:true,value:[file]})
+      await fileInput.trigger('change')
+      expect(routerPost).toHaveBeenCalledWith('/logistics/china/4px/tracking-import/preview',
+        expect.any(FormData),expect.objectContaining({forceFormData:true,preserveScroll:true}))
+      await wrapper.find('[data-testid="upload-today-weship"]').trigger('click')
+      expect(click).toHaveBeenCalledTimes(2)
+      await fileInput.trigger('change')
+      expect(routerPost).toHaveBeenCalledWith('/logistics/china/weship/tracking-import/preview',
+        expect.any(FormData),expect.objectContaining({forceFormData:true,preserveScroll:true}))
+    } finally { click.mockRestore() }
+
+    const readonly=mount(Index,{props:{...baseProps,view:'today',canOperate:false}})
+    expect(readonly.findAll('.today-shortcut button')).toHaveLength(0)
+    const notReady=mount(Index,{props:{...baseProps,view:'today',
+      providerStatus:{...baseProps.providerStatus,weship:{...baseProps.providerStatus.weship,export_ready:false,return_ready:false}}}})
+    expect(notReady.find('[data-testid="upload-today-weship"]').exists()).toBe(false)
+    expect(notReady.find('[data-testid="download-today-weship"]').exists()).toBe(false)
   })
 
 
