@@ -9,7 +9,9 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnReader;
-use App\Modules\Logistics\Experience\Jobs\PushDomesticTrackingOutbound;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use App\Modules\Sync\Infrastructure\EloquentSyncOrchestrationRepository;
+use Mockery;
 use Illuminate\Support\Facades\Queue;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
@@ -384,11 +386,23 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         }
     }
 
-    public function test_batch_ship_uses_queue_without_synchronous_woocommerce_network_and_is_idempotent(): void
+    public function test_batch_ship_stages_periodic_outbox_without_http_and_is_idempotent(): void
     {
         Queue::fake();
+        $gateway = Mockery::mock(WooCommerceTrackingGateway::class);
+        $gateway->shouldReceive('descriptor')->andReturn(['configured' => true, 'connection_key' => 'shop-test']);
+        $gateway->shouldNotReceive('syncTracking');
+        $gateway->shouldNotReceive('syncOrderStatus');
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
         $order = $this->domesticOrder('007-0923-c50123', '4PX', true, '111', 1);
         $order->update(['source_type' => OrderSourceType::WooCommerce]);
+        $order->items()->update(['woocommerce_line_item_id' => 12345]);
+        $order->externalReferences()->create([
+            'provider' => 'woocommerce',
+            'connection_key' => 'shop-test',
+            'reference' => '912345',
+            'provider_modified_at' => now(),
+        ]);
         $order->financials()->create([
             'currency' => 'USD',
             'provider' => 'woocommerce',
@@ -406,16 +420,24 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
 
         $result = $service->apply('4px', $preview, $preview['token'], User::factory()->create(['is_active' => true]));
         self::assertSame(1, $result['applied_count']);
-        self::assertSame('queued', $result['rows'][0]['sync']);
+        self::assertSame('pending', $result['rows'][0]['sync']);
         self::assertSame('shipped', $order->fresh()->shipment->shipment_status);
-        Queue::assertPushed(PushDomesticTrackingOutbound::class, fn ($job) => $job->orderId === $order->id);
-        Queue::assertCount(1);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('sync_outbox', [
+            'operation' => 'woocommerce.tracking_outbound',
+            'aggregate_id' => (string) $order->fresh()->shipment->id,
+            'status' => 'pending',
+            'attempts' => 0,
+        ]);
+        $this->assertCount(1, app(EloquentSyncOrchestrationRepository::class)
+            ->dueTrackingOutbox(50, 0), 'Old Shipment IDs must still be picked up by new Outbox IDs');
 
         $repeated = $service->preview('4px', $file);
         self::assertSame(0, $repeated['apply_count']);
         self::assertSame(1, $repeated['noop_count']);
         $service->apply('4px', $repeated, $repeated['token'], User::factory()->create(['is_active' => true]));
-        Queue::assertCount(1);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseCount('sync_outbox', 1);
     }
 
     private function logisticsViewer(): User

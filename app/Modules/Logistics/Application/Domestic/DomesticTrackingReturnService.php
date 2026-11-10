@@ -3,14 +3,12 @@
 namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
-use App\Modules\Logistics\Experience\Jobs\PushDomesticTrackingOutbound;
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Throwable;
 
@@ -20,6 +18,7 @@ final class DomesticTrackingReturnService
         private readonly DomesticTrackingReturnReader $reader,
         private readonly WarehouseOrderReference $references,
         private readonly ShipmentService $shipments,
+        private readonly DomesticTrackingSyncHandoff $syncHandoff,
     ) {}
 
     /** @return array<string,mixed> */
@@ -80,22 +79,8 @@ final class DomesticTrackingReturnService
                 ], $actor);
                 $applied++;
 
-                $sync = null;
-                $fresh = $order->fresh(['shipment', 'items', 'externalReferences', 'fulfillmentParent.externalReferences']);
-                if ($fresh && $this->hasWooRoot($fresh)) {
-                    try {
-                        PushDomesticTrackingOutbound::dispatch((int) $fresh->id);
-                        $sync = 'queued';
-                    } catch (Throwable $e) {
-                        // Shipment is committed. Never turn a queue error into a fake shipment failure.
-                        $sync = 'queue_failed';
-                        Log::warning('domestic.tracking.queue_failed', [
-                            'order_id' => (int) $fresh->id,
-                            'exception_class' => $e::class,
-                        ]);
-                    }
-                }
-                $results[] = [...$row, 'status' => 'applied', 'sync' => $sync];
+                $sync = $this->syncHandoff->afterShipmentSaved($order);
+                $results[] = [...$row, 'status' => 'applied', 'sync' => $sync['status']];
             } catch (Throwable $e) {
                 $failed++;
                 $results[] = [...$row, 'status' => 'failed', 'message' => $e->getMessage()];
@@ -253,11 +238,4 @@ final class DomesticTrackingReturnService
         return strtoupper(preg_replace('/\s+/', '', trim($value)) ?? '');
     }
 
-    private function hasWooRoot(Order $order): bool
-    {
-        $root = $order->fulfillment_parent_id ? $order->fulfillmentParent : $order;
-        $source = $root?->source_type instanceof \BackedEnum ? $root->source_type->value : (string) $root?->source_type;
-
-        return $source === 'woocommerce';
-    }
 }

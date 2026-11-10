@@ -283,8 +283,8 @@ final class DomesticLogisticsController
                 'noop_count' => $result['noop_count'],
                 'blocked_count' => $result['blocked_count'],
                 'failed_count' => $result['failed_count'],
-                'sync_queued_count' => collect($result['rows'])->where('sync', 'queued')->count(),
-                'sync_queue_failed_count' => collect($result['rows'])->where('sync', 'queue_failed')->count(),
+                'sync_pending_count' => collect($result['rows'])->where('sync', 'pending')->count(),
+                'sync_handoff_failed_count' => collect($result['rows'])->where('sync', 'handoff_failed')->count(),
             ]);
         }
 

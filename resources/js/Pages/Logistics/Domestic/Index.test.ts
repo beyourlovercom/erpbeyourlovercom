@@ -253,7 +253,7 @@ describe('Domestic logistics production workbench', () => {
     const wrapper=mount(Index,{props:baseProps})
     expect(wrapper.text()).toContain('可应用 1 · 重复 0 · 阻断 1')
     const api=vi.fn().mockResolvedValue({ok:true,redirected:false,json:async()=>({
-      applied_count:1,noop_count:0,blocked_count:1,failed_count:0,sync_queued_count:1,
+      applied_count:1,noop_count:0,blocked_count:1,failed_count:0,sync_pending_count:1,
     })})
     vi.stubGlobal('fetch',api)
     const button=wrapper.findAll('button').find(b=>b.text().includes('确认发货（仅可应用订单）'))
@@ -264,7 +264,7 @@ describe('Domestic logistics production workbench', () => {
       expect.objectContaining({method:'POST',body:JSON.stringify({token:'a'.repeat(64)})}))
     expect(routerReload).toHaveBeenCalled()
     expect(feedbackSpy).toHaveBeenCalledWith(expect.objectContaining({
-      state:'SUCCESS',message:expect.stringContaining('尚不代表已同步成功'),
+      state:'SUCCESS',message:expect.stringContaining('尚不代表官网已同步'),
     }))
   })
 

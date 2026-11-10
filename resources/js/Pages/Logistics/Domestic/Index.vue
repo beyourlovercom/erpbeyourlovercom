@@ -246,15 +246,15 @@ const applyPreview = async () => {
     const result=await importPost(url,JSON.stringify({token:props.trackingImportPreview.token}),true)
     router.reload({ only:['trackingImportPreview','trackingImportProvider','rows','viewCounts'] })
     const failed=Number(result.failed_count ?? 0)
-    const queued=Number(result.sync_queued_count ?? 0)
-    const queueFailed=Number(result.sync_queue_failed_count ?? 0)
+    const queued=Number(result.sync_pending_count ?? 0)
+    const queueFailed=Number(result.sync_handoff_failed_count ?? 0)
     publishGlobalFeedback({
       state:failed || queueFailed ? 'BLOCKED':'SUCCESS',
       title:failed || queueFailed ? '部分订单需要人工核对' : 'ERP 批量发货登记完成',
       message:'ERP 登记成功 '+(result.applied_count ?? 0)+' 单；重复跳过 '+(result.noop_count ?? 0)+
         ' 单；阻断 '+(result.blocked_count ?? 0)+' 单；登记失败 '+failed+' 单。'+
-        (queued ? '其中 '+queued+' 单官网同步已转后台处理，尚不代表已同步成功。' : '')+
-        (queueFailed ? '另外 '+queueFailed+' 单官网同步排队失败，ERP 发货登记仍然有效。' : ''),
+        (queued ? '其中 '+queued+' 单官网物流已登记待同步，由同步模块每 30 分钟处理一次，尚不代表官网已同步。' : '')+
+        (queueFailed ? '另外 '+queueFailed+' 单未能登记待同步任务，ERP 发货登记仍然有效，请联系管理员核对。' : ''),
       next:failed || queueFailed ? '核对实际发货与官网同步状态，勿直接重复提交' : '在列表查看官网同步最终状态',
     })
   } catch (error) { importError(error,true) }
@@ -339,7 +339,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           <div><strong>{{ previewLabel }} · 回传预览</strong><span>可应用 {{ trackingImportPreview.apply_count }} · 重复 {{ trackingImportPreview.noop_count }} · 阻断 {{ trackingImportPreview.blocked_count }}</span></div>
           <button v-if="canOperate && trackingImportPreview.apply_count>0" class="primary" type="button" :disabled="applyBusy || uploadBusy" @click="applyPreview">{{ applyBusy ? '登记中…' : '确认发货（仅可应用订单）' }}</button>
         </div>
-        <p>阻断订单不参与发货。可应用订单逐单登记 ERP Shipment；官网物流同步在后台独立执行，请以订单实际同步状态为准。</p>
+        <p>阻断订单不参与发货。可应用订单逐单登记 ERP Shipment；官网物流由同步模块每 30 分钟处理一次，最终状态以官网回读为准。</p>
         <div class="table-wrap">
         <div v-if="trackingFeedback" class="tracking-action-feedback" role="status">{{ trackingFeedback }}</div>
           <table><thead><tr><th>行</th><th>订单号</th><th>Tracking</th><th>Carrier</th><th>Provider 状态</th><th>结果</th><th>说明</th></tr></thead>
