@@ -37,6 +37,7 @@ type AffiliateAccount = {
   wordpress_user_login: string | null
   affiliate_name: string | null
   affiliate_url_slug: string | null
+  affiliate_referral_url: string | null
   wordpress_user_email: string | null
   provider_status: string | null
   provisioning_status: string | null
@@ -603,7 +604,8 @@ const breadcrumbs = [
               <div class="kol-account-facts">
                 <div><span>WordPress Username</span><strong>{{ affiliateAccountState.wordpress_user_login || '—' }}</strong></div>
                 <div><span>Affiliate Name（开户记录）</span><strong>{{ affiliateAccountState.affiliate_name || '—' }}</strong></div>
-                <div><span>Affiliate URL 标识（Username）</span><strong>{{ affiliateAccountState.affiliate_url_slug || '—' }}</strong></div>
+                <div><span>Affiliate URL 标识</span><strong>{{ affiliateAccountState.affiliate_url_slug || '—' }}</strong></div>
+                <div><span>推广 URL（网站回读）</span><strong><a v-if="affiliateAccountState.affiliate_referral_url" :href="affiliateAccountState.affiliate_referral_url" rel="noopener noreferrer" target="_blank">{{ affiliateAccountState.affiliate_referral_url }}</a><span v-else>—</span></strong></div>
                 <div><span>WordPress User ID</span><strong>{{ affiliateAccountState.wordpress_user_id ? `#${affiliateAccountState.wordpress_user_id}` : '—' }}</strong></div>
                 <div><span>WordPress Email</span><strong>{{ affiliateAccountState.wordpress_user_email || kol.contact_email || '—' }}</strong></div>
                 <div><span>AffiliateWP ID</span><strong>{{ affiliateAccountState.affiliate_id ? `#${affiliateAccountState.affiliate_id}` : '—' }}</strong></div>

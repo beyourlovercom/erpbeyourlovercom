@@ -62,7 +62,7 @@ final class KolCreateAutoProvisionService
         $affiliate = null;
         $coupon = null;
         try {
-            $affiliate = $this->affiliates->provisionForCreate($connectionKey, (int) $kol->getKey(), $actor, $password, $username, $profile['name']);
+            $affiliate = $this->affiliates->provisionForCreate($connectionKey, (int) $kol->getKey(), $actor, $password, $username, $profile['name'], $profile['slug']);
             unset($password);
 
             if ($affiliate->provisioning_status !== 'active') {

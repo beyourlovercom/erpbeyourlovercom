@@ -143,6 +143,7 @@ final class KolEditAccountCardTest extends TestCase
                 'wp_user_id' => 72001,
                 'user_email' => 'existing-kol@example.test',
                 'affiliate_status' => 'active',
+                'affiliate_url_slug' => 'editor-choice',
             ], 'affiliate-created'));
         $mock->shouldReceive('provisionCoupon')->once()
             ->andReturn($this->response([

@@ -57,6 +57,7 @@ final class KolEditAccountService
                 $password,
                 $username,
                 $profile['name'],
+                $profile['slug'],
             );
         } catch (DomainException|RuntimeException $exception) {
             unset($password);

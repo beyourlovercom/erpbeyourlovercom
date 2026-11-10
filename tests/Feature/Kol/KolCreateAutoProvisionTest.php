@@ -95,6 +95,7 @@ class KolCreateAutoProvisionTest extends TestCase
                     'affiliate_id' => 91001,
                     'wp_user_id' => 71001,
                     'affiliate_status' => 'active',
+                    'affiliate_url_slug' => 'creator-login',
                     'created_user' => true,
                     'created_affiliate' => true,
                 ], 'affiliate-provision');
@@ -216,7 +217,7 @@ class KolCreateAutoProvisionTest extends TestCase
         $mock->shouldReceive('provisionAffiliate')->once()
             ->withArgs(fn (array $payload) => $payload['preferred_username'] === 'creator-login'
                 && $payload['display_name'] === 'Custom Affiliate Name')
-            ->andReturn($this->response(['affiliate_id' => 93011, 'wp_user_id' => 73011, 'affiliate_status' => 'active'], 'affiliate-ok'));
+            ->andReturn($this->response(['affiliate_id' => 93011, 'wp_user_id' => 73011, 'affiliate_status' => 'active', 'affiliate_url_slug' => 'creator-login'], 'affiliate-ok'));
         $mock->shouldReceive('provisionCoupon')->once()
             ->andReturn($this->response([
                 'coupon_id' => 94011, 'code' => 'NEWKOL15', 'normalized_code' => 'newkol15',
