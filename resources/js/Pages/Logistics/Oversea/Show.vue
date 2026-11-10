@@ -116,7 +116,7 @@ type ShipOutProductionStatus = {
   order_id:number; order_no:string; attempt_status:string; provider_order_id?:string|null
   provider_status?:string|number|null; reconciliation:string; provider_failure_code?:string|null; shipped:false
   tracking_apply:false; read_only:true
-  oms_persisted_state?:'pending'|'visible'|'confirmed'|'cancelled'|'unverified'
+  oms_persisted_state?:'pending'|'visible'|'confirmed'|'warehouse_awaiting'|'provider_shipped'|'cancelled'|'unverified'
   oms_checked_at?:string
 }
 type ShipOutBatchPreview = {
@@ -1076,6 +1076,8 @@ const compactPages = computed<(number|string)[]>(() => {
                 <div class="xlwms-inline" :data-shipout-order-id="row.order_id">
                   <template v-if="shipoutProductionUi">
                     <strong v-if="row.shipout_production?.status==='oms_quarantined'" class="xlwms-error" role="alert">下发异常 · {{ row.shipout_production.label }}</strong>
+                    <strong v-else-if="row.shipout_production?.status==='oms_shipped_pending_tracking'" class="xlwms-state">OMS 已发货 · Tracking 待回写</strong>
+                    <strong v-else-if="row.shipout_production?.status==='oms_warehouse_awaiting'" class="xlwms-state">已下发 · 待仓库处理</strong>
                     <strong v-else-if="row.shipout_production?.status==='oms_confirmed'" class="xlwms-state">已下发 · OMS 已核实（未实际出库）</strong>
                     <strong v-else class="xlwms-state">{{ row.shipout_production?.attempted?'下发中 · 禁止重新提交':'待发货 · 可预检' }}</strong>
                     <small v-if="row.warehouse_dispatch?.last_checked_at" class="xlwms-note">最近 OMS 回读：{{new Date(row.warehouse_dispatch.last_checked_at).toLocaleString('zh-CN',{hour12:false})}}</small>
@@ -1100,10 +1102,16 @@ const compactPages = computed<(number|string)[]>(() => {
                       <small v-if="row.shipout_production?.status==='oms_quarantined'" class="xlwms-error" role="alert">
                         下发异常已隔离，其他合格订单不受影响。本单禁止自动重发；请 Dede 核实原 OMS 后人工处理。
                       </small>
-                      <small v-if="row.shipout_production?.provider_order_id && !['oms_quarantined','oms_confirmed'].includes(row.shipout_production?.status??'') && !shipoutProdStatus[row.order_id]" class="xlwms-note">
+                      <small v-if="row.shipout_production?.provider_order_id && !['oms_quarantined','oms_confirmed','oms_shipped_pending_tracking','oms_warehouse_awaiting'].includes(row.shipout_production?.status??'') && !shipoutProdStatus[row.order_id]" class="xlwms-note">
                         API ACK：{{row.shipout_production.provider_order_id}} · 尚未证实 OMS 有效接单，禁止再次推送；请查询正式 OMS。
                       </small>
-                      <small v-if="row.shipout_production?.status==='oms_confirmed'" class="xlwms-note">
+                      <small v-if="row.shipout_production?.status==='oms_shipped_pending_tracking'" class="xlwms-note">
+                        ShipOut 官方 OMS 状态 4：Shipped。ERP 尚未录入真实 Tracking；须核对包裹号、实际出库时间后保存，官网由同步模块处理。
+                      </small>
+                      <small v-else-if="row.shipout_production?.status==='oms_warehouse_awaiting'" class="xlwms-note">
+                        ShipOut 官方 OMS 状态 2：Awaiting Fulfillment。已下发仓库，等待仓库处理，不可重新提交。
+                      </small>
+                      <small v-else-if="row.shipout_production?.status==='oms_confirmed'" class="xlwms-note">
                         OMS 已下发并持续可见，但并未证明真实出库。须等仓库提供实际出库单号和 Tracking，随后再确认 ERP 发货。
                       </small>
                       <small v-else-if="row.shipout_production?.attempted && !shipoutProdStatus[row.order_id] && !row.shipout_production?.provider_order_id" class="xlwms-note">
@@ -1113,7 +1121,7 @@ const compactPages = computed<(number|string)[]>(() => {
                         OMS 已取消／中止 · {{shipoutProdStatus[row.order_id].provider_order_id||'仓库订单 ID 未返回'}}。{{shipoutProdStatus[row.order_id].provider_failure_code==='PROVIDER_DUPLICATE_ORDER'?'仓库判定重复订单':shipoutProdStatus[row.order_id].provider_failure_code==='PROVIDER_EZEESHIP_SHIPPING_ERROR'?'EzeeShip 渠道异常':'请核对仓库取消原因'}}。禁止重发；不能同步 Tracking 或标记已发货。
                       </small>
                       <small v-else-if="shipoutProdStatus[row.order_id]" class="xlwms-note">
-                        OMS：{{shipoutProdStatus[row.order_id].reconciliation==='NO_ERP_ATTEMPT_AND_NO_OMS_ORDER'?'ERP 未提交，OMS 无此单':shipoutProdStatus[row.order_id].reconciliation==='OMS_ORDER_WITHOUT_ERP_LEDGER_MANUAL_REVIEW'?'OMS 有单但 ERP 无记录，人工核对':shipoutProdStatus[row.order_id].reconciliation==='ORDER_VISIBLE_MANUAL_REVIEW_ONLY'?(shipoutProdStatus[row.order_id].oms_persisted_state==='confirmed'?'连续回读确认（待实际出库）':'仓库订单可见 · 核实中'):'待仓库确认'}} · {{shipoutProdStatus[row.order_id].provider_order_id||'暂无仓库订单 ID'}} · 仍待实际发货
+                        OMS：{{shipoutProdStatus[row.order_id].reconciliation==='NO_ERP_ATTEMPT_AND_NO_OMS_ORDER'?'ERP 未提交，OMS 无此单':shipoutProdStatus[row.order_id].reconciliation==='OMS_ORDER_WITHOUT_ERP_LEDGER_MANUAL_REVIEW'?'OMS 有单但 ERP 无记录，人工核对':shipoutProdStatus[row.order_id].reconciliation==='ORDER_VISIBLE_MANUAL_REVIEW_ONLY'?(shipoutProdStatus[row.order_id].oms_persisted_state==='provider_shipped'?'ShipOut 已发货 · ERP 待 Tracking 回写':shipoutProdStatus[row.order_id].oms_persisted_state==='warehouse_awaiting'?'仓库待处理':shipoutProdStatus[row.order_id].oms_persisted_state==='confirmed'?'仓库处理中（已核实）':'仓库订单可见 · 核实中'):'待仓库确认'}} · {{shipoutProdStatus[row.order_id].provider_order_id||'暂无仓库订单 ID'}} · {{shipoutProdStatus[row.order_id].oms_persisted_state==='provider_shipped'?'ERP 仍未完成 Tracking 同步':'ERP 未标记发货'}}
                       </small>
                     </template>
                     <small v-if="shipoutProdErrors[row.order_id]" role="alert" class="xlwms-error">{{shipoutProdErrors[row.order_id]}}</small>
