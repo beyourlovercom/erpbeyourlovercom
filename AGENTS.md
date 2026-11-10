@@ -172,18 +172,6 @@ This rule does not move table-row actions, field-local actions, filters/search c
 
 This is an OWNER-APPROVED HIGHEST UI interaction rule and applies globally unless the Owner explicitly revokes or replaces it.
 
-# OWNER-APPROVED ERP GLOBAL GRID V1 IMPLEMENTATION GATE (2026-11-10)
-
-**Rule ID: `ERP_GLOBAL_GRID_V1_NEW_BUSINESS_LIST_STANDARD` · OWNER APPROVED · ACTIVE FOR ALL FUTURE NEW ERP BUSINESS LISTS.** The canonical reusable ERP **implementation** is `resources/js/Components/DataGrid/GlobalGrid.vue`, wrapping the existing `OmsGrid.vue` / AG Grid Community engine. **New primary business list pages MUST reuse this single shared grid**, supplying page-specific canonical server projections, columns, server paging/search and permission-aware actions. Do not introduce independent per-page table engines, duplicate the OMS Grid implementation, or create per-module preference databases. The previously frozen `BYL_GLOBAL_DATA_GRID_VI_V1_1` remains the authoritative visual/data/preference **contract**; this rule names its shared ERP implementation and does not supersede it.
-
-**Exemptions (no forced retrofit):** small, stable embedded tables within detail pages, inspection/confirmation summaries, form sub-tables, audit snippets and suitable mobile cards may remain lightweight native tables when their business reason is documented. Existing legacy lists are not automatically switched, and previously approved OMS/Global Grid canary enablement, account allowlists and rollback remain unchanged until each page receives its own approved rollout.
-
-**Hard invariants:** no modification or expansion of existing order/shipment/warehouse fulfillment, stock/allocation, review/approval, purchasing, import/export or accounting permissions, routes, preflight gates, writes, audit obligations or business state transitions merely to migrate the visual list. The frontend is presentation only; every permission is enforced again server-side. Search in a migrated primary grid searches the **entire authorized backend result set**, not just the visible page; redundant outside keyword inputs should be removed in the migrated view, while separate domain filters remain. Large lists require server-side bounded pagination and allowlisted search/sort/filter keys; no unlimited client load, new source of truth or N+1.
-
-**Delivery gate:** each legacy page migration must be independently selected/scoped, keep the original view as a reversible fallback, and pass the same-head frontend control/backend route/permission, domain-action, pagination/search, export/import where applicable, page-specific browser UAT and shared-grid regressions. The existing Owner visual/UAT and Production release authorization gates still apply. **This policy decision alone does NOT authorize broad R4 migrations, changing employee defaults, or deploying Production.**
-
-Canonical specs: `docs/BYL-ERP-GRID-STANDARD-V1.md`, `docs/10_Planning_Roadmap/ERP_GLOBAL_GRID_V1_R0_CONTRACT_20261110.md`, `docs/10_Planning_Roadmap/26_BYL_ERP_GLOBAL_DATA_GRID_VI_V1_1.md`.
-
 # GLOBAL DATA GRID VI V1.1 GATE
 
 **Rule ID: `BYL_GLOBAL_DATA_GRID_VI_V1_1`. Implementation baseline: OWNER_UAT PASS / COMPLETE / FROZEN / CLOSED. The rule remains active for BYL ERP and is portable to other projects when explicitly invoked.**
