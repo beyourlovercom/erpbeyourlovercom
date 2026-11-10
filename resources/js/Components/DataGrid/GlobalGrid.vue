@@ -6,6 +6,7 @@ type Row = Record<string, unknown>
 type Pager = { current_page: number; last_page: number; per_page: number; total: number }
 const props = withDefaults(defineProps<{
   namespace: string
+  legacyPreferenceNamespaces?: string[]
   title: string
   columns: ColDef<Row>[]
   rows: Row[]
@@ -39,6 +40,7 @@ const emit = defineEmits<{
   <div data-testid="erp-global-grid-v1" class="erp-global-grid-v1">
     <OmsGrid
       :namespace="namespace"
+      :legacy-preference-namespaces="legacyPreferenceNamespaces"
       :title="title"
       :columns="columns"
       :rows="rows"

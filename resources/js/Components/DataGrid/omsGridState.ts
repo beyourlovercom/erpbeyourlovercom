@@ -25,11 +25,19 @@ export function pinnedStateForVisibleColumns(
   columns: Pick<ColumnState, 'colId' | 'hide'>[],
   left: number,
   right: number,
+  locked: { left?: string[]; right?: string[] } = {},
 ): Array<{ colId: string; pinned: 'left' | 'right' | null }> {
   const visible = columns.filter(column => !column.hide).map(column => column.colId)
-  const pinned = clampPinnedCounts(visible.length, left, right)
-  const leftIds = new Set(visible.slice(0, pinned.left))
-  const rightIds = new Set(pinned.right ? visible.slice(-pinned.right) : [])
+  const visibleSet = new Set(visible)
+  const fixedLeft = new Set((locked.left ?? []).filter(id => visibleSet.has(id)))
+  const fixedRight = new Set((locked.right ?? []).filter(id => visibleSet.has(id) && !fixedLeft.has(id)))
+  const counts = clampPinnedCounts(visible.length,
+    Math.max(left, fixedLeft.size),Math.max(right,fixedRight.size))
+  const free = visible.filter(id => !fixedLeft.has(id) && !fixedRight.has(id))
+  const leftIds = new Set([...fixedLeft,...free.slice(0,Math.max(0,counts.left-fixedLeft.size))])
+  const available = free.filter(id => !leftIds.has(id))
+  const rightIds = new Set([...fixedRight,
+    ...available.slice(Math.max(0,available.length-Math.max(0,counts.right-fixedRight.size)))])
   return columns.map(column => ({
     colId: column.colId,
     pinned: leftIds.has(column.colId) ? 'left' : rightIds.has(column.colId) ? 'right' : null,

@@ -24,6 +24,20 @@ describe('OMS Grid preference normalization', () => {
       { colId: 'actions', pinned: 'right' },
     ])
   })
+  it('always keeps an explicitly locked right operation column pinned despite a saved middle order', () => {
+    const state=[
+      {colId:'order',hide:false},
+      {colId:'actions',hide:false},
+      {colId:'quantity',hide:false},
+      {colId:'sku',hide:false},
+    ]
+    expect(pinnedStateForVisibleColumns(state,1,1,{right:['actions']})).toEqual([
+      {colId:'order',pinned:'left'},
+      {colId:'actions',pinned:'right'},
+      {colId:'quantity',pinned:null},
+      {colId:'sku',pinned:null},
+    ])
+  })
   it('rejects unknown columns and extreme or invalid persisted values', () => {
     const value = sanitizeOmsGridPreference({
       columns: [

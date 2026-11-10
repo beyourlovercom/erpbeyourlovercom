@@ -7,7 +7,7 @@ vi.mock('./OmsGrid.vue', () => ({
   default: {
     name:'OmsGrid',
     props:['namespace','title','columns','rows','requiredColumnIds','serverPagination',
-      'rowIdentityKey','showSearch','enableSelection','allowAllRows','showClientCsvExport','preferenceScope'],
+      'rowIdentityKey','showSearch','enableSelection','allowAllRows','showClientCsvExport','preferenceScope','legacyPreferenceNamespaces'],
     emits:['page-change','page-size-change','sort-change','search-change','column-search-change'],
     template:'<section data-testid="underlying-oms"><slot name="actions"/></section>',
   },
@@ -15,7 +15,9 @@ vi.mock('./OmsGrid.vue', () => ({
 
 describe('Global Grid V1 shared contract', () => {
   const props = {
-    namespace:'grid.inventory.products.global.v1',title:'产品库存',
+    namespace:'grid.inventory.products.global.v1',
+    legacyPreferenceNamespaces:['grid.inventory.products.old.v1'],
+    title:'产品库存',
     columns:[{colId:'sku',field:'sku',headerName:'SKU'}],
     rows:[{id:1,sku:'MF414A'}],
     requiredColumnIds:['sku'],
@@ -26,6 +28,8 @@ describe('Global Grid V1 shared contract', () => {
     const underlying = wrapper.findComponent({name:'OmsGrid'})
     expect(wrapper.find('[data-testid="erp-global-grid-v1"]').exists()).toBe(true)
     expect(underlying.props('namespace')).toBe('grid.inventory.products.global.v1')
+    expect(underlying.props('legacyPreferenceNamespaces'))
+      .toEqual(['grid.inventory.products.old.v1'])
     expect(underlying.props('serverPagination')).toEqual(props.page)
     expect(underlying.props('allowAllRows')).toBe(false)
     expect(underlying.props('enableSelection')).toBe(false)
