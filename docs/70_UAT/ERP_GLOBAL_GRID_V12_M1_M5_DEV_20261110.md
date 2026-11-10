@@ -1,0 +1,24 @@
+# Global Grid V1.2 M1-M5 Dev delivery / 2026-11-10
+
+Owner requested continuous implementation M1-M5 under the REDUCED 7-13h contract. Builds on L1 Draft PR #679. Does not authorize Production rollout. Shipment/OMS/Tracking and unrelated permissions unchanged.
+
+## Implemented
+- M1: OmsGrid uses exactly one existing server-pagination footer. Redundant title subtitle counts removed. Generic GridBatchFooterControls appears only when a row is selected; dropdown conditional, Apply only with action selected, reason input inline in SAME bottom row.
+- M2: domestic review/stockout right-pinned direct actions. Approve, stockout, reject with inline reason, restock and reopen reuse existing authorized endpoints. Checkbox selection pinned left, current server page only. No review/stockout popup or extra table.
+- M3: bounded max 50 distinct ID bulk API for domestic review REUSES DomesticReviewDecisionService::decide transactions/status gates/audit. Independent archive batch API directly loops through existing OrderOperationalArchiveController::archive with the original actor/KOL/lock/audit checks and per-order result. U4 excluded-logistics feature CANCELLED.
+- M4: TWO active financial report query builders exclude direct operational_archived_at and children whose fulfillment parent is archived; posted historic finance records remain intact.
+- M5: PHP/Vitest/TypeScript/Vite, disposable Chrome, pending exact-head GitHub CI and Owner UAT. Separate Production authorization required.
+
+## Automated evidence
+- PHP: four domain suites, 42 passed, 835 assertions.
+- Vue: TypeScript PASS, four targeted suites 32/32 PASS.
+- Vite production build PASS.
+- Chrome isolated SQLite: Grid suite 4/4 PASS, including single footer, selected count, dropdown, Apply conditional, row inline reject reason, original list fallback, allocation and read-only review sidecar. Disposable SQLite cleanup PASS.
+- Additional pinned-right regression check and GitHub CI will be read back on final head.
+
+## Owner acceptance and rollout caveat
+- Isolated UAT is testing/SQLite, synthetic data only, no OMS/WWW calls.
+- Verify /logistics/china?view=review right-side button/inline reason and one bottom row. No write should be triggered on Production.
+- Finance exclusion is active reports only and does not erase settled historical evidence.
+- **Known parity limitation:** Other China logistics tabs still use their original specialized carrier/Tracking controls via the native table bridge. These tabs have NOT achieved full no-accordion parity. This delivery is review/stockout canary only, not approval to switch all operational tabs on Production.
+- Keep L2/L3 migration and unconditional Production default behind Owner UAT and per-view parity gates.

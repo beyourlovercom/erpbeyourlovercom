@@ -112,6 +112,7 @@ final class DomesticLogisticsController
             'viewCounts' => $counts,
             'canOperate' => app(LogisticsExecutionAccess::class)->allows($request->user()),
             'canReview' => $this->reviewAccess->allows($request->user()),
+            'canArchive' => (bool) $request->user()?->can('orders.archive'),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
             'carrierOptions' => app(CarrierServiceCatalog::class)->options(),
             'trackingImportProvider' => $previewProvider,
@@ -126,6 +127,37 @@ final class DomesticLogisticsController
                 '4px' => ['export_ready' => true, 'return_ready' => true, 'label' => '速达 / 4PX'],
                 'weship' => ['export_ready' => true, 'return_ready' => true, 'label' => '纬狮 / Weship', 'note' => '纬狮独立保留原 24 列模板 · XLSX 下载 · XLS/XLSX 回传'],
             ],
+        ]);
+    }
+
+    /** Run the existing authorized per-order review service, without bulk bypass. */
+    public function batchReview(Request $request): \Illuminate\Http\JsonResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $data = $request->validate([
+            'order_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'action' => ['required', 'in:approve,stockout,reject,restock'],
+            'reason' => ['required_if:action,reject', 'nullable', 'string', 'min:3', 'max:500'],
+        ]);
+        $results = [];
+        foreach ($data['order_ids'] as $id) {
+            $id = (int) $id;
+            try {
+                $order = Order::query()->findOrFail($id);
+                $this->decisions->decide($order, $data['action'], $data['reason'] ?? null, $request->user());
+                $results[] = ['order_id' => $id, 'ok' => true, 'message' => '已处理'];
+            } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
+                $results[] = ['order_id' => $id, 'ok' => false,
+                    'message' => $exception->getStatusCode() === 403 ? '无操作权限' : ($exception->getMessage() ?: '状态已变化，无法执行')];
+            } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => '订单不存在'];
+            }
+        }
+        return response()->json([
+            'results' => $results,
+            'success_count' => count(array_filter($results, fn (array $row): bool => $row['ok'])),
+            'failed_count' => count(array_filter($results, fn (array $row): bool => ! $row['ok'])),
         ]);
     }
 

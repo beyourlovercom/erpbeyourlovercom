@@ -22,6 +22,36 @@ final class OrderOperationalArchiveTest extends TestCase
         $this->withoutVite();
     }
 
+    public function test_batch_archive_reuses_single_order_lock_audit_and_partial_failures(): void
+    {
+        $staff = $this->userWith(['orders.view', 'orders.archive']);
+        $first = $this->makeOrder($staff, 'batch-a');
+        $second = $this->makeOrder($staff, 'batch-b');
+
+        $this->actingAs($staff)->postJson('/orders/archive/batch', [
+            'order_ids' => [$first->id, $second->id, 987654321],
+        ])->assertOk()->assertJsonPath('success_count', 2)
+            ->assertJsonPath('failed_count', 1)
+            ->assertJsonPath('results.0.ok', true)
+            ->assertJsonPath('results.1.ok', true)
+            ->assertJsonPath('results.2.ok', false);
+        $this->assertDatabaseHas('orders', ['id' => $first->id, 'operational_archived_by' => $staff->id]);
+        $this->assertDatabaseHas('orders', ['id' => $second->id, 'operational_archived_by' => $staff->id]);
+        $this->actingAs($staff)->postJson('/orders/archive/batch', [
+            'order_ids' => [$first->id, $second->id],
+        ])->assertOk()->assertJsonPath('success_count', 0)->assertJsonPath('failed_count', 2);
+        $this->actingAs($staff)->get('/orders/archive')->assertOk()
+            ->assertInertia(fn ($page) => $page->has('orders.data', 2));
+
+        $restricted = $this->userWith(['orders.view']);
+        $this->actingAs($restricted)->postJson('/orders/archive/batch', [
+            'order_ids' => [$first->id],
+        ])->assertForbidden();
+        $this->actingAs($staff)->postJson('/orders/archive/batch', [
+            'order_ids' => [$first->id, $first->id],
+        ])->assertUnprocessable();
+    }
+
     public function test_archive_separates_order_from_operational_queues_without_destroying_evidence_and_admin_restores(): void
     {
         $staff = $this->userWith(['orders.view', 'orders.archive']);

@@ -9,6 +9,9 @@ use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -82,6 +85,40 @@ final class OrderOperationalArchiveController
         });
 
         return redirect()->route('orders.archive.index')->with('success', '订单已归档至运营归档清单');
+    }
+
+    /**
+     * Thin batch adapter: each ID goes through the EXACT audited single-order
+     * archive method. Individual transactions and original permissions stay intact.
+     */
+    public function batch(Request $request): JsonResponse
+    {
+        abort_unless($request->user()?->can('orders.view') && $request->user()?->can('orders.archive'), 403);
+        $data = $request->validate([
+            'order_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+        ]);
+
+        $results = [];
+        foreach ($data['order_ids'] as $id) {
+            $id = (int) $id;
+            try {
+                $order = Order::query()->findOrFail($id);
+                $this->archive($request, $order);
+                $results[] = ['order_id' => $id, 'ok' => true, 'message' => '已归档'];
+            } catch (HttpExceptionInterface $exception) {
+                $results[] = ['order_id' => $id, 'ok' => false,
+                    'message' => $exception->getStatusCode() === 403 ? '没有权限归档该订单' : ($exception->getMessage() ?: '订单状态不允许归档')];
+            } catch (ModelNotFoundException) {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => '订单不存在'];
+            }
+        }
+
+        return response()->json([
+            'results' => $results,
+            'success_count' => count(array_filter($results, fn (array $row): bool => $row['ok'])),
+            'failed_count' => count(array_filter($results, fn (array $row): bool => ! $row['ok'])),
+        ]);
     }
 
     public function restore(Request $request, int $order): RedirectResponse

@@ -399,7 +399,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="oms-grid" :class="{ 'is-maximized': maximized }" aria-label="BYL ERP OMS 统一表格">
     <div class="oms-toolbar">
-      <div class="oms-title"><strong>{{ title }}</strong><small>共 {{ (serverPagination?.total ?? rows.length).toLocaleString('zh-CN') }} 条 · 已选 {{ selectedCount }} 条</small></div>
+      <div class="oms-title"><strong>{{ title }}</strong></div>
       <div class="oms-actions"><slot name="actions" /></div>
       <div class="oms-spacer" />
       <input v-if="showSearch" v-model="query" class="oms-search" :aria-label="searchLabel ?? (serverPagination ? '搜索全部订单' : '搜索列表')" :placeholder="searchPlaceholder ?? (serverPagination ? '搜索全部订单 / 收件人 / 来源单号...' : '搜索当前列表...')" @input="searchInput" @keydown.enter.prevent="submitSearch" />
@@ -441,10 +441,13 @@ onBeforeUnmount(() => {
         />
         <div v-if="!serverPagination" class="oms-pagination-size"><label for="oms-grid-page-size">每页</label><select id="oms-grid-page-size" :value="pageSize" aria-label="每页显示条数" @change="changePageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option v-if="allowAllRows" value="all">全部</option></select></div>
         <div v-if="serverPagination" class="oms-server-pagination">
-          <label>每页 <select aria-label="服务端每页条数" :value="serverPagination.page_size_mode ?? serverPagination.per_page" @change="changeServerPageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option v-if="allowAllRows" value="all">全部</option></select></label>
-          <span>共 {{ serverPagination.total }} 条 · 第 {{ serverPagination.current_page }} / {{ Math.max(1, serverPagination.last_page) }} 页</span>
-          <button type="button" aria-label="上一页" :disabled="serverPagination.current_page <= 1" @click="emit('page-change', serverPagination.current_page - 1)">‹</button>
-          <button type="button" aria-label="下一页" :disabled="serverPagination.current_page >= serverPagination.last_page" @click="emit('page-change', serverPagination.current_page + 1)">›</button>
+          <div class="oms-footer-left"><slot name="footer-left" :selected-count="selectedCount" /></div>
+          <div class="oms-footer-right">
+            <label>每页 <select aria-label="服务端每页条数" :value="serverPagination.page_size_mode ?? serverPagination.per_page" @change="changeServerPageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option v-if="allowAllRows" value="all">全部</option></select></label>
+            <span>共 {{ serverPagination.total }} 条 · 第 {{ serverPagination.current_page }} / {{ Math.max(1, serverPagination.last_page) }} 页</span>
+            <button type="button" aria-label="上一页" :disabled="serverPagination.current_page <= 1" @click="emit('page-change', serverPagination.current_page - 1)">‹</button>
+            <button type="button" aria-label="下一页" :disabled="serverPagination.current_page >= serverPagination.last_page" @click="emit('page-change', serverPagination.current_page + 1)">›</button>
+          </div>
         </div>
       </div>
       <aside v-if="settingsOpen" class="oms-side" aria-label="列设置">
@@ -475,7 +478,9 @@ onBeforeUnmount(() => {
 .oms-spacer{flex:1}.oms-actions{display:flex;gap:6px}.oms-search{width:min(200px,35vw);height:30px;padding:5px 9px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px}
 .oms-workspace{display:flex;min-height:0;flex:1}.oms-main{position:relative;display:flex;flex-direction:column;min-width:0;flex:1}.oms-ag-grid{min-height:0;flex:1;width:100%}
 .oms-pagination-size{position:absolute;left:12px;bottom:0;z-index:2;height:32px;display:flex;align-items:center;gap:6px;background:#fff;font-size:11px;color:#64748b}.oms-pagination-size select{padding:3px 5px;min-width:66px;font-size:12px}
-.oms-server-pagination{height:38px;display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:0 14px;border-top:1px solid #dbe1e9;font-size:12px;color:#526072;white-space:nowrap}
+.oms-server-pagination{height:38px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 14px;border-top:1px solid #dbe1e9;font-size:12px;color:#526072;white-space:nowrap}
+.oms-footer-left{display:flex;align-items:center;min-width:0;flex:1;gap:8px}
+.oms-footer-right{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-shrink:0}
 .oms-server-pagination select,.oms-server-pagination button{padding:4px 8px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;color:#1e293b}
 .oms-server-pagination button:disabled{opacity:.4;cursor:default}
 .oms-side{width:268px;flex:none;display:flex;flex-direction:column;min-height:0;border-left:1px solid #d6deea;background:#fff}

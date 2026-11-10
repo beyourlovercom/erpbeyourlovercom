@@ -18,6 +18,29 @@ final class ProfitDashboardTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_archived_orders_and_archived_parent_children_leave_active_finance_but_keep_records(): void
+    {
+        $user = $this->userWith(['accounting.view', 'analysis.view', 'orders.create']);
+        $normal = $this->createOrder($user, '2026-09-01', 'FIN-NORMAL', [['sku'=>'NORMAL', 'price'=>'10.00']]);
+        $archived = $this->createOrder($user, '2026-09-02', 'FIN-ARCHIVED', [['sku'=>'ARCHIVE', 'price'=>'20.00']]);
+        $parent = $this->createOrder($user, '2026-09-03', 'FIN-PARENT', [['sku'=>'PARENT', 'price'=>'30.00']]);
+        $child = $this->createOrder($user, '2026-09-04', 'FIN-CHILD', [['sku'=>'CHILD', 'price'=>'40.00']]);
+        $archived->forceFill(['operational_archived_at'=>now(), 'operational_archived_by'=>$user->id])->save();
+        $parent->forceFill(['operational_archived_at'=>now(), 'operational_archived_by'=>$user->id])->save();
+        $child->forceFill(['fulfillment_parent_id'=>$parent->id])->save();
+
+        $this->actingAs($user)->get('/accounting/order-costs')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('pagination.total', 1)
+                ->where('orders.0.id', $normal->id));
+        $this->actingAs($user)->get('/accounting?date_from=2026-09-01&date_to=2026-09-30')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('data_health.eligible_operational_orders', 1));
+        $this->assertDatabaseHas('orders', ['id'=>$archived->id, 'operational_archived_by'=>$user->id]);
+        $this->assertDatabaseHas('orders', ['id'=>$parent->id, 'operational_archived_by'=>$user->id]);
+        $this->assertDatabaseHas('orders', ['id'=>$child->id, 'fulfillment_parent_id'=>$parent->id]);
+    }
+
     public function test_finance_fact_edit_link_targets_the_exact_order_without_pagination_search(): void
     {
         $user = $this->userWith(['analysis.view', 'orders.create']);

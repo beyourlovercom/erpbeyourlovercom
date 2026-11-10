@@ -19,6 +19,7 @@ const props = withDefaults(defineProps<{
   filterValues?: Record<string, string>
   showSearch?: boolean
   enableSelection?: boolean
+  selectedOrderIds?: number[]
   clientCsvExport?: boolean
 }>(), {
   page: null, rowIdentityKey: 'id', showSearch: true, enableSelection: false, clientCsvExport: false,
@@ -30,6 +31,7 @@ const emit = defineEmits<{
   (event: 'sort-change', sort: { colId: string; direction: 'asc' | 'desc' | null }): void
   (event: 'search-change', value: string): void
   (event: 'column-search-change', filter: { colId: string; value: string }): void
+  (event: 'selection-change', rows: Row[]): void
 }>()
 </script>
 
@@ -51,11 +53,14 @@ const emit = defineEmits<{
       search-label="表格内搜索全部记录"
       :search-placeholder="searchPlaceholder ?? '搜索全部记录...'"
       :enable-selection="enableSelection"
+      :selection-order-key="enableSelection ? rowIdentityKey : undefined"
+      :selected-order-ids="selectedOrderIds"
       :allow-all-rows="false"
       :show-client-csv-export="clientCsvExport"
       preference-scope="account"
       :default-pinned-left="1"
       :default-pinned-right="1"
+      @selection-change="emit('selection-change', $event)"
       @page-change="emit('page-change', $event)"
       @page-size-change="emit('page-size-change', $event)"
       @search-change="emit('search-change', $event)"
@@ -63,6 +68,7 @@ const emit = defineEmits<{
       @column-search-change="emit('column-search-change', $event)"
     >
       <template #actions><slot name="actions" /></template>
+      <template #footer-left="slotProps"><slot name="footer-left" v-bind="slotProps" /></template>
     </OmsGrid>
   </div>
 </template>

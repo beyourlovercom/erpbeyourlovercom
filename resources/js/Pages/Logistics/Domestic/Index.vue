@@ -3,7 +3,8 @@ import { Head, router } from '@inertiajs/vue3'
 import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
-import { domesticReviewGridActions } from './reviewGridActions'
+import DomesticGridActionCell from './DomesticGridActionCell.vue'
+import GridBatchFooterControls from '../../../Components/DataGrid/GridBatchFooterControls.vue'
 import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../../Components/DataGrid/useGlobalGridListAdapter'
 const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
 import { publishGlobalFeedback } from '../../../lib/globalFeedback'
@@ -25,7 +26,7 @@ type ProviderStatus = Record<'4px'|'weship',{export_ready:boolean;return_ready:b
 type CarrierOption = {value:string;label:string;services:{value:string;label:string}[]}
 
 const props = defineProps<{
-  view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; canReview:boolean; canTrackingSync?:boolean
+  view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; canReview:boolean; canArchive?:boolean; canTrackingSync?:boolean
   trackingImportProvider:'4px'|'weship'|'generic'|null; trackingImportPreview:Preview|null; providerStatus:ProviderStatus
   carrierOptions:CarrierOption[]
   globalGridPilotAvailable?:boolean
@@ -33,6 +34,29 @@ const props = defineProps<{
   gridSearch?:string
 }>()
 
+type BulkChoice = {value:string; label:string; reasonRequired?:boolean}
+const selectedBulkOrderIds = ref<number[]>([])
+const bulkBusy = ref(false)
+const bulkOptions = computed<BulkChoice[]>(()=>{
+  const result:BulkChoice[] = []
+  if (props.canReview && props.view==='review') {
+    result.push({value:'approve',label:'批量通过'},{value:'stockout',label:'批量缺货'},
+      {value:'reject',label:'批量驳回',reasonRequired:true})
+  }
+  if (props.canReview && props.view==='stockout') result.push({value:'restock',label:'批量已到货-可发货'})
+  if (props.canArchive && props.view!=='stockout') result.push({value:'archive',label:'批量归档'})
+  return result
+})
+const onBulkSelectionChanged = (rows:GridListRow[])=>{
+  selectedBulkOrderIds.value=[...new Set(rows.map(row=>Number(row.id)).filter(id=>Number.isSafeInteger(id)&&id>0))]
+}
+watch(()=>[props.view,props.rows.current_page,props.rows.per_page,props.gridSearch],()=>{
+  selectedBulkOrderIds.value=[]
+})
+watch(()=>props.rows.data, rows=>{
+  const present=new Set(rows.map(row=>row.order_id))
+  selectedBulkOrderIds.value=selectedBulkOrderIds.value.filter(id=>present.has(id))
+})
 const domesticGridSearch = ref(props.gridSearch ?? '')
 watch(() => props.gridSearch, value => { domesticGridSearch.value=value??'' })
 const searchDomesticGrid = (value:string) => { domesticGridSearch.value=value; gridNavigation.search(value) }
@@ -68,34 +92,13 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   destination:[row.country,row.state,row.city].filter(Boolean).join(' / ')||'—',
   tracking_sync_status:row.source_type==='woocommerce'?trackingLabel(row.tracking_sync_status):'—',
 })))
-const domesticGridColumns: ColDef<GridListRow>[] = [
+const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'line',field:'line',headerName:'#',width:74}),
   gridColumn({colId:'order',field:'order_number',headerName:'ERP 订单',width:186,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
   gridColumn({colId:'status',field:'workflow_status',headerName:'订单状态',width:143}),
-  // Preserve the original row-specific review controls directly in the
-  // visible 审核 column. No extra click through 操作此单 is required.
-  gridColumn({colId:'review',field:'review_status',headerName:'审核',width:props.view==='review'?230:170,
-    cellRendererSelector:(params)=>{
-      const source = props.rows.data.find(row=>row.order_id===Number(params.data?.id))
-      const actions = source ? domesticReviewGridActions(props.view,props.canReview,reviewBusy.value,source,{
-        approve:()=>decide(source,'approve'),
-        stockout:()=>decide(source,'stockout'),
-        reject:()=>openReject(source),
-        restock:()=>restock(source),
-        reopen:()=>reopen(source),
-      }) : []
-      return actions.length
-        ? {component:GlobalGridCell,params:{mode:'actions',actionsFor:()=>source
-          ? domesticReviewGridActions(props.view,props.canReview,reviewBusy.value,source,{
-              approve:()=>decide(source,'approve'),
-              stockout:()=>decide(source,'stockout'),
-              reject:()=>openReject(source),
-              restock:()=>restock(source),
-              reopen:()=>reopen(source),
-            }) : []}}
-        : {component:GlobalGridCell,params:{mode:'badge'}}
-    }}),
+  gridColumn({colId:'review',field:'review_status',headerName:'审核',width:120,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
   gridColumn({colId:'paid_date',field:'paid_date',headerName:'成交日期',width:135}),
   gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:178}),
   gridColumn({colId:'quantity',field:'quantity',headerName:'数量',width:100}),
@@ -109,16 +112,28 @@ const domesticGridColumns: ColDef<GridListRow>[] = [
   gridColumn({colId:'phone',field:'phone',headerName:'电话',width:150}),
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
-  gridColumn({colId:'actions',field:'id',headerName:'操作',width:132,
-    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'actions',actionsFor:(r:GridListRow)=>
-      props.view==='stockout' ? [] : [
-        {label:'操作此单',onClick:()=>{
-          activeOperationId.value=Number(r.id)
-          showBatchLegacyOperations.value=false
-          void nextTick(()=>document.querySelector('.table-wrap.orders')?.scrollIntoView({block:'start',behavior:'smooth'}))
-        }},
-      ]}}),
-]
+  gridColumn({colId:'actions',field:'id',headerName:'操作',width:props.view==='review'?395:210,
+    pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
+    cellRenderer:DomesticGridActionCell,cellRendererParams:{
+      view:props.view, canReview:props.canReview, canOperate:props.canOperate,
+      get busy(){return reviewBusy.value},
+      native:(row:GridListRow)=>openNativeOperation(Number(row.id)),
+      approve:(row:GridListRow)=>sourceAction(row,source=>decide(source,'approve')),
+      stockout:(row:GridListRow)=>sourceAction(row,source=>decide(source,'stockout')),
+      restock:(row:GridListRow)=>sourceAction(row,source=>restock(source)),
+      reopen:(row:GridListRow)=>sourceAction(row,source=>reopen(source)),
+      reject:(row:GridListRow,reason:string)=>sourceAction(row,source=>rejectInline(source,reason)),
+    }}),
+])
+const sourceAction = (grid:GridListRow, callback:(row:Row)=>void) => {
+  const row=props.rows.data.find(item=>item.order_id===Number(grid.id))
+  if (row) callback(row)
+}
+const openNativeOperation = (id:number) => {
+  activeOperationId.value=id
+  showBatchLegacyOperations.value=false
+  void nextTick(()=>document.querySelector('.table-wrap.orders')?.scrollIntoView({block:'start',behavior:'smooth'}))
+}
 const domesticPager = computed(()=>({
   current_page:props.rows.current_page,
   last_page:props.rows.last_page,
@@ -288,6 +303,16 @@ const restock = (row:Row) => {
 }
 const reopen = (row:Row) => router.post('/logistics/china/orders/' + row.order_id + '/reopen-review', {}, { preserveScroll:true, preserveState:true })
 const openReject = (row:Row) => { if (!props.canReview || reviewBusy.value) return; rejectTarget.value=row; rejectReason.value=''; reviewError.value='' }
+const rejectInline = (row:Row, reason:string) => {
+  if (!props.canReview || reviewBusy.value || reason.trim().length<3) return
+  reviewBusy.value=true
+  router.post('/logistics/china/orders/' + row.order_id + '/reject', {reason:reason.trim()}, {
+    preserveScroll:true, preserveState:true,
+    onError:(errors)=>{reviewError.value=errors.reason??'驳回失败，请核对订单状态。'},
+    onFinish:()=>{reviewBusy.value=false},
+  })
+}
+
 const submitReject = () => {
   if (!rejectTarget.value || reviewBusy.value || !props.canReview) return
   if (rejectReason.value.trim().length<3) { reviewError.value='请填写至少 3 个字的驳回原因。'; return }
@@ -299,6 +324,31 @@ const submitReject = () => {
       onError:(errors)=>{reviewError.value=errors.reason??'驳回失败，请核对订单状态。'},
       onFinish:()=>{reviewBusy.value=false},
     })
+}
+const applyGridBatch = async (payload:{action:string;reason:string}) => {
+  if (bulkBusy.value || !selectedBulkOrderIds.value.length
+    || !bulkOptions.value.some(option=>option.value===payload.action)
+    || (payload.action==='reject' && payload.reason.trim().length<3)) return
+  const ids=[...selectedBulkOrderIds.value]
+  bulkBusy.value=true
+  try {
+    const archive=payload.action==='archive'
+    const result=await importPost(archive?'/orders/archive/batch':'/logistics/china/batch-review',
+      JSON.stringify({order_ids:ids,...(!archive?{action:payload.action,reason:payload.reason}:{})}),true)
+    const results=(result.results??[]) as {order_id:number;ok:boolean;message:string}[]
+    const success=results.filter(row=>row.ok)
+    const errors=results.filter(row=>!row.ok)
+    selectedBulkOrderIds.value=errors.map(row=>row.order_id)
+    publishGlobalFeedback({
+      state:errors.length?'BLOCKED':'SUCCESS',
+      title:'批量操作：成功 '+success.length+' 条，失败 '+errors.length+' 条',
+      message:errors.length?errors.slice(0,8).map(row=>row.order_id+'：'+row.message).join('；'):'按原业务规则保存。',
+    })
+    router.reload({only:['rows','viewCounts']})
+  } catch (error) {
+    publishGlobalFeedback({state:'ERROR',title:'批量操作未完成',
+      message:error instanceof Error?error.message:'请求失败，请刷新核对后再试。'})
+  } finally {bulkBusy.value=false}
 }
 const chooseUpload = () => {
   if (!props.canOperate || uploadBusy.value || applyBusy.value) return
@@ -479,12 +529,20 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
       <div v-if="globalGridPilotEnabled" class="domestic-grid-main">
         <GlobalGrid namespace="grid.logistics.domestic.global.v1"
           :title="'国内发货 · '+(tabs.find(tab=>tab[0]===view)?.[1]??view)"
-          :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order']"
+          :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order','actions']"
+          :enable-selection="true" :selected-order-ids="selectedBulkOrderIds"
           :page="domesticPager" :search="gridSearch??''"
           search-placeholder="搜索当前视图全部订单号 / 收件人..."
-          @search-change="searchDomesticGrid($event)" @page-change="gridNavigation.page($event)"
-          @page-size-change="gridNavigation.pageSize($event)" />
-        <div class="domestic-grid-legacy-tools">
+          @search-change="searchDomesticGrid($event)"
+          @selection-change="onBulkSelectionChanged($event)"
+          @page-change="gridNavigation.page($event)"
+          @page-size-change="gridNavigation.pageSize($event)">
+          <template #footer-left>
+            <GridBatchFooterControls :selected-count="selectedBulkOrderIds.length" :options="bulkOptions"
+              :busy="bulkBusy" @apply="applyGridBatch" />
+          </template>
+        </GlobalGrid>
+        <div v-if="view!=='review' && view!=='stockout'" class="domestic-grid-legacy-tools">
           <button type="button" class="secondary" data-testid="domestic-native-batch-toggle"
             @click="showBatchLegacyOperations=!showBatchLegacyOperations;activeOperationId=null">
             {{ showBatchLegacyOperations?'收起原批量操作':'使用原批量操作' }}
@@ -493,7 +551,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
             @click="activeOperationId=null">收起单笔操作</button>
         </div>
       </div>
-      <div v-if="!globalGridPilotEnabled || activeOperationId!==null || showBatchLegacyOperations" class="table-wrap orders">
+      <div v-if="!globalGridPilotEnabled || (view!=='review' && view!=='stockout' && (activeOperationId!==null || showBatchLegacyOperations))" class="table-wrap orders">
         <table>
           <thead><tr><th v-if="canTrackingSync && view!=='stockout'">选择</th><th>#</th><th>{{ view==='stockout' ? '操作' : '审核' }}</th><th>ERP 订单</th><th>订单状态</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>承运商单号</th><th>Carrier</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view==='pending'">SKU</th><th v-if="view==='pending'">数量</th><th v-if="view==='pending'">金额</th><th v-if="view!=='review' && view!=='pending'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync && view!=='stockout'">操作</th></tr></thead>
           <tbody>
