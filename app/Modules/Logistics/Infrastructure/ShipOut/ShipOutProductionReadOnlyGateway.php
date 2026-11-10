@@ -21,6 +21,8 @@ final class ShipOutProductionReadOnlyGateway
 
     private const ORDER_LIST = '/open-api/oms/order/queryListV2';
 
+    private const ORDER_DETAIL = '/open-api/oms/order/query';
+
     /** @return list<array{warehouseId:string,warehouseName:string}> */
     public function warehouses(): array
     {
@@ -114,6 +116,61 @@ final class ShipOutProductionReadOnlyGateway
         }
 
         return ['records' => $rows, 'total' => $data['total']];
+    }
+
+    /**
+     * GET-only proof for a previously submitted order's actual physical
+     * outbound shipment. All untrusted full provider PII is discarded.
+     *
+     * @return array{outbound_reference:string,shipped_time_utc:string}
+     */
+    public function verifiedShippedEvidence(
+        string $warehouseId, string $providerOrderId,
+        string $orderNo, string $expectedTracking,
+    ): array {
+        if ($warehouseId !== trim((string) config('shipout.production_warehouse_id', ''))
+            || trim((string) config('shipout.production_client_org_id', '')) === ''
+            || preg_match('/\A[A-Za-z0-9._\-]{1,60}\z/D', $orderNo) !== 1
+            || preg_match('/\A[A-Za-z0-9._\-]{3,100}\z/D', $providerOrderId) !== 1
+            || preg_match('/\A(?:92|93|94)[0-9]{20}\z/D', $expectedTracking) !== 1) {
+            throw new RuntimeException('SHIPOUT_PROD_OUTBOUND_IDENTITY_UNBOUND');
+        }
+
+        $data = $this->get(self::ORDER_DETAIL, [
+            'orderId' => $providerOrderId,
+            'warehouseId' => $warehouseId,
+            'version' => 'v2',
+        ])['data'] ?? null;
+
+        if (! is_array($data)
+            || (string) ($data['orderId'] ?? '') !== $providerOrderId
+            || (string) ($data['orderNO'] ?? '') !== $orderNo
+            || (isset($data['warehouseId']) && (string) $data['warehouseId'] !== $warehouseId)
+            || ($data['status'] ?? null) !== 4
+            || ! is_array($data['orderShipments'] ?? null)
+            || count($data['orderShipments']) !== 1) {
+            throw new RuntimeException('SHIPOUT_PROD_OUTBOUND_NOT_VERIFIED');
+        }
+
+        $shipped = $data['orderShipments'][0];
+        if (! is_array($shipped)
+            || ($shipped['outboundStatus'] ?? null) !== 4
+            || trim((string) ($shipped['trackingNumber'] ?? '')) !== $expectedTracking
+            || ! is_array($shipped['packageList'] ?? null)
+            || count($shipped['packageList']) < 1) {
+            throw new RuntimeException('SHIPOUT_PROD_OUTBOUND_NOT_VERIFIED');
+        }
+
+        $reference = trim((string) ($shipped['outboundNO'] ?? ''));
+        $time = trim((string) ($shipped['shippedTime'] ?? ''));
+        $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $time, new \DateTimeZone('UTC'));
+        if (! preg_match('/\A[A-Za-z0-9][A-Za-z0-9._\-]{2,89}\z/D', $reference)
+            || ! $parsed || $parsed->format('Y-m-d H:i:s') !== $time
+            || $parsed->getTimestamp() > now()->getTimestamp() + 60) {
+            throw new RuntimeException('SHIPOUT_PROD_OUTBOUND_PROOF_INVALID');
+        }
+
+        return ['outbound_reference' => $reference, 'shipped_time_utc' => $time];
     }
 
     /**
@@ -218,7 +275,7 @@ final class ShipOutProductionReadOnlyGateway
         if (! (bool) config('shipout.production_read_enabled', false)) {
             throw new RuntimeException('SHIPOUT_PROD_READ_DISABLED');
         }
-        if (! in_array($path, [self::WAREHOUSES, self::PRODUCTS, self::STOCK, self::ORDER_LIST], true)) {
+        if (! in_array($path, [self::WAREHOUSES, self::PRODUCTS, self::STOCK, self::ORDER_LIST, self::ORDER_DETAIL], true)) {
             throw new RuntimeException('SHIPOUT_PROD_PATH_DENIED');
         }
         $key = trim((string) config('shipout.production_app_key', ''));
