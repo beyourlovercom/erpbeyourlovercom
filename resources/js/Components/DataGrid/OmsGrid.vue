@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import axios from 'axios'
+import { usePage } from '@inertiajs/vue3'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { AgGridVue } from 'ag-grid-vue3'
 import OmsServerFloatingFilter from './OmsServerFloatingFilter.vue'
@@ -32,6 +33,7 @@ const props = withDefaults(defineProps<{
   rows: GridRow[]
   title?: string
   preferenceScope?: 'local' | 'account'
+  legacyPreferenceNamespaces?: string[]
   defaultPinnedLeft?: number
   defaultPinnedRight?: number
   requiredColumnIds?: string[]
@@ -51,7 +53,7 @@ const props = withDefaults(defineProps<{
   showClientCsvExport?: boolean
 }>(), {
   title: 'OMS Grid', preferenceScope: 'account', defaultPinnedLeft: 1,
-  defaultPinnedRight: 1, requiredColumnIds: () => [],
+  defaultPinnedRight: 1, requiredColumnIds: () => [], legacyPreferenceNamespaces: () => [],
   showSearch: true, enableSelection: true, allowAllRows: true, showClientCsvExport: true,
 })
 
@@ -104,8 +106,17 @@ const selectedCount = ref(0)
 let restoringSelection = false
 const visibleCount = ref(0)
 const syncState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+const layoutReady = ref(false)
+const page = usePage()
+const actorId = computed(() => {
+  const value = (page.props as {auth?:{user?:{id?:number}}}).auth?.user?.id
+  return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : 0
+})
 const theme = themeBalham.withParams({ fontSize: 12, spacing: 5, headerFontSize: 12 })
-const storageKey = computed(() => 'oms-grid-pref:' + props.namespace)
+const storageKey = computed(() => 'oms-grid-pref:user:' + actorId.value + ':' + props.namespace)
+const oldStorageKey = (namespace: string) => 'oms-grid-pref:' + namespace
+const scopedStorageKey = (namespace: string) => 'oms-grid-pref:user:' + actorId.value + ':' + namespace
+
 const defaultColDef: ColDef<GridRow> = { sortable: true, filter: true, floatingFilter: true, resizable: true, minWidth: 85 }
 const effectiveDefaultColDef = computed<ColDef<GridRow>>(() => props.serverPagination
   ? { ...defaultColDef, sortable: false, filter: false, floatingFilter: false }
@@ -207,33 +218,56 @@ const snapshot = (): OmsGridPreference => ({
   pinnedLeft: pinnedLeft.value, pinnedRight: pinnedRight.value,
   density: density.value, pageSize: pageSize.value,
 })
+const readCache = (key: string): OmsGridPreference | null => {
+  try {
+    return sanitizeOmsGridPreference(JSON.parse(window.localStorage.getItem(key) ?? 'null'),ids.value)
+  } catch { return null }
+}
 const cache = (value: OmsGridPreference) => {
   try { window.localStorage.setItem(storageKey.value, JSON.stringify(value)) } catch { /* local cache is optional */ }
 }
+// Serialize writes: a slow earlier request must never overwrite a newer
+// column layout on the server. The latest layout is cached synchronously.
+let saveInFlight = false
+let savePending = false
 const save = async () => {
-  if (!api.value) return
-  const value = snapshot()
-  cache(value)
+  if (!api.value || !layoutReady.value) return
   if (props.preferenceScope === 'local') { syncState.value = 'saved'; return }
-  syncState.value = 'saving'
-  try {
-    await axios.put('/ui/preferences/' + encodeURIComponent(props.namespace), { value })
-    syncState.value = 'saved'
-  } catch { syncState.value = 'error' }
+  if (saveInFlight) { savePending = true; return }
+  saveInFlight = true
+  do {
+    savePending = false
+    const value = snapshot()
+    syncState.value = 'saving'
+    try {
+      await axios.put('/ui/preferences/' + encodeURIComponent(props.namespace), { value })
+      syncState.value = 'saved'
+    } catch { syncState.value = 'error' }
+  } while (savePending && api.value)
+  saveInFlight = false
 }
 const scheduleSave = () => {
-  if (restoring || !api.value) return
+  if (restoring || !api.value || !layoutReady.value) return
   refresh()
+  cache(snapshot())
   if (timer) clearTimeout(timer)
   timer = setTimeout(() => { void save() }, 450)
 }
 const applyPins = () => {
   if (!api.value) return
   const state = api.value.getColumnState().filter(c => ids.value.includes(c.colId))
-  const counts = clampPinnedCounts(state.filter(c => !c.hide).length, pinnedLeft.value, pinnedRight.value)
+  // Saved column ORDER must not override domain-fixed actions.
+  const locked = {
+    left: leafColumns.value.filter(col => col.lockPinned && col.pinned === 'left')
+      .map(col => col.colId ?? col.field ?? ''),
+    right: leafColumns.value.filter(col => col.lockPinned && col.pinned === 'right')
+      .map(col => col.colId ?? col.field ?? ''),
+  }
+  const counts = clampPinnedCounts(state.filter(c => !c.hide).length,
+    Math.max(pinnedLeft.value,locked.left.length),Math.max(pinnedRight.value,locked.right.length))
   pinnedLeft.value = counts.left
   pinnedRight.value = counts.right
-  const pinned = pinnedStateForVisibleColumns(state, counts.left, counts.right)
+  const pinned = pinnedStateForVisibleColumns(state, counts.left, counts.right, locked)
   api.value.applyColumnState({ state: pinned })
   refresh()
 }
@@ -263,24 +297,45 @@ const restore = (value: OmsGridPreference) => {
   restoring = false
   refresh()
 }
+// Never expose AG Grid's default column order before personal settings are
+// applied. A user-scoped local snapshot is instant on repeat navigation, and
+// requires no network request; cold browsers fetch the account copy ONCE.
 const load = async () => {
-  let raw: unknown = null
-  try { raw = JSON.parse(window.localStorage.getItem(storageKey.value) ?? 'null') } catch { /* ignore */ }
-  if (props.preferenceScope === 'account') {
+  const current = readCache(storageKey.value)
+  if (current) { restore(current); return }
+  const getServer = async (namespace: string): Promise<OmsGridPreference | null> => {
+    if (props.preferenceScope !== 'account') return null
     try {
-      const response = await axios.get('/ui/preferences/' + encodeURIComponent(props.namespace))
-      if (response.data?.value) raw = response.data.value
-    } catch { /* use local cache when disconnected */ }
+      const response = await axios.get('/ui/preferences/' + encodeURIComponent(namespace),{timeout:2000})
+      return sanitizeOmsGridPreference(response.data?.value,ids.value)
+    } catch { return null }
   }
-  const value = sanitizeOmsGridPreference(raw, ids.value)
-  if (value) restore(value)
+  let value = await getServer(props.namespace)
+  if (!value) {
+    for (const namespace of props.legacyPreferenceNamespaces) {
+      if (!namespace || namespace === props.namespace) continue
+      value = readCache(scopedStorageKey(namespace))
+        ?? await getServer(namespace)
+        ?? readCache(oldStorageKey(namespace))
+      if (value) break
+    }
+  }
+  // Legacy unscoped cache is LAST resort when account API has no preference.
+  value ??= readCache(oldStorageKey(props.namespace))
+  if (value) { restore(value); cache(snapshot()) }
   else { restoring = true; applyPins(); restoring = false }
 }
 const onReady = (event: GridReadyEvent<GridRow>) => {
   api.value = event.api
+  restoring = true
   refresh()
   restoreSelections()
-  void load()
+  void load().finally(() => {
+    restoring = false
+    // A failed preference request still reveals a usable stable default.
+    layoutReady.value = true
+    refresh()
+  })
 }
 const toggleColumn = (colId: string, show: boolean) => {
   if (!api.value || (required.value.has(colId) && !show)) return
@@ -406,14 +461,15 @@ onBeforeUnmount(() => {
       <button v-if="showSearch" type="button" @click="submitSearch">搜索</button>
       <button v-if="showSearch && query" type="button" aria-label="清空表格搜索" @click="clearSearch">×</button>
       <button v-if="!serverPagination && showClientCsvExport" type="button" title="导出当前表格为 CSV" @click="api?.exportDataAsCsv()">导出 CSV</button>
-      <button type="button" :aria-pressed="settingsOpen" @click="settingsOpen = !settingsOpen">⚙ 列设置</button>
-      <button type="button" @click="changeDensity">密度：{{ density === 'compact' ? '紧凑' : '标准' }}</button>
+      <button type="button" :disabled="!layoutReady" :aria-pressed="settingsOpen" @click="settingsOpen = !settingsOpen">⚙ 列设置</button>
+      <button type="button" :disabled="!layoutReady" @click="changeDensity">密度：{{ density === 'compact' ? '紧凑' : '标准' }}</button>
       <button type="button" :aria-label="maximized ? '退出最大化' : '最大化列表'" :title="maximized ? '退出最大化 (Esc)' : '最大化列表' " @click="toggleMaximize">{{ maximized ? '⤢ 退出' : '⛶ 最大化' }}</button>
     </div>
     <div class="oms-workspace">
       <div class="oms-main">
         <AgGridVue
           class="oms-ag-grid"
+          :style="{visibility:layoutReady ? 'visible' : 'hidden'}"
           :theme="theme"
           :row-data="rows"
           :column-defs="leafColumns"
@@ -439,6 +495,7 @@ onBeforeUnmount(() => {
           @row-selected="onRowSelected"
           @selection-changed="onSelectionChanged"
         />
+        <div v-if="!layoutReady" class="oms-grid-layout-loading" role="status">正在恢复表格布局…</div>
         <div v-if="!serverPagination" class="oms-pagination-size"><label for="oms-grid-page-size">每页</label><select id="oms-grid-page-size" :value="pageSize" aria-label="每页显示条数" @change="changePageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option v-if="allowAllRows" value="all">全部</option></select></div>
         <div v-if="serverPagination" class="oms-server-pagination">
           <div class="oms-footer-left"><slot name="footer-left" :selected-count="selectedCount" /></div>
@@ -477,6 +534,7 @@ onBeforeUnmount(() => {
 .oms-title{display:flex;flex-direction:column;min-width:155px;gap:2px;font-size:14px}.oms-title small{font-size:11px;color:#64748b}
 .oms-spacer{flex:1}.oms-actions{display:flex;gap:6px}.oms-search{width:min(200px,35vw);height:30px;padding:5px 9px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px}
 .oms-workspace{display:flex;min-height:0;flex:1}.oms-main{position:relative;display:flex;flex-direction:column;min-width:0;flex:1}.oms-ag-grid{min-height:0;flex:1;width:100%}
+.oms-grid-layout-loading{position:absolute;inset:40px 0 40px;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:12px;pointer-events:none}
 .oms-pagination-size{position:absolute;left:12px;bottom:0;z-index:2;height:32px;display:flex;align-items:center;gap:6px;background:#fff;font-size:11px;color:#64748b}.oms-pagination-size select{padding:3px 5px;min-width:66px;font-size:12px}
 .oms-server-pagination{height:38px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 14px;border-top:1px solid #dbe1e9;font-size:12px;color:#526072;white-space:nowrap}
 .oms-footer-left{display:flex;align-items:center;min-width:0;flex:1;gap:8px}

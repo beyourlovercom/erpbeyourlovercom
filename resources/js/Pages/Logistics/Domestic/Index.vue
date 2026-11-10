@@ -537,7 +537,9 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         <button type="button" class="secondary" @click="trackingSelection=[]">清除选择</button>
       </div>
       <div v-if="globalGridPilotEnabled" class="domestic-grid-main">
-        <GlobalGrid namespace="grid.logistics.domestic.global.v1"
+        <GlobalGrid :key="'domestic-grid-'+view"
+          :namespace="'grid.logistics.domestic.'+view+'.global.v1'"
+          :legacy-preference-namespaces="['grid.logistics.domestic.global.v1']"
           :title="'国内发货 · '+(tabs.find(tab=>tab[0]===view)?.[1]??view)"
           :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order','actions']"
           :enable-selection="true" :selected-order-ids="selectedBulkOrderIds"

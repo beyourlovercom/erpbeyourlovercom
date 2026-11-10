@@ -363,3 +363,117 @@ test('R4 stockout second separately approved release: fixed-right single action 
   await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toBeVisible()
   console.log('R4_DOMESTIC_STOCKOUT_SINGLE_ACTION_RELEASE_PASS',JSON.stringify(layout))
 })
+
+
+test('R4 preference persistence: no default flash, no repeat GET and separate view configurations',async({page})=>{
+  await page.setViewportSize({width:1450,height:900})
+  await loginThroughUi(page,syntheticUsers().authorized)
+  await page.goto('/logistics/china?view=review',{waitUntil:'domcontentloaded'})
+  const review=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(review.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
+  // Save one preference through the real column-settings UI so the test can
+  // discover the actual account-scoped cache key after Inertia has hydrated.
+  await review.getByRole('button',{name:'⚙ 列设置'}).click()
+  await review.getByRole('button',{name:'恢复默认'}).click()
+  await review.getByRole('button',{name:'关闭列设置'}).click()
+  const keys=await page.evaluate(()=>Object.keys(window.localStorage).filter(key=>
+    key.startsWith('oms-grid-pref:user:') && key.endsWith(':grid.logistics.domestic.review.global.v1')))
+  expect(keys).toHaveLength(1)
+  const reviewKey=keys[0]
+  const actorId=Number(reviewKey.split(':')[2])
+  expect(actorId).toBeGreaterThan(0)
+  const stockKey='oms-grid-pref:user:'+actorId+':grid.logistics.domestic.stockout.global.v1'
+  const cached=await page.evaluate(key=>window.localStorage.getItem(key),reviewKey)
+  expect(cached).toBeTruthy()
+  // A fresh browser must not mistake the shared legacy preference for the
+  // stockout page's OWN column preferences.
+  await page.evaluate(key=>window.localStorage.removeItem(key),stockKey)
+  const saved={
+    version:1,
+    columns:[
+      {colId:'order',hide:false,width:265},
+      {colId:'quantity',hide:false,width:110},
+      {colId:'sku',hide:false,width:180},
+      {colId:'actions',hide:false,width:140},
+    ],
+    pinnedLeft:1,pinnedRight:1,density:'compact',pageSize:50,
+  }
+  let unlock!:()=>void
+  const hold=new Promise<void>(resolve=>{unlock=resolve})
+  let getCount=0
+  let putCount=0
+  await page.route('**/ui/preferences/grid.logistics.domestic.stockout.global.v1',async(route)=>{
+    if(route.request().method()==='GET'){
+      getCount++
+      await hold
+      await route.fulfill({status:200,contentType:'application/json',
+        body:JSON.stringify({namespace:'grid.logistics.domestic.stockout.global.v1',value:saved})})
+    }else{
+      putCount++
+      await route.continue()
+    }
+  })
+  await page.goto('/logistics/china?view=stockout',{waitUntil:'domcontentloaded'})
+  const stock=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(stock.locator('.oms-grid-layout-loading')).toBeVisible()
+  await expect(stock.locator('.oms-ag-grid')).toHaveCSS('visibility','hidden')
+  unlock()
+  await expect(stock.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:15000})
+  await expect(stock.locator('.oms-grid-layout-loading')).toHaveCount(0)
+  await expect(stock.getByText('007-1110-c99991',{exact:true})).toBeVisible()
+  const before=await stock.locator('.ag-header-cell[col-id]').evaluateAll(nodes=>
+    nodes.map(node=>node.getAttribute('col-id')).filter(Boolean))
+  expect(before).toContain('quantity')
+  expect(before).toContain('sku')
+  const stockLayout=await stock.locator('.ag-cell[col-id=actions]').first().evaluate(el=>
+    ({width:el.getBoundingClientRect().width,pinned:el.classList.contains('ag-cell-first-right-pinned')}))
+  expect(stockLayout.width).toBeLessThanOrEqual(148)
+  expect(stockLayout.pinned).toBe(true)
+  expect(getCount).toBe(1)
+  expect(putCount).toBe(0)
+  // The first load just seeded the scoped local cache. Repeat reloads must
+  // show that same state WITHOUT a second account GET or visual re-layout.
+  const newCache=await page.evaluate(key=>window.localStorage.getItem(key),stockKey)
+  expect(newCache).toBeTruthy()
+  await page.reload({waitUntil:'domcontentloaded'})
+  await expect(page.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:15000})
+  await expect(page.locator('.oms-grid-layout-loading')).toHaveCount(0)
+  const after=await page.locator('.ag-header-cell[col-id]').evaluateAll(nodes=>
+    nodes.map(node=>node.getAttribute('col-id')).filter(Boolean))
+  expect(after).toEqual(before)
+  expect(getCount).toBe(1)
+  expect(putCount).toBe(0)
+  await page.reload({waitUntil:'domcontentloaded'})
+  await expect(page.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:15000})
+  expect(getCount).toBe(1)
+  expect(putCount).toBe(0)
+  // Switching back preserves the review cache and does not replace it with
+  // the stockout column order. Neither view's reset can overwrite the other.
+  await page.goto('/logistics/china?view=review',{waitUntil:'domcontentloaded'})
+  await expect(page.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:15000})
+  const reviewAfter=await page.evaluate(key=>window.localStorage.getItem(key),reviewKey)
+  expect(reviewAfter).toBe(cached)
+  expect(getCount).toBe(1)
+  expect(putCount).toBe(0)
+  // An explicit user edit, unlike hydration, must be saved immediately to
+  // account-scoped local cache and then persisted to the server.
+  await page.goto('/logistics/china?view=stockout',{waitUntil:'domcontentloaded'})
+  await expect(page.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:15000})
+  await page.getByRole('button',{name:'⚙ 列设置'}).click()
+  const skuSetting=page.locator('.oms-column-row').filter({hasText:'SKU'}).first()
+  await expect(skuSetting).toBeVisible()
+  await skuSetting.locator('input[type="checkbox"]').uncheck()
+  const updated=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)??'null'),stockKey)
+  expect(updated.columns.find((column:{colId:string})=>column.colId==='sku')?.hide).toBe(true)
+  await expect.poll(()=>putCount,{timeout:5000}).toBe(1)
+  await page.reload({waitUntil:'domcontentloaded'})
+  await expect(page.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:15000})
+  await expect(page.locator('.ag-header-cell[col-id="sku"]')).toHaveCount(0)
+  expect(getCount).toBe(1)
+  expect(putCount).toBe(1)
+  await page.goto('/logistics/china?view=review',{waitUntil:'domcontentloaded'})
+  await expect(page.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:15000})
+  expect(await page.evaluate(key=>localStorage.getItem(key),reviewKey)).toBe(cached)
+  console.log('DOMESTIC_GRID_PREF_STABLE_FIRST_PAINT_AND_VIEW_ISOLATION_PASS',
+    JSON.stringify({getCount,putCount,stockColumnWidth:stockLayout.width,actorId}))
+})
