@@ -9,7 +9,7 @@ Adopt a **single shared list/grid engine** for new ERP data lists; do not mandat
 - Unique preference namespaces (e.g. `grid.products.global.v1`) and account-scoped settings; never overwrite established `grid.orders.all.oms.v1` or legacy column configurations.
 - Standard density 32px, header 31px, adjustable columns/pins, 20/50/100 paging when supported, UTF-8 Chinese labels, keyboard focus, horizontal scroll.
 - A single built-in **global server-side search box** replaces the redundant outside keyword search in the three canary views; it never filters only the visible page. Retain warehouse/status selectors in the external filter area, with server query state preserved on navigation. Legacy view retains its original search input. Product/inventory/procurement retains its real route/permission and status semantics.
-- **Explicitly opt-in Dev pilot**: `global_grid=1` works only when `APP_ENV` is local, testing or development. In production the pilot endpoint continues to use the original page data, no matter the query.
+- **Explicit opt-in canary:** `global_grid=1` works in local/testing/development; after the 2026-11-10 Owner Production release authorization, Production permits this opt-in **only for authenticated ERP Owner ID 1**. Without the query parameter, all users see the original tables. Other Production employees cannot enable the pilot.
 - Product standard view only; factory measurements/accessories stay untouched, with their task actions and selections.
 - Inventory stock table reuses the repository's existing **server-side** pager; no new inventory queries or projection rewrites.
 - Procurement pilot replaces current unbounded `get()` only for pilot mode with `paginate(50)`, while legacy route/response remains unchanged.

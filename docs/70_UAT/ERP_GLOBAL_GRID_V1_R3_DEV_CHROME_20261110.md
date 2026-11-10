@@ -56,3 +56,11 @@ Original OMS Grid AllCommunityModule: 1,273,960 bytes JS; gzip ~342 KiB. Explici
 - Existing OMS import compatibility after search changes: Chrome 2/2 PASS, test artifact cleanup PASS.
 - Focused Vitest 32/32 PASS; app and E2E type checking PASS.
 - No Production deployment, real import, or database schema change. Draft PR remains the sole delivery vehicle.
+
+
+## 2026-11-10 Owner-authorized Production release gate
+
+- Rebase on latest main including MorePlus ShipOut #656; preserve its live canary, queue and database schema.
+- Production `?global_grid=1` is explicitly permitted for authenticated ERP Owner **ID 1 only**, with untouched legacy list as default. Other employees cannot enable the trial even with crafted query strings.
+- Do not enable company-wide rollout or create/mutate live business orders for release checks.
+- Only merge on **final exact-head** CI green, then deploy isolated release with rollback and read-only production verification.
