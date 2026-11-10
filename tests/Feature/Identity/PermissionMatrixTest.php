@@ -34,6 +34,41 @@ final class PermissionMatrixTest extends TestCase
         $this->assertFalse($admin->hasPermission('super_admin'));
     }
 
+    public function test_existing_production_admin_role_is_backfilled_without_touching_staff_or_custom_acl(): void
+    {
+        // Simulates the real Production role: 49 rights, but a newly added
+        // products.parameters.submit key is missing from permissions table.
+        $role = Role::query()->create([
+            'key' => RolePreset::Administrator->roleKey(), 'label' => '管理员',
+        ]);
+        $employeeRole = Role::query()->create(['key' => 'role_preset_logistics', 'label' => '物流']);
+        $view = Permission::query()->create(['key' => 'logistics.view', 'label' => '物流查看']);
+        $role->permissions()->attach($view);
+        $employeeRole->permissions()->attach($view);
+        $admin = User::factory()->create(['permission_mode' => 'role', 'is_active' => true]);
+        $admin->roles()->attach($role);
+        $staff = User::factory()->create(['permission_mode' => 'role', 'is_active' => true]);
+        $staff->roles()->attach($employeeRole);
+        $customAdmin = User::factory()->create(['permission_mode' => 'custom', 'is_active' => true]);
+        $customAdmin->roles()->attach($role);
+        $customAdmin->customPermissions()->attach($view);
+
+        $this->assertFalse($admin->hasPermission('products.parameters.submit'));
+        $migration = require database_path('migrations/2026_11_10_150000_backfill_administrator_preset_permissions.php');
+        $migration->up();
+        $migration->up(); // Idempotent, safe to rerun after partial deploy.
+
+        $freshAdmin = User::query()->findOrFail($admin->id);
+        foreach (RolePreset::Administrator->permissions() as $key) {
+            $this->assertTrue($freshAdmin->can($key), 'Admin preset missing '.$key);
+        }
+        $this->assertTrue($freshAdmin->hasPermission('products.parameters.submit'));
+        $this->assertFalse(User::query()->findOrFail($staff->id)->hasPermission('products.parameters.submit'));
+        $this->assertFalse(User::query()->findOrFail($customAdmin->id)->hasPermission('products.parameters.submit'));
+        $this->assertSame(1, $employeeRole->permissions()->count());
+        $this->assertSame(count(RolePreset::Administrator->permissions()), $role->permissions()->count());
+    }
+
     // A: role mode uses role template permissions
     public function test_user_in_role_mode_uses_role_template_permissions(): void
     {
