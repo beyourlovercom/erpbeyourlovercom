@@ -1592,6 +1592,71 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->assertSame(1, $this->postInvocations);
     }
 
+    public function test_v1_dynamic_owner_selected_batch_worker_uses_one_immutable_post_only(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $this->fakeProvider(onOrderGet: function (): void {
+            if ($this->postInvocations >= 1) {
+                $this->providerVisibleOrderId = 'SYNTHETIC-PROVIDER-ORDER';
+            }
+        });
+        config()->set([
+            'shipout.production_v1_batch_enabled' => true,
+            'shipout.production_v1_batch_owner_approved' => true,
+            'shipout.production_v1_batch_canary_order_id' => 0,
+            'shipout.production_v1_batch_approved_order_ids' => '',
+            'shipout.production_v1_batch_operator_selection_enabled' => true,
+        ]);
+        $operator = auth()->user();
+        $batchId = '00000000-0000-4000-8000-000000000198';
+        $this->makeSyntheticBatch((int) $order->id, (int) $operator->id, $batchId);
+        auth()->logout();
+        $worker = new ProcessShipOutProductionBatch($batchId);
+        $worker->handle(app(ShipOutProductionCanaryDispatchService::class),
+            app(ShipOutProductionV1OperatorAccess::class));
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id' => $order->id, 'status' => 'acknowledged',
+        ]);
+        $this->assertDatabaseHas('shipout_production_batch_items', [
+            'batch_id' => $batchId, 'status' => 'oms_visible',
+        ]);
+        $this->assertSame(1, $this->postInvocations);
+        $this->assertSame('pending', $order->fresh()->shipment->shipment_status);
+        $this->assertNull($order->fresh()->shipment->tracking_number);
+        $worker->handle(app(ShipOutProductionCanaryDispatchService::class),
+            app(ShipOutProductionV1OperatorAccess::class));
+        $this->assertSame(1, $this->postInvocations);
+    }
+
+    public function test_v1_operator_dynamic_kill_switch_denies_queued_item_without_post(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $this->fakeProvider();
+        config()->set([
+            'shipout.production_v1_batch_enabled' => true,
+            'shipout.production_v1_batch_owner_approved' => true,
+            'shipout.production_v1_batch_canary_order_id' => 0,
+            'shipout.production_v1_batch_approved_order_ids' => '',
+            'shipout.production_v1_batch_operator_selection_enabled' => false,
+        ]);
+        $operator = auth()->user();
+        $batchId = '00000000-0000-4000-8000-000000000199';
+        $this->makeSyntheticBatch((int) $order->id, (int) $operator->id, $batchId);
+        auth()->logout();
+        (new ProcessShipOutProductionBatch($batchId))->handle(
+            app(ShipOutProductionCanaryDispatchService::class),
+            app(ShipOutProductionV1OperatorAccess::class));
+        $this->assertDatabaseHas('shipout_production_batch_items', [
+            'batch_id' => $batchId, 'status' => 'skipped',
+            'result_code' => 'SHIPOUT_BATCH_CANARY_SCOPE_DENIED',
+        ]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        $this->assertSame(0, $this->postInvocations);
+        Http::assertNothingSent();
+    }
+
     public function test_v1_get_only_readback_rejects_async_duplicate_with_no_second_post(): void
     {
         $order = $this->order();

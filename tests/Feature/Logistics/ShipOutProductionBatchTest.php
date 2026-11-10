@@ -140,6 +140,79 @@ final class ShipOutProductionBatchTest extends TestCase
         }
     }
 
+    public function test_owner_enabled_production_administrator_can_start_exact_page_selection_without_any_provider_post(): void
+    {
+        $role = Role::query()->firstOrCreate(
+            ['key' => 'role_preset_administrator'], ['label' => '管理员']
+        );
+        foreach (['logistics.view', 'logistics.operate'] as $key) {
+            $permission = Permission::query()->firstOrCreate(
+                ['key' => $key], ['label' => $key]
+            );
+            $role->permissions()->syncWithoutDetaching([$permission->id]);
+        }
+        $admin = User::factory()->create(['is_active' => true, 'permission_mode' => 'role']);
+        $admin->roles()->attach($role);
+        $selected = $this->approvedOrder($admin, '4');
+        $other = $this->approvedOrder($admin, '5');
+        // The original V1 production permission gate deliberately requires
+        // exactly three distinct named staff IDs even for an administrator.
+        $otherNamedOperator1 = User::factory()->create();
+        $otherNamedOperator2 = User::factory()->create();
+        config()->set([
+            'shipout.production_read_enabled' => true,
+            'shipout.production_v1_batch_enabled' => true,
+            'shipout.production_v1_batch_owner_approved' => true,
+            'shipout.production_v1_dispatch_enabled' => true,
+            'shipout.production_v1_owner_approved' => true,
+            'shipout.production_v1_operator_user_ids' => implode(',', [
+                $admin->id, $otherNamedOperator1->id, $otherNamedOperator2->id,
+            ]),
+            'shipout.production_v1_min_order_id' => 1,
+            'shipout.production_v1_batch_canary_order_id' => 0,
+            'shipout.production_v1_batch_approved_order_ids' => '',
+            'shipout.production_v1_batch_operator_selection_enabled' => true,
+            // Production requires async queue; Queue::fake intercepts this
+            // without contacting Redis or running the job in the test.
+            'queue.default' => 'redis',
+        ]);
+        $previous = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            Http::preventStrayRequests();
+            Queue::fake();
+            $this->withoutVite();
+            $this->withoutMiddleware(PreventRequestForgery::class);
+            $this->actingAs($admin);
+            $this->get('/logistics/oversea/us-moreplus?view=pending')
+                ->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('shipoutProductionBatchUi', true)
+                ->where('shipoutProductionBatchPaused', false)
+                ->where('shipoutProductionOperatorAllowed', true)
+                ->where('canOperate', true));
+
+            $preview = $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview?scope=selected&order_ids='.$selected->id)
+                ->assertOk()->assertJsonPath('count', 1)
+                ->assertJsonPath('scope', 'selected')->json();
+            $this->postJson('/logistics/oversea/us-moreplus/shipout/batch/start', [
+                'scope' => 'selected', 'order_ids' => (string) $selected->id,
+                'fingerprint' => $preview['fingerprint'],
+                'confirmation' => 'CONFIRM_MOREPLUS_BATCH_1',
+            ])->assertStatus(202)->assertJsonPath('total', 1);
+            $this->assertDatabaseHas('shipout_production_batch_items', [
+                'order_id' => $selected->id, 'status' => 'queued',
+            ]);
+            $this->assertDatabaseMissing('shipout_production_batch_items', [
+                'order_id' => $other->id,
+            ]);
+            Queue::assertPushed(ProcessShipOutProductionBatch::class, 1);
+            $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+            Http::assertNothingSent();
+        } finally {
+            $this->app->instance('env', $previous);
+        }
+    }
+
     public function test_selected_only_submits_explicit_ids_and_skips_other_approved_rows(): void
     {
         Http::preventStrayRequests();
@@ -393,6 +466,83 @@ final class ShipOutProductionBatchTest extends TestCase
             $this->assertSame([$order->id], app(ShipOutProductionBatchService::class)->candidateIds());
         } finally {
             $this->app->instance('env', $old);
+        }
+    }
+
+    public function test_owner_enabled_production_ui_selection_uses_frozen_candidate_snapshot_and_excludes_stockout_and_prior_post(): void
+    {
+        $operator = $this->operator();
+        $first = $this->approvedOrder($operator, '1');
+        $second = $this->approvedOrder($operator, '2');
+        $stockout = $this->approvedOrder($operator, '3');
+        $stockout->forceFill(['workflow_status' => 'out_of_stock'])->save();
+        $originalEnvironment = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            config()->set([
+                'shipout.production_v1_batch_canary_order_id' => 0,
+                'shipout.production_v1_batch_approved_order_ids' => '',
+                'shipout.production_v1_batch_operator_selection_enabled' => true,
+                'shipout.production_v1_batch_enabled' => true,
+                'shipout.production_v1_batch_owner_approved' => true,
+                'shipout.production_v1_min_order_id' => 1,
+            ]);
+            $service = app(ShipOutProductionBatchService::class);
+            $this->assertTrue(ShipOutProductionBatchService::productionAllowsOperatorSelection());
+            $this->assertSame([], ShipOutProductionBatchService::productionApprovedOrderIds());
+            $this->assertSame([$first->id, $second->id], $service->candidateIds());
+            $preview = $service->preview();
+            $this->assertSame('all', $preview['scope']);
+            $this->assertSame(3, $preview['scan_count']);
+            $this->assertSame(1, $preview['stockout_count']);
+            $this->assertSame(2, $preview['count']);
+            $this->assertSame(1, $preview['excluded_count']);
+
+            Http::preventStrayRequests();
+            $batchId = $service->start((int) $operator->id, $preview['fingerprint']);
+            $this->assertDatabaseHas('shipout_production_batch_items', [
+                'batch_id' => $batchId, 'order_id' => $first->id, 'status' => 'queued',
+            ]);
+            $this->assertDatabaseHas('shipout_production_batch_items', [
+                'batch_id' => $batchId, 'order_id' => $second->id, 'status' => 'queued',
+            ]);
+            $this->assertDatabaseMissing('shipout_production_batch_items', [
+                'batch_id' => $batchId, 'order_id' => $stockout->id,
+            ]);
+            $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+            Http::assertNothingSent();
+        } finally {
+            $this->app->instance('env', $originalEnvironment);
+        }
+    }
+
+    public function test_dynamic_operator_selection_never_overrides_an_existing_canary_or_explicit_id_list(): void
+    {
+        $user = $this->operator();
+        $first = $this->approvedOrder($user, '1');
+        $second = $this->approvedOrder($user, '2');
+        $originalEnvironment = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            config()->set([
+                'shipout.production_v1_batch_operator_selection_enabled' => true,
+                'shipout.production_v1_batch_canary_order_id' => $first->id,
+                'shipout.production_v1_batch_approved_order_ids' => '',
+            ]);
+            $this->assertFalse(ShipOutProductionBatchService::productionAllowsOperatorSelection());
+            $this->assertSame([$first->id], app(ShipOutProductionBatchService::class)->candidateIds());
+            config()->set([
+                'shipout.production_v1_batch_canary_order_id' => 0,
+                'shipout.production_v1_batch_approved_order_ids' => (string) $second->id,
+            ]);
+            $this->assertFalse(ShipOutProductionBatchService::productionAllowsOperatorSelection());
+            $this->assertSame([$second->id], app(ShipOutProductionBatchService::class)->candidateIds());
+            config()->set('shipout.production_v1_batch_approved_order_ids', '');
+            config()->set('shipout.production_v1_batch_operator_selection_enabled', false);
+            $this->assertFalse(ShipOutProductionBatchService::productionAllowsOperatorSelection());
+            $this->assertSame([], app(ShipOutProductionBatchService::class)->candidateIds());
+        } finally {
+            $this->app->instance('env', $originalEnvironment);
         }
     }
 

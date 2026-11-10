@@ -87,7 +87,10 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
                     // queued jobs after a Canary id change or a kill-switch flip.
                     if (! in_array((int) $item->order_id,
                         ShipOutProductionBatchService::productionApprovedOrderIds(),
-                        true)) {
+                        true) && ! ShipOutProductionBatchService::productionAllowsOperatorSelection()) {
+                        // Dynamic mode is additionally bound to this batch's
+                        // immutable, operator-approved order snapshot. Global
+                        // flags/role and fresh per-order preflight still apply.
                         throw new RuntimeException('SHIPOUT_BATCH_CANARY_SCOPE_DENIED');
                     }
                     if (! app()->environment('production')

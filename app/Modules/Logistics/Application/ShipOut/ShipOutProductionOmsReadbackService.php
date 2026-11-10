@@ -109,11 +109,45 @@ final class ShipOutProductionOmsReadbackService
             'checked_at' => now(),
             'created_at' => now(),
         ]);
+        // A late cancellation can arrive AFTER the two-read batch completed.
+        // Keep historical batch results aligned with the actual exception
+        // queue, without modifying the immutable POST or shipment/Tracking.
+        $this->quarantineCompletedBatchIfLaterException($orderId, $state, $reason);
 
         return $result + [
             'oms_persisted_state' => $state,
             'oms_checked_at' => now()->toIso8601String(),
         ];
+    }
+
+    private function quarantineCompletedBatchIfLaterException(
+        int $orderId, string $state, ?string $reason
+    ): void {
+        if (! in_array($state, ['cancelled', 'unverified'], true)) {
+            return;
+        }
+
+        $itemStatus = $state === 'cancelled' ? 'provider_cancelled' : 'needs_review';
+        $resultCode = $state === 'cancelled'
+            ? ($reason ?: 'PROVIDER_CANCELLED_OTHER')
+            : 'OMS_READBACK_UNAVAILABLE_MANUAL_CHECK';
+        $affected = DB::table('shipout_production_batch_items')
+            ->where('order_id', $orderId)
+            ->where('status', 'oms_visible')
+            ->update([
+                'status' => $itemStatus,
+                'result_code' => $resultCode,
+                'updated_at' => now(),
+            ]);
+
+        if ($affected > 0) {
+            DB::table('shipout_production_batches')
+                ->whereIn('id', DB::table('shipout_production_batch_items')
+                    ->where('order_id', $orderId)
+                    ->where('status', $itemStatus)->select('batch_id'))
+                ->where('status', 'completed')
+                ->update(['status' => 'completed_partial', 'updated_at' => now()]);
+        }
     }
 
     private function recordUnavailable(int $orderId): void
@@ -129,17 +163,20 @@ final class ShipOutProductionOmsReadbackService
             $prior = DB::table('shipout_oms_readbacks')->where('order_id', $orderId)
                 ->orderByDesc('id')->first(['state', 'reason_code']);
             $cancelled = (string) ($prior->state ?? '') === 'cancelled';
+            $state = $cancelled ? 'cancelled' : 'unverified';
+            $reason = $cancelled
+                ? ($prior->reason_code ?: 'PROVIDER_CANCELLED_OTHER')
+                : 'OMS_READBACK_UNAVAILABLE_MANUAL_CHECK';
             DB::table('shipout_oms_readbacks')->insert([
                 'order_id' => $orderId,
                 'provider_order_id' => $attempt->provider_order_id ?: null,
                 'provider_status' => null,
-                'state' => $cancelled ? 'cancelled' : 'unverified',
-                'reason_code' => $cancelled
-                    ? ($prior->reason_code ?: 'PROVIDER_CANCELLED_OTHER')
-                    : 'OMS_READBACK_UNAVAILABLE_MANUAL_CHECK',
+                'state' => $state,
+                'reason_code' => $reason,
                 'checked_at' => now(),
                 'created_at' => now(),
             ]);
+            $this->quarantineCompletedBatchIfLaterException($orderId, $state, $reason);
         } catch (\Throwable) {
             // Never replace the original provider exception or leak credentials.
         }
