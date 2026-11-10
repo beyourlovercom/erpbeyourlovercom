@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import axios from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Show from './Show.vue'
 
@@ -727,36 +728,63 @@ describe('R13 official ShipOut status 4, shipment awaiting reconciliation', () =
   })
 })
 
-describe('MorePlus remark-to-Tracking guard', () => {
-  beforeEach(() => {routerPatch.mockClear()})
-  it('routes an exact 22-digit USPS number to backend remark handler and clears local note on success', async () => {
+describe('MorePlus inline JSON editing without full-page reload', () => {
+  beforeEach(() => {routerPost.mockClear();routerPatch.mockClear();routerReload.mockClear();routerVisit.mockClear()})
+  it('moves USPS remark into Tracking after one JSON save without route reload', async () => {
+    const mock=vi.spyOn(axios,'patch').mockResolvedValueOnce({data:{
+      order_id:8100,shipment_status:'pending',tracking_number:'9434650105794040132223',
+      carrier:'USPS',service:'Priority',note:null,auto_shipped:false,
+      website_sync:null,tracking_moved:true,message:'已将 USPS 单号自动归位 Tracking'}})
     const row={...usSmPendingRows.data[0],order_id:8100,warehouse_id:1,note:null,tracking_number:null}
     const page=mountPage({view:'issued',rows:{...usSmPendingRows,data:[row]}})
     const note=page.find('.note-input')
     expect(note.attributes('placeholder')).toContain('USPS单号自动转入Tracking')
     await note.setValue('9434650105794040132223')
     await note.trigger('blur')
-    expect(routerPatch).toHaveBeenCalledTimes(1)
-    const args=routerPatch.mock.calls[0]
-    expect(args[0]).toBe('/logistics/oversea/orders/8100/draft')
-    expect(args[1]).toEqual({note:'9434650105794040132223'})
-    args[2].onSuccess()
-    await page.vm.$nextTick()
-    expect((page.find('.tracking-input').element as HTMLInputElement).value).toBe('9434650105794040132223')
+    await vi.waitFor(()=>expect(mock).toHaveBeenCalledTimes(1))
+    expect(mock.mock.calls[0][0]).toBe('/logistics/oversea/orders/8100/draft')
+    expect(mock.mock.calls[0][1]).toEqual({note:'9434650105794040132223'})
+    await vi.waitFor(()=>expect((page.find('.tracking-input').element as HTMLInputElement).value).toBe('9434650105794040132223'))
     expect((page.find('.note-input').element as HTMLInputElement).value).toBe('')
-    page.unmount()
+    expect(routerPatch).not.toHaveBeenCalled()
+    expect(routerReload).not.toHaveBeenCalled()
+    expect(routerVisit).not.toHaveBeenCalled()
+    page.unmount();mock.mockRestore()
   })
-  it('preserves ordinary note contents without converting to Tracking', async () => {
+  it('saves a normal note inline without returning a new page', async () => {
+    const mock=vi.spyOn(axios,'patch').mockResolvedValueOnce({data:{
+      order_id:8101,shipment_status:'pending',tracking_number:null,
+      carrier:'USPS',service:'Priority',note:'请先核对仓库',auto_shipped:false,
+      website_sync:null,tracking_moved:false,message:'字段已保存，无需刷新页面'}})
     const row={...usSmPendingRows.data[0],order_id:8101,warehouse_id:1,note:null}
     const page=mountPage({view:'issued',rows:{...usSmPendingRows,data:[row]}})
     await page.find('.note-input').setValue('请先核对仓库')
     await page.find('.note-input').trigger('blur')
-    expect(routerPatch).toHaveBeenCalledTimes(1)
-    expect(routerPatch.mock.calls[0][1]).toEqual({note:'请先核对仓库'})
-    page.unmount()
+    await vi.waitFor(()=>expect(mock).toHaveBeenCalledTimes(1))
+    expect(mock.mock.calls[0][1]).toEqual({note:'请先核对仓库'})
+    expect(routerPatch).not.toHaveBeenCalled()
+    expect(routerReload).not.toHaveBeenCalled()
+    page.unmount();mock.mockRestore()
+  })
+  it('automatically removes truly shipped row and adjusts two tab counters locally', async () => {
+    const mock=vi.spyOn(axios,'patch').mockResolvedValueOnce({data:{
+      order_id:8102,shipment_status:'shipped',tracking_number:'9434650105794040132223',
+      carrier:'USPS',service:'Priority',note:null,auto_shipped:true,
+      website_sync:'pending',tracking_moved:false,message:'ERP 已发货'}})
+    const row={...usSmPendingRows.data[0],order_id:8102,warehouse_id:1,note:null,tracking_number:null}
+    const page=mountPage({view:'issued',rows:{...usSmPendingRows,data:[row],total:1},
+      viewCounts:{review:0,pending:0,issued:1,shipped:591,exceptions:0,all:592}})
+    await page.find('.tracking-input').setValue('9434650105794040132223')
+    await page.find('.tracking-input').trigger('blur')
+    await vi.waitFor(()=>expect(mock).toHaveBeenCalledTimes(1))
+    await vi.waitFor(()=>expect(page.text()).toContain('已发货 592'))
+    expect(page.text()).toContain('已下发 0')
+    expect(page.find('.note-input').exists()).toBe(false)
+    expect(routerReload).not.toHaveBeenCalled()
+    expect(routerVisit).not.toHaveBeenCalled()
+    page.unmount();mock.mockRestore()
   })
 })
-
 describe('MorePlus Production ACK pending lifecycle without a second POST', () => {
   const attempt={attempted:true,is_oms_created:false,status:'oms_ack_pending',
     label:'API 已受理 · 待 OMS 核实（禁止重发）',provider_order_id:'2116863614032625665'}

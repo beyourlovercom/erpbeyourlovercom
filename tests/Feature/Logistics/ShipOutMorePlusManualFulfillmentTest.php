@@ -256,4 +256,136 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
         ]);
         Http::assertNothingSent();
     }
+
+    private function setupVerifiedAutoShip(Order $order): void
+    {
+        $this->attempt($order);
+        DB::table('shipout_oms_readbacks')->insert([
+            'order_id' => $order->id,
+            'provider_order_id' => 'OMS-EXISTING-ONE-ONLY',
+            'provider_status' => 4,
+            'state' => 'provider_shipped',
+            'reason_code' => null,
+            'checked_at' => now(),
+            'created_at' => now(),
+        ]);
+        config()->set('shipout.production_read_enabled', true);
+        config()->set('shipout.production_app_key', 'fake-app-key');
+        config()->set('shipout.production_app_secret', 'fake-secret');
+        config()->set('shipout.production_bearer', 'bearer fake-token');
+        config()->set('shipout.production_warehouse_id', '1265864414750314497');
+        config()->set('shipout.production_client_org_id', '57893');
+        config()->set('shipout.production_v1_batch_enabled', false);
+    }
+
+    public function test_json_tracking_save_auto_completes_only_after_exact_signed_oms_shipped_proof(): void
+    {
+        [$user, $order] = $this->prepare();
+        $this->setupVerifiedAutoShip($order);
+        $tracking = '9434650105794040132223';
+        $time = now('UTC')->subHours(2)->format('Y-m-d H:i:s');
+        Http::preventStrayRequests();
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK',
+            'data' => [
+                'orderId' => 'OMS-EXISTING-ONE-ONLY', 'orderNO' => 'C42141-007',
+                'status' => 4, 'warehouseId' => '1265864414750314497',
+                'orderRecipient' => ['phone' => 'PRIVATE_DO_NOT_LEAK'],
+                'orderShipments' => [[
+                    'outboundNO' => 'OUTBOUND-123', 'outboundStatus' => 4,
+                    'trackingNumber' => $tracking, 'shippedTime' => $time,
+                    'packageList' => [['trackingNumber' => $tracking]],
+                ]],
+            ],
+        ], 200)]);
+        $this->withSession(['_token' => str_repeat('c', 40)])
+            ->withHeader('X-CSRF-TOKEN', str_repeat('c', 40));
+        $oldEnv = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            $this->actingAs($user)
+                ->patchJson("/logistics/oversea/orders/{$order->id}/draft", [
+                    'tracking_number' => $tracking,
+                ])->assertOk()
+                ->assertJsonPath('order_id', $order->id)
+                ->assertJsonPath('shipment_status', 'shipped')
+                ->assertJsonPath('auto_shipped', true)
+                ->assertJsonPath('tracking_number', $tracking)
+                ->assertJsonPath('website_sync', 'not_required');
+        } finally {
+            $this->app->instance('env', $oldEnv);
+        }
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'shipment_status' => 'shipped',
+            'tracking_number' => $tracking,
+        ]);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id, 'progress' => 'shipped',
+        ]);
+        $this->assertSame('shipped', $order->fresh()->order_status->value);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        $this->assertSame($time, $order->fresh()->shipment->shipped_at->utc()->format('Y-m-d H:i:s'));
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_tracking_saved_but_provider_not_shipped_does_not_auto_advance_or_sync(): void
+    {
+        [$user, $order] = $this->prepare();
+        $this->setupVerifiedAutoShip($order);
+        $tracking = '9434650105794040132223';
+        Http::preventStrayRequests();
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK',
+            'data' => [
+                'orderId' => 'OMS-EXISTING-ONE-ONLY',
+                'orderNO' => 'C42141-007',
+                'status' => 2,
+                'orderShipments' => [[
+                    'outboundStatus' => 0,
+                    'trackingNumber' => null,
+                    'shippedTime' => null,
+                    'packageList' => [],
+                ]],
+            ],
+        ], 200)]);
+        $this->withSession(['_token' => str_repeat('c', 40)])
+            ->withHeader('X-CSRF-TOKEN', str_repeat('c', 40));
+        $oldEnv = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            $this->actingAs($user)
+                ->patchJson("/logistics/oversea/orders/{$order->id}/draft", [
+                    'tracking_number' => $tracking,
+                ])->assertOk()
+                ->assertJsonPath('shipment_status', 'pending')
+                ->assertJsonPath('auto_shipped', false)
+                ->assertJsonPath('tracking_number', $tracking);
+        } finally {
+            $this->app->instance('env', $oldEnv);
+        }
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'shipment_status' => 'pending',
+            'tracking_number' => $tracking,
+        ]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_plain_json_remark_save_returns_one_row_and_does_not_query_oms(): void
+    {
+        [$user, $order] = $this->prepare();
+        Http::preventStrayRequests();
+        $this->actingAs($user)
+            ->patchJson("/logistics/oversea/orders/{$order->id}/draft", [
+                'note' => '仓库正在处理中',
+            ])->assertOk()
+            ->assertJsonPath('note', '仓库正在处理中')
+            ->assertJsonPath('auto_shipped', false)
+            ->assertJsonPath('shipment_status', 'pending');
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id, 'note' => '仓库正在处理中',
+        ]);
+        Http::assertNothingSent();
+    }
 }

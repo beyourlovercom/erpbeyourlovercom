@@ -253,4 +253,71 @@ final class ShipOutProductionReadOnlyGatewayTest extends TestCase
             Http::assertNothingSent();
         }
     }
+
+    public function test_official_detail_get_proves_exact_real_outbound_without_exposing_recipient_pii(): void
+    {
+        config()->set('shipout.production_read_enabled', true);
+        $tracking = '9434650105794040132223';
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK', 'data' => [
+                'orderId' => 'ORDER-123', 'orderNO' => 'C99999-007',
+                'warehouseId' => 'PROD-W-1', 'status' => 4,
+                'orderRecipient' => ['phone' => 'DO_NOT_LEAK_PHONE'],
+                'orderShipments' => [[
+                    'outboundNO' => 'OUTBOUND-123', 'outboundStatus' => 4,
+                    'trackingNumber' => $tracking,
+                    'shippedTime' => now('UTC')->subDay()->format('Y-m-d H:i:s'),
+                    'packageList' => [['trackingNumber' => $tracking,
+                        'recipient' => 'DO_NOT_LEAK_ADDRESS']],
+                ]],
+            ],
+        ], 200)]);
+        $proof = $this->gateway()->verifiedShippedEvidence(
+            'PROD-W-1', 'ORDER-123', 'C99999-007', $tracking,
+        );
+        $this->assertSame('OUTBOUND-123', $proof['outbound_reference']);
+        $this->assertArrayHasKey('shipped_time_utc', $proof);
+        $this->assertStringNotContainsString('DO_NOT_LEAK', json_encode($proof));
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($r) => $r->method() === 'GET'
+            && str_contains($r->url(), '/open-api/oms/order/query?')
+            && str_contains($r->url(), 'orderId=ORDER-123'));
+        Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+    }
+
+    public function test_provider_detail_missing_exact_tracking_is_never_authoritative(): void
+    {
+        config()->set('shipout.production_read_enabled', true);
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK', 'data' => [
+                'orderId' => 'ORDER-123', 'orderNO' => 'C99999-007', 'status' => 4,
+                'orderShipments' => [[
+                    'outboundNO' => 'OUTBOUND-123', 'outboundStatus' => 4,
+                    'trackingNumber' => '9434650105794040139999',
+                    'shippedTime' => now('UTC')->subDay()->format('Y-m-d H:i:s'),
+                    'packageList' => [['trackingNumber' => '9434650105794040139999']],
+                ]],
+            ],
+        ], 200)]);
+        $this->expectExceptionMessage('SHIPOUT_PROD_OUTBOUND_NOT_VERIFIED');
+        try {
+            $this->gateway()->verifiedShippedEvidence(
+                'PROD-W-1', 'ORDER-123', 'C99999-007', '9434650105794040132223',
+            );
+        } finally {
+            Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+        }
+    }
+
+    public function test_detail_api_is_denied_without_signed_get_permission(): void
+    {
+        $this->expectExceptionMessage('SHIPOUT_PROD_READ_DISABLED');
+        try {
+            $this->gateway()->verifiedShippedEvidence(
+                'PROD-W-1', 'ORDER-123', 'C99999-007', '9434650105794040132223',
+            );
+        } finally {
+            Http::assertNothingSent();
+        }
+    }
 }

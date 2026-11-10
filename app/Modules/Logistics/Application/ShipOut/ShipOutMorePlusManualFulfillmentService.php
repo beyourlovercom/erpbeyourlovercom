@@ -6,6 +6,7 @@ use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -23,7 +24,7 @@ final class ShipOutMorePlusManualFulfillmentService
         private readonly ShipmentWebsiteSyncHandoff $syncHandoff,
     ) {}
 
-    public function confirm(Order $order, string $tracking, string $outboundReference, Authenticatable $actor): array
+    public function confirm(Order $order, string $tracking, string $outboundReference, Authenticatable $actor, ?string $verifiedShippedAtUtc = null): array
     {
         $order->load(['shipment.warehouse', 'shipment.overseaReview']);
         $shipment = $order->shipment;
@@ -70,7 +71,11 @@ final class ShipOutMorePlusManualFulfillmentService
             'carrier' => (string) ($shipment->carrier ?: 'USPS'),
             'service' => (string) ($shipment->service ?: 'Priority'),
             'tracking_number' => trim($tracking),
-            'shipped_at' => now()->utc()->toIso8601String(),
+            // Provider detail GET supplies real UTC shipment date; manual
+            // Dede entry uses existing ERP confirmation time when absent.
+            'shipped_at' => $verifiedShippedAtUtc !== null
+                ? CarbonImmutable::createFromFormat('!Y-m-d H:i:s', $verifiedShippedAtUtc, 'UTC')->toIso8601String()
+                : now()->utc()->toIso8601String(),
             'logistics_note' => trim(
                 (trim((string) $shipment->logistics_note) !== ''
                     ? trim((string) $shipment->logistics_note).' | ' : '')

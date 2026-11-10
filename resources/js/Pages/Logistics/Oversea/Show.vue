@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
-import { computed, reactive, ref, onMounted, onUnmounted } from 'vue'
+import axios from 'axios'
+import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowStatusPill.vue'
 import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
@@ -77,6 +78,18 @@ const grid = reactive(useAccountGridPreferences<ColumnKey>({
   definitions:columnDefinitions,
 }))
 const canEditRow = computed(() => props.canOperate || (props.canReview && props.view === 'review'))
+// Only the updated row is changed after save. Navigation and filtering
+// still read the canonical server state.
+const visibleRows = ref<Row[]>([...props.rows.data])
+const visibleTotal = ref(props.rows.total)
+const liveViewCounts = reactive<Record<string,number>>({...props.viewCounts})
+watch(() => props.rows, next => {
+  visibleRows.value=[...next.data]
+  visibleTotal.value=next.total
+})
+watch(() => props.viewCounts, next => Object.assign(liveViewCounts,next))
+const inlineSaveBusy = reactive<Record<number,boolean>>({})
+const inlineSaveFeedback = reactive<Record<number,string>>({})
 const trackingSelection = ref<number[]>([])
 const trackingBusy = ref(false)
 const trackingFeedback = ref('')
@@ -129,7 +142,7 @@ const shipoutBatchSelection = ref<number[]>([])
 const shipoutBatchPreviewIds = ref<number[]>([])
 const showShipoutSelection = computed(() => !!props.shipoutProductionBatchUi
   && props.warehouseKey==='us-moreplus' && props.view==='pending')
-const shipoutPageSelectable = computed(() => props.rows.data
+const shipoutPageSelectable = computed(() => visibleRows.value
   .filter(row => row.shipment_status==='pending' && !row.shipout_production?.attempted)
   .map(row=>row.order_id))
 const shipoutPageAllSelected = computed(() => shipoutPageSelectable.value.length>0
@@ -818,25 +831,57 @@ const switchView = (view:string) => {
   router.visit(`${basePath.value}?view=${encodeURIComponent(view)}&page=1&per_page=${props.rows.per_page || 50}`, { preserveScroll:true, preserveState:true, only:['rows','view','viewCounts','warehouse','warehouseKey','warehouseOptions','canReview','canOperate','carrierOptions'] })
  }
 const switchWarehouse = (url:string) => router.visit(`${url}?view=${encodeURIComponent(props.view)}&page=1&per_page=${props.rows.per_page || 50}`, { preserveScroll:true, preserveState:true })
-const saveDraft = (row:Row, payload:Record<string,string|number|null>) => router.patch(`/logistics/oversea/orders/${row.order_id}/draft`, payload, { preserveScroll:true, preserveState:true })
+type InlineDraftSaved = {
+  order_id:number;shipment_status:string;tracking_number:string|null
+  carrier:string|null;service:string|null;note:string|null
+  auto_shipped:boolean;website_sync:string|null;tracking_moved:boolean;message:string
+}
+const saveDraft = async (row:Row,payload:Record<string,string|number|null>) => {
+  if(inlineSaveBusy[row.order_id]) return
+  inlineSaveBusy[row.order_id]=true
+  rowErrors[row.order_id]=''
+  inlineSaveFeedback[row.order_id]=''
+  try{
+    const {data}=await axios.patch<InlineDraftSaved>('/logistics/oversea/orders/'+row.order_id+'/draft',payload,{
+      headers:{Accept:'application/json'},
+    })
+    if(data.order_id!==row.order_id)throw new Error('订单保存响应不匹配')
+    row.note=data.note
+    row.carrier=data.carrier
+    row.service=data.service
+    row.tracking_number=data.tracking_number
+    row.shipment_status=data.shipment_status
+    const d=draft(row)
+    d.note=data.note??''
+    d.carrier=data.carrier??''
+    d.service=data.service??''
+    d.tracking_number=data.tracking_number??''
+    inlineSaveFeedback[row.order_id]=data.message
+    if(data.auto_shipped){
+      publishGlobalFeedback({state:'SUCCESS',title:'已确认真实出库',
+        message:'订单 '+(row.erp_order_id??row.order_id)+' 已进入已发货；官网由同步模块处理'})
+      row.tracking_sync_status='pending'
+    }
+    if(data.auto_shipped && ['issued','pending','exceptions','review'].includes(props.view)){
+      visibleRows.value=visibleRows.value.filter(item=>item.order_id!==row.order_id)
+      visibleTotal.value=Math.max(0,visibleTotal.value-1)
+      liveViewCounts[props.view]=Math.max(0,(liveViewCounts[props.view]??0)-1)
+      liveViewCounts.shipped=(liveViewCounts.shipped??0)+1
+    }
+    return data
+  }catch(error:unknown){
+    const status=axios.isAxiosError(error)?error.response?.status:undefined
+    rowErrors[row.order_id]=status===409?'保存冲突，请核对订单最新状态':
+      status===403?'没有此字段的操作权限':
+      status===422?'字段格式错误，请检查填写内容':'保存失败，未改变 ERP 数据'
+    return null
+  }finally{
+    inlineSaveBusy[row.order_id]=false
+  }
+}
 const changeWarehouse = (row:Row, warehouseId:number) => saveDraft(row, { warehouse_id:Number(warehouseId) })
 const changeWarehouseFromEvent = (row:Row, event:Event) => changeWarehouse(row, Number((event.target as HTMLSelectElement).value))
-const saveNote = (row:Row) => {
-  const note=draft(row).note.trim()
-  const isUspsNumber=props.warehouseKey==='us-moreplus' && /^(?:92|93|94)\d{20}$/.test(note)
-  if(isUspsNumber){
-    if(!props.canOperate){
-      rowErrors[row.order_id]='这是 USPS Tracking，请交由有发货执行权限的人员填写'
-      return
-    }
-    router.patch('/logistics/oversea/orders/'+row.order_id+'/draft',{note},{
-      preserveScroll:true,preserveState:true,
-      onSuccess:()=>{draft(row).tracking_number=note;draft(row).note='';rowErrors[row.order_id]=''},
-    })
-    return
-  }
-  saveDraft(row,{note:note||null})
-}
+const saveNote = (row:Row) => saveDraft(row,{note:draft(row).note.trim()||null})
 const saveCarrier = (row:Row) => { const d=draft(row); d.service=defaultServiceFor(d.carrier, row.country); saveDraft(row, { carrier:d.carrier, service:d.service || null }) }
 const saveService = (row:Row) => saveDraft(row, { carrier:draft(row).carrier, service:draft(row).service || null })
 const saveTracking = (row:Row) => saveDraft(row, { tracking_number:draft(row).tracking_number.trim() || null })
@@ -1016,7 +1061,7 @@ const compactPages = computed<(number|string)[]>(() => {
 
       <nav class="oversea-tabs" aria-label="海外仓状态视图">
         <button v-for="([key,label]) in viewTabs" :key="key" type="button" class="oversea-tab" :class="{ active:view === key }" @click="switchView(key)">
-          {{ label }} <span>{{ viewCounts[key] ?? 0 }}</span>
+          {{ label }} <span>{{ liveViewCounts[key] ?? 0 }}</span>
         </button>
       </nav>
 
@@ -1049,7 +1094,7 @@ const compactPages = computed<(number|string)[]>(() => {
             <ColumnSettingsHeader :columns="grid.columns" :sync-state="grid.syncState" @toggle="grid.toggle" @start-drag="grid.startDrag" @drop="grid.drop" @reset="grid.reset" />
           </tr></thead>
           <tbody>
-            <tr v-for="row in rows.data" :key="row.order_id">
+            <tr v-for="row in visibleRows" :key="row.order_id">
               <td v-if="canTrackingSync || showShipoutSelection">
                 <input v-if="showShipoutSelection && row.shipment_status==='pending'" type="checkbox"
                   :aria-label="'选择推送 '+(row.erp_order_id??row.order_id)"
@@ -1191,21 +1236,22 @@ const compactPages = computed<(number|string)[]>(() => {
                 <template v-else-if="column.key === 'order'"><a class="order-link" :href="row.order_url ?? `/orders/${row.order_id}`">{{ row.erp_order_id ?? '—' }}</a></template>
                 <template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(row.can_edit_workflow_status)" :options="workflowStatusOptions ?? []" /><span v-else>—</span></template>
                 <template v-else-if="column.key === 'warehouse'"><select :value="row.warehouse_id" :disabled="!canReview || view !== 'review'" class="cell-select warehouse" @change="changeWarehouseFromEvent(row, $event)"><option v-for="option in warehouseOptions" :key="option.id" :value="option.id">{{ option.label }}</option></select></template>
-                <template v-else-if="column.key === 'carrier'"><select v-model="draft(row).carrier" :disabled="!canOperate || row.shipment_status === 'shipped'" class="cell-select carrier" @change="saveCarrier(row)"><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></template>
-                <template v-else-if="column.key === 'service'"><select v-model="draft(row).service" :disabled="!canOperate || row.shipment_status === 'shipped' || !draft(row).carrier" class="cell-select service" @change="saveService(row)"><option value="">请选择服务类型</option><option v-for="service in serviceOptionsFor(draft(row).carrier)" :key="service.id" :value="service.value">{{ service.label }}</option></select></template>
+                <template v-else-if="column.key === 'carrier'"><select v-model="draft(row).carrier" :disabled="!canOperate || row.shipment_status === 'shipped' || inlineSaveBusy[row.order_id]" class="cell-select carrier" @change="saveCarrier(row)"><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></template>
+                <template v-else-if="column.key === 'service'"><select v-model="draft(row).service" :disabled="!canOperate || row.shipment_status === 'shipped' || !draft(row).carrier || inlineSaveBusy[row.order_id]" class="cell-select service" @change="saveService(row)"><option value="">请选择服务类型</option><option v-for="service in serviceOptionsFor(draft(row).carrier)" :key="service.id" :value="service.value">{{ service.label }}</option></select></template>
                 <template v-else-if="column.key === 'tracking'">
                 <div class="tracking-entry">
-                  <input v-model="draft(row).tracking_number" :disabled="!canOperate || row.shipment_status === 'shipped'" class="tracking-input" placeholder="填写真实 Tracking" @blur="saveTracking(row)" />
+                  <input v-model="draft(row).tracking_number" :disabled="!canOperate || row.shipment_status === 'shipped' || inlineSaveBusy[row.order_id]" class="tracking-input" placeholder="填写真实 Tracking" @blur="saveTracking(row)" />
                   <button v-if="canOperate && warehouseKey === 'us-3sm' && view === 'pending' && row.review_status === 'approved' && row.shipment_status === 'pending'" type="button" class="manual-ship-button" @mousedown.prevent @click="manualShipUsSm(row)">确认发货</button>
                 </div>
+                <small v-if="inlineSaveFeedback[row.order_id]" class="xlwms-note">{{inlineSaveFeedback[row.order_id]}}</small>
                 <div v-if="warehouseKey==='us-moreplus' && canOperate && ['issued','exceptions'].includes(view) && row.review_status==='approved' && row.shipment_status==='pending' && row.shipout_production?.attempted && row.warehouse_dispatch?.failure_code!=='PROVIDER_DUPLICATE_ORDER'"
                   class="tracking-entry" style="margin-top:5px">
                   <input v-model="draft(row).outbound_ref" class="tracking-input" placeholder="Dede 核实的人工出库单号" />
-                  <button type="button" class="manual-ship-button" @click="manualShipMorePlus(row)">确认真实出库</button>
+                  <button type="button" class="manual-ship-button" :disabled="inlineSaveBusy[row.order_id]" @click="manualShipMorePlus(row)">确认真实出库</button>
                 </div>
                 <small v-if="warehouseKey==='us-moreplus' && ['issued','exceptions'].includes(view) && row.shipout_production?.attempted && row.shipment_status==='pending' && row.warehouse_dispatch?.failure_code!=='PROVIDER_DUPLICATE_ORDER'" class="xlwms-note">先核对既有 OMS 原单，禁止重复推单；实际出库后再填真实 Tracking。网站由同步模块处理。</small>
               </template>
-                <template v-else-if="column.key === 'note'"><div class="note-cell"><input v-model="draft(row).note" :disabled="!canEditRow" class="note-input" :class="{ error: !!rowErrors[row.order_id] }"  :placeholder="warehouseKey==='us-moreplus'?'仅填备注；USPS单号自动转入Tracking':'等海运 / 等空运 / 缺货 / 太贵 / 送不到…'" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></template>
+                <template v-else-if="column.key === 'note'"><div class="note-cell"><input v-model="draft(row).note" :disabled="!canEditRow || inlineSaveBusy[row.order_id]" class="note-input" :class="{ error: !!rowErrors[row.order_id] }"  :placeholder="warehouseKey==='us-moreplus'?'仅填备注；USPS单号自动转入Tracking':'等海运 / 等空运 / 缺货 / 太贵 / 送不到…'" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></template>
                 <template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template>
                 <template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template>
                 <template v-else>{{ itemText(row) }}</template>
@@ -1215,7 +1261,7 @@ const compactPages = computed<(number|string)[]>(() => {
                 type="button" :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">{{ (['failed','retry_wait'].includes(row.tracking_sync_status ?? '') || !!row.tracking_sync_reason) ? '重新同步' : '同步官网物流' }}</button><span v-else>—</span></td>
               <td class="settings-spacer" aria-hidden="true"></td>
             </tr>
-            <tr v-if="!rows.data.length"><td :colspan="grid.visibleColumns.length + (['us-3sm','us-moreplus'].includes(warehouseKey) ? 3 : 2) + 1 + (canTrackingSync?2:0)" class="empty-cell">当前视图暂无订单</td></tr>
+            <tr v-if="!visibleRows.length"><td :colspan="grid.visibleColumns.length + (['us-3sm','us-moreplus'].includes(warehouseKey) ? 3 : 2) + 1 + (canTrackingSync?2:0)" class="empty-cell">当前视图暂无订单</td></tr>
 
           </tbody>
         </table>
@@ -1223,9 +1269,9 @@ const compactPages = computed<(number|string)[]>(() => {
 
       <footer class="oversea-footer">
         <div class="pagination-summary">
-          <span>共 {{ rows.total }} 条</span>
+          <span>共 {{ visibleTotal }} 条</span>
           <span>第 {{ rows.current_page }} / {{ rows.last_page }} 页</span>
-          <span v-if="rows.from !== null && rows.to !== null">{{ rows.from }}–{{ rows.to }} / {{ rows.total }}</span>
+          <span v-if="rows.from !== null && rows.to !== null">{{ visibleTotal === 0 ? 0 : rows.from }}–{{ visibleTotal === 0 ? 0 : visibleRows.length ? rows.from + visibleRows.length - 1 : rows.to }} / {{ visibleTotal }}</span>
         </div>
         <div class="pagination-toolbar">
           <label class="page-size">每页

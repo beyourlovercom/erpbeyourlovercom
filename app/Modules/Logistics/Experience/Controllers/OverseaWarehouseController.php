@@ -11,6 +11,7 @@ use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\OverseaFiles\OverseaOutboundFileService;
 use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
+use App\Modules\Logistics\Application\ShipOut\ShipOutMorePlusVerifiedTrackingCompletion;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Logistics\Application\WarehouseDispatchStatus;
@@ -23,6 +24,7 @@ use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -315,7 +317,7 @@ final class OverseaWarehouseController
             ));
     }
 
-    public function updateDraft(Request $request, Order $order): RedirectResponse
+    public function updateDraft(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'warehouse_id' => ['sometimes', 'required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
@@ -356,11 +358,43 @@ final class OverseaWarehouseController
             abort_if($forbidden !== [], 403, '当前账号仅可审核，不可修改发货执行字段');
         }
 
-        $this->reviews->updateDraft($order, $data, $request->user());
+        $updated = $this->reviews->updateDraft($order, $data, $request->user());
 
-        return back()->with('success', $movedTracking
-            ? '已识别 USPS 单号，自动保存到 Tracking No.；尚未确认实际出库或同步官网'
-            : '海外仓审核信息已保存');
+        $completion = null;
+        if (filled($data['tracking_number'] ?? null)
+            && strcasecmp((string) ($updated->shipment?->warehouse?->code ?? ''), 'US-LA') === 0
+            && $this->executionAccess->allows($request->user())) {
+            // One independent signed GET only for MorePlus: exact OMS Shipped
+            // and physical outbound proof. Never write to ShipOut.
+            $completion = app(ShipOutMorePlusVerifiedTrackingCompletion::class)
+                ->tryComplete($updated, $request->user());
+        }
+        $latest = $updated->fresh(['shipment', 'shipment.overseaReview']);
+        $saved = $latest->shipment;
+        $message = $completion && $completion['status'] === 'shipped'
+            ? '仓库真实出库凭证已核实，ERP 已发货；官网由同步模块定时处理'
+            : ($movedTracking
+                ? '已将 USPS 单号自动归位 Tracking No.；仍待真实出库核实'
+                : '字段已保存，无需刷新页面');
+
+        // Axios inline edit: one tiny JSON response, no Inertia redirect,
+        // no full order-list SQL query, and no page reload.
+        if ($request->expectsJson()) {
+            return response()->json([
+                'order_id' => (int) $latest->id,
+                'shipment_status' => $saved?->shipment_status,
+                'tracking_number' => $saved?->tracking_number,
+                'carrier' => $saved?->carrier,
+                'service' => $saved?->service,
+                'note' => $saved?->overseaReview?->note,
+                'auto_shipped' => $completion && $completion['status'] === 'shipped',
+                'website_sync' => $completion['website_sync'] ?? null,
+                'tracking_moved' => $movedTracking,
+                'message' => $message,
+            ])->header('Cache-Control', 'no-store, private');
+        }
+
+        return back()->with('success', $message);
     }
 
     public function approve(Request $request, Order $order): RedirectResponse
