@@ -3,13 +3,14 @@
 namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Experience\Jobs\PushDomesticTrackingOutbound;
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Sync\Application\WooCommerceTrackingOutboundService;
 use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Throwable;
 
@@ -19,7 +20,6 @@ final class DomesticTrackingReturnService
         private readonly DomesticTrackingReturnReader $reader,
         private readonly WarehouseOrderReference $references,
         private readonly ShipmentService $shipments,
-        private readonly WooCommerceTrackingOutboundService $trackingOutbound,
     ) {}
 
     /** @return array<string,mixed> */
@@ -82,13 +82,17 @@ final class DomesticTrackingReturnService
 
                 $sync = null;
                 $fresh = $order->fresh(['shipment', 'items', 'externalReferences', 'fulfillmentParent.externalReferences']);
-                if ($this->hasWooRoot($fresh)) {
+                if ($fresh && $this->hasWooRoot($fresh)) {
                     try {
-                        $push = $this->trackingOutbound->pushOne($fresh, $actor);
-                        $sync = (string) ($push['status'] ?? 'failed');
+                        PushDomesticTrackingOutbound::dispatch((int) $fresh->id);
+                        $sync = 'queued';
                     } catch (Throwable $e) {
-                        // Shipment truth is already committed; outbound Woo failure is isolated to this order.
-                        $sync = 'failed: '.$e->getMessage();
+                        // Shipment is committed. Never turn a queue error into a fake shipment failure.
+                        $sync = 'queue_failed';
+                        Log::warning('domestic.tracking.queue_failed', [
+                            'order_id' => (int) $fresh->id,
+                            'exception_class' => $e::class,
+                        ]);
                     }
                 }
                 $results[] = [...$row, 'status' => 'applied', 'sync' => $sync];

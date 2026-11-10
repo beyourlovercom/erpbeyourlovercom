@@ -2,11 +2,12 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
 
-const { routerPost, routerVisit } = vi.hoisted(() => ({ routerPost: vi.fn(), routerVisit: vi.fn() }))
+const { routerPost, routerVisit, routerReload, feedbackSpy } = vi.hoisted(() => ({ routerPost: vi.fn(), routerVisit: vi.fn(), routerReload: vi.fn(), feedbackSpy: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props:['title'], template:'<title>{{ title }}</title>' },
-  router: { post:routerPost, visit:routerVisit },
+  router: { post:routerPost, visit:routerVisit, reload:routerReload },
 }))
+vi.mock('../../../lib/globalFeedback', () => ({ publishGlobalFeedback:feedbackSpy }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default:{ template:'<div><slot /></div>' } }))
 
 const baseProps = {
@@ -39,7 +40,7 @@ const baseProps = {
 }
 
 describe('Domestic logistics production workbench', () => {
-  beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear() })
+  beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear(); routerReload.mockClear(); feedbackSpy.mockClear(); vi.unstubAllGlobals() })
 
   it('shows empty dependent carrier/service selects for legacy automatic factory routing and requires manual confirmation', async () => {
     const legacy={...baseProps.rows.data[0],carrier_selection_source:'automatic',carrier:'4PX',service:'SD经济挂号-带电'}
@@ -104,8 +105,8 @@ describe('Domestic logistics production workbench', () => {
     const cards=today.findAll('.today-shortcut')
     expect(cards).toHaveLength(3)
     expect(cards[0].text()).toBe('⬇️这批订单')
-    expect(cards[1].text()).toBe('⏬今日速达⏫速达物流单号')
-    expect(cards[2].text()).toBe('⏬今日纬狮⏫纬狮物流单号')
+    expect(cards[1].text()).toBe('⏬今日速达')
+    expect(cards[2].text()).toBe('⏬今日纬狮')
     expect(today.find('.today-shortcuts').text()).not.toMatch(/[,，]/)
     expect(today.findAll('.today-shortcut a').map(a=>a.attributes('href'))).toEqual([
       '/logistics/china/today/export',
@@ -113,41 +114,52 @@ describe('Domestic logistics production workbench', () => {
       '/logistics/china/export/weship',
     ])
     expect(today.find('[data-testid="download-today-orders"]').exists()).toBe(true)
-    expect(today.findAll('.today-shortcut button')).toHaveLength(2)
+    expect(today.findAll('.today-shortcut button')).toHaveLength(0)
     expect(today.text()).not.toContain('上传速达单号表')
     expect(today.text()).not.toContain('上传纬狮单号表')
     expect(mount(Index,{props:{...baseProps,view:'today-4px'}}).find('.today-shortcuts').exists()).toBe(false)
     expect(mount(Index,{props:{...baseProps,view:'today-weship'}}).find('.today-shortcuts').exists()).toBe(false)
   })
 
-  it('treats the labels 速达物流单号 and 纬狮物流单号 themselves as upload actions', async () => {
-    const wrapper=mount(Index,{props:{...baseProps,view:'today'}})
+  it('keeps the only working upload control on pending and auto-detects the submitted template server-side', async () => {
+    const today=mount(Index,{props:{...baseProps,view:'today'}})
+    expect(today.find('input[type="file"]').exists()).toBe(false)
+    expect(today.text()).not.toContain('⏫上传物流单号')
+    expect(mount(Index,{props:{...baseProps,view:'today-4px'}}).find('input[type="file"]').exists()).toBe(false)
+    expect(mount(Index,{props:{...baseProps,view:'today-weship'}}).find('input[type="file"]').exists()).toBe(false)
+    const wrapper=mount(Index,{props:baseProps})
     const fileInput=wrapper.find('input[type="file"]')
     expect(fileInput.exists()).toBe(true)
     const click=vi.spyOn(fileInput.element as HTMLInputElement,'click').mockImplementation(()=>{})
-    try {
-      const file=new File(['test'],'tracking.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
-      await wrapper.find('[data-testid="upload-today-4px"]').trigger('click')
-      expect(click).toHaveBeenCalledTimes(1)
-      Object.defineProperty(fileInput.element,'files',{configurable:true,value:[file]})
-      await fileInput.trigger('change')
-      expect(routerPost).toHaveBeenCalledWith('/logistics/china/4px/tracking-import/preview',
-        expect.any(FormData),expect.objectContaining({forceFormData:true,preserveScroll:true}))
-      await wrapper.find('[data-testid="upload-today-weship"]').trigger('click')
-      expect(click).toHaveBeenCalledTimes(2)
-      await fileInput.trigger('change')
-      expect(routerPost).toHaveBeenCalledWith('/logistics/china/weship/tracking-import/preview',
-        expect.any(FormData),expect.objectContaining({forceFormData:true,preserveScroll:true}))
-    } finally { click.mockRestore() }
-
-    const readonly=mount(Index,{props:{...baseProps,view:'today',canOperate:false}})
-    expect(readonly.findAll('.today-shortcut button')).toHaveLength(0)
-    const notReady=mount(Index,{props:{...baseProps,view:'today',
-      providerStatus:{...baseProps.providerStatus,weship:{...baseProps.providerStatus.weship,export_ready:false,return_ready:false}}}})
-    expect(notReady.find('[data-testid="upload-today-weship"]').exists()).toBe(false)
-    expect(notReady.find('[data-testid="download-today-weship"]').exists()).toBe(false)
+    const api=vi.fn().mockResolvedValue({ok:true,redirected:false,json:async()=>({message:'已生成回传预览'})})
+    vi.stubGlobal('fetch',api)
+    await wrapper.findAll('button').find(b=>b.text().includes('⏫上传物流单号'))!.trigger('click')
+    expect(click).toHaveBeenCalledTimes(1)
+    const file=new File(['test'],'4px.xlsx')
+    Object.defineProperty(fileInput.element,'files',{configurable:true,value:[file]})
+    await fileInput.trigger('change')
+    await flushPromises()
+    expect(api).toHaveBeenCalledWith('/logistics/china/tracking-import/preview',
+      expect.objectContaining({method:'POST',body:expect.any(FormData)}))
+    expect(routerReload).toHaveBeenCalled()
+    expect(feedbackSpy).toHaveBeenCalledWith(expect.objectContaining({state:'SUCCESS'}))
+    click.mockRestore()
+    expect(mount(Index,{props:{...baseProps,canOperate:false}}).find('input[type="file"]').exists()).toBe(false)
   })
 
+  it('shows failures through global island and does not navigate to a system error page', async () => {
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue({
+      ok:false,status:500,headers:{get:()=> 'request-500'},json:async()=>{throw new Error('html response')},
+    }))
+    const wrapper=mount(Index,{props:baseProps})
+    await wrapper.findAll('button').find(b=>b.text().includes('确认发货（仅可应用订单）'))!.trigger('click')
+    await flushPromises()
+    expect(feedbackSpy).toHaveBeenCalledWith(expect.objectContaining({
+      state:'ERROR',message:expect.stringContaining('切勿直接重复提交'),
+    }))
+    expect(routerReload).not.toHaveBeenCalled()
+    expect(routerVisit).not.toHaveBeenCalled()
+  })
 
   it('saves a reviewed domestic Tracking inline without accidentally confirming shipment', async () => {
     const wrapper=mount(Index,{props:{...baseProps,view:'pending'}})
@@ -174,7 +186,7 @@ describe('Domestic logistics production workbench', () => {
         ...baseProps.rows.data[0],review_status:review,
       }]}}})
       expect(blocked.find('input[aria-label^="填写发货单号"]').exists()).toBe(false)
-      expect(blocked.text()).not.toContain('确认发货')
+      expect(blocked.findAll('button').filter(b => b.text() === '确认发货')).toHaveLength(0)
     }
     const shipped=mount(Index,{props:{...baseProps,rows:{...baseProps.rows,data:[{
       ...baseProps.rows.data[0],shipment_status:'shipped',tracking_number:'TRACKED',
@@ -192,7 +204,7 @@ describe('Domestic logistics production workbench', () => {
     expect(wrapper.text()).not.toContain('纬狮 / Weship')
     expect(wrapper.text()).not.toContain('Fail Closed')
     expect(wrapper.find('a[href="/logistics/china/export/weship"]').exists()).toBe(false)
-    expect(wrapper.find('input[type="file"]').attributes('accept')).toBe('.xls,.xlsx')
+    expect(wrapper.find('input[type="file"]').exists()).toBe(false)
   })
 
 
@@ -209,20 +221,21 @@ describe('Domestic logistics production workbench', () => {
     expect(weship.text()).toContain('纬狮独立保留原 24 列模板')
     expect(weship.text()).not.toContain('Fail Closed')
     expect(weship.text()).toContain('下载纬狮下单表')
-    expect(weship.text()).toContain('上传纬狮单号表')
+    expect(weship.text()).not.toContain('上传纬狮单号表')
     expect(weship.find('a[href="/logistics/china/export/weship"]').exists()).toBe(true)
   })
 
   it('shows a mixed-carrier ERP batch download/upload only on the pending work queue', () => {
     const pending=mount(Index,{props:{...baseProps,view:'pending',trackingImportPreview:null,trackingImportProvider:null}})
     expect(pending.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(true)
-    expect(pending.text()).toContain('上传批量单号表')
-    expect(pending.text()).toContain('可混合承运商')
-    expect(pending.text()).toContain('不替代承运商自己的下单模板')
+    expect(pending.text()).toContain('⏫上传物流单号')
+    expect(pending.find('input[type="file"]').attributes('accept')).toBe('.xls,.xlsx')
+    expect(pending.text()).toContain('自动识别格式')
+    expect(pending.text()).toContain('不改变承运商下单模板')
 
     const history=mount(Index,{props:{...baseProps,view:'4px',trackingImportPreview:null,trackingImportProvider:null}})
     expect(history.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(false)
-    expect(history.text()).not.toContain('上传批量单号表')
+    expect(history.text()).not.toContain('⏫上传物流单号')
   })
 
   it('keeps cumulative carrier history query-only and hides provider upload/download controls', () => {
@@ -236,17 +249,23 @@ describe('Domestic logistics production workbench', () => {
     expect(weshipHistory.text()).not.toContain('上传纬狮单号表')
   })
 
-  it('allows applying safe rows even when the preview contains blocked rows', async () => {
+  it('applies only preview safe rows and reports queued Woo sync separately', async () => {
     const wrapper=mount(Index,{props:baseProps})
     expect(wrapper.text()).toContain('可应用 1 · 重复 0 · 阻断 1')
-    const button=wrapper.findAll('button').find(b => b.text().includes('应用可安全行'))
+    const api=vi.fn().mockResolvedValue({ok:true,redirected:false,json:async()=>({
+      applied_count:1,noop_count:0,blocked_count:1,failed_count:0,sync_queued_count:1,
+    })})
+    vi.stubGlobal('fetch',api)
+    const button=wrapper.findAll('button').find(b=>b.text().includes('确认发货（仅可应用订单）'))
     expect(button).toBeTruthy()
     await button!.trigger('click')
-    expect(routerPost).toHaveBeenCalledWith(
-      '/logistics/china/4px/tracking-import/apply',
-      {token:'a'.repeat(64)},
-      {preserveScroll:true},
-    )
+    await flushPromises()
+    expect(api).toHaveBeenCalledWith('/logistics/china/4px/tracking-import/apply',
+      expect.objectContaining({method:'POST',body:JSON.stringify({token:'a'.repeat(64)})}))
+    expect(routerReload).toHaveBeenCalled()
+    expect(feedbackSpy).toHaveBeenCalledWith(expect.objectContaining({
+      state:'SUCCESS',message:expect.stringContaining('尚不代表已同步成功'),
+    }))
   })
 
   it('routes review approval and the Vita allocation queue without duplicating allocation logic', async () => {
