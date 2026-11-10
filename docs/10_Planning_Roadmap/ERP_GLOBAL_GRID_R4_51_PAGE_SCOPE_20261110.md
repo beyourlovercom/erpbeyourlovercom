@@ -3,6 +3,10 @@
 Owner confirmation: 2026-11-10. Source of truth: GitHub main 423aa54a17fa82f58c0f992c5a6f345c4a82c84c.
 Scope freeze: exactly 51 selected route entries. This is an approved R4 migration scope, NOT approval to enable every employee in Production.
 
+## Owner execution priority override - Logistics first (2026-11-10)
+
+Owner approved the shared 3-5-page-per-batch migration and prioritized the daily-used Logistics module. The current execution order is documented in [ERP_GLOBAL_GRID_R4_LOGISTICS_FIRST_20261110.md](ERP_GLOBAL_GRID_R4_LOGISTICS_FIRST_20261110.md): L1 domestic core (#16/#18/#19) then L2 oversea and tracking (#17/#20/#21/#22), L3 logistics tail (#23/#24/#25/#26), followed by sync/orders and all remaining entries. Original R4-0/A/B/C/D classifications below remain complexity tags, NOT execution order. All 51 selected entries and separate Dev/Production gates stay frozen.
+
 ## Immutable migration contract
 
 - Reuse resources/js/Components/DataGrid/GlobalGrid.vue, wrapping OmsGrid.vue and the existing AG Grid Community core. No replacement or independent duplicated engines.
@@ -120,7 +124,7 @@ This is a *planning range for front-end list presentation migration and scoped v
 
 ## Execution next step
 
-Start R4-A with /products/skus (already has backend search and pagination), followed by /inventory/list, /inventory/overdue, then remaining low-risk pages. All changes in separate scoped branches/PRs to avoid collision with concurrent MorePlus, domestic logistics and sync branches.
+Prioritize Logistics L1, L2, L3 under the separate logistics-first plan. Reuse the already-built /products/skus Draft PR #673 as an adapter reference; its Owner UAT remains pending. Start logistics surfaces with safe read-only Grid display and preserve existing legacy fallback and write controls. All changes in separate scoped branches/PRs to avoid collision with concurrent MorePlus, domestic logistics and sync branches.
 
 ## Exclusions and stop conditions
 
