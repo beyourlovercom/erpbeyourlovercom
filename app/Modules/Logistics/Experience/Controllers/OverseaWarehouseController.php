@@ -141,7 +141,9 @@ final class OverseaWarehouseController
                     || (app()->environment('production')
                         && (bool) config('shipout.production_v1_batch_enabled', false)
                         && (bool) config('shipout.production_v1_batch_owner_approved', false)))
-                && $request->user()?->can('logistics.view'),
+                && (app()->environment(['local', 'testing'])
+                    ? $request->user()?->can('logistics.view')
+                    : $this->shipOutV1Access->allows($request->user())),
             'shipoutProductionBatchDryRun' => ! app()->environment('production'),
             'shipoutProductionLatestBatch' => $warehouseKey === 'us-moreplus'
                 && (app()->environment(['local', 'testing']) || (bool) config('shipout.production_v1_batch_enabled', false))

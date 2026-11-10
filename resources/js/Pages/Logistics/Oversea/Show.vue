@@ -879,7 +879,7 @@ const compactPages = computed<(number|string)[]>(() => {
         <div><h1>{{ pageTitle }}</h1><p v-if="warehouseKey === 'us-3sm'">审核通过后，下载订单文件，在世迈 OMS 人工导入。重复导入前先检查当前草稿箱，避免重复下单。</p><p v-else>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终承运商，不能假定 USPS Priority。</p></div>
         <div class="oversea-file-actions">
           <button v-if="shipoutProductionBatchUi && warehouseKey==='us-moreplus'" type="button"
-            class="file-button primary" :disabled="shipoutBatchBusy || Boolean(shipoutBatchStatus && !['completed','paused'].includes(shipoutBatchStatus.status))"
+            class="file-button primary" :disabled="shipoutBatchBusy || Boolean(shipoutBatchStatus && ['queued','running','awaiting_oms','paused'].includes(shipoutBatchStatus.status))"
             @click="shipoutBatchCheck">一键推送仓库</button>
           <a v-if="warehousePortal" class="file-button file-link warehouse-portal-link"
             :href="warehousePortal.href" target="_blank" rel="noopener noreferrer">
