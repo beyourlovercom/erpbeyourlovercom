@@ -140,6 +140,130 @@ final class ShipOutProductionBatchTest extends TestCase
         }
     }
 
+    public function test_selected_only_submits_explicit_ids_and_skips_other_approved_rows(): void
+    {
+        Http::preventStrayRequests();
+        $user = $this->operator();
+        $first = $this->approvedOrder($user, '1');
+        $other = $this->approvedOrder($user, '2');
+        $this->actingAs($user);
+
+        $selected = $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview?scope=selected&order_ids='.$first->id)
+            ->assertOk()->assertJsonPath('scope', 'selected')
+            ->assertJsonPath('scan_count', 1)->assertJsonPath('count', 1)
+            ->assertJsonPath('excluded_count', 0)->json();
+        $reply = $this->postJson('/logistics/oversea/us-moreplus/shipout/batch/start', [
+            'fingerprint' => $selected['fingerprint'],
+            'confirmation' => 'CONFIRM_MOREPLUS_BATCH_1',
+            'scope' => 'selected',
+            'order_ids' => (string) $first->id,
+        ])->assertStatus(202)->assertJsonPath('total', 1);
+        $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/'.$reply->json('batch_id').'/status')
+            ->assertOk()->assertJsonPath('items.0.order_id', $first->id)->assertJsonCount(1, 'items');
+        $this->assertDatabaseMissing('shipout_production_batch_items', ['order_id' => $other->id]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_all_scope_scans_stockout_and_unreviewed_rows_but_only_queues_safe_candidates(): void
+    {
+        Http::preventStrayRequests();
+        $user = $this->operator();
+        $ready = $this->approvedOrder($user, '1');
+        $stockout = $this->approvedOrder($user, '2');
+        $stockout->operationalMarkers()->create([
+            'marker' => 'stockout', 'marked_at' => now(),
+        ]);
+        // Even if review is approved, a genuine stockout marker must not
+        // be submitted under the operator's 'all pending' confirmation.
+        $stockout->forceFill(['workflow_status' => 'out_of_stock'])->save();
+        $this->actingAs($user);
+        $preview = $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview?scope=all')
+            ->assertOk()->assertJsonPath('scope', 'all')
+            ->assertJsonPath('scan_count', 2)->assertJsonPath('stockout_count', 1)
+            ->assertJsonPath('count', 1)->assertJsonPath('excluded_count', 1)->json();
+
+        $reply = $this->postJson('/logistics/oversea/us-moreplus/shipout/batch/start', [
+            'fingerprint' => $preview['fingerprint'],
+            'confirmation' => 'CONFIRM_MOREPLUS_BATCH_1',
+            'scope' => 'all',
+            'order_ids' => '',
+        ])->assertStatus(202)->assertJsonPath('total', 1);
+
+        $this->assertDatabaseHas('shipout_production_batch_items', [
+            'batch_id' => $reply->json('batch_id'), 'order_id' => $ready->id,
+        ]);
+        $this->assertDatabaseMissing('shipout_production_batch_items', [
+            'batch_id' => $reply->json('batch_id'), 'order_id' => $stockout->id,
+        ]);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_all_scope_is_exact_pending_tab_and_does_not_expand_to_unreviewed_orders(): void
+    {
+        Http::preventStrayRequests();
+        $user = $this->operator();
+        $this->approvedOrder($user, '1');
+        $unreviewed = $this->approvedOrder($user, '2');
+        OverseaWarehouseReview::query()->where('order_id', $unreviewed->id)
+            ->update(['status' => 'pending']);
+        $this->actingAs($user);
+        $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview?scope=all')
+            ->assertOk()->assertJsonPath('scan_count', 1)
+            ->assertJsonPath('count', 1)->assertJsonPath('excluded_count', 0);
+        $this->assertDatabaseCount('shipout_production_batches', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_all_scope_fingerprint_expires_when_another_stockout_is_added(): void
+    {
+        Http::preventStrayRequests();
+        $user = $this->operator();
+        $this->approvedOrder($user, '1');
+        $this->actingAs($user);
+        $before = $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview?scope=all')
+            ->assertOk()->assertJsonPath('count', 1)->assertJsonPath('scan_count', 1)->json();
+        $outOfStock = $this->approvedOrder($user, '2');
+        $outOfStock->forceFill(['workflow_status' => 'out_of_stock'])->save();
+        $after = $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview?scope=all')
+            ->assertOk()->assertJsonPath('count', 1)->assertJsonPath('scan_count', 2)->json();
+        $this->assertNotSame($before['fingerprint'], $after['fingerprint']);
+        $this->postJson('/logistics/oversea/us-moreplus/shipout/batch/start', [
+            'fingerprint' => $before['fingerprint'],
+            'confirmation' => 'CONFIRM_MOREPLUS_BATCH_1',
+            'scope' => 'all',
+            'order_ids' => '',
+        ])->assertStatus(409)->assertJsonPath('error_code', 'SHIPOUT_BATCH_STALE');
+        $this->assertDatabaseCount('shipout_production_batches', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_invalid_selected_order_ids_and_stale_selection_never_create_or_post(): void
+    {
+        Http::preventStrayRequests();
+        $user = $this->operator();
+        $first = $this->approvedOrder($user, '1');
+        $other = $this->approvedOrder($user, '2');
+        $this->actingAs($user);
+        $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview?scope=selected&order_ids='.$first->id.','.$first->id)
+            ->assertStatus(422)->assertJsonPath('error_code', 'SHIPOUT_BATCH_SELECTION_INVALID');
+        $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview?scope=all&order_ids='.$first->id)
+            ->assertStatus(422)->assertJsonPath('error_code', 'SHIPOUT_BATCH_SELECTION_INVALID');
+
+        $firstPreview = $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview?scope=selected&order_ids='.$first->id)
+            ->assertOk()->json();
+        $this->postJson('/logistics/oversea/us-moreplus/shipout/batch/start', [
+            'fingerprint' => $firstPreview['fingerprint'],
+            'confirmation' => 'CONFIRM_MOREPLUS_BATCH_1',
+            'scope' => 'selected',
+            'order_ids' => (string) $other->id,
+        ])->assertStatus(409)->assertJsonPath('error_code', 'SHIPOUT_BATCH_STALE');
+        $this->assertDatabaseCount('shipout_production_batches', 0);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNothingSent();
+    }
+
     public function test_dev_batch_preview_start_and_status_never_contact_provider(): void
     {
         Http::preventStrayRequests();

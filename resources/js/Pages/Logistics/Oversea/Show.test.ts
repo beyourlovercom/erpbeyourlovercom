@@ -922,22 +922,94 @@ describe('MorePlus Dev-only one-click batch workbench', () => {
     })
     vi.stubGlobal('fetch',mock)
     try {
+      const approveAll=vi.spyOn(window,'confirm').mockReturnValue(true)
       const page=mountPage({shipoutProductionBatchUi:true,shipoutProductionBatchPaused:true,
         trackingImportPreview:null})
       expect(page.text()).toContain('一键推送仓库')
       expect(page.text()).toContain('管理员可查看预览与历史结果，但不可提交新订单')
       await page.findAll('button').find(b=>b.text()==='一键推送仓库')!.trigger('click')
-      await vi.waitFor(()=>expect(page.text()).toContain('候选 1 单'))
+      await vi.waitFor(()=>expect(page.text()).toContain('待逐单校验 1 单'))
       const send=page.findAll('button').find(b=>b.text().includes('确认逐单推送'))
       expect(send?.attributes('disabled')).toBeDefined()
       await send!.trigger('click')
       expect(mock.mock.calls.map(c=>c[0])).toEqual([
-        '/logistics/oversea/us-moreplus/shipout/batch/preview',
+        '/logistics/oversea/us-moreplus/shipout/batch/preview?scope=all',
       ])
       page.unmount()
+      approveAll.mockRestore()
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+
+  it('no selection cancel means no HTTP request and no POST', async () => {
+    const ask=vi.spyOn(window,'confirm').mockReturnValue(false)
+    const fetchMock=vi.fn()
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true})
+      await page.findAll('button').find(b=>b.text()==='一键推送仓库')!.trigger('click')
+      expect(ask).toHaveBeenCalledTimes(1)
+      expect(ask.mock.calls[0][0]).toContain('包含缺货订单')
+      expect(fetchMock).not.toHaveBeenCalled()
+      page.unmount()
+    } finally {ask.mockRestore();vi.unstubAllGlobals()}
+  })
+
+  it('selected rows persist across page changes and only chosen IDs are previewed', async () => {
+    const first={...usSmPendingRows.data[0],order_id:51,warehouse_id:1}
+    const second={...first,order_id:52,erp_order_id:'007-SECOND'}
+    const mock=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      scope:'selected',scan_count:2,excluded_count:0,count:2,overflow:false,
+      dry_run:true,fingerprint:'a'.repeat(64),
+    })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,
+        rows:{...usSmPendingRows,total:2,last_page:2,data:[first]}})
+      await page.find('input[aria-label^="选择推送"]').setValue(true)
+      await page.setProps({rows:{...usSmPendingRows,total:2,last_page:2,current_page:2,data:[second]}})
+      await page.find('input[aria-label^="选择推送"]').setValue(true)
+      expect(page.text()).toContain('已勾选 2 单（跨页保留）')
+      await page.findAll('button').find(b=>b.text()==='仅推送所选订单')!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('手动选择 扫描 2 单'))
+      expect(mock.mock.calls.map(c=>c[0])).toEqual([
+        '/logistics/oversea/us-moreplus/shipout/batch/preview?scope=selected&order_ids=51,52',
+      ])
+      page.unmount()
+    } finally {vi.unstubAllGlobals()}
+  })
+
+  it('switching out of pending clears hidden selected orders', async () => {
+    const item={...usSmPendingRows.data[0],order_id:86,warehouse_id:1}
+    const mock=vi.fn()
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,
+        rows:{...usSmPendingRows,data:[item]}})
+      await page.find('input[aria-label^="选择推送"]').setValue(true)
+      expect(page.text()).toContain('已勾选 1 单')
+      await page.findAll('button.oversea-tab').find(b=>b.text().includes('已发货'))!.trigger('click')
+      expect(page.text()).not.toContain('已勾选 1 单')
+      expect(mock).not.toHaveBeenCalled()
+      page.unmount()
+    } finally {vi.unstubAllGlobals()}
+  })
+
+  it('select current page and clearing selection never trigger provider submission', async () => {
+    const item={...usSmPendingRows.data[0],order_id:83,warehouse_id:1}
+    const mock=vi.fn()
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({shipoutProductionBatchUi:true,
+        rows:{...usSmPendingRows,data:[item,{...item,order_id:84}]}})
+      await page.find('input[aria-label="选择当前页待发货订单"]').setValue(true)
+      expect(page.text()).toContain('已勾选 2 单')
+      await page.findAll('button').find(b=>b.text()==='清空勾选')!.trigger('click')
+      expect(page.text()).not.toContain('已勾选 2 单')
+      expect(mock).not.toHaveBeenCalled()
+      page.unmount()
+    } finally {vi.unstubAllGlobals()}
   })
 
   it('previews, confirms once, and reads Dev progress without per-order browser submission', async () => {
@@ -957,19 +1029,19 @@ describe('MorePlus Dev-only one-click batch workbench', () => {
     try {
       const page=mountPage({shipoutProductionBatchUi:true,shipoutProductionBatchDryRun:true,trackingImportPreview:null})
       await page.findAll('button').find(b=>b.text()==='一键推送仓库')!.trigger('click')
-      await vi.waitFor(()=>expect(page.text()).toContain('候选 2 单'))
+      await vi.waitFor(()=>expect(page.text()).toContain('待逐单校验 2 单'))
       await page.findAll('button').find(b=>b.text().includes('确认运行 Dev 模拟'))!.trigger('click')
       await vi.waitFor(()=>expect(page.text()).toContain('2 / 2'))
       expect(page.text()).toContain('Dev 模拟通过')
       expect(mock.mock.calls.map(call=>call[0])).toEqual([
-        '/logistics/oversea/us-moreplus/shipout/batch/preview',
+        '/logistics/oversea/us-moreplus/shipout/batch/preview?scope=all',
         '/logistics/oversea/us-moreplus/shipout/batch/start',
         '/logistics/oversea/us-moreplus/shipout/batch/'+batchId+'/status',
       ])
       expect(JSON.parse(mock.mock.calls[1][1].body)).toEqual({
-        fingerprint,confirmation:'CONFIRM_MOREPLUS_BATCH_2',
+        fingerprint,confirmation:'CONFIRM_MOREPLUS_BATCH_2',scope:'all',order_ids:'',
       })
-      expect(confirm).toHaveBeenCalledTimes(1)
+      expect(confirm).toHaveBeenCalledTimes(2)
       page.unmount()
     } finally {
       vi.unstubAllGlobals()
