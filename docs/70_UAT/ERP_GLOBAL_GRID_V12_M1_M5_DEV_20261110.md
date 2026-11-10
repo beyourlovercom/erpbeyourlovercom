@@ -57,3 +57,16 @@ Owner requested continuous implementation M1-M5 under the REDUCED 7-13h contract
 - Pinned-right review operation column reduced from 330px to 185px, clamped at 190px even if the user's old saved column preference is wider. The three buttons retain 8px internal gaps.
 - Exact Chrome computed proof: column 185px; rightmost Reject button to cell edge ~22px; row heights 32px both closed and open; popup position:fixed, z-index:12050, width:318px and elementFromPoint confirms input is atop adjacent rows. Verified popover inside document.body, in viewport, 3-character rule, Enter/Escape/cancel. Disposable Chrome 6/6 PASS. Typecheck/build PASS.
 - Owner needs to refresh Dev UAT for new JS/CSS. Production unchanged and PR still Draft.
+
+## Owner Production release scope and freeze (2026-11-10)
+Owner visually PASSed the compact right-pinned review operations and floating
+reject-reason popover. The controlled Production scope defaults ONLY domestic
+view=review to Grid for already-authorized logistics viewers. All other
+domestic views retain native defaults because the carrier/service/Tracking
+and dispatch controls have not passed functional-parity UAT. Existing Owner
+pilot may opt in explicitly. Explicit global_grid=0 is a review fallback.
+
+Permanent rules for future approval grids are in
+docs/BYL-ERP-GRID-STANDARD-V1.md; future pages still require their own
+Owner UAT. No changes to permission or fulfillment/OMS/warehouse semantics
+outside the previously tested bounded review/archive operations.

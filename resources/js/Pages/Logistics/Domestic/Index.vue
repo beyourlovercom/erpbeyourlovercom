@@ -278,9 +278,15 @@ const showBarcode = async (row:Row) => {
 const switchView = (view:string) => {
   activeOperationId.value=null
   showBatchLegacyOperations.value=false
+  // Never opt an employee into unreviewed carrier/tracking/dispatch Grid
+  // just because they switched from the approved review view.
+  const mode = view === props.view
+    ? (props.globalGridPilotEnabled ? '1' : '0')
+    : (view === 'review' ? '1' : '0')
   router.visit('/logistics/china?view=' + encodeURIComponent(view)
-    + (props.globalGridPilotEnabled?'&global_grid=1':'&global_grid=0')
-    + (props.globalGridPilotEnabled && domesticGridSearch.value?'&search='+encodeURIComponent(domesticGridSearch.value):''), {
+    + '&global_grid=' + mode
+    + (view === props.view && mode === '1' && domesticGridSearch.value
+      ? '&search='+encodeURIComponent(domesticGridSearch.value) : ''), {
     preserveScroll:true,preserveState:true,
   })
 }

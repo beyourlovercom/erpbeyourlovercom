@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Shell\Application\GlobalGridPilot;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
@@ -71,12 +72,15 @@ final class DomesticLogisticsController
         ]);
 
         $this->applyView($query, $view);
-        // Owner-approved R4 domestic workbench default: Global Grid is the
-        // presentation default for every already-authorized logistics viewer.
-        // Explicit ?global_grid=0 restores the unchanged original table.
-        // Other ERP list pages continue to use the separate GlobalGridPilot gate.
+        // Owner-approved review Grid is the default for authorized viewers.
+        // Carrier/Tracking/dispatch tabs retain their native workbenches
+        // until each has passed its own functionality-parity UAT.
+        $reviewGrid = $view === 'review';
         $gridSetting = $request->query('global_grid');
-        $gridPilot = $gridSetting === null || $gridSetting === '1';
+        $gridAvailable = $reviewGrid || GlobalGridPilot::available();
+        $gridPilot = $reviewGrid
+            ? ($gridSetting === null || $gridSetting === '1')
+            : GlobalGridPilot::enabled($request);
         $search = $gridPilot ? trim(mb_substr((string) $request->query('search', ''), 0, 100)) : '';
         if ($search !== '') {
             $term = '%'.addcslashes($search, '%_\\').'%';
@@ -106,7 +110,7 @@ final class DomesticLogisticsController
         return Inertia::render('Logistics/Domestic/Index', [
             'view' => $view,
             'rows' => $rows,
-            'globalGridPilotAvailable' => true,
+            'globalGridPilotAvailable' => $gridAvailable,
             'globalGridPilotEnabled' => $gridPilot,
             'gridSearch' => $search,
             'viewCounts' => $counts,

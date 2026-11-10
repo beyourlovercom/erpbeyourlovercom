@@ -73,6 +73,21 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
                 ->where('rows.per_page', 50)
                 ->where('rows.total', 1));
 
+        // Untested carrier/dispatch views keep the original native table.
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=pending')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotEnabled', false)
+                ->where('view', 'pending'));
+
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=today')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotEnabled', false)
+                ->where('view', 'today'));
+
         $this->actingAs($viewer)
             ->get('/logistics/china?view=review&global_grid=1&per_page=20&search=007-GRID-L1-ANCHOR')
             ->assertOk()
