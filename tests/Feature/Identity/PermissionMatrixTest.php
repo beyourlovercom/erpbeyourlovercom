@@ -7,12 +7,32 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Identity\Application\PermissionCatalog;
 use App\Modules\Identity\Application\RolePreset;
+use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\LogisticsReviewAccess;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 final class PermissionMatrixTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_administrator_preset_includes_all_registered_action_permissions(): void
+    {
+        $admin = $this->userWithPreset(RolePreset::Administrator);
+        $keys = PermissionCatalog::allKeys();
+        foreach ($keys as $key) {
+            $this->assertTrue($admin->can($key), 'Administrator action missing: '.$key);
+        }
+
+        $this->assertTrue(
+            app(LogisticsReviewAccess::class)->allows($admin)
+        );
+        $this->assertTrue(
+            app(LogisticsExecutionAccess::class)->allows($admin)
+        );
+        // Admin is not the special read-only global super_admin role.
+        $this->assertFalse($admin->hasPermission('super_admin'));
+    }
 
     // A: role mode uses role template permissions
     public function test_user_in_role_mode_uses_role_template_permissions(): void

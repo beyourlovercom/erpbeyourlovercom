@@ -64,7 +64,7 @@ type TrackingImportRow = { row:number; order_id:number|null; order_number:string
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
-  shipoutProductionBatchUi?:boolean; shipoutProductionBatchDryRun?:boolean;
+  shipoutProductionBatchUi?:boolean; shipoutProductionBatchDryRun?:boolean; shipoutProductionBatchPaused?:boolean;
   shipoutProductionLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
   shipoutProductionUi?:boolean; shipoutProductionReadEnabled?:boolean; shipoutProductionDispatchEnabled?:boolean; shipoutProductionMinOrderId?:number; shipoutProductionOperatorAllowed?:boolean
   workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[];
@@ -169,7 +169,7 @@ async function shipoutBatchPoll() {
 }
 async function shipoutBatchStart() {
   const preview=shipoutBatchPreview.value
-  if(!preview||preview.overflow||preview.count<1||shipoutBatchBusy.value)return
+  if(props.shipoutProductionBatchPaused||!preview||preview.overflow||preview.count<1||shipoutBatchBusy.value)return
   const message=(preview.dry_run?'Dev 模拟批次（不会访问海外仓）':'真实向 MorePlus 仓库逐单推送')
     +'：共 '+preview.count+' 单。确认只执行一次？'
   if(!window.confirm(message))return
@@ -896,15 +896,16 @@ const compactPages = computed<(number|string)[]>(() => {
           </template>
         </div>
       </header>
-      <section v-if="shipoutProductionBatchUi && warehouseKey==='us-moreplus' && (shipoutBatchPreview || shipoutBatchStatus || shipoutBatchError)"
+      <section v-if="shipoutProductionBatchUi && warehouseKey==='us-moreplus' && (shipoutBatchPreview || shipoutBatchStatus || shipoutBatchError || shipoutProductionBatchPaused)"
         class="xlwms-batch-result" role="status">
+        <small v-if="shipoutProductionBatchPaused" class="xlwms-error" role="alert">当前批量推送已安全暂停：仓库重复判定原因待核对。管理员可查看预览与历史结果，但不可提交新订单。</small>
         <strong v-if="shipoutBatchPreview">
           {{shipoutBatchPreview.dry_run?'Dev 模拟预览（不连接真实 OMS）':'MorePlus 真实推送预览'}}
           · 候选 {{shipoutBatchPreview.count}} 单
           <span v-if="shipoutBatchPreview.overflow">（超过单批 200 单限制，请分批处理）</span>
         </strong>
         <button v-if="shipoutBatchPreview && shipoutBatchPreview.count>0 && !shipoutBatchPreview.overflow"
-          type="button" class="file-button primary" :disabled="shipoutBatchBusy" @click="shipoutBatchStart">
+          type="button" class="file-button primary" :disabled="shipoutBatchBusy || shipoutProductionBatchPaused" @click="shipoutBatchStart">
           {{shipoutBatchPreview.dry_run?'确认运行 Dev 模拟':'确认逐单推送 '+shipoutBatchPreview.count+' 单'}}
         </button>
         <strong v-if="shipoutBatchStatus">

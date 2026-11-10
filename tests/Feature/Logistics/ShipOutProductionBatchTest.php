@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Logistics;
 
+use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
@@ -14,10 +15,12 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Logistics\Experience\Jobs\ProcessShipOutProductionBatch;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Inertia\Testing\AssertableInertia;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -72,6 +75,67 @@ final class ShipOutProductionBatchTest extends TestCase
         ]);
 
         return $order;
+    }
+
+    public function test_production_administrator_can_read_paused_button_and_prior_batch_but_cannot_submit(): void
+    {
+        $role = Role::query()->firstOrCreate(
+            ['key' => 'role_preset_administrator'], ['label' => '管理员']
+        );
+        foreach (['logistics.view', 'logistics.operate'] as $key) {
+            $permission = Permission::query()->firstOrCreate(
+                ['key' => $key], ['label' => $key]
+            );
+            $role->permissions()->syncWithoutDetaching([$permission->id]);
+        }
+        $admin = User::factory()->create(['is_active' => true, 'permission_mode' => 'role']);
+        $admin->roles()->attach($role);
+        $order = $this->approvedOrder($admin, '8');
+        config()->set([
+            'shipout.production_read_enabled' => true,
+            'shipout.production_v1_batch_enabled' => false,
+            'shipout.production_v1_batch_owner_approved' => false,
+            'shipout.production_v1_dispatch_enabled' => true,
+            'shipout.production_v1_owner_approved' => true,
+            'shipout.production_v1_operator_user_ids' => $admin->id.',999001,999002',
+            'shipout.production_v1_min_order_id' => 1,
+            'shipout.production_v1_batch_canary_order_id' => $order->id,
+        ]);
+        DB::table('shipout_production_batches')->insert([
+            'id' => '00000000-0000-4000-8000-000000000190',
+            'operator_user_id' => $admin->id,
+            'status' => 'completed_partial', 'dry_run' => false, 'total' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $old = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            Http::preventStrayRequests();
+            $this->withoutMiddleware(PreventRequestForgery::class);
+            $this->actingAs($admin);
+            $this->get('/logistics/oversea/us-moreplus?view=pending')
+                ->assertOk()
+                ->assertInertia(fn (AssertableInertia $page) => $page
+                    ->where('shipoutProductionBatchUi', true)
+                    ->where('shipoutProductionBatchPaused', true)
+                    ->where('canOperate', true)
+                    ->where('canReview', true)
+                );
+
+            $preview = $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/preview')
+                ->assertOk()->assertJsonPath('count', 1)->json();
+            $this->getJson('/logistics/oversea/us-moreplus/shipout/batch/00000000-0000-4000-8000-000000000190/status')
+                ->assertOk()->assertJsonPath('status', 'completed_partial');
+            $this->postJson('/logistics/oversea/us-moreplus/shipout/batch/start', [
+                'fingerprint' => $preview['fingerprint'], 'confirmation' => 'CONFIRM_MOREPLUS_BATCH_1',
+            ])->assertForbidden();
+
+            $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+            $this->assertDatabaseCount('shipout_production_batches', 1);
+            Http::assertNothingSent();
+        } finally {
+            $this->app->instance('env', $old);
+        }
     }
 
     public function test_dev_batch_preview_start_and_status_never_contact_provider(): void

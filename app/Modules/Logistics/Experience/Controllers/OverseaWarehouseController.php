@@ -135,18 +135,22 @@ final class OverseaWarehouseController
                 && filled(config('xlwms.oms_web_hmac_key')),
             // Production V1 is visible as a separate, default-OFF workbench;
             // never make Sandbox flags active in Production.
-            // Dev renders a dry-run batch workbench; Production requires separate new approval.
+            // Administrative visibility and read-only history remain available
+            // while the real POST batch gate is OFF after provider duplicates.
+            // Never couple viewing a disabled button to permission to POST.
             'shipoutProductionBatchUi' => $warehouseKey === 'us-moreplus'
                 && (app()->environment(['local', 'testing'])
-                    || (app()->environment('production')
-                        && (bool) config('shipout.production_v1_batch_enabled', false)
-                        && (bool) config('shipout.production_v1_batch_owner_approved', false)))
-                && (app()->environment(['local', 'testing'])
                     ? $request->user()?->can('logistics.view')
-                    : $this->shipOutV1Access->allows($request->user())),
+                    : (app()->environment('production')
+                        && $this->shipOutV1Access->allows($request->user())
+                        && (bool) config('shipout.production_read_enabled', false))),
+            'shipoutProductionBatchPaused' => app()->environment('production')
+                && (! (bool) config('shipout.production_v1_batch_enabled', false)
+                    || ! (bool) config('shipout.production_v1_batch_owner_approved', false)),
             'shipoutProductionBatchDryRun' => ! app()->environment('production'),
             'shipoutProductionLatestBatch' => $warehouseKey === 'us-moreplus'
-                && (app()->environment(['local', 'testing']) || (bool) config('shipout.production_v1_batch_enabled', false))
+                && (app()->environment(['local', 'testing'])
+                    || (app()->environment('production') && $this->shipOutV1Access->allows($request->user())))
                 && Schema::hasTable('shipout_production_batches')
                 ? DB::table('shipout_production_batches')
                     ->where('operator_user_id', (int) $request->user()->id)

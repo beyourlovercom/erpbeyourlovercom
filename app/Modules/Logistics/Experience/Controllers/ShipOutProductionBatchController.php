@@ -18,7 +18,7 @@ final class ShipOutProductionBatchController
         Request $request, ShipOutProductionBatchService $batches,
         ShipOutProductionV1OperatorAccess $access,
     ): JsonResponse {
-        $this->authorize($request, $access);
+        $this->authorize($request, $access, false);
 
         return response()->json($batches->preview())->header('Cache-Control', 'no-store, private');
     }
@@ -27,7 +27,7 @@ final class ShipOutProductionBatchController
         Request $request, ShipOutProductionBatchService $batches,
         ShipOutProductionV1OperatorAccess $access,
     ): JsonResponse {
-        $this->authorize($request, $access);
+        $this->authorize($request, $access, true);
         $input = $request->validate([
             'fingerprint' => ['required', 'regex:/^[0-9a-f]{64}$/D'],
             'confirmation' => ['required', 'string', 'max:80'],
@@ -64,7 +64,7 @@ final class ShipOutProductionBatchController
         string $batchId, Request $request, ShipOutProductionBatchService $batches,
         ShipOutProductionV1OperatorAccess $access,
     ): JsonResponse {
-        $this->authorize($request, $access);
+        $this->authorize($request, $access, false);
         try {
             $batch = DB::table('shipout_production_batches')->where('id', $batchId)->first();
             abort_unless($batch && (int) $batch->operator_user_id === (int) $request->user()->id, 404);
@@ -76,18 +76,21 @@ final class ShipOutProductionBatchController
         }
     }
 
-    private function authorize(Request $request, ShipOutProductionV1OperatorAccess $access): void
-    {
+    private function authorize(
+        Request $request, ShipOutProductionV1OperatorAccess $access, bool $write
+    ): void {
         $dev = app()->environment(['local', 'testing']);
         abort_unless(
             $dev
                 ? $request->user()?->can('logistics.view')
                 : (app()->environment('production')
-                    && (bool) config('shipout.production_v1_batch_enabled', false)
-                    && (bool) config('shipout.production_v1_batch_owner_approved', false)
-                    && (bool) config('shipout.production_v1_dispatch_enabled', false)
-                    && (bool) config('shipout.production_v1_owner_approved', false)
-                    && $access->allows($request->user())),
+                    && (bool) config('shipout.production_read_enabled', false)
+                    && $access->allows($request->user())
+                    && (! $write
+                        || ((bool) config('shipout.production_v1_batch_enabled', false)
+                            && (bool) config('shipout.production_v1_batch_owner_approved', false)
+                            && (bool) config('shipout.production_v1_dispatch_enabled', false)
+                            && (bool) config('shipout.production_v1_owner_approved', false)))),
             403,
         );
     }
