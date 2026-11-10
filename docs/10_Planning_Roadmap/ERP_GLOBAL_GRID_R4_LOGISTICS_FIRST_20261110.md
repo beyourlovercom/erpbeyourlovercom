@@ -82,6 +82,10 @@ Source: canonical scope docs/10_Planning_Roadmap/ERP_GLOBAL_GRID_R4_51_PAGE_SCOP
 
 Owner clarification for the upcoming pinned right-hand action buttons and left-side batch selection: these are **different statuses** with different accounting eligibility. See [ERP_R4_LOGISTICS_EXIT_VS_OPERATIONAL_ARCHIVE_20261110.md](ERP_R4_LOGISTICS_EXIT_VS_OPERATIONAL_ARCHIVE_20261110.md). This is a required backend gate for batch operations, NOT automatic Production enablement; L1 existing Grid UAT and its other UI/permission guarantees remain independent.
 
+## Global Grid V1.2 single-row footer operations update
+
+Owner explicitly forbids redundant count/selection under the table title or a second batch toolbar. Conditional selection count, bulk action dropdown and Apply must appear only on the existing bottom pagination row. See [ERP_GLOBAL_GRID_V12_SINGLE_FOOTER_OPERATIONS_20261110.md](ERP_GLOBAL_GRID_V12_SINGLE_FOOTER_OPERATIONS_20261110.md) for exact layout and incremental 23–46h planned work (no duplicate counting of the 51-page migration).
+
 ## Safeguards and rollout behavior
 
 - Execute logistics L1, L2, L3 first. A safe readonly logistics-list canary may be used inside L1 to prove the adapter before enabling a high-impact operational table. Priority is not authorization for live shipping.
