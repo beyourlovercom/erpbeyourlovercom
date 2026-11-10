@@ -3,6 +3,16 @@
 Status: OWNER APPROVED / FROZEN (2026-11-05)
 Scope: BYL ERP front-end list / table pages; this is the single standard for new tables and phased legacy migrations.
 
+## Owner-confirmed permanent implementation rule · 2026-11-10
+
+- **For every NEW ERP primary business list**, use `resources/js/Components/DataGrid/GlobalGrid.vue` as the shared component; it wraps `OmsGrid.vue` and retains the one AG Grid Community core. It is the **implementation** of the existing `BYL_GLOBAL_DATA_GRID_VI_V1_1` layout, query and preference contract, not a second conflicting standard.
+- Domain pages provide authorized column schemas, row identities, canonical server-side query adapters, status labels and permitted actions. New full-size native `<table>` business lists or copy/pasted `OmsGrid` forks are non-compliant without an explicit, documented Owner-approved exception.
+- **No blanket replacement of detail-page mini tables**, audit/preview summaries, data-entry sub-tables or appropriate mobile cards. These can retain small lightweight tables. Existing production lists are migrated **only when selected and accepted page by page**.
+- **No changes to the authority of orders, fulfillment, inventory, procurement, audits, approvals, imports/exports, finance, or permissions.** All writes and permission gates remain in their original servers/routes. A list style upgrade must not introduce or bypass business mutations.
+- Search is embedded in the shared grid and covers all **authorized backend records**. Remove duplicate external keyword boxes in migrated list views, retain independent status/warehouse/domain filters. Server paginates and allowlists query fields; do not promise local-only sorting/filtering as full-data results.
+- Preserve existing account-scoped column preferences and their unique namespaces; current canary flags/Owner ID 1 opt-in and legacy fallback remain effective. Changing company-wide defaults or migrating already-existing pages is a separate Owner-approved batch and UAT/release decision.
+- Full contract: `AGENTS.md` rule `ERP_GLOBAL_GRID_V1_NEW_BUSINESS_LIST_STANDARD` and `docs/10_Planning_Roadmap/26_BYL_ERP_GLOBAL_DATA_GRID_VI_V1_1.md`.
+
 ## 1. Core standard
 - Use `ag-grid-community` + `ag-grid-vue3`, Balham theme, via the shared `OmsGrid` component.
 - Do not create per-page standalone table frameworks. Domain pages supply column definitions, data adapters, authorized actions and links.
