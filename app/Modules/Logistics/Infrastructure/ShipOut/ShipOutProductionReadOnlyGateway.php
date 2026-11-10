@@ -94,11 +94,23 @@ final class ShipOutProductionReadOnlyGateway
             }
             $seen[$orderId] = true;
             $status = $record['status'] ?? null;
-            $rows[] = [
+            $result = [
                 'orderNO' => $orderNo,
                 'orderId' => $orderId,
                 'status' => is_int($status) ? $status : null,
             ];
+            if (in_array($status, [6, 11], true)) {
+                // Never expose arbitrary provider cancelReason text; may contain
+                // customer data, account identifiers, or untrusted content.
+                $reason = strtolower((string) ($record['cancelReason'] ?? ''));
+                $result['cancel_category'] = str_contains($reason, 'duplicated order')
+                    || str_contains($reason, 'duplicate order')
+                    ? 'PROVIDER_DUPLICATE_ORDER'
+                    : (str_contains($reason, 'ezeeship')
+                        ? 'PROVIDER_EZEESHIP_SHIPPING_ERROR'
+                        : 'PROVIDER_CANCELLED_OTHER');
+            }
+            $rows[] = $result;
         }
 
         return ['records' => $rows, 'total' => $data['total']];

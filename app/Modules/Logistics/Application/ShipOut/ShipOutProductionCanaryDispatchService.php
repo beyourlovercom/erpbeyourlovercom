@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\ShipOut;
 
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionCanaryOutboundTransport;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -40,8 +41,9 @@ final class ShipOutProductionCanaryDispatchService
         string $shipDate,
         string $expectedPayloadHash,
         string $typedConfirmation,
+        ?Authenticatable $operator = null,
     ): array {
-        return $this->dispatchScoped($erpOrderId, $shipDate, $expectedPayloadHash, $typedConfirmation, true);
+        return $this->dispatchScoped($erpOrderId, $shipDate, $expectedPayloadHash, $typedConfirmation, true, $operator);
     }
 
     /** @return array{status:string,provider_order_id:?string,result_code:string} */
@@ -61,6 +63,7 @@ final class ShipOutProductionCanaryDispatchService
         string $expectedPayloadHash,
         string $typedConfirmation,
         bool $v1,
+        ?Authenticatable $operator = null,
     ): array {
         // Fresh signed stock and provider duplicate GETs on every attempt.
         $preflight = $v1
@@ -69,14 +72,17 @@ final class ShipOutProductionCanaryDispatchService
         $summary = $preflight['summary'];
         $payload = $preflight['payload'];
 
-        ($v1 ? $this->v1Gate : $this->gate)->assertExecutionAuthorized(
-            $erpOrderId,
-            $summary['order_no'],
-            $summary['warehouse_id'],
-            $expectedPayloadHash,
-            $summary['payload_hash'],
-            $typedConfirmation,
-        );
+        $args = [
+            $erpOrderId, $summary['order_no'], $summary['warehouse_id'],
+            $expectedPayloadHash, $summary['payload_hash'], $typedConfirmation,
+        ];
+        if ($v1) {
+            $this->v1Gate->assertExecutionAuthorized(...[...$args, $operator]);
+            // Bound across manual submits and queued batch submits; fail before ledger reservation.
+            app(ShipOutProductionOutboundPacer::class)->claim();
+        } else {
+            $this->gate->assertExecutionAuthorized(...$args);
+        }
 
         // A once-per-order and once-per-warehouse-reference durable lock.
         // Never hold a DB transaction open across network I/O.
@@ -100,7 +106,7 @@ final class ShipOutProductionCanaryDispatchService
         try {
             $result = $v1
                 ? $this->transport->submitV1(
-                    $erpOrderId, $payload, $expectedPayloadHash, $typedConfirmation
+                    $erpOrderId, $payload, $expectedPayloadHash, $typedConfirmation, $operator
                 )
                 : $this->transport->submitOne(
                     $erpOrderId, $payload, $expectedPayloadHash, $typedConfirmation

@@ -22,6 +22,7 @@ final class ProductSkuAlias extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'oms_verified_at' => 'datetime',
+        'oms_dispatch_approved_at' => 'datetime',
     ];
 
     public function product(): BelongsTo

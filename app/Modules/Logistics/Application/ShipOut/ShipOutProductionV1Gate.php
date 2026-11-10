@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\ShipOut;
 
 use RuntimeException;
+use Illuminate\Contracts\Auth\Authenticatable;
 
 /**
  * Ordinary approved US-LA orders: distinct default-OFF V1 launch gates,
@@ -20,6 +21,7 @@ final class ShipOutProductionV1Gate
         string $expectedPayloadHash,
         string $currentPayloadHash,
         string $typedConfirmation,
+        ?Authenticatable $operator = null,
     ): void {
         if (! app()->environment('production')) {
             throw new RuntimeException('SHIPOUT_V1_PRODUCTION_ONLY');
@@ -36,7 +38,7 @@ final class ShipOutProductionV1Gate
             }
         }
         $minOrderId = (int) config('shipout.production_v1_min_order_id', 0);
-        if (! $this->access->allows(auth()->user())) {
+        if (! $this->access->allows($operator ?? auth()->user())) {
             throw new RuntimeException('SHIPOUT_V1_OPERATOR_DENIED');
         }
         if ($minOrderId < 1 || $erpOrderId < $minOrderId) {

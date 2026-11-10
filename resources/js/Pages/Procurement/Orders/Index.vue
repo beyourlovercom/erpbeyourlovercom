@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
+import type { ColDef } from 'ag-grid-community'
+import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
+const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../../Composables/useAccountGridPreferences'
@@ -35,19 +38,77 @@ const props = defineProps<{
   filters: Filters
   statusOptions: StatusOption[]
   canOperate: boolean
+  gridOrders?: {data:ProcurementRow[];current_page:number;last_page:number;per_page:number;total:number}|null
+  globalGridPilotAvailable?:boolean
+  globalGridPilotEnabled?:boolean
 }>()
 const search = ref(props.filters.search || '')
+watch(() => props.filters.search, value => { search.value = value || '' })
+const globalGridSearch = (value:string) => {
+  search.value = value
+  router.get('/purchase', {
+    search:value || undefined, status:status.value || undefined,
+    global_grid:'1', per_page:String(props.gridOrders?.per_page??50), page:1,
+  }, {preserveState:true,replace:true})
+}
 const status = ref(props.filters.status || '')
 
 const apply = () => router.get('/purchase', {
   search: search.value || undefined,
   status: status.value || undefined,
+  ...(props.globalGridPilotEnabled ? {global_grid:'1',per_page:String(props.gridOrders?.per_page??50)} : {}),
 }, { preserveState: true, replace: true })
 const clear = () => {
   search.value = ''
   status.value = ''
   apply()
 }
+
+const visibleOrders = computed(() => props.globalGridPilotEnabled
+  ? (props.gridOrders?.data ?? []) : props.orders)
+const toggleGlobalPilot = () => router.get('/purchase', {
+  search:search.value || undefined,status:status.value || undefined,
+  global_grid:props.globalGridPilotEnabled ? '0':'1',
+}, {preserveState:true,replace:true})
+const globalGridPage = (page:number) => router.get('/purchase', {
+  search:search.value || undefined,status:status.value || undefined,
+  global_grid:'1',per_page:String(props.gridOrders?.per_page??50),page,
+}, {preserveState:true,replace:true})
+const globalGridPageSize = (size:number|'all') => {
+  if(size==='all')return
+  router.get('/purchase',{
+    search:search.value||undefined,status:status.value||undefined,global_grid:'1',
+    per_page:String(size),page:1,
+  },{preserveState:true,replace:true})
+}
+type GridRow = Record<string,unknown>
+const globalRows = computed<GridRow[]>(() => visibleOrders.value.map(order => ({
+  ...order,
+  display_items:order.item_summary + (order.item_count>2 ? ' 等 '+order.item_count+' 项' : ''),
+  display_logistics:[order.carrier,order.tracking_number].filter(Boolean).join(' · ') || '—',
+  display_updated:order.updated_at ? new Date(order.updated_at).toLocaleString('zh-CN') : '—',
+})))
+const globalColumns: ColDef<GridRow>[] = [
+  {colId:'procurement',field:'procurement_number',headerName:'采购单',width:194,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridRow)=>'/purchase/orders/'+r.id}},
+  {colId:'order_number',field:'source_order_erp_id',headerName:'ERP订单号',width:194,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridRow)=>r.source_order_erp_id?'/customers/orders/'+r.source_order_id:null}},
+  {colId:'items',field:'display_items',headerName:'商品',width:245},
+  {colId:'quantity',field:'purchase_quantity',headerName:'数量',width:98},
+  {colId:'status',field:'status_label',headerName:'状态',width:128,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}},
+  {colId:'logistics',field:'display_logistics',headerName:'采购物流',width:205},
+  {colId:'updated',field:'display_updated',headerName:'更新',width:185},
+  {colId:'actions',field:'id',headerName:'操作',width:100,
+    cellRenderer:GlobalGridCell,cellRendererParams:{
+      mode:'actions',actionsFor:(r:GridRow)=>[{label:'查看',href:'/purchase/orders/'+r.id}],
+    }},
+]
+const gridPager = computed(() => props.gridOrders ? ({
+  current_page:props.gridOrders.current_page,last_page:props.gridOrders.last_page,
+  per_page:props.gridOrders.per_page,total:props.gridOrders.total,
+}) : null)
+
 const formatDate = (value: string | null) => value ? new Date(value).toLocaleString('zh-CN') : '—'
 const logistics = (order: ProcurementRow) => {
   if (!order.carrier && !order.tracking_number) return '—'
@@ -58,17 +119,19 @@ const logistics = (order: ProcurementRow) => {
 <template>
   <Head title="采购订单 · BYL ERP" />
   <AuthenticatedLayout title="采购" :breadcrumbs="[{ label: '采购', href: '/purchase' }]">
-    <section class="mvp-page procurement-index">
+    <section class="mvp-page procurement-index" :class="{'global-grid-active':globalGridPilotEnabled}">
       <div class="mvp-page-heading">
         <div>
           <p class="mvp-kicker">Purchase OS</p>
           <h2>采购订单</h2>
           <p>跟进真实缺货订单的采购状态与采购物流。</p>
+          <button v-if="globalGridPilotAvailable" type="button" class="erp-btn erp-btn-secondary"
+            data-testid="procurement-global-toggle" @click="toggleGlobalPilot">{{globalGridPilotEnabled?'返回原列表':'Dev · Global Grid'}}</button>
         </div>
       </div>
 
       <form class="mvp-card purchase-filters" @submit.prevent="apply">
-        <label>
+        <label v-if="!globalGridPilotEnabled">
           <span>搜索</span>
           <input v-model="search" class="erp-input" placeholder="采购单 / 订单 / SKU / 商品" />
         </label>
@@ -87,7 +150,14 @@ const logistics = (order: ProcurementRow) => {
         </div>
       </form>
 
-      <div class="mvp-card purchase-table-wrap desktop-list">
+      <div v-if="globalGridPilotEnabled" class="desktop-list">
+        <GlobalGrid namespace="grid.procurement.orders.global.v1" title="采购订单 · Global Grid V1"
+          :columns="globalColumns" :rows="globalRows" :page="gridPager"
+          :search="filters.search ?? ''" search-placeholder="搜索全部采购单 / 订单号 / SKU / 商品..."
+          :required-column-ids="['procurement','order_number','actions']"
+          @page-change="globalGridPage" @page-size-change="globalGridPageSize" @search-change="globalGridSearch"/>
+      </div>
+      <div v-else class="mvp-card purchase-table-wrap desktop-list">
         <table class="mvp-table">
           <thead>
             <tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr>
@@ -103,7 +173,7 @@ const logistics = (order: ProcurementRow) => {
       </div>
 
       <div class="mobile-list">
-        <article v-for="order in props.orders" :key="order.id" class="mvp-card purchase-card">
+        <article v-for="order in visibleOrders" :key="order.id" class="mvp-card purchase-card">
           <div class="purchase-card-head">
             <strong>{{ order.procurement_number }}</strong>
             <span class="mvp-status">{{ order.status_label }}</span>
@@ -117,13 +187,13 @@ const logistics = (order: ProcurementRow) => {
           </dl>
           <Link class="erp-btn erp-btn-secondary" :href="`/purchase/orders/${order.id}`">查看采购订单</Link>
         </article>
-        <div v-if="props.orders.length === 0" class="mvp-card mvp-empty">暂无匹配的采购订单</div>
+        <div v-if="visibleOrders.length === 0" class="mvp-card mvp-empty">暂无匹配的采购订单</div>
       </div>
     </section>
   </AuthenticatedLayout>
 </template>
 
 <style scoped>
-.purchase-filters{display:grid;grid-template-columns:minmax(220px,1fr) 200px auto;gap:12px;align-items:end;padding:14px;margin-bottom:14px}.purchase-filters label{display:grid;gap:6px;font-size:12px;color:#64748b}.filter-actions{display:flex;gap:8px}.purchase-table-wrap{overflow:auto}.purchase-table-wrap table{width:100%;border-collapse:collapse}.purchase-table-wrap th,.purchase-table-wrap td{padding:12px;border-bottom:1px solid #e5e7eb;text-align:left;white-space:nowrap}.purchase-table-wrap th{font-size:12px;color:#64748b}.logistics-cell{max-width:220px;overflow:hidden;text-overflow:ellipsis}.mobile-list{display:none}.purchase-card{padding:14px;display:grid;gap:12px}.purchase-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.purchase-card dl{display:grid;grid-template-columns:86px 1fr;gap:8px;margin:0}.purchase-card dt{color:#7a8c94}.purchase-card dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.global-grid-active .purchase-filters{grid-template-columns:minmax(180px,260px) auto;max-width:620px}.purchase-filters{display:grid;grid-template-columns:minmax(220px,1fr) 200px auto;gap:12px;align-items:end;padding:14px;margin-bottom:14px}.purchase-filters label{display:grid;gap:6px;font-size:12px;color:#64748b}.filter-actions{display:flex;gap:8px}.purchase-table-wrap{overflow:auto}.purchase-table-wrap table{width:100%;border-collapse:collapse}.purchase-table-wrap th,.purchase-table-wrap td{padding:12px;border-bottom:1px solid #e5e7eb;text-align:left;white-space:nowrap}.purchase-table-wrap th{font-size:12px;color:#64748b}.logistics-cell{max-width:220px;overflow:hidden;text-overflow:ellipsis}.mobile-list{display:none}.purchase-card{padding:14px;display:grid;gap:12px}.purchase-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.purchase-card dl{display:grid;grid-template-columns:86px 1fr;gap:8px;margin:0}.purchase-card dt{color:#7a8c94}.purchase-card dd{margin:0;min-width:0;overflow-wrap:anywhere}
 @media(max-width:767px){.purchase-filters{grid-template-columns:1fr}.filter-actions{display:grid;grid-template-columns:1fr 1fr}.desktop-list{display:none}.mobile-list{display:grid;gap:10px}.purchase-card .erp-btn{width:100%}}
 </style>

@@ -125,6 +125,58 @@ describe('Domestic logistics production workbench', () => {
     expect(mount(Index,{props:{...baseProps,view:'today-weship'}}).find('[data-testid="download-today-orders"]').exists()).toBe(false)
   })
 
+  it('places 今日订单 immediately after 待发货 and renders three concise one-line modules with no commas', () => {
+    const today=mount(Index,{props:{...baseProps,view:'today',trackingImportPreview:null,trackingImportProvider:null}})
+    const nav=today.findAll('nav.tabs button').map(b=>b.text())
+    expect(nav[2]).toContain('待发货')
+    expect(nav[3]).toContain('今日订单')
+    const cards=today.findAll('.today-shortcut')
+    expect(cards).toHaveLength(3)
+    expect(cards[0].text()).toBe('⬇️这批订单')
+    expect(cards[1].text()).toBe('⏬今日速达⏫速达物流单号')
+    expect(cards[2].text()).toBe('⏬今日纬狮⏫纬狮物流单号')
+    expect(today.find('.today-shortcuts').text()).not.toMatch(/[,，]/)
+    expect(today.findAll('.today-shortcut a').map(a=>a.attributes('href'))).toEqual([
+      '/logistics/china/today/export',
+      '/logistics/china/export/4px',
+      '/logistics/china/export/weship',
+    ])
+    expect(today.find('[data-testid="download-today-orders"]').exists()).toBe(true)
+    expect(today.findAll('.today-shortcut button')).toHaveLength(2)
+    expect(today.text()).not.toContain('上传速达单号表')
+    expect(today.text()).not.toContain('上传纬狮单号表')
+    expect(mount(Index,{props:{...baseProps,view:'today-4px'}}).find('.today-shortcuts').exists()).toBe(false)
+    expect(mount(Index,{props:{...baseProps,view:'today-weship'}}).find('.today-shortcuts').exists()).toBe(false)
+  })
+
+  it('treats the labels 速达物流单号 and 纬狮物流单号 themselves as upload actions', async () => {
+    const wrapper=mount(Index,{props:{...baseProps,view:'today'}})
+    const fileInput=wrapper.find('input[type="file"]')
+    expect(fileInput.exists()).toBe(true)
+    const click=vi.spyOn(fileInput.element as HTMLInputElement,'click').mockImplementation(()=>{})
+    try {
+      const file=new File(['test'],'tracking.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
+      await wrapper.find('[data-testid="upload-today-4px"]').trigger('click')
+      expect(click).toHaveBeenCalledTimes(1)
+      Object.defineProperty(fileInput.element,'files',{configurable:true,value:[file]})
+      await fileInput.trigger('change')
+      expect(routerPost).toHaveBeenCalledWith('/logistics/china/4px/tracking-import/preview',
+        expect.any(FormData),expect.objectContaining({forceFormData:true,preserveScroll:true}))
+      await wrapper.find('[data-testid="upload-today-weship"]').trigger('click')
+      expect(click).toHaveBeenCalledTimes(2)
+      await fileInput.trigger('change')
+      expect(routerPost).toHaveBeenCalledWith('/logistics/china/weship/tracking-import/preview',
+        expect.any(FormData),expect.objectContaining({forceFormData:true,preserveScroll:true}))
+    } finally { click.mockRestore() }
+
+    const readonly=mount(Index,{props:{...baseProps,view:'today',canOperate:false}})
+    expect(readonly.findAll('.today-shortcut button')).toHaveLength(0)
+    const notReady=mount(Index,{props:{...baseProps,view:'today',
+      providerStatus:{...baseProps.providerStatus,weship:{...baseProps.providerStatus.weship,export_ready:false,return_ready:false}}}})
+    expect(notReady.find('[data-testid="upload-today-weship"]').exists()).toBe(false)
+    expect(notReady.find('[data-testid="download-today-weship"]').exists()).toBe(false)
+  })
+
 
   it('saves a reviewed domestic Tracking inline without accidentally confirming shipment', async () => {
     const wrapper=mount(Index,{props:{...baseProps,view:'pending'}})

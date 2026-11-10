@@ -65,10 +65,19 @@ async function runFoundation() {
     await runManagedChild('php', ['tests/e2e/support/provision-users.php'], { env, signal: abortController.signal });
     assertNotAborted(abortController.signal);
     const suite = process.env.BYL_E2E_SUITE ?? 'all';
-    if (!['all', 'kol-role', 'tracking-ux'].includes(suite)) {
-        throw new Error('BYL_E2E_SUITE must be all, kol-role, or tracking-ux.');
+    if (!['all', 'kol-role', 'tracking-ux', 'oms-import', 'global-grid'].includes(suite)) {
+        throw new Error('BYL_E2E_SUITE must be all, kol-role, tracking-ux, oms-import or global-grid.');
     }
-    const testArgs = suite === 'kol-role'
+    if (suite === 'global-grid') {
+        await runManagedChild('php', ['tests/e2e/support/provision-global-grid.php'], {
+            env, signal: abortController.signal,
+        });
+    }
+    const testArgs = suite === 'global-grid'
+        ? [playwrightCli, 'test', 'tests/e2e/global-grid/global-grid-pilot.spec.ts', '--project=chromium', '--timeout=90000']
+        : suite === 'oms-import'
+        ? [playwrightCli, 'test', 'tests/e2e/orders/oms-import-browser.spec.ts', '--project=chromium', '--timeout=90000']
+        : suite === 'kol-role'
         ? [playwrightCli, 'test', 'tests/e2e/orders/kol-role-isolation.spec.ts', '--project=chromium', '--timeout=90000']
         : suite === 'tracking-ux'
             ? ['tests/e2e/support/tracking-ux-browser.mjs']
@@ -76,7 +85,7 @@ async function runFoundation() {
     await runManagedChild(process.execPath, testArgs, {
         env,
         signal: abortController.signal,
-        timeout: suite === 'kol-role' ? 360_000 : 120_000,
+        timeout: suite === 'kol-role' ? 360_000 : suite === 'oms-import' || suite === 'global-grid' ? 360_000 : 120_000,
     });
 }
 

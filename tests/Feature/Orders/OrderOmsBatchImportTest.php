@@ -11,6 +11,7 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Inertia\Testing\AssertableInertia as Assert;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
 use Tests\TestCase;
@@ -91,7 +92,7 @@ final class OrderOmsBatchImportTest extends TestCase
         foreach (['2026-10-10', '2026/10/10', '2026-10/10', '2026/10/10 00:00:00',
             '2026/1/2', $serial] as $index => $value) {
             $file = $this->xlsx('WPS-DATE-'.$index, date: $value);
-            $response = $this->actingAs($user)->post('/orders/oms/import/preview', [
+            $response = $this->actingAs($user)->post('/orders/oms/import/preview', ['import_type' => 'website',
                 'file' => $file,
             ])->assertOk()->json();
             $this->assertSame([], $response['errors'], 'Rejected valid WPS date: '.$value);
@@ -116,7 +117,7 @@ final class OrderOmsBatchImportTest extends TestCase
         $user = $this->userWith(['orders.view', 'orders.create']);
         Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
         foreach (['', '2026/02/30', '2026-13-01', '2026/10', 'not a date', '999999'] as $index => $value) {
-            $response = $this->actingAs($user)->post('/orders/oms/import/preview', [
+            $response = $this->actingAs($user)->post('/orders/oms/import/preview', ['import_type' => 'website',
                 'file' => $this->xlsx('WPS-BAD-'.$index, date: $value),
             ])->assertOk()->json();
             $this->assertNull($response['token']);
@@ -131,7 +132,7 @@ final class OrderOmsBatchImportTest extends TestCase
         Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
         Product::query()->create(['sku' => 'A1', 'name' => 'Accessory']);
         $file = $this->groupedXlsx();
-        $preview = $this->actingAs($user)->post('/orders/oms/import/preview', [
+        $preview = $this->actingAs($user)->post('/orders/oms/import/preview', ['import_type' => 'website',
             'file' => $file,
         ])->assertOk()->json();
         $this->assertSame(2, $preview['count']);
@@ -142,7 +143,7 @@ final class OrderOmsBatchImportTest extends TestCase
         $this->assertSame('A1 × 1', $preview['preview'][1]['sku_detail']);
         $this->assertSame(3, $preview['preview'][0]['order_total_quantity']);
         $this->assertDatabaseCount('orders', 0);
-        $result = $this->actingAs($user)->post('/orders/oms/import/confirm', [
+        $result = $this->actingAs($user)->post('/orders/oms/import/confirm', ['import_type' => 'website',
             'file' => $file, 'token' => $preview['token'], 'confirm' => '1',
         ])->assertOk()->json();
         $this->assertSame(2, $result['created']);
@@ -160,7 +161,7 @@ final class OrderOmsBatchImportTest extends TestCase
         $user = $this->userWith(['orders.view', 'orders.create']);
         Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
         Product::query()->create(['sku' => 'A1', 'name' => 'Accessory']);
-        $result = $this->actingAs($user)->post('/orders/oms/import/preview', [
+        $result = $this->actingAs($user)->post('/orders/oms/import/preview', ['import_type' => 'website',
             'file' => $this->groupedXlsx(conflict: true),
         ])->assertOk()->json();
         $this->assertNull($result['token']);
@@ -306,35 +307,92 @@ final class OrderOmsBatchImportTest extends TestCase
         $user = $this->userWith(['orders.view', 'orders.create']);
         Product::query()->create(['sku' => 'MF414A', 'name' => 'MF414A Sample', 'is_active' => true]);
         $file = $this->xlsx();
-        $result = $this->actingAs($user)->post('/orders/oms/import/preview', [
+        $result = $this->actingAs($user)->post('/orders/oms/import/preview', ['import_type' => 'website',
             'file' => $file,
         ])->assertOk()->json();
         $this->assertSame(1, $result['count']);
         $this->assertSame([], $result['errors']);
         $this->assertNotEmpty($result['token']);
         $this->assertDatabaseCount('orders', 0); // Preview must never create.
-        $created = $this->actingAs($user)->post('/orders/oms/import/confirm', [
+        $created = $this->actingAs($user)->post('/orders/oms/import/confirm', ['import_type' => 'website',
             'file' => $file, 'token' => $result['token'], 'confirm' => '1',
         ])->assertOk()->json();
         $this->assertSame(1, $created['created']);
         $order = Order::query()->where('external_order_number', 'R3-IMPORT-0001')->firstOrFail();
-        $this->assertSame('manual', $order->source_type->value);
+        $this->assertSame('website', $order->source_type->value);
         $this->assertSame('customer', $order->order_kind->value);
         $this->assertNotNull($order->erp_order_id);
         $this->assertSame(2, (int) $order->items()->firstOrFail()->quantity);
         $this->assertSame('MF414A', $order->items()->firstOrFail()->sku);
         $this->assertSame('Test Customer', $order->address?->recipient_name);
-        $response = $this->actingAs($user)->post('/orders/oms/import/confirm', [
+        $response = $this->actingAs($user)->post('/orders/oms/import/confirm', ['import_type' => 'website',
             'file' => $file, 'token' => $result['token'], 'confirm' => '1',
         ]);
         $response->assertUnprocessable();
         $this->assertDatabaseCount('orders', 1);
     }
 
+    public function test_all_three_import_types_preserve_original_number_and_correct_business_kind(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
+        foreach ([
+            'website' => 'customer',
+            'kol' => 'kol_fulfillment',
+            'manual_other' => 'customer',
+        ] as $type => $kind) {
+            $sourceNumber = 'ORIGINAL-'.strtoupper($type).'-0091';
+            $file = $this->xlsx($sourceNumber);
+            $preview = $this->actingAs($user)->post('/orders/oms/import/preview', [
+                'file' => $file, 'import_type' => $type,
+            ])->assertOk()->json();
+            $this->assertSame([], $preview['errors']);
+            $this->assertDatabaseMissing('orders', ['external_order_number' => $sourceNumber]);
+            $this->actingAs($user)->post('/orders/oms/import/confirm', [
+                'file' => $file, 'token' => $preview['token'], 'confirm' => '1', 'import_type' => $type,
+            ])->assertOk();
+            $order = Order::query()->where('external_order_number', $sourceNumber)->firstOrFail();
+            $this->assertSame($sourceNumber, $order->external_order_number);
+            $this->assertSame($type, $order->source_type->value);
+            $this->assertSame($kind, $order->order_kind->value);
+            $this->assertNotEmpty($order->erp_order_id);
+            $this->assertNotSame($sourceNumber, $order->erp_order_id);
+            $detailRoute = $kind === 'kol_fulfillment' ? '/kol/orders/' : '/customers/orders/';
+            $this->actingAs($user)->get($detailRoute.$order->id)
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->component('Orders/Show')
+                ->where('order.external_order_number', $sourceNumber)
+                ->where('order.source_type', $type));
+        }
+        $this->assertDatabaseCount('orders', 3);
+        $this->assertDatabaseCount('oms_order_import_claims', 3);
+    }
+
+    public function test_preview_type_is_required_and_token_cannot_confirm_as_another_type(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
+        $file = $this->xlsx();
+        $this->actingAs($user)->post('/orders/oms/import/preview', [
+            'file' => $file,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['import_type']);
+        $this->actingAs($user)->post('/orders/oms/import/preview', [
+            'file' => $file, 'import_type' => 'invalid',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['import_type']);
+        $preview = $this->actingAs($user)->post('/orders/oms/import/preview', [
+            'file' => $file, 'import_type' => 'website',
+        ])->assertOk()->json();
+        $this->actingAs($user)->post('/orders/oms/import/confirm', [
+            'file' => $file, 'token' => $preview['token'], 'confirm' => '1', 'import_type' => 'kol',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['token']);
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('oms_order_import_batches', 0);
+    }
+
     public function test_preflight_reports_unknown_sku_and_duplicate_without_any_writes(): void
     {
         $user = $this->userWith(['orders.view', 'orders.create']);
-        $result = $this->actingAs($user)->post('/orders/oms/import/preview', ['file' => $this->xlsx(sku: 'INVALID')])->assertOk()->json();
+        $result = $this->actingAs($user)->post('/orders/oms/import/preview', ['import_type' => 'website', 'file' => $this->xlsx(sku: 'INVALID')])->assertOk()->json();
         $this->assertNull($result['token']);
         $this->assertNotEmpty($result['errors']);
         $this->assertDatabaseCount('orders', 0);
@@ -345,11 +403,11 @@ final class OrderOmsBatchImportTest extends TestCase
         Product::query()->create(['sku' => 'MF414A', 'name' => 'Test']);
         $first = $this->userWith(['orders.view', 'orders.create']);
         $second = $this->userWith(['orders.view', 'orders.create']);
-        $token = $this->actingAs($first)->post('/orders/oms/import/preview', ['file' => $this->xlsx()])->assertOk()->json('token');
-        $this->actingAs($second)->post('/orders/oms/import/confirm', [
+        $token = $this->actingAs($first)->post('/orders/oms/import/preview', ['import_type' => 'website', 'file' => $this->xlsx()])->assertOk()->json('token');
+        $this->actingAs($second)->post('/orders/oms/import/confirm', ['import_type' => 'website',
             'file' => $this->xlsx(), 'token' => $token, 'confirm' => '1',
         ])->assertUnprocessable();
-        $this->actingAs($first)->post('/orders/oms/import/confirm', [
+        $this->actingAs($first)->post('/orders/oms/import/confirm', ['import_type' => 'website',
             'file' => $this->xlsx(externalNumber: 'CHANGED-ORDER'), 'token' => $token, 'confirm' => '1',
         ])->assertUnprocessable();
         $this->assertDatabaseCount('orders', 0);
@@ -359,8 +417,8 @@ final class OrderOmsBatchImportTest extends TestCase
     {
         $viewer = $this->userWith(['orders.view']);
         $this->actingAs($viewer)->get('/orders/oms/import/template')->assertForbidden();
-        $this->actingAs($viewer)->post('/orders/oms/import/preview', ['file' => $this->xlsx()])->assertForbidden();
-        $this->actingAs($viewer)->post('/orders/oms/import/confirm', [
+        $this->actingAs($viewer)->post('/orders/oms/import/preview', ['import_type' => 'website', 'file' => $this->xlsx()])->assertForbidden();
+        $this->actingAs($viewer)->post('/orders/oms/import/confirm', ['import_type' => 'website',
             'file' => $this->xlsx(), 'token' => 'invalid', 'confirm' => 1,
         ])->assertForbidden();
         $creator = $this->userWith(['orders.create']);
@@ -372,8 +430,8 @@ final class OrderOmsBatchImportTest extends TestCase
     {
         $kolOnly = $this->userWith(['orders.view', 'orders.create', 'kol.view']);
         $this->actingAs($kolOnly)->get('/orders/oms/import/template')->assertForbidden();
-        $this->actingAs($kolOnly)->post('/orders/oms/import/preview', ['file' => $this->xlsx()])->assertForbidden();
-        $this->actingAs($kolOnly)->post('/orders/oms/import/confirm', [
+        $this->actingAs($kolOnly)->post('/orders/oms/import/preview', ['import_type' => 'website', 'file' => $this->xlsx()])->assertForbidden();
+        $this->actingAs($kolOnly)->post('/orders/oms/import/confirm', ['import_type' => 'website',
             'file' => $this->xlsx(), 'token' => 'invalid', 'confirm' => '1',
         ])->assertForbidden();
     }

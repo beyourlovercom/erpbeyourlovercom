@@ -19,6 +19,8 @@ use Throwable;
 
 final class OrderOmsBatchImport
 {
+    public const IMPORT_TYPES = ['website', 'kol', 'manual_other'];
+
     public const MAX_ORDERS = 200;
 
     public const MAX_ROWS = 2000;
@@ -76,7 +78,7 @@ final class OrderOmsBatchImport
         $help = $book->createSheet();
         $help->setTitle('使用说明');
         $tips = [
-            ['BYL ERP 批量新建客户订单 V1', ''],
+            ['BYL ERP 批量订单导入 V1', ''],
             ['一行一个 SKU', '同一订单号出现多行即一张订单，一行只能填写一个 SKU、数量、单价；无须横向重复五组商品'],
             ['订单分组规则', '每个商品行必须重复填写 external_order_number；同订单号不区分大小写，建议将相同订单的行连续放置'],
             ['订单资料', '只在这个订单首次出现的行填写地址、日期、币种、备注等；后续行留空继承；若重复填写却与首行不同将报错'],
@@ -90,8 +92,8 @@ final class OrderOmsBatchImport
             ['recipient_name / province_state / city / address_line_1', '批量建单要求完整收件信息'],
             ['currency', '默认为 USD，支持三位大写货币代码'],
             ['批次限制', '最多 200 个订单、2000 行商品、每单最多 100 行商品；文件上限 5MB'],
-            ['导入方式', '选择文件 → 服务端预检 → 检查错误 → 确认创建；预检不会创建任何订单'],
-            ['安全', '仅创建 ERP 手动客户订单，不触发 WooCommerce 同步、仓库分配或自动发货'],
+            ['导入方式', '先选择网站／网红／外采订单类型，再选择文件 → 预检 → 确认创建；预检不会创建任何订单'],
+            ['安全', '保留 Excel 原始订单号与独立 ERP 编号；不触发 WooCommerce 同步、仓库分配或自动发货'],
         ];
         foreach ($tips as $n => [$key, $value]) {
             $help->setCellValue([1, $n + 1], $key);
@@ -186,8 +188,18 @@ final class OrderOmsBatchImport
     }
 
     /** @return array{count:int,row_count:int,valid_count:int,errors:list<array{row:int,message:string}>,preview:list<array<string,mixed>>,token:string|null,orders:list<array<string,mixed>>} */
-    public function inspect(UploadedFile $file, Authenticatable $actor): array
+    public static function importKind(string $importType): OrderKind
     {
+        if (! in_array($importType, self::IMPORT_TYPES, true)) {
+            throw ValidationException::withMessages(['import_type' => '请选择有效的订单类型。']);
+        }
+
+        return $importType === OrderSourceType::Kol->value ? OrderKind::KolFulfillment : OrderKind::Customer;
+    }
+
+    public function inspect(UploadedFile $file, Authenticatable $actor, string $importType = 'website'): array
+    {
+        self::importKind($importType);
         try {
             $parsed = $this->reader->read($file);
         } catch (Throwable $e) {
@@ -366,6 +378,7 @@ final class OrderOmsBatchImport
         $token = $errors === [] ? Crypt::encryptString(json_encode([
             'sha' => hash_file('sha256', $file->getRealPath()),
             'actor' => (string) $actor->getAuthIdentifier(),
+            'import_type' => $importType,
             'expires' => now()->addMinutes(15)->timestamp,
             'count' => count($orders), 'row_count' => $rowCount,
         ], JSON_THROW_ON_ERROR)) : null;
@@ -379,8 +392,9 @@ final class OrderOmsBatchImport
     }
 
     /** @return array{created:int,orders:list<array{id:int,erp_order_id:string|null}>} */
-    public function commit(UploadedFile $file, string $token, Authenticatable $actor): array
+    public function commit(UploadedFile $file, string $token, Authenticatable $actor, string $importType): array
     {
+        self::importKind($importType);
         try {
             $proof = json_decode(Crypt::decryptString($token), true, 512, JSON_THROW_ON_ERROR);
         } catch (Throwable) {
@@ -388,13 +402,14 @@ final class OrderOmsBatchImport
         }
         if (! is_array($proof)
             || ($proof['actor'] ?? '') !== (string) $actor->getAuthIdentifier()
+            || ($proof['import_type'] ?? null) !== $importType
             || ($proof['expires'] ?? 0) < now()->timestamp
             || ! hash_equals((string) ($proof['sha'] ?? ''), (string) hash_file('sha256', $file->getRealPath()))) {
             throw ValidationException::withMessages(['token' => '文件已变化或预检已过期，请重新预检。']);
         }
 
-        return DB::transaction(function () use ($file, $proof, $actor): array {
-            $data = $this->inspect($file, $actor);
+        return DB::transaction(function () use ($file, $proof, $actor, $importType): array {
+            $data = $this->inspect($file, $actor, $importType);
             if ($data['errors'] !== [] || $data['count'] !== (int) $proof['count']
                 || $data['row_count'] !== (int) ($proof['row_count'] ?? 0)) {
                 throw ValidationException::withMessages(['file' => '文件数据存在问题或已被导入，请重新预检。']);
@@ -427,8 +442,8 @@ final class OrderOmsBatchImport
                     return $item;
                 }, $order['items']);
                 unset($order['items'], $order['row']);
-                $order['order_kind'] = OrderKind::Customer->value;
-                $order['source_type'] = OrderSourceType::Manual->value;
+                $order['order_kind'] = self::importKind($importType)->value;
+                $order['source_type'] = OrderSourceType::from($importType)->value;
                 $order['owner_id'] = $actor->getAuthIdentifier();
                 $result = $this->orders->create($order, $items, $actor);
                 DB::table('oms_order_import_claims')->where('source_number_normalized', $normalized)

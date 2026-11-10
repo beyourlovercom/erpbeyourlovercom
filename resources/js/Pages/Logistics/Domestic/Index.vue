@@ -129,8 +129,9 @@ const confirmInlineShip = (row:Row) => {
 const uploadInput = ref<HTMLInputElement|null>(null)
 const selectedProvider = ref<'4px'|'weship'|'generic'>('4px')
 const tabs = [
-  ['review','待审核'], ['stockout','缺货单'], ['pending','待发货'], ['today-4px','今日速达'], ['today-weship','今日纬狮'],
-  ['exceptions','异常订单'], ['today','今日订单'], ['4px','速达订单'], ['weship','纬狮订单'],
+  ['review','待审核'], ['stockout','缺货单'], ['pending','待发货'], ['today','今日订单'],
+  ['today-4px','今日速达'], ['today-weship','今日纬狮'], ['exceptions','异常订单'],
+  ['4px','速达订单'], ['weship','纬狮订单'],
 ] as const
 const previewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 30) ?? [])
 const itemText = (row:Row) => row.items.map(item => (item.sku ?? '无SKU') + ' × ' + item.quantity).join(' / ') || '—'
@@ -234,11 +235,27 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         </div>
       </section>
 
-      <section v-if="view==='today' || view==='today-4px' || view==='today-weship'" class="provider-grid" :class="{single:view==='today-4px' || view==='today-weship'}">
+      <section v-if="view==='today'" class="today-shortcuts" aria-label="今日订单操作">
+        <article class="today-shortcut today-shortcut-order">
+          <a href="/logistics/china/today/export" data-testid="download-today-orders" title="下载这批订单 XLSX">⬇️这批订单</a>
+        </article>
+        <article class="today-shortcut">
+          <a href="/logistics/china/export/4px" data-testid="download-today-4px">⏬今日速达</a>
+          <button v-if="canOperate" type="button" data-testid="upload-today-4px" title="上传速达物流单号表" @click="chooseUpload('4px')">⏫速达物流单号</button>
+          <span v-else class="today-shortcut-disabled">⏫速达物流单号</span>
+        </article>
+        <article class="today-shortcut">
+          <a v-if="providerStatus.weship.export_ready" href="/logistics/china/export/weship" data-testid="download-today-weship">⏬今日纬狮</a>
+          <span v-else class="today-shortcut-disabled">⏬今日纬狮</span>
+          <button v-if="canOperate && providerStatus.weship.return_ready" type="button" data-testid="upload-today-weship" title="上传纬狮物流单号表" @click="chooseUpload('weship')">⏫纬狮物流单号</button>
+          <span v-else class="today-shortcut-disabled">⏫纬狮物流单号</span>
+        </article>
+      </section>
+
+      <section v-if="view==='today-4px' || view==='today-weship'" class="provider-grid single">
         <article v-if="view!=='today-weship'" class="provider-card">
           <div><strong>速达 / 4PX</strong><small>新版 27 列模板 · 所有订单按现有数据填写 SKU / 69条码（空缺留空） · XLSX 下载 · XLS/XLSX 回传</small></div>
           <div class="actions">
-            <a v-if="view==='today'" class="secondary" href="/logistics/china/today/export" data-testid="download-today-orders" title="按今日订单筛选导出，每个 SKU 独立一行">下载今日订单</a>
             <a class="primary" href="/logistics/china/export/4px">下载速达下单表</a>
             <button v-if="canOperate" type="button" class="secondary" @click="chooseUpload('4px')">上传速达单号表</button>
           </div>
@@ -250,8 +267,8 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
             <button v-if="canOperate && providerStatus.weship.return_ready" type="button" class="secondary" @click="chooseUpload('weship')">上传纬狮单号表</button>
           </div>
         </article>
-        <input ref="uploadInput" class="hidden" type="file" accept=".xls,.xlsx" @change="previewFile" />
       </section>
+      <input v-if="view==='today' || view==='today-4px' || view==='today-weship'" ref="uploadInput" class="hidden" type="file" accept=".xls,.xlsx" @change="previewFile" />
 
       <section v-if="trackingImportPreview && trackingImportProvider" class="preview">
         <div class="preview-head">
@@ -380,7 +397,8 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 button:disabled{opacity:.5;cursor:not-allowed}
 .sync-status{font-size:11px;font-weight:700;padding:4px 7px;border-radius:5px;background:#fff1d6;color:#92400e}
 .sync-status.completed{background:#dcfce7;color:#166534}.sync-status.failed{background:#fee2e2;color:#991b1b}.sync-status.retry_wait{background:#fef3c7;color:#92400e}.sync-status.processing{background:#dbeafe;color:#1d4ed8}.sync-failure{display:block;max-width:240px;white-space:normal;color:#b91c1c;font-size:10px;margin-top:4px}
-.provider-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.provider-grid.single{grid-template-columns:1fr}.provider-card{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid #dbe4e8;border-radius:10px;background:#fff}.provider-card>div:first-child{display:flex;flex-direction:column;gap:4px}.provider-card small{color:#64748b}.actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.primary,.secondary,.approve,.approved button{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:0 11px;border-radius:7px;font-size:12px;font-weight:800;text-decoration:none}.primary,.approve{border:1px solid #0f8f82;background:#0f8f82;color:#fff}.secondary,.approved button{border:1px solid #b8c6cc;background:#fff;color:#334155}.hidden{display:none}.preview{margin-bottom:12px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.preview-head{display:flex;justify-content:space-between;gap:12px}.preview-head>div{display:flex;flex-direction:column}.preview p{color:#64748b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #dfe6ea;border-radius:10px;background:#fff}.table-wrap table{width:max-content;min-width:100%;border-collapse:collapse;font-size:12px}.table-wrap th,.table-wrap td{padding:8px;border-bottom:1px solid #e9eef1;text-align:left;white-space:nowrap}.table-wrap th{background:#f8fafc;color:#475569}.orders table{min-width:1500px}.orders a{color:#0f766e;font-weight:800;text-decoration:none}.approved{display:flex;gap:6px;align-items:center;color:#047857;font-weight:800}.approved button{min-height:26px;padding:0 7px;font-size:10px}.danger{color:#b91c1c;font-weight:800}.ready{color:#047857;font-weight:800}.empty{text-align:center!important;padding:30px!important;color:#94a3b8}.status-apply{color:#047857}.status-noop{color:#64748b}.status-blocked{color:#b91c1c}footer{padding:10px 2px;color:#64748b;font-size:12px}
+.today-shortcuts{display:grid;grid-template-columns:minmax(160px,1fr) minmax(290px,1.4fr) minmax(290px,1.4fr);gap:8px;margin:0 0 10px}.today-shortcut{display:flex;align-items:center;justify-content:space-around;gap:10px;min-width:0;min-height:52px;padding:8px 12px;border:1px solid #dbe4e8;border-radius:9px;background:#fff}.today-shortcut-order{justify-content:flex-start}.today-shortcut a,.today-shortcut button,.today-shortcut span{border:0;background:transparent;color:#0f766e;font-size:14px;font-weight:800;white-space:nowrap;padding:3px 6px;text-decoration:none;cursor:pointer}.today-shortcut a:hover,.today-shortcut button:hover{text-decoration:underline}.today-shortcut a:focus-visible,.today-shortcut button:focus-visible{outline:2px solid #0f8f82;outline-offset:3px;border-radius:4px}.today-shortcut .today-shortcut-disabled{opacity:.5;cursor:default}.provider-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.provider-grid.single{grid-template-columns:1fr}.provider-card{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid #dbe4e8;border-radius:10px;background:#fff}.provider-card>div:first-child{display:flex;flex-direction:column;gap:4px}.provider-card small{color:#64748b}.actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.primary,.secondary,.approve,.approved button{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:0 11px;border-radius:7px;font-size:12px;font-weight:800;text-decoration:none}.primary,.approve{border:1px solid #0f8f82;background:#0f8f82;color:#fff}.secondary,.approved button{border:1px solid #b8c6cc;background:#fff;color:#334155}.hidden{display:none}.preview{margin-bottom:12px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.preview-head{display:flex;justify-content:space-between;gap:12px}.preview-head>div{display:flex;flex-direction:column}.preview p{color:#64748b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #dfe6ea;border-radius:10px;background:#fff}.table-wrap table{width:max-content;min-width:100%;border-collapse:collapse;font-size:12px}.table-wrap th,.table-wrap td{padding:8px;border-bottom:1px solid #e9eef1;text-align:left;white-space:nowrap}.table-wrap th{background:#f8fafc;color:#475569}.orders table{min-width:1500px}.orders a{color:#0f766e;font-weight:800;text-decoration:none}.approved{display:flex;gap:6px;align-items:center;color:#047857;font-weight:800}.approved button{min-height:26px;padding:0 7px;font-size:10px}.danger{color:#b91c1c;font-weight:800}.ready{color:#047857;font-weight:800}.empty{text-align:center!important;padding:30px!important;color:#94a3b8}.status-apply{color:#047857}.status-noop{color:#64748b}.status-blocked{color:#b91c1c}footer{padding:10px 2px;color:#64748b;font-size:12px}
+@media(max-width:900px){.today-shortcuts{grid-template-columns:1fr}.today-shortcut{justify-content:flex-start;gap:22px}}
 @media(max-width:800px){.domestic-page{padding:14px}.domestic-head{flex-direction:column}.pending-batch-card{flex-direction:column}.provider-grid{grid-template-columns:1fr}.provider-card{flex-direction:column}.continuity{align-items:flex-start;flex-direction:column}.preview-head{flex-direction:column}}
 
 .review-actions{display:flex;align-items:center;gap:5px}.stockout-btn,.reject-btn{border:1px solid #e3ac78;background:#fff9f1;color:#9a3412;border-radius:6px;min-height:30px;padding:0 8px;font-size:12px;font-weight:800}.reject-btn{border-color:#efb2b2;background:#fff;color:#b42318}.review-reject-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(16,24,40,.5);display:flex;align-items:center;justify-content:center;padding:16px}.review-reject-dialog{background:#fff;width:min(480px,100%);border-radius:12px;padding:20px;box-shadow:0 24px 80px rgba(16,24,40,.2);display:grid;gap:12px}.review-reject-dialog h2{margin:0;font-size:19px}.review-reject-dialog p{margin:0;font-size:13px;color:#64748b}.review-reject-dialog label{font-size:12px;font-weight:700}.review-reject-dialog textarea{width:100%;padding:10px;border:1px solid #d4dae1;border-radius:7px;font-size:13px}.review-reject-dialog .actions{justify-content:flex-end}.reason-shortcuts{display:flex;flex-wrap:wrap;gap:6px}

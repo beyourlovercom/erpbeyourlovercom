@@ -543,7 +543,7 @@ class KolProvisioningTest extends TestCase
             'erp_kol_id' => $kol->id,
             'email' => 'kol@example.com',
             'display_name' => 'Provision KOL',
-            'preferred_username' => 'erp-kol-'.$kol->id,
+            'preferred_username' => 'Provision-KOL',
             'requested_affiliate_status' => 'active',
             'payment_email' => 'kol@example.com',
         ], $capturedPayload);
