@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
+import { ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
@@ -49,6 +50,7 @@ const form = useForm({
   joined_at: new Date().toISOString().slice(0, 10),
   notes: '',
   contact_email: '',
+  wordpress_username: '',
   wordpress_password: '',
   wordpress_password_confirmation: '',
   affiliate_coupon_code: '',
@@ -92,6 +94,13 @@ const form = useForm({
     source: string
     note: string
   }>,
+})
+
+const usernameManuallyEdited = ref(false)
+watch(() => form.display_name, (value) => {
+  if (!usernameManuallyEdited.value) {
+    form.wordpress_username = value.trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9_.@-]/g, '').slice(0, 60)
+  }
 })
 
 const addSocialAccount = () => {
@@ -290,31 +299,36 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
           <div class="erp-form-card kol-account-card">
             <h2 class="erp-form-card-title">WordPress / Affiliate 账号</h2>
             <p class="erp-form-card-helper">创建 KOL 时同步完成自动审批、WordPress Subscriber、AffiliateWP Affiliate 与 Coupon。已有邮箱或 Code 只阻止，不覆盖。</p>
-            <div class="erp-form-grid">
-              <div class="erp-form-field kol-span-2">
+            <div class="kol-credential-rows">
+              <div class="erp-form-field">
+                <label class="erp-form-label">Username <span class="erp-form-required">*</span></label>
+                <input v-model="form.wordpress_username" type="text" autocomplete="username" class="erp-input" :class="{ 'has-error': form.errors.wordpress_username }" maxlength="60" required placeholder="网红用户名，可修改" @input="usernameManuallyEdited = true">
+                <p v-if="form.errors.wordpress_username" class="erp-field-error">{{ form.errors.wordpress_username }}</p>
+              </div>
+              <div class="kol-password-pair">
+                <div class="erp-form-field">
+                  <label class="erp-form-label">Password <span class="erp-form-required">*</span></label>
+                  <input v-model="form.wordpress_password" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password }" minlength="12" maxlength="128" required>
+                  <p v-if="form.errors.wordpress_password" class="erp-field-error">{{ form.errors.wordpress_password }}</p>
+                </div>
+                <div class="erp-form-field">
+                  <label class="erp-form-label">确认 Password <span class="erp-form-required">*</span></label>
+                  <input v-model="form.wordpress_password_confirmation" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password_confirmation }" minlength="12" maxlength="128" required>
+                  <p v-if="form.errors.wordpress_password_confirmation" class="erp-field-error">{{ form.errors.wordpress_password_confirmation }}</p>
+                </div>
+              </div>
+              <div class="erp-form-field">
                 <label class="erp-form-label">Email <span class="erp-form-required">*</span></label>
                 <input v-model="form.contact_email" type="email" autocomplete="email" class="erp-input" :class="{ 'has-error': form.errors.contact_email }" maxlength="255" required placeholder="name@example.com">
-                <p class="erp-form-helper">同时作为 KOL 联系邮箱、WordPress User 邮箱与 AffiliateWP payment email。</p>
                 <p v-if="form.errors.contact_email" class="erp-field-error">{{ form.errors.contact_email }}</p>
               </div>
               <div class="erp-form-field">
-                <label class="erp-form-label">Password <span class="erp-form-required">*</span></label>
-                <input v-model="form.wordpress_password" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password }" minlength="12" maxlength="128" required>
-                <p class="erp-form-helper">12–128 位，至少包含 1 个英文字母和 1 个数字；仅用于本次创建，不保存到 ERP。</p>
-                <p v-if="form.errors.wordpress_password" class="erp-field-error">{{ form.errors.wordpress_password }}</p>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">确认 Password <span class="erp-form-required">*</span></label>
-                <input v-model="form.wordpress_password_confirmation" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password_confirmation }" minlength="12" maxlength="128" required>
-                <p v-if="form.errors.wordpress_password_confirmation" class="erp-field-error">{{ form.errors.wordpress_password_confirmation }}</p>
-              </div>
-              <div class="erp-form-field kol-span-2">
                 <label class="erp-form-label">Code <span class="erp-form-required">*</span></label>
                 <input v-model="form.affiliate_coupon_code" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_coupon_code }" maxlength="255" required placeholder="例如 ANDY15">
-                <p class="erp-form-helper">创建前同时检查 ERP Coupon mirror 与实时 WooCommerce；冲突不会覆盖现有 Coupon。</p>
                 <p v-if="form.errors.affiliate_coupon_code" class="erp-field-error">{{ form.errors.affiliate_coupon_code }}</p>
               </div>
             </div>
+            <p class="erp-form-helper">用户名默认取网红名称，开户后不可修改；密码 12–128 位（字母+数字），不保存到 ERP；Email 用于 Affiliate 收款，Code 冲突不覆盖。</p>
           </div>
 
           <!-- Card 4: 社交账号 -->
@@ -599,4 +613,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
     grid-template-columns: 1fr;
   }
 }
+.kol-credential-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 12px 18px; align-items: start; }
+.kol-password-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 767px) { .kol-credential-rows { grid-template-columns: 1fr; } .kol-password-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

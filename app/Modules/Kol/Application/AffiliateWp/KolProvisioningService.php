@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 final class KolProvisioningService
@@ -22,6 +23,21 @@ final class KolProvisioningService
     private const RETRYABLE = ['not_requested', 'pending', 'error', 'conflict', 'readback_mismatch', 'in_progress'];
 
     public function __construct(private readonly AffiliateWpGateway $gateway) {}
+
+    public static function resolveUsername(?string $requested, string $displayName): string
+    {
+        $username = trim((string) $requested);
+        if ($username === '') {
+            $username = preg_replace('/[^A-Za-z0-9_.@-]/', '', preg_replace('/\s+/u', '-', trim($displayName)) ?? '') ?? '';
+        }
+        if ($username === '' || strlen($username) > 60 || ! preg_match('/^[A-Za-z0-9_.@-]+$/D', $username)) {
+            throw ValidationException::withMessages([
+                'wordpress_username' => 'WordPress Username 必填，最多 60 位，仅支持英文字母、数字及 . _ @ -；请手工填写有效用户名。',
+            ]);
+        }
+
+        return $username;
+    }
 
     /**
      * Provision an approved KOL into WordPress User + active AffiliateWP Affiliate.
@@ -36,10 +52,10 @@ final class KolProvisioningService
             throw new AuthorizationException;
         }
 
-        return $this->provisionInternal($connectionKey, $kolId, $actor, null, true);
+        return $this->provisionInternal($connectionKey, $kolId, $actor, null, true, null);
     }
 
-    public function provisionForCreate(string $connectionKey, int $kolId, Authenticatable $actor, string $password): Model
+    public function provisionForCreate(string $connectionKey, int $kolId, Authenticatable $actor, string $password, ?string $username = null): Model
     {
         if (! $actor->can('kol.operate')) {
             throw new AuthorizationException;
@@ -48,10 +64,10 @@ final class KolProvisioningService
             throw new DomainException('WordPress password does not satisfy the create-provision policy.');
         }
 
-        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, true);
+        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, true, $username);
     }
 
-    public function provisionForExisting(string $connectionKey, int $kolId, Authenticatable $actor, string $password): Model
+    public function provisionForExisting(string $connectionKey, int $kolId, Authenticatable $actor, string $password, ?string $username = null): Model
     {
         if (! $actor->can('kol.operate')) {
             throw new AuthorizationException;
@@ -60,10 +76,10 @@ final class KolProvisioningService
             throw new DomainException('WordPress password does not satisfy the provision policy.');
         }
 
-        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, false);
+        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, false, $username);
     }
 
-    private function provisionInternal(string $connectionKey, int $kolId, Authenticatable $actor, ?string $password, bool $requireApproval): Model
+    private function provisionInternal(string $connectionKey, int $kolId, Authenticatable $actor, ?string $password, bool $requireApproval, ?string $username): Model
     {
         $kolClass = self::KOL;
         $query = $kolClass::query()->whereKey($kolId)->whereNull('archived_at');
@@ -80,7 +96,9 @@ final class KolProvisioningService
                 : 'KOL must be active to provision a WordPress / Affiliate account.');
         }
 
-        [$account, $idempotencyKey] = DB::transaction(function () use ($connectionKey, $kolId, $kol): array {
+        $username = self::resolveUsername($username, (string) $kol->display_name);
+
+        [$account, $idempotencyKey] = DB::transaction(function () use ($connectionKey, $kolId, $kol, $username): array {
             $accountClass = self::ACCOUNT;
 
             $existing = $accountClass::query()
@@ -102,10 +120,17 @@ final class KolProvisioningService
                     throw new DomainException('KOL provisioning cannot be retried from state: '.$existing->provisioning_status.'.');
                 }
 
+                // Preserve the username tied to the original idempotent provider attempt.
+                if ($existing->wordpress_user_login !== null
+                    && strcasecmp($existing->wordpress_user_login, $username) !== 0) {
+                    throw new DomainException('Retry must use the original WordPress Username.');
+                }
+
                 // Reuse the persisted idempotency key so retries never generate a second Affiliate.
                 $key = $existing->provision_idempotency_key ?? Str::uuid()->toString();
                 $existing->update([
                     'provision_idempotency_key' => $key,
+                    'wordpress_user_login' => $existing->wordpress_user_login ?: $username,
                     'provisioning_status' => 'in_progress',
                 ]);
 
@@ -119,6 +144,7 @@ final class KolProvisioningService
                 'kol_id' => $kolId,
                 'display_name' => $kol->display_name,
                 'email' => $kol->contact_email,
+                'wordpress_user_login' => $username,
                 'provider_status' => null,
                 'origin' => 'erp_provisioned',
                 'sync_status' => 'never_synced',
@@ -135,7 +161,7 @@ final class KolProvisioningService
             'erp_kol_id' => $kolId,
             'email' => $email,
             'display_name' => (string) $kol->display_name,
-            'preferred_username' => 'erp-kol-'.$kolId,
+            'preferred_username' => $username,
             'requested_affiliate_status' => 'active',
             'payment_email' => $email,
         ];
@@ -169,8 +195,12 @@ final class KolProvisioningService
             : null;
         $wordpressUserEmail = is_string($wordpressUserEmail) && $wordpressUserEmail !== '' ? $wordpressUserEmail : null;
         $status = is_array($data) ? ($data['affiliate_status'] ?? $data['status'] ?? null) : null;
+        $actualUsername = is_array($data) ? ($data['user_login'] ?? $data['wordpress_user_login'] ?? null) : null;
+        $requestedUsername = (string) ($account->wordpress_user_login ?? '');
+        $usernameVerified = ! is_string($actualUsername) || $actualUsername === ''
+            || $requestedUsername === '' || strcasecmp($requestedUsername, $actualUsername) === 0;
 
-        $verified = $affiliateId !== null && $wordpressUserId !== null && $status === 'active';
+        $verified = $affiliateId !== null && $wordpressUserId !== null && $status === 'active' && $usernameVerified;
 
         if ($verified) {
             try {
@@ -178,6 +208,7 @@ final class KolProvisioningService
                     'affiliate_id' => $affiliateId,
                     'wordpress_user_id' => $wordpressUserId,
                     'wordpress_user_email' => $wordpressUserEmail,
+                    'wordpress_user_login' => $actualUsername ?: $account->wordpress_user_login,
                     'provider_status' => 'active',
                     'provisioning_status' => 'active',
                     'last_error_code' => null,
