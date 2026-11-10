@@ -111,6 +111,8 @@ final class ShipOutProductionBatchTest extends TestCase
         $this->app->instance('env', 'production');
         try {
             Http::preventStrayRequests();
+            // GitHub backend jobs do not build the Production Vite manifest.
+            $this->withoutVite();
             $this->withoutMiddleware(PreventRequestForgery::class);
             $this->actingAs($admin);
             $this->get('/logistics/oversea/us-moreplus?view=pending')
