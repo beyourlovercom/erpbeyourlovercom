@@ -55,3 +55,22 @@ No authenticated browser memory/30-tab profile, SQL slow query capture, or China
 - Recent scheduler log sample had zero `shipout:reconcile-oms` matches while older recurring commands appeared; this supports the version-drift concern but is not a proof that no external scheduler exists.
 - The strict read-only check returned expected exit code `2` because Production Worker release drift is still present.
 - Sampled Redis `queues:default` and `queues:shipout-production-batch` ready/reserved/delayed counters were zero for the checked keys; this is a point-in-time observation, **not** proof there are no in-flight provider requests, alternate Redis key prefixes, or outstanding external side effects.
+
+
+## R1-B continued audit (same day)
+- LaunchAgent inspection confirms scheduler PID 91401, default queue PID 91369, dedicated batch PID 37680; the running process CWDs retain PR #659 / PR #679 despite LaunchAgent configured to launch from current.
+- Non-mutating Laravel schedule:list comparison confirms current Web release includes half-hourly shipout:reconcile-oms --apply; old scheduler does not. Production read and OMS reconciliation feature flags currently enabled.
+- Executed PREVIEW ONLY: php artisan shipout:reconcile-oms --no-interaction; result mode=preview and readback_candidates=10. No --apply, external POST, or order mutation.
+- Added scripts/ops/erp_uat_server_inventory.py. Read-only UAT scan: 33 artisan launchers, 24 paired HTTP children and 10 orphan candidate processes. Never terminate based only on age.
+- Validation using commit-pinned code on US Mac mini: 4/4 Python unit tests PASS. The preliminary macOS /tmp path-alias test failure was corrected in commit f0588c3.
+- Production scheduler/queue/batch and UAT processes remain untouched; version drift remains operationally unresolved.
+
+## R1-B controlled switch prerequisites
+1. Check MorePlus R10 coordination, in-flight external effects, unique dispatch ledgers, and whether 10 OMS candidates may be processed by the enabled GET-only reconciliation.
+2. Diff all schedules from PR #659 versus current. Restarting a scheduler activates all current scheduled jobs, not only OMS reconciliation.
+3. Verify LaunchAgent supervision, exactly one scheduler, no overlapping schedule:run child, queue inflight and release rollback target.
+4. Capture before/after schedule:list, actual Worker CWD, queue metrics, and confirmation of no duplicate dispatches. Never replay real shipment jobs.
+5. For UAT cleanup, verify PID, port, browser/owner activity, and last use; a high process age is NOT sufficient permission to terminate.
+
+## R1-B stage
+Read-only checks and tool validation complete. Production Worker synchronization and UAT service cleanup remain pending controlled preflight.
