@@ -74,6 +74,23 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
                 ->where('rows.total', 1));
 
         // Untested carrier/dispatch views keep the original native table.
+        // R4 second independent release: stockout retains its only authorized
+        // per-row action, approved for the common pinned-right Grid.
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=stockout')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotAvailable', true)
+                ->where('globalGridPilotEnabled', true)
+                ->where('view', 'stockout'));
+
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=stockout&global_grid=0')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotEnabled', false)
+                ->where('view', 'stockout'));
+
         $this->actingAs($viewer)
             ->get('/logistics/china?view=pending')
             ->assertOk()

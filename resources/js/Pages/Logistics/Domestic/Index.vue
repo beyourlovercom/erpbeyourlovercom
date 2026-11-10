@@ -79,6 +79,7 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   order_url:row.order_url,
   workflow_status:row.workflow_status_projection?.zh ?? '—',
   review_status:row.review_status==='approved'?'已通过':row.review_status==='stockout'?'缺货':row.review_status==='conflict'?'状态待对账':'待审核',
+  shipment_status:row.shipment_status??'',
   paid_date:row.paid_date??'—',
   sku:row.items.map(item=>item.sku??'无SKU').join(' / ') || '—',
   quantity:row.items.map(item=>item.quantity).join(' / ') || '—',
@@ -113,8 +114,10 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'phone',field:'phone',headerName:'电话',width:150}),
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
-  gridColumn({colId:'actions',field:'id',headerName:'操作',width:props.view==='review'?185:210,
-    minWidth:props.view==='review'?185:190,maxWidth:props.view==='review'?190:210,
+  gridColumn({colId:'actions',field:'id',headerName:'操作',
+    width:props.view==='review'?185:props.view==='stockout'?140:210,
+    minWidth:props.view==='review'?185:props.view==='stockout'?136:190,
+    maxWidth:props.view==='review'?190:props.view==='stockout'?148:210,
     pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
     cellRenderer:DomesticGridActionCell,cellRendererParams:{
       view:props.view, canReview:props.canReview, canOperate:props.canOperate,
@@ -282,7 +285,7 @@ const switchView = (view:string) => {
   // just because they switched from the approved review view.
   const mode = view === props.view
     ? (props.globalGridPilotEnabled ? '1' : '0')
-    : (view === 'review' ? '1' : '0')
+    : (['review','stockout'].includes(view) ? '1' : '0')
   router.visit('/logistics/china?view=' + encodeURIComponent(view)
     + '&global_grid=' + mode
     + (view === props.view && mode === '1' && domesticGridSearch.value

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 
-type Row = { id:number; review_status:string }
+type Row = { id:number; review_status:string; shipment_status?:string }
 type Params = {
   data: Row
   view: string
@@ -20,7 +20,7 @@ const row = computed(()=>props.params.data)
 const pending = computed(()=>['待审核','已通过','缺货'].includes(row.value.review_status))
 const review = computed(()=>props.params.canReview && props.params.view==='review' && pending.value)
 const stockout = computed(()=>props.params.canReview && props.params.view==='stockout'
-  && row.value.review_status==='缺货')
+  && row.value.review_status==='缺货' && row.value.shipment_status==='pending')
 const reopened = computed(()=>props.params.canReview && props.params.view==='pending'
   && row.value.review_status==='已通过')
 
