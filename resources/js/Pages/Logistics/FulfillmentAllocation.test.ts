@@ -189,7 +189,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     vi.stubGlobal('fetch',fetchSpy)
     const wrapper=mountPage({...props,globalGridPilotEnabled:true,canOperate:false,canArchive:true})
     await flushPromises()
-    expect(wrapper.get('[data-testid="mock-select-rows"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="mock-select-rows"]').element).toBeTruthy()
     await wrapper.get('[data-testid="mock-select-rows"]').trigger('click')
     await flushPromises()
     const bulk=wrapper.get('[data-testid="grid-batch-footer"]')
