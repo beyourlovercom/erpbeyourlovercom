@@ -314,7 +314,7 @@ describe('Domestic logistics production workbench', () => {
     expect(weship.find('a[href="/logistics/china/export/weship"]').exists()).toBe(true)
   })
 
-  it('R4-5 keeps a single 4PX download in compact provider Grid and Weship native unchanged',()=>{
+  it('R4-5B preserves one Weship download, compact Grid and explicit old-table fallback',()=>{
     const speeda=mount(Index,{props:{...baseProps,view:'today-4px',
       globalGridPilotAvailable:true,globalGridPilotEnabled:true}})
     expect(speeda.find('.domestic-compact-workspace').exists()).toBe(true)
@@ -326,12 +326,18 @@ describe('Domestic logistics production workbench', () => {
     expect(speeda.find('input[type="file"]').exists()).toBe(false)
 
     const weship=mount(Index,{props:{...baseProps,view:'today-weship',
-      globalGridPilotAvailable:true,globalGridPilotEnabled:false}})
+      globalGridPilotAvailable:true,globalGridPilotEnabled:true}})
     expect(weship.find('.domestic-compact-workspace').exists()).toBe(true)
+    expect(weship.find('.compact-workspace-help').text()).toContain('纬狮')
     expect(weship.findAll('.provider-grid a').map(a=>a.attributes('href')))
       .toEqual(['/logistics/china/export/weship'])
-    expect(weship.find('.table-wrap.orders table').exists()).toBe(true)
+    expect(weship.find('.table-wrap.orders table').exists()).toBe(false)
+    expect(weship.find('[data-testid="domestic-native-batch-toggle"]').exists()).toBe(false)
     expect(weship.find('input[type="file"]').exists()).toBe(false)
+    const fallback=mount(Index,{props:{...baseProps,view:'today-weship',
+      globalGridPilotAvailable:true,globalGridPilotEnabled:false}})
+    expect(fallback.find('.table-wrap.orders table').exists()).toBe(true)
+    expect(fallback.find('a[href="/logistics/china/export/weship"]').exists()).toBe(true)
   })
 
   it('shows a mixed-carrier ERP batch download/upload only on the pending work queue', () => {
