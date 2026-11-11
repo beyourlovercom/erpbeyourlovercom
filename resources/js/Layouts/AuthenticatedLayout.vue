@@ -25,9 +25,11 @@ const mobileOpen = ref(false)
 const isNarrowScreen = ref(false)
 let narrowScreenQuery: MediaQueryList | undefined
 const storageKey = 'module_sidebar_collapsed'
-// Compile capability separately from the user/session opt-in. A production
-// build can expose R3 only to the allowlisted canary users, and they must
-// explicitly visit a URL with ?erp_v4_tabs=1 to enable it in this browser tab.
+// Workspace rollout is build-time gated. When the Owner enables it for the
+// whole team, the "*" allowlist plus DEFAULT_ON=1 makes the existing workspace
+// available immediately to every authenticated account, without a new login.
+// Explicit ?erp_v4_tabs=0 persists as a per-session safety opt-out; ?...=1
+// enables it again. Neither choice alters server-side permissions.
 const workspaceTabsEnabled = ref(false)
 const canaryStorageKey = computed(() => 'byl:workspace:canary:user:' + page.props.auth.user.id)
 const refreshWorkspaceCanary = () => {
@@ -36,16 +38,21 @@ const refreshWorkspaceCanary = () => {
         return
     }
     const userId = String(page.props.auth.user.id)
-    const allowed = (import.meta.env.VITE_ERP_WORKSPACE_CANARY_IDS ?? '')
-        .split(',').map((value: string) => value.trim()).filter(Boolean).includes(userId)
+    const allowedIds = (import.meta.env.VITE_ERP_WORKSPACE_CANARY_IDS ?? '')
+        .split(',').map((value: string) => value.trim()).filter(Boolean)
+    const allowed = allowedIds.includes('*') || allowedIds.includes(userId)
     if (!allowed) { workspaceTabsEnabled.value = false; return }
+    const defaultOn = import.meta.env.VITE_ERP_WORKSPACE_DEFAULT_ON === '1'
     const mode = new URLSearchParams(page.url.split('?')[1] ?? '').get('erp_v4_tabs')
     try {
-        if (mode === '1') window.sessionStorage.setItem(canaryStorageKey.value, '1')
-        if (mode === '0') window.sessionStorage.removeItem(canaryStorageKey.value)
-        workspaceTabsEnabled.value = window.sessionStorage.getItem(canaryStorageKey.value) === '1'
+        // Store "0" instead of deleting the key, so an employee opting out is
+        // not re-enabled on their next Inertia navigation or browser refresh.
+        if (mode === '1' || mode === '0') window.sessionStorage.setItem(canaryStorageKey.value, mode)
+        const preference = window.sessionStorage.getItem(canaryStorageKey.value)
+        workspaceTabsEnabled.value = preference === '1' || (preference !== '0' && defaultOn)
     } catch {
-        workspaceTabsEnabled.value = mode === '1'
+        // Storage may be blocked in private mode: still honor explicit opt-out.
+        workspaceTabsEnabled.value = mode === '1' || (mode !== '0' && defaultOn)
     }
 }
 watch(() => [page.url, page.props.auth.user.id], refreshWorkspaceCanary)
