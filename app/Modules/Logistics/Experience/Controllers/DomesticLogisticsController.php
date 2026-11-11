@@ -74,10 +74,10 @@ final class DomesticLogisticsController
         ]);
 
         $this->applyView($query, $view);
-        // R4-4: today adopts the same Global Grid as the already approved review,
-        // stockout and pending views. Five other shipping views keep the
-        // original table until their own independent Owner UAT.
-        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today'], true);
+        // R4-5A: enable today's 4PX view independently; Weship and the
+        // remaining 4 views stay native until their own Owner PASS.
+        // No provider query, download, upload, tracking or shipment gate changes.
+        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today', 'today-4px'], true);
         $gridSetting = $request->query('global_grid');
         $gridAvailable = $approvedGridView || GlobalGridPilot::available();
         $gridPilot = $approvedGridView

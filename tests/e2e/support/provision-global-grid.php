@@ -180,6 +180,64 @@ DB::transaction(function () use ($product, $warehouse, $owner): void {
     $auto->operationalMarkers()->create(['marker'=>'domestic_reviewed','marked_at'=>now()]);
     app(\App\Modules\Logistics\Application\Domestic\DomesticCarrierDefaults::class)
         ->fill($auto->fresh(['address','shipment']));
+    // R4-5: additional approved 4PX provider row, appended to the pending
+    // test queue to preserve the existing first-row assertions.
+    $speeda = Order::query()->create([
+        'internal_order_number'=>'INT-E2E-GG-SPEEDA-01',
+        'erp_order_id'=>'007-1111-c99986',
+        'source_type'=>OrderSourceType::Manual,
+        'order_kind'=>OrderKind::Customer,
+        'external_order_number'=>'E2E-GG-SPEEDA-01',
+        'order_date'=>now()->addDay()->toDateString(),
+        'owner_id'=>$owner->id,
+        'order_status'=>OrderStatus::PendingShipment,
+    ]);
+    $speeda->address()->create([
+        'recipient_name'=>'E2E 4PX Provider',
+        'phone'=>'15550008686','country'=>'DE','city'=>'Berlin',
+        'address_line_1'=>'Synthetic Provider Street 86','postal_code'=>'01000',
+    ]);
+    $speeda->items()->create([
+        'product_id'=>$product->id,'sku'=>'E2E-SKU-0001',
+        'product_summary'=>'E2E Speeda Provider','quantity'=>1,
+        'unit_price'=>'15.00','line_revenue'=>'15.00',
+    ]);
+    $speeda->shipment()->create([
+        'warehouse_id'=>$factory->id,'shipment_status'=>'pending',
+        'warehouse_selection_source'=>'manual',
+        'carrier'=>'4PX','service'=>'SD经济挂号-带电',
+        'carrier_selection_source'=>'manual',
+    ]);
+    $speeda->operationalMarkers()->create(['marker'=>'domestic_reviewed','marked_at'=>now()]);
+    // Independent Weship control fixture; unlike the R4-3F MX fixture,
+    // no earlier E2E test changes this order's carrier.
+    $weship = Order::query()->create([
+        'internal_order_number'=>'INT-E2E-GG-WESHIP-01',
+        'erp_order_id'=>'007-1111-c99985',
+        'source_type'=>OrderSourceType::Manual,
+        'order_kind'=>OrderKind::Customer,
+        'external_order_number'=>'E2E-GG-WESHIP-01',
+        'order_date'=>now()->addDay()->toDateString(),
+        'owner_id'=>$owner->id,
+        'order_status'=>OrderStatus::PendingShipment,
+    ]);
+    $weship->address()->create([
+        'recipient_name'=>'E2E Weship Provider',
+        'phone'=>'15550008585','country'=>'MX','city'=>'Mexico City',
+        'address_line_1'=>'Synthetic Weship Street 85','postal_code'=>'01000',
+    ]);
+    $weship->items()->create([
+        'product_id'=>$product->id,'sku'=>'E2E-SKU-0001',
+        'product_summary'=>'E2E Weship Provider','quantity'=>1,
+        'unit_price'=>'15.00','line_revenue'=>'15.00',
+    ]);
+    $weship->shipment()->create([
+        'warehouse_id'=>$factory->id,'shipment_status'=>'pending',
+        'warehouse_selection_source'=>'manual',
+        'carrier'=>'Weship','service'=>'Standard',
+        'carrier_selection_source'=>'manual',
+    ]);
+    $weship->operationalMarkers()->create(['marker'=>'domestic_reviewed','marked_at'=>now()]);
     LogisticsReview::query()->create([
         'order_id'=>$domestic->id,
         'status'=>'pending',

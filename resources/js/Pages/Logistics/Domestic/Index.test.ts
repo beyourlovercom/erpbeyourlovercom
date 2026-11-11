@@ -270,6 +270,26 @@ describe('Domestic logistics production workbench', () => {
     expect(weship.find('a[href="/logistics/china/export/weship"]').exists()).toBe(true)
   })
 
+  it('R4-5 keeps a single 4PX download in compact provider Grid and Weship native unchanged',()=>{
+    const speeda=mount(Index,{props:{...baseProps,view:'today-4px',
+      globalGridPilotAvailable:true,globalGridPilotEnabled:true}})
+    expect(speeda.find('.domestic-today-grid').exists()).toBe(true)
+    expect(speeda.find('.continuity').exists()).toBe(false)
+    expect(speeda.find('.domestic-footer-help').text()).toContain('27 列模板')
+    expect(speeda.findAll('.provider-grid-compact a').map(a=>a.attributes('href')))
+      .toEqual(['/logistics/china/export/4px'])
+    expect(speeda.find('[data-testid="domestic-native-batch-toggle"]').exists()).toBe(false)
+    expect(speeda.find('input[type="file"]').exists()).toBe(false)
+
+    const weship=mount(Index,{props:{...baseProps,view:'today-weship',
+      globalGridPilotAvailable:true,globalGridPilotEnabled:false}})
+    expect(weship.find('.domestic-today-grid').exists()).toBe(false)
+    expect(weship.findAll('.provider-grid a').map(a=>a.attributes('href')))
+      .toEqual(['/logistics/china/export/weship'])
+    expect(weship.find('.table-wrap.orders table').exists()).toBe(true)
+    expect(weship.find('input[type="file"]').exists()).toBe(false)
+  })
+
   it('shows a mixed-carrier ERP batch download/upload only on the pending work queue', () => {
     const pending=mount(Index,{props:{...baseProps,view:'pending',trackingImportPreview:null,trackingImportProvider:null}})
     expect(pending.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(true)
