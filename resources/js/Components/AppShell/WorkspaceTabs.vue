@@ -54,14 +54,28 @@ const allowLeave = (): boolean => {
   if (!dirty.value) return true
   return window.confirm('本页面有未保存的编辑，切换工作标签可能丢失内容。确定继续吗？')
 }
+let approvedTabNavigation: string | null = null
+// A page opts in by publishing erp:workspace-dirty. Guard sidebar/Inertia
+// GET navigation too, not only clicks inside the tab strip. Form POSTs still work.
+const beforeRouteChange = router.on('before', event => {
+  if (!dirty.value || event.detail.visit.method !== 'get') return
+  const next = event.detail.visit.url
+  const target = next.pathname + next.search + next.hash
+  if (target === props.currentUrl) return
+  if (approvedTabNavigation === target) {
+    approvedTabNavigation = null
+    return
+  }
+  if (!allowLeave()) event.preventDefault()
+})
 const open = (tab: WorkspaceTab) => {
   if (tab.key === activeKey.value && tab.href === props.currentUrl) return
-  if (!allowLeave()) return
   router.visit(tab.href, { preserveState: false, preserveScroll: false })
 }
 const close = (tab: WorkspaceTab) => {
   if (tab.key === activeKey.value && !allowLeave()) return
   const result = closeWorkspaceTab(tabs.value, tab.key, activeKey.value)
+  if (result.nextHref && dirty.value) approvedTabNavigation = result.nextHref
   tabs.value = result.tabs
   save()
   if (result.nextHref) router.visit(result.nextHref, { preserveState: false, preserveScroll: false })
@@ -81,6 +95,7 @@ onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload)
 })
 onBeforeUnmount(() => {
+  beforeRouteChange()
   window.removeEventListener('erp:workspace-dirty', onDirtyEvent)
   window.removeEventListener('beforeunload', onBeforeUnload)
 })
