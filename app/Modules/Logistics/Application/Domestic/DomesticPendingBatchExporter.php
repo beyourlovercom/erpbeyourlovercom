@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use DomainException;
 use Illuminate\Support\Collection;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -13,7 +14,10 @@ use RuntimeException;
 
 final class DomesticPendingBatchExporter
 {
-    public function __construct(private readonly WarehouseOrderReference $references) {}
+    public function __construct(
+        private readonly WarehouseOrderReference $references,
+        private readonly DomesticReviewAmountResolver $amounts,
+    ) {}
 
     /** @param Collection<int,Order> $orders */
     public function export(Collection $orders): string
@@ -22,16 +26,32 @@ final class DomesticPendingBatchExporter
             throw new DomainException('当前没有可导出的国内待发货订单。');
         }
 
+        $eligible = $orders->filter(function (Order $order): bool {
+            $order->loadMissing(['address', 'items', 'shipment', 'externalReferences', 'fulfillmentParent.financials', 'shipment.warehouse']);
+            return $order->shipment?->shipment_status === 'pending';
+        })->values();
+        if ($eligible->isEmpty()) {
+            throw new DomainException('当前没有可导出的国内待发货订单。');
+        }
+
+        $maxItems = max(1, (int) $eligible->max(fn (Order $order) => $order->items->count()));
+        $headers = [
+            'ERP订单号', '客户单号', '承运商', '服务', 'Tracking',
+            '收件人', '电话', 'Email', '国家/地区', '州/省', '城市', '邮编', '地址',
+        ];
+        for ($i = 1; $i <= $maxItems; $i++) {
+            $headers[] = $i === 1 ? 'SKU' : "SKU{$i}";
+            $headers[] = $i === 1 ? '数量' : "数量{$i}";
+        }
+        $headers[] = '金额';
+        $headers[] = '物流备注';
+
         $book = new Spreadsheet;
         $sheet = $book->getActiveSheet();
         $sheet->setTitle('ERP批量发货登记');
-        $sheet->fromArray([[
-            'ERP订单号', '客户单号', '承运商', '服务', 'Tracking',
-            '收件人', '电话', 'Email', '国家/地区', '州/省', '城市', '邮编', '地址',
-            'SKU/数量', '物流备注',
-        ]]);
+        $sheet->fromArray([$headers]);
 
-        foreach ($orders->values() as $index => $order) {
+        foreach ($eligible as $index => $order) {
             $row = $index + 2;
             $order->loadMissing(['address', 'items', 'shipment', 'externalReferences']);
             $shipment = $order->shipment;
@@ -46,10 +66,6 @@ final class DomesticPendingBatchExporter
             }
 
             $address = $order->address;
-            $items = $order->items
-                ->map(fn ($item): string => ($item->sku ?: '无SKU').' × '.(int) $item->quantity)
-                ->implode(' / ');
-
             $values = [
                 (string) $order->erp_order_id,
                 $reference,
@@ -64,17 +80,26 @@ final class DomesticPendingBatchExporter
                 (string) $address?->city,
                 (string) $address?->postal_code,
                 trim(implode(' ', array_filter([(string) $address?->address_line_1, (string) $address?->address_line_2]))),
-                $items,
-                (string) $shipment->logistics_note,
             ];
+            foreach ($order->items->sortBy('id') as $item) {
+                $values[] = (string) ($item->sku ?: '无SKU');
+                $values[] = (string) (int) $item->quantity;
+            }
+            for ($i = $order->items->count(); $i < $maxItems; $i++) {
+                $values[] = '';
+                $values[] = '';
+            }
+            $amount = $this->amounts->resolve($order);
+            $values[] = $amount['amount'] === null ? '' : $amount['amount'].' '.$amount['currency'];
+            $values[] = (string) $shipment->logistics_note;
             foreach ($values as $column => $value) {
                 $sheet->setCellValueExplicit([$column + 1, $row], $value, DataType::TYPE_STRING);
             }
         }
 
         $sheet->freezePane('A2');
-        foreach (range('A', 'O') as $column) {
-            $sheet->getColumnDimension($column)->setAutoSize(true);
+        for ($column = 1; $column <= count($headers); $column++) {
+            $sheet->getColumnDimensionByColumn($column)->setAutoSize(true);
         }
 
         $tmp = tempnam(sys_get_temp_dir(), 'domestic-pending-batch-');
