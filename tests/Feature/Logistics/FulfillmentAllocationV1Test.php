@@ -62,6 +62,45 @@ final class FulfillmentAllocationV1Test extends TestCase
                 ->where('globalGridPilotEnabled', true));
     }
 
+    public function test_wait_stock_archive_only_operator_uses_existing_audited_batch_and_suppresses_archived_order(): void
+    {
+        [, $order] = $this->scenario(1);
+        $viewer = $this->userWith(['logistics.view', 'orders.view']);
+        $archiver = $this->userWith(['logistics.view', 'orders.view', 'orders.archive']);
+
+        $this->actingAs($viewer)->get('/logistics/wait-stock')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Logistics/FulfillmentAllocation')
+                ->where('canArchive', false)
+                ->where('canOperate', false));
+        $this->actingAs($archiver)->get('/logistics/wait-stock')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Logistics/FulfillmentAllocation')
+                ->where('canArchive', true)
+                ->where('canOperate', false));
+
+        $this->actingAs($viewer)->postJson('/orders/archive/batch', [
+            'order_ids' => [$order->id],
+        ])->assertForbidden();
+        $this->actingAs($archiver)->postJson('/orders/archive/batch', [
+            'order_ids' => [$order->id],
+        ])->assertOk()->assertJsonPath('success_count', 1)
+            ->assertJsonPath('failed_count', 0);
+        $this->assertNotNull($order->fresh()->operational_archived_at);
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id, 'deleted_at' => null, 'operational_archived_by' => $archiver->id,
+        ]);
+
+        $this->actingAs($archiver)->get('/logistics/wait-stock')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Logistics/FulfillmentAllocation')
+                ->where('orders.total', 0));
+        $this->actingAs($archiver)->postJson('/orders/archive/batch', [
+            'order_ids' => [$order->id],
+        ])->assertOk()->assertJsonPath('success_count', 0)
+            ->assertJsonPath('failed_count', 1);
+    }
+
     public function test_batch_allocation_requires_operate_permission_and_explicit_confirmation(): void
     {
         [$owner, $order] = $this->scenario(1);
