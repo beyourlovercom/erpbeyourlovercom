@@ -238,6 +238,44 @@ DB::transaction(function () use ($product, $warehouse, $owner): void {
         'carrier_selection_source'=>'manual',
     ]);
     $weship->operationalMarkers()->create(['marker'=>'domestic_reviewed','marked_at'=>now()]);
+    // R4-6 synthetic-only Factory exception fixtures. No real order,
+    // external OMS, return upload, Woo or live Production state is touched.
+    foreach ([
+        ['id'=>'007-1111-c99984','status'=>'exception','note'=>'承运商反馈包裹延误','tracking'=>'E2E-EXCEPT-84'],
+        ['id'=>'007-1111-c99983','status'=>'shipped','note'=>null,'tracking'=>'E2E-CONFLICT-83'],
+    ] as $case) {
+        $exception = Order::query()->create([
+            'internal_order_number'=>'INT-E2E-R46-'.$case['id'],
+            'erp_order_id'=>$case['id'],
+            'source_type'=>OrderSourceType::Manual,
+            'order_kind'=>OrderKind::Customer,
+            'external_order_number'=>'E2E-R46-'.$case['id'],
+            'order_date'=>now()->addDay()->toDateString(),
+            'owner_id'=>$owner->id,
+            'order_status'=>OrderStatus::PendingShipment,
+        ]);
+        $exception->address()->create([
+            'recipient_name'=>'E2E Exception '.$case['id'],
+            'phone'=>'15550008484','country'=>'DE','city'=>'Berlin',
+            'address_line_1'=>'Synthetic Exception Street','postal_code'=>'01000',
+        ]);
+        $exception->items()->create([
+            'product_id'=>$product->id,'sku'=>'E2E-SKU-0001',
+            'product_summary'=>'E2E Exception Synthetic', 'quantity'=>1,
+            'unit_price'=>'10.00','line_revenue'=>'10.00',
+        ]);
+        $exception->shipment()->create([
+            'warehouse_id'=>$factory->id,
+            'warehouse_selection_source'=>'manual',
+            'carrier'=>'4PX','service'=>'SD经济挂号-带电',
+            'carrier_selection_source'=>'manual',
+            'shipment_status'=>$case['status'],
+            'shipped_at'=>null,
+            'tracking_number'=>$case['tracking'],
+            'logistics_note'=>$case['note'],
+        ]);
+    }
+
     LogisticsReview::query()->create([
         'order_id'=>$domestic->id,
         'status'=>'pending',

@@ -135,7 +135,9 @@ final class DomesticTodayOrdersExportTest extends TestCase
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
         $this->actingAs($user)->get('/logistics/china?view=today-weship&global_grid=0')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',false));
-        foreach (['exceptions','4px','weship'] as $view) {
+        $this->actingAs($user)->get('/logistics/china?view=exceptions')
+            ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
+        foreach (['4px','weship'] as $view) {
             $this->actingAs($user)->get('/logistics/china?view='.$view)
                 ->assertOk()->assertInertia(fn ($page) => $page
                     ->where('globalGridPilotEnabled',false));
@@ -191,6 +193,65 @@ final class DomesticTodayOrdersExportTest extends TestCase
         self::assertSame('shipped',$weshipToday->fresh()->shipment->shipment_status);
         self::assertSame('pending',$unreviewed->fresh()->shipment->shipment_status);
         self::assertSame('shipped',$olderShipped->fresh()->shipment->shipment_status);
+    }
+
+    public function test_r4_6_exception_grid_is_read_only_and_matches_the_legacy_filtered_orders(): void
+    {
+        $carrierException=$this->domesticOrder('007-R46-EXCEPTION','4PX',true);
+        $carrierException->shipment()->update([
+            'shipment_status'=>'exception',
+            'logistics_note'=>'包裹被承运商退回',
+        ]);
+        $missingShipTime=$this->domesticOrder('007-R46-TIME-CONFLICT','Weship',true);
+        $missingShipTime->shipment()->update([
+            'shipment_status'=>'shipped','shipped_at'=>null,'tracking_number'=>'TEST-TRACK-1',
+        ]);
+        $orderShipmentMismatch=$this->domesticOrder('007-R46-STATUS-CONFLICT','4PX',true);
+        $orderShipmentMismatch->update(['order_status'=>'shipped']);
+        $normal=$this->domesticOrder('007-R46-NORMAL','Weship',true);
+
+        $viewer=$this->viewer();
+        $this->actingAs($viewer)->get('/logistics/china?view=exceptions')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotAvailable',true)
+                ->where('globalGridPilotEnabled',true)
+                ->where('rows.total',3)
+                ->where('rows.data.0.erp_order_id','007-R46-EXCEPTION')
+                ->where('rows.data.0.exception_type','发货异常')
+                ->where('rows.data.0.exception_reason','包裹被承运商退回')
+                ->where('rows.data.1.erp_order_id','007-R46-TIME-CONFLICT')
+                ->where('rows.data.1.exception_type','进度冲突')
+                ->where('rows.data.1.exception_reason','物流已发货，但缺少发货时间')
+                ->where('rows.data.2.erp_order_id','007-R46-STATUS-CONFLICT')
+                ->where('rows.data.2.exception_type','进度冲突')
+                ->where('rows.data.2.exception_reason','订单已标记发货，但物流仍为待发货'));
+
+        $this->actingAs($viewer)->get('/logistics/china?view=exceptions&global_grid=0')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotEnabled',false)
+                ->where('rows.total',3)
+                ->where('rows.data.0.erp_order_id','007-R46-EXCEPTION')
+                ->where('rows.data.1.erp_order_id','007-R46-TIME-CONFLICT')
+                ->where('rows.data.2.erp_order_id','007-R46-STATUS-CONFLICT'));
+
+        $this->actingAs($viewer)->get('/logistics/china?view=exceptions&global_grid=1&search=R46-TIME-CONFLICT&per_page=20')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('rows.total',1)->where('rows.per_page',20)
+                ->where('rows.data.0.erp_order_id','007-R46-TIME-CONFLICT'));
+
+        foreach (['4px','weship'] as $history) {
+            $this->actingAs($viewer)->get('/logistics/china?view='.$history)
+                ->assertOk()->assertInertia(fn ($page) => $page
+                    ->where('globalGridPilotEnabled',false));
+        }
+
+        self::assertSame('exception',$carrierException->fresh()->shipment->shipment_status);
+        self::assertSame('包裹被承运商退回',$carrierException->fresh()->shipment->logistics_note);
+        self::assertSame('shipped',$missingShipTime->fresh()->shipment->shipment_status);
+        self::assertNull($missingShipTime->fresh()->shipment->shipped_at);
+        self::assertSame('pending',$orderShipmentMismatch->fresh()->shipment->shipment_status);
+        self::assertSame('shipped',$orderShipmentMismatch->fresh()->order_status->value);
+        self::assertSame('pending',$normal->fresh()->shipment->shipment_status);
     }
 
     public function test_today_export_is_authorized_and_empty_download_has_only_headers(): void

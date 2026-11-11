@@ -340,6 +340,26 @@ describe('Domestic logistics production workbench', () => {
     expect(fallback.find('a[href="/logistics/china/export/weship"]').exists()).toBe(true)
   })
 
+  it('R4-6 exceptions keeps compact read-only Grid, one footer and explicit native fallback',()=>{
+    const exception={...baseProps.rows.data[0],exception_type:'进度冲突',
+      exception_reason:'物流已发货，但缺少发货时间',shipment_status:'shipped',review_status:'conflict' as const}
+    const grid=mount(Index,{props:{...baseProps,view:'exceptions',
+      globalGridPilotAvailable:true,globalGridPilotEnabled:true,
+      rows:{...baseProps.rows,data:[exception]},canArchive:false}})
+    expect(grid.find('.domestic-compact-workspace').exists()).toBe(true)
+    expect(grid.find('.table-wrap.orders table').exists()).toBe(false)
+    expect(grid.find('[data-testid="domestic-native-batch-toggle"]').exists()).toBe(false)
+    expect(grid.find('input[type="file"]').exists()).toBe(false)
+    expect(grid.findAll('.provider-grid a')).toHaveLength(0)
+    expect(grid.findAll('[data-testid="domestic-global-grid-toggle"]')).toHaveLength(1)
+    expect(grid.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('返回原表')
+    const native=mount(Index,{props:{...baseProps,view:'exceptions',
+      globalGridPilotAvailable:true,globalGridPilotEnabled:false,
+      rows:{...baseProps.rows,data:[exception]},canArchive:false}})
+    expect(native.find('.table-wrap.orders table').exists()).toBe(true)
+    expect(native.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('切换新版表')
+  })
+
   it('shows a mixed-carrier ERP batch download/upload only on the pending work queue', () => {
     const pending=mount(Index,{props:{...baseProps,view:'pending',trackingImportPreview:null,trackingImportProvider:null}})
     expect(pending.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(true)
