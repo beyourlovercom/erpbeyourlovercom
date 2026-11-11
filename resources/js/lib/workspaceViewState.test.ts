@@ -65,4 +65,42 @@ describe('ERP V4 D5 visual state restore', () => {
     expect(serialized).not.toContain('synthetic-private')
     expect(serialized).not.toContain('password')
   })
+  it('restores scroll offsets after refresh from user-scoped session storage', () => {
+    const first = new WorkspaceViewState()
+    document.body.innerHTML = '<div class="shell-content"></div>'
+    const element = document.querySelector<HTMLElement>('.shell-content')!
+    const route = '/orders?search=test&page=7'
+    element.scrollLeft = 250
+    element.scrollTop = 80
+    first.capture(route, 1, document, window, 100)
+    window.sessionStorage.clear()
+    first.save(1, window.sessionStorage)
+
+    const anotherSession = new WorkspaceViewState()
+    anotherSession.hydrate(2, window.sessionStorage, 105)
+    expect(anotherSession.size).toBe(0)
+    anotherSession.hydrate(1, window.sessionStorage, 105)
+    element.scrollLeft = 0
+    element.scrollTop = 0
+    expect(anotherSession.restore(route, 1, document, window, 106)).toBe(true)
+    expect(element.scrollLeft).toBe(250)
+    expect(element.scrollTop).toBe(80)
+    expect(window.sessionStorage.length).toBe(1)
+    const stored = window.sessionStorage.getItem('byl:workspace:v4:view:1') ?? ''
+    expect(stored).not.toContain('password')
+    window.sessionStorage.clear()
+  })
+
+  it('rejects tampered cross-user or external saved view state', () => {
+    const result = new WorkspaceViewState()
+    window.sessionStorage.setItem('byl:workspace:v4:view:1', JSON.stringify([
+      { key: '/orders', href: '//evil.invalid/', userId: 1, capturedAt: 100, scrolls: {} },
+      { key: '/orders', href: '/orders', userId: 2, capturedAt: 100, scrolls: {} },
+      { key: '/orders', href: '/orders', userId: 1, capturedAt: 100, scrolls: { 'input[name=password]': { left: 3, top: 7 } } },
+    ]))
+    result.hydrate(1, window.sessionStorage, 105)
+    expect(result.size).toBe(1)
+    expect(result.snapshot('/orders', 1, 106)?.scrolls).toEqual({})
+    window.sessionStorage.clear()
+  })
 })
