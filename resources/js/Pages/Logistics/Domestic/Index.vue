@@ -23,7 +23,7 @@ type Row = {
   workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; carrier_selection_source?:string|null; carrier_ready?:boolean; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
-  review_status:'approved'|'pending'|'stockout'|'conflict'; export_blockers:string[]; items:Item[]
+  review_status:'approved'|'pending'|'stockout'|'conflict'; exception_type?:string; exception_reason?:string; export_blockers:string[]; items:Item[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page?:number; total:number }
 type PreviewRow = { row:number; order_id:number|null; order_number:string; tracking_number:string; carrier:string; provider_status:string|null; status:string; message:string }
@@ -90,6 +90,8 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   order_number:row.erp_order_id??'—',
   order_url:row.order_url,
   workflow_status:row.workflow_status_projection?.zh ?? '—',
+  exception_type:row.exception_type??'—',
+  exception_reason:row.exception_reason??'—',
   review_status:row.review_status==='approved'?'已通过':row.review_status==='stockout'?'缺货':row.review_status==='conflict'?'状态待对账':'待审核',
   shipment_status:row.shipment_status??'',
   paid_date:row.paid_date??'—',
@@ -118,6 +120,11 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'order',field:'order_number',headerName:'ERP 订单',width:186,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
   gridColumn({colId:'status',field:'workflow_status',headerName:'订单状态',width:143}),
+  ...(props.view==='exceptions'?[
+    gridColumn({colId:'exception_type',field:'exception_type',headerName:'异常类型',width:126}),
+    gridColumn({colId:'exception_reason',field:'exception_reason',headerName:'异常原因',width:295,
+      tooltipField:'exception_reason'}),
+  ]:[]),
   gridColumn({colId:'review',field:'review_status',headerName:'审核',width:120,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
   gridColumn({colId:'paid_date',field:'paid_date',headerName:'成交日期',width:135}),
@@ -175,7 +182,11 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
     minWidth:props.view==='review'?185:props.view==='stockout'?136:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
     maxWidth:props.view==='review'?190:props.view==='stockout'?148:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
     pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
-    cellRenderer:props.view==='pending'?DomesticGridPendingCell:DomesticGridActionCell,cellRendererParams:{
+    cellRenderer:props.view==='exceptions'?GlobalGridCell:props.view==='pending'?DomesticGridPendingCell:DomesticGridActionCell,
+    cellRendererParams:props.view==='exceptions'?{
+      mode:'actions',
+      actionsFor:(row:GridListRow)=>[{label:'查看订单',href:String(row.order_url??'')}],
+    }:{
       carrierOptions:props.carrierOptions,
       canTrackingSync:props.canTrackingSync,
       syncEligible:(id:number)=>{
@@ -387,7 +398,7 @@ const switchView = (view:string) => {
   // just because they switched from the approved review view.
   const mode = view === props.view
     ? (props.globalGridPilotEnabled ? '1' : '0')
-    : (['review','stockout','pending','today','today-4px','today-weship'].includes(view) ? '1' : '0')
+    : (['review','stockout','pending','today','today-4px','today-weship','exceptions'].includes(view) ? '1' : '0')
   router.visit('/logistics/china?view=' + encodeURIComponent(view)
     + '&global_grid=' + mode
     + (view === props.view && mode === '1' && domesticGridSearch.value
@@ -654,7 +665,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               :busy="bulkBusy" @apply="applyGridBatch" />
           </template>
         </GlobalGrid>
-        <div v-if="view!=='review' && view!=='stockout' && !isDailyProviderView(view)" class="domestic-grid-legacy-tools">
+        <div v-if="view!=='review' && view!=='stockout' && view!=='exceptions' && !isDailyProviderView(view)" class="domestic-grid-legacy-tools">
           <button type="button" class="secondary" data-testid="domestic-native-batch-toggle"
             @click="showBatchLegacyOperations=!showBatchLegacyOperations;activeOperationId=null">
             {{ showBatchLegacyOperations?'收起原批量操作':'使用原批量操作' }}

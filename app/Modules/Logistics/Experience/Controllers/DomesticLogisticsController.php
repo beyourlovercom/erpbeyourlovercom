@@ -74,10 +74,10 @@ final class DomesticLogisticsController
         ]);
 
         $this->applyView($query, $view);
-        // R4-5B: Weship daily view now joins the five Owner-accepted
-        // Global Grid views. Historical and exception views stay native.
-        // Provider filtering, XLSX, Tracking Apply and dispatch are unchanged.
-        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today', 'today-4px', 'today-weship'], true);
+        // R4-6: exceptions is a read-only Grid migration. Do not change the
+        // existing exception predicate or grant any new corrective action.
+        // Historical carrier lists remain native until their own gates.
+        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today', 'today-4px', 'today-weship', 'exceptions'], true);
         $gridSetting = $request->query('global_grid');
         $gridAvailable = $approvedGridView || GlobalGridPilot::available();
         $gridPilot = $approvedGridView
@@ -97,7 +97,7 @@ final class DomesticLogisticsController
         $rows = $query->orderBy('order_date')->orderBy('id')->paginate($pageSize)->withQueryString();
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments($rows->getCollection()
             ->map(fn (Order $order): int => (int) $order->shipment?->id)->all());
-        $rows->through(fn (Order $order, int $index): array => $this->row($order, (($rows->currentPage() - 1) * $rows->perPage()) + $index + 1, $trackingStatuses[(int) $order->shipment?->id] ?? null));
+        $rows->through(fn (Order $order, int $index): array => $this->row($order, (($rows->currentPage() - 1) * $rows->perPage()) + $index + 1, $trackingStatuses[(int) $order->shipment?->id] ?? null, $view === 'exceptions'));
 
         // Inertia partial row reloads do not need nine independent view counts.
         // Keep every count identical on full loads and when viewCounts is requested.
@@ -397,7 +397,7 @@ final class DomesticLogisticsController
         };
     }
 
-    private function row(Order $order, int $line, ?array $tracking = null): array
+    private function row(Order $order, int $line, ?array $tracking = null, bool $includeException = false): array
     {
         $shipment = $order->shipment;
         $trackingState = app(LogisticsTrackingListStatus::class)->currentStatus($tracking, $order->manualSync?->website_sync_status);
@@ -414,7 +414,12 @@ final class DomesticLogisticsController
         $businessDate = app(\App\Modules\Orders\Application\OrderBusinessDateResolver::class)->domesticReview($order);
         $amount = app(\App\Modules\Orders\Application\DomesticReviewAmountResolver::class)->resolve($order);
 
+        $exception = $includeException
+            ? $this->exceptionSummary($order, $conflict, $stockout, $approved)
+            : [];
+
         return [
+            ...$exception,
             'line' => $line,
             'paid_date' => $businessDate['date'],
             'paid_date_source' => $businessDate['source'],
@@ -458,6 +463,41 @@ final class DomesticLogisticsController
                 'sku' => $item->sku,
                 'quantity' => (int) $item->quantity,
             ])->values()->all(),
+        ];
+    }
+
+    /**
+     * Read-only reason based exclusively on existing shipment/order facts.
+     * Do not create new exception codes or imply a resolution was performed.
+     * @return array{exception_type: string, exception_reason: string}
+     */
+    private function exceptionSummary(Order $order, bool $conflict, bool $stockout, bool $approved): array
+    {
+        $shipment = $order->shipment;
+        if ($shipment?->shipment_status === 'exception') {
+            $note = trim((string) ($shipment->logistics_note ?? ''));
+
+            return [
+                'exception_type' => '发货异常',
+                'exception_reason' => $note !== '' ? mb_substr($note, 0, 200) : '发货被标记异常，请查看原物流记录',
+            ];
+        }
+
+        $reason = match (true) {
+            $stockout && in_array($shipment?->shipment_status, ['shipped', 'completed'], true)
+                => '订单标记缺货，但物流已发货',
+            $shipment?->shipment_status === 'shipped' && $shipment->shipped_at === null
+                => '物流已发货，但缺少发货时间',
+            $shipment?->shipment_status === 'shipped' && ! $approved && blank($shipment->tracking_number)
+                => '物流已发货，但缺少商务审核和追踪单号',
+            $order->order_status?->value === 'shipped' && $shipment?->shipment_status === 'pending'
+                => '订单已标记发货，但物流仍为待发货',
+            default => '履约状态不一致，请打开订单详情核对',
+        };
+
+        return [
+            'exception_type' => $conflict ? '进度冲突' : '发货异常',
+            'exception_reason' => $reason,
         ];
     }
 

@@ -40,12 +40,14 @@
 | 纬狮订单 | 已批准（共用模板） | 已合并 #712 | 前端 54/54 PASS；浏览器结构 9/9 PASS | **Owner PASS 2026-11-11** | **已合并 281b429** | **已部署；公共健康检查 PASS；登录后视觉待复核** |
 
 **Global Grid 单独发布门禁（与上方九视图 Compact Workspace 视觉门禁不同）：**
-「今日订单」R4-4 PR #706 已正式发布并于 2026-11-11 获得 Owner 视觉 PASS；
-「今日速达」R4-5A PR #713 已完成 PHP 55/55（922 assertions）、Vue 31/31、
-隔离 Chrome 14/14，且当前 GitHub CI 已通过旧版；与 PR #712 紧凑工作区
-合并后需重新完成最新版 CI、隔离回归。R4-5A 未部署前不写 Production PASS。
-「今日纬狮」R4-5B 虽复用实现，**Global Grid 默认 OFF**，直到独立启用与 Owner 视觉 PASS。
-上述状态不改动九视图 Compact Workspace 的已批准视觉门禁。
+2026-11-11 已有六个国内发货视图完成独立 Production Owner PASS：
+待审核、缺货单、待发货、今日订单（PR #706）、今日速达（PR #713）、
+今日纬狮（PR #721）。R4-5B 于正式站六项验收全部 PASS 后关闭。
+R4-6「异常订单」仅在独立分支实施现有表格迁移、异常原因可视化、
+只读「查看订单」操作；完成 PHP、Vue、隔离 Chrome 回归后提交独立 PR。
+R4-6 的 Global Grid 未合并及未发布，Production 仍默认原表。
+速达订单与纬狮订单历史视图继续原表默认 OFF，等待 R4-7。
+该进度与上述九视图紧凑布局验收相互独立，不能混为一谈。
 
 **P0 当前量化进度（2026-11-11）：** 九视图共享布局 9/9 已实施；Owner 原型/UAT PASS；合并 SHA `281b429`；类型检查、前端 54/54、Laravel 19/19（230 断言）PASS；Production 原子切换和新 JS 资源 HTTP 200；九个路径的**未登录重定向后** HTTP 检查 9/9 通过。**Production 真实账号内九视图视觉/交互 UAT 尚未完成，不标记全量 PROD_PASS**。详见[发布报告](../60_Codex_Operations/CW-P0-CHINA-Production-Release-20261111.md)。
 

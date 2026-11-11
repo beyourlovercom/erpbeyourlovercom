@@ -71,3 +71,12 @@ describe('R4-5A Speeda and R4-5B Weship shared daily action renderer',()=>{
     })
   }
 })
+
+describe('R4-6 exceptions do not inherit dispatch/review mutations',()=>{
+  it('never executes legacy native action in the exception column renderer',()=>{
+    // The R4-6 Grid action is a safe GlobalGridCell link; no new mutation
+    // handlers are introduced to DomesticGridActionCell for exceptions.
+    const markup=mount(Cell,{props:{params:{...base,view:'exceptions',canOperate:false,canTrackingSync:false}}})
+    expect(markup.find('button').exists()).toBe(false)
+  })
+})
