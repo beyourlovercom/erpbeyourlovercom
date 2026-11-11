@@ -31,7 +31,7 @@ type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
 type TabKey = 'pending'|'recommendation'|'inventory'|'manual'|'gift'|'processed'
 
-const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; canOperate:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string }>()
+const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; canOperate:boolean; canArchive?:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string }>()
 const activeTab = ref<TabKey>('pending')
 const selectedOrderId = ref<number|null>(null)
 const decisionNote = ref('')
@@ -176,11 +176,17 @@ const filteredOrders = computed(() => props.orders.data.filter(order => {
 }))
 type BulkChoice = {value:string;label:string;reasonRequired?:boolean}
 const bulkOptions = computed<BulkChoice[]>(() => {
-  if (!props.canOperate || activeTab.value==='processed' || activeTab.value==='gift') return []
-  return [
-    {value:'recommend',label:'批量采用系统推荐'},
-    ...warehouseOptions.value.map(warehouse=>({value:'warehouse:'+warehouse.code,label:'统一分仓：'+warehouse.name})),
-  ]
+  const options:BulkChoice[]=[]
+  if (props.canOperate && activeTab.value!=='processed' && activeTab.value!=='gift') {
+    options.push(
+      {value:'recommend',label:'批量采用系统推荐'},
+      ...warehouseOptions.value.map(warehouse=>({value:'warehouse:'+warehouse.code,label:'统一分仓：'+warehouse.name})),
+    )
+  }
+  // Reuse Domestic's audited operational archive endpoint; archival has its
+  // own permission and is intentionally allowed on gift/processed tabs.
+  if (props.canArchive) options.push({value:'archive',label:'批量归档'})
+  return options
 })
 function onBulkSelectionChanged(rows:GridListRow[]){
   const shown=new Set(filteredOrders.value.map(order=>order.id))
@@ -197,6 +203,7 @@ watch(()=>props.orders.data,()=>{
 })
 const selectedBulkOrders = computed(()=>props.orders.data.filter(order=>selectedBulkOrderIds.value.includes(order.id)))
 function eligibleForBatch(order:Order,action:string):boolean {
+  if (action==='archive') return props.canArchive===true
   if (processed(order) || !order.items.length || hasGift(order)) return false
   if (action==='recommend') return !!order.allocation_decision.can_use_recommendation
     && !!order.allocation_decision.recommended_plan_key
@@ -204,8 +211,13 @@ function eligibleForBatch(order:Order,action:string):boolean {
     warehouse=>action==='warehouse:'+warehouse.code)
 }
 function prepareGridBatch(payload:{action:string;reason:string}){
-  if (bulkBusy.value || !props.canOperate || !bulkOptions.value.some(option=>option.value===payload.action)) return
+  if (bulkBusy.value || !bulkOptions.value.some(option=>option.value===payload.action)) return
   const ids=selectedBulkOrders.value.filter(order=>eligibleForBatch(order,payload.action)).map(order=>order.id)
+  if (payload.action==='archive' && ids.length>50) {
+    publishGlobalFeedback({state:'BLOCKED',title:'一次最多归档 50 条',
+      message:'请减少勾选数量，归档接口每批最多处理 50 单。'})
+    return
+  }
   const skipped=selectedBulkOrderIds.value.filter(id=>!ids.includes(id))
   batchReview.value={
     action:payload.action,
@@ -215,7 +227,9 @@ function prepareGridBatch(payload:{action:string;reason:string}){
 }
 async function confirmGridBatch(){
   const draft=batchReview.value
-  if (!draft || bulkBusy.value || !props.canOperate || !draft.ids.length) return
+  if (!draft || bulkBusy.value || !draft.ids.length) return
+  const archive=draft.action==='archive'
+  if (archive ? !props.canArchive : !props.canOperate) return
   const action=draft.action==='recommend'?'recommend':'warehouse'
   const warehouseCode=action==='warehouse'?draft.action.slice('warehouse:'.length):undefined
   const planKeys:Record<string,string>={}
@@ -228,10 +242,10 @@ async function confirmGridBatch(){
   bulkBusy.value=true
   batchReview.value=null
   try {
-    const response=await fetch('/logistics/wait-stock/batch-allocation',{
+    const response=await fetch(archive?'/orders/archive/batch':'/logistics/wait-stock/batch-allocation',{
       method:'POST',credentials:'same-origin',cache:'no-store',
       headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},
-      body:JSON.stringify({order_ids:draft.ids,action,warehouse_code:warehouseCode,
+      body:JSON.stringify(archive?{order_ids:draft.ids}:{order_ids:draft.ids,action,warehouse_code:warehouseCode,
         plan_keys:planKeys,confirmed:true}),
     })
     const result=await response.json().catch(()=>({})) as {
@@ -243,23 +257,26 @@ async function confirmGridBatch(){
     const rows=result.results??[]
     const success=rows.filter(row=>row.ok)
     const failed=rows.filter(row=>!row.ok)
-    for(const row of success){
-      localSubmitted[row.order_id]={source:action==='recommend'?'system_recommendation':'manual',
-        submittedAt:new Date().toISOString()}
+    if (!archive) {
+      for(const row of success){
+        localSubmitted[row.order_id]={source:action==='recommend'?'system_recommendation':'manual',
+          submittedAt:new Date().toISOString()}
+      }
     }
     selectedBulkOrderIds.value=failed.map(row=>row.order_id)
     publishGlobalFeedback({
       state:failed.length?'BLOCKED':'SUCCESS',
-      title:'批量分仓：成功 '+success.length+' 条，失败 '+failed.length+' 条',
+      title:(archive?'批量归档':'批量分仓')+'：成功 '+success.length+' 条，失败 '+failed.length+' 条',
       message:failed.length?failed.slice(0,8).map(row=>{
         const order=props.orders.data.find(order=>order.id===row.order_id)
         return (order?.erp_order_id??row.order_id)+'：'+row.message
-      }).join('；'):'所有成功订单均已逐单经过原有分仓门禁。',
+      }).join('；'):(archive?'已归档至运营归档清单。':'所有成功订单均已逐单经过原有分仓门禁。'),
     })
     router.reload({only:['orders','pendingTotal']})
   } catch(error){
-    publishGlobalFeedback({state:'ERROR',title:'批量分仓未确认',
-      message:(error instanceof Error?error.message:'请求失败')+'；先刷新检查已分仓订单，勿直接重复提交。'})
+    publishGlobalFeedback({state:'ERROR',title:archive?'批量归档未确认':'批量分仓未确认',
+      message:(error instanceof Error?error.message:'请求失败')+
+        (archive?'；请先核对运营归档清单，勿直接重复提交。':'；先刷新检查已分仓订单，勿直接重复提交。')})
   } finally {bulkBusy.value=false}
 }
 
@@ -465,7 +482,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         :key="'allocation-grid-'+activeTab"
         namespace="grid.logistics.allocation.global.v1" title="待分仓"
         :rows="allocationGridRows" :columns="allocationGridColumns" :required-column-ids="['order_number','actions']"
-        :enable-selection="canOperate && activeTab!=='processed' && activeTab!=='gift'"
+        :enable-selection="canArchive || (canOperate && activeTab!=='processed' && activeTab!=='gift')"
         :selected-order-ids="selectedBulkOrderIds"
         :page="allocationPager" :search="gridSearch ?? ''" search-placeholder="搜索全部订单号 / 收件人..."
         @selection-change="onBulkSelectionChanged($event)"
@@ -494,12 +511,16 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
     <Teleport to="body">
       <div v-if="batchReview" class="modal-backdrop" data-testid="allocation-batch-confirm"
         @click.self="!bulkBusy && (batchReview=null)">
-        <section class="batch-confirm" role="dialog" aria-modal="true" aria-label="批量分仓确认">
-          <header><h2>批量分仓确认</h2><button type="button" class="secondary" @click="batchReview=null">取消</button></header>
+        <section class="batch-confirm" role="dialog" aria-modal="true" :aria-label="batchReview.action==='archive'?'批量归档确认':'批量分仓确认'">
+          <header><h2>{{ batchReview.action==='archive'?'批量归档确认':'批量分仓确认' }}</h2><button type="button" class="secondary" @click="batchReview=null">取消</button></header>
           <p><strong>{{ batchReview.label }}</strong></p>
           <p>已选择 {{ selectedBulkOrderIds.length }} 条；本次可提交 {{ batchReview.ids.length }} 条，
             需逐单处理 {{ batchReview.skipped.length }} 条。</p>
-          <p class="batch-caution">系统会逐单复核订单付款状态、推荐方案、SKU、库存和承运商。
+          <p v-if="batchReview.action==='archive'" class="batch-caution">
+            归档会将订单移出正常运营队列，但不会删除订单。归档记录可在运营归档清单中查看，
+            有恢复权限的管理员可恢复。请确认仅归档不再需要处理的订单。
+          </p>
+          <p v-else class="batch-caution">系统会逐单复核订单付款状态、推荐方案、SKU、库存和承运商。
             库存异常、礼品未解析或推荐过期均不会自动放行；部分成功后不得盲目重复提交。</p>
           <div v-if="batchReview.ids.length" class="batch-list">
             {{ batchReview.ids.slice(0,12).map(id=>props.orders.data.find(order=>order.id===id)?.erp_order_id??id).join('、') }}
@@ -509,7 +530,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
             <button type="button" class="secondary" @click="batchReview=null">返回</button>
             <button type="button" class="primary" data-testid="allocation-batch-confirm-apply"
               :disabled="!batchReview.ids.length || bulkBusy" @click="confirmGridBatch">
-              {{ bulkBusy?'提交中…':('确认提交 '+batchReview.ids.length+' 条') }}
+              {{ bulkBusy?'提交中…':((batchReview.action==='archive'?'确认归档 ':'确认提交 ')+batchReview.ids.length+' 条') }}
             </button>
           </footer>
         </section>
