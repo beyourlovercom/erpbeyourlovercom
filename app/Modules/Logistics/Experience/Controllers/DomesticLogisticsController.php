@@ -74,10 +74,10 @@ final class DomesticLogisticsController
         ]);
 
         $this->applyView($query, $view);
-        // R4-5A: enable today's 4PX view independently; Weship and the
-        // remaining 4 views stay native until their own Owner PASS.
-        // No provider query, download, upload, tracking or shipment gate changes.
-        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today', 'today-4px'], true);
+        // R4-5B: Weship daily view now joins the five Owner-accepted
+        // Global Grid views. Historical and exception views stay native.
+        // Provider filtering, XLSX, Tracking Apply and dispatch are unchanged.
+        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today', 'today-4px', 'today-weship'], true);
         $gridSetting = $request->query('global_grid');
         $gridAvailable = $approvedGridView || GlobalGridPilot::available();
         $gridPilot = $approvedGridView

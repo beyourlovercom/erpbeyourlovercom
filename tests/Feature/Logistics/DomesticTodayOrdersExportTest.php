@@ -125,13 +125,17 @@ final class DomesticTodayOrdersExportTest extends TestCase
                 ->where('rows.total',1)
                 ->where('rows.data.0.erp_order_id','007-R4-4-TODAY-2'));
 
-        // R4-5A: Speeda is enabled independently, Weship and the other
-        // four views still use the original table by default.
+        // R4-5A/B: both today's provider views default to Grid with
+        // independently reversible legacy fallback. The other 3 remain native.
         $this->actingAs($user)->get('/logistics/china?view=today-4px')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
         $this->actingAs($user)->get('/logistics/china?view=today-4px&global_grid=0')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',false));
-        foreach (['today-weship','exceptions','4px','weship'] as $view) {
+        $this->actingAs($user)->get('/logistics/china?view=today-weship')
+            ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
+        $this->actingAs($user)->get('/logistics/china?view=today-weship&global_grid=0')
+            ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',false));
+        foreach (['exceptions','4px','weship'] as $view) {
             $this->actingAs($user)->get('/logistics/china?view='.$view)
                 ->assertOk()->assertInertia(fn ($page) => $page
                     ->where('globalGridPilotEnabled',false));
@@ -141,7 +145,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
         self::assertSame('pending', $excluded->fresh()->shipment->shipment_status);
     }
 
-    public function test_r4_5_speeda_grid_and_weship_native_keep_original_provider_query_and_dates(): void
+    public function test_r4_5_both_daily_provider_grids_keep_original_queries_and_dates(): void
     {
         $speedaPending=$this->domesticOrder('007-R45-4PX-PEND','4PX',true);
         $speedaPending->items()->create(['sku'=>'MF414A','product_summary'=>'test','quantity'=>2,'unit_price'=>'9.00','line_revenue'=>'18.00']);
@@ -168,12 +172,18 @@ final class DomesticTodayOrdersExportTest extends TestCase
             ->assertOk()->assertInertia(fn ($page) => $page
                 ->where('rows.total',1)->where('rows.per_page',20)
                 ->where('rows.data.0.erp_order_id','007-R45-4PX-SHIP'));
-        $this->actingAs($actor)->get('/logistics/china?view=today-weship')
+        foreach (['','&global_grid=1','&global_grid=0'] as $extra) {
+            $this->actingAs($actor)->get('/logistics/china?view=today-weship'.$extra)
+                ->assertOk()->assertInertia(fn ($page) => $page
+                    ->where('globalGridPilotEnabled',$extra==='&global_grid=0'?false:true)
+                    ->where('rows.total',2)
+                    ->where('rows.data.0.erp_order_id','007-R45-WES-PEND')
+                    ->where('rows.data.1.erp_order_id','007-R45-WES-SHIP'));
+        }
+        $this->actingAs($actor)->get('/logistics/china?view=today-weship&per_page=20&search=R45-WES-SHIP')
             ->assertOk()->assertInertia(fn ($page) => $page
-                ->where('globalGridPilotEnabled',false)
-                ->where('rows.total',2)
-                ->where('rows.data.0.erp_order_id','007-R45-WES-PEND')
-                ->where('rows.data.1.erp_order_id','007-R45-WES-SHIP'));
+                ->where('rows.total',1)->where('rows.per_page',20)
+                ->where('rows.data.0.erp_order_id','007-R45-WES-SHIP'));
 
         self::assertSame('pending',$speedaPending->fresh()->shipment->shipment_status);
         self::assertSame('shipped',$speedaShipped->fresh()->shipment->shipment_status);
