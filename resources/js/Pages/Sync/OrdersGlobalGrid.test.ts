@@ -135,7 +135,18 @@ describe('Sync Orders Global Grid R0–R3 canary', () => {
     expect(get).toHaveBeenCalledTimes(5)
   })
 
-  it('exposes switch only when pilot is available and does not replace legacy for normal users', async () => {
+  it('preserves explicit old-table fallback across pagination after default rollout', async () => {
+    const { wrapper } = await grid({
+      ...props(), globalGridPilotEnabled: false, globalGridPilotAvailable: true,
+    })
+    expect(wrapper.find('.overview-table').exists()).toBe(true)
+    await wrapper.find('.page-controls button:last-child').trigger('click')
+    expect(get).toHaveBeenCalledWith('/sync/orders',
+      expect.objectContaining({ global_grid: '0', page: 2 }),
+      expect.any(Object))
+  })
+
+  it('exposes explicit old-table fallback and can return to the default Grid', async () => {
     const { wrapper: normal }=await grid({
       ...props(), globalGridPilotEnabled:false,globalGridPilotAvailable:false,
     })
