@@ -29,7 +29,8 @@ final class Carrier extends Model
 
     public function displayName(): string
     {
-        // ERP labels are Chinese-only. Canonical carrier IDs and English values remain untouched.
-        return trim((string) $this->name_zh) ?: $this->name;
+        // Carrier brands retain their recognizable English names; service labels stay Chinese-only.
+        $parts = array_values(array_filter([trim((string) $this->name_en), trim((string) $this->name_zh)]));
+        return $parts !== [] ? implode(' / ', array_unique($parts)) : $this->name;
     }
 }
