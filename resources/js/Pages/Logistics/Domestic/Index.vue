@@ -14,6 +14,8 @@ import { publishGlobalFeedback } from '../../../lib/globalFeedback'
 import { currentCsrfHeaders } from '../../../lib/csrfHeaders'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowStatusPill.vue'
+import CompactWorkspaceToolbar from '../../../Components/UI/CompactWorkspaceToolbar.vue'
+import CompactWorkspaceHelp from '../../../Components/UI/CompactWorkspaceHelp.vue'
 
 type Item = { sku:string|null; quantity:number }
 type Row = {
@@ -109,7 +111,6 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   destination:[row.country,row.state,row.city].filter(Boolean).join(' / ')||'—',
   tracking_sync_status:row.source_type==='woocommerce'?trackingLabel(row.tracking_sync_status):'—',
 })))
-const todayGridCompact = computed(()=>isDailyProviderView(props.view) && !!props.globalGridPilotEnabled)
 const pendingHasSyncAction = computed(()=>props.view==='pending' && props.canTrackingSync
   && props.rows.data.some(row=>eligibleForTracking(row)))
 const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
@@ -550,38 +551,30 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 
 <template>
   <Head title="国内发货 · BYL ERP" />
-  <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP','物流','国内发货']">
-    <section class="domestic-page" :class="{'domestic-today-grid':todayGridCompact}">
-      <header class="domestic-head">
-        <div>
-          <p v-if="!todayGridCompact" class="eyebrow">FACTORY · 中国工厂</p>
-          <h1>国内发货</h1>
-          <p v-if="!todayGridCompact">Vita 分仓 → Kaven / 运营确认有货 → Liang 发货 → 下载承运商文件 → 回传 Tracking → Preview → Apply。单个异常订单不会阻断其他正常订单。</p>
-        </div>
-        <div class="domestic-head-actions">
-          <a class="secondary" href="/logistics/wait-stock">待分配 →</a>
-          <button v-if="globalGridPilotAvailable" type="button" class="secondary"
-            data-testid="domestic-global-grid-toggle" @click="gridNavigation.toggle()">
-            {{ globalGridPilotEnabled ? '返回原表' : '切换新版表' }}
-          </button>
-        </div>
-      </header>
-
-      <section v-if="!todayGridCompact" class="continuity">
-        <strong>生产连续性</strong>
-        <span>正常订单继续发货；缺电话 / 单号冲突 / Tracking 冲突只阻断对应订单，不阻断整批。</span>
-      </section>
-
-      <nav class="tabs">
-        <button v-for="([key,label]) in tabs" :key="key" type="button" :class="{active:view===key}" @click="switchView(key)">
-          {{ label }} <span>{{ viewCounts[key] ?? 0 }}</span>
-        </button>
-      </nav>
+  <AuthenticatedLayout title="国内发货" :breadcrumbs="['BYL ERP','物流','国内发货']">
+    <section class="domestic-page domestic-compact-workspace">
+      <CompactWorkspaceToolbar>
+        <template #navigation>
+          <nav class="tabs" aria-label="国内发货业务视图">
+            <button v-for="([key,label]) in tabs" :key="key" type="button" :class="{active:view===key}" @click="switchView(key)">
+              {{ label }} <span>{{ viewCounts[key] ?? 0 }}</span>
+            </button>
+          </nav>
+        </template>
+        <template #actions>
+          <div class="domestic-head-actions">
+            <a class="secondary" href="/logistics/wait-stock">待分配 →</a>
+            <button v-if="globalGridPilotAvailable" type="button" class="secondary"
+              data-testid="domestic-global-grid-toggle" @click="gridNavigation.toggle()">
+              {{ globalGridPilotEnabled ? '返回原表' : '切换新版表' }}
+            </button>
+          </div>
+        </template>
+      </CompactWorkspaceToolbar>
 
       <section v-if="view==='pending'" class="pending-batch-card">
         <div>
           <strong>待发货 · 批量登记</strong>
-          <small>支持速达、纬狮和 ERP 批量表（自动识别格式）。先上传预览，再确认发货；不改变承运商下单模板。</small>
         </div>
         <div class="actions">
           <a class="primary" href="/logistics/china/pending-batch/export">下载待发货批量表</a>
@@ -604,17 +597,16 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         </article>
       </section>
 
-      <section v-if="view==='today-4px' || view==='today-weship'" class="provider-grid single"
-        :class="{'provider-grid-compact':todayGridCompact}">
+      <section v-if="view==='today-4px' || view==='today-weship'" class="provider-grid single">
         <article v-if="view!=='today-weship'" class="provider-card">
-          <div><strong>速达 / 4PX</strong><small v-if="!todayGridCompact">新版 27 列模板 · 所有订单按现有数据填写 SKU / 69条码（空缺留空） · XLSX 下载 · XLS/XLSX 回传</small></div>
+          <div><strong>速达 / 4PX</strong></div>
           <div class="actions">
             <a class="primary" href="/logistics/china/export/4px">下载速达下单表</a>
 
           </div>
         </article>
         <article v-if="view!=='today-4px'" class="provider-card">
-          <div><strong>纬狮 / Weship</strong><small v-if="!todayGridCompact">{{ providerStatus.weship.export_ready ? (providerStatus.weship.note ?? '下单导出可用') : providerStatus.weship.reason }}</small></div>
+          <div><strong>纬狮 / Weship</strong><small v-if="!providerStatus.weship.export_ready" role="alert">{{ providerStatus.weship.reason }}</small></div>
           <div class="actions">
             <a v-if="providerStatus.weship.export_ready" class="primary" href="/logistics/china/export/weship">下载纬狮下单表</a>
 
@@ -750,12 +742,13 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         </table>
       </div>
       <footer>共 {{ rows.total }} 条</footer>
-      <footer v-if="todayGridCompact" class="domestic-footer-help">
-        FACTORY · 中国工厂。Vita 分仓 → 商务确认有货 → Liang 发货 → 下载物流文件 → 回传 Tracking → 核对同步状态。
-        <template v-if="view==='today-4px'">速达沿用原 27 列模板，69 条码缺失留空；XLSX 下载、XLS/XLSX 回传。</template>
-        <template v-else-if="view==='today-weship'">纬狮沿用原 24 列模板，XLSX 下载、XLS/XLSX 回传。</template>
-        单个异常订单不会阻断其他正常订单；以 ERP 最新发货状态和官网同步回读为准。
-      </footer>
+      <CompactWorkspaceHelp>
+        <span>FACTORY · 中国工厂。Vita 分仓 → Kaven / 运营确认有货 → Liang 发货 → 下载承运商文件 → 回传 Tracking → Preview → Apply。</span>
+        <span>生产连续性：正常订单继续发货；缺电话 / 单号冲突 / Tracking 冲突只阻断对应订单，不阻断整批。单个异常订单不会阻断其他正常订单；以 ERP 最新状态及官网同步回读为准。</span>
+        <span v-if="view==='pending'">支持速达、纬狮和 ERP 批量表（自动识别格式）。先上传预览，再确认发货；不改变承运商下单模板。</span>
+        <span v-if="view==='today-4px'">新版 27 列模板 · 所有订单按现有数据填写 SKU / 69条码（空缺留空） · XLSX 下载 · XLS/XLSX 回传。</span>
+        <span v-if="view==='today-weship' && providerStatus.weship.export_ready">{{ providerStatus.weship.note ?? '纬狮下单导出可用' }}</span>
+      </CompactWorkspaceHelp>
       <div v-if="rejectTarget" class="review-reject-backdrop" @click.self="rejectTarget=null">
         <section class="review-reject-dialog" role="dialog" aria-modal="true" aria-label="驳回国内订单">
           <h2>驳回到 Vita 待分仓</h2>
@@ -780,7 +773,15 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 .domestic-grid-main{margin:8px 0 14px;min-width:0}
 .domestic-grid-legacy-tools{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
 
-.domestic-page{padding:20px;min-width:0;color:#111827}.domestic-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.eyebrow{margin:0;color:#0f766e;font-size:11px;font-weight:800;letter-spacing:.08em}.domestic-head h1{margin:4px 0;font-size:30px}.domestic-head p{margin:0;color:#64748b;font-size:13px}.continuity{display:flex;gap:12px;align-items:center;margin:14px 0;padding:10px 12px;border:1px solid #b7ded8;border-radius:9px;background:#f2fbf9;color:#315f59;font-size:12px}.continuity strong{color:#0f766e}.tabs{display:flex;gap:5px;overflow-x:auto;border-bottom:1px solid #e2e8f0;margin-bottom:12px}.tabs button{border:0;background:transparent;padding:9px 12px;color:#536174;font-weight:700;white-space:nowrap;border-bottom:2px solid transparent}.tabs button.active{color:#0f766e;border-bottom-color:#0f766e}.tabs span{color:#94a3b8;margin-left:3px}.pending-batch-card{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px;padding:12px;border:1px solid #b7ded8;border-radius:10px;background:#f2fbf9}.pending-batch-card>div:first-child{display:flex;flex-direction:column;gap:4px}.pending-batch-card small{color:#64748b;max-width:760px}
+.domestic-page{min-width:0;color:#111827}
+.domestic-page.domestic-compact-workspace{display:flex;flex-direction:column;min-height:calc(100dvh - 168px);padding:9px 12px}
+.domestic-compact-workspace .tabs{display:flex;gap:5px;overflow-x:auto;min-width:0;margin:0;border-bottom:0}
+.domestic-compact-workspace .tabs button{border:0;background:transparent;padding:6px 10px;color:#536174;font-weight:700;white-space:nowrap;border-bottom:2px solid transparent}
+.domestic-compact-workspace .tabs button.active{color:#0f766e;border-bottom-color:#0f766e}
+.domestic-compact-workspace .tabs span{color:#94a3b8;margin-left:3px}
+.pending-batch-card{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:7px 0;padding:7px 10px;border:1px solid #b7ded8;border-radius:8px;background:#f2fbf9}
+.pending-batch-card>div:first-child{display:flex;flex-direction:column;gap:4px}
+.pending-batch-card small{color:#64748b;max-width:760px}
 .domestic-head-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex:0 0 auto;white-space:nowrap}
 .domestic-carrier-cell select,.domestic-service-cell select{min-width:138px;max-width:215px;height:34px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1e293b;padding:4px 7px;font-size:12px}
 .domestic-service-entry{display:flex;gap:5px;align-items:center}.domestic-service-entry button{min-height:32px;padding:0 9px;white-space:nowrap}
@@ -789,20 +790,13 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 button:disabled{opacity:.5;cursor:not-allowed}
 .sync-status{font-size:11px;font-weight:700;padding:4px 7px;border-radius:5px;background:#fff1d6;color:#92400e}
 .sync-status.completed{background:#dcfce7;color:#166534}.sync-status.failed{background:#fee2e2;color:#991b1b}.sync-status.retry_wait{background:#fef3c7;color:#92400e}.sync-status.processing{background:#dbeafe;color:#1d4ed8}.sync-failure{display:block;max-width:240px;white-space:normal;color:#b91c1c;font-size:10px;margin-top:4px}
-.domestic-today-grid{padding:9px 12px}
-.domestic-today-grid .domestic-head{align-items:center;gap:8px}
-.domestic-today-grid .domestic-head h1{font-size:21px;margin:0;line-height:1.25}
-.domestic-today-grid .tabs{margin:5px 0 7px}
-.domestic-today-grid .tabs button{padding:6px 10px}
-.domestic-today-grid .today-shortcut{min-height:36px;padding:4px 8px;border-radius:6px}
-.domestic-today-grid .today-shortcuts{margin-bottom:7px}
-.domestic-today-grid .provider-grid-compact{margin-bottom:6px}
-.domestic-today-grid .provider-grid-compact .provider-card{align-items:center;min-height:34px;padding:3px 8px;border-radius:6px}
-.domestic-today-grid .provider-grid-compact .provider-card a{min-height:28px;padding:3px 10px}
-.domestic-footer-help{font-size:10px;color:#94a3b8;line-height:1.4;padding:3px 2px}
+.domestic-compact-workspace .today-shortcut{min-height:36px;padding:4px 8px;border-radius:6px}
+.domestic-compact-workspace .today-shortcuts{margin:7px 0}
+.domestic-compact-workspace .provider-card{padding:8px 10px}
+.domestic-compact-workspace :deep(.compact-workspace-help span+span)::before{content:' · '}
 .today-shortcuts{display:grid;grid-template-columns:minmax(160px,1fr) minmax(290px,1.4fr) minmax(290px,1.4fr);gap:8px;margin:0 0 10px}.today-shortcut{display:flex;align-items:center;justify-content:space-around;gap:10px;min-width:0;min-height:52px;padding:8px 12px;border:1px solid #dbe4e8;border-radius:9px;background:#fff}.today-shortcut-order{justify-content:flex-start}.today-shortcut a,.today-shortcut button,.today-shortcut span{border:0;background:transparent;color:#0f766e;font-size:14px;font-weight:800;white-space:nowrap;padding:3px 6px;text-decoration:none;cursor:pointer}.today-shortcut a:hover,.today-shortcut button:hover{text-decoration:underline}.today-shortcut a:focus-visible,.today-shortcut button:focus-visible{outline:2px solid #0f8f82;outline-offset:3px;border-radius:4px}.today-shortcut .today-shortcut-disabled{opacity:.5;cursor:default}.provider-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.provider-grid.single{grid-template-columns:1fr}.provider-card{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid #dbe4e8;border-radius:10px;background:#fff}.provider-card>div:first-child{display:flex;flex-direction:column;gap:4px}.provider-card small{color:#64748b}.actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.primary,.secondary,.approve,.approved button{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:0 11px;border-radius:7px;font-size:12px;font-weight:800;text-decoration:none}.primary,.approve{border:1px solid #0f8f82;background:#0f8f82;color:#fff}.secondary,.approved button{border:1px solid #b8c6cc;background:#fff;color:#334155}.hidden{display:none}.preview{margin-bottom:12px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.preview-head{display:flex;justify-content:space-between;gap:12px}.preview-head>div{display:flex;flex-direction:column}.preview p{color:#64748b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #dfe6ea;border-radius:10px;background:#fff}.table-wrap table{width:max-content;min-width:100%;border-collapse:collapse;font-size:12px}.table-wrap th,.table-wrap td{padding:8px;border-bottom:1px solid #e9eef1;text-align:left;white-space:nowrap}.table-wrap th{background:#f8fafc;color:#475569}.orders table{min-width:1500px}.orders a{color:#0f766e;font-weight:800;text-decoration:none}.approved{display:flex;gap:6px;align-items:center;color:#047857;font-weight:800}.approved button{min-height:26px;padding:0 7px;font-size:10px}.danger{color:#b91c1c;font-weight:800}.ready{color:#047857;font-weight:800}.empty{text-align:center!important;padding:30px!important;color:#94a3b8}.status-apply{color:#047857}.status-noop{color:#64748b}.status-blocked{color:#b91c1c}footer{padding:10px 2px;color:#64748b;font-size:12px}
 @media(max-width:900px){.today-shortcuts{grid-template-columns:1fr}.today-shortcut{justify-content:flex-start;gap:22px}}
-@media(max-width:800px){.domestic-page{padding:14px}.domestic-head{flex-direction:column}.pending-batch-card{flex-direction:column}.provider-grid{grid-template-columns:1fr}.provider-card{flex-direction:column}.continuity{align-items:flex-start;flex-direction:column}.preview-head{flex-direction:column}}
+@media(max-width:800px){.domestic-page.domestic-compact-workspace{padding:8px;min-height:calc(100dvh - 150px)}.pending-batch-card{flex-direction:column;align-items:stretch}.provider-grid{grid-template-columns:1fr}.provider-card{flex-direction:column}.preview-head{flex-direction:column}}
 
 .review-actions{display:flex;align-items:center;gap:5px}.stockout-btn,.reject-btn{border:1px solid #e3ac78;background:#fff9f1;color:#9a3412;border-radius:6px;min-height:30px;padding:0 8px;font-size:12px;font-weight:800}.reject-btn{border-color:#efb2b2;background:#fff;color:#b42318}.review-reject-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(16,24,40,.5);display:flex;align-items:center;justify-content:center;padding:16px}.review-reject-dialog{background:#fff;width:min(480px,100%);border-radius:12px;padding:20px;box-shadow:0 24px 80px rgba(16,24,40,.2);display:grid;gap:12px}.review-reject-dialog h2{margin:0;font-size:19px}.review-reject-dialog p{margin:0;font-size:13px;color:#64748b}.review-reject-dialog label{font-size:12px;font-weight:700}.review-reject-dialog textarea{width:100%;padding:10px;border:1px solid #d4dae1;border-radius:7px;font-size:13px}.review-reject-dialog .actions{justify-content:flex-end}.reason-shortcuts{display:flex;flex-wrap:wrap;gap:6px}
 </style>

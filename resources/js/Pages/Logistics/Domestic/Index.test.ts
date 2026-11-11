@@ -42,6 +42,29 @@ const baseProps = {
 describe('Domestic logistics production workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear(); routerReload.mockClear(); feedbackSpy.mockClear(); vi.unstubAllGlobals() })
 
+  it('uses one compact toolbar and bottom help for all nine domestic views', () => {
+    const views=['review','stockout','pending','today','today-4px','today-weship','exceptions','4px','weship']
+    for (const view of views) {
+      const wrapper=mount(Index,{props:{...baseProps,view,trackingImportPreview:null,trackingImportProvider:null}})
+      expect(wrapper.find('.domestic-compact-workspace').exists(),view).toBe(true)
+      expect(wrapper.find('header.compact-workspace-toolbar').exists(),view).toBe(true)
+      expect(wrapper.findAll('nav.tabs button'),view).toHaveLength(9)
+      expect(wrapper.find('.domestic-head-actions a[href="/logistics/wait-stock"]').exists(),view).toBe(true)
+      expect(wrapper.find('.eyebrow').exists(),view).toBe(false)
+      expect(wrapper.find('.continuity').exists(),view).toBe(false)
+      const help=wrapper.get('footer.compact-workspace-help')
+      expect(help.text(),view).toContain('生产连续性')
+      expect(help.text(),view).toContain('Tracking 冲突只阻断对应订单')
+    }
+  })
+
+  it('keeps export blockers visible in the grid instead of hiding actionable errors in help', () => {
+    const blocked={...baseProps.rows.data[0],export_blockers:['缺电话，禁止导出']}
+    const wrapper=mount(Index,{props:{...baseProps,view:'review',rows:{...baseProps.rows,data:[blocked]}}})
+    expect(wrapper.get('.orders').text()).toContain('缺电话，禁止导出')
+    expect(wrapper.get('footer.compact-workspace-help').text()).not.toContain('缺电话，禁止导出')
+  })
+
   it('prefills validated automatic carrier and allows direct manual override', async () => {
     const legacy={...baseProps.rows.data[0],carrier_selection_source:'automatic',carrier_ready:true,carrier:'4PX',service:'SD经济挂号-带电'}
     const wrapper=mount(Index,{props:{...baseProps,view:'pending',rows:{...baseProps.rows,data:[legacy]}}})
@@ -294,17 +317,17 @@ describe('Domestic logistics production workbench', () => {
   it('R4-5 keeps a single 4PX download in compact provider Grid and Weship native unchanged',()=>{
     const speeda=mount(Index,{props:{...baseProps,view:'today-4px',
       globalGridPilotAvailable:true,globalGridPilotEnabled:true}})
-    expect(speeda.find('.domestic-today-grid').exists()).toBe(true)
+    expect(speeda.find('.domestic-compact-workspace').exists()).toBe(true)
     expect(speeda.find('.continuity').exists()).toBe(false)
-    expect(speeda.find('.domestic-footer-help').text()).toContain('27 列模板')
-    expect(speeda.findAll('.provider-grid-compact a').map(a=>a.attributes('href')))
+    expect(speeda.find('.compact-workspace-help').text()).toContain('27 列模板')
+    expect(speeda.findAll('.provider-grid a').map(a=>a.attributes('href')))
       .toEqual(['/logistics/china/export/4px'])
     expect(speeda.find('[data-testid="domestic-native-batch-toggle"]').exists()).toBe(false)
     expect(speeda.find('input[type="file"]').exists()).toBe(false)
 
     const weship=mount(Index,{props:{...baseProps,view:'today-weship',
       globalGridPilotAvailable:true,globalGridPilotEnabled:false}})
-    expect(weship.find('.domestic-today-grid').exists()).toBe(false)
+    expect(weship.find('.domestic-compact-workspace').exists()).toBe(true)
     expect(weship.findAll('.provider-grid a').map(a=>a.attributes('href')))
       .toEqual(['/logistics/china/export/weship'])
     expect(weship.find('.table-wrap.orders table').exists()).toBe(true)

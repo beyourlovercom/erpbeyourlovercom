@@ -136,7 +136,8 @@ test('R4-L1 logistics shared Grid handles domestic, allocation and review withou
   await page.goto('/logistics/china?view=review',{waitUntil:'domcontentloaded'})
   const domestic=page.locator('[data-testid="erp-global-grid-v1"]')
   await expect(domestic).toBeVisible({timeout:20000})
-  const titleActions=page.locator('.domestic-head .domestic-head-actions')
+  // PR712 replaced the duplicate page title with one shared compact toolbar.
+  const titleActions=page.locator('.domestic-head-actions')
   const returnOriginal=titleActions.getByTestId('domestic-global-grid-toggle')
   await expect(returnOriginal).toHaveText('返回原表')
   await expect(titleActions.locator('button').last()).toHaveAttribute('data-testid','domestic-global-grid-toggle')
@@ -246,10 +247,31 @@ test('R4-L1 logistics shared Grid handles domestic, allocation and review withou
   await expect(domestic).toBeVisible()
   console.log('R4_L1_DOMESTIC_GRID_DEFAULT_HEADER_TOGGLE_AND_NATIVE_ACTIONS_PASS')
 
-  await page.goto('/logistics/wait-stock?global_grid=1',{waitUntil:'domcontentloaded'})
+  // Owner-approved wait-stock default: no opt-in, six business tabs, saved column menu,
+  // explicit header fallback to the original table and back to the same global grid.
+  await page.goto('/logistics/wait-stock',{waitUntil:'domcontentloaded'})
   const allocation=page.locator('[data-testid="erp-global-grid-v1"]')
   await expect(allocation).toBeVisible({timeout:20000})
   await expect(page.locator('.allocation-table')).toHaveCount(0)
+  await expect(page.getByTestId('allocation-global-grid-toggle')).toHaveText('返回原版表格')
+  await expect(allocation.getByText('007-1110-c99990',{exact:true}).first()).toBeVisible()
+  const allocationColumnSettings=allocation.getByRole('button',{name:'⚙ 列设置'})
+  await allocationColumnSettings.click()
+  await expect(allocation.getByText('原始订单号',{exact:true}).first()).toBeVisible()
+  await expect(allocation.getByText('金额',{exact:true}).first()).toBeVisible()
+  await allocation.getByRole('button',{name:'关闭列设置'}).click()
+  for(const label of ['仓库建议','库存待核实','人工处理','礼品待确认','已处理','全部']){
+    await page.locator('.allocation-page .tabs button').filter({hasText:label}).first().click()
+    await expect(allocation).toBeVisible()
+    await expect(page.locator('.allocation-table')).toHaveCount(0)
+  }
+  await page.getByTestId('allocation-global-grid-toggle').click()
+  await expect(page).toHaveURL(/global_grid=0/)
+  await expect(page.locator('.allocation-table')).toBeVisible()
+  await expect(page.getByTestId('allocation-global-grid-toggle')).toHaveText('切换新版表格')
+  await page.getByTestId('allocation-global-grid-toggle').click()
+  await expect(page).toHaveURL(/global_grid=1/)
+  await expect(allocation).toBeVisible()
   await allocation.getByRole('textbox',{name:'表格内搜索全部记录'}).fill('IMPOSSIBLE-ORDER-327')
   await allocation.getByRole('textbox',{name:'表格内搜索全部记录'}).press('Enter')
   await expect(page).toHaveURL(/search=IMPOSSIBLE-ORDER-327/)
@@ -654,14 +676,42 @@ test('R4-3F country route is prefilled and inline override saves without shippin
   const grid=page.locator('[data-testid="erp-global-grid-v1"]')
   await expect(grid).toBeVisible({timeout:16000})
   await expect(grid.getByText('007-1111-c99989',{exact:true})).toBeVisible()
-  await grid.locator('.ag-body-horizontal-scroll-viewport').evaluate(el=>{
-    el.scrollLeft=1150
-    el.dispatchEvent(new Event('scroll',{bubbles:true}))
-  })
-  // After horizontal column virtualization, only the remaining synthetic
-  // Mexico approved-pending row is present. Query the rendered controls.
-  const carrier=grid.locator('select[aria-label="物流商"]').first()
-  const service=grid.locator('select[aria-label="服务渠道"]').first()
+  // Account-scoped column layouts can hide the carrier/service columns after
+  // earlier Grid preference tests. Make this test deterministic by resetting
+  // only its disposable synthetic account, never a real user's preferences.
+  await grid.getByRole('button',{name:/列设置/}).click()
+  await grid.getByRole('button',{name:'恢复默认'}).click()
+  await grid.getByRole('button',{name:'完成'}).click()
+  // AG Grid virtualizes center columns horizontally and keeps pinned order
+  // IDs in another row DOM tree. Read the Mexico row index from the pinned
+  // column, then locate its own inline dropdown after revealing the column.
+  const rowIndex=await grid.getByText('007-1111-c99989',{exact:true})
+    .locator('xpath=ancestor::div[contains(@class,"ag-row")][1]').getAttribute('row-index')
+  expect(rowIndex).not.toBeNull()
+  // Pinned column placement is user-configurable; do not assume route
+  // cells live in AG Grid's center-cols DOM instead of a pinned container.
+  const selectFor=(aria:string)=>grid.locator(
+    '.ag-row[row-index="'+rowIndex+'"] select[aria-label="'+aria+'"]').first()
+  const carrier=selectFor('物流商')
+  const service=selectFor('服务渠道')
+  const horizontal=grid.locator('.ag-body-horizontal-scroll-viewport')
+  const max=await horizontal.evaluate(el=>el.scrollWidth-el.clientWidth)
+  let found=false
+  for(let offset=0;offset<=max+300;offset+=300){
+    await horizontal.evaluate((el,left)=>{
+      el.scrollLeft=left
+      el.dispatchEvent(new Event('scroll',{bubbles:true}))
+    },Math.min(offset,max))
+    await page.waitForTimeout(70)
+    if(await carrier.count()){found=true;break}
+  }
+  if(!found) console.log('R4_3F_COLUMN_DIAGNOSTIC',JSON.stringify({
+    rowIndex,max,
+    columns:await grid.locator('.ag-header-cell').allTextContents(),
+    carrierCells:await grid.locator('.ag-cell[col-id="carrier"]').count(),
+    routeSelects:await grid.locator('.domestic-pending-route-select').count(),
+  }))
+  expect(found,'Carrier column must be renderable in current AG Grid preferences').toBe(true)
   await expect(carrier).toHaveValue('Weship')
   await expect(service).toHaveValue('Standard')
   const response=page.waitForResponse(r=>r.url().includes('/carrier-service')&&r.request().method()==='POST')
@@ -687,8 +737,8 @@ test('R4-4 今日订单 Global Grid retains exact three exports, barcode, one fo
   await expect(grid).toBeVisible({timeout:16000})
   await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:16000})
   await expect(grid.getByText('007-1111-c99990',{exact:true})).toBeVisible()
-  await expect(page.locator('.domestic-today-grid .continuity')).toHaveCount(0)
-  await expect(page.locator('.domestic-footer-help')).toContainText('单个异常订单')
+  await expect(page.locator('.domestic-compact-workspace')).toBeVisible()
+  await expect(page.locator('.compact-workspace-help')).toContainText('单个异常订单')
   const shortcuts=page.locator('[aria-label="今日订单操作"] .today-shortcut')
   await expect(shortcuts).toHaveCount(3)
   await expect(shortcuts.nth(0)).toHaveText('⬇️这批订单')
@@ -710,7 +760,22 @@ test('R4-4 今日订单 Global Grid retains exact three exports, barcode, one fo
   const action=grid.locator('.domestic-grid-cell-actions').first()
   await expect(action).toBeVisible()
   await expect(action.getByText('—')).toBeVisible()
-  await grid.locator('.ag-selection-checkbox').first().click()
+  // AG Grid can render checkboxes either in row-selection wrapper or its
+  // accessible input, depending on the restored per-view column layout.
+  const selectBox=grid.locator('.ag-row .ag-selection-checkbox').first()
+  const accessibleBox=grid.locator('.ag-row [role="checkbox"]').first()
+  if(await selectBox.count()) await selectBox.click()
+  else if(await accessibleBox.count()) await accessibleBox.click()
+  else {
+    console.log('R4_4_SELECTION_DIAGNOSTIC',JSON.stringify({
+      checkboxInputs:await grid.locator('input[type="checkbox"]').count(),
+      roleChecks:await grid.locator('[role="checkbox"]').count(),
+      selectedRows:await grid.locator('.ag-row').count(),
+      agSelection:await grid.locator('.ag-selection-checkbox').count(),
+      headers:await grid.locator('.ag-header-cell').allTextContents(),
+    }))
+    await expect(selectBox).toBeVisible({timeout:6000})
+  }
   await expect(grid.getByTestId('grid-batch-footer')).toBeVisible()
   await expect(grid.getByTestId('grid-batch-footer').getByRole('combobox',{name:'批量操作'})).toBeVisible()
   await page.getByRole('button',{name:'返回原表'}).click()
@@ -731,10 +796,10 @@ test('R4-5A Speeda Grid and R4-5B Weship legacy remain provider-separated',async
   await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
   await expect(grid.getByText('007-1111-c99986',{exact:true})).toBeVisible()
   await expect(grid.getByText('007-1111-c99985',{exact:true})).toHaveCount(0)
-  await expect(page.locator('.domestic-today-grid .continuity')).toHaveCount(0)
-  await expect(page.locator('.domestic-footer-help')).toContainText('27 列模板')
-  await expect(page.locator('.provider-grid-compact a[href="/logistics/china/export/4px"]')).toBeVisible()
-  await expect(page.locator('.provider-grid-compact a[href="/logistics/china/export/weship"]')).toHaveCount(0)
+  await expect(page.locator('.domestic-compact-workspace')).toBeVisible()
+  await expect(page.locator('.compact-workspace-help')).toContainText('27 列模板')
+  await expect(page.locator('.provider-grid a[href="/logistics/china/export/4px"]')).toBeVisible()
+  await expect(page.locator('.provider-grid a[href="/logistics/china/export/weship"]')).toHaveCount(0)
   await expect(page.locator('input[type="file"]')).toHaveCount(0)
   await expect(page.getByTestId('domestic-native-batch-toggle')).toHaveCount(0)
   await expect(grid.locator('.domestic-grid-cell-actions').first()).toBeVisible()

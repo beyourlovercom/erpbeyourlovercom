@@ -44,3 +44,12 @@ Feature branch merged source main a830c499 with the provider Chinese-label
 fix. Both modifications co-exist in Index.vue; rerun PHP 55/55, Vue 31/31,
 Chrome 14/14 and CI on merge commit. Deployment must preserve the then-current
 4PX Chinese labels and its original XLSX template, not copy older frontend.
+
+## PR #712 compact workspace reconciliation
+Latest production after owner approval advanced to PR #712 Compact Workspace
+and PR #715 Chinese labels. This branch is merged with the then-latest main
+and intentionally preserves shared CompactWorkspaceToolbar, CompactWorkspaceHelp,
+all-nine-view compact layout and blocking provider warnings. The R4-5-specific
+old footer/CSS were removed to prevent duplicated help or layout regressions.
+Do not deploy an old release candidate based on PR #710. Re-run tests/CI and
+build a new allowlisted overlay against the actual Production pointer.
