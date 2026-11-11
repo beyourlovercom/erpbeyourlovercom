@@ -5,9 +5,17 @@ import FulfillmentAllocation from './FulfillmentAllocation.vue'
 vi.mock('@inertiajs/vue3', () => ({
   Head: { template: '<span />' },
   Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
+  router: { reload: vi.fn() },
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { template: '<main><slot /></main>' },
+}))
+vi.mock('../../Components/DataGrid/GlobalGrid.vue', () => ({
+  default: {
+    props: ['rows','enableSelection'],
+    emits: ['selection-change'],
+    template: '<div data-testid="mock-global-grid"><button type="button" data-testid="mock-select-rows" @click="$emit(\'selection-change\', rows.slice(0,2))">选择两单</button><slot name="footer-left" /></div>',
+  },
 }))
 
 const warehouses = [
@@ -131,6 +139,48 @@ afterEach(() => {
 })
 
 describe('Vita Fulfillment Allocation V1.1', () => {
+  it('reuses Global Grid multi-selection and batch footer, with a second explicit confirmation', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok:true, json:async()=>({results:[{order_id:10,ok:true,message:'已完成分仓'}]}),
+    })
+    vi.stubGlobal('fetch',fetchSpy)
+    const wrapper=mountPage({...props, globalGridPilotEnabled:true})
+    await flushPromises()
+    expect(wrapper.find('[data-testid="mock-global-grid"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="grid-batch-footer"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="mock-select-rows"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="grid-batch-footer"]').text()).toContain('已选 2 条')
+    await wrapper.get('select[aria-label="批量操作"]').setValue('recommend')
+    await wrapper.get('button.apply-batch').trigger('click')
+    await flushPromises()
+    const dialog=document.body.querySelector('[data-testid="allocation-batch-confirm"]')
+    expect(dialog?.textContent).toContain('可提交 1 条')
+    expect(dialog?.textContent).toContain('需逐单处理 1 条')
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    const confirm=document.body.querySelector<HTMLButtonElement>('[data-testid="allocation-batch-confirm-apply"]')
+    expect(confirm?.disabled).toBe(false)
+    confirm?.click()
+    await flushPromises()
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const [url,options]=fetchSpy.mock.calls[0]
+    expect(url).toBe('/logistics/wait-stock/batch-allocation')
+    const body=JSON.parse(options.body as string)
+    expect(body).toMatchObject({action:'recommend',order_ids:[10],confirmed:true})
+    expect(body.plan_keys['10']).toBe('split:abc')
+    wrapper.unmount()
+  })
+
+  it('keeps bulk controls disabled for view-only users and processed tab', async () => {
+    const wrapper=mountPage({...props,globalGridPilotEnabled:true,canOperate:false})
+    await flushPromises()
+    expect(wrapper.get('[data-testid="mock-global-grid"]').attributes('enableselection')).toBeUndefined()
+    expect(wrapper.find('[data-testid="grid-batch-footer"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('renders canonical table and opens 查看方案 as a modal with recommendation evidence', async () => {
     const wrapper = mountPage()
     expect(wrapper.text()).toContain('待分仓')
