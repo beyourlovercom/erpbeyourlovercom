@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { router, usePage } from '@inertiajs/vue3'
 import type { Page } from '@inertiajs/core'
 import { workspaceHotCache, workspaceHotStatus, WORKSPACE_HOT_FRESH_MS } from '../../lib/workspaceHotCache'
+import { workspaceViewState } from '../../lib/workspaceViewState'
 import {
   closeWorkspaceTab, restoreWorkspaceTabs, storageKeyForUser,
   visitWorkspaceTab, workspaceKey, toggleWorkspacePin, type WorkspaceTab, WORKSPACE_TAB_LIMIT, WORKSPACE_PIN_LIMIT,
@@ -19,6 +20,52 @@ const dirty = ref(false)
 const strip = ref<HTMLElement | null>(null)
 const activeKey = computed(() => workspaceKey(props.currentUrl))
 const keyForStorage = computed(() => storageKeyForUser(props.userId))
+
+// D5 stores only scroll offsets for the exact server-backed URL. Search, sort,
+// filters and page numbers stay owned by existing ERP route query parameters.
+const captureViewState = () => {
+  if (typeof document === 'undefined') return
+  if (workspaceViewState.capture(props.currentUrl, props.userId, document, window)) {
+    try { workspaceViewState.save(props.userId, window.sessionStorage) }
+    catch { /* private browser sessions: memory-only state restore */ }
+  }
+}
+let restoreFrame: number | null = null
+let mounted = false
+const currentBrowserRoute = () => window.location.pathname + window.location.search + window.location.hash
+const restoreViewState = () => {
+  // A prior tab can complete an async reload after this Shell has unmounted.
+  // It must NEVER apply that tab's scroll positions onto the newly active page.
+  if (!mounted || currentBrowserRoute() !== props.currentUrl) return
+  if (restoreFrame !== null) cancelAnimationFrame(restoreFrame)
+  const route = props.currentUrl
+  const snapshot = workspaceViewState.snapshot(route, props.userId)
+  if (!snapshot) return
+  let attempts = 0
+  const attempt = () => {
+    if (!mounted || props.currentUrl !== route || currentBrowserRoute() !== route) return
+    const gridSelectors = Object.keys(snapshot.scrolls).filter(selector => selector.includes('.ag-'))
+    const gridAttached = gridSelectors.every(selector => document.querySelector(selector))
+    // LayoutReady can become true BEFORE AG Grid's horizontal scroll range is
+    // measured. Setting scrollLeft at that moment silently clamps it to zero.
+    const scrollRangeReady = Object.entries(snapshot.scrolls).every(([selector, pos]) => {
+      const el = document.querySelector<HTMLElement>(selector)
+      if (!el) return false
+      const neededX = Math.min(100, pos.left)
+      const neededY = Math.min(100, pos.top)
+      return (neededX <= 0 || el.scrollWidth - el.clientWidth >= neededX)
+        && (neededY <= 0 || el.scrollHeight - el.clientHeight >= neededY)
+    })
+    const gridLayoutPending = !!document.querySelector('.oms-grid-layout-loading')
+    if ((!gridAttached || gridLayoutPending || !scrollRangeReady) && attempts++ < 90) {
+      restoreFrame = requestAnimationFrame(attempt)
+      return
+    }
+    workspaceViewState.restore(route, props.userId, document, window)
+    restoreFrame = null
+  }
+  restoreFrame = requestAnimationFrame(attempt)
+}
 
 const save = () => {
   if (!ready.value) return
@@ -41,12 +88,15 @@ const recordCurrent = () => {
   hotSize.value = workspaceHotCache.size
 }
 const reloadForUser = () => {
+  try { workspaceViewState.hydrate(props.userId, window.sessionStorage) }
+  catch { /* disabled storage must not break ERP navigation */ }
   let saved: string | null = null
   try { saved = window.sessionStorage.getItem(keyForStorage.value) } catch { /* optional */ }
   tabs.value = restoreWorkspaceTabs(saved)
   ready.value = true
   visitCurrent()
   recordCurrent()
+  void nextTick(restoreViewState)
 }
 watch(() => props.currentUrl, (next, prev) => {
   if (next !== prev) {
@@ -54,6 +104,7 @@ watch(() => props.currentUrl, (next, prev) => {
     approvedTabNavigation = null
     visitCurrent()
     recordCurrent()
+    void nextTick(restoreViewState)
   }
 })
 watch(() => props.currentTitle, () => visitCurrent())
@@ -62,6 +113,7 @@ watch(() => props.userId, () => {
   tabs.value = []
   dirty.value = false
   workspaceHotCache.clear()
+  workspaceViewState.clear()
   hotStatus.value = 'idle'
   reloadForUser()
 })
@@ -73,10 +125,14 @@ let approvedTabNavigation: string | null = null
 // A page opts in by publishing erp:workspace-dirty. Guard sidebar/Inertia
 // GET navigation too, not only clicks inside the tab strip. Form POSTs still work.
 const beforeRouteChange = router.on('before', event => {
-  if (!dirty.value || event.detail.visit.method !== 'get') return
   const next = event.detail.visit.url
   const target = next.pathname + next.search + next.hash
-  if (target === props.currentUrl) return
+  // Inertia's silent authoritative reload uses the *same route*. The new
+  // Grid has not restored its scroll yet; capturing that interim 0 would
+  // destroy the outgoing snapshot. Hot navigation already captured explicitly.
+  if (target === props.currentUrl || hotStatus.value === 'validating') return
+  captureViewState()
+  if (!dirty.value || event.detail.visit.method !== 'get') return
   if (approvedTabNavigation === target) {
     approvedTabNavigation = null
     return
@@ -87,6 +143,7 @@ const open = (tab: WorkspaceTab) => {
   if (tab.key === activeKey.value && tab.href === props.currentUrl) return
   if (hotStatus.value !== 'idle') { notice.value = '正在核对订单最新数据，请先完成核对'; return }
   if (!allowLeave()) return
+  captureViewState()
   approvedTabNavigation = tab.href
   const hot = workspaceHotCache.get(tab.href, props.userId, page.version)
   hotSize.value = workspaceHotCache.size
@@ -106,7 +163,7 @@ const open = (tab: WorkspaceTab) => {
         window.requestAnimationFrame(() => {
           router.reload({
             showProgress: false,
-            onSuccess: () => { hotStatus.value = 'idle'; recordCurrent() },
+            onSuccess: () => { hotStatus.value = 'idle'; recordCurrent(); void nextTick(restoreViewState) },
             onError: () => { workspaceHotCache.evict(hot.key); hotStatus.value = 'failed' },
             onNetworkError: () => { hotStatus.value = 'failed' },
             onCancel: () => { hotStatus.value = 'failed' },
@@ -123,6 +180,8 @@ const close = (tab: WorkspaceTab) => {
   if (tab.pinned) { notice.value = '请先取消固定，再关闭该标签'; return }
   if (hotStatus.value !== 'idle') return
   workspaceHotCache.evict(tab.key)
+  workspaceViewState.evict(tab.key)
+  try { workspaceViewState.save(props.userId, window.sessionStorage) } catch { /* optional */ }
   hotSize.value = workspaceHotCache.size
   if (tab.key === activeKey.value && !allowLeave()) return
   const result = closeWorkspaceTab(tabs.value, tab.key, activeKey.value)
@@ -153,29 +212,57 @@ const retryValidation = () => {
     onNetworkError: () => { hotStatus.value = 'failed' },
   })
 }
+// An authoritative Inertia reload can rebind Grid rowData AFTER the initial
+// layout-ready signal. Restore once more after its final successful render.
+watch(hotStatus, (status, previous) => {
+  if (!mounted || status !== 'idle' || previous !== 'validating') return
+  void nextTick(() => {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(restoreViewState))
+  })
+})
+const onGridLayoutReady = () => {
+  // AG Grid can rehydrate columns after the route is mounted. Restore the
+  // scroll once its own layout is ready; ignore stale/unmounted tab events.
+  if (!mounted) return
+  void nextTick(restoreViewState)
+}
 const onDirtyEvent = (event: Event) => {
   const detail = (event as CustomEvent<{ dirty?: boolean }>).detail
   dirty.value = detail?.dirty === true
 }
 const onBeforeUnload = (event: BeforeUnloadEvent) => {
+  // Browser refresh has no Inertia "before" event; save only viewport offsets.
+  captureViewState()
   if (!dirty.value) return
   event.preventDefault()
   event.returnValue = ''
 }
 let stopNavigationListener: (() => void) | undefined
 onMounted(() => {
+  mounted = true
   reloadForUser()
   window.addEventListener('erp:workspace-dirty', onDirtyEvent)
+  window.addEventListener('erp:workspace-grid-layout-ready', onGridLayoutReady)
   const stop = router.on('navigate', event => {
-    if (event.detail.page && event.detail.page.url === page.url) recordCurrent()
+    if (event.detail.page && event.detail.page.url === page.url) {
+      recordCurrent()
+      void nextTick(restoreViewState)
+    }
   })
   stopNavigationListener = stop
   window.addEventListener('beforeunload', onBeforeUnload)
 })
 onBeforeUnmount(() => {
+  mounted = false
+  // Do NOT capture on component unmount: during client-side Inertia push the
+  // URL prop can already refer to the incoming page while DOM is still old.
+  // That would overwrite the target's saved scroll with zero. The "before"
+  // hook and explicit hot-tab navigation capture the outgoing view instead.
+  if (restoreFrame !== null) cancelAnimationFrame(restoreFrame)
   beforeRouteChange()
   stopNavigationListener?.()
   window.removeEventListener('erp:workspace-dirty', onDirtyEvent)
+  window.removeEventListener('erp:workspace-grid-layout-ready', onGridLayoutReady)
   window.removeEventListener('beforeunload', onBeforeUnload)
 })
 </script>
