@@ -30,6 +30,8 @@ final class FulfillmentAllocationV1Test extends TestCase
             fn (Assert $page) => $page
                 ->component('Logistics/FulfillmentAllocation')
                 ->where('orders.data.0.id', $order->id)
+                ->where('globalGridPilotAvailable', true)
+                ->where('globalGridPilotEnabled', true)
                 ->where('orders.data.0.allocation_decision.status', 'manual_review')
                 ->where('orders.data.0.allocation_decision.policy.system_is_advisory', true)
                 ->where('orders.data.0.allocation_decision.policy.human_confirmation_required', true)
@@ -41,6 +43,21 @@ final class FulfillmentAllocationV1Test extends TestCase
                         && collect($codes)->diff(['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'DE', 'CA'])->isEmpty();
                 })
         );
+    }
+
+    public function test_wait_stock_legacy_is_an_explicit_opt_out_and_default_restores_global_grid(): void
+    {
+        [$user, $order] = $this->scenario(1);
+        $this->actingAs($user)->get('/logistics/wait-stock?global_grid=0')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->component('Logistics/FulfillmentAllocation')
+                ->where('globalGridPilotEnabled', false)
+                ->where('orders.data.0.id', $order->id));
+
+        $this->actingAs($user)->get('/logistics/wait-stock?global_grid=1')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->component('Logistics/FulfillmentAllocation')
+                ->where('globalGridPilotEnabled', true));
     }
 
     public function test_manual_split_materializes_a_b_derived_orders_and_downstream_logistics_only_sees_children(): void
