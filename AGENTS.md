@@ -130,8 +130,8 @@ This gate remains a mandatory Owner UAT stop where applicable, but commit/push/P
 
 **Required default:** compress redundant page-header whitespace; preserve essential title, navigation, business tabs and existing **upper-right Page Header Action Zone**; prioritize usable table/form/workspace area; move **noncritical explanations and permanent informational hints** into a small, readable Help Footer **after** the main content. Reuse shared layout components and preserve existing data, status, actions, grid/account preferences, permissions, responsive access and performance. **Blocking errors, failed saves, required validation, permission warnings, destructive confirmations and actionable safety alerts MUST remain visible in context and MUST NOT be buried in the footer.**
 
-**Canonical complete standard:** `docs/ui/BYL_COMPACT_WORKSPACE_V1.md`  
-**Canonical migration inventory & per-page progress:** `docs/ui/PAGE_MIGRATION_TRACKER_V1.md`  
+**Canonical complete standard:** `docs/ui/BYL_COMPACT_WORKSPACE_V1.md`
+**Canonical migration inventory & per-page progress:** `docs/ui/PAGE_MIGRATION_TRACKER_V1.md`
 **Cross-project source locator:** `beyourlovercom/erpbeyourlovercom@main:docs/ui/BYL_COMPACT_WORKSPACE_V1.md`
 
 Before any applicable UI change, read the standard, identify/update the scoped tracker item and explicitly check compatibility with the existing **Owner Visual Approval/UAT Gate**, **Form Design Standard**, **Page Header Action Zone**, and **Global Data Grid VI V1.1**. UI work requires Owner-rendered-design PASS before implementation and Owner inspection of the real Local/UAT pages before closure; normal PR/merge and Production release continue to follow their existing distinct authorization gates. UI PRs must provide the standard's checklist, affected routes/views, and evidence of non-regression; absent evidence is **NOT PASS**. Documentation-only adoption does not trigger page UAT or authorize deployment.
