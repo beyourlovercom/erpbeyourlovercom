@@ -95,6 +95,13 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
             ->get('/logistics/china?view=pending')
             ->assertOk()
             ->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotEnabled', true)
+                ->where('view', 'pending'));
+
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=pending&global_grid=0')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
                 ->where('globalGridPilotEnabled', false)
                 ->where('view', 'pending'));
 

@@ -170,6 +170,21 @@ DB::transaction(function () use ($runId, $activePassword, $inactivePassword): vo
     ]);
     $authorized->roles()->attach($role);
 
+    // A non-elevated synthetic logistics operator; super_admin remains
+    // deliberately read-only in the existing logistics security policy.
+    $operatorRole = Role::query()->create(['key'=>'e2e_logistics_operator','label'=>'E2E Logistics Operator']);
+    foreach (['dashboard.view','logistics.view','logistics.operate'] as $permissionKey) {
+        $permission = Permission::query()->firstOrCreate(['key'=>$permissionKey],['label'=>$permissionKey]);
+        $operatorRole->permissions()->attach($permission);
+    }
+    $operator = User::query()->create([
+        'name'=>'E2E Logistics Operator',
+        'email'=>'logistics-operator-'.$runId.'@byl-e2e.invalid',
+        'password'=>Hash::make($activePassword),
+        'is_active'=>true,
+    ]);
+    $operator->roles()->attach($operatorRole);
+
     User::query()->create([
         'name' => 'E2E Unauthorized',
         'email' => "unauthorized-{$runId}@byl-e2e.invalid",

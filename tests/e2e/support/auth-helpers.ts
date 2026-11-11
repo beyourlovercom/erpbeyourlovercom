@@ -7,6 +7,7 @@ type SyntheticCredentials = {
 
 type SyntheticUsers = {
     authorized: SyntheticCredentials;
+    logisticsOperator: SyntheticCredentials;
     unauthorized: SyntheticCredentials;
     inactive: SyntheticCredentials;
     missing: SyntheticCredentials;
@@ -37,6 +38,10 @@ export function syntheticUsers(): SyntheticUsers {
     return {
         authorized: {
             email: `authorized-${runId}@byl-e2e.invalid`,
+            password: activePassword,
+        },
+        logisticsOperator: {
+            email: 'logistics-operator-' + runId + '@byl-e2e.invalid',
             password: activePassword,
         },
         unauthorized: {
