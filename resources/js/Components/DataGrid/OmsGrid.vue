@@ -341,6 +341,12 @@ const onReady = (event: GridReadyEvent<GridRow>) => {
     // A failed preference request still reveals a usable stable default.
     layoutReady.value = true
     refresh()
+    // The layout preference service may move/reset horizontal columns
+    // *after* Inertia's page mount. Notify D5 only once layout is stable.
+    // Event is harmless outside the opted-in workspace.
+    void nextTick(() => window.requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent('erp:workspace-grid-layout-ready'))
+    }))
   })
 }
 const toggleColumn = (colId: string, show: boolean) => {
