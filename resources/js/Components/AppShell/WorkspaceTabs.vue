@@ -25,8 +25,10 @@ const keyForStorage = computed(() => storageKeyForUser(props.userId))
 // filters and page numbers stay owned by existing ERP route query parameters.
 const captureViewState = () => {
   if (typeof document === 'undefined') return
-  if (workspaceViewState.capture(props.currentUrl, props.userId, document, window))
-    workspaceViewState.save(props.userId, window.sessionStorage)
+  if (workspaceViewState.capture(props.currentUrl, props.userId, document, window)) {
+    try { workspaceViewState.save(props.userId, window.sessionStorage) }
+    catch { /* private browser sessions: memory-only state restore */ }
+  }
 }
 let restoreFrame: number | null = null
 let mounted = false
@@ -86,7 +88,8 @@ const recordCurrent = () => {
   hotSize.value = workspaceHotCache.size
 }
 const reloadForUser = () => {
-  workspaceViewState.hydrate(props.userId, window.sessionStorage)
+  try { workspaceViewState.hydrate(props.userId, window.sessionStorage) }
+  catch { /* disabled storage must not break ERP navigation */ }
   let saved: string | null = null
   try { saved = window.sessionStorage.getItem(keyForStorage.value) } catch { /* optional */ }
   tabs.value = restoreWorkspaceTabs(saved)
@@ -178,7 +181,7 @@ const close = (tab: WorkspaceTab) => {
   if (hotStatus.value !== 'idle') return
   workspaceHotCache.evict(tab.key)
   workspaceViewState.evict(tab.key)
-  workspaceViewState.save(props.userId, window.sessionStorage)
+  try { workspaceViewState.save(props.userId, window.sessionStorage) } catch { /* optional */ }
   hotSize.value = workspaceHotCache.size
   if (tab.key === activeKey.value && !allowLeave()) return
   const result = closeWorkspaceTab(tabs.value, tab.key, activeKey.value)
