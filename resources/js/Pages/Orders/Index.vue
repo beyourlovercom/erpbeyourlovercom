@@ -82,7 +82,6 @@ const modernGridEnabled = computed(() => !!props.omsGridEnabled || modernCustome
 const gridParams = () => modernGridEnabled.value ? {
   ...(props.omsGridEnabled ? { oms_grid: '1' } : {}),
   ...(props.orderKind === 'customer' ? { legacy_grid: '0' } : {}),
-  oms_grid: '1',
   per_page: props.filters.per_page ?? '50',
   sort: props.filters.sort ?? 'date',
   direction: props.filters.direction ?? 'desc',
