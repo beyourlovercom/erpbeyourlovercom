@@ -40,7 +40,7 @@ describe('R3-C warehouse hidden tab status GET policy', () => {
     const wrapper = mount(WarehouseShow, { props: {
       warehouse, clearanceProducts: [], clearanceCandidates: [], costCenter: { months: [] },
       billImportPreview: null, canOperate: false, canManage: false,
-      latestRestockLabelJob: { id: 24, is_terminal: false, status: 'running' },
+      latestRestockLabelJob: { id: 24, is_terminal: false, status: 'running' } as any,
     } })
     vi.advanceTimersByTime(10_000)
     expect(reload).not.toHaveBeenCalled()
