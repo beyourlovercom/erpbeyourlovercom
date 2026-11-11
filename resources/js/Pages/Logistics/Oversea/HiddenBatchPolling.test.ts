@@ -10,7 +10,7 @@ vi.mock('@inertiajs/vue3', () => ({
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
 
 const warehouse = { key:'us-moreplus', id:1, code:'US-LA', label:'MorePlus', carrier:'USPS', url:'/logistics/oversea/us-moreplus' }
-const batch = { id: 101, status:'running', dry_run:false, total:3 }
+const batch = { id: '101', status:'running', dry_run:false, total:3 }
 
 describe('R3-C ShipOut hidden-tab read-only status policy', () => {
   afterEach(() => {

@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { router } from '@inertiajs/vue3'
+import { router, usePage } from '@inertiajs/vue3'
+import type { Page } from '@inertiajs/core'
+import { workspaceHotCache, workspaceHotStatus, WORKSPACE_HOT_FRESH_MS } from '../../lib/workspaceHotCache'
 import {
   closeWorkspaceTab, restoreWorkspaceTabs, storageKeyForUser,
-  visitWorkspaceTab, workspaceKey, type WorkspaceTab, WORKSPACE_TAB_LIMIT,
+  visitWorkspaceTab, workspaceKey, toggleWorkspacePin, type WorkspaceTab, WORKSPACE_TAB_LIMIT, WORKSPACE_PIN_LIMIT,
 } from '../../lib/workspaceTabs'
 
 const props = defineProps<{ currentUrl: string; currentTitle: string; userId: number }>()
+const page = usePage()
+const hotStatus = workspaceHotStatus
+const hotSize = ref(workspaceHotCache.size)
 const tabs = ref<WorkspaceTab[]>([])
 const ready = ref(false)
 const notice = ref('')
@@ -24,11 +29,16 @@ const visitCurrent = () => {
   if (!ready.value) return
   const result = visitWorkspaceTab(tabs.value, props.currentUrl, props.currentTitle)
   tabs.value = result.tabs
-  notice.value = result.evicted ? '已关闭最久未访问的工作标签（最多 30 个）' : ''
+  notice.value = result.evicted ? '已休眠并移除最久未访问的非固定标签' : ''
   save()
   void nextTick(() => strip.value?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({
     inline: 'nearest', block: 'nearest',
   }))
+}
+const recordCurrent = () => {
+  if (!ready.value) return
+  workspaceHotCache.capture(page as unknown as Page, props.userId)
+  hotSize.value = workspaceHotCache.size
 }
 const reloadForUser = () => {
   let saved: string | null = null
@@ -36,11 +46,14 @@ const reloadForUser = () => {
   tabs.value = restoreWorkspaceTabs(saved)
   ready.value = true
   visitCurrent()
+  recordCurrent()
 }
 watch(() => props.currentUrl, (next, prev) => {
   if (next !== prev) {
     dirty.value = false
+    approvedTabNavigation = null
     visitCurrent()
+    recordCurrent()
   }
 })
 watch(() => props.currentTitle, () => visitCurrent())
@@ -48,6 +61,8 @@ watch(() => props.userId, () => {
   ready.value = false
   tabs.value = []
   dirty.value = false
+  workspaceHotCache.clear()
+  hotStatus.value = 'idle'
   reloadForUser()
 })
 const allowLeave = (): boolean => {
@@ -70,15 +85,73 @@ const beforeRouteChange = router.on('before', event => {
 })
 const open = (tab: WorkspaceTab) => {
   if (tab.key === activeKey.value && tab.href === props.currentUrl) return
+  if (hotStatus.value !== 'idle') { notice.value = '正在核对订单最新数据，请先完成核对'; return }
+  if (!allowLeave()) return
+  approvedTabNavigation = tab.href
+  const hot = workspaceHotCache.get(tab.href, props.userId, page.version)
+  hotSize.value = workspaceHotCache.size
+  if (hot) {
+    // No server request for the initial frame. This is a response snapshot,
+    // not a live cached AG Grid instance. Server validation still gates actions.
+    // Any operational table must be validated even if it was visited moments
+    // ago; only Dashboard may reuse a 5-second read-only snapshot unchanged.
+    const needsRefresh = hot.component !== 'Dashboard/Index' || Date.now() - hot.capturedAt > WORKSPACE_HOT_FRESH_MS
+    if (needsRefresh) hotStatus.value = 'validating'
+    workspaceHotCache.markClientRestore(hot.key)
+    router.push({
+      url: hot.href, component: hot.component, props: hot.props,
+      preserveScroll: true, preserveState: false,
+      onSuccess: () => {
+        if (!needsRefresh) return
+        window.requestAnimationFrame(() => {
+          router.reload({
+            showProgress: false,
+            onSuccess: () => { hotStatus.value = 'idle'; recordCurrent() },
+            onError: () => { workspaceHotCache.evict(hot.key); hotStatus.value = 'failed' },
+            onNetworkError: () => { hotStatus.value = 'failed' },
+            onCancel: () => { hotStatus.value = 'failed' },
+          })
+        })
+      },
+      onError: () => { hotStatus.value = 'failed' },
+    })
+    return
+  }
   router.visit(tab.href, { preserveState: false, preserveScroll: false })
 }
 const close = (tab: WorkspaceTab) => {
+  if (tab.pinned) { notice.value = '请先取消固定，再关闭该标签'; return }
+  if (hotStatus.value !== 'idle') return
+  workspaceHotCache.evict(tab.key)
+  hotSize.value = workspaceHotCache.size
   if (tab.key === activeKey.value && !allowLeave()) return
   const result = closeWorkspaceTab(tabs.value, tab.key, activeKey.value)
   if (result.nextHref && dirty.value) approvedTabNavigation = result.nextHref
   tabs.value = result.tabs
   save()
   if (result.nextHref) router.visit(result.nextHref, { preserveState: false, preserveScroll: false })
+}
+const togglePin = (tab: WorkspaceTab) => {
+  const result = toggleWorkspacePin(tabs.value, tab.key)
+  if (result.blocked) { notice.value = '最多只能固定 ' + WORKSPACE_PIN_LIMIT + ' 个标签'; return }
+  tabs.value = result.tabs
+  notice.value = tabs.value.find(x => x.key === tab.key)?.pinned ? '标签已固定' : '标签已取消固定'
+  save()
+}
+const sleepOthers = () => {
+  workspaceHotCache.sleepOthers(activeKey.value)
+  hotSize.value = workspaceHotCache.size
+  notice.value = '其他页面已休眠；固定入口仍保留'
+}
+const retryValidation = () => {
+  if (hotStatus.value !== 'failed') return
+  hotStatus.value = 'validating'
+  router.reload({
+    showProgress: false,
+    onSuccess: () => { hotStatus.value = 'idle'; recordCurrent() },
+    onError: () => { hotStatus.value = 'failed' },
+    onNetworkError: () => { hotStatus.value = 'failed' },
+  })
 }
 const onDirtyEvent = (event: Event) => {
   const detail = (event as CustomEvent<{ dirty?: boolean }>).detail
@@ -89,13 +162,19 @@ const onBeforeUnload = (event: BeforeUnloadEvent) => {
   event.preventDefault()
   event.returnValue = ''
 }
+let stopNavigationListener: (() => void) | undefined
 onMounted(() => {
   reloadForUser()
   window.addEventListener('erp:workspace-dirty', onDirtyEvent)
+  const stop = router.on('navigate', event => {
+    if (event.detail.page && event.detail.page.url === page.url) recordCurrent()
+  })
+  stopNavigationListener = stop
   window.addEventListener('beforeunload', onBeforeUnload)
 })
 onBeforeUnmount(() => {
   beforeRouteChange()
+  stopNavigationListener?.()
   window.removeEventListener('erp:workspace-dirty', onDirtyEvent)
   window.removeEventListener('beforeunload', onBeforeUnload)
 })
@@ -114,13 +193,22 @@ onBeforeUnmount(() => {
           @click="open(tab)"
         >{{ tab.title }}</button>
         <button
-          type="button" class="erp-workspace-tab-close"
+          type="button" class="erp-workspace-tab-pin" :class="{ 'is-pinned': tab.pinned }"
+          :aria-label="(tab.pinned ? '取消固定：' : '固定标签：') + tab.title"
+          :title="tab.pinned ? '取消固定' : '固定（最多 3 个）'"
+          @click="togglePin(tab)"
+        >{{ tab.pinned ? '●' : '○' }}</button>
+        <button
+          type="button" class="erp-workspace-tab-close" :disabled="tab.pinned"
           :aria-label="'关闭工作标签：' + tab.title" :title="'关闭：' + tab.title"
           @click="close(tab)"
         >×</button>
       </div>
     </div>
-    <span class="erp-workspace-tab-count" :title="'最多 ' + WORKSPACE_TAB_LIMIT + ' 个工作标签'">{{ tabs.length }}/{{ WORKSPACE_TAB_LIMIT }}</span>
+    <button type="button" class="erp-workspace-sleep" title="释放其他页面缓存，保留固定标签和导航记录" @click="sleepOthers">休眠其他</button>
+    <span class="erp-workspace-tab-count" :title="'工作标签 ' + tabs.length + '/' + WORKSPACE_TAB_LIMIT + '；热缓存 ' + hotSize + '/3'">{{ tabs.length }}/{{ WORKSPACE_TAB_LIMIT }}</span>
+    <span v-if="hotStatus === 'validating'" class="erp-workspace-validation" role="status">正在校验最新数据…</span>
+    <button v-if="hotStatus === 'failed'" class="erp-workspace-retry" type="button" @click="retryValidation">校验失败 · 重试</button>
     <span class="sr-only" role="status" aria-live="polite">{{ notice }}</span>
   </nav>
 </template>
@@ -160,7 +248,7 @@ onBeforeUnmount(() => {
   border-color: #28847b;
 }
 .erp-workspace-tab-open,
-.erp-workspace-tab-close {
+.erp-workspace-tab-pin,.erp-workspace-tab-close {
   background: transparent;
   color: var(--byl-text, #293744);
   border: 0;
@@ -183,7 +271,13 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 .erp-workspace-tab-open:focus-visible,
-.erp-workspace-tab-close:focus-visible { outline: 2px solid #28847b; outline-offset: 2px; }
+.erp-workspace-tab-pin:focus-visible,.erp-workspace-tab-close:focus-visible { outline: 2px solid #28847b; outline-offset: 2px; }
+.erp-workspace-tab-close:disabled { opacity: .3; cursor: not-allowed; }
+.erp-workspace-tab-pin.is-pinned { color: #28847b; }
+.erp-workspace-tab-pin:hover { color: #28847b; opacity: 1; }
+.erp-workspace-sleep,.erp-workspace-retry { flex:0 0 auto; font:inherit; font-size:11px; border:1px solid #d8e0e7; background:transparent; border-radius:5px; padding:4px 6px; cursor:pointer; }
+.erp-workspace-validation { font-size:11px; color:#576a79; white-space:nowrap; }
+.erp-workspace-retry { color:#a33333; }
 .erp-workspace-tab-close:hover { opacity: 1; color: #a33333; }
 .erp-workspace-tab-count { flex: 0 0 auto; color: var(--byl-text-muted, #687987); font-size: 11px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }

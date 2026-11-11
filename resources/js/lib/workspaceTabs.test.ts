@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   closeWorkspaceTab, restoreWorkspaceTabs, safeWorkspaceHref, storageKeyForUser,
-  visitWorkspaceTab, workspaceKey, workspaceTitle, WORKSPACE_TAB_LIMIT,
+  visitWorkspaceTab, workspaceKey, workspaceTitle, toggleWorkspacePin, WORKSPACE_TAB_LIMIT, WORKSPACE_PIN_LIMIT,
 } from './workspaceTabs'
 
 describe('ERP V4 bounded workspace tabs', () => {
@@ -60,5 +60,25 @@ describe('ERP V4 bounded workspace tabs', () => {
     expect(result.tabs).toHaveLength(1)
     expect(closeWorkspaceTab(result.tabs, '/dashboard', '/dashboard').nextHref).toBe('/dashboard')
     expect(closeWorkspaceTab(tabs, '/dashboard', '/orders').nextHref).toBeNull()
+  })
+  it('locks at most 3 pinned tabs, retains them during LRU eviction and restores session pins', () => {
+    let tabs = [] as ReturnType<typeof restoreWorkspaceTabs>
+    for (let i = 1; i <= 30; i++) tabs = visitWorkspaceTab(tabs, '/orders/' + i, '订单 ' + i, i).tabs
+    for (let i = 1; i <= WORKSPACE_PIN_LIMIT; i++) {
+      const outcome = toggleWorkspacePin(tabs, '/orders/' + i)
+      expect(outcome.blocked).toBe(false)
+      tabs = outcome.tabs
+    }
+    expect(toggleWorkspacePin(tabs, '/orders/4').blocked).toBe(true)
+    // A pinned bookmark cannot close accidentally even if active.
+    expect(closeWorkspaceTab(tabs, '/orders/1', '/orders/1').tabs).toHaveLength(30)
+    const after = visitWorkspaceTab(tabs, '/orders/31', '第31单', 100).tabs
+    expect(after).toHaveLength(30)
+    expect(after.filter(tab => tab.pinned)).toHaveLength(3)
+    const restored = restoreWorkspaceTabs(JSON.stringify(after))
+    expect(restored.filter(tab => tab.pinned)).toHaveLength(3)
+    const unpinned = toggleWorkspacePin(restored, '/orders/1')
+    expect(unpinned.blocked).toBe(false)
+    expect(unpinned.tabs.find(tab => tab.key === '/orders/1')?.pinned).toBe(false)
   })
 })
