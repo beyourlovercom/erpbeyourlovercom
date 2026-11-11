@@ -45,6 +45,8 @@ describe('Carrier detail ledger', () => {
     await wrapper.findAll('button').find(button => button.text() === '编辑承运商')!.trigger('click')
     expect(wrapper.get('[role="dialog"][aria-label="编辑承运商"]').text()).toContain('默认规则说明')
     expect(wrapper.text()).toContain('运输 / 服务类型')
+    expect(wrapper.get('.service-editor-table thead').text()).toContain('前台显示名')
+    expect(wrapper.get('.service-editor-table thead').text()).not.toContain('记录值')
     const rows = wrapper.findAll('.service-editor-table tbody tr')
     const internationalInputs = rows[1].findAll('input')
     expect((internationalInputs[1].element as HTMLInputElement).value).toBe('国际包裹')

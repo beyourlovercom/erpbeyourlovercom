@@ -185,7 +185,7 @@ const saveCarrier = () => {
           <div class="service-editor-heading"><div><h3>运输 / 服务类型</h3><p>服务名称尽可能中英文并列；历史记录值保持兼容。</p></div><button type="button" class="mvp-button carrier-add-service" @click="addService">＋ 新增服务类型</button></div>
           <div class="service-editor-table-wrap">
             <table class="service-editor-table">
-              <thead><tr><th>默认</th><th>中文名称</th><th>英文名称</th><th>内部 Service 值</th><th>记录值</th><th>排序</th><th>启用</th></tr></thead>
+              <thead><tr><th>默认</th><th>中文名称</th><th>英文名称</th><th>内部 Service 值</th><th>前台显示名</th><th>排序</th><th>启用</th></tr></thead>
               <tbody>
                 <tr v-for="row in carrierForm.services" :key="row.id ?? row.service_key">
                   <td><input type="radio" name="carrier-default-service" :checked="defaultServiceKey === row.service_key" :disabled="!row.is_active || !row.service_key.trim()" @change="setDefault(row)"></td>
