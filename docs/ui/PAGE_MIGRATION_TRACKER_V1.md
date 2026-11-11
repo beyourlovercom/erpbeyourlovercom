@@ -1,7 +1,7 @@
 # BYL ERP 页面 Compact Workspace 改造总表 V1.0
 
-> 规则：[BYL_COMPACT_WORKSPACE_V1](./BYL_COMPACT_WORKSPACE_V1.md) · **唯一范围：ERP UI 布局迁移；不修改业务逻辑**  
-> 起始日期：2026-11-11 · 来源：menu/APPROVED_MENU.json v2.1（只证明批准的导航入口，不证明页面已运行或已改造）  
+> 规则：[BYL_COMPACT_WORKSPACE_V1](./BYL_COMPACT_WORKSPACE_V1.md) · **唯一范围：ERP UI 布局迁移；不修改业务逻辑**
+> 起始日期：2026-11-11 · 来源：menu/APPROVED_MENU.json v2.1（只证明批准的导航入口，不证明页面已运行或已改造）
 > **规范已批准 ≠ 页面改造 ≠ Dev 通过 ≠ 合并 ≠ 正式发布。** 本表独立维护各门禁。
 
 ## 0. 执行原则与总体进度
