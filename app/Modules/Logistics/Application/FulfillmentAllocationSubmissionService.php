@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 final class FulfillmentAllocationSubmissionService
 {
-    private const ALLOWED_SOURCE_CODES = ['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'DE', 'CA'];
+    private const ALLOWED_SOURCE_CODES = ['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA'];
     private const MAX_SEGMENTS = 26;
 
     public function __construct(

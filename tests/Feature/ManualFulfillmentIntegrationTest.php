@@ -22,6 +22,40 @@ final class ManualFulfillmentIntegrationTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_amazon_us_manual_allocation_exempts_stock_warning_without_affecting_other_warehouses(): void
+    {
+        [$user, $order] = $this->scenario();
+        $item = $order->items()->firstOrFail();
+        $gate = app(\App\Modules\Logistics\Application\FulfillmentAllocationStockGate::class);
+
+        $amazon = $gate->warnings($order, [['order_item_id' => $item->id, 'source_code' => 'US-AMZ']]);
+        $normal = $gate->warnings($order, [['order_item_id' => $item->id, 'source_code' => 'US-LA']]);
+
+        $this->assertSame([], $amazon);
+        $this->assertNotEmpty($normal);
+    }
+
+    public function test_amazon_us_manual_submission_works_without_stock_row_or_override(): void
+    {
+        [$user, $order] = $this->scenario();
+        $item = $order->items()->firstOrFail();
+        $warehouse = Warehouse::query()->where('code', 'US-AMZ')->firstOrFail();
+
+        $this->assertDatabaseMissing('warehouse_inventory', ['warehouse_id' => $warehouse->id]);
+        $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/manual', [
+            'assignments' => [[
+                'order_item_id' => $item->id,
+                'source_code' => 'US-AMZ',
+                'carrier' => 'USPS',
+            ]],
+        ])->assertOk()->assertJsonPath('status', 'submitted');
+
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'warehouse_id' => $warehouse->id,
+            'shipment_status' => 'pending', 'carrier' => 'USPS',
+        ]);
+    }
+
     public function test_logistics_shows_inventory_and_saves_manual_fulfillment(): void
     {
         [$user, $order, $product, $warehouse] = $this->scenario();

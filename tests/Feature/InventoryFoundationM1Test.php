@@ -25,15 +25,32 @@ final class InventoryFoundationM1Test extends TestCase
         $this->actingAs($user)->get('/inventory')->assertForbidden();
     }
 
-    public function test_seven_canonical_warehouses_are_seeded_without_fake_addresses(): void
+    public function test_eight_canonical_warehouses_are_seeded_without_fake_addresses(): void
     {
         $this->assertSame([
-            '007'=>'007 本地仓库','ca'=>'加拿大仓','de'=>'德国天运仓','factory'=>'中国工厂','us-3sm'=>'美国3世迈仓','us-la'=>'美西 MorePlus 仓','us-ny'=>'美东纽约仓',
+            '007'=>'007 本地仓库','ca'=>'加拿大仓','de'=>'德国天运仓','factory'=>'中国工厂','us-3sm'=>'美国3世迈仓','us-amz'=>'亚马逊仓·美','us-la'=>'美西 MorePlus 仓','us-ny'=>'美东纽约仓',
         ], Warehouse::query()->orderBy('slug')->pluck('name','slug')->all());
         $this->assertSame(0, Warehouse::query()->whereNotNull('address_line1')->count());
         $this->assertSame(6, Warehouse::query()->where('ownership_type', 'owned')->count());
-        $this->assertSame(1, Warehouse::query()->where('ownership_type', 'external')->count());
-        $this->assertSame(7, Warehouse::query()->where('is_active', true)->count());
+        $this->assertSame(2, Warehouse::query()->where('ownership_type', 'external')->count());
+        $this->assertSame(8, Warehouse::query()->where('is_active', true)->count());
+    }
+
+    public function test_amazon_us_stays_manual_only_even_after_inventory_full_snapshot(): void
+    {
+        $warehouse = Warehouse::query()->where('code', 'US-AMZ')->firstOrFail();
+        $this->assertSame('亚马逊仓·美', $warehouse->name);
+        $this->assertSame('US', $warehouse->country_code);
+
+        InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id, 'source_type' => 'csv', 'sync_mode' => 'full',
+            'status' => 'confirmed', 'confirmed_at' => now(),
+        ]);
+
+        $active = collect(app(InventoryAvailabilityReader::class)->activeWarehouses())->firstWhere('id', $warehouse->id);
+        $this->assertFalse($active['can_auto_allocate']);
+        $dashboard = collect(app(\App\Modules\Inventory\Application\InventoryService::class)->warehouses())->firstWhere('id', $warehouse->id);
+        $this->assertFalse($dashboard['can_auto_allocate']);
     }
 
     public function test_inventory_dashboard_list_products_and_detail_routes_are_real(): void
@@ -65,14 +82,14 @@ final class InventoryFoundationM1Test extends TestCase
         $this->actingAs($user)->post('/inventory/us-la/stock',[])->assertForbidden();
     }
 
-    public function test_dashboard_exposes_seven_master_warehouses_and_six_fulfillment_warehouses(): void
+    public function test_dashboard_exposes_eight_master_warehouses_and_seven_fulfillment_warehouses(): void
     {
         $user=$this->userWith(['inventory.view']);
         $this->actingAs($user)->get('/inventory')->assertOk()->assertInertia(fn($p)=>$p
-            ->where('summary.warehouse_total_count',7)
-            ->where('summary.fulfillment_warehouse_count',6)
+            ->where('summary.warehouse_total_count',8)
+            ->where('summary.fulfillment_warehouse_count',7)
             ->where('summary.inventory_only_warehouse_count',1)
-            ->has('summary.warehouses',7));
+            ->has('summary.warehouses',8));
     }
 
     public function test_view_only_user_cannot_mutate_inventory_or_warehouse(): void
