@@ -27,9 +27,10 @@ const stockout = computed(()=>props.params.canReview && props.params.view==='sto
   && row.value.review_status==='缺货' && row.value.shipment_status==='pending')
 const reopened = computed(()=>props.params.canReview && props.params.view==='pending'
   && row.value.review_status==='已通过')
-const todayReopen = computed(()=>props.params.view==='today' && props.params.canReview
+const dailyProvider = computed(()=>['today','today-4px','today-weship'].includes(props.params.view))
+const todayReopen = computed(()=>dailyProvider.value && props.params.canReview
   && row.value.review_status==='已通过' && row.value.shipment_status==='pending')
-const todaySync = computed(()=>props.params.view==='today' && props.params.canTrackingSync
+const todaySync = computed(()=>dailyProvider.value && props.params.canTrackingSync
   && !!props.params.syncEligible?.(row.value.id))
 const todayRetry = computed(()=>['failed','retry_wait'].includes(row.value.tracking_sync_code??'')
   || !!row.value.tracking_sync_reason)
@@ -105,7 +106,7 @@ onBeforeUnmount(removeListeners)
       <button v-else-if="stockout" type="button" class="approve" :disabled="params.busy"
         @click.stop="params.restock(row)">已到货-可发货</button>
       <button v-else-if="reopened" type="button" :disabled="params.busy" @click.stop="params.reopen(row)">重新审核</button>
-      <template v-else-if="params.view==='today'">
+      <template v-else-if="dailyProvider">
         <button v-if="todayReopen" type="button" :disabled="params.busy"
           @click.stop="params.reopen(row)">重新审核</button>
         <button v-if="todaySync" type="button" class="native"

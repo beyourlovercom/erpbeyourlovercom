@@ -49,3 +49,25 @@ describe('R4-4 today fixed-right original operations parity',()=>{
     expect(p.native).toHaveBeenCalledOnce()
   })
 })
+
+describe('R4-5A Speeda and R4-5B Weship shared daily action renderer',()=>{
+  for(const view of ['today-4px','today-weship']){
+    it(view+' reuses the role-gated tracking retry rather than a native-operation detour',async()=>{
+      const p={...base,view,syncTracking:vi.fn()}
+      const wrapper=mount(Cell,{props:{params:p}})
+      expect(wrapper.get('button').text()).toBe('重新同步')
+      await wrapper.get('button').trigger('click')
+      expect(p.syncTracking).toHaveBeenCalledWith(42)
+      expect(p.native).not.toHaveBeenCalled()
+    })
+    it(view+' denies tracking to viewer and retains review-only recheck',async()=>{
+      const viewer=mount(Cell,{props:{params:{...base,view,canTrackingSync:false,canOperate:false}}})
+      expect(viewer.findAll('button')).toHaveLength(0)
+      const pending=mount(Cell,{props:{params:{...base,view,canTrackingSync:false,canReview:true,data:{
+        ...base.data,shipment_status:'pending',tracking_sync_code:'pending',
+      },reopen:vi.fn()}}})
+      expect(pending.findAll('button').map(x=>x.text())).toEqual(['重新审核'])
+      await pending.get('button').trigger('click')
+    })
+  }
+})

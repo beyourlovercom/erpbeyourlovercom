@@ -43,6 +43,7 @@ const props = defineProps<{
 type BulkChoice = {value:string; label:string; reasonRequired?:boolean}
 const selectedBulkOrderIds = ref<number[]>([])
 const bulkBusy = ref(false)
+const isDailyProviderView = (view:string)=>['today','today-4px','today-weship'].includes(view)
 const bulkOptions = computed<BulkChoice[]>(()=>{
   const result:BulkChoice[] = []
   if (props.canReview && props.view==='review') {
@@ -52,7 +53,7 @@ const bulkOptions = computed<BulkChoice[]>(()=>{
   if (props.canReview && props.view==='stockout') result.push({value:'restock',label:'批量已到货-可发货'})
   // Reuse the existing single footer; only previously eligible shipped Woo
   // orders may be sent to the existing tracking-sync endpoint.
-  if (props.canTrackingSync && props.view==='today' && props.rows.data.some(row=>
+  if (props.canTrackingSync && isDailyProviderView(props.view) && props.rows.data.some(row=>
     selectedBulkOrderIds.value.includes(row.order_id) && eligibleForBatchTracking(row))) {
     result.push({value:'sync-tracking',label:'批量同步官网物流'})
   }
@@ -120,8 +121,8 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'review',field:'review_status',headerName:'审核',width:120,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
   gridColumn({colId:'paid_date',field:'paid_date',headerName:'成交日期',width:135}),
-  gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:['pending','today'].includes(props.view)?230:178,
-    ...(['pending','today'].includes(props.view)?{
+  gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:['pending','today','today-4px','today-weship'].includes(props.view)?230:178,
+    ...(['pending','today','today-4px','today-weship'].includes(props.view)?{
       cellRenderer:DomesticGridPendingSkuCell,
       cellRendererParams:{
         showBarcode:(id:number)=>{
@@ -170,9 +171,9 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',
-    width:props.view==='review'?185:props.view==='stockout'?140:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):props.view==='today'?(props.canReview&&props.canTrackingSync?242:170):210,
-    minWidth:props.view==='review'?185:props.view==='stockout'?136:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):props.view==='today'?(props.canReview&&props.canTrackingSync?235:162):190,
-    maxWidth:props.view==='review'?190:props.view==='stockout'?148:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):props.view==='today'?(props.canReview&&props.canTrackingSync?250:178):210,
+    width:props.view==='review'?185:props.view==='stockout'?140:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?242:170):210,
+    minWidth:props.view==='review'?185:props.view==='stockout'?136:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
+    maxWidth:props.view==='review'?190:props.view==='stockout'?148:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
     pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
     cellRenderer:props.view==='pending'?DomesticGridPendingCell:DomesticGridActionCell,cellRendererParams:{
       carrierOptions:props.carrierOptions,
@@ -256,10 +257,10 @@ const pushTracking = (ids:number[], manualOverride = false) => {
     preserveScroll:true,
     onSuccess:(page)=>{
       trackingSelection.value=[]
-      if (props.view==='today') selectedBulkOrderIds.value=[]
+      if (isDailyProviderView(props.view)) selectedBulkOrderIds.value=[]
       const flash = page.props.flash as {warning?:string;error?:string;success?:string}|undefined
       trackingFeedback.value = flash?.warning || flash?.error || flash?.success || '同步请求已处理，请核对官网同步状态'
-      if (props.view==='today') publishGlobalFeedback({
+      if (isDailyProviderView(props.view)) publishGlobalFeedback({
         state:flash?.error?'ERROR':flash?.warning?'BLOCKED':'SUCCESS',
         title:'官网物流同步请求已处理',message:trackingFeedback.value,
         next:'核对最新官网同步状态；不要重复提交同一单',
@@ -267,7 +268,7 @@ const pushTracking = (ids:number[], manualOverride = false) => {
     },
     onError:(errors)=>{
       trackingFeedback.value=Object.values(errors).join('；')||'官网同步请求验证未通过'
-      if (props.view==='today') publishGlobalFeedback({
+      if (isDailyProviderView(props.view)) publishGlobalFeedback({
         state:'ERROR',title:'官网物流同步请求失败',message:trackingFeedback.value,
       })
     },
@@ -386,7 +387,7 @@ const switchView = (view:string) => {
   // just because they switched from the approved review view.
   const mode = view === props.view
     ? (props.globalGridPilotEnabled ? '1' : '0')
-    : (['review','stockout','pending','today'].includes(view) ? '1' : '0')
+    : (['review','stockout','pending','today','today-4px'].includes(view) ? '1' : '0')
   router.visit('/logistics/china?view=' + encodeURIComponent(view)
     + '&global_grid=' + mode
     + (view === props.view && mode === '1' && domesticGridSearch.value
@@ -653,7 +654,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               :busy="bulkBusy" @apply="applyGridBatch" />
           </template>
         </GlobalGrid>
-        <div v-if="view!=='review' && view!=='stockout' && view!=='today'" class="domestic-grid-legacy-tools">
+        <div v-if="view!=='review' && view!=='stockout' && !isDailyProviderView(view)" class="domestic-grid-legacy-tools">
           <button type="button" class="secondary" data-testid="domestic-native-batch-toggle"
             @click="showBatchLegacyOperations=!showBatchLegacyOperations;activeOperationId=null">
             {{ showBatchLegacyOperations?'收起原批量操作':'使用原批量操作' }}

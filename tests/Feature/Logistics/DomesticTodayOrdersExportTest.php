@@ -125,8 +125,13 @@ final class DomesticTodayOrdersExportTest extends TestCase
                 ->where('rows.total',1)
                 ->where('rows.data.0.erp_order_id','007-R4-4-TODAY-2'));
 
-        // Other five unapproved tabs remain original-table by default.
-        foreach (['today-4px','today-weship','exceptions','4px','weship'] as $view) {
+        // R4-5A: Speeda is enabled independently, Weship and the other
+        // four views still use the original table by default.
+        $this->actingAs($user)->get('/logistics/china?view=today-4px')
+            ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
+        $this->actingAs($user)->get('/logistics/china?view=today-4px&global_grid=0')
+            ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',false));
+        foreach (['today-weship','exceptions','4px','weship'] as $view) {
             $this->actingAs($user)->get('/logistics/china?view='.$view)
                 ->assertOk()->assertInertia(fn ($page) => $page
                     ->where('globalGridPilotEnabled',false));
@@ -134,6 +139,48 @@ final class DomesticTodayOrdersExportTest extends TestCase
         self::assertSame('pending', $reviewed->fresh()->shipment->shipment_status);
         self::assertSame('shipped', $shipped->fresh()->shipment->shipment_status);
         self::assertSame('pending', $excluded->fresh()->shipment->shipment_status);
+    }
+
+    public function test_r4_5_speeda_grid_and_weship_native_keep_original_provider_query_and_dates(): void
+    {
+        $speedaPending=$this->domesticOrder('007-R45-4PX-PEND','4PX',true);
+        $speedaPending->items()->create(['sku'=>'MF414A','product_summary'=>'test','quantity'=>2,'unit_price'=>'9.00','line_revenue'=>'18.00']);
+        $speedaShipped=$this->domesticOrder('007-R45-4PX-SHIP','4PX',false);
+        $speedaShipped->shipment()->update(['shipment_status'=>'shipped','shipped_at'=>now()]);
+        $weshipPending=$this->domesticOrder('007-R45-WES-PEND','Weship',true);
+        $weshipToday=$this->domesticOrder('007-R45-WES-SHIP','Weship',false);
+        $weshipToday->shipment()->update(['shipment_status'=>'shipped','shipped_at'=>now()]);
+        $unreviewed=$this->domesticOrder('007-R45-4PX-UNREVIEWED','4PX',false);
+        $olderShipped=$this->domesticOrder('007-R45-4PX-YESTERDAY','4PX',false);
+        $olderShipped->shipment()->update(['shipment_status'=>'shipped','shipped_at'=>now()->subDay()]);
+        $actor=$this->viewer();
+
+        foreach (['','&global_grid=1','&global_grid=0'] as $extra) {
+            $this->actingAs($actor)->get('/logistics/china?view=today-4px'.$extra)
+                ->assertOk()->assertInertia(fn ($page) => $page
+                    ->where('rows.total',2)
+                    ->where('rows.data.0.erp_order_id','007-R45-4PX-PEND')
+                    ->where('rows.data.0.items.0.quantity',2)
+                    ->where('rows.data.1.erp_order_id','007-R45-4PX-SHIP')
+                    ->where('globalGridPilotEnabled',$extra==='&global_grid=0'?false:true));
+        }
+        $this->actingAs($actor)->get('/logistics/china?view=today-4px&search=R45-4PX-SHIP&per_page=20')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('rows.total',1)->where('rows.per_page',20)
+                ->where('rows.data.0.erp_order_id','007-R45-4PX-SHIP'));
+        $this->actingAs($actor)->get('/logistics/china?view=today-weship')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotEnabled',false)
+                ->where('rows.total',2)
+                ->where('rows.data.0.erp_order_id','007-R45-WES-PEND')
+                ->where('rows.data.1.erp_order_id','007-R45-WES-SHIP'));
+
+        self::assertSame('pending',$speedaPending->fresh()->shipment->shipment_status);
+        self::assertSame('shipped',$speedaShipped->fresh()->shipment->shipment_status);
+        self::assertSame('pending',$weshipPending->fresh()->shipment->shipment_status);
+        self::assertSame('shipped',$weshipToday->fresh()->shipment->shipment_status);
+        self::assertSame('pending',$unreviewed->fresh()->shipment->shipment_status);
+        self::assertSame('shipped',$olderShipped->fresh()->shipment->shipment_status);
     }
 
     public function test_today_export_is_authorized_and_empty_download_has_only_headers(): void
