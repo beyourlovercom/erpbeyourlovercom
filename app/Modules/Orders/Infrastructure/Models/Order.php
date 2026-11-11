@@ -2,6 +2,7 @@
 
 namespace App\Modules\Orders\Infrastructure\Models;
 
+use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
@@ -86,6 +87,11 @@ class Order extends Model
     public function operationalArchivedByUser(): BelongsTo
     {
         return $this->belongsTo('App\\Modules\\Identity\\Infrastructure\\Models\\User', 'operational_archived_by');
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class, 'customer_id');
     }
 
     public function address(): HasOne

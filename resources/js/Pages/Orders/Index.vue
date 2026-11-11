@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, defineAsyncComponent, reactive, ref } from 'vue'
+import type { ColDef } from 'ag-grid-community'
+import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
+import { gridColumn, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
+const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
 import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatusPill.vue'
 const OrderOmsGrid = defineAsyncComponent(() => import('../../Components/Orders/OrderOmsGrid.vue'))
 
-type Order = { id: number; tracking_sync_status?: string | null; tracking_sync_reason?: string | null; tracking_sync_label?: string | null; tracking_sync_verified_at?: string | null; erp_order_id: string | null; external_order_number: string; internal_order_number: string; source_label: string; order_kind?: string; order_date: string; order_status_label: string; workflow_status_projection?: { code:string; en:string; zh:string; color:string; source:string; mutable?:boolean }; workflow_revision?: number; address?: { recipient_name: string; country: string }; owner?: { name: string }; owner_label?: string | null }
+type Order = { id: number; tracking_sync_status?: string | null; tracking_sync_reason?: string | null; tracking_sync_label?: string | null; tracking_sync_verified_at?: string | null; erp_order_id: string | null; external_order_number: string; internal_order_number: string; source_label: string; order_kind?: string; order_date: string; order_status_label: string; workflow_status_projection?: { code:string; en:string; zh:string; color:string; source:string; mutable?:boolean }; workflow_revision?: number; customer_email?: string | null; address?: { recipient_name: string; country: string; city?: string; postal_code?: string }; items?: { sku?: string | null; product_summary?: string | null; quantity?: number }[]; shipment?: { warehouse_name?: string | null; carrier?: string | null; tracking_number?: string | null } | null; owner?: { name: string }; owner_label?: string | null }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 type SavedView = { id: number; name: string; filters_json: Record<string, string>; is_pinned: boolean; created_by: number }
 type ColumnKey = 'order_number' | 'source' | 'date' | 'recipient' | 'country' | 'status' | 'owner'
@@ -22,6 +26,7 @@ const props = defineProps<{
   canExport: boolean
   omsGridAvailable?: boolean
   omsGridEnabled?: boolean
+  customerGlobalGridEnabled?: boolean
   canImportOmsOrders?: boolean
   canConfirmOmsOrders?: boolean
   canExportOmsOrders?: boolean
@@ -53,6 +58,7 @@ const filters = reactive({
   grid_postal_code: props.filters.grid_postal_code ?? '',
   grid_carrier: props.filters.grid_carrier ?? '',
   grid_external_number: props.filters.grid_external_number ?? '',
+  grid_email: props.filters.grid_email ?? '',
 })
 const showNewView = ref(false)
 const newViewName = ref('')
@@ -71,12 +77,15 @@ const systemViews = [
   { key: 'stockout', label: '缺货单' },
 ]
 
-const gridParams = () => props.omsGridEnabled ? {
-  oms_grid: '1',
+const modernCustomerGrid = computed(() => props.orderKind === 'customer' && !!props.customerGlobalGridEnabled)
+const modernGridEnabled = computed(() => !!props.omsGridEnabled || modernCustomerGrid.value)
+const gridParams = () => modernGridEnabled.value ? {
+  ...(props.omsGridEnabled ? { oms_grid: '1' } : {}),
+  ...(props.orderKind === 'customer' ? { legacy_grid: '0' } : {}),
   per_page: props.filters.per_page ?? '50',
   sort: props.filters.sort ?? 'date',
   direction: props.filters.direction ?? 'desc',
-} : {}
+} : (props.orderKind === 'customer' ? { legacy_grid: '1' } : {})
 const nav = (params: Record<string, unknown>) =>
   router.get(basePath.value, { ...params, ...gridParams() }, { preserveState: true, replace: true })
 const submit = () => nav({ ...filters, page: 1 })
@@ -85,7 +94,7 @@ const gridSearch = (value: string) => {
   router.get(basePath.value, { ...filters, ...gridParams(), page: 1 }, { preserveState: true, replace: true })
 }
 const gridColumnSearch = ({ colId, value }: { colId: string; value: string }) => {
-  const allowed = ['order_number', 'sku', 'quantity', 'product_names', 'source', 'date', 'recipient', 'country', 'warehouse', 'status', 'tracking', 'owner', 'city', 'postal_code', 'carrier', 'external_number'] as const
+  const allowed = ['order_number', 'sku', 'quantity', 'product_names', 'source', 'date', 'recipient', 'country', 'warehouse', 'status', 'tracking', 'owner', 'city', 'postal_code', 'carrier', 'external_number', 'email'] as const
   if (!allowed.includes(colId as typeof allowed[number])) return
   const key = ('grid_' + colId) as keyof typeof filters
   filters[key] = value
@@ -104,7 +113,10 @@ const gridSort = (sort: { colId: string; direction: 'asc' | 'desc' | null }) => 
 const gridToggleUrl = (enabled: boolean) => {
   const params = new URLSearchParams(filters)
   for (const [key, value] of Object.entries(gridParams())) if (value !== undefined) params.set(key, String(value))
-  if (enabled) params.set('oms_grid', '1')
+  if (props.orderKind === 'customer') {
+    if (enabled) params.delete('legacy_grid')
+    else params.set('legacy_grid', '1')
+  } else if (enabled) params.set('oms_grid', '1')
   else params.delete('oms_grid')
   return basePath.value + '?' + params.toString()
 }
@@ -114,7 +126,7 @@ const applySystemView = (view: string) => {
   filters.order_status = ''
   filters.workflow_status = ''
   filters.view = view
-  for (const key of ['grid_order_number','grid_sku','grid_quantity','grid_product_names','grid_source','grid_date','grid_recipient','grid_country','grid_warehouse','grid_status','grid_tracking','grid_owner','grid_city','grid_postal_code','grid_carrier','grid_external_number'] as const) filters[key] = ''
+  for (const key of ['grid_order_number','grid_sku','grid_quantity','grid_product_names','grid_source','grid_date','grid_recipient','grid_country','grid_warehouse','grid_status','grid_tracking','grid_owner','grid_city','grid_postal_code','grid_carrier','grid_external_number','grid_email'] as const) filters[key] = ''
   submit()
 }
 const applySavedView = (saved: SavedView) => {
@@ -123,7 +135,7 @@ const applySavedView = (saved: SavedView) => {
   filters.order_status = saved.filters_json.order_status ?? ''
   filters.workflow_status = saved.filters_json.workflow_status ?? ''
   filters.view = saved.filters_json.view ?? 'all'
-  for (const key of ['grid_order_number','grid_sku','grid_quantity','grid_product_names','grid_source','grid_date','grid_recipient','grid_country','grid_warehouse','grid_status','grid_tracking','grid_owner','grid_city','grid_postal_code','grid_carrier','grid_external_number'] as const) filters[key] = saved.filters_json[key] ?? ''
+  for (const key of ['grid_order_number','grid_sku','grid_quantity','grid_product_names','grid_source','grid_date','grid_recipient','grid_country','grid_warehouse','grid_status','grid_tracking','grid_owner','grid_city','grid_postal_code','grid_carrier','grid_external_number','grid_email'] as const) filters[key] = saved.filters_json[key] ?? ''
   submit()
 }
 const saveCurrentView = () => {
@@ -146,6 +158,63 @@ const exportUrl = () => `${basePath.value}/export?${new globalThis.URLSearchPara
 const omsExportUrl = () => `/orders/oms/export?${new globalThis.URLSearchParams(Object.entries({ ...filters, ...gridParams() }).filter(([, value]) => value !== undefined).map(([key, value]): [string, string] => [key, String(value)])).toString()}`
 const goToPage = (page: number) => nav({ ...filters, page })
 const orderPath = (order: Order) => order.order_kind === 'kol_fulfillment' ? `/kol/orders/${order.id}` : `/customers/orders/${order.id}`
+const customerRows = computed<GridListRow[]>(() => props.orders.data.map(order => ({
+  id: order.id,
+  order_url: orderPath(order),
+  order_number: order.erp_order_id ?? '—',
+  external_number: order.external_order_number ?? '—',
+  email: order.customer_email ?? '—',
+  source: order.source_label,
+  date: order.order_date ?? '—',
+  recipient: order.address?.recipient_name ?? '—',
+  country: order.address?.country ?? '—',
+  city: order.address?.city ?? '—',
+  sku: order.items?.map(item => item.sku).filter(Boolean).join(' / ') || '—',
+  quantity: order.items?.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0) ?? 0,
+  product_names: order.items?.map(item => item.product_summary).filter(Boolean).join(' / ') || '—',
+  warehouse: order.shipment?.warehouse_name ?? '—',
+  carrier: order.shipment?.carrier ?? '—',
+  tracking: order.shipment?.tracking_number ?? '—',
+  status: order.workflow_status_projection?.zh ?? order.order_status_label,
+  owner: order.owner?.name ?? '—',
+  website_sync: order.tracking_sync_label ?? '—',
+})))
+const customerColumns: ColDef<GridListRow>[] = [
+  gridColumn({ colId:'order_number', field:'order_number', headerName:'ERP订单号', width:185, sortable:true,
+    cellRenderer:GlobalGridCell, cellRendererParams:{ mode:'link', hrefFor:(row:GridListRow)=>String(row.order_url) } }),
+  gridColumn({ colId:'external_number', field:'external_number', headerName:'来源单号', width:175 }),
+  gridColumn({ colId:'email', field:'email', headerName:'客户邮箱', width:235 }),
+  gridColumn({ colId:'source', field:'source', headerName:'来源', width:120, sortable:true }),
+  gridColumn({ colId:'date', field:'date', headerName:'订单日期', width:145, sortable:true }),
+  gridColumn({ colId:'recipient', field:'recipient', headerName:'收件人', width:150 }),
+  gridColumn({ colId:'country', field:'country', headerName:'国家', width:110 }),
+  gridColumn({ colId:'city', field:'city', headerName:'城市', width:135 }),
+  gridColumn({ colId:'sku', field:'sku', headerName:'SKU', width:180 }),
+  gridColumn({ colId:'quantity', field:'quantity', headerName:'产品数量', width:110 }),
+  gridColumn({ colId:'product_names', field:'product_names', headerName:'产品名称', width:230 }),
+  gridColumn({ colId:'warehouse', field:'warehouse', headerName:'仓库', width:150 }),
+  gridColumn({ colId:'carrier', field:'carrier', headerName:'承运商', width:140 }),
+  gridColumn({ colId:'tracking', field:'tracking', headerName:'追踪单号', width:175 }),
+  gridColumn({ colId:'status', field:'status', headerName:'订单状态', width:140,
+    cellRenderer:GlobalGridCell, cellRendererParams:{ mode:'badge' } }),
+  gridColumn({ colId:'owner', field:'owner', headerName:'负责人', width:140 }),
+  gridColumn({ colId:'website_sync', field:'website_sync', headerName:'官网同步', width:125,
+    cellRenderer:GlobalGridCell, cellRendererParams:{ mode:'badge' } }),
+  gridColumn({ colId:'actions', field:'id', headerName:'操作', width:110,
+    cellRenderer:GlobalGridCell, cellRendererParams:{ mode:'actions',
+      actionsFor:(row:GridListRow)=>[{label:'查看',href:String(row.order_url)}] } }),
+]
+const customerPager = computed(() => ({
+  current_page:props.orders.current_page, last_page:props.orders.last_page,
+  per_page:props.orders.per_page, total:props.orders.total,
+}))
+const customerFilterColumns = [
+  'order_number','external_number','email','source','date','recipient','country','city',
+  'sku','quantity','product_names','warehouse','carrier','tracking','status','owner',
+]
+const customerFilterValues = computed(() => Object.fromEntries(
+  customerFilterColumns.map(key => [key, filters[('grid_' + key) as keyof typeof filters] ?? '']),
+))
 const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'order_number', label: 'ERP订单号' },
   { key: 'source', label: '来源' }, { key: 'date', label: '订单日期' }, { key: 'recipient', label: '收件人' },
@@ -159,9 +228,10 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
   <AuthenticatedLayout :title="heading" :breadcrumbs="['BYL ERP', heading]">
     <section class="mvp-page orders-page">
       <div class="mvp-page-heading">
-        <div><p class="mvp-kicker">订单核心</p><h2>{{ heading }}</h2><p>统一维护 Website、KOL 和 Manual Other 订单。</p></div>
+        <div><p v-if="orderKind !== 'customer'" class="mvp-kicker">订单核心</p><h2>{{ heading }}</h2><p v-if="orderKind !== 'customer'">统一维护 Website、KOL 和 Manual Other 订单。</p></div>
         <div class="mvp-actions page-header-actions">
-          <Link v-if="omsGridAvailable" class="mvp-button" :href="gridToggleUrl(!omsGridEnabled)">{{ omsGridEnabled ? '返回原列表' : '体验 OMS Grid' }}</Link>
+          <Link v-if="orderKind === 'customer'" class="mvp-button" :href="gridToggleUrl(!modernCustomerGrid)">{{ modernCustomerGrid ? '返回原表' : '切换新版表' }}</Link>
+          <Link v-else-if="omsGridAvailable" class="mvp-button" :href="gridToggleUrl(!omsGridEnabled)">{{ omsGridEnabled ? '返回原列表' : '体验 OMS Grid' }}</Link>
           <Link v-if="canManageTrash" class="mvp-button" href="/orders/trash">回收站（管理员）</Link>
           <Link class="mvp-button" href="/orders/archive">归档清单</Link>
           <a v-if="canExport && !omsGridEnabled" class="mvp-button" :href="exportUrl()">导出 CSV</a>
@@ -190,15 +260,33 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
       </form>
 
       <form class="mvp-toolbar" @submit.prevent="submit">
-        <input v-if="!omsGridEnabled" v-model="filters.search" aria-label="搜索订单" placeholder="ERP订单号 / 来源单号 / 收件人；数据库ID请用 dbid:7008">
+        <input v-if="!modernGridEnabled" v-model="filters.search" aria-label="搜索订单" placeholder="ERP订单号 / 客户邮箱 / 来源单号 / 收件人；数据库ID请用 dbid:7008">
         <select v-model="filters.source_type" aria-label="来源"><option value="">全部来源</option><option v-for="source in sourceTypes" :key="source.value" :value="source.value">{{ source.label }}</option></select>
           <select v-model="filters.order_status" aria-label="真实订单状态"><option value="">全部真实状态</option><option value="pending_shipment">待发货</option><option value="shipped">已发货</option><option value="completed">已完结</option><option value="completed_delivered">完结&送达</option><option value="cancelled">已取消</option></select><select v-model="filters.workflow_status" aria-label="员工工作进度"><option value="">全部工作进度</option><option v-for="option in workflowStatusOptions" :key="option.code" :value="option.code">{{ option.zh }}</option></select>
         <button class="mvp-button" type="submit">筛选</button>
       </form>
 
-      <div v-if="!omsGridEnabled" class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>官网同步</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.source_label === 'WooCommerce' && order.external_order_number" class="order-source-reference">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ order.address?.country ?? '—' }}</template><template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :options="workflowStatusOptions" /><span v-else>—</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><span v-if="order.tracking_sync_status !== null && order.tracking_sync_status !== undefined" class="orders-sync-pill" :class="order.tracking_sync_status ?? 'pending'" :title="[order.tracking_sync_reason, order.tracking_sync_verified_at ? '最近官网验证：' + new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '尚无官网验证记录'].filter(Boolean).join('；')">{{ order.tracking_sync_label ?? '待同步' }}</span><span v-else>—</span></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 3" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
+      <div v-if="!modernGridEnabled" class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>官网同步</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.source_label === 'WooCommerce' && order.external_order_number" class="order-source-reference">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ order.address?.country ?? '—' }}</template><template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :options="workflowStatusOptions" /><span v-else>—</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><span v-if="order.tracking_sync_status !== null && order.tracking_sync_status !== undefined" class="orders-sync-pill" :class="order.tracking_sync_status ?? 'pending'" :title="[order.tracking_sync_reason, order.tracking_sync_verified_at ? '最近官网验证：' + new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '尚无官网验证记录'].filter(Boolean).join('；')">{{ order.tracking_sync_label ?? '待同步' }}</span><span v-else>—</span></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 3" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
+      <GlobalGrid v-if="modernCustomerGrid"
+        namespace="grid.orders.customer.global.v1"
+        title="客户订单"
+        :rows="customerRows"
+        :columns="customerColumns"
+        :required-column-ids="['order_number']"
+        :page="customerPager"
+        :search="props.filters.search ?? ''"
+        search-placeholder="搜索订单号 / 客户邮箱 / 收件人 / SKU..."
+        :filter-columns="customerFilterColumns"
+        :filter-values="customerFilterValues"
+        :sort="props.filters.sort ? { colId: props.filters.sort, direction: props.filters.direction === 'asc' ? 'asc' : 'desc' } : undefined"
+        @page-change="goToPage"
+        @page-size-change="gridPageSize"
+        @sort-change="gridSort"
+        @search-change="gridSearch"
+        @column-search-change="gridColumnSearch"
+      />
       <OrderOmsGrid
-        v-else
+        v-else-if="omsGridEnabled"
         :title="heading"
         :orders="orders"
         :filters="props.filters"
@@ -214,7 +302,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         @search-change="gridSearch"
         @column-search-change="gridColumnSearch"
       />
-      <div v-if="!omsGridEnabled && orders.last_page > 1" class="mvp-pagination"><button class="mvp-button" type="button" :disabled="orders.current_page <= 1" @click="goToPage(orders.current_page - 1)">上一页</button><span>第 {{ orders.current_page }} / {{ orders.last_page }} 页 · 共 {{ orders.total }} 条</span><button class="mvp-button" type="button" :disabled="orders.current_page >= orders.last_page" @click="goToPage(orders.current_page + 1)">下一页</button></div>
+      <div v-if="!modernGridEnabled && orders.last_page > 1" class="mvp-pagination"><button class="mvp-button" type="button" :disabled="orders.current_page <= 1" @click="goToPage(orders.current_page - 1)">上一页</button><span>第 {{ orders.current_page }} / {{ orders.last_page }} 页 · 共 {{ orders.total }} 条</span><button class="mvp-button" type="button" :disabled="orders.current_page >= orders.last_page" @click="goToPage(orders.current_page + 1)">下一页</button></div>
     </section>
   </AuthenticatedLayout>
 </template>
