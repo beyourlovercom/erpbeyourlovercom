@@ -30,3 +30,23 @@ Using isolated Chromium login / 31 synthetic Dev pages with the existing Authent
 - Draft guard is opt-in by dispatching `erp:workspace-dirty`; other existing business forms are **not yet integrated** and should not be described as protected.
 - Real production orders / 30 heavy grids / simultaneous user throughput need separate non-destructive load UAT before any Production enablement.
 - This code is **off by default**, no Production deployment or worker restart.
+
+
+## R3-B hidden tab request throttling — PR #698
+- Existing Inventory/WarehouseShow blue-label job status reload (2.5 sec) now skips its GET when document.visibilityState is hidden; after visibilitychange to visible, it refreshes immediately.
+- Existing Logistics/Oversea/Show ShipOut batch status polling (5 sec) now skips hidden GETs, and refreshes active batches after returning visible.
+- No changes to dispatch POST, tracking writes, queue jobs, batch state contracts, or backend.
+- Isolated Dev: TypeScript PASS, Vite build PASS, **89 PHP tests / 1,147 assertions PASS**. Chromium headless tab visibility did not simulate hidden state reliably; a genuine background-tab acceptance check remains a rollout gate.
+
+## Final clean-main integration regression — commit 962a446 (2026-11-11)
+- Fresh clone of latest main, with isolated dependencies and SQLite in-memory database.
+- TypeScript typecheck PASS; R3 Dev-flag Vite build PASS; targeted PHP **59 tests / 698 assertions PASS**.
+- Full Vitest: **102 test files PASS, two files FAIL (807 passing tests / 5 failing tests)**. The failures are `WarehouseClearanceGiftPool.test.ts` (2) and `WarehouseCostCenterP3.test.ts` (3), which expect old clearance/cost labels and controls not in the current WarehouseShow UI.
+- Re-ran the exact two failing test files against the pre-R3-B R3-A branch (PR #697): **same 5 assertions failed**. Treat as existing test/UI-contract mismatch for R6 rather than a new R3-B regression. Do not claim the entire Vue suite is green.
+- Production web stays on PR #693 and Production VITE workspace flag remains off; PR #694, #696, #697 and #698 were merged to GitHub main only, **no Production deployment**.
+
+## Acceptance status
+- R2-A/R2-B: isolated Dev browser, PHP regression and synthetic performance benchmark PASS. Production go-live still requires explicit rollout approval.
+- R3-A: 1/10/30 and 31st navigation, session restore, dirty opt-in tab and sidebar navigation guard, mobile test, and Chrome independent 30-tab synthetic tests PASS.
+- R3-B: source and regression validated; physical foreground/background browser visibility test still needed.
+- Pending for complete R3 product release: actual 30-heavy-page memory/network UAT, integration of form-dirty event with selected real editable forms, actual background-tab throttling verification, and Production rollout consent.
