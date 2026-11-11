@@ -202,6 +202,14 @@ const retryValidation = () => {
     onNetworkError: () => { hotStatus.value = 'failed' },
   })
 }
+// An authoritative Inertia reload can rebind Grid rowData AFTER the initial
+// layout-ready signal. Restore once more after its final successful render.
+watch(hotStatus, (status, previous) => {
+  if (!mounted || status !== 'idle' || previous !== 'validating') return
+  void nextTick(() => {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(restoreViewState))
+  })
+})
 const onGridLayoutReady = () => {
   // AG Grid can rehydrate columns after the route is mounted. Restore the
   // scroll once its own layout is ready; ignore stale/unmounted tab events.
