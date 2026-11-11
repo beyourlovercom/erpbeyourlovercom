@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3'
+import { Head, Link, router } from '@inertiajs/vue3'
 import { defineAsyncComponent } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
+import GridBatchFooterControls from '../../Components/DataGrid/GridBatchFooterControls.vue'
+import { publishGlobalFeedback } from '../../lib/globalFeedback'
 import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
 const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 import { computed, reactive, ref, watch } from 'vue'
@@ -29,7 +31,7 @@ type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
 type TabKey = 'pending'|'recommendation'|'inventory'|'manual'|'gift'|'processed'
 
-const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; canOperate:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string }>()
+const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; canOperate:boolean; canArchive?:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string }>()
 const activeTab = ref<TabKey>('pending')
 const selectedOrderId = ref<number|null>(null)
 const decisionNote = ref('')
@@ -42,6 +44,13 @@ const localSubmitted = reactive<Record<number,{source:'system_recommendation'|'m
 const manualAssignments = reactive<Record<number,Record<number,string>>>({})
 const manualGiftMappings = reactive<Record<number,Record<number,string>>>({})
 const manualCarriers = reactive<Record<number,Record<string,string>>>({})
+
+// Reuse the domestic Global Grid's selection and single compact footer.
+// Selection is intentionally scoped to the visible server page and business tab.
+const selectedBulkOrderIds = ref<number[]>([])
+const bulkBusy = ref(false)
+type BatchReview = {action:string; label:string; ids:number[]; skipped:number[]}
+const batchReview = ref<BatchReview|null>(null)
 
 const gridSearchText = ref(props.gridSearch ?? '')
 watch(() => props.gridSearch, value => { gridSearchText.value=value??'' })
@@ -165,6 +174,112 @@ const filteredOrders = computed(() => props.orders.data.filter(order => {
   if (activeTab.value === 'pending') return true
   return guidanceFor(order).group === activeTab.value
 }))
+type BulkChoice = {value:string;label:string;reasonRequired?:boolean}
+const bulkOptions = computed<BulkChoice[]>(() => {
+  const options:BulkChoice[]=[]
+  if (props.canOperate && activeTab.value!=='processed' && activeTab.value!=='gift') {
+    options.push(
+      {value:'recommend',label:'批量采用系统推荐'},
+      ...warehouseOptions.value.map(warehouse=>({value:'warehouse:'+warehouse.code,label:'统一分仓：'+warehouse.name})),
+    )
+  }
+  // Reuse Domestic's audited operational archive endpoint; archival has its
+  // own permission and is intentionally allowed on gift/processed tabs.
+  if (props.canArchive) options.push({value:'archive',label:'批量归档'})
+  return options
+})
+function onBulkSelectionChanged(rows:GridListRow[]){
+  const shown=new Set(filteredOrders.value.map(order=>order.id))
+  selectedBulkOrderIds.value=[...new Set(rows.map(row=>Number(row.id))
+    .filter(id=>Number.isSafeInteger(id)&&id>0&&shown.has(id)))]
+}
+watch(()=>[activeTab.value,props.orders.current_page,props.orders.per_page,props.gridSearch],()=>{
+  selectedBulkOrderIds.value=[]
+  batchReview.value=null
+})
+watch(()=>props.orders.data,()=>{
+  const shown=new Set(filteredOrders.value.map(order=>order.id))
+  selectedBulkOrderIds.value=selectedBulkOrderIds.value.filter(id=>shown.has(id))
+})
+const selectedBulkOrders = computed(()=>props.orders.data.filter(order=>selectedBulkOrderIds.value.includes(order.id)))
+function eligibleForBatch(order:Order,action:string):boolean {
+  if (action==='archive') return props.canArchive===true
+  if (processed(order) || !order.items.length || hasGift(order)) return false
+  if (action==='recommend') return !!order.allocation_decision.can_use_recommendation
+    && !!order.allocation_decision.recommended_plan_key
+  return action.startsWith('warehouse:') && warehouseOptions.value.some(
+    warehouse=>action==='warehouse:'+warehouse.code)
+}
+function prepareGridBatch(payload:{action:string;reason:string}){
+  if (bulkBusy.value || !bulkOptions.value.some(option=>option.value===payload.action)) return
+  const ids=selectedBulkOrders.value.filter(order=>eligibleForBatch(order,payload.action)).map(order=>order.id)
+  if (payload.action==='archive' && ids.length>50) {
+    publishGlobalFeedback({state:'BLOCKED',title:'一次最多归档 50 条',
+      message:'请减少勾选数量，归档接口每批最多处理 50 单。'})
+    return
+  }
+  const skipped=selectedBulkOrderIds.value.filter(id=>!ids.includes(id))
+  batchReview.value={
+    action:payload.action,
+    label:bulkOptions.value.find(option=>option.value===payload.action)?.label??'批量操作',
+    ids,skipped,
+  }
+}
+async function confirmGridBatch(){
+  const draft=batchReview.value
+  if (!draft || bulkBusy.value || !draft.ids.length) return
+  const archive=draft.action==='archive'
+  if (archive ? !props.canArchive : !props.canOperate) return
+  const action=draft.action==='recommend'?'recommend':'warehouse'
+  const warehouseCode=action==='warehouse'?draft.action.slice('warehouse:'.length):undefined
+  const planKeys:Record<string,string>={}
+  if(action==='recommend'){
+    for(const id of draft.ids){
+      const key=props.orders.data.find(order=>order.id===id)?.allocation_decision.recommended_plan_key
+      if(key)planKeys[String(id)]=key
+    }
+  }
+  bulkBusy.value=true
+  batchReview.value=null
+  try {
+    const response=await fetch(archive?'/orders/archive/batch':'/logistics/wait-stock/batch-allocation',{
+      method:'POST',credentials:'same-origin',cache:'no-store',
+      headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},
+      body:JSON.stringify(archive?{order_ids:draft.ids}:{order_ids:draft.ids,action,warehouse_code:warehouseCode,
+        plan_keys:planKeys,confirmed:true}),
+    })
+    const result=await response.json().catch(()=>({})) as {
+      message?:string; results?:Array<{order_id:number;ok:boolean;message:string}>}
+    if(!response.ok){
+      if(response.status===419)throw new Error('登录令牌过期，请刷新页面并确认订单后重试。')
+      throw new Error(result.message??'提交未确认，请刷新检查订单状态。')
+    }
+    const rows=result.results??[]
+    const success=rows.filter(row=>row.ok)
+    const failed=rows.filter(row=>!row.ok)
+    if (!archive) {
+      for(const row of success){
+        localSubmitted[row.order_id]={source:action==='recommend'?'system_recommendation':'manual',
+          submittedAt:new Date().toISOString()}
+      }
+    }
+    selectedBulkOrderIds.value=failed.map(row=>row.order_id)
+    publishGlobalFeedback({
+      state:failed.length?'BLOCKED':'SUCCESS',
+      title:(archive?'批量归档':'批量分仓')+'：成功 '+success.length+' 条，失败 '+failed.length+' 条',
+      message:failed.length?failed.slice(0,8).map(row=>{
+        const order=props.orders.data.find(order=>order.id===row.order_id)
+        return (order?.erp_order_id??row.order_id)+'：'+row.message
+      }).join('；'):(archive?'已归档至运营归档清单。':'所有成功订单均已逐单经过原有分仓门禁。'),
+    })
+    router.reload({only:['orders','pendingTotal']})
+  } catch(error){
+    publishGlobalFeedback({state:'ERROR',title:archive?'批量归档未确认':'批量分仓未确认',
+      message:(error instanceof Error?error.message:'请求失败')+
+        (archive?'；请先核对运营归档清单，勿直接重复提交。':'；先刷新检查已分仓订单，勿直接重复提交。')})
+  } finally {bulkBusy.value=false}
+}
+
 const warehouseOptions = computed(() => props.warehouses.filter(w => ['FACTORY','US-NY','US-LA','US-SM','US-AMZ','DE','CA'].includes(w.code.toUpperCase())))
 const canonicalWarehouseCode = (code:string) => { const upper = code.trim().toUpperCase(); return upper === 'US-SJ' ? 'US-SM' : upper }
 const sourceLabel = (code:string) => { const canonical=canonicalWarehouseCode(code); return props.warehouses.find(w => canonicalWarehouseCode(w.code) === canonical)?.name ?? canonical }
@@ -364,11 +479,20 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         <button :class="{active:activeTab==='processed'}" @click="activeTab='processed'">已处理 <span>{{ counts.processed }}</span></button>
       </nav>
       <GlobalGrid v-if="globalGridPilotEnabled"
+        :key="'allocation-grid-'+activeTab"
         namespace="grid.logistics.allocation.global.v1" title="待分仓"
         :rows="allocationGridRows" :columns="allocationGridColumns" :required-column-ids="['order_number','actions']"
+        :enable-selection="canArchive || (canOperate && activeTab!=='processed' && activeTab!=='gift')"
+        :selected-order-ids="selectedBulkOrderIds"
         :page="allocationPager" :search="gridSearch ?? ''" search-placeholder="搜索全部订单号 / 收件人..."
+        @selection-change="onBulkSelectionChanged($event)"
         @search-change="searchAllocationGrid($event)" @page-change="gridNavigation.page($event)"
-        @page-size-change="gridNavigation.pageSize($event)" />
+        @page-size-change="gridNavigation.pageSize($event)">
+        <template #footer-left>
+          <GridBatchFooterControls :selected-count="selectedBulkOrderIds.length" :options="bulkOptions"
+            :busy="bulkBusy" @apply="prepareGridBatch" />
+        </template>
+      </GlobalGrid>
       <div v-else class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>SKU 摘要</th><th>收件信息摘要</th><th>区域 / 优先仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
         <tr v-for="(order,index) in filteredOrders" :key="order.id">
           <td>{{ index+1 }}</td>
@@ -383,6 +507,35 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         <tr v-if="!filteredOrders.length"><td colspan="8" class="empty">当前分类暂无订单</td></tr>
       </tbody></table></div>
     </section>
+
+    <Teleport to="body">
+      <div v-if="batchReview" class="modal-backdrop" data-testid="allocation-batch-confirm"
+        @click.self="!bulkBusy && (batchReview=null)">
+        <section class="batch-confirm" role="dialog" aria-modal="true" :aria-label="batchReview.action==='archive'?'批量归档确认':'批量分仓确认'">
+          <header><h2>{{ batchReview.action==='archive'?'批量归档确认':'批量分仓确认' }}</h2><button type="button" class="secondary" @click="batchReview=null">取消</button></header>
+          <p><strong>{{ batchReview.label }}</strong></p>
+          <p>已选择 {{ selectedBulkOrderIds.length }} 条；本次可提交 {{ batchReview.ids.length }} 条，
+            需逐单处理 {{ batchReview.skipped.length }} 条。</p>
+          <p v-if="batchReview.action==='archive'" class="batch-caution">
+            归档会将订单移出正常运营队列，但不会删除订单。归档记录可在运营归档清单中查看，
+            有恢复权限的管理员可恢复。请确认仅归档不再需要处理的订单。
+          </p>
+          <p v-else class="batch-caution">系统会逐单复核订单付款状态、推荐方案、SKU、库存和承运商。
+            库存异常、礼品未解析或推荐过期均不会自动放行；部分成功后不得盲目重复提交。</p>
+          <div v-if="batchReview.ids.length" class="batch-list">
+            {{ batchReview.ids.slice(0,12).map(id=>props.orders.data.find(order=>order.id===id)?.erp_order_id??id).join('、') }}
+            <span v-if="batchReview.ids.length>12">等 {{ batchReview.ids.length }} 单</span>
+          </div>
+          <footer>
+            <button type="button" class="secondary" @click="batchReview=null">返回</button>
+            <button type="button" class="primary" data-testid="allocation-batch-confirm-apply"
+              :disabled="!batchReview.ids.length || bulkBusy" @click="confirmGridBatch">
+              {{ bulkBusy?'提交中…':((batchReview.action==='archive'?'确认归档 ':'确认提交 ')+batchReview.ids.length+' 条') }}
+            </button>
+          </footer>
+        </section>
+      </div>
+    </Teleport>
 
     <Teleport to="body"><div v-if="selectedOrder" class="modal-backdrop" @click.self="closePlan"><section class="plan-modal" role="dialog" aria-modal="true">
       <header class="modal-header"><div><p class="eyebrow">FULFILLMENT PLAN</p><h2>履约方案详情</h2></div><button class="icon-button" @click="closePlan">×</button></header>
@@ -430,7 +583,8 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
 
 <style scoped>
 .allocation-page{display:grid;gap:8px;padding:12px 16px 20px;color:#172033;min-width:0}.page-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.header-actions{display:flex;align-items:center;gap:10px;margin-left:auto}.title-row{display:flex;align-items:center;gap:9px}.title-row h1{margin:0;font-size:22px;color:#111827}.version{padding:3px 7px;border-radius:5px;background:#dbeafe;color:#1d4ed8;font-weight:800;font-size:11px}.page-heading p{margin:5px 0 0;color:#5f6d80;font-size:13px}.tabs{display:flex;gap:6px;border-bottom:1px solid #e6ebf1;overflow-x:auto;white-space:nowrap}.tabs button{border:0;background:transparent;padding:10px 13px;color:#59677c;cursor:pointer;border-bottom:2px solid transparent}.tabs button span{color:#8a96a8;margin-left:4px}.tabs button.active{color:#1261d7;font-weight:750;border-bottom-color:#1d72f2}.table-wrap{overflow:auto;border:1px solid #e1e7ef;border-radius:9px;background:#fff}.allocation-table{width:100%;min-width:1260px;border-collapse:collapse;font-size:12px}.allocation-table th,.allocation-table td{padding:10px 12px;border-bottom:1px solid #edf0f4;text-align:left;vertical-align:top}.allocation-table th{background:#f5f8fb;color:#526076}.order-link{color:#1261d7;font-weight:750;text-decoration:none}.sku-list{min-width:160px}.sku-list>div{display:flex;align-items:center;gap:7px;margin-bottom:5px}.gift-pending,.gift-done{padding:2px 6px;border-radius:4px;font-size:10px;font-weight:750}.gift-pending{background:#fff0dd;color:#b46100}.gift-done{background:#e8f8ef;color:#11834f}.address-summary{min-width:300px;max-width:360px}.address-summary strong,.address-summary span,.address-summary small{display:block}.address-summary span{margin-top:4px;line-height:1.45;color:#475569}.address-summary small{margin-top:3px;color:#64748b}.zone-chip{display:inline-flex;padding:3px 8px;border-radius:6px;font-weight:750}.zone-chip.west{background:#fff0e4;color:#b45309}.zone-chip.east{background:#eaf2ff;color:#1d4ed8}.zone-chip.unknown{background:#f1f5f9;color:#64748b}.zone-priority{margin-top:5px;color:#475569;font-weight:650}.plan-chip,.status-chip{display:inline-flex;padding:3px 9px;border-radius:6px;font-weight:750}.plan-chip.good{background:#e8f8ef;color:#11834f}.plan-chip.warn{background:#fff3dd;color:#b8650b}.status-chip.recommend{background:#e8f1ff;color:#1764ce}.status-chip.manual{background:#fff1dc;color:#b86100}.status-chip.done{background:#e9f8ef;color:#16814f}.status-chip.gift{background:#fce7f3;color:#be185d}.sticky-action{position:sticky;right:0;z-index:2;background:#fff!important;box-shadow:-6px 0 8px rgba(24,39,75,.04)}th.sticky-action{z-index:3;background:#f5f8fb!important}.primary,.secondary{min-height:34px;padding:7px 15px;border-radius:7px;border:1px solid transparent;font-weight:750;font-size:12px;cursor:pointer}.primary{background:#126cf3;color:#fff}.primary.green{background:#087f5b}.primary.compact{min-height:29px;padding:4px 14px}.secondary{background:#fff;border-color:#d5dde8;color:#36445b}.empty{text-align:center!important;padding:28px!important;color:#8a96a8}.page-foot{font-size:11px;color:#7d899a}
-.modal-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:12px;background:rgba(17,28,45,.55)}.plan-modal{width:min(1320px,98vw);max-height:96vh;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 22px 70px rgba(15,23,42,.28);color:#1f2937;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;font-size:13px}.modal-header{position:sticky;top:0;z-index:8;display:flex;justify-content:space-between;align-items:center;padding:15px 18px;border-bottom:1px solid #e7ebf1;background:#fff}.modal-header h2{margin:2px 0 0;font-size:21px;color:#111827}.eyebrow{margin:0;color:#087f5b;font-size:11px;font-weight:850;letter-spacing:.05em}.icon-button{border:0;background:transparent;color:#64748b;font-size:25px;cursor:pointer}
+.modal-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:12px;background:rgba(17,28,45,.55)}
+.batch-confirm{width:min(560px,95vw);padding:20px;background:#fff;border-radius:12px;box-shadow:0 18px 50px rgba(15,23,42,.3);color:#1f2937;font-size:13px}.batch-confirm header,.batch-confirm footer{display:flex;align-items:center;justify-content:space-between;gap:12px}.batch-confirm h2{margin:0;font-size:19px}.batch-confirm p{margin:13px 0;line-height:1.5}.batch-caution{color:#92400e}.batch-list{max-height:115px;overflow:auto;border:1px solid #e5e7eb;padding:9px;border-radius:6px;color:#475569}.batch-confirm footer{justify-content:flex-end;margin-top:18px}.plan-modal{width:min(1320px,98vw);max-height:96vh;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 22px 70px rgba(15,23,42,.28);color:#1f2937;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;font-size:13px}.modal-header{position:sticky;top:0;z-index:8;display:flex;justify-content:space-between;align-items:center;padding:15px 18px;border-bottom:1px solid #e7ebf1;background:#fff}.modal-header h2{margin:2px 0 0;font-size:21px;color:#111827}.eyebrow{margin:0;color:#087f5b;font-size:11px;font-weight:850;letter-spacing:.05em}.icon-button{border:0;background:transparent;color:#64748b;font-size:25px;cursor:pointer}
 .primary-allocation,.processed-primary{margin:14px 18px;border:1px solid #dbe3ec;border-radius:9px;background:#fff;overflow:hidden}.section-title{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:11px 13px;border-bottom:1px solid #e6ebf1;background:#f8fafc}.section-title h3{margin:0;color:#111827;font-size:15px}.section-title p{margin:4px 0 0;color:#64748b}.limit-chip{padding:4px 8px;border-radius:6px;background:#fff1dc;color:#9a4f00;font-size:11px;font-weight:750}.manual-table-wrap{overflow:auto}.manual-table-wrap table{width:100%;min-width:1220px;border-collapse:collapse}.manual-table-wrap th,.manual-table-wrap td{padding:9px 10px;border-bottom:1px solid #edf1f5;text-align:left;vertical-align:top}.manual-table-wrap th{background:#f7f9fc;color:#475569}.manual-table-wrap select{min-width:150px;max-width:220px;padding:7px 9px;border:1px solid #aebdce;border-radius:6px;background:#fff;color:#111827}.gift-tag{display:inline-block;margin-left:6px;padding:2px 6px;border-radius:4px;background:#fce7f3;color:#be185d;font-size:10px;font-weight:750}.stock-list{display:flex;gap:5px;flex-wrap:wrap;max-width:430px}.stock-list span{padding:3px 7px;border-radius:4px;font-size:10px;font-weight:650}.stock-ok{background:#e6f8ed;color:#087b47}.stock-short{background:#ffe8e8;color:#b42c2c}.stock-unknown{background:#fff0d7;color:#8b4b00}.stock-neutral{background:#eaf1fb;color:#334e6f}.warehouse-advice{display:grid;gap:4px;max-width:240px}.warehouse-advice strong{width:max-content;max-width:100%;padding:4px 7px;border-radius:5px;font-size:11px}.warehouse-advice small{font-size:10px;line-height:1.4;color:#64748b}.warehouse-advice.recommended strong{background:#eaf7ef;color:#087b47}.warehouse-advice.manual strong{background:#fff0dc;color:#9a4f00}.warehouse-advice.none strong{background:#f1f5f9;color:#64748b}.carrier-cell{display:grid;gap:4px}.carrier-cell small{width:max-content;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:750}.auto-route{background:#e8f8ef;color:#087b47}.manual-route{background:#fff0dc;color:#a85a00}.resolved-note,.mapping-missing{display:block;margin-top:5px;font-size:10px}.resolved-note{color:#087b47}.mapping-missing{color:#b42318}.constraint{margin:8px 12px 11px;color:#8a4600;font-weight:650}.group-preview{margin:10px 12px;padding:10px;border:1px solid #dce6df;border-radius:8px;background:#f7fbf8}.group-heading{display:flex;justify-content:space-between;gap:14px;margin-bottom:8px}.group-heading span{color:#64748b;font-size:11px}.group-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:9px}.group-card{border:1px solid #dce5df;border-radius:7px;background:#fff;overflow:hidden}.group-card header{display:flex;justify-content:space-between;gap:12px;padding:9px 11px;background:#fbfdfb}.group-card header>div:first-child{display:grid;gap:2px}.group-card small{color:#64748b}.group-card strong{color:#111827}.group-route{display:grid;text-align:right;gap:2px}.group-route b{color:#087f5b}.group-route span{color:#475569;font-size:11px}.group-items{display:flex;flex-wrap:wrap;gap:6px;padding:9px 11px;border-top:1px solid #edf1ee}.group-items span{padding:3px 7px;border-radius:5px;background:#f1f5f9;color:#334155;font-size:11px;font-weight:650}
 .top-grid{display:grid;grid-template-columns:1.15fr .9fr 1.2fr;gap:10px;margin:14px 18px}.info-card,.map-card{border:1px solid #dfe6ee;border-radius:9px;background:#fff;overflow:hidden}.info-card header,.map-card header{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e8edf3}.info-card header small,.map-card header small{color:#64748b}.mini-good,.mini-warn{padding:2px 7px;border-radius:5px;font-size:10px;font-weight:750}.mini-good{background:#e7f8ef;color:#0d7f4b}.mini-warn{background:#fff0dc;color:#ad5c00}.info-card dl{display:grid;grid-template-columns:86px 1fr;gap:7px 9px;padding:11px 12px;margin:0}.info-card dt{color:#64748b}.info-card dd{margin:0;color:#111827;font-weight:650;line-height:1.45}.order-item-chip{display:inline-flex;margin:0 4px 4px 0;padding:2px 6px;border-radius:5px;background:#f1f5f9;font-size:11px}.map-card svg{display:block;width:100%;height:185px;padding:7px 8px 0}.map-west{fill:#ffd8b4}.map-east{fill:#dbeafe}.map-outline{fill:none;stroke:#64748b;stroke-width:2}.map-divider{stroke:#ef4444;stroke-width:3}.map-label{font-size:17px;font-weight:800;fill:#334155}.map-pin circle{fill:#0f766e}.map-pin text{font-size:12px;fill:#fff}.map-unknown circle{fill:#f59e0b}.map-unknown text{font-size:14px;font-weight:900;fill:#fff}.map-result{display:flex;justify-content:center;gap:10px;padding:7px 10px 11px;color:#334155}.map-result span{font-weight:750}
 .system-explanation{margin:12px 18px;padding:0;border:1px solid #e4e8ed;border-radius:8px;background:#f4f6f8;color:#475569;overflow:hidden}.system-explanation>header{display:flex;justify-content:space-between;padding:10px 13px;border-bottom:1px solid #e2e6ea}.system-explanation>header strong{color:#334155}.system-explanation>header span{font-size:11px;color:#7b8794}.explanation-grid{display:grid;grid-template-columns:1fr 1fr}.explanation-grid>div{padding:10px 14px}.explanation-grid>div+div{border-left:1px solid #dde2e7}.explanation-grid h4{margin:0 0 5px;color:#475569;font-size:12px}.explanation-grid ul{margin:0;padding-left:18px;line-height:1.65}.explanation-grid li{color:#667281}

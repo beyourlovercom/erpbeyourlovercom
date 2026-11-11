@@ -742,3 +742,45 @@ test('R4-4 今日订单 Global Grid retains exact three exports, barcode, one fo
   await expect(page.locator('[aria-label="今日订单操作"] .today-shortcut')).toHaveCount(3)
   console.log('R4_4_TODAY_GRID_3_EXPORTS_BARCODE_ONE_FOOTER_FALLBACK_PASS')
 })
+
+
+test('待分仓 Global Grid reuses domestic selection and requires a second batch confirmation',async ({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().authorized)
+  await page.goto('/logistics/wait-stock',{waitUntil:'domcontentloaded'})
+  const grid=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(grid).toBeVisible({timeout:20000})
+  await expect(page.locator('.allocation-table')).toHaveCount(0)
+  await expect(page.getByTestId('allocation-global-grid-toggle')).toHaveText('返回原版表格')
+  await expect(grid.getByText('007-1110-c99990',{exact:true}).first()).toBeVisible()
+  const firstRow=grid.locator('.ag-row[row-index="0"]')
+  await firstRow.locator('.ag-selection-checkbox').first().click()
+  const footer=grid.getByTestId('grid-batch-footer')
+  await expect(footer).toBeVisible()
+  await expect(footer).toContainText('已选 1 条')
+  await footer.getByRole('combobox',{name:'批量操作'}).selectOption('warehouse:FACTORY')
+  await footer.getByRole('button',{name:'应用'}).click()
+  const dialog=page.getByTestId('allocation-batch-confirm')
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('批量分仓确认')
+  await expect(dialog).toContainText('可提交 1 条')
+  await dialog.getByRole('button',{name:'返回'}).click()
+  await expect(dialog).toHaveCount(0)
+
+  // The first Apply only opens the review; an actual write requires
+  // the second, explicit operator confirmation, on disposable SQLite only.
+  await footer.getByRole('button',{name:'应用'}).click()
+  const responsePromise=page.waitForResponse(response=>response.url().includes('/logistics/wait-stock/batch-allocation')
+    &&response.request().method()==='POST')
+  await dialog.getByTestId('allocation-batch-confirm-apply').click()
+  const response=await responsePromise
+  expect(response.status()).toBe(200)
+  const result=await response.json()
+  expect(result.results).toHaveLength(1)
+  expect(result.results[0].order_id).toBeGreaterThan(0)
+  expect(typeof result.results[0].ok).toBe('boolean')
+  await expect(dialog).toHaveCount(0)
+  console.log('WAIT_STOCK_BATCH_CHROME_CONFIRM_PER_ORDER_PASS',JSON.stringify({
+    results:result.results.map((row:{ok:boolean;message:string})=>({ok:row.ok,message:row.message})),
+  }))
+})
