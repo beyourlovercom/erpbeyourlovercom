@@ -98,12 +98,18 @@ final class DomesticLogisticsController
             ->map(fn (Order $order): int => (int) $order->shipment?->id)->all());
         $rows->through(fn (Order $order, int $index): array => $this->row($order, (($rows->currentPage() - 1) * $rows->perPage()) + $index + 1, $trackingStatuses[(int) $order->shipment?->id] ?? null));
 
-        $counts = [];
-        foreach (self::VIEWS as $key) {
-            $countQuery = $this->baseQuery((int) $factory->id);
-            $this->applyView($countQuery, $key);
-            $counts[$key] = $countQuery->count();
-        }
+        // Inertia partial row reloads do not need nine independent view counts.
+        // Keep every count identical on full loads and when viewCounts is requested.
+        $loadViewCounts = function () use ($factory): array {
+            $counts = [];
+            foreach (self::VIEWS as $key) {
+                $countQuery = $this->baseQuery((int) $factory->id);
+                $this->applyView($countQuery, $key);
+                $counts[$key] = $countQuery->count();
+            }
+
+            return $counts;
+        };
 
         $previewProvider = session('domestic_tracking_preview_provider');
         $preview = $previewProvider ? session("domestic_tracking_preview_{$previewProvider}") : null;
@@ -114,12 +120,12 @@ final class DomesticLogisticsController
             'globalGridPilotAvailable' => $gridAvailable,
             'globalGridPilotEnabled' => $gridPilot,
             'gridSearch' => $search,
-            'viewCounts' => $counts,
+            'viewCounts' => $loadViewCounts,
             'canOperate' => app(LogisticsExecutionAccess::class)->allows($request->user()),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canArchive' => (bool) $request->user()?->can('orders.archive'),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
-            'carrierOptions' => app(CarrierServiceCatalog::class)->options(),
+            'carrierOptions' => fn () => app(CarrierServiceCatalog::class)->options(),
             'trackingImportProvider' => $previewProvider,
             'trackingImportPreview' => $preview ? [
                 'token' => $preview['token'],
