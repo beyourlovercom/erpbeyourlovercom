@@ -24,8 +24,30 @@ const mobileOpen = ref(false)
 const isNarrowScreen = ref(false)
 let narrowScreenQuery: MediaQueryList | undefined
 const storageKey = 'module_sidebar_collapsed'
-// Opt-in until R3 Dev browser UAT is approved; Production remains unchanged by default.
-const workspaceTabsEnabled = import.meta.env.VITE_ERP_WORKSPACE_TABS === '1'
+// Compile capability separately from the user/session opt-in. A production
+// build can expose R3 only to the allowlisted canary users, and they must
+// explicitly visit a URL with ?erp_v4_tabs=1 to enable it in this browser tab.
+const workspaceTabsEnabled = ref(false)
+const canaryStorageKey = computed(() => 'byl:workspace:canary:user:' + page.props.auth.user.id)
+const refreshWorkspaceCanary = () => {
+    if (typeof window === 'undefined' || import.meta.env.VITE_ERP_WORKSPACE_TABS !== '1') {
+        workspaceTabsEnabled.value = false
+        return
+    }
+    const userId = String(page.props.auth.user.id)
+    const allowed = (import.meta.env.VITE_ERP_WORKSPACE_CANARY_IDS ?? '')
+        .split(',').map((value: string) => value.trim()).filter(Boolean).includes(userId)
+    if (!allowed) { workspaceTabsEnabled.value = false; return }
+    const mode = new URLSearchParams(page.url.split('?')[1] ?? '').get('erp_v4_tabs')
+    try {
+        if (mode === '1') window.sessionStorage.setItem(canaryStorageKey.value, '1')
+        if (mode === '0') window.sessionStorage.removeItem(canaryStorageKey.value)
+        workspaceTabsEnabled.value = window.sessionStorage.getItem(canaryStorageKey.value) === '1'
+    } catch {
+        workspaceTabsEnabled.value = mode === '1'
+    }
+}
+watch(() => [page.url, page.props.auth.user.id], refreshWorkspaceCanary)
 
 const updateNarrowScreen = (event: MediaQueryListEvent | MediaQueryList) => {
     isNarrowScreen.value = event.matches
@@ -90,6 +112,7 @@ const copyGlobalFeedback = async () => {
 }
 
 onMounted(() => {
+    refreshWorkspaceCanary()
     sidebarCollapsed.value = readCollapsed()
     narrowScreenQuery = window.matchMedia?.('(max-width: 800px)')
     if (!narrowScreenQuery) return

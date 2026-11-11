@@ -169,7 +169,7 @@ let dragged: string | null = null
 
 const refresh = () => {
   if (!api.value) return
-  states.value = api.value.getColumnState()
+  states.value = api.value.getColumnState() ?? []
   visibleCount.value = props.serverPagination?.total ?? api.value.getDisplayedRowCount()
   selectedCount.value = props.selectionOrderKey ? (props.selectedOrderIds?.length ?? 0) : api.value.getSelectedRows().length
 }
@@ -218,7 +218,7 @@ const onSelectionChanged = (event: { api: GridApi<GridRow>; source?: string }) =
 watch(() => props.selectedOrderIds, () => restoreSelections())
 const getRowId = (params: { data: GridRow }) => String(params.data[props.rowIdentityKey ?? 'id'] ?? '')
 const snapshot = (): OmsGridPreference => ({
-  version: 1, columns: api.value?.getColumnState().filter(c => ids.value.includes(c.colId)) ?? [],
+  version: 1, columns: (api.value?.getColumnState() ?? []).filter(c => ids.value.includes(c.colId)),
   pinnedLeft: pinnedLeft.value, pinnedRight: pinnedRight.value,
   density: density.value, pageSize: pageSize.value,
 })
@@ -259,7 +259,9 @@ const scheduleSave = () => {
 }
 const applyPins = () => {
   if (!api.value) return
-  const state = api.value.getColumnState().filter(c => ids.value.includes(c.colId))
+  const columnState = api.value.getColumnState()
+  if (!Array.isArray(columnState)) return // Grid columns not initialized yet
+  const state = columnState.filter(c => ids.value.includes(c.colId))
   // Saved column ORDER must not override domain-fixed actions.
   const locked = {
     left: leafColumns.value.filter(col => col.lockPinned && col.pinned === 'left')
@@ -360,6 +362,7 @@ const dropColumn = (event: DragEvent, target: string) => {
   dragged = null
   if (!source || source === target || !api.value) return
   const state = api.value.getColumnState()
+  if (!Array.isArray(state)) return
   const from = state.findIndex(col => col.colId === source)
   const to = state.findIndex(col => col.colId === target)
   if (from < 0 || to < 0) return
@@ -430,7 +433,7 @@ const changeServerPageSize = (event: Event) => {
 const onSortChanged = (event: SortChangedEvent<GridRow>) => {
   scheduleSave()
   if (!props.serverPagination || restoring || !api.value) return
-  const chosen = event.api.getColumnState().find(column => column.sort === 'asc' || column.sort === 'desc')
+  const chosen = (event.api.getColumnState() ?? []).find(column => column.sort === 'asc' || column.sort === 'desc')
   const colId = chosen?.colId ?? 'date'
   const direction = chosen?.sort === 'asc' || chosen?.sort === 'desc' ? chosen.sort : null
   if (props.serverSort?.colId === colId && props.serverSort.direction === (direction ?? 'desc')) return
