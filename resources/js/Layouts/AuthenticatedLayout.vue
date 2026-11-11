@@ -5,6 +5,7 @@ import GlobalFeedbackIsland from '../Components/AppShell/GlobalFeedbackIsland.vu
 import GlobalNavigation from '../Components/AppShell/GlobalNavigation.vue'
 import TopBar, { type BreadcrumbItem } from '../Components/AppShell/TopBar.vue'
 import WorkspaceTabs from '../Components/AppShell/WorkspaceTabs.vue'
+import { workspaceHotStatus } from '../lib/workspaceHotCache'
 import {
     canonicalFeedbackCopyText,
     copyFailureFeedback,
@@ -124,7 +125,7 @@ const currentPath = computed(() => page.url.split('?')[0])
 </script>
 
 <template>
-  <div class="authenticated-shell" :class="{ 'mobile-nav-open': mobileOpen, 'sidebar-collapsed': sidebarCollapsed }">
+  <div class="authenticated-shell" :class="{ 'mobile-nav-open': mobileOpen, 'sidebar-collapsed': sidebarCollapsed, 'workspace-data-locked': workspaceHotStatus !== 'idle' }">
     <GlobalFeedbackIsland :feedback="globalFeedback" @copy="copyGlobalFeedback" />
     <div class="shell-mobile-backdrop" aria-hidden="true" @click="mobileOpen = false"></div>
     <GlobalNavigation
@@ -149,7 +150,13 @@ const currentPath = computed(() => page.url.split('?')[0])
         :current-title="title"
         :user-id="page.props.auth.user.id"
       />
-      <main id="main-content" class="shell-content" tabindex="-1"><slot /></main>
+      <main id="main-content" class="shell-content" tabindex="-1" :aria-busy="workspaceHotStatus !== 'idle'"><slot /></main>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Old cached order props may be shown instantly, but cannot be acted upon
+   until the authoritative revalidation succeeds. Navbar remains usable. */
+.workspace-data-locked .shell-content { pointer-events: none; opacity: .84; }
+</style>
