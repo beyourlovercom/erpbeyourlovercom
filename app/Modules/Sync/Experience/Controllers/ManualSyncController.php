@@ -6,6 +6,7 @@ use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Shell\Application\GlobalGridPilot;
 use App\Modules\Sync\Application\ManualSyncService;
 use App\Modules\Sync\Application\OrderSyncProgressProjector;
 use App\Modules\Sync\Application\SyncOrchestrationService;
@@ -34,8 +35,17 @@ final class ManualSyncController
             'source' => ['nullable', Rule::in(['woocommerce', 'website', 'kol', 'manual', 'manual_other'])],
             'per_page' => ['nullable', Rule::in([20, 50, 100, '20', '50', '100'])],
             'page' => ['nullable', 'integer', 'min:1'],
+            'sort' => ['nullable', Rule::in(['date', 'order_number', 'source'])],
+            'direction' => ['nullable', Rule::in(['asc', 'desc'])],
         ]);
         $perPage = (int) ($filters['per_page'] ?? 50);
+        $sort = (string) ($filters['sort'] ?? 'date');
+        $direction = (string) ($filters['direction'] ?? 'desc');
+        $sortColumn = match ($sort) {
+            'order_number' => 'erp_order_id',
+            'source' => 'source_type',
+            default => 'order_date',
+        };
         $paginator = Order::query()->withTrashed()
             ->with(['address', 'manualSync', 'shipment', 'fulfillmentParent' => fn ($query) => $query->withTrashed(), 'fulfillmentParent.externalReferences', 'externalReferences', 'operationalMarkers'])
             ->when($filters['source'] ?? null, fn ($query, $source) => $query->where('source_type', $source))
@@ -47,7 +57,7 @@ final class ManualSyncController
                         ->orWhereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$search}%"));
                 });
             })
-            ->orderByDesc('order_date')->orderByDesc('id')
+            ->orderBy($sortColumn, $direction)->orderBy('id', $direction)
             ->paginate($perPage)->withQueryString();
 
         $pageOrders = $paginator->getCollection();
@@ -69,6 +79,9 @@ final class ManualSyncController
         $recentRuns = $this->orchestration->recentRuns(10);
 
         return Inertia::render('Sync/Orders', [
+            // Explicit opt-in only, using the existing Owner canary gate.
+            'globalGridPilotAvailable' => GlobalGridPilot::available(),
+            'globalGridPilotEnabled' => GlobalGridPilot::enabled($request),
             'wooOrderSync' => [
                 ...app(WooOrderSyncHealthReader::class)->snapshot(),
                 'can_import_today' => app(WooOrderManualSyncAccess::class)->allows($request->user()),
@@ -160,6 +173,8 @@ final class ManualSyncController
                 'search' => $filters['search'] ?? '',
                 'source' => $filters['source'] ?? '',
                 'per_page' => $perPage,
+                'sort' => $sort,
+                'direction' => $direction,
             ],
         ]);
     }

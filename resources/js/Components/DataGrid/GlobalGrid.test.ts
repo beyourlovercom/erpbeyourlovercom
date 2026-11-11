@@ -7,7 +7,7 @@ vi.mock('./OmsGrid.vue', () => ({
   default: {
     name:'OmsGrid',
     props:['namespace','title','columns','rows','requiredColumnIds','serverPagination',
-      'rowIdentityKey','showSearch','enableSelection','allowAllRows','showClientCsvExport','preferenceScope','legacyPreferenceNamespaces'],
+      'rowIdentityKey','showSearch','enableSelection','allowAllRows','showClientCsvExport','preferenceScope','legacyPreferenceNamespaces','defaultPinnedRight'],
     emits:['page-change','page-size-change','sort-change','search-change','column-search-change'],
     template:'<section data-testid="underlying-oms"><slot name="actions"/></section>',
   },
@@ -37,6 +37,16 @@ describe('Global Grid V1 shared contract', () => {
     expect(underlying.props('showSearch')).toBe(true)
     expect(underlying.props('requiredColumnIds')).toEqual(['sku'])
   })
+  it('accepts a two-column right pin for Sync without changing existing grid defaults', () => {
+    const syncGrid = mount(GlobalGrid, { props: {
+      ...props,namespace: 'grid.sync.orders.global.v1',
+      defaultPinnedRight: 2, requiredColumnIds: ['order_number','actions','progress'],
+    } })
+    expect(syncGrid.findComponent({name:'OmsGrid'}).props('defaultPinnedRight')).toBe(2)
+    const defaultGrid = mount(GlobalGrid, { props })
+    expect(defaultGrid.findComponent({name:'OmsGrid'}).props('defaultPinnedRight')).toBe(1)
+  })
+
   it('forwards only data navigation intents, not business mutation actions', () => {
     const wrapper = mount(GlobalGrid,{props})
     const underlying = wrapper.findComponent({name:'OmsGrid'})

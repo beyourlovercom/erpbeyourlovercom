@@ -22,8 +22,9 @@ const props = withDefaults(defineProps<{
   enableSelection?: boolean
   selectedOrderIds?: number[]
   clientCsvExport?: boolean
+  defaultPinnedRight?: number
 }>(), {
-  page: null, rowIdentityKey: 'id', showSearch: true, enableSelection: false, clientCsvExport: false,
+  page: null, rowIdentityKey: 'id', showSearch: true, enableSelection: false, clientCsvExport: false, defaultPinnedRight: 1,
   filterColumns: () => [], filterValues: () => ({}),
 })
 const emit = defineEmits<{
@@ -61,7 +62,7 @@ const emit = defineEmits<{
       :show-client-csv-export="clientCsvExport"
       preference-scope="account"
       :default-pinned-left="1"
-      :default-pinned-right="1"
+      :default-pinned-right="defaultPinnedRight"
       @selection-change="emit('selection-change', $event)"
       @page-change="emit('page-change', $event)"
       @page-size-change="emit('page-size-change', $event)"
