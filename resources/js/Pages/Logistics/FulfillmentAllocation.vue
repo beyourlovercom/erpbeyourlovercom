@@ -256,7 +256,7 @@ async function confirmGridBatch(){
         return (order?.erp_order_id??row.order_id)+'：'+row.message
       }).join('；'):'所有成功订单均已逐单经过原有分仓门禁。',
     })
-    router.reload({only:['orders','pendingTotal'],preserveScroll:true,preserveState:true})
+    router.reload({only:['orders','pendingTotal']})
   } catch(error){
     publishGlobalFeedback({state:'ERROR',title:'批量分仓未确认',
       message:(error instanceof Error?error.message:'请求失败')+'；先刷新检查已分仓订单，勿直接重复提交。'})
