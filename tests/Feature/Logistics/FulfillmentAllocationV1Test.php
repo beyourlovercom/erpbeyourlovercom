@@ -115,17 +115,16 @@ final class FulfillmentAllocationV1Test extends TestCase
             ->assertOk()->assertJsonPath('results.1.ok', false);
         $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $gift->id]);
 
-        // The first order either passes the canonical inventory/route checks or
-        // reports a safe failure. In neither case may an immediate retry allocate twice.
-        $firstSucceeded = (bool) $response->json('results.0.ok');
+        // Confirm one real warehouse allocation and one isolated gift rejection.
+        $response->assertJsonPath('succeeded', 1)->assertJsonPath('failed', 1)
+            ->assertJsonPath('results.0.ok', true);
+        $this->assertDatabaseHas('fulfillment_allocations', [
+            'order_id' => $eligible->id, 'status' => 'submitted',
+        ]);
         $retry = $this->actingAs($owner)->postJson('/logistics/wait-stock/batch-allocation', $payload)
-            ->assertOk()->assertJsonPath('results.1.ok', false);
-        if ($firstSucceeded) {
-            $this->assertDatabaseHas('fulfillment_allocations', ['order_id' => $eligible->id, 'status' => 'submitted']);
-            $retry->assertJsonPath('results.0.ok', false);
-        } else {
-            self::assertNotEmpty($response->json('results.0.message'));
-        }
+            ->assertOk()->assertJsonPath('succeeded', 0)
+            ->assertJsonPath('results.0.ok', false)
+            ->assertJsonPath('results.1.ok', false);
         self::assertSame(2, count((array) $response->json('results')));
     }
 
