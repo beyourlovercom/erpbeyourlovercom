@@ -35,3 +35,29 @@
 
 ## Rollback
 Before rollback, check that Production `current` still points to `erp-v4-r3d-admin-canary-pr702-eedf559-20261111`. If so, atomically redirect `current` back to `global-grid-r4-pending-pr700-1eeb37e7-20261111`. If another branch now owns `current`, **stop and do not overwrite it**. Never replay ShipOut jobs, restart workers globally, delete UATs or clear Production caches as part of this UI rollback.
+
+
+## D4 owner-operated Production UX checklist — 2026-11-11
+
+The Owner reported **all six manual inspection items as "已检查" (checked)** in the ERP project conversation. This is an important progress milestone, **not a declaration of six PASS results**: the message did not state whether any item exhibited a defect, unmet performance target, or acceptance/rejection. Do not close the D4 quality gate or expand the Canary solely on this checklist.
+
+| Item | Owner inspection | Outcome |
+|---|---|---|
+| 1. Page/Tab switching responsiveness | Checked | PASS/FAIL and observations not yet reported |
+| 2. Pin three tabs / reject fourth | Checked | PASS/FAIL not yet reported |
+| 3. Sleep other tabs and restore | Checked | PASS/FAIL not yet reported |
+| 4. Cached data revalidation / operation interlock | Checked | PASS/FAIL not yet reported |
+| 5. Unsaved KOL/form draft confirmation | Checked | PASS/FAIL not yet reported |
+| 6. Longer use: scrolling/filtering/perceived responsiveness | Checked | PASS/FAIL and duration not yet reported |
+
+**Read-only Production verification at 2026-11-11 04:06 UTC:** `current` still points to `erp-v4-r3d-admin-canary-pr702-eedf559-20261111`; unauthenticated Dashboard redirect chain returned HTTP 200 in ~430ms; Scheduler, default queue, dedicated ShipOut batch LaunchAgents all present with PIDs. This is availability evidence, not authenticated frontend acceptance.
+
+### D4 remaining release gates / requested owner feedback
+1. Obtain one overall UX verdict (**all six PASS** / **some issues**) and shortest reproduction details for anything abnormal. In particular, page components still remount from hot *data snapshots*, which is an intentional limitation versus true KeepAlive.
+2. Test 30th and 31st distinct navigation in the authenticated Canary (max 30, three pins survive eviction); opt out via `erp_v4_tabs=0` and verify ordinary UI resumes. No real shipping/stock writes.
+3. Verify cached route state (search/filter/pagination/horizontal scroll) in real Domestic and Orders pages; record whether preserved or reset. This feature was not fully implemented in R3-D, so discrepancies should become D5 acceptance tasks, **not silently marked PASS**.
+4. Safe failure handling: on normal user operation, revalidation must unlock once latest data arrives; if network fails, disable actions and show Retry. A synthetic failure was tested in Dev but not intentionally induced in Production.
+5. Observability gate before widening: sustained logged-in resource readings (browser full footprint, host memory pressure / swap churn, server PHP-FPM wait & P95, background polling count), plus 5-user peak traffic; the prior 5-user result is an isolated Dev synthetic test.
+6. Existing full Vue suite had five unrelated pre-existing Warehouse UI expectation failures; resolve or explicitly document separate R6 exception before claiming global CI clean.
+
+Status: **D4 checklist 6/6 inspected, result unconfirmed; Production Canary remains administrator opt-in only. Not approved for staff-wide release.** No backend services, production data, user permissions, or browser sessions changed by this documentation update.
