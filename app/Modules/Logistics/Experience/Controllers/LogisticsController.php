@@ -29,6 +29,7 @@ use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -155,27 +156,29 @@ final class LogisticsController
             }
 
             try {
-                if ($data['action'] === 'recommend') {
-                    $planKey = trim((string) ($data['plan_keys'][(string) $id] ?? ''));
-                    if ($planKey === '') {
-                        $results[] = ['order_id' => $id, 'ok' => false, 'message' => '本订单无可确认的系统推荐，请人工分仓。'];
-                        continue;
+                // The outer row lock serializes concurrent bulk clicks. Recheck
+                // submission state after taking the lock, not just in the list.
+                DB::transaction(function () use ($order, $id, $data, $warehouseCode, $request): void {
+                    $locked = Order::query()->with(['items', 'fulfillmentAllocation'])
+                        ->lockForUpdate()->findOrFail($order->id);
+                    abort_if($locked->fulfillmentAllocation?->status === 'submitted', 409, '该订单已完成分仓，未重复提交。');
+
+                    if ($data['action'] === 'recommend') {
+                        $planKey = trim((string) ($data['plan_keys'][(string) $id] ?? ''));
+                        abort_if($planKey === '', 422, '本订单无可确认的系统推荐，请人工分仓。');
+                        $this->allocationSubmissions->submitRecommended($locked, $planKey, null, $request->user());
+                    } else {
+                        abort_if($locked->items->isEmpty() || $locked->items->contains(
+                            fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0
+                        ), 422, '礼品或空 SKU 订单需逐单确认，已跳过。');
+                        $assignments = $locked->items->map(fn ($item): array => [
+                            'order_item_id' => (int) $item->id,
+                            'source_code' => $warehouseCode,
+                        ])->values()->all();
+                        // A bulk click cannot silently acknowledge missing/short stock.
+                        $this->allocationSubmissions->submitManual($locked, $assignments, null, $request->user(), false);
                     }
-                    $this->allocationSubmissions->submitRecommended($order, $planKey, null, $request->user());
-                } else {
-                    if ($order->items->isEmpty() || $order->items->contains(
-                        fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0
-                    )) {
-                        $results[] = ['order_id' => $id, 'ok' => false, 'message' => '礼品或空 SKU 订单需逐单确认，已跳过。'];
-                        continue;
-                    }
-                    $assignments = $order->items->map(fn ($item): array => [
-                        'order_item_id' => (int) $item->id,
-                        'source_code' => $warehouseCode,
-                    ])->values()->all();
-                    // A bulk click cannot silently acknowledge missing/short stock.
-                    $this->allocationSubmissions->submitManual($order, $assignments, null, $request->user(), false);
-                }
+                });
                 $results[] = ['order_id' => $id, 'ok' => true, 'message' => '已完成分仓'];
             } catch (ValidationException $exception) {
                 $message = collect($exception->errors())->flatten()->first() ?: '订单条件未通过，请单独确认。';
