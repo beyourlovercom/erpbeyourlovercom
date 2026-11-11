@@ -645,3 +645,36 @@ test('R4-3 synthetic pending explicit carrier then tracking then ship; never sil
   await expect(grid.getByText('007-1111-c99990',{exact:true})).toHaveCount(0,{timeout:15000})
   console.log('R4_PENDING_SYNTHETIC_CARRIER_DRAFT_SHIP_THREE_DISTINCT_WRITES_PASS')
 })
+
+
+test('R4-3F country route is prefilled and inline override saves without shipping',async({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().logisticsOperator)
+  await page.goto('/logistics/china?view=pending',{waitUntil:'domcontentloaded'})
+  const grid=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(grid).toBeVisible({timeout:16000})
+  await expect(grid.getByText('007-1111-c99989',{exact:true})).toBeVisible()
+  await grid.locator('.ag-body-horizontal-scroll-viewport').evaluate(el=>{
+    el.scrollLeft=1150
+    el.dispatchEvent(new Event('scroll',{bubbles:true}))
+  })
+  // After horizontal column virtualization, only the remaining synthetic
+  // Mexico approved-pending row is present. Query the rendered controls.
+  const carrier=grid.locator('select[aria-label="物流商"]').first()
+  const service=grid.locator('select[aria-label="服务渠道"]').first()
+  await expect(carrier).toHaveValue('Weship')
+  await expect(service).toHaveValue('Standard')
+  const response=page.waitForResponse(r=>r.url().includes('/carrier-service')&&r.request().method()==='POST')
+  await carrier.selectOption('4PX')
+  expect((await response).status()).toBeLessThan(400)
+  // Verify persisted values from original native table after a fresh request:
+  // this is independent of AG Grid's virtualized horizontal column viewport.
+  await page.goto('/logistics/china?view=pending&global_grid=0',{waitUntil:'domcontentloaded'})
+  const persisted=page.locator('.table-wrap.orders tbody tr').filter({hasText:'007-1111-c99989'}).first()
+  await expect(persisted).toBeVisible()
+  await expect(persisted).toContainText('4PX')
+  await expect(persisted).toContainText('SD经济挂号-带电')
+  // The order still exists in pending; changing its carrier never shipped it.
+  await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toHaveCount(0)
+  console.log('R4_3F_DEFAULT_WESHIP_INLINE_MANUAL_OVERRIDE_PENDING_PASS')
+})

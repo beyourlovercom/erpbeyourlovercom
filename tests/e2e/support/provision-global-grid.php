@@ -152,6 +152,34 @@ DB::transaction(function () use ($product, $warehouse, $owner): void {
         'warehouse_selection_source'=>'manual',
     ]);
     $pending->operationalMarkers()->create(['marker'=>'domestic_reviewed','marked_at'=>now()]);
+    // R4-3-F isolated country-default/inline-override fixture.
+    $auto = Order::query()->create([
+        'internal_order_number'=>'INT-E2E-GG-AUTO-01',
+        'erp_order_id'=>'007-1111-c99989',
+        'source_type'=>OrderSourceType::Manual,
+        'order_kind'=>OrderKind::Customer,
+        'external_order_number'=>'E2E-GG-AUTO-01',
+        'order_date'=>now()->toDateString(),
+        'owner_id'=>$owner->id,
+        'order_status'=>OrderStatus::PendingShipment,
+    ]);
+    $auto->address()->create([
+        'recipient_name'=>'E2E Automatic Route Recipient',
+        'phone'=>'15550009889','country'=>'MX','city'=>'Mexico City',
+        'address_line_1'=>'Synthetic Mexico Street 89','postal_code'=>'01000',
+    ]);
+    $auto->items()->create([
+        'product_id'=>$product->id,'sku'=>'E2E-SKU-0001',
+        'product_summary'=>'E2E Auto Route Product','quantity'=>1,
+        'unit_price'=>'18.00','line_revenue'=>'18.00',
+    ]);
+    $auto->shipment()->create([
+        'warehouse_id'=>$factory->id,'shipment_status'=>'pending',
+        'warehouse_selection_source'=>'manual',
+    ]);
+    $auto->operationalMarkers()->create(['marker'=>'domestic_reviewed','marked_at'=>now()]);
+    app(\App\Modules\Logistics\Application\Domestic\DomesticCarrierDefaults::class)
+        ->fill($auto->fresh(['address','shipment']));
     LogisticsReview::query()->create([
         'order_id'=>$domestic->id,
         'status'=>'pending',
