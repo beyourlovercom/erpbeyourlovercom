@@ -524,3 +524,124 @@ test('R4 compact short-list auto-height: no empty canvas, footer follows last ro
   await expect(empty.getByText('暂无数据')).toBeVisible()
   console.log('GLOBAL_GRID_SHORT_LIST_FOOTER_TIGHT_PASS',JSON.stringify({...measured,expanded,reloaded,emptyHeight}))
 })
+
+test('R4-3 domestic pending: direct right actions, floating carrier/tracking panel and original file controls',async({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().logisticsOperator)
+  await page.goto('/logistics/china?view=pending',{waitUntil:'domcontentloaded'})
+  const grid=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(grid).toBeVisible({timeout:16000})
+  await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:16000})
+  await expect(grid.getByText('007-1111-c99990',{exact:true})).toBeVisible()
+  await expect(page.locator('.table-wrap.orders table')).toHaveCount(0)
+  const cell=grid.locator('.domestic-pending-actions').first()
+  await expect(cell.getByRole('button',{name:'填写物流'})).toBeVisible()
+  await expect(cell.getByRole('button',{name:'确认发货'})).toBeDisabled()
+  // Logistics operator has shipping permission but NOT domestic review
+  // permission. Super_admin has the inverse elevated read-only policy.
+  await expect(cell.getByRole('button',{name:'重新审核'})).toHaveCount(0)
+  const layout=await cell.evaluate(el=>{
+    const c=el.closest('.ag-cell')!.getBoundingClientRect()
+    const last=el.querySelector('button:last-of-type')!.getBoundingClientRect()
+    return {width:c.width,spaceAfter:c.right-last.right,
+      pinned:el.closest('.ag-cell')?.classList.contains('ag-cell-first-right-pinned')}
+  })
+  expect(layout.width).toBeLessThanOrEqual(175)
+  expect(layout.spaceAfter).toBeLessThan(35)
+  expect(layout.pinned).toBe(true)
+  await cell.getByRole('button',{name:'填写物流'}).click()
+  const pop=page.getByTestId('domestic-pending-popover')
+  await expect(pop).toBeVisible()
+  await expect(pop.getByRole('combobox',{name:'物流商'})).toBeFocused()
+  await expect(pop.getByRole('combobox',{name:'服务类型'})).toBeDisabled()
+  await expect(pop.getByRole('button',{name:'确认物流商及服务'})).toBeDisabled()
+  await expect(pop.getByRole('button',{name:'暂存单号'})).toBeDisabled()
+  await expect(pop.getByRole('button',{name:'确认发货'})).toBeDisabled()
+  await expect(pop).toContainText('暂存不会发货')
+  const overlay=await pop.evaluate(el=>{
+    const r=el.getBoundingClientRect()
+    const input=el.querySelector('input')!.getBoundingClientRect()
+    return {
+      position:getComputedStyle(el).position,zIndex:Number(getComputedStyle(el).zIndex),
+      inBody:el.parentElement===document.body,
+      inputOnTop:el.contains(document.elementFromPoint(input.x+input.width/2,input.y+input.height/2)),
+      top:r.top,bottom:r.bottom,viewport:window.innerHeight,
+    }
+  })
+  expect(overlay.position).toBe('fixed')
+  expect(overlay.zIndex).toBeGreaterThan(12000)
+  expect(overlay.inBody).toBe(true)
+  expect(overlay.inputOnTop).toBe(true)
+  expect(overlay.bottom).toBeLessThanOrEqual(overlay.viewport)
+  await pop.getByRole('textbox',{name:'Tracking'}).fill('E2E-NO-SHIP-0001')
+  await expect(pop.getByRole('button',{name:'暂存单号'})).toBeEnabled()
+  await expect(pop.getByRole('button',{name:'确认发货'})).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('domestic-pending-popover')).toHaveCount(0)
+  await expect(grid.locator('.oms-grid')).toHaveClass(/is-auto-height/)
+  // EU barcode-69 read control is also preserved inside the Grid; it does
+  // not require opening the original table or authorizing a shipment write.
+  await page.route('**/logistics/china/orders/*/barcode-69',route=>
+    route.fulfill({status:200,contentType:'application/json',
+      body:JSON.stringify({items:[{sku:'E2E-SKU-0001',quantity:1,barcode_69:'6901234567890'}]})}))
+  const sku=grid.locator('.domestic-pending-sku').first()
+  await expect(sku.getByRole('button',{name:'69条码'})).toBeVisible()
+  await sku.getByRole('button',{name:'69条码'}).click()
+  const barcode=page.getByTestId('domestic-pending-barcode')
+  await expect(barcode).toBeVisible()
+  await expect(barcode).toContainText('6901234567890')
+  await barcode.getByRole('button',{name:'关闭'}).click()
+  await expect(page.getByTestId('domestic-pending-barcode')).toHaveCount(0)
+  // Original shipping file operations stay ABOVE the Grid, no second table.
+  await expect(page.locator('a[href="/logistics/china/pending-batch/export"]')).toBeVisible()
+  await expect(page.getByRole('button',{name:'⏫上传物流单号'})).toBeVisible()
+  await expect(page.locator('input[aria-label="上传物流单号表"]')).toHaveCount(1)
+  await expect(page.getByRole('button',{name:'返回原表'})).toBeVisible()
+  await page.getByRole('button',{name:'返回原表'}).click()
+  await expect(page).toHaveURL(/global_grid=0/)
+  await expect(page.locator('.table-wrap.orders table')).toBeVisible()
+  await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toHaveCount(0)
+  console.log('R4_PENDING_DIRECT_ACTIONS_FLOATING_SHIP_GATES_AND_LEGACY_PASS',JSON.stringify({layout,overlay}))
+})
+
+test('R4-3 synthetic pending explicit carrier then tracking then ship; never silently ships draft',async({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().logisticsOperator)
+  await page.goto('/logistics/china?view=pending',{waitUntil:'domcontentloaded'})
+  const grid=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(grid.getByText('007-1111-c99990',{exact:true})).toBeVisible({timeout:15000})
+  const actions=grid.locator('.domestic-pending-actions').first()
+  await actions.getByRole('button',{name:'填写物流'}).click()
+  let pop=page.getByTestId('domestic-pending-popover')
+  await pop.getByRole('combobox',{name:'物流商'}).selectOption('4PX')
+  await pop.getByRole('combobox',{name:'服务类型'}).selectOption('SD经济挂号-带电')
+  await expect(pop.getByRole('button',{name:'确认物流商及服务'})).toBeEnabled()
+  const carrierWrite=page.waitForResponse(resp=>resp.url().includes('/carrier-service') &&
+    resp.request().method()==='POST',{timeout:12000})
+  await pop.getByRole('button',{name:'确认物流商及服务'}).click()
+  expect((await carrierWrite).status()).toBeLessThan(400)
+  await expect(grid.getByText('007-1111-c99990',{exact:true})).toBeVisible()
+  await expect(actions.getByRole('button',{name:'确认发货'})).toBeDisabled()
+  // A successful carrier save did NOT ship the pending order.
+  await page.reload({waitUntil:'domcontentloaded'})
+  await expect(grid.getByText('007-1111-c99990',{exact:true})).toBeVisible()
+  await grid.locator('.domestic-pending-actions').first().getByRole('button',{name:'填写物流'}).click()
+  pop=page.getByTestId('domestic-pending-popover')
+  await pop.getByRole('textbox',{name:'Tracking'}).fill('E2E-PENDING-4PX-TRACKING-9001')
+  await expect(pop.getByRole('button',{name:'确认发货'})).toBeDisabled()
+  const draftWrite=page.waitForResponse(resp=>resp.url().includes('/tracking-draft') &&
+    resp.request().method()==='POST',{timeout:12000})
+  await pop.getByRole('button',{name:'暂存单号'}).click()
+  expect((await draftWrite).status()).toBeLessThan(400)
+  // Saving Tracking does not change shipment state or create Woo push.
+  await page.reload({waitUntil:'domcontentloaded'})
+  await expect(grid.getByText('007-1111-c99990',{exact:true})).toBeVisible()
+  const confirm=grid.locator('.domestic-pending-actions').first().getByRole('button',{name:'确认发货'})
+  await expect(confirm).toBeEnabled()
+  const shipWrite=page.waitForResponse(resp=>resp.url().includes('/quick-ship') &&
+    resp.request().method()==='POST',{timeout:12000})
+  await confirm.click()
+  expect((await shipWrite).status()).toBeLessThan(400)
+  await expect(grid.getByText('007-1111-c99990',{exact:true})).toHaveCount(0,{timeout:15000})
+  console.log('R4_PENDING_SYNTHETIC_CARRIER_DRAFT_SHIP_THREE_DISTINCT_WRITES_PASS')
+})

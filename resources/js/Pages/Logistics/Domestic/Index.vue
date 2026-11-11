@@ -4,6 +4,8 @@ import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
 import DomesticGridActionCell from './DomesticGridActionCell.vue'
+import DomesticGridPendingCell from './DomesticGridPendingCell.vue'
+import DomesticGridPendingSkuCell from './DomesticGridPendingSkuCell.vue'
 import GridBatchFooterControls from '../../../Components/DataGrid/GridBatchFooterControls.vue'
 import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../../Components/DataGrid/useGlobalGridListAdapter'
 const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
@@ -82,6 +84,10 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   shipment_status:row.shipment_status??'',
   paid_date:row.paid_date??'—',
   sku:row.items.map(item=>item.sku??'无SKU').join(' / ') || '—',
+  country:row.country??'',
+  source_type:row.source_type??'',
+  tracking_sync_code:row.tracking_sync_status??'',
+
   quantity:row.items.map(item=>item.quantity).join(' / ') || '—',
   amount:row.amount!==null&&row.amount!==undefined ? row.amount+' '+(row.amount_currency??'USD'):'—',
   export_status:row.export_blockers.length ? row.export_blockers.join(' / '):'可导出',
@@ -94,6 +100,8 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   destination:[row.country,row.state,row.city].filter(Boolean).join(' / ')||'—',
   tracking_sync_status:row.source_type==='woocommerce'?trackingLabel(row.tracking_sync_status):'—',
 })))
+const pendingHasSyncAction = computed(()=>props.view==='pending' && props.canTrackingSync
+  && props.rows.data.some(row=>eligibleForTracking(row)))
 const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'line',field:'line',headerName:'#',width:74}),
   gridColumn({colId:'order',field:'order_number',headerName:'ERP 订单',width:186,
@@ -102,7 +110,20 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'review',field:'review_status',headerName:'审核',width:120,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
   gridColumn({colId:'paid_date',field:'paid_date',headerName:'成交日期',width:135}),
-  gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:178}),
+  gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:props.view==='pending'?230:178,
+    ...(props.view==='pending'?{
+      cellRenderer:DomesticGridPendingSkuCell,
+      cellRendererParams:{
+        showBarcode:(id:number)=>{
+          const source=props.rows.data.find(item=>item.order_id===id)
+          if(source)void showBarcode(source)
+        },
+        preview:(id:number)=>barcodePreview.value?.orderId===id?barcodePreview.value.items:null,
+        error:(id:number)=>barcodeErrorOrderId.value===id?barcodeError.value:'',
+        loading:()=>barcodeLoading.value,
+      },
+    }:{}),
+  }),
   gridColumn({colId:'quantity',field:'quantity',headerName:'数量',width:100}),
   gridColumn({colId:'amount',field:'amount',headerName:'金额',width:134}),
   gridColumn({colId:'export',field:'export_status',headerName:'导出状态',width:175}),
@@ -115,11 +136,48 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',
-    width:props.view==='review'?185:props.view==='stockout'?140:210,
-    minWidth:props.view==='review'?185:props.view==='stockout'?136:190,
-    maxWidth:props.view==='review'?190:props.view==='stockout'?148:210,
+    width:props.view==='review'?185:props.view==='stockout'?140:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):210,
+    minWidth:props.view==='review'?185:props.view==='stockout'?136:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):190,
+    maxWidth:props.view==='review'?190:props.view==='stockout'?148:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):210,
     pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
-    cellRenderer:DomesticGridActionCell,cellRendererParams:{
+    cellRenderer:props.view==='pending'?DomesticGridPendingCell:DomesticGridActionCell,cellRendererParams:{
+      carrierOptions:props.carrierOptions,
+      canTrackingSync:props.canTrackingSync,
+      syncEligible:(id:number)=>{
+        const row=props.rows.data.find(item=>item.order_id===id)
+        return !!row&&eligibleForTracking(row)
+      },
+      syncBusy:()=>trackingBusy.value,
+      syncTracking:(id:number)=>{
+        const row=props.rows.data.find(item=>item.order_id===id)
+        if(row&&props.canTrackingSync&&eligibleForTracking(row))pushTracking([id],true)
+      },
+      source:(id:number)=>props.rows.data.find(item=>item.order_id===id),
+      carrierBusy:(id:number)=>!!carrierBusy.value[id],
+      trackingBusy:(id:number)=>!!inlineBusy.value[id],
+      feedback:(id:number)=>carrierErrors.value[id]||inlineErrors.value[id]||carrierSaved.value[id]||inlineSaved.value[id]||'',
+      saveCarrier:(id:number,carrier:string,service:string)=>{
+        const row=props.rows.data.find(item=>item.order_id===id)
+        if(!row||!canQuickShip(row))return
+        carrierDrafts.value[id]={carrier,service}
+        saveCarrier(row)
+      },
+      saveTracking:(id:number,tracking:string)=>{
+        const row=props.rows.data.find(item=>item.order_id===id)
+        if(!row||!canQuickShip(row))return
+        inlineTracking.value[id]=tracking
+        saveInlineTracking(row)
+      },
+      confirmShip:(id:number,tracking:string)=>{
+        const row=props.rows.data.find(item=>item.order_id===id)
+        if(!row||!canQuickShip(row))return
+        inlineTracking.value[id]=tracking
+        confirmInlineShip(row)
+      },
+      reopenPending:(id:number)=>{
+        const row=props.rows.data.find(item=>item.order_id===id)
+        if(row && props.canReview && row.shipment_status==='pending' && row.review_status==='approved')reopen(row)
+      },
       view:props.view, canReview:props.canReview, canOperate:props.canOperate,
       get busy(){return reviewBusy.value},
       native:(row:GridListRow)=>openNativeOperation(Number(row.id)),
@@ -285,7 +343,7 @@ const switchView = (view:string) => {
   // just because they switched from the approved review view.
   const mode = view === props.view
     ? (props.globalGridPilotEnabled ? '1' : '0')
-    : (['review','stockout'].includes(view) ? '1' : '0')
+    : (['review','stockout','pending'].includes(view) ? '1' : '0')
   router.visit('/logistics/china?view=' + encodeURIComponent(view)
     + '&global_grid=' + mode
     + (view === props.view && mode === '1' && domesticGridSearch.value

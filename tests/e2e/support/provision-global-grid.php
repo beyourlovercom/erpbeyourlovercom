@@ -126,6 +126,32 @@ DB::transaction(function () use ($product, $warehouse, $owner): void {
         'shipment_status'=>'pending',
         'warehouse_selection_source'=>'manual',
     ]);
+    // R4-3 isolated approved factory order; tests NEVER touch Production.
+    $pending = Order::query()->create([
+        'internal_order_number'=>'INT-E2E-GG-PENDING-01',
+        'erp_order_id'=>'007-1111-c99990',
+        'source_type'=>OrderSourceType::Manual,
+        'order_kind'=>OrderKind::Customer,
+        'external_order_number'=>'E2E-GG-PENDING-01',
+        'order_date'=>now()->toDateString(),
+        'owner_id'=>$owner->id,
+        'order_status'=>OrderStatus::PendingShipment,
+    ]);
+    $pending->address()->create([
+        'recipient_name'=>'E2E Pending Recipient',
+        'phone'=>'15550009090','country'=>'DE','city'=>'Berlin',
+        'address_line_1'=>'Synthetic Pending Street 90','postal_code'=>'10009',
+    ]);
+    $pending->items()->create([
+        'product_id'=>$product->id,'sku'=>'E2E-SKU-0001',
+        'product_summary'=>'E2E Pending Product', 'quantity'=>1,
+        'unit_price'=>'18.00','line_revenue'=>'18.00',
+    ]);
+    $pending->shipment()->create([
+        'warehouse_id'=>$factory->id, 'shipment_status'=>'pending',
+        'warehouse_selection_source'=>'manual',
+    ]);
+    $pending->operationalMarkers()->create(['marker'=>'domestic_reviewed','marked_at'=>now()]);
     LogisticsReview::query()->create([
         'order_id'=>$domestic->id,
         'status'=>'pending',

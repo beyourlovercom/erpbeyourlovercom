@@ -76,7 +76,7 @@ final class DomesticLogisticsController
         // Global Grid by default, with an explicit native-table fallback.
         // Other carrier/Tracking/shipping tabs retain their original default
         // until their respective action-parity UAT has passed.
-        $approvedGridView = in_array($view, ['review', 'stockout'], true);
+        $approvedGridView = in_array($view, ['review', 'stockout', 'pending'], true);
         $gridSetting = $request->query('global_grid');
         $gridAvailable = $approvedGridView || GlobalGridPilot::available();
         $gridPilot = $approvedGridView
