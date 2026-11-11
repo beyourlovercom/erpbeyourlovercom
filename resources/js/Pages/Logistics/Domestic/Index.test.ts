@@ -42,6 +42,29 @@ const baseProps = {
 describe('Domestic logistics production workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear(); routerReload.mockClear(); feedbackSpy.mockClear(); vi.unstubAllGlobals() })
 
+  it('uses one compact toolbar and bottom help for all nine domestic views', () => {
+    const views=['review','stockout','pending','today','today-4px','today-weship','exceptions','4px','weship']
+    for (const view of views) {
+      const wrapper=mount(Index,{props:{...baseProps,view,trackingImportPreview:null,trackingImportProvider:null}})
+      expect(wrapper.find('.domestic-compact-workspace').exists(),view).toBe(true)
+      expect(wrapper.find('header.compact-workspace-toolbar').exists(),view).toBe(true)
+      expect(wrapper.findAll('nav.tabs button'),view).toHaveLength(9)
+      expect(wrapper.find('.domestic-head-actions a[href="/logistics/wait-stock"]').exists(),view).toBe(true)
+      expect(wrapper.find('.eyebrow').exists(),view).toBe(false)
+      expect(wrapper.find('.continuity').exists(),view).toBe(false)
+      const help=wrapper.get('footer.compact-workspace-help')
+      expect(help.text(),view).toContain('生产连续性')
+      expect(help.text(),view).toContain('Tracking 冲突只阻断对应订单')
+    }
+  })
+
+  it('keeps export blockers visible in the grid instead of hiding actionable errors in help', () => {
+    const blocked={...baseProps.rows.data[0],export_blockers:['缺电话，禁止导出']}
+    const wrapper=mount(Index,{props:{...baseProps,view:'review',rows:{...baseProps.rows,data:[blocked]}}})
+    expect(wrapper.get('.orders').text()).toContain('缺电话，禁止导出')
+    expect(wrapper.get('footer.compact-workspace-help').text()).not.toContain('缺电话，禁止导出')
+  })
+
   it('prefills validated automatic carrier and allows direct manual override', async () => {
     const legacy={...baseProps.rows.data[0],carrier_selection_source:'automatic',carrier_ready:true,carrier:'4PX',service:'SD经济挂号-带电'}
     const wrapper=mount(Index,{props:{...baseProps,view:'pending',rows:{...baseProps.rows,data:[legacy]}}})
