@@ -190,6 +190,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/historical-import/{batch}/rescue-attempts/{projection}/apply', [HistoricalImportController::class, 'applyRescueAttempts'])->middleware('can:logistics.operate')->whereNumber('projection')->name('logistics.historical-import.rescue-attempts.apply');
     Route::post('/logistics/orders/{order}/draft', [LogisticsController::class, 'saveDraft'])->middleware($execution)->name('logistics.draft');
     Route::post('/logistics/orders/{order}/adopt-recommendation', [LogisticsController::class, 'adoptRecommendation'])->middleware($execution)->name('logistics.adopt-recommendation');
+    Route::post('/logistics/wait-stock/batch-allocation', [LogisticsController::class, 'batchAllocate'])
+        ->middleware([...$allocation, 'throttle:6,1'])->name('logistics.fulfillment-allocation.batch');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/recommended', [LogisticsController::class, 'submitRecommendedAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.recommended');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/manual', [LogisticsController::class, 'submitManualAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.manual');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/quick', [LogisticsController::class, 'submitQuickAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.quick');
