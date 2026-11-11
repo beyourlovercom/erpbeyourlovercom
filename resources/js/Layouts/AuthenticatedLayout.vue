@@ -5,7 +5,7 @@ import GlobalFeedbackIsland from '../Components/AppShell/GlobalFeedbackIsland.vu
 import GlobalNavigation from '../Components/AppShell/GlobalNavigation.vue'
 import TopBar, { type BreadcrumbItem } from '../Components/AppShell/TopBar.vue'
 import WorkspaceTabs from '../Components/AppShell/WorkspaceTabs.vue'
-import { workspaceHotStatus } from '../lib/workspaceHotCache'
+import { workspaceHotCache, workspaceHotStatus } from '../lib/workspaceHotCache'
 import {
     canonicalFeedbackCopyText,
     copyFailureFeedback,
@@ -49,6 +49,8 @@ const refreshWorkspaceCanary = () => {
     }
 }
 watch(() => [page.url, page.props.auth.user.id], refreshWorkspaceCanary)
+// Opt-out releases all browser-only hot snapshots, without touching order data.
+watch(workspaceTabsEnabled, enabled => { if (!enabled) { workspaceHotCache.clear(); workspaceHotStatus.value = 'idle' } })
 
 const updateNarrowScreen = (event: MediaQueryListEvent | MediaQueryList) => {
     isNarrowScreen.value = event.matches
