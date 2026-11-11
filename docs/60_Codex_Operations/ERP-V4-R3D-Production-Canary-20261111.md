@@ -61,3 +61,23 @@ The Owner reported **all six manual inspection items as "已检查" (checked)** 
 6. Existing full Vue suite had five unrelated pre-existing Warehouse UI expectation failures; resolve or explicitly document separate R6 exception before claiming global CI clean.
 
 Status: **D4 checklist 6/6 inspected, result unconfirmed; Production Canary remains administrator opt-in only. Not approved for staff-wide release.** No backend services, production data, user permissions, or browser sessions changed by this documentation update.
+
+
+## D4 Owner final sign-off and tab-retention decision — 2026-11-11
+
+**Supersedes the earlier D4 "checked / outcome unconfirmed" entry above.** Owner explicitly confirmed: **"效果全部pass，目前没看到异常"** after completing all six Production administrator Canary manual tests.
+
+| D4 user-facing item | Owner verdict |
+|---|---|
+| Page/Tab switching responsiveness | PASS |
+| Pin at most three tabs | PASS |
+| One-click sleep other tabs | PASS |
+| Latest-data revalidation interlock | PASS |
+| Unsaved draft confirmation | PASS |
+| Longer interactive usage with no noticed issue | PASS |
+
+**D4 administrator manual UX acceptance is CLOSED / PASS.** This does not independently certify sustained production five-user concurrency, Chrome total RSS, hour-long heap drift, or detailed AG Grid scroll/editor-state retention, which remain D5/D6/observability gates. Staff-wide release is *not* authorized solely by D4 sign-off.
+
+**Resource policy review after acceptance:** Do **not** add automatic closure after 10 open workspace tabs. Keep the existing implementation: 30 lightweight navigation entries, three in-memory hot response snapshots max (byte and TTL bounded), and three pinned/locked bookmarks max. Extra navigation bookmarks alone do not keep whole inactive AG Grid component instances mounted or multiply PHP-FPM workers. Auto-closing the 11th tab would mainly discard employee context for negligible resource savings. Existing 30-tab oldest-unpinned-bookmark eviction, explicit "Sleep others", pinned protection and background-request throttling remain. Only reconsider a *configurable inactive-tab retirement rule* with measured memory/network evidence and user-visible recovery, never silent destructive closure of unsaved work.
+
+Source verification against GitHub main: `WORKSPACE_TAB_LIMIT=30`, `WORKSPACE_PIN_LIMIT=3` in `workspaceTabs.ts`, and `WORKSPACE_HOT_LIMIT=3` in `workspaceHotCache.ts`. **No new Production code, deployment, queue action or Chrome operation performed for this sign-off.**
