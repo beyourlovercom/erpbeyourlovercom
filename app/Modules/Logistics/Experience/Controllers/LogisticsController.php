@@ -32,6 +32,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -39,6 +40,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use PDOException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Throwable;
 
 final class LogisticsController
 {
@@ -108,6 +110,91 @@ final class LogisticsController
             'globalGridPilotAvailable' => true,
             'globalGridPilotEnabled' => $gridPilot,
             'gridSearch' => $search,
+        ]);
+    }
+
+    /**
+     * Batch operations reuse exactly the single-order allocation service, including
+     * payment, current recommendation, warehouse, gift and stock guards. A failed
+     * item is isolated; a successful item must never be submitted twice.
+     */
+    public function batchAllocate(Request $request): JsonResponse
+    {
+        $allowedWarehouseCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
+        $data = $request->validate([
+            'order_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'action' => ['required', Rule::in(['recommend', 'warehouse'])],
+            'warehouse_code' => ['required_if:action,warehouse', 'nullable', 'string', Rule::in($allowedWarehouseCodes)],
+            'plan_keys' => ['sometimes', 'array'],
+            'plan_keys.*' => ['string', 'max:128'],
+            'confirmed' => ['required', 'accepted'],
+        ]);
+
+        $warehouseCode = strtoupper(trim((string) ($data['warehouse_code'] ?? '')));
+        if ($data['action'] === 'warehouse') {
+            abort_unless(Warehouse::query()->where('code', $warehouseCode)->where('is_active', true)->exists(), 422, '批量目标仓库未启用。');
+        }
+
+        $orders = $this->statusSummary->pendingAllocationQuery()
+            ->whereIn('orders.id', $data['order_ids'])
+            ->with(['items', 'fulfillmentAllocation'])
+            ->get()->keyBy('id');
+        $results = [];
+
+        foreach ($data['order_ids'] as $rawId) {
+            $id = (int) $rawId;
+            $order = $orders->get($id);
+            if (! $order) {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => '订单不在待分仓范围，请刷新列表。'];
+                continue;
+            }
+            if ($order->fulfillmentAllocation?->status === 'submitted') {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => '该订单已完成分仓，未重复提交。'];
+                continue;
+            }
+
+            try {
+                if ($data['action'] === 'recommend') {
+                    $planKey = trim((string) ($data['plan_keys'][(string) $id] ?? ''));
+                    if ($planKey === '') {
+                        $results[] = ['order_id' => $id, 'ok' => false, 'message' => '本订单无可确认的系统推荐，请人工分仓。'];
+                        continue;
+                    }
+                    $this->allocationSubmissions->submitRecommended($order, $planKey, null, $request->user());
+                } else {
+                    if ($order->items->isEmpty() || $order->items->contains(
+                        fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0
+                    )) {
+                        $results[] = ['order_id' => $id, 'ok' => false, 'message' => '礼品或空 SKU 订单需逐单确认，已跳过。'];
+                        continue;
+                    }
+                    $assignments = $order->items->map(fn ($item): array => [
+                        'order_item_id' => (int) $item->id,
+                        'source_code' => $warehouseCode,
+                    ])->values()->all();
+                    // A bulk click cannot silently acknowledge missing/short stock.
+                    $this->allocationSubmissions->submitManual($order, $assignments, null, $request->user(), false);
+                }
+                $results[] = ['order_id' => $id, 'ok' => true, 'message' => '已完成分仓'];
+            } catch (ValidationException $exception) {
+                $message = collect($exception->errors())->flatten()->first() ?: '订单条件未通过，请单独确认。';
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => (string) $message];
+            } catch (HttpResponseException $exception) {
+                $responseBody = json_decode((string) $exception->getResponse()->getContent(), true);
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => (string) ($responseBody['message'] ?? '库存条件未通过，请单独确认。')];
+            } catch (HttpException $exception) {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => $exception->getMessage() ?: '订单状态不允许分仓。'];
+            } catch (Throwable $exception) {
+                report($exception);
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => '服务器未完成此订单，请核对后再处理。'];
+            }
+        }
+
+        return response()->json([
+            'results' => $results,
+            'succeeded' => collect($results)->where('ok', true)->count(),
+            'failed' => collect($results)->where('ok', false)->count(),
         ]);
     }
 
