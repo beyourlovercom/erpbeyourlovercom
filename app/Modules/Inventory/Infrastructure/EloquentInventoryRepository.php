@@ -86,7 +86,7 @@ final class EloquentInventoryRepository implements InventoryRepository
 
                 $known = $state !== 'never_imported';
                 $dateOpen = $w->fulfillment_available_on === null || $w->fulfillment_available_on->isToday() || $w->fulfillment_available_on->isPast();
-                $canAutoAllocate = $state === 'confirmed' && $dateOpen;
+                $canAutoAllocate = strtoupper((string) $w->code) !== 'US-AMZ' && $state === 'confirmed' && $dateOpen;
                 $fulfillmentState = match (true) {
                     $w->fulfillment_available_on !== null && ! $dateOpen => 'preparing',
                     $w->fulfillment_available_on !== null && $state !== 'confirmed' => 'awaiting_inventory',

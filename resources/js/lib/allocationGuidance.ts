@@ -71,7 +71,7 @@ export function allocationGuidance(
   const reasons = decision.manual_reasons ?? []
   const reason = reasons[0] ?? '成本或路由证据未齐'
   const requirements = requirementsFor(order.items)!
-  const inCountry = warehouses.filter(w => w.code !== 'FACTORY' &&
+  const inCountry = warehouses.filter(w => w.code !== 'FACTORY' && w.code !== 'US-AMZ' &&
     w.country_code?.toUpperCase() === order.country?.toUpperCase())
   const coverage = inCountry.map(w => ({warehouse:w, ...warehouseCoverage(order,w,requirements)}))
   const confirmed = coverage.filter(row => row.enough && row.verified)

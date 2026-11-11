@@ -54,7 +54,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     'code' => $warehouse->code, 'country_code' => $warehouse->country_code,
                     'priority' => (int) $warehouse->priority, 'inventory_state' => $state,
                     'fulfillment_available_on' => $warehouse->fulfillment_available_on?->toDateString(),
-                    'can_auto_allocate' => $state === 'confirmed' && ($warehouse->fulfillment_available_on === null || $warehouse->fulfillment_available_on->isToday() || $warehouse->fulfillment_available_on->isPast()),
+                    'can_auto_allocate' => strtoupper((string) $warehouse->code) !== 'US-AMZ' && $state === 'confirmed' && ($warehouse->fulfillment_available_on === null || $warehouse->fulfillment_available_on->isToday() || $warehouse->fulfillment_available_on->isPast()),
                     'service_regions' => $warehouse->serviceRegions->map(fn ($region): array => [
                         'country_code' => strtoupper((string) $region->country_code), 'priority' => (int) $region->priority,
                     ])->values()->all(),

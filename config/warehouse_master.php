@@ -1,8 +1,8 @@
 <?php
 
 return [
-    'order' => ['US-NY', 'US-LA', 'US-SM', 'DE', 'CA', 'FACTORY', '007'],
-    'fulfillment_codes' => ['US-NY', 'US-LA', 'US-SM', 'DE', 'CA', 'FACTORY'],
+    'order' => ['US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA', 'FACTORY', '007'],
+    'fulfillment_codes' => ['US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA', 'FACTORY'],
     'inventory_only_codes' => ['007'],
     'warehouses' => [
         'US-NY' => [
@@ -50,6 +50,19 @@ return [
                 'status' => 'awaiting_sample',
                 'label' => '美国3世迈仓',
                 'format_label' => '待提供真实账单样本',
+            ],
+        ],
+        'US-AMZ' => [
+            'name_zh' => '亚马逊仓·美',
+            'name_en' => 'Amazon US Warehouse',
+            'public_slug' => 'us-amz',
+            'legacy_slugs' => ['us-amz'],
+            'role_label' => '海外履约仓（人工分仓）',
+            'bill_import' => [
+                'enabled' => false,
+                'status' => 'awaiting_sample',
+                'label' => '亚马逊仓·美',
+                'format_label' => '暂无账单模板',
             ],
         ],
         'DE' => [
