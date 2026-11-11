@@ -25,6 +25,7 @@ use App\Modules\Logistics\Application\WarehouseRecommendationService;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Database\QueryException;
@@ -65,10 +66,11 @@ final class LogisticsController
 
     public function waitStock(Request $request): Response
     {
-        $gridPilot = GlobalGridPilot::enabled($request);
+        // This page has graduated from the Owner-only pilot. Legacy stays available via ?global_grid=0.
+        $gridPilot = $request->query('global_grid') !== '0';
         $search = $gridPilot ? trim(mb_substr((string) $request->query('search', ''), 0, 100)) : '';
         $query = $this->statusSummary->pendingAllocationQuery()
-            ->with(['address', 'items.product', 'owner', 'shipment.warehouse', 'fulfillmentAllocation', 'externalReferences:id,order_id,provider']);
+            ->with(['address', 'items.product', 'owner', 'financials', 'shipment.warehouse', 'fulfillmentAllocation', 'externalReferences:id,order_id,provider']);
         if ($search !== '') {
             $term = '%'.addcslashes($search, '%_\\').'%';
             $query->where(function ($builder) use ($term): void {
@@ -103,7 +105,7 @@ final class LogisticsController
             'carrierOptions' => $this->carrierServices->options(),
             'pendingTotal' => $orders->total(),
             'canOperate' => $this->allocationAccess->allows($request->user()),
-            'globalGridPilotAvailable' => GlobalGridPilot::available(),
+            'globalGridPilotAvailable' => true,
             'globalGridPilotEnabled' => $gridPilot,
             'gridSearch' => $search,
         ]);
@@ -669,10 +671,17 @@ final class LogisticsController
                 'automatic' => $carrier !== '',
             ]];
         })->all();
+        $amount = app(DomesticReviewAmountResolver::class)->resolve($order);
 
         return [
             'id' => $order->id,
             'external_order_number' => $order->external_order_number,
+            'order_date' => $order->order_date?->toDateString(),
+            'amount' => $amount['amount'],
+            'amount_currency' => $amount['currency'],
+            'amount_source' => $amount['source'],
+            'source_type' => $order->source_type?->value,
+            'order_status' => $order->order_status,
             'order_url' => $this->orderUrl($order),
             'domestic_reject_reason' => $order->domestic_reject_reason,
             'erp_order_id' => $order->erp_order_id,
