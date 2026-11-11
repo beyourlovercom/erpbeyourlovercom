@@ -182,6 +182,46 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     wrapper.unmount()
   })
 
+  it('reuses domestic audited batch archive on processed/gift views with permission and confirmation', async () => {
+    const fetchSpy=vi.fn().mockResolvedValue({
+      ok:true,json:async()=>({results:[{order_id:10,ok:true,message:'已归档'},{order_id:11,ok:false,message:'没有权限归档该订单'}]}),
+    })
+    vi.stubGlobal('fetch',fetchSpy)
+    const wrapper=mountPage({...props,globalGridPilotEnabled:true,canOperate:false,canArchive:true})
+    await flushPromises()
+    expect(wrapper.get('[data-testid="mock-global-grid"]').attributes('enableselection')).toBe('true')
+    await wrapper.get('[data-testid="mock-select-rows"]').trigger('click')
+    await flushPromises()
+    const bulk=wrapper.get('[data-testid="grid-batch-footer"]')
+    const values=bulk.findAll('select option').map(option=>option.attributes('value'))
+    expect(values).toContain('archive')
+    expect(values).not.toContain('recommend')
+    await bulk.get('select[aria-label="批量操作"]').setValue('archive')
+    await bulk.get('button.apply-batch').trigger('click')
+    await flushPromises()
+    expect(document.body.querySelector('[data-testid="allocation-batch-confirm"]')?.textContent).toContain('批量归档确认')
+    expect(document.body.textContent).toContain('不会删除订单')
+    expect(fetchSpy).not.toHaveBeenCalled()
+    document.body.querySelector<HTMLButtonElement>('[data-testid="allocation-batch-confirm-apply"]')?.click()
+    await flushPromises()
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const [url,request]=fetchSpy.mock.calls[0]
+    expect(url).toBe('/orders/archive/batch')
+    expect(JSON.parse(request.body as string)).toEqual({order_ids:[10,11]})
+    wrapper.unmount()
+  })
+
+  it('does not offer bulk archive to accounts without orders.archive', async () => {
+    const wrapper=mountPage({...props,globalGridPilotEnabled:true,canOperate:true,canArchive:false})
+    await flushPromises()
+    await wrapper.get('[data-testid="mock-select-rows"]').trigger('click')
+    await flushPromises()
+    const values=wrapper.get('[data-testid="grid-batch-footer"]').findAll('select option')
+      .map(option=>option.attributes('value'))
+    expect(values).not.toContain('archive')
+    wrapper.unmount()
+  })
+
   it('renders canonical table and opens 查看方案 as a modal with recommendation evidence', async () => {
     const wrapper = mountPage()
     expect(wrapper.text()).toContain('待分仓')
