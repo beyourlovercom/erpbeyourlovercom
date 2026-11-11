@@ -106,11 +106,14 @@ let approvedTabNavigation: string | null = null
 // A page opts in by publishing erp:workspace-dirty. Guard sidebar/Inertia
 // GET navigation too, not only clicks inside the tab strip. Form POSTs still work.
 const beforeRouteChange = router.on('before', event => {
-  captureViewState()
-  if (!dirty.value || event.detail.visit.method !== 'get') return
   const next = event.detail.visit.url
   const target = next.pathname + next.search + next.hash
-  if (target === props.currentUrl) return
+  // Inertia's silent authoritative reload uses the *same route*. The new
+  // Grid has not restored its scroll yet; capturing that interim 0 would
+  // destroy the outgoing snapshot. Hot navigation already captured explicitly.
+  if (target === props.currentUrl || hotStatus.value === 'validating') return
+  captureViewState()
+  if (!dirty.value || event.detail.visit.method !== 'get') return
   if (approvedTabNavigation === target) {
     approvedTabNavigation = null
     return
@@ -141,7 +144,7 @@ const open = (tab: WorkspaceTab) => {
         window.requestAnimationFrame(() => {
           router.reload({
             showProgress: false,
-            onSuccess: () => { hotStatus.value = 'idle'; recordCurrent() },
+            onSuccess: () => { hotStatus.value = 'idle'; recordCurrent(); void nextTick(restoreViewState) },
             onError: () => { workspaceHotCache.evict(hot.key); hotStatus.value = 'failed' },
             onNetworkError: () => { hotStatus.value = 'failed' },
             onCancel: () => { hotStatus.value = 'failed' },
