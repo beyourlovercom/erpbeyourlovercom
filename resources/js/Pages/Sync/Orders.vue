@@ -289,6 +289,10 @@ const gridPager = computed(() => ({
   total: props.pagination.total,
 }))
 const gridEnabled = computed(() => props.globalGridPilotAvailable === true && props.globalGridPilotEnabled === true)
+const hasActiveFilters = computed(() => Boolean(
+  filters.search.trim() || filters.source || supportedColumnFilters.some((key) =>
+    String(filters[(('grid_' + key) as keyof typeof filters)] ?? '').trim() !== ''),
+))
 
 </script>
 
@@ -302,7 +306,7 @@ const gridEnabled = computed(() => props.globalGridPilotAvailable === true && pr
         </div>
         <div class="sync-heading-actions">
           <button v-if="props.globalGridPilotAvailable" class="mvp-button" type="button" data-testid="sync-global-grid-toggle" @click="toggleGrid">{{ gridEnabled ? '返回原表' : '体验 AG 表格' }}</button>
-          <div class="total-counter">全部订单 <strong>{{ props.pagination.total.toLocaleString('zh-CN') }}</strong> 单</div>
+          <div class="total-counter">{{ hasActiveFilters ? '筛选结果' : '全部订单' }} <strong>{{ props.pagination.total.toLocaleString('zh-CN') }}</strong> 单</div>
         </div>
       </div>
 

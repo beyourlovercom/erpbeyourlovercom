@@ -34,7 +34,7 @@ const base = {
 }
 const props = (orders = [base]) => ({
   globalGridPilotAvailable: true, globalGridPilotEnabled: true, canOperate: true,
-  orders, filters: { search: '', source: '', per_page: 50, sort: 'date', direction: 'desc' as const },
+  orders, filters: { search: '', source: '', per_page: 50, sort: 'date', direction: 'desc' as const, grid_progress: '' },
   pagination: { total: 8000, current_page: 1, last_page: 160, per_page: 50, from: 1, to: 50 },
 })
 
@@ -93,6 +93,16 @@ describe('Sync Orders Global Grid R0–R3 canary', () => {
 
     component.vm.$emit('column-search-change', { colId: 'unknown_sql_column', value: 'x' })
     expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('labels server-filtered totals as 筛选结果 rather than 全部订单', async () => {
+    const { wrapper } = await grid({
+      ...props(),
+      filters: { ...props().filters, grid_progress: 'failed' },
+      pagination: { total: 2, current_page: 1, last_page: 1, per_page: 50, from: 1, to: 2 },
+    })
+    expect(wrapper.find('.total-counter').text()).toContain('筛选结果')
+    expect(wrapper.find('.total-counter').text()).toContain('2')
   })
 
   it('mobile preserves visible order identity and sync progress with independent layout', async () => {
