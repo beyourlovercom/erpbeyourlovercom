@@ -6,6 +6,7 @@ import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
 import DomesticGridActionCell from './DomesticGridActionCell.vue'
 import DomesticGridPendingCell from './DomesticGridPendingCell.vue'
 import DomesticGridPendingSkuCell from './DomesticGridPendingSkuCell.vue'
+import DomesticGridPendingRouteCell from './DomesticGridPendingRouteCell.vue'
 import GridBatchFooterControls from '../../../Components/DataGrid/GridBatchFooterControls.vue'
 import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../../Components/DataGrid/useGlobalGridListAdapter'
 const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
@@ -19,14 +20,14 @@ type Row = {
   line:number; order_id:number; paid_date:string|null; paid_date_source?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
   workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
-  carrier:string|null; service:string|null; carrier_selection_source?:string|null; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
+  carrier:string|null; service:string|null; carrier_selection_source?:string|null; carrier_ready?:boolean; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
   review_status:'approved'|'pending'|'stockout'|'conflict'; export_blockers:string[]; items:Item[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page?:number; total:number }
 type PreviewRow = { row:number; order_id:number|null; order_number:string; tracking_number:string; carrier:string; provider_status:string|null; status:string; message:string }
 type Preview = { token:string; rows:PreviewRow[]; apply_count:number; noop_count:number; blocked_count:number }
 type ProviderStatus = Record<'4px'|'weship',{export_ready:boolean;return_ready:boolean;label:string;note?:string;reason?:string}>
-type CarrierOption = {value:string;label:string;services:{value:string;label:string}[]}
+type CarrierOption = {value:string;label:string;default_service_value?:string|null;services:{value:string;label:string}[]}
 
 const props = defineProps<{
   view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; canReview:boolean; canArchive?:boolean; canTrackingSync?:boolean
@@ -128,8 +129,32 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'amount',field:'amount',headerName:'金额',width:134}),
   gridColumn({colId:'export',field:'export_status',headerName:'导出状态',width:175}),
   gridColumn({colId:'provider_ref',field:'provider_reference',headerName:'承运商单号',width:180}),
-  gridColumn({colId:'carrier',field:'carrier',headerName:'Carrier',width:130}),
-  gridColumn({colId:'service',field:'service',headerName:'服务',width:155}),
+  gridColumn({colId:'carrier',field:'carrier',headerName:'Carrier',width:156,
+    ...(props.view==='pending'?{cellRenderer:DomesticGridPendingRouteCell,cellRendererParams:{
+      source:(id:number)=>props.rows.data.find(item=>item.order_id===id),
+      carrierOptions:props.carrierOptions,canOperate:props.canOperate,
+      carrierBusy:(id:number)=>!!carrierBusy.value[id],
+      saveCarrier:(id:number,carrier:string,service:string)=>{
+        const row=props.rows.data.find(item=>item.order_id===id)
+        if(!row||!canQuickShip(row))return
+        carrierDrafts.value[id]={carrier,service}
+        saveCarrier(row)
+      },
+    }}:{}),
+  }),
+  gridColumn({colId:'service',field:'service',headerName:'服务',width:200,
+    ...(props.view==='pending'?{cellRenderer:DomesticGridPendingRouteCell,cellRendererParams:{
+      source:(id:number)=>props.rows.data.find(item=>item.order_id===id),
+      carrierOptions:props.carrierOptions,canOperate:props.canOperate,
+      carrierBusy:(id:number)=>!!carrierBusy.value[id],
+      saveCarrier:(id:number,carrier:string,service:string)=>{
+        const row=props.rows.data.find(item=>item.order_id===id)
+        if(!row||!canQuickShip(row))return
+        carrierDrafts.value[id]={carrier,service}
+        saveCarrier(row)
+      },
+    }}:{}),
+  }),
   gridColumn({colId:'tracking',field:'tracking_number',headerName:'Tracking',width:186}),
   gridColumn({colId:'recipient',field:'recipient_name',headerName:'收件人',width:140}),
   gridColumn({colId:'phone',field:'phone',headerName:'电话',width:150}),
@@ -243,8 +268,7 @@ const carrierDrafts = ref<Record<number,CarrierDraft>>({})
 const carrierBusy = ref<Record<number,boolean>>({})
 const carrierErrors = ref<Record<number,string>>({})
 const carrierSaved = ref<Record<number,string>>({})
-const confirmedCarrier = (row:Row):CarrierDraft => row.carrier_selection_source === 'manual'
-  ? {carrier:row.carrier ?? '',service:row.service ?? ''} : {carrier:'',service:''}
+const confirmedCarrier = (row:Row):CarrierDraft => ({carrier:row.carrier ?? '',service:row.service ?? ''})
 const carrierDraft = (row:Row):CarrierDraft => carrierDrafts.value[row.order_id] ??= confirmedCarrier(row)
 const carrierChanged = (row:Row):boolean => {
   const saved=confirmedCarrier(row),draft=carrierDraft(row)
@@ -261,8 +285,7 @@ const chooseService = (row:Row,event:Event) => {
   carrierSaved.value[row.order_id]=''
 }
 const serviceOptions = (row:Row) => props.carrierOptions.find(c=>c.value===carrierDraft(row).carrier)?.services ?? []
-const carrierReady = (row:Row) => row.carrier_selection_source === 'manual'
-  && !!row.carrier?.trim() && !!row.service?.trim() && !carrierChanged(row)
+const carrierReady = (row:Row) => row.carrier_ready === true && !carrierChanged(row)
 const saveCarrier = (row:Row) => {
   const draft=carrierDraft(row)
   if (!canQuickShip(row) || carrierBusy.value[row.order_id] || !draft.carrier || !draft.service || !carrierChanged(row)) return

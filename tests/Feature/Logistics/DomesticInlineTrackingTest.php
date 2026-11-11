@@ -109,7 +109,7 @@ final class DomesticInlineTrackingTest extends TestCase
         ]);
     }
 
-    public function test_factory_carrier_and_service_require_explicit_authorized_selection_before_shipping(): void
+    public function test_country_default_route_is_ready_but_invalid_manual_service_is_blocked(): void
     {
         $operator = $this->userWith(['logistics.view', 'logistics.operate']);
         $viewer = $this->userWith(['logistics.view']);
@@ -125,11 +125,8 @@ final class DomesticInlineTrackingTest extends TestCase
         $this->actingAs($operator)->get('/logistics/china?view=pending')
             ->assertInertia(fn($page) => $page
                 ->where('rows.data.0.carrier_selection_source', 'automatic')
-                ->where('rows.data.0.export_blockers.0', '请人工确认物流商和服务类型')
+                ->where('rows.data.0.carrier_ready',true)
                 ->has('carrierOptions'));
-        $this->actingAs($operator)->post($ship, ['tracking_number'=>'4PX-UNCONFIRMED'])
-            ->assertStatus(422);
-        self::assertSame('pending', $order->fresh()->shipment->shipment_status);
         $this->actingAs($viewer)->post($route, [
             'carrier'=>'4PX', 'service'=>'SD经济挂号-带电',
         ])->assertForbidden();
@@ -154,6 +151,12 @@ final class DomesticInlineTrackingTest extends TestCase
         $this->actingAs($operator)->post($ship, ['tracking_number'=>'4PX-CONFIRMED'])
             ->assertRedirect();
         self::assertSame('shipped', $order->fresh()->shipment->shipment_status);
+        $auto = $this->factoryOrder(true);
+        $auto->shipment()->update(['carrier_selection_source'=>'automatic']);
+        $this->actingAs($operator)->post('/logistics/china/orders/'.$auto->id.'/quick-ship', [
+            'tracking_number'=>'4PX-AUTO-READY',
+        ])->assertRedirect();
+        self::assertSame('shipped', $auto->fresh()->shipment->shipment_status);
     }
 
     public function test_factory_warehouse_only_draft_never_infers_a_provider_or_service(): void

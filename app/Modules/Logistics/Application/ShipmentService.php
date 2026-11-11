@@ -74,7 +74,8 @@ final class ShipmentService
                 'service' => $normalizedService['service'],
                 'carrier_service_id' => $normalizedService['carrier_service_id'],
                 'carrier_selection_source' => $selectedCarrier !== ''
-                    ? ($automaticSelection ? 'automatic' : ($attributes['carrier_selection_source'] ?? 'manual'))
+                    ? (($carrierProvided && ($attributes['carrier_selection_source'] ?? null) === 'manual')
+                        ? 'manual' : ($automaticSelection ? 'automatic' : ($attributes['carrier_selection_source'] ?? 'manual')))
                     : null,
                 'tracking_number' => $trackingNumber,
                 'logistics_note' => array_key_exists('logistics_note', $attributes) ? $attributes['logistics_note'] : $shipment->logistics_note,
