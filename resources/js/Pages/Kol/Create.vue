@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
 import { ref, watch } from 'vue'
+import { useWorkspaceDraftGuard } from '../../Composables/useWorkspaceDraftGuard'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
@@ -97,6 +98,9 @@ const form = useForm({
     note: string
   }>,
 })
+
+// Only publish the unsaved boolean; no KOL or payment details are stored.
+useWorkspaceDraftGuard(() => form.isDirty)
 
 const usernameManuallyEdited = ref(false)
 const affiliateNameManuallyEdited = ref(false)
