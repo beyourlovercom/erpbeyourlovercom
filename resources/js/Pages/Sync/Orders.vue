@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
-import { reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import type { ColDef } from 'ag-grid-community'
+import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
+import { gridColumn, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
+import SyncProgressGridCell from './SyncProgressGridCell.vue'
+const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type Progress = { code: 'unsynced' | 'failed' | 'synced' | 'notified'; label: string; reason: string | null }
@@ -23,9 +28,11 @@ type QueueSummary = { retry_due: number; retry_waiting: number; processing: numb
 type Pagination = { total: number; current_page: number; last_page: number; per_page: number; from: number | null; to: number | null }
 
 const props = withDefaults(defineProps<{
+  globalGridPilotAvailable?: boolean
+  globalGridPilotEnabled?: boolean
   orders: Order[]
   canOperate?: boolean
-  filters: { search?: string; source?: string; per_page?: number }
+  filters: { search?: string; source?: string; per_page?: number; sort?: string; direction?: 'asc' | 'desc' }
   pagination?: Pagination
   syncRuns?: SyncRun[]
   queueSummary?: QueueSummary
@@ -46,15 +53,63 @@ const filters = reactive({
   source: props.filters.source ?? '',
   per_page: Number(props.filters.per_page ?? props.pagination.per_page ?? 50),
 })
+const compactMobile = ref(typeof window !== 'undefined' && window.innerWidth <= 740)
+const syncViewport = () => { compactMobile.value = window.innerWidth <= 740 }
+onMounted(() => window.addEventListener('resize', syncViewport))
+onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
+const gridSearch = ref(props.filters.search ?? '')
+const gridSort = ref({
+  colId: props.filters.sort && ['date', 'order_number', 'source'].includes(props.filters.sort) ? props.filters.sort : 'date',
+  direction: props.filters.direction === 'asc' ? 'asc' as const : 'desc' as const,
+})
+watch(() => props.filters.search, (value) => { gridSearch.value = value ?? '' })
+watch(() => [props.filters.sort, props.filters.direction] as const, ([sort, direction]) => {
+  gridSort.value = {
+    colId: sort && ['date', 'order_number', 'source'].includes(sort) ? sort : 'date',
+    direction: direction === 'asc' ? 'asc' : 'desc',
+  }
+})
 const selected = ref<number[]>([])
 const bulkMode = ref(false)
 const syncingWoo = ref(false)
 const checkingWoo = ref(false)
 const wooReconcile = ref<{ unimported_count: number | null; message?: string } | null>(null)
 
-const submit = (page = 1) => {
+const submit = (page = 1, overrides: Record<string, string | number | undefined> = {}) => {
   selected.value = []
-  router.get('/sync/orders', { ...filters, page }, { preserveState: true, preserveScroll: true, replace: true })
+  router.get('/sync/orders', {
+    ...filters,
+    sort: gridSort.value.colId,
+    direction: gridSort.value.direction,
+    ...(props.globalGridPilotEnabled ? { global_grid: '1' } : {}),
+    page,
+    ...overrides,
+  }, { preserveState: true, preserveScroll: true, replace: true })
+}
+const toggleGrid = () => {
+  selected.value = []
+  router.get('/sync/orders', {
+    ...filters,
+    sort: gridSort.value.colId,
+    direction: gridSort.value.direction,
+    ...(props.globalGridPilotEnabled ? { global_grid: '0' } : { global_grid: '1' }),
+    page: 1,
+  }, { preserveScroll: true, preserveState: true, replace: true })
+}
+const onGridSearch = (value: string) => {
+  gridSearch.value = value
+  filters.search = value
+  submit(1)
+}
+const onGridSort = (next: { colId: string; direction: 'asc' | 'desc' | null }) => {
+  if (!['date', 'order_number', 'source'].includes(next.colId)) return
+  gridSort.value = { colId: next.colId, direction: next.direction ?? 'desc' }
+  submit(1)
+}
+const onGridPageSize = (size: number | 'all') => {
+  if (typeof size !== 'number' || ![20, 50, 100].includes(size)) return
+  filters.per_page = size
+  submit(1)
 }
 const sourceName = (source: string) => ({
   woocommerce: '官网 Woo', website: '网站导入', kol: '网红',
@@ -119,6 +174,86 @@ const checkWooBacklog = async () => {
     checkingWoo.value = false
   }
 }
+const syncOrder = (row: GridListRow): Order | undefined =>
+  props.orders.find((order) => order.id === Number(row.id))
+const gridRows = computed<GridListRow[]>(() => props.orders.map((order) => ({
+  ...order,
+  order_number: order.erp_order_id || order.external_order_number || '#' + order.id,
+  source_label: sourceName(order.source_type),
+  original_number: order.external_order_number || '—',
+  date_label: order.order_date || '—',
+  recipient: order.recipient_name || '—',
+  carrier_label: order.carrier || '—',
+  tracking_label: order.tracking_number || '—',
+  progress_code: order.progress.code,
+  progress_label: order.progress.label,
+  progress_reason: order.progress.reason,
+  archived_label: order.archived ? '已归档' : '—',
+  root_number: order.root_order_id ?? '',
+  parcel: order.fulfillment_suffix || '—',
+  last_verified_at: order.tracking_sync_verified_at || '—',
+  last_synced_at: order.synced_at || '—',
+  outbound_status: order.tracking_outbound_status || '—',
+  sync_attempts: order.tracking_outbound_attempts ?? 0,
+  block_reason: order.sync_block_reason || '—',
+})))
+const c = (colId: string, field: string, headerName: string, width: number, opts: Record<string, unknown> = {}): ColDef<GridListRow> =>
+  gridColumn({ colId, field, headerName, width, minWidth: 85, ...opts })
+const gridColumns = computed<ColDef<GridListRow>[]>(() => [
+  c('order_number', 'order_number', '订单号', compactMobile.value ? 132 : 190, {
+    sortable: true, sortingOrder: ['asc', 'desc'], tooltipField: 'original_number',
+    cellRenderer: GlobalGridCell, cellRendererParams: {
+      mode: 'link', hrefFor: (row: GridListRow) => '/customers/orders/' + row.id,
+    },
+  }),
+  c('original_number', 'original_number', '原始订单号', 160),
+  c('date', 'date_label', '订单日期', 128, { sortable: true, sortingOrder: ['asc', 'desc'] }),
+  c('source', 'source_label', '订单来源', 125, { sortable: true, sortingOrder: ['asc', 'desc'] }),
+  c('recipient', 'recipient', '收件人', 145),
+  c('carrier', 'carrier_label', '承运商', 120),
+  c('tracking', 'tracking_label', '物流单号', 180),
+  c('shipment_status', 'shipment_status', '发货状态', 120, { hide: true }),
+  c('parcel', 'parcel', '包裹 A/B/C', 115, { hide: true }),
+  c('root_number', 'root_number', '母订单 ID', 120, { hide: true }),
+  c('archived', 'archived_label', '归档状态', 105, { hide: true }),
+  c('last_verified_at', 'last_verified_at', '官网核验时间', 186, { hide: true }),
+  c('last_synced_at', 'last_synced_at', '同步时间', 186, { hide: true }),
+  c('outbound_status', 'outbound_status', '写回任务状态', 125, { hide: true }),
+  c('sync_attempts', 'sync_attempts', '写回尝试次数', 116, { hide: true }),
+  c('block_reason', 'block_reason', '同步限制原因', 260, { hide: true }),
+  c('actions', 'id', '操作', compactMobile.value ? 102 : 235, {
+    pinned: 'right', lockPinned: true, lockPosition: 'right', suppressMovable: true,
+    filter: false, sortable: false, cellRenderer: GlobalGridCell,
+    cellRendererParams: { mode: 'actions', actionsFor: (row: GridListRow) => {
+      const order = syncOrder(row)
+      if (!order) return []
+      const actions: { label: string; href?: string; onClick?: () => void }[] = compactMobile.value
+        ? []
+        : [{ label: '查看', href: '/customers/orders/' + order.id }]
+      if (order.can_operate && ['unsynced', 'failed'].includes(order.progress.code)) {
+        actions.push({ label: '同步网站', onClick: () => syncWebsite(order) })
+        if (!compactMobile.value && order.can_reconcile && !order.can_sync)
+          actions.push({ label: '核对官网', onClick: () => reconcile(order.id) })
+      }
+      if (!compactMobile.value && order.progress.code === 'failed')
+        actions.push({ label: '原因', onClick: () => notifyReason(order) })
+      return actions
+    } },
+  }),
+  c('progress', 'progress_label', '同步进度', compactMobile.value ? 96 : 118, {
+    pinned: 'right', lockPinned: true, lockPosition: 'right', suppressMovable: true,
+    filter: false, sortable: false, cellRenderer: SyncProgressGridCell,
+    tooltipField: 'progress_reason',
+  }),
+])
+const gridPager = computed(() => ({
+  current_page: props.pagination.current_page,
+  last_page: props.pagination.last_page,
+  per_page: props.pagination.per_page,
+  total: props.pagination.total,
+}))
+const gridEnabled = computed(() => props.globalGridPilotAvailable === true && props.globalGridPilotEnabled === true)
+
 </script>
 
 <template>
@@ -127,14 +262,15 @@ const checkWooBacklog = async () => {
     <section class="mvp-page simple-sync">
       <div class="mvp-page-heading">
         <div>
-          <p class="mvp-kicker">ORDER SYNC OVERVIEW</p>
           <h2>订单同步总表</h2>
-          <p>查看所有 ERP 订单的官网物流同步进度。已同步和已通知分别核验，不把人工标记当作官网回执。</p>
         </div>
-        <div class="total-counter">全部订单 <strong>{{ props.pagination.total.toLocaleString('zh-CN') }}</strong> 单</div>
+        <div class="sync-heading-actions">
+          <button v-if="props.globalGridPilotAvailable" class="mvp-button" type="button" data-testid="sync-global-grid-toggle" @click="toggleGrid">{{ gridEnabled ? '返回原表' : '体验 AG 表格' }}</button>
+          <div class="total-counter">全部订单 <strong>{{ props.pagination.total.toLocaleString('zh-CN') }}</strong> 单</div>
+        </div>
       </div>
 
-      <form class="overview-filters" @submit.prevent="submit(1)">
+      <form v-if="!gridEnabled" class="overview-filters" @submit.prevent="submit(1)">
         <input v-model="filters.search" placeholder="搜索订单号、原始单号或收件人" aria-label="搜索订单">
         <select v-model="filters.source" aria-label="订单来源" @change="submit(1)">
           <option value="">所有订单来源</option>
@@ -153,10 +289,44 @@ const checkWooBacklog = async () => {
         <span><i class="status-dot failed" />同步失败</span>
         <span><i class="status-dot synced" />已同步</span>
         <span><i class="status-dot notified" />已通知</span>
-        <small>已通知代表官网已确认客户通知请求，不保证邮件到达收件箱。</small>
       </div>
 
-      <div class="mvp-table-wrap overview-table">
+      <GlobalGrid
+        v-if="gridEnabled"
+        :key="compactMobile ? 'sync-mobile' : 'sync-desktop'"
+        :namespace="compactMobile ? 'grid.sync.orders.global.mobile.v1' : 'grid.sync.orders.global.v1'"
+        title="全部订单同步进度"
+        :rows="gridRows"
+        :columns="gridColumns"
+        :required-column-ids="['order_number', 'actions', 'progress']"
+        :default-pinned-right="2"
+        :page="gridPager"
+        :search="gridSearch"
+        :sort="gridSort"
+        :show-search="true"
+        :enable-selection="false"
+        :client-csv-export="false"
+        search-placeholder="搜索全部订单号 / 原始单号 / 收件人..."
+        @page-change="submit($event)"
+        @page-size-change="onGridPageSize"
+        @sort-change="onGridSort"
+        @search-change="onGridSearch"
+      >
+        <template #actions>
+          <div class="sync-grid-source-filter">
+            <label for="sync-grid-source">订单来源</label>
+            <select id="sync-grid-source" v-model="filters.source" aria-label="AG Grid 订单来源" @change="submit(1)">
+              <option value="">所有订单来源</option>
+              <option value="woocommerce">官网 WooCommerce</option>
+              <option value="website">网站导入</option>
+              <option value="kol">网红订单</option>
+              <option value="manual">手工订单</option>
+              <option value="manual_other">其他 / 外部导入</option>
+            </select>
+          </div>
+        </template>
+      </GlobalGrid>
+      <div v-else class="mvp-table-wrap overview-table">
         <table class="mvp-table">
           <thead>
             <tr>
@@ -200,7 +370,7 @@ const checkWooBacklog = async () => {
         </table>
       </div>
 
-      <div class="page-footer">
+      <div v-if="!gridEnabled" class="page-footer">
         <span>共 {{ props.pagination.total.toLocaleString('zh-CN') }} 单，当前 {{ props.pagination.from ?? 0 }}–{{ props.pagination.to ?? 0 }} 单</span>
         <div class="page-controls">
           <label for="sync-per-page">每页</label>
@@ -274,12 +444,21 @@ const checkWooBacklog = async () => {
           </details>
         </div>
       </details>
+      <p class="sync-bottom-help">同步进度基于官网物流回读或可信凭证；ERP 人工标记不等于已同步。已通知仅表示官网接受了客户通知请求，不保证邮件到达收件箱。</p>
     </section>
   </AuthenticatedLayout>
 </template>
 
 <style scoped>
 .simple-sync { padding-bottom: 24px; }
+.simple-sync .mvp-page-heading { margin-bottom: 8px; }
+.simple-sync .mvp-page-heading h2 { margin: 0; }
+.sync-bottom-help { margin: 12px 0 0; font-size: 11px; line-height: 1.5; color: #83939b; }
+
+.sync-heading-actions { display:flex; align-items:center;gap:10px;flex-wrap:wrap; }
+.sync-grid-source-filter { display:flex; align-items:center;gap:5px;margin:0;color:#526875;font-size:12px;white-space:nowrap; }
+.sync-grid-source-filter select {height:32px;border:1px solid #cbd5df;border-radius:6px;padding:4px 9px;background:#fff; }
+
 .total-counter { border: 1px solid var(--byl-border-subtle, #d9e1e5); background: #fff; border-radius: 9px; padding: 9px 14px; white-space: nowrap; font-size: 13px; color: #526875; }
 .total-counter strong { color: #075c59; margin-left: 4px; font-size: 19px; font-variant-numeric: tabular-nums; }
 .overview-filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: #fff; border: 1px solid var(--byl-border-subtle, #dae2e7); border-radius: 9px; align-items: center; }

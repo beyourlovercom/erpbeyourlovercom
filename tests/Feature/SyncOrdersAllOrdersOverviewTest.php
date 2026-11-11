@@ -97,6 +97,60 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
             );
     }
 
+    public function test_ag_grid_pilot_is_explicit_and_keeps_complete_order_coverage(): void
+    {
+        $user = $this->viewer();
+        $one = $this->makeOrder('woocommerce', 'AG-GRID-ROOT-101');
+        $two = $this->makeOrder('manual_other', 'AG-GRID-OTHER-103');
+        $this->makeOrder('kol', 'AG-GRID-KOL-102');
+        $one->forceFill(['order_date' => '2026-11-09'])->save();
+        $two->forceFill(['order_date' => '2026-11-11'])->save();
+
+        $this->actingAs($user)->get('/sync/orders')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Sync/Orders')
+                ->where('globalGridPilotAvailable', true)
+                ->where('globalGridPilotEnabled', false)
+                ->where('pagination.total', 3)
+            );
+
+        $result = $this->actingAs($user)->get('/sync/orders?global_grid=1&sort=date&direction=asc&per_page=20');
+        $result->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('globalGridPilotEnabled', true)
+                ->where('pagination.total', 3)
+                ->where('pagination.per_page', 20)
+                ->where('filters.sort', 'date')
+                ->where('filters.direction', 'asc')
+                ->has('orders', 3)
+            );
+        $rows = $result->viewData('page')['props']['orders'];
+        self::assertSame($one->id, $rows[0]['id']);
+        self::assertSame($two->id, $rows[1]['id']);
+
+        $this->actingAs($user)->get('/sync/orders?global_grid=1&search=AG-GRID-OTHER-103&source=manual_other')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('globalGridPilotEnabled', true)
+            ->where('filters.source', 'manual_other')
+            ->where('filters.search', 'AG-GRID-OTHER-103')
+            ->has('orders', 1)
+            ->where('orders.0.id', $two->id)
+            );
+        $this->assertDatabaseCount('manual_syncs', 0);
+    }
+
+    public function test_ag_grid_rejects_unbounded_page_size_and_arbitrary_sql_sorting(): void
+    {
+        $user = $this->viewer();
+        $this->makeOrder('manual', 'AG-GRID-VALIDATION');
+        $this->actingAs($user)->get('/sync/orders?global_grid=1&per_page=all')
+            ->assertSessionHasErrors('per_page');
+        $this->actingAs($user)->get('/sync/orders?global_grid=1&sort=tracking_sync_status')
+            ->assertSessionHasErrors('sort');
+        $this->actingAs($user)->get('/sync/orders?global_grid=1&sort=order_number&direction=foobar')
+            ->assertSessionHasErrors('direction');
+    }
+
     public function test_verified_remote_tracking_and_customer_note_receipt_have_distinct_statuses(): void
     {
         $projector = app(OrderSyncProgressProjector::class);
