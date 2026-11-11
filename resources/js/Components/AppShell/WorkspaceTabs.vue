@@ -29,14 +29,19 @@ const captureViewState = () => {
     workspaceViewState.save(props.userId, window.sessionStorage)
 }
 let restoreFrame: number | null = null
+let mounted = false
+const currentBrowserRoute = () => window.location.pathname + window.location.search + window.location.hash
 const restoreViewState = () => {
+  // A prior tab can complete an async reload after this Shell has unmounted.
+  // It must NEVER apply that tab's scroll positions onto the newly active page.
+  if (!mounted || currentBrowserRoute() !== props.currentUrl) return
   if (restoreFrame !== null) cancelAnimationFrame(restoreFrame)
   const route = props.currentUrl
   const snapshot = workspaceViewState.snapshot(route, props.userId)
   if (!snapshot) return
   let attempts = 0
   const attempt = () => {
-    if (props.currentUrl !== route) return
+    if (!mounted || props.currentUrl !== route || currentBrowserRoute() !== route) return
     const gridSelectors = Object.keys(snapshot.scrolls).filter(selector => selector.includes('.ag-'))
     const gridAttached = gridSelectors.every(selector => document.querySelector(selector))
     // OmsGrid deliberately restores account column layout asynchronously.
@@ -210,6 +215,7 @@ const onBeforeUnload = (event: BeforeUnloadEvent) => {
 }
 let stopNavigationListener: (() => void) | undefined
 onMounted(() => {
+  mounted = true
   reloadForUser()
   window.addEventListener('erp:workspace-dirty', onDirtyEvent)
   const stop = router.on('navigate', event => {
@@ -222,6 +228,7 @@ onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload)
 })
 onBeforeUnmount(() => {
+  mounted = false
   // Do NOT capture on component unmount: during client-side Inertia push the
   // URL prop can already refer to the incoming page while DOM is still old.
   // That would overwrite the target's saved scroll with zero. The "before"
