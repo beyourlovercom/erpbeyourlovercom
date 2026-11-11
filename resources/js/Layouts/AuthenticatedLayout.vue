@@ -4,6 +4,7 @@ import { usePage } from '@inertiajs/vue3'
 import GlobalFeedbackIsland from '../Components/AppShell/GlobalFeedbackIsland.vue'
 import GlobalNavigation from '../Components/AppShell/GlobalNavigation.vue'
 import TopBar, { type BreadcrumbItem } from '../Components/AppShell/TopBar.vue'
+import WorkspaceTabs from '../Components/AppShell/WorkspaceTabs.vue'
 import {
     canonicalFeedbackCopyText,
     copyFailureFeedback,
@@ -23,6 +24,8 @@ const mobileOpen = ref(false)
 const isNarrowScreen = ref(false)
 let narrowScreenQuery: MediaQueryList | undefined
 const storageKey = 'module_sidebar_collapsed'
+// Opt-in until R3 Dev browser UAT is approved; Production remains unchanged by default.
+const workspaceTabsEnabled = import.meta.env.VITE_ERP_WORKSPACE_TABS === '1'
 
 const updateNarrowScreen = (event: MediaQueryListEvent | MediaQueryList) => {
     isNarrowScreen.value = event.matches
@@ -116,6 +119,12 @@ const currentPath = computed(() => page.url.split('?')[0])
         :mobile-expanded="mobileOpen"
         :notification-center="page.props.notificationCenter"
         @toggle-mobile="toggleMobile"
+      />
+      <WorkspaceTabs
+        v-if="workspaceTabsEnabled"
+        :current-url="page.url"
+        :current-title="title"
+        :user-id="page.props.auth.user.id"
       />
       <main id="main-content" class="shell-content" tabindex="-1"><slot /></main>
     </div>
