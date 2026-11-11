@@ -1,4 +1,5 @@
 import type { Page } from '@inertiajs/core'
+import { ref } from 'vue'
 import { safeWorkspaceHref, workspaceKey } from './workspaceTabs'
 
 /**
@@ -54,6 +55,9 @@ function snapshot(page: Page, userId: number, now: number): HotWorkspacePage | n
 
 export class WorkspaceHotCache {
   private pages = new Map<string, HotWorkspacePage>()
+  private restoringKey: string | null = null
+
+  markClientRestore(key: string): void { this.restoringKey = key }
 
   get size(): number { return this.pages.size }
   listKeys(): string[] { return [...this.pages.keys()] }
@@ -61,6 +65,7 @@ export class WorkspaceHotCache {
   capture(page: Page, userId: number, now = Date.now()): boolean {
     const item = snapshot(page, userId, now)
     if (!item) return false
+    if (this.restoringKey === item.key) { this.restoringKey = null; return false }
     this.pages.delete(item.key)
     this.pages.set(item.key, item)
     while (this.pages.size > WORKSPACE_HOT_LIMIT) {
@@ -90,8 +95,11 @@ export class WorkspaceHotCache {
   sleepOthers(currentKey: string | null): void {
     for (const key of this.pages.keys()) if (key !== currentKey) this.pages.delete(key)
   }
-  clear(): void { this.pages.clear() }
+  clear(): void { this.pages.clear(); this.restoringKey = null }
 }
 
 // Module singleton survives AuthenticatedLayout remounts during Inertia visits.
 export const workspaceHotCache = new WorkspaceHotCache()
+
+/** Shared across remounted AuthenticatedLayout instances for the active SPA session. */
+export const workspaceHotStatus = ref<'idle' | 'validating' | 'failed'>('idle')
