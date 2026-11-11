@@ -81,7 +81,9 @@ const leafColumns = computed(() => flatten(props.columns).map(col => {
     suppressHeaderMenuButton: true,
     sort: props.serverSort?.colId === key ? props.serverSort.direction : null,
     ...(filterEnabled ? {
-      floatingFilterComponent: OmsServerFloatingFilter,
+      // A column may supply a specialized server filter (e.g. a
+      // controlled status dropdown); existing text filters remain default.
+      floatingFilterComponent: col.floatingFilterComponent ?? OmsServerFloatingFilter,
       floatingFilterComponentParams: {
         filterValue: props.serverColumnFilters?.[key] ?? '',
         onServerFilter: (value: string) => emit('column-search-change', { colId: key, value }),

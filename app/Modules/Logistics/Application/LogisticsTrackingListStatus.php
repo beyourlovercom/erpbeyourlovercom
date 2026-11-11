@@ -200,7 +200,15 @@ final class LogisticsTrackingListStatus
         foreach ($providerByShipment as $shipmentId => $providerOrderId) {
             $snapshot = $snapshots[$providerOrderId] ?? null;
             $shipment = $shipmentFacts->get($shipmentId);
-            if (! is_array($snapshot) || ($snapshot['read_error'] ?? false) || ! $shipment) {
+            if (is_array($snapshot) && ($snapshot['read_error'] ?? false) && $shipment) {
+                // The ordinary list remains available, but a full-library
+                // Sync Grid snapshot must detect this unverified Woo read.
+                $result[$shipmentId] ??= ['status' => 'pending', 'reason' => null];
+                $result[$shipmentId]['remote_read_error'] = true;
+
+                continue;
+            }
+            if (! is_array($snapshot) || ! $shipment) {
                 continue;
             }
 
