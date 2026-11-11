@@ -165,15 +165,24 @@ const shipoutBatchStatus = ref<ShipOutBatchStatus|null>(null)
 const shipoutBatchBusy = ref(false)
 const shipoutBatchError = ref('')
 let shipoutBatchTimer:ReturnType<typeof setInterval>|null=null
-onUnmounted(()=>{ if(shipoutBatchTimer)clearInterval(shipoutBatchTimer) })
+// Polls below are GET-only status checks. Skip them while this Chrome tab is
+// hidden; on becoming visible, read the latest status immediately.
+const pollShipoutBatchIfVisible=()=>{if(document.visibilityState!=='hidden')void shipoutBatchPoll()}
+const onShipoutBatchVisible=()=>{
+  if(document.visibilityState!=='visible'||!shipoutBatchStatus.value)return
+  if(['completed','completed_partial','paused'].includes(shipoutBatchStatus.value.status))return
+  void shipoutBatchPoll()
+}
+onUnmounted(()=>{ if(shipoutBatchTimer)clearInterval(shipoutBatchTimer);document.removeEventListener('visibilitychange',onShipoutBatchVisible) })
 onMounted(()=>{
+  document.addEventListener('visibilitychange',onShipoutBatchVisible)
   const last=props.shipoutProductionLatestBatch
   if(last&&props.shipoutProductionBatchUi) {
     shipoutBatchStatus.value={batch_id:last.id,status:last.status,dry_run:last.dry_run,
       total:last.total,processed:0,items:[]}
-    void shipoutBatchPoll()
+    pollShipoutBatchIfVisible()
     if(!['completed','completed_partial','paused'].includes(last.status))
-      shipoutBatchTimer=setInterval(()=>{void shipoutBatchPoll()},5000)
+      shipoutBatchTimer=setInterval(pollShipoutBatchIfVisible,5000)
   }
 })
 async function shipoutBatchApi(url:string, data?:Record<string,string>) {
@@ -234,7 +243,7 @@ async function shipoutBatchStart() {
     shipoutBatchPreview.value=null
     await shipoutBatchPoll()
     if(!shipoutBatchTimer && shipoutBatchStatus.value && !['completed','completed_partial','paused'].includes(shipoutBatchStatus.value.status))
-      shipoutBatchTimer=setInterval(()=>{void shipoutBatchPoll()},5000)
+      shipoutBatchTimer=setInterval(pollShipoutBatchIfVisible,5000)
   }catch(e){shipoutBatchError.value=e instanceof Error?e.message:'批次创建失败'}
   finally{shipoutBatchBusy.value=false}
 }
