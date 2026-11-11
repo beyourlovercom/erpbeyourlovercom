@@ -108,6 +108,7 @@ final class LogisticsController
             'carrierOptions' => $this->carrierServices->options(),
             'pendingTotal' => $orders->total(),
             'canOperate' => $this->allocationAccess->allows($request->user()),
+            'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
             'globalGridPilotAvailable' => true,
             'globalGridPilotEnabled' => $gridPilot,
             'gridSearch' => $search,
