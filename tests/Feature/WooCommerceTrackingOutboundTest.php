@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
 use App\Modules\Sync\Application\WooCommerceTrackingConflictException;
 use App\Modules\Sync\Application\WooCommerceTrackingOutboundService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -292,7 +293,7 @@ final class WooCommerceTrackingOutboundTest extends TestCase
     }
 }
 
-final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
+final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway, WooCommerceTrackingBatchInspector
 {
     public int $calls = 0;
 
@@ -303,6 +304,22 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
     public bool $fail = false;
     public bool $statusFail = false;
     public string $currentStatus = 'processing';
+
+    public array $publishedPackages = [];
+
+    public function inspectTrackingBatch(array $providerOrderIds): array
+    {
+        $result = [];
+        foreach ($providerOrderIds as $id) {
+            $result[$id] = [
+                'order_status' => $this->currentStatus,
+                'tracking_items' => $this->publishedPackages[$id] ?? [],
+                'has_tracking' => ! empty($this->publishedPackages[$id]),
+                'checked_at' => now()->toIso8601String(),
+            ];
+        }
+        return $result;
+    }
 
     public function descriptor(): array
     {
@@ -338,7 +355,9 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         if ($this->fail) {
             throw new RuntimeException('temporary remote failure');
         }
-
+        $this->publishedPackages[$providerOrderId][] = [
+            'tracking_number' => $trackingNumber, 'provider' => $providerSlug, 'ship_date' => $shipDate,
+        ];
         return ['written' => true, 'verified' => true];
     }
 

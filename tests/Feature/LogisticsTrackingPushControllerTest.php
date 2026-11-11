@@ -296,39 +296,29 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         $this->assertDatabaseHas('manual_syncs', ['order_id' => $order->id, 'website_sync_status' => 'completed']);
     }
 
-    public function test_manual_override_allows_pending_shipment_with_only_tracking_and_no_line_identity(): void
+    public function test_manual_override_rejects_pending_shipment_even_with_tracking(): void
     {
         $user = $this->userWith('role_preset_operations', ['logistics.view', 'orders.view', 'sync.view']);
         $order = $this->order(1091);
         $order->shipment->update(['shipment_status' => 'pending', 'shipped_at' => null, 'carrier' => null]);
         $order->items()->update(['woocommerce_line_item_id' => null]);
-        // A single Woo Completed email should suffice; even a deliberately
-        // failing Customer Note endpoint MUST NOT be called for the first.
         $this->customerNotes->fail = true;
 
         $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
             'order_ids' => [$order->id], 'manual_override' => true,
-        ])->assertRedirect()->assertSessionHas('success');
+        ])->assertRedirect()->assertSessionHas('warning');
 
-        self::assertSame(1, $this->gateway->calls);
-        self::assertSame([], $this->gateway->lastLineItems);
-        self::assertSame('other', $this->gateway->lastCarrierSlug);
+        self::assertSame(0, $this->gateway->calls);
+        self::assertSame(0, $this->gateway->statusCalls);
         self::assertSame(0, $this->customerNotes->createdCount);
-        self::assertSame(1091, $this->gateway->lastProviderOrderId);
-        self::assertSame('completed', $this->gateway->remoteStatus);
+        self::assertSame('processing', $this->gateway->remoteStatus);
         self::assertSame('pending', $order->shipment->fresh()->shipment_status);
-        self::assertSame('shared', $order->fresh()->workflow_status);
-        $this->assertDatabaseHas('order_workflow_status_histories', ['order_id' => $order->id, 'to_status' => 'shared']);
         $this->assertDatabaseHas('manual_syncs', [
-            'order_id' => $order->id, 'website_sync_status' => 'completed',
+            'order_id' => $order->id, 'website_sync_status' => 'pending',
         ]);
-        $this->assertDatabaseHas('order_operational_markers', [
+        $this->assertDatabaseMissing('order_operational_markers', [
             'order_id' => $order->id, 'marker' => 'woo_manual_force_completed',
         ]);
-        $this->assertDatabaseHas('order_operational_markers', [
-            'order_id' => $order->id, 'marker' => 'woo_manual_tracking_verified',
-        ]);
-        $this->assertDatabaseHas('sync_runs', ['run_type' => 'tracking_manual_force_completed']);
     }
 
     public function test_manual_override_of_a_child_writes_to_woo_mother_and_marks_mother_completed(): void
@@ -337,7 +327,7 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         $root = $this->order(1092);
         $child = $this->order(1093);
         $child->forceFill(['fulfillment_parent_id' => $root->id, 'fulfillment_suffix' => 'A'])->save();
-        $child->shipment->update(['shipment_status' => 'pending', 'shipped_at' => null]);
+        // Child A has been physically shipped, not merely assigned a tracking draft.
         $child->items()->update(['woocommerce_line_item_id' => null]);
         $this->customerNotes->fail = true; // A must never call Customer Note.
 
@@ -365,7 +355,7 @@ final class LogisticsTrackingPushControllerTest extends TestCase
             'order_id' => $child->id, 'website_sync_status' => 'completed',
         ]);
         self::assertSame('shipped', $root->shipment->fresh()->shipment_status);
-        self::assertSame('pending', $child->shipment->fresh()->shipment_status);
+        self::assertSame('shipped', $child->shipment->fresh()->shipment_status);
         self::assertSame('shared', $child->fresh()->workflow_status);
         self::assertNull($root->fresh()->workflow_status);
         self::assertSame(0, $this->customerNotes->createdCount);
@@ -377,7 +367,7 @@ final class LogisticsTrackingPushControllerTest extends TestCase
             $trackingState[$child->shipment->id] ?? null,
             $child->manualSync->fresh()->website_sync_status,
         );
-        self::assertSame('pending', $statusAfterReopen['status']);
+        self::assertSame('completed', $statusAfterReopen['status']);
 
         // Even if a draft is changed without reopening ManualSync, the
         // recorded verified fingerprint must not claim the new Tracking synced.
@@ -396,8 +386,39 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
             'order_ids' => [$child->id], 'manual_override' => true,
         ])->assertSessionHas('success');
-        self::assertSame(2, $this->gateway->calls);
+        // Exact Woo package already exists, so retry is read-only and idempotent.
+        self::assertSame(1, $this->gateway->calls);
         self::assertSame(1, $this->gateway->writes);
+        self::assertSame(0, $this->customerNotes->createdCount);
+    }
+
+    public function test_split_a_and_b_publish_packages_before_single_woo_completed_transition(): void
+    {
+        $user = $this->userWith('role_preset_operations', ['logistics.view', 'sync.view']);
+        $root = $this->order(1201);
+        $a = $this->order(1202);
+        $b = $this->order(1203);
+        $a->forceFill(['fulfillment_parent_id' => $root->id, 'fulfillment_suffix' => 'A'])->save();
+        $b->forceFill(['fulfillment_parent_id' => $root->id, 'fulfillment_suffix' => 'B'])->save();
+
+        // All ERP shipments are genuinely shipped, but WWW initially has none.
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$a->id], 'manual_override' => true,
+        ])->assertSessionHas('warning');
+        self::assertSame('processing', $this->gateway->remoteStatus);
+        self::assertSame(1, $this->gateway->calls);
+        self::assertSame(0, $this->gateway->statusCalls);
+        self::assertSame(0, $this->customerNotes->createdCount);
+
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$b->id], 'manual_override' => true,
+        ])->assertSessionHas('success');
+
+        self::assertSame('completed', $this->gateway->remoteStatus);
+        self::assertSame(2, $this->gateway->calls);
+        // One status write plus the readback confirmation.
+        self::assertSame(2, $this->gateway->statusCalls);
+        self::assertSame(2, count($this->gateway->batchSnapshots[1201]['tracking_items']));
         self::assertSame(0, $this->customerNotes->createdCount);
     }
 
@@ -976,6 +997,18 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingBatchInspector
         if ($written) {
             $this->writes++;
         }
+        $this->batchSnapshots[$providerOrderId] ??= [
+            'order_status' => $this->remoteStatus,
+            'tracking_items' => [], 'has_tracking' => false,
+            'checked_at' => now()->toIso8601String(),
+        ];
+        $items = &$this->batchSnapshots[$providerOrderId]['tracking_items'];
+        if (! collect($items)->contains(fn ($item): bool =>
+            ($item['tracking_number'] ?? '') === $trackingNumber)) {
+            $items[] = ['tracking_number' => $trackingNumber, 'provider' => $providerSlug,
+                'ship_date' => $shipDate];
+        }
+        $this->batchSnapshots[$providerOrderId]['has_tracking'] = true;
 
         return ['written' => $written, 'verified' => true];
     }

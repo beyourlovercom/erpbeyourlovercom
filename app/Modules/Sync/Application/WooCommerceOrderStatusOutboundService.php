@@ -13,6 +13,7 @@ final class WooCommerceOrderStatusOutboundService
         private readonly WooCommerceTrackingGateway $gateway,
         private readonly SyncOutboxService $outbox,
         private readonly ShipmentAggregateStatusService $aggregateStatus,
+        private readonly WooCommerceCompletionTrackingEvidence $completionTrackingEvidence,
     ) {}
 
     /** @return array<string,mixed> */
@@ -56,6 +57,26 @@ final class WooCommerceOrderStatusOutboundService
             ];
         }
         $wooStatus = (string) $aggregate['woo_status'];
+        if (in_array($wooStatus, ['completed', 'completed-delivered'], true)) {
+            try {
+                $evidence = $this->completionTrackingEvidence->check($root, $providerOrderId);
+            } catch (Throwable) {
+                return [
+                    'status' => 'blocked_tracking_not_verified',
+                    'aggregate' => $aggregate['aggregate'],
+                    'woo_status' => $wooStatus,
+                    'reason' => 'woo_tracking_inspection_failed',
+                ];
+            }
+            if (! $evidence['verified']) {
+                return [
+                    'status' => 'blocked_tracking_not_verified',
+                    'aggregate' => $aggregate['aggregate'],
+                    'woo_status' => $wooStatus,
+                    'reason' => $evidence['reason'],
+                ];
+            }
+        }
         $fingerprint = hash('sha256', implode('|', [$connectionKey, $providerOrderId, $aggregate['aggregate'], $wooStatus, $aggregate['state_fingerprint']]));
         $record = $this->outbox->enqueue([
             'idempotency_key' => 'woo-order-status:'.$fingerprint,
