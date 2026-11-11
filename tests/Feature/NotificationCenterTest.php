@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Modules\Identity\Infrastructure\Models\Permission;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\NotificationCenter\Application\NotificationPublisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use InvalidArgumentException;
 use Tests\TestCase;
@@ -27,6 +29,40 @@ final class NotificationCenterTest extends TestCase
             ->where('notificationCenter.unread_count', 1)
             ->has('notificationCenter.items', 1)
             ->where('notificationCenter.items.0.title', '订单需要处理'));
+    }
+
+    public function test_partial_inertia_reload_skips_unrequested_shell_queries(): void
+    {
+        $user = $this->userWith(['dashboard.view']);
+        app(NotificationPublisher::class)->publishToUser($user, [
+            'title' => '待处理通知',
+            'message' => '验证部分加载不查询通知列表',
+        ]);
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+
+        $response = $this->actingAs($user)->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(request()) ?? '',
+            'X-Inertia-Partial-Component' => 'Dashboard/Index',
+            'X-Inertia-Partial-Data' => 'auth',
+        ])->get('/dashboard');
+
+        $response->assertOk()
+            ->assertJsonPath('component', 'Dashboard/Index')
+            ->assertJsonPath('props.auth.user.id', $user->id)
+            ->assertJsonMissingPath('props.notificationCenter')
+            ->assertJsonMissingPath('props.shellNavigation');
+
+        $queries = strtolower(implode("\n", array_column(DB::getQueryLog(), 'query')));
+        DB::disableQueryLog();
+
+        $this->assertStringNotContainsString(
+            'notifications',
+            $queries,
+            'A partial reload that requests only auth must not query notifications.',
+        );
     }
 
     public function test_required_permission_is_enforced_at_publish_and_projection_time(): void
