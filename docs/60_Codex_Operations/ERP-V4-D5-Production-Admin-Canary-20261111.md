@@ -35,3 +35,30 @@ Owner instructed to continue from completed D5 Dev and D6 bounded five-user synt
 
 ## Safe rollback
 Check `current` still resolves to `erp-v4-d5-admin-canary-pr704-1f25c7e-20261111`, and that the old release is intact. If both pass and owner requests rollback, atomically point `current` back to `erp-v4-r3d-admin-canary-pr702-eedf559-20261111`. If another parallel release has since taken `current`, **stop and do not overwrite it**. No queue replay, DB changes, cache clearing or global worker restarts.
+
+
+## Owner D5 Production acceptance — 2026-11-11 (final)
+
+Owner explicitly reported **"效果pass"** after the D5 administrator Canary inspection requested in this project conversation. Record the overall D5 administrator UX verdict as **PASS** (not just "checked"). The signoff covers the D5 owner-observed experience; no additional performance measurements can be inferred from this message.
+
+**D5 manual UX gate: CLOSED / PASS.** Staff-wide rollout remains **NOT AUTHORIZED** until D6 long-running browser/server measurements, five actual employees' normal workflow concurrency acceptance, and separate Owner approval.
+
+### Parallel Production release check, 2026-11-11 05:41 UTC
+A separate branch replaced the ERP Production `current` pointer after the D5 Canary release. Live release is now:
+`erp-r4-3f-pr703-55846334-over-d5-20261111`.
+
+Read-only comparison against original D5 Release `erp-v4-d5-admin-canary-pr704-1f25c7e-20261111`:
+- D5 `WorkspaceTabs.vue`: **byte-for-byte identical**.
+- D5 `OmsGrid.vue`: **byte-for-byte identical**.
+- D5 `workspaceViewState.ts`: **byte-for-byte identical**.
+- Current compiled Vite build contains both D5 grid-layout-ready and R3-D canary feature markers.
+- `/login` and unauthenticated `/dashboard` redirects returned HTTP 200.
+- Production scheduler, default queue and ShipOut-batch LaunchAgents were all `running` (read-only check).
+- Host macOS memory pressure reported 45% free and swap used 13,169.75 MiB at this instant. A single reading does **not** establish a leak or measured D6 duration.
+
+**Operational instruction:** Do not revert to the prior D5 standalone Release or redeploy PR #704 over the newer R4-3F Production code. If future D6 needs release modification, rebase minimally on whatever `current` points to then. No Production deployment was performed for this signoff.
+
+### D6 remains
+1. Collect sustained full Chrome process footprint / DOM / CPU / memory pressure and swap-in/out *rate*, together with ERP request latency and worker/queue status. D6 151-second Dev synthetic test alone is insufficient for a multi-hour Production PASS.
+2. Obtain normal-workflow acceptance from **five real staff** at the same time (no destructive test orders or external shipping POST in a performance test). Record date, page types, actual timings, failures and resource peaks.
+3. Keep Canary administrator-only until D6 real-world criteria pass and Owner explicitly authorizes employee-wide enablement.
