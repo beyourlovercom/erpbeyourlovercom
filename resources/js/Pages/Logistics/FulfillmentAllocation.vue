@@ -23,7 +23,7 @@ type AllocationDecision = { status:'system_recommendation'|'manual_review'; stat
 type DerivedOrderRecord = { order_id:number; erp_order_id:string|null; derived:boolean; suffix:string|null; warehouse_id:number|null; warehouse_code:string|null; warehouse_name:string|null; carrier?:string|null; service?:string|null; carrier_selection_source?:string|null; items:Array<{ sku:string|null; source_sku?:string|null; resolved_fulfillment_sku?:string|null; product_summary:string|null; quantity:number }> }
 type ExistingAllocation = { status:string; decision_source:'system_recommendation'|'manual'; selected_plan_key:string|null; decision_note:string|null; plan_snapshot:(Plan & { derived_orders?:DerivedOrderRecord[] })|null; submitted_at:string|null }
 type CarrierRoute = { carrier:string|null; carrier_label:string|null; service:string|null; automatic:boolean }
-type Order = { id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
+type Order = { id:number; erp_order_id:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
 type Warehouse = { id:number; slug:string; code:string; name:string; country_code:string|null; can_auto_allocate:boolean }
 type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
@@ -52,27 +52,72 @@ const gridNavigation = useGlobalGridListAdapter({
   search: () => gridSearchText.value,
   pageSize: () => props.orders.per_page,
 })
-const allocationGridRows = computed<GridListRow[]>(() => props.orders.data.map((order,index) => ({
+const allocationGridRows = computed<GridListRow[]>(() => filteredOrders.value.map((order,index) => ({
   id: order.id,
   line: (props.orders.current_page-1)*props.orders.per_page+index+1,
   order_number: order.erp_order_id ?? '—',
   order_url: order.order_url,
-  sku_summary: order.items.map(item => (item.sku ?? item.product_summary ?? '无SKU')+' × '+item.quantity).join(' / ') || '—',
+  original_number: order.external_order_number ?? '—',
+  order_date: order.order_date ?? '—',
+  order_kind: order.order_kind_label ?? '—',
+  source_type: order.source_type ?? '—',
+  order_status: order.order_status ?? '—',
+  sku_summary: order.items.map(item => item.sku ?? item.product_summary ?? '无 SKU').join(' / ') || '—',
+  quantity: order.items.map(item => item.quantity).join(' / ') || '—',
+  total_quantity: order.item_count,
+  amount: order.amount === null || order.amount === undefined ? '—' : `${order.amount} ${order.amount_currency ?? 'USD'}`,
   recipient: order.recipient_name ?? '—',
-  zone: order.country==='US' ? zoneShort(order) : order.country ?? '—',
+  phone: order.phone ?? '—',
+  country: order.country ?? '—',
+  province: order.province_state ?? '—',
+  city: order.city ?? '—',
+  postal_code: order.postal_code ?? '—',
+  address: [order.address_line_1,order.address_line_2].filter(Boolean).join(', ') || '—',
+  zone: order.country==='US' ? zoneShort(order) : '—',
+  warehouse_priority: zonePriorityLabel(order.us_fulfillment_zone),
+  proposed_warehouse: order.allocation_decision.recommended_plan?.segments.map(segment=>segment.warehouse_name).join(' / ') || '—',
+  proposed_cost: money(order.allocation_decision.estimated_cost,order.allocation_decision.currency),
   advice: guidanceFor(order).title,
   status: guidanceFor(order).status,
+  gift: hasGift(order) ? '含礼品 · 待核实' : '无礼品',
+  owner: order.owner_label ?? '—',
+  reject_reason: order.domestic_reject_reason ?? '—',
 })))
+// Shared account-level column preferences: all available fields are configurable,
+// while only the high-value daily allocation columns appear on first load.
 const allocationGridColumns: ColDef<GridListRow>[] = [
-  gridColumn({colId:'line',field:'line',headerName:'#',width:74}),
-  gridColumn({colId:'order_number',field:'order_number',headerName:'订单号',width:195,
+  gridColumn({colId:'line',field:'line',headerName:'#',width:66}),
+  gridColumn({colId:'order_number',field:'order_number',headerName:'订单号',width:185,
+    pinned:'left',lockPinned:true,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
-  gridColumn({colId:'sku',field:'sku_summary',headerName:'SKU / 数量',width:280}),
-  gridColumn({colId:'recipient',field:'recipient',headerName:'收件人',width:152}),
-  gridColumn({colId:'zone',field:'zone',headerName:'国家 / 区域',width:140}),
-  gridColumn({colId:'advice',field:'advice',headerName:'系统建议',width:165}),
-  gridColumn({colId:'status',field:'status',headerName:'状态',width:132,cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
-  gridColumn({colId:'actions',field:'id',headerName:'操作',width:130,
+  gridColumn({colId:'original_number',field:'original_number',headerName:'原始订单号',width:190,hide:true}),
+  gridColumn({colId:'order_date',field:'order_date',headerName:'订单日期',width:125}),
+  gridColumn({colId:'order_kind',field:'order_kind',headerName:'订单类型',width:140,hide:true}),
+  gridColumn({colId:'source_type',field:'source_type',headerName:'订单来源',width:135,hide:true}),
+  gridColumn({colId:'order_status',field:'order_status',headerName:'原始状态',width:135,hide:true}),
+  gridColumn({colId:'sku',field:'sku_summary',headerName:'SKU',width:235}),
+  gridColumn({colId:'quantity',field:'quantity',headerName:'数量',width:105}),
+  gridColumn({colId:'total_quantity',field:'total_quantity',headerName:'SKU 总件数',width:115,hide:true}),
+  gridColumn({colId:'amount',field:'amount',headerName:'金额',width:135}),
+  gridColumn({colId:'recipient',field:'recipient',headerName:'收件人',width:145}),
+  gridColumn({colId:'phone',field:'phone',headerName:'电话',width:160,hide:true}),
+  gridColumn({colId:'country',field:'country',headerName:'国家',width:100}),
+  gridColumn({colId:'province',field:'province',headerName:'省 / 州',width:130,hide:true}),
+  gridColumn({colId:'city',field:'city',headerName:'城市',width:145,hide:true}),
+  gridColumn({colId:'postal_code',field:'postal_code',headerName:'邮编',width:115,hide:true}),
+  gridColumn({colId:'address',field:'address',headerName:'详细地址',width:260,hide:true}),
+  gridColumn({colId:'zone',field:'zone',headerName:'美国分区',width:130,hide:true}),
+  gridColumn({colId:'warehouse_priority',field:'warehouse_priority',headerName:'优先仓',width:210,hide:true}),
+  gridColumn({colId:'proposed_warehouse',field:'proposed_warehouse',headerName:'推荐仓库',width:175,hide:true}),
+  gridColumn({colId:'proposed_cost',field:'proposed_cost',headerName:'预计成本',width:125,hide:true}),
+  gridColumn({colId:'advice',field:'advice',headerName:'系统建议',width:225}),
+  gridColumn({colId:'status',field:'status',headerName:'分仓状态',width:140,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
+  gridColumn({colId:'gift',field:'gift',headerName:'礼品',width:145,hide:true}),
+  gridColumn({colId:'owner',field:'owner',headerName:'负责人',width:160,hide:true}),
+  gridColumn({colId:'reject_reason',field:'reject_reason',headerName:'商务驳回说明',width:200,hide:true}),
+  gridColumn({colId:'actions',field:'id',headerName:'操作',width:132,
+    pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'actions',actionsFor:(r:GridListRow)=>{
       const order=props.orders.data.find(item=>item.id===r.id)
       return order ? [{label:processed(order)?'查看记录':'查看方案',onClick:()=>openPlan(order)}] : []
@@ -305,8 +350,11 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
   <AuthenticatedLayout title="待分仓" :breadcrumbs="['BYL ERP','物流','待分仓']">
     <section class="allocation-page">
       <header class="page-heading">
-        <div class="title-row"><h1>待分仓</h1><span class="version">V1.2.1</span></div><button v-if="globalGridPilotAvailable" type="button" class="secondary" data-testid="allocation-global-grid-toggle" @click="gridNavigation.toggle()">{{ globalGridPilotEnabled?'返回原表':'体验 Global Grid V1' }}</button>
-        <div class="principle"><div><span>System Assisted</span><strong>{{ counts.recommendation }}</strong></div><div><span>Human Confirmed</span><strong>{{ counts.processed }}</strong></div></div>
+        <div class="title-row"><h1>待分仓</h1><span class="version">V1.2.1</span></div>
+        <div class="header-actions">
+          <div class="principle"><div><span>系统建议</span><strong>{{ counts.recommendation }}</strong></div><div><span>已处理</span><strong>{{ counts.processed }}</strong></div></div>
+          <button v-if="globalGridPilotAvailable" type="button" class="secondary" data-testid="allocation-global-grid-toggle" @click="gridNavigation.toggle()">{{ globalGridPilotEnabled?'返回原版表格':'切换新版表格' }}</button>
+        </div>
       </header>
       <nav class="tabs">
         <button :class="{active:activeTab==='pending'}" @click="activeTab='pending'">全部 <span>{{ counts.pending }}</span></button>
@@ -316,9 +364,9 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         <button :class="{active:activeTab==='gift'}" @click="activeTab='gift'">礼品待确认 <span>{{ counts.gift }}</span></button>
         <button :class="{active:activeTab==='processed'}" @click="activeTab='processed'">已处理 <span>{{ counts.processed }}</span></button>
       </nav>
-      <GlobalGrid v-if="globalGridPilotEnabled && activeTab==='pending'"
-        namespace="grid.logistics.allocation.global.v1" title="待分仓 · Global Grid V1"
-        :rows="allocationGridRows" :columns="allocationGridColumns" :required-column-ids="['order_number']"
+      <GlobalGrid v-if="globalGridPilotEnabled"
+        namespace="grid.logistics.allocation.global.v1" title="待分仓"
+        :rows="allocationGridRows" :columns="allocationGridColumns" :required-column-ids="['order_number','actions']"
         :page="allocationPager" :search="gridSearch ?? ''" search-placeholder="搜索全部订单号 / 收件人..."
         @search-change="searchAllocationGrid($event)" @page-change="gridNavigation.page($event)"
         @page-size-change="gridNavigation.pageSize($event)" />
@@ -382,7 +430,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
 </template>
 
 <style scoped>
-.allocation-page{display:grid;gap:14px;padding:18px 22px 28px;color:#172033}.page-heading{display:flex;justify-content:space-between;gap:20px}.title-row{display:flex;align-items:center;gap:9px}.title-row h1{margin:0;font-size:26px;color:#111827}.version{padding:3px 7px;border-radius:5px;background:#dbeafe;color:#1d4ed8;font-weight:800;font-size:11px}.page-heading p{margin:5px 0 0;color:#5f6d80;font-size:13px}.principle{display:grid;gap:2px;padding:9px 13px;border:1px solid #dbe7f5;border-radius:9px;background:#f7fbff;text-align:right;font-size:12px}.principle span{color:#64748b}.tabs{display:flex;gap:6px;border-bottom:1px solid #e6ebf1}.tabs button{border:0;background:transparent;padding:10px 13px;color:#59677c;cursor:pointer;border-bottom:2px solid transparent}.tabs button span{color:#8a96a8;margin-left:4px}.tabs button.active{color:#1261d7;font-weight:750;border-bottom-color:#1d72f2}.table-wrap{overflow:auto;border:1px solid #e1e7ef;border-radius:9px;background:#fff}.allocation-table{width:100%;min-width:1260px;border-collapse:collapse;font-size:12px}.allocation-table th,.allocation-table td{padding:10px 12px;border-bottom:1px solid #edf0f4;text-align:left;vertical-align:top}.allocation-table th{background:#f5f8fb;color:#526076}.order-link{color:#1261d7;font-weight:750;text-decoration:none}.sku-list{min-width:160px}.sku-list>div{display:flex;align-items:center;gap:7px;margin-bottom:5px}.gift-pending,.gift-done{padding:2px 6px;border-radius:4px;font-size:10px;font-weight:750}.gift-pending{background:#fff0dd;color:#b46100}.gift-done{background:#e8f8ef;color:#11834f}.address-summary{min-width:300px;max-width:360px}.address-summary strong,.address-summary span,.address-summary small{display:block}.address-summary span{margin-top:4px;line-height:1.45;color:#475569}.address-summary small{margin-top:3px;color:#64748b}.zone-chip{display:inline-flex;padding:3px 8px;border-radius:6px;font-weight:750}.zone-chip.west{background:#fff0e4;color:#b45309}.zone-chip.east{background:#eaf2ff;color:#1d4ed8}.zone-chip.unknown{background:#f1f5f9;color:#64748b}.zone-priority{margin-top:5px;color:#475569;font-weight:650}.plan-chip,.status-chip{display:inline-flex;padding:3px 9px;border-radius:6px;font-weight:750}.plan-chip.good{background:#e8f8ef;color:#11834f}.plan-chip.warn{background:#fff3dd;color:#b8650b}.status-chip.recommend{background:#e8f1ff;color:#1764ce}.status-chip.manual{background:#fff1dc;color:#b86100}.status-chip.done{background:#e9f8ef;color:#16814f}.status-chip.gift{background:#fce7f3;color:#be185d}.sticky-action{position:sticky;right:0;z-index:2;background:#fff!important;box-shadow:-6px 0 8px rgba(24,39,75,.04)}th.sticky-action{z-index:3;background:#f5f8fb!important}.primary,.secondary{min-height:34px;padding:7px 15px;border-radius:7px;border:1px solid transparent;font-weight:750;font-size:12px;cursor:pointer}.primary{background:#126cf3;color:#fff}.primary.green{background:#087f5b}.primary.compact{min-height:29px;padding:4px 14px}.secondary{background:#fff;border-color:#d5dde8;color:#36445b}.empty{text-align:center!important;padding:28px!important;color:#8a96a8}.page-foot{font-size:11px;color:#7d899a}
+.allocation-page{display:grid;gap:8px;padding:12px 16px 20px;color:#172033;min-width:0}.page-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.header-actions{display:flex;align-items:center;gap:10px;margin-left:auto}.title-row{display:flex;align-items:center;gap:9px}.title-row h1{margin:0;font-size:22px;color:#111827}.version{padding:3px 7px;border-radius:5px;background:#dbeafe;color:#1d4ed8;font-weight:800;font-size:11px}.page-heading p{margin:5px 0 0;color:#5f6d80;font-size:13px}.principle{display:grid;gap:2px;padding:9px 13px;border:1px solid #dbe7f5;border-radius:9px;background:#f7fbff;text-align:right;font-size:12px}.principle span{color:#64748b}.tabs{display:flex;gap:6px;border-bottom:1px solid #e6ebf1;overflow-x:auto;white-space:nowrap}.tabs button{border:0;background:transparent;padding:10px 13px;color:#59677c;cursor:pointer;border-bottom:2px solid transparent}.tabs button span{color:#8a96a8;margin-left:4px}.tabs button.active{color:#1261d7;font-weight:750;border-bottom-color:#1d72f2}.table-wrap{overflow:auto;border:1px solid #e1e7ef;border-radius:9px;background:#fff}.allocation-table{width:100%;min-width:1260px;border-collapse:collapse;font-size:12px}.allocation-table th,.allocation-table td{padding:10px 12px;border-bottom:1px solid #edf0f4;text-align:left;vertical-align:top}.allocation-table th{background:#f5f8fb;color:#526076}.order-link{color:#1261d7;font-weight:750;text-decoration:none}.sku-list{min-width:160px}.sku-list>div{display:flex;align-items:center;gap:7px;margin-bottom:5px}.gift-pending,.gift-done{padding:2px 6px;border-radius:4px;font-size:10px;font-weight:750}.gift-pending{background:#fff0dd;color:#b46100}.gift-done{background:#e8f8ef;color:#11834f}.address-summary{min-width:300px;max-width:360px}.address-summary strong,.address-summary span,.address-summary small{display:block}.address-summary span{margin-top:4px;line-height:1.45;color:#475569}.address-summary small{margin-top:3px;color:#64748b}.zone-chip{display:inline-flex;padding:3px 8px;border-radius:6px;font-weight:750}.zone-chip.west{background:#fff0e4;color:#b45309}.zone-chip.east{background:#eaf2ff;color:#1d4ed8}.zone-chip.unknown{background:#f1f5f9;color:#64748b}.zone-priority{margin-top:5px;color:#475569;font-weight:650}.plan-chip,.status-chip{display:inline-flex;padding:3px 9px;border-radius:6px;font-weight:750}.plan-chip.good{background:#e8f8ef;color:#11834f}.plan-chip.warn{background:#fff3dd;color:#b8650b}.status-chip.recommend{background:#e8f1ff;color:#1764ce}.status-chip.manual{background:#fff1dc;color:#b86100}.status-chip.done{background:#e9f8ef;color:#16814f}.status-chip.gift{background:#fce7f3;color:#be185d}.sticky-action{position:sticky;right:0;z-index:2;background:#fff!important;box-shadow:-6px 0 8px rgba(24,39,75,.04)}th.sticky-action{z-index:3;background:#f5f8fb!important}.primary,.secondary{min-height:34px;padding:7px 15px;border-radius:7px;border:1px solid transparent;font-weight:750;font-size:12px;cursor:pointer}.primary{background:#126cf3;color:#fff}.primary.green{background:#087f5b}.primary.compact{min-height:29px;padding:4px 14px}.secondary{background:#fff;border-color:#d5dde8;color:#36445b}.empty{text-align:center!important;padding:28px!important;color:#8a96a8}.page-foot{font-size:11px;color:#7d899a}
 .modal-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:12px;background:rgba(17,28,45,.55)}.plan-modal{width:min(1320px,98vw);max-height:96vh;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 22px 70px rgba(15,23,42,.28);color:#1f2937;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;font-size:13px}.modal-header{position:sticky;top:0;z-index:8;display:flex;justify-content:space-between;align-items:center;padding:15px 18px;border-bottom:1px solid #e7ebf1;background:#fff}.modal-header h2{margin:2px 0 0;font-size:21px;color:#111827}.eyebrow{margin:0;color:#087f5b;font-size:11px;font-weight:850;letter-spacing:.05em}.icon-button{border:0;background:transparent;color:#64748b;font-size:25px;cursor:pointer}
 .primary-allocation,.processed-primary{margin:14px 18px;border:1px solid #dbe3ec;border-radius:9px;background:#fff;overflow:hidden}.section-title{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:11px 13px;border-bottom:1px solid #e6ebf1;background:#f8fafc}.section-title h3{margin:0;color:#111827;font-size:15px}.section-title p{margin:4px 0 0;color:#64748b}.limit-chip{padding:4px 8px;border-radius:6px;background:#fff1dc;color:#9a4f00;font-size:11px;font-weight:750}.manual-table-wrap{overflow:auto}.manual-table-wrap table{width:100%;min-width:1220px;border-collapse:collapse}.manual-table-wrap th,.manual-table-wrap td{padding:9px 10px;border-bottom:1px solid #edf1f5;text-align:left;vertical-align:top}.manual-table-wrap th{background:#f7f9fc;color:#475569}.manual-table-wrap select{min-width:150px;max-width:220px;padding:7px 9px;border:1px solid #aebdce;border-radius:6px;background:#fff;color:#111827}.gift-tag{display:inline-block;margin-left:6px;padding:2px 6px;border-radius:4px;background:#fce7f3;color:#be185d;font-size:10px;font-weight:750}.stock-list{display:flex;gap:5px;flex-wrap:wrap;max-width:430px}.stock-list span{padding:3px 7px;border-radius:4px;font-size:10px;font-weight:650}.stock-ok{background:#e6f8ed;color:#087b47}.stock-short{background:#ffe8e8;color:#b42c2c}.stock-unknown{background:#fff0d7;color:#8b4b00}.stock-neutral{background:#eaf1fb;color:#334e6f}.warehouse-advice{display:grid;gap:4px;max-width:240px}.warehouse-advice strong{width:max-content;max-width:100%;padding:4px 7px;border-radius:5px;font-size:11px}.warehouse-advice small{font-size:10px;line-height:1.4;color:#64748b}.warehouse-advice.recommended strong{background:#eaf7ef;color:#087b47}.warehouse-advice.manual strong{background:#fff0dc;color:#9a4f00}.warehouse-advice.none strong{background:#f1f5f9;color:#64748b}.carrier-cell{display:grid;gap:4px}.carrier-cell small{width:max-content;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:750}.auto-route{background:#e8f8ef;color:#087b47}.manual-route{background:#fff0dc;color:#a85a00}.resolved-note,.mapping-missing{display:block;margin-top:5px;font-size:10px}.resolved-note{color:#087b47}.mapping-missing{color:#b42318}.constraint{margin:8px 12px 11px;color:#8a4600;font-weight:650}.group-preview{margin:10px 12px;padding:10px;border:1px solid #dce6df;border-radius:8px;background:#f7fbf8}.group-heading{display:flex;justify-content:space-between;gap:14px;margin-bottom:8px}.group-heading span{color:#64748b;font-size:11px}.group-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:9px}.group-card{border:1px solid #dce5df;border-radius:7px;background:#fff;overflow:hidden}.group-card header{display:flex;justify-content:space-between;gap:12px;padding:9px 11px;background:#fbfdfb}.group-card header>div:first-child{display:grid;gap:2px}.group-card small{color:#64748b}.group-card strong{color:#111827}.group-route{display:grid;text-align:right;gap:2px}.group-route b{color:#087f5b}.group-route span{color:#475569;font-size:11px}.group-items{display:flex;flex-wrap:wrap;gap:6px;padding:9px 11px;border-top:1px solid #edf1ee}.group-items span{padding:3px 7px;border-radius:5px;background:#f1f5f9;color:#334155;font-size:11px;font-weight:650}
 .top-grid{display:grid;grid-template-columns:1.15fr .9fr 1.2fr;gap:10px;margin:14px 18px}.info-card,.map-card{border:1px solid #dfe6ee;border-radius:9px;background:#fff;overflow:hidden}.info-card header,.map-card header{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e8edf3}.info-card header small,.map-card header small{color:#64748b}.mini-good,.mini-warn{padding:2px 7px;border-radius:5px;font-size:10px;font-weight:750}.mini-good{background:#e7f8ef;color:#0d7f4b}.mini-warn{background:#fff0dc;color:#ad5c00}.info-card dl{display:grid;grid-template-columns:86px 1fr;gap:7px 9px;padding:11px 12px;margin:0}.info-card dt{color:#64748b}.info-card dd{margin:0;color:#111827;font-weight:650;line-height:1.45}.order-item-chip{display:inline-flex;margin:0 4px 4px 0;padding:2px 6px;border-radius:5px;background:#f1f5f9;font-size:11px}.map-card svg{display:block;width:100%;height:185px;padding:7px 8px 0}.map-west{fill:#ffd8b4}.map-east{fill:#dbeafe}.map-outline{fill:none;stroke:#64748b;stroke-width:2}.map-divider{stroke:#ef4444;stroke-width:3}.map-label{font-size:17px;font-weight:800;fill:#334155}.map-pin circle{fill:#0f766e}.map-pin text{font-size:12px;fill:#fff}.map-unknown circle{fill:#f59e0b}.map-unknown text{font-size:14px;font-weight:900;fill:#fff}.map-result{display:flex;justify-content:center;gap:10px;padding:7px 10px 11px;color:#334155}.map-result span{font-weight:750}
