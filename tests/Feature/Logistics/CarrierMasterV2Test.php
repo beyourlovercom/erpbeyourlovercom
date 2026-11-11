@@ -23,7 +23,8 @@ final class CarrierMasterV2Test extends TestCase
 
         self::assertSame('USPS', $carrier->name_en);
         self::assertSame('美国邮政', $carrier->name_zh);
-        self::assertSame('USPS / 美国邮政', $carrier->displayName());
+        self::assertSame('美国邮政', $carrier->displayName());
+        self::assertSame('USPS', $carrier->name_en, 'English name remains stored');
         self::assertSame(3, $carrier->services->count());
         self::assertSame('USPS Priority Mail', $carrier->defaultService?->service_value);
     }
@@ -37,6 +38,11 @@ final class CarrierMasterV2Test extends TestCase
         self::assertSame('DHL PAKET International', $catalog->defaultService('DHL', 'FR')?->service_value);
         self::assertSame('DHL PAKET DOMESTIC', $catalog->defaultService('DHL', 'DE')?->service_value);
         self::assertSame('Standard', $catalog->defaultService('Weship')?->service_value);
+        $fourPx = collect($catalog->options())->firstWhere('value', '4PX');
+        self::assertSame('速达', $fourPx['label']);
+        self::assertSame('SD经济挂号-带电', $fourPx['services'][0]['label']);
+        self::assertSame('SD经济挂号-带电', $fourPx['services'][0]['value']);
+        self::assertNotEmpty($fourPx['services'][0]['name_en']);
     }
 
     public function test_catalog_resolves_only_active_services_and_falls_back_to_default_when_blank(): void

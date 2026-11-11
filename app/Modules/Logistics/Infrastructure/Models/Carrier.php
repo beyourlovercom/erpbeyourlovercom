@@ -29,7 +29,7 @@ final class Carrier extends Model
 
     public function displayName(): string
     {
-        $parts = array_values(array_filter([trim((string) $this->name_en), trim((string) $this->name_zh)]));
-        return $parts !== [] ? implode(' / ', array_unique($parts)) : $this->name;
+        // ERP labels are Chinese-only. Canonical carrier IDs and English values remain untouched.
+        return trim((string) $this->name_zh) ?: $this->name;
     }
 }
