@@ -10,6 +10,7 @@ import { safeWorkspaceHref, workspaceKey } from './workspaceTabs'
  */
 export const WORKSPACE_VIEW_LIMIT = 30
 export const WORKSPACE_VIEW_MAX_AGE_MS = 30 * 60 * 1000
+export const workspaceViewStorageKey = (userId: number): string => 'byl:workspace:v4:view:' + userId
 
 const SCROLL_SELECTORS = [
   '.shell-content',
@@ -95,6 +96,49 @@ export class WorkspaceViewState {
   }
 
   evict(key: string): void { this.snapshots.delete(key) }
+
+  // Scroll positions only, at most 30 entries. No form fields, selected
+  // orders, row data or authentication tokens are stored. Best-effort per-tab.
+  save(userId: number, storage: Storage): void {
+    const values = [...this.snapshots.values()].filter(value => value.userId === userId)
+    try { storage.setItem(workspaceViewStorageKey(userId), JSON.stringify(values)) }
+    catch { /* private browsing/storage quota: memory-only restore */ }
+  }
+
+  hydrate(userId: number, storage: Storage, now = Date.now()): void {
+    let raw: string | null
+    try { raw = storage.getItem(workspaceViewStorageKey(userId)) }
+    catch { return }
+    if (!raw || raw.length > 150_000) return
+    let values: unknown
+    try { values = JSON.parse(raw) }
+    catch { return }
+    if (!Array.isArray(values)) return
+    for (const record of values.slice(-WORKSPACE_VIEW_LIMIT)) {
+      if (!record || typeof record !== 'object') continue
+      const item = record as Partial<WorkspaceViewSnapshot>
+      if (item.userId !== userId || typeof item.href !== 'string' ||
+          typeof item.capturedAt !== 'number' ||
+          now - item.capturedAt > WORKSPACE_VIEW_MAX_AGE_MS ||
+          item.capturedAt > now + 5_000) continue
+      const safe = safeWorkspaceHref(item.href)
+      const key = safe && workspaceKey(safe)
+      if (!safe || key !== item.key || !item.scrolls || typeof item.scrolls !== 'object') continue
+      const scrolls: Record<string, Position> = {}
+      for (const selector of SCROLL_SELECTORS) {
+        const p = item.scrolls[selector]
+        if (!p || typeof p !== 'object') continue
+        scrolls[selector] = { left: bounded(p.left), top: bounded(p.top) }
+      }
+      this.snapshots.delete(key)
+      this.snapshots.set(key, {
+        key, href: safe, userId, capturedAt: item.capturedAt,
+        windowX: bounded(item.windowX ?? 0), windowY: bounded(item.windowY ?? 0),
+        scrolls,
+      })
+    }
+  }
+
   clear(): void { this.snapshots.clear() }
 }
 
