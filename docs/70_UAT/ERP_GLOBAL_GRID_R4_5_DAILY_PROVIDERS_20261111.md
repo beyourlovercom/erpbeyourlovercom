@@ -37,4 +37,10 @@ Production release authorization. No new bulk toolbar.
 - Never perform actual shipping, Tracking Apply or Woo sync in Production
   for visual testing.
 
-State: development branch; CI/PR pending. Local PHP 55/55 (922 assertions), Vue 30/30, typecheck/build PASS, isolated Chrome 14/14 PASS, cleanup PASS. Production not changed and R4-5B not activated.
+State: development branch; PR #713 CI final HEAD pending. Local PHP 55/55 (922 assertions), Vue 31/31, typecheck/build PASS, isolated Chrome 14/14 PASS, cleanup PASS. Production not changed and R4-5B not activated.
+
+## Coexistence: 4PX Chinese labels PR #710
+Feature branch merged source main a830c499 with the provider Chinese-label
+fix. Both modifications co-exist in Index.vue; rerun PHP 55/55, Vue 31/31,
+Chrome 14/14 and CI on merge commit. Deployment must preserve the then-current
+4PX Chinese labels and its original XLSX template, not copy older frontend.
