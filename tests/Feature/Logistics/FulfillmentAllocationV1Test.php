@@ -10,6 +10,8 @@ use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -58,6 +60,86 @@ final class FulfillmentAllocationV1Test extends TestCase
             ->assertOk()->assertInertia(fn (Assert $page) => $page
                 ->component('Logistics/FulfillmentAllocation')
                 ->where('globalGridPilotEnabled', true));
+    }
+
+    public function test_batch_allocation_requires_operate_permission_and_explicit_confirmation(): void
+    {
+        [$owner, $order] = $this->scenario(1);
+        $viewer = $this->userWith(['logistics.view']);
+        $this->actingAs($viewer)->postJson('/logistics/wait-stock/batch-allocation', [
+            'order_ids' => [$order->id],
+            'action' => 'warehouse',
+            'warehouse_code' => 'US-LA',
+            'confirmed' => true,
+        ])->assertForbidden();
+
+        $this->actingAs($owner)->postJson('/logistics/wait-stock/batch-allocation', [
+            'order_ids' => [$order->id],
+            'action' => 'warehouse',
+            'warehouse_code' => 'US-LA',
+        ])->assertUnprocessable();
+
+        $this->actingAs($owner)->postJson('/logistics/wait-stock/batch-allocation', [
+            'order_ids' => [$order->id, $order->id],
+            'action' => 'warehouse',
+            'warehouse_code' => 'US-LA',
+            'confirmed' => true,
+        ])->assertUnprocessable();
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
+    }
+
+    public function test_batch_manual_isolates_gift_failures_and_never_repeats_a_submitted_order(): void
+    {
+        [$owner, $eligible] = $this->scenario(1);
+        [, $gift] = $this->scenario(1);
+        $gift->items()->firstOrFail()->forceFill(['sku' => 'gift'])->save();
+
+        $warehouse = Warehouse::query()->where('code', 'US-LA')->firstOrFail();
+        $productId = (int) $eligible->items()->firstOrFail()->product_id;
+        WarehouseInventory::query()->create([
+            'warehouse_id' => $warehouse->id,
+            'product_id' => $productId,
+            'quantity_on_hand' => 20,
+            'quantity_reserved' => 0,
+            'inbound_at' => now()->subDays(3),
+            'location' => 'BATCH-UAT-001',
+        ]);
+
+        $payload = [
+            'order_ids' => [$eligible->id, $gift->id],
+            'action' => 'warehouse',
+            'warehouse_code' => 'US-LA',
+            'confirmed' => true,
+        ];
+        $response = $this->actingAs($owner)->postJson('/logistics/wait-stock/batch-allocation', $payload)
+            ->assertOk()->assertJsonPath('results.1.ok', false);
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $gift->id]);
+
+        // The first order either passes the canonical inventory/route checks or
+        // reports a safe failure. In neither case may an immediate retry allocate twice.
+        $firstSucceeded = (bool) $response->json('results.0.ok');
+        $retry = $this->actingAs($owner)->postJson('/logistics/wait-stock/batch-allocation', $payload)
+            ->assertOk()->assertJsonPath('results.1.ok', false);
+        if ($firstSucceeded) {
+            $this->assertDatabaseHas('fulfillment_allocations', ['order_id' => $eligible->id, 'status' => 'submitted']);
+            $retry->assertJsonPath('results.0.ok', false);
+        } else {
+            self::assertNotEmpty($response->json('results.0.message'));
+        }
+        self::assertSame(2, count((array) $response->json('results')));
+    }
+
+    public function test_batch_recommend_requires_matching_per_order_plan_key(): void
+    {
+        [$owner, $order] = $this->scenario(1);
+        $this->actingAs($owner)->postJson('/logistics/wait-stock/batch-allocation', [
+            'order_ids' => [$order->id],
+            'action' => 'recommend',
+            'confirmed' => true,
+            'plan_keys' => [],
+        ])->assertOk()->assertJsonPath('succeeded', 0)
+            ->assertJsonPath('results.0.ok', false);
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
     }
 
     public function test_manual_split_materializes_a_b_derived_orders_and_downstream_logistics_only_sees_children(): void
