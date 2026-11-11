@@ -97,7 +97,7 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
             );
     }
 
-    public function test_ag_grid_pilot_is_explicit_and_keeps_complete_order_coverage(): void
+    public function test_ag_grid_default_and_legacy_fallback_keep_complete_order_coverage(): void
     {
         $user = $this->viewer();
         $one = $this->makeOrder('woocommerce', 'AG-GRID-ROOT-101');
@@ -109,6 +109,13 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
         $this->actingAs($user)->get('/sync/orders')->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Sync/Orders')
+                ->where('globalGridPilotAvailable', true)
+                ->where('globalGridPilotEnabled', true)
+                ->where('pagination.total', 3)
+            );
+
+        $this->actingAs($user)->get('/sync/orders?global_grid=0')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
                 ->where('globalGridPilotAvailable', true)
                 ->where('globalGridPilotEnabled', false)
                 ->where('pagination.total', 3)

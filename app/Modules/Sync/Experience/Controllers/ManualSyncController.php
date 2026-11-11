@@ -6,7 +6,6 @@ use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Shell\Application\GlobalGridPilot;
 use App\Modules\Sync\Application\ManualSyncService;
 use App\Modules\Sync\Application\OrderSyncProgressProjector;
 use App\Modules\Sync\Application\SyncOrchestrationService;
@@ -79,9 +78,11 @@ final class ManualSyncController
         $recentRuns = $this->orchestration->recentRuns(10);
 
         return Inertia::render('Sync/Orders', [
-            // Explicit opt-in only, using the existing Owner canary gate.
-            'globalGridPilotAvailable' => GlobalGridPilot::available(),
-            'globalGridPilotEnabled' => GlobalGridPilot::enabled($request),
+            // Owner-approved default rollout for Sync only; other pages keep
+            // their independent GlobalGridPilot gates. Old view is always
+            // accessible through the explicit ?global_grid=0 rollback link.
+            'globalGridPilotAvailable' => true,
+            'globalGridPilotEnabled' => $request->query('global_grid') !== '0',
             'wooOrderSync' => [
                 ...app(WooOrderSyncHealthReader::class)->snapshot(),
                 'can_import_today' => app(WooOrderManualSyncAccess::class)->allows($request->user()),
