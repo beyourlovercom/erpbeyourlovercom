@@ -38,8 +38,12 @@ const restoreViewState = () => {
   const attempt = () => {
     if (props.currentUrl !== route) return
     const gridSelectors = Object.keys(snapshot.scrolls).filter(selector => selector.includes('.ag-'))
-    const gridReady = gridSelectors.every(selector => document.querySelector(selector))
-    if (!gridReady && attempts++ < 70) {
+    const gridAttached = gridSelectors.every(selector => document.querySelector(selector))
+    // OmsGrid deliberately restores account column layout asynchronously.
+    // Do not apply horizontal offsets while it is still rendering hidden:
+    // its own initial layout calculation would reset our scroll to zero.
+    const gridLayoutPending = !!document.querySelector('.oms-grid-layout-loading')
+    if ((!gridAttached || gridLayoutPending) && attempts++ < 90) {
       restoreFrame = requestAnimationFrame(attempt)
       return
     }
