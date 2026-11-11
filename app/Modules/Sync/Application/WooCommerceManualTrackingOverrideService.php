@@ -2,6 +2,7 @@
 
 namespace App\Modules\Sync\Application;
 
+use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceCustomerNoteGateway;
@@ -19,6 +20,7 @@ final class WooCommerceManualTrackingOverrideService
         private readonly ManualSyncService $manualSync,
         private readonly OrderWorkflowStatusService $workflowStatus,
         private readonly WooCommerceCustomerNoteGateway $customerNotes,
+        private readonly ShipmentCompletionSemantics $completionSemantics,
     ) {}
 
     /**
@@ -51,6 +53,23 @@ final class WooCommerceManualTrackingOverrideService
             ? $root->source_type->value : (string) $root->source_type;
         if ($source !== 'woocommerce') {
             throw new DomainException('订单没有对应的 WooCommerce 官网母订单，无法同步 AfterShip。');
+        }
+
+        // P0: Tracking typed into ERP is NOT confirmation of actual shipment.
+        // Do not send a premature Completed email for a pending package,
+        // including when only child A has a number and B/C are still pending.
+        if (strtolower(trim((string) $shipment?->shipment_status)) !== 'shipped'
+            || ! filled($shipment?->carrier)
+            || ! $shipment?->shipped_at) {
+            throw new DomainException('订单尚未正式发货，或缺少承运商、Tracking、发货时间，不能将官网标记为 Completed。');
+        }
+        $aggregate = $this->completionSemantics->aggregateForOrder($root);
+        if (! in_array($aggregate, [
+            ShipmentCompletionSemantics::Completed,
+            ShipmentCompletionSemantics::PartiallyDelivered,
+            ShipmentCompletionSemantics::CompletedDelivered,
+        ], true)) {
+            throw new DomainException('母订单仍有未发货的 A/B/C 包裹：不允许提前设置官网 Completed。请等待完整发货后同步状态。');
         }
 
         $descriptor = $this->gateway->descriptor();

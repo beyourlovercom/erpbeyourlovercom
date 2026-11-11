@@ -249,6 +249,14 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingBatchIn
         if ($current === $status) {
             return ['written' => false, 'verified' => true, 'status' => $status];
         }
+        // P0: an old Woo Completed order must not be silently reverted by
+        // a later ERP drift/partial-shipment sync. Historical fixes require
+        // individually verified, explicitly controlled action.
+        if ($status === 'processing' && in_array($current, ['completed', 'completed-delivered'], true)) {
+            throw new WooCommerceOrderStatusUnsupportedException(
+                'Existing Woo Completed order may not be automatically reverted to Processing.'
+            );
+        }
         if (in_array($current, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
             throw new WooCommerceOrderStatusUnsupportedException(
                 'WooCommerce has a protected status; manual status reconciliation was blocked.'

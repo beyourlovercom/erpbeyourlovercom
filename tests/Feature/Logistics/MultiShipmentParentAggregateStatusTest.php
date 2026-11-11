@@ -8,6 +8,7 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use App\Modules\Sync\Application\WooCommerceOrderStatusOutboundService;
 use App\Modules\Sync\Application\WooCommerceOrderStatusUnsupportedException;
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -70,12 +71,45 @@ final class MultiShipmentParentAggregateStatusTest extends TestCase
 
         $result = app(WooCommerceOrderStatusOutboundService::class)->pushOne($a);
         self::assertSame(ShipmentCompletionSemantics::PartiallyShipped, $result['aggregate']);
-        self::assertSame('completed', $result['woo_status']);
-        self::assertSame(['completed'], $gateway->statuses);
+        self::assertSame('blocked_unshipped_segments', $result['status']);
+        self::assertNull($result['woo_status']);
+        self::assertSame([], $gateway->statuses);
         self::assertSame('pending_shipment', $parent->fresh()->order_status->value);
         $this->assertDatabaseHas('order_operational_markers', [
             'order_id' => $parent->id, 'marker' => 'woo_manual_force_completed',
         ]);
+    }
+
+    public function test_manual_override_blocks_unshipped_split_child_before_any_remote_write(): void
+    {
+        [$parent, $a, $b] = $this->splitScenario();
+        $this->shipment($a, 'shipped', 'USPS', 'TRACK-A');
+        $this->shipment($b, 'pending', null, null);
+
+        try {
+            app(\App\Modules\Sync\Application\WooCommerceManualTrackingOverrideService::class)
+                ->pushOne($a, null);
+            self::fail('An incompletely shipped split must not be completed on Woo.');
+        } catch (DomainException $exception) {
+            self::assertStringContainsString('未发货的 A/B/C', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id' => $parent->id, 'marker' => 'woo_manual_force_completed',
+        ]);
+        self::assertSame('pending_shipment', $parent->fresh()->order_status->value);
+    }
+
+    public function test_tracking_without_actual_shipment_does_not_authorize_completion(): void
+    {
+        [$parent, $a, $b] = $this->splitScenario();
+        $this->shipment($a, 'pending', 'USPS', 'PREPRINTED-TRACK');
+        $this->shipment($b, 'pending', null, null);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('尚未正式发货');
+        app(\App\Modules\Sync\Application\WooCommerceManualTrackingOverrideService::class)
+            ->pushOne($a, null);
     }
 
     public function test_unregistered_completed_delivered_status_is_terminal_and_does_not_retry(): void
