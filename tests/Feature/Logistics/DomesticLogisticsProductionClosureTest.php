@@ -340,6 +340,12 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
             self::assertSame('承运商', $sheet->getCell('C1')->getValue());
             self::assertSame('Tracking', $sheet->getCell('E1')->getValue());
             self::assertSame('Email', $sheet->getCell('H1')->getValue());
+            self::assertSame('SKU', $sheet->getCell('N1')->getValue());
+            self::assertSame('数量', $sheet->getCell('O1')->getValue());
+            self::assertSame('金额', $sheet->getCell('P1')->getValue());
+            self::assertSame('物流备注', $sheet->getCell('Q1')->getValue());
+            self::assertSame('1', $sheet->getCell('O2')->getValue());
+            self::assertSame('2', $sheet->getCell('O3')->getValue());
             self::assertSame('007-0923-c50101', $sheet->getCell('A2')->getValue());
             self::assertSame('4PX', $sheet->getCell('C2')->getValue());
             self::assertSame('buyer@example.test', $sheet->getCell('H2')->getValue());
@@ -382,6 +388,44 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         self::assertSame('shipped', $speeda->fresh()->shipment->shipment_status);
         self::assertSame('GENERIC-4PX-1', $speeda->fresh()->shipment->tracking_number);
         self::assertSame('pending', $other->fresh()->shipment->shipment_status);
+    }
+
+    public function test_pending_batch_export_expands_multi_sku_without_shifting_amount_or_logistics_note(): void
+    {
+        $single = $this->domesticOrder('007-0923-c50901', '4PX', reviewed: true, phone: '111', quantity: 1);
+        $multi = $this->domesticOrder('007-0923-c50902', '4PX', reviewed: true, phone: '222', quantity: 2);
+        $multi->items()->create([
+            'product_summary' => 'Second Product',
+            'sku' => 'SECOND-SKU',
+            'quantity' => 3,
+            'unit_price' => '5.00',
+            'line_revenue' => '15.00',
+        ]);
+
+        $bytes = app(DomesticPendingBatchExporter::class)->export(collect([$single, $multi->fresh(['items', 'shipment'])]));
+        $path = tempnam(sys_get_temp_dir(), 'domestic-multi-sku-').'.xlsx';
+        file_put_contents($path, $bytes);
+        try {
+            $book = IOFactory::load($path);
+            $sheet = $book->getActiveSheet();
+            self::assertSame('SKU', $sheet->getCell('N1')->getValue());
+            self::assertSame('数量', $sheet->getCell('O1')->getValue());
+            self::assertSame('SKU2', $sheet->getCell('P1')->getValue());
+            self::assertSame('数量2', $sheet->getCell('Q1')->getValue());
+            self::assertSame('金额', $sheet->getCell('R1')->getValue());
+            self::assertSame('物流备注', $sheet->getCell('S1')->getValue());
+            self::assertSame('TEST-SKU', $sheet->getCell('N2')->getValue());
+            self::assertSame('1', $sheet->getCell('O2')->getValue());
+            self::assertSame('', (string) $sheet->getCell('P2')->getValue());
+            self::assertSame('TEST-SKU', $sheet->getCell('N3')->getValue());
+            self::assertSame('2', $sheet->getCell('O3')->getValue());
+            self::assertSame('SECOND-SKU', $sheet->getCell('P3')->getValue());
+            self::assertSame('3', $sheet->getCell('Q3')->getValue());
+            self::assertSame('', (string) $sheet->getCell('R3')->getValue());
+            $book->disconnectWorksheets();
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function test_speeda_legacy_xls_return_preview_and_partial_apply_isolated_by_row(): void
