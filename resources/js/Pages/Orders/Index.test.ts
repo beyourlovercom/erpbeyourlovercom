@@ -109,6 +109,20 @@ describe('Orders Saved Views', () => {
     pilot.unmount()
   })
 
+  it('uses default customer Global Grid without leaking OMS canary flag or removing legacy fallback', async () => {
+    const modern = mount(Index, { props: {
+      ...props, orderKind: 'customer', customerGlobalGridEnabled: true,
+    } })
+    expect(modern.text()).toContain('返回原表')
+    expect(modern.find('a[href*="legacy_grid=1"]').exists()).toBe(true)
+    await modern.find('form.mvp-toolbar').trigger('submit')
+    expect(get).toHaveBeenCalledWith('/customers/orders', expect.objectContaining({
+      legacy_grid: '0', per_page: '50', page: 1,
+    }), { preserveState: true, replace: true })
+    expect(get.mock.calls.at(-1)?.[1]).not.toHaveProperty('oms_grid')
+    modern.unmount()
+  })
+
   it('renders the ERP order identity with the external order as secondary text', () => {
     const wrapper = mount(Index, { props: {
       ...props,

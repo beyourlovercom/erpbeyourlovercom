@@ -223,6 +223,63 @@ final class OrderSavedViewsTest extends TestCase
             ->where('omsGridEnabled', false));
     }
 
+    public function test_customer_orders_use_global_grid_by_default_and_support_email_column_filter(): void
+    {
+        $viewer = $this->userWith(['orders.view']);
+        $target = $this->order($viewer, 'EMAIL-TARGET', 'pending_shipment');
+        $target->address()->update(['email' => 'william.atkinsonv@gmail.com']);
+        $other = $this->order($viewer, 'EMAIL-OTHER', 'pending_shipment');
+        $other->address()->update(['email' => 'someone@example.com']);
+
+        $this->actingAs($viewer)->get('/customers/orders')->assertInertia(fn (Assert $page) => $page
+            ->where('customerGlobalGridEnabled', true)
+            ->where('omsGridEnabled', false)
+            ->where('orders.total', 2));
+
+        $this->actingAs($viewer)->get('/customers/orders?search=atkinsonv')->assertInertia(fn (Assert $page) => $page
+            ->where('orders.total', 1)
+            ->where('orders.data.0.id', $target->id));
+
+        $this->actingAs($viewer)->get('/customers/orders?grid_email=atkinsonv&per_page=20')->assertInertia(fn (Assert $page) => $page
+            ->where('customerGlobalGridEnabled', true)
+            ->where('filters.grid_email', 'atkinsonv')
+            ->where('orders.per_page', 20)
+            ->where('orders.total', 1)
+            ->where('orders.data.0.id', $target->id)
+            ->where('orders.data.0.customer_email', 'william.atkinsonv@gmail.com'));
+
+        $this->actingAs($viewer)->get('/customers/orders?legacy_grid=1')->assertInertia(fn (Assert $page) => $page
+            ->where('customerGlobalGridEnabled', false)
+            ->where('orders.total', 2));
+    }
+
+    public function test_customer_email_filter_survives_saved_view_and_csv_export(): void
+    {
+        $admin = $this->userWith(['orders.view', 'customers.export', 'system.permissions.manage']);
+        $target = $this->order($admin, 'CSV-EMAIL-A', 'pending_shipment');
+        $target->address()->update(['email' => 'buyer.one@example.com']);
+        $other = $this->order($admin, 'CSV-EMAIL-B', 'pending_shipment');
+        $other->address()->update(['email' => 'other@another.test']);
+
+        $this->actingAs($admin)->post('/orders/views', [
+            'name' => '邮箱筛选',
+            'filters_json' => ['view' => 'all', 'grid_email' => 'buyer.one@', 'grid_country' => 'US'],
+            'is_pinned' => true,
+        ])->assertRedirect();
+
+        $this->actingAs($admin)->get('/customers/orders')->assertInertia(fn (Assert $page) => $page
+            ->where('savedViews.0.filters_json.grid_email', 'buyer.one@')
+            ->where('savedViews.0.filters_json.grid_country', 'US'));
+
+        $csv = $this->actingAs($admin)->get('/customers/orders/export?grid_email=buyer.one%40');
+        $csv->assertOk();
+        $content = $csv->streamedContent();
+        self::assertStringContainsString('客户邮箱', $content);
+        self::assertStringContainsString('buyer.one@example.com', $content);
+        self::assertStringContainsString('ORDER-CSV-EMAIL-A', $content);
+        self::assertStringNotContainsString('ORDER-CSV-EMAIL-B', $content);
+    }
+
     public function test_oms_grid_all_option_cannot_bypass_server_limit_or_permissions(): void
     {
         $viewer = $this->userWith(['orders.view']);

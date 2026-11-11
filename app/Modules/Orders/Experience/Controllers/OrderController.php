@@ -79,6 +79,9 @@ final class OrderController
         }
         if ($kind) {
             $filters['order_kind'] = $kind->value;
+            if ($kind === OrderKind::Customer) {
+                $filters['customer_email_search'] = true;
+            }
         }
         $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
         // A Production canary must be explicitly enabled and individually allowlisted;
@@ -86,29 +89,23 @@ final class OrderController
         $omsGridAvailable = $kind === null && $scope !== 'external_warehouse'
             && OrderOmsAvailability::grid($request->user());
         $omsGridEnabled = $omsGridAvailable && $request->boolean('oms_grid');
-        $requestedPageSize = $omsGridEnabled ? (string) $request->query('per_page', '50') : '50';
+        $customerGlobalGridEnabled = $kind === OrderKind::Customer && $request->query('legacy_grid') !== '1';
+        $serverGridEnabled = $omsGridEnabled || $customerGlobalGridEnabled;
+        $requestedPageSize = $serverGridEnabled ? (string) $request->query('per_page', '50') : '50';
         $perPage = in_array($requestedPageSize, ['20', '50', '100'], true) ? (int) $requestedPageSize : 50;
-        $sort = $omsGridEnabled && in_array($request->query('sort'), ['order_number', 'date', 'source', 'status'], true)
+        $sort = $serverGridEnabled && in_array($request->query('sort'), ['order_number', 'date', 'source', 'status'], true)
             ? (string) $request->query('sort') : 'date';
-        $direction = $omsGridEnabled && $request->query('direction') === 'asc' ? 'asc' : 'desc';
+        $direction = $serverGridEnabled && $request->query('direction') === 'asc' ? 'asc' : 'desc';
         $gridColumnFilters = [];
-        if ($omsGridEnabled) {
+        if ($serverGridEnabled) {
             $filters['oms_sort'] = $sort;
             $filters['oms_direction'] = $direction;
             $filters['oms_numeric_contains'] = true;
-            foreach (['grid_order_number', 'grid_sku', 'grid_quantity', 'grid_product_names', 'grid_source', 'grid_date', 'grid_recipient', 'grid_country', 'grid_warehouse', 'grid_status', 'grid_tracking', 'grid_owner', 'grid_city', 'grid_postal_code', 'grid_carrier', 'grid_external_number'] as $key) {
-                $raw = $request->query($key);
-                if (is_string($raw)) {
-                    $value = mb_substr(trim($raw), 0, 80);
-                    if ($value !== '') {
-                        $gridColumnFilters[$key] = $value;
-                    }
-                }
-            }
+            $gridColumnFilters = $this->gridColumnFilters($request);
             $filters['oms_grid_columns'] = $gridColumnFilters;
         }
-        $orders = $this->orders->list($filters, $requestedPageSize === 'all' && $omsGridEnabled ? 200 : $perPage);
-        $allRowsAllowed = $omsGridEnabled && $requestedPageSize === 'all' && $orders->total() <= 200;
+        $orders = $this->orders->list($filters, $requestedPageSize === 'all' && $serverGridEnabled ? 200 : $perPage);
+        $allRowsAllowed = $serverGridEnabled && $requestedPageSize === 'all' && $orders->total() <= 200;
         if ($requestedPageSize === 'all' && ! $allRowsAllowed) {
             $orders = $this->orders->list($filters, 50);
         }
@@ -118,7 +115,7 @@ final class OrderController
             ? ($request->user()->can('customers.export') && $request->user()->can('system.permissions.manage'))
             : $request->user()->can('orders.view');
 
-        $orders->getCollection()->loadMissing(['shipment', 'manualSync', 'fulfillmentParent']);
+        $orders->getCollection()->loadMissing(['shipment', 'manualSync', 'fulfillmentParent', ...($customerGlobalGridEnabled ? ['customer'] : [])]);
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments(
             $orders->getCollection()->map(fn (Order $order): int => (int) $order->shipment?->id)->all()
         );
@@ -126,13 +123,14 @@ final class OrderController
         return Inertia::render('Orders/Index', [
             'orderKind' => $kind?->value ?? 'all',
             'orderScope' => $scope === 'external_warehouse' ? 'external_warehouse' : 'all',
-            'orders' => $orders->through(fn (Order $order): array => $this->orderData($order, $trackingStatuses[(int) $order->shipment?->id] ?? null))->toArray(),
+            'orders' => $orders->through(fn (Order $order): array => $this->orderData($order, $trackingStatuses[(int) $order->shipment?->id] ?? null, $customerGlobalGridEnabled))->toArray(),
             'filters' => [
                 ...$request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']),
-                ...($omsGridEnabled ? ['sort' => $sort, 'direction' => $direction, 'per_page' => $allRowsAllowed ? 'all' : (string) $orders->perPage(), 'oms_grid' => '1', ...$gridColumnFilters] : []),
+                ...($serverGridEnabled ? ['sort' => $sort, 'direction' => $direction, 'per_page' => $allRowsAllowed ? 'all' : (string) $orders->perPage(), ...($omsGridEnabled ? ['oms_grid' => '1'] : []), ...$gridColumnFilters] : []),
             ],
             'omsGridAvailable' => $omsGridAvailable,
             'omsGridEnabled' => $omsGridEnabled,
+            'customerGlobalGridEnabled' => $customerGlobalGridEnabled,
             'canExportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::export($request->user()),
             'canConfirmOmsOrders' => $omsGridEnabled && OrderOmsAvailability::import($request->user()),
             'canImportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::importPreview($request->user())
@@ -618,21 +616,53 @@ final class OrderController
         if ($kind) {
             $filters['order_kind'] = $kind->value;
         }
+        $includeCustomerEmail = $kind === OrderKind::Customer;
+        if ($includeCustomerEmail) {
+            $filters['customer_email_search'] = true;
+            if ($request->query('legacy_grid') !== '1') {
+                $filters['oms_grid_columns'] = $this->gridColumnFilters($request);
+                $filters['oms_numeric_contains'] = true;
+                $filters['oms_sort'] = in_array($request->query('sort'), ['order_number', 'date', 'source', 'status'], true)
+                    ? (string) $request->query('sort') : 'date';
+                $filters['oms_direction'] = $request->query('direction') === 'asc' ? 'asc' : 'desc';
+            }
+        }
         $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
-        $orders = $this->orders->exportCursor($filters);
+        $orders = $includeCustomerEmail ? $this->orders->exportBatched($filters) : $this->orders->exportCursor($filters);
 
-        return response()->streamDownload(function () use ($orders): void {
+        return response()->streamDownload(function () use ($orders, $includeCustomerEmail): void {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['ERP订单号', '来源订单号', '来源', '订单日期', '收件人', '国家', '状态', '负责人']);
+            fputcsv($handle, [
+                'ERP订单号', '来源订单号', '来源', '订单日期', '收件人',
+                ...($includeCustomerEmail ? ['客户邮箱'] : []), '国家', '状态', '负责人',
+            ]);
             foreach ($orders as $order) {
                 fputcsv($handle, [
                     $order->erp_order_id, $order->external_order_number, $this->sourceLabel($order->source_type),
                     $order->order_date?->toDateString(), $order->address?->recipient_name,
+                    ...($includeCustomerEmail ? [$order->address?->email ?: $order->customer?->email] : []),
                     $order->address?->country, $order->order_status->value, $order->owner?->name,
                 ]);
             }
             fclose($handle);
         }, 'orders.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /** The same allowlisted server-side column filters power list, saved views and CSV export. */
+    private function gridColumnFilters(Request $request): array
+    {
+        $columns = [];
+        foreach (['grid_order_number', 'grid_sku', 'grid_quantity', 'grid_product_names', 'grid_source', 'grid_date', 'grid_recipient', 'grid_country', 'grid_warehouse', 'grid_status', 'grid_tracking', 'grid_owner', 'grid_city', 'grid_postal_code', 'grid_carrier', 'grid_external_number', 'grid_email'] as $key) {
+            $raw = $request->query($key);
+            if (is_string($raw)) {
+                $value = mb_substr(trim($raw), 0, 80);
+                if ($value !== '') {
+                    $columns[$key] = $value;
+                }
+            }
+        }
+
+        return $columns;
     }
 
     private function kind(Request $request): OrderKind
@@ -669,7 +699,7 @@ final class OrderController
         abort_if($order->archived_at !== null && ! $request->user()?->can('system.permissions.manage'), HttpResponse::HTTP_NOT_FOUND);
     }
 
-    private function orderData(Order $order, ?array $trackingOutbox = null): array
+    private function orderData(Order $order, ?array $trackingOutbox = null, bool $includeCustomerEmail = false): array
     {
         $workflowProjection = $this->workflowProjection($order);
         $trackingSource = $order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type;
@@ -713,6 +743,7 @@ final class OrderController
             'currency' => $order->currency,
             'owner' => $order->owner ? ['id' => $order->owner->id, 'name' => $order->owner->name] : null,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
+            'customer_email' => $includeCustomerEmail ? ($order->address?->email ?: $order->customer?->email) : null,
             'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code']),
             'items' => $order->items->map(fn ($item): array => $item->only(['id', 'product_id', 'product_summary', 'sku', 'quantity', 'unit_price', 'line_revenue']))->values()->all(),
             'tracking_sync_status' => $trackingSync['status'],
