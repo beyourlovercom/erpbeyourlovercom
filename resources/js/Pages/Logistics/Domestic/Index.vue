@@ -27,7 +27,7 @@ type PageRows = { data:Row[]; current_page:number; last_page:number; per_page?:n
 type PreviewRow = { row:number; order_id:number|null; order_number:string; tracking_number:string; carrier:string; provider_status:string|null; status:string; message:string }
 type Preview = { token:string; rows:PreviewRow[]; apply_count:number; noop_count:number; blocked_count:number }
 type ProviderStatus = Record<'4px'|'weship',{export_ready:boolean;return_ready:boolean;label:string;note?:string;reason?:string}>
-type CarrierOption = {value:string;label:string;default_service_value?:string|null;services:{value:string;label:string}[]}
+type CarrierOption = {value:string;label:string;default_service_value?:string|null;services:{value:string;label:string;name_zh?:string|null}[]}
 
 const props = defineProps<{
   view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; canReview:boolean; canArchive?:boolean; canTrackingSync?:boolean
@@ -711,7 +711,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                     <select :value="carrierDraft(row).service" :aria-label="'选择服务类型 '+(row.erp_order_id??row.order_id)"
                       :disabled="!!carrierBusy[row.order_id] || !carrierDraft(row).carrier" @change="chooseService(row,$event)">
                       <option value="">请选择服务类型</option>
-                      <option v-for="service in serviceOptions(row)" :key="service.value" :value="service.value">{{ service.label }}</option>
+                      <option v-for="service in serviceOptions(row)" :key="service.value" :value="service.value">{{ carrierDraft(row).carrier === '4PX' ? (service.name_zh?.trim() || service.value) : service.label }}</option>
                     </select>
                     <button type="button" class="secondary" :disabled="!!carrierBusy[row.order_id] || !carrierDraft(row).carrier || !carrierDraft(row).service || !carrierChanged(row)"
                       @click="saveCarrier(row)">确认</button>
