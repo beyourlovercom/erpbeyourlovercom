@@ -81,7 +81,9 @@ const submit = (page = 1, overrides: Record<string, string | number | undefined>
     ...filters,
     sort: gridSort.value.colId,
     direction: gridSort.value.direction,
-    ...(props.globalGridPilotEnabled ? { global_grid: '1' } : {}),
+    // Retain the user's explicit legacy fallback across search/pagination;
+    // otherwise a legacy page navigation would silently re-enable AG Grid.
+    global_grid: props.globalGridPilotEnabled ? '1' : '0',
     page,
     ...overrides,
   }, { preserveState: true, preserveScroll: true, replace: true })
