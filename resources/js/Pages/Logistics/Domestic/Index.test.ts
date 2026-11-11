@@ -65,6 +65,27 @@ describe('Domestic logistics production workbench', () => {
       expect.objectContaining({preserveState:true,preserveScroll:true}))
   })
 
+  it('shows only Chinese 4PX service labels while retaining original submitted channel values', async () => {
+    const services = [
+      {value:'SD经济挂号-带电',label:'Economy Registered - Battery / SD经济挂号-带电',name_zh:'SD经济挂号-带电'},
+      {value:'SD标准挂号-带电',label:'Standard Registered - Battery / SD标准挂号-带电',name_zh:'SD标准挂号-带电'},
+      {value:'SD标准挂号-普货',label:'Standard Registered - General / SD标准挂号-普货',name_zh:'SD标准挂号-普货'},
+    ]
+    const wrapper = mount(Index,{props:{...baseProps,carrierOptions:[
+      {value:'4PX',label:'4PX / 速达',services},
+      {value:'Weship',label:'纬狮',services:[{value:'标准挂号',label:'标准挂号'}]},
+    ]}})
+    const service = wrapper.find('select[aria-label^="选择服务类型"]')
+    const options = service.findAll('option').slice(1)
+    expect(options.map(option=>option.text())).toEqual(services.map(item=>item.name_zh))
+    expect(options.map(option=>(option.element as HTMLOptionElement).value)).toEqual(services.map(item=>item.value))
+    expect((service.element as HTMLSelectElement).value).toBe('SD经济挂号-带电')
+    await service.setValue('SD标准挂号-普货')
+    await wrapper.find('.domestic-service-entry button').trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/carrier-service',
+      {carrier:'4PX',service:'SD标准挂号-普货'},expect.any(Object))
+  })
+
   it('prevents routing writes from readonly or unreviewed domestic rows', () => {
     const readonly=mount(Index,{props:{...baseProps,canOperate:false}})
     expect(readonly.find('select[aria-label^="选择物流商"]').exists()).toBe(false)
