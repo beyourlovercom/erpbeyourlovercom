@@ -2,7 +2,7 @@
 import {computed,nextTick,onBeforeUnmount,ref} from 'vue'
 
 type Row={id:number;order_number:string;review_status:string;shipment_status?:string}
-type Carrier={value:string;label:string;services:{value:string;label:string}[]}
+type Carrier={value:string;label:string;services:{value:string;label:string;name_zh?:string|null}[]}
 type Source={order_id:number;review_status:string;shipment_status:string|null;carrier:string|null;service:string|null;carrier_selection_source?:string|null;carrier_ready?:boolean;tracking_number:string|null}
 type Draft={carrier:string;service:string;tracking:string}
 type Params={
@@ -35,6 +35,7 @@ const draft=ref<Draft>({carrier:'',service:'',tracking:''})
 const xy=ref({top:0,left:0})
 const width=354
 const services=computed(()=>props.params.carrierOptions.find(c=>c.value===draft.value.carrier)?.services??[])
+const serviceLabel=(s:{value:string;label:string;name_zh?:string|null})=>draft.value.carrier==='4PX'?(s.name_zh?.trim()||s.value):s.label
 const carrierDirty=computed(()=>!!source.value && (draft.value.carrier!==(source.value.carrier??'') || draft.value.service!==(source.value.service??'')))
 const trackDirty=computed(()=>draft.value.tracking.trim()!==(source.value?.tracking_number??''))
 const canSubmitShip=computed(()=>canShip.value&&carrierConfirmed.value&&!carrierDirty.value&&!trackDirty.value&&!!draft.value.tracking.trim()&&!busy.value)
@@ -121,7 +122,7 @@ onBeforeUnmount(remove)
         <label>服务类型
           <select v-model="draft.service" aria-label="服务类型" :disabled="busy||!draft.carrier">
             <option value="">请选择服务类型</option>
-            <option v-for="s in services" :key="s.value" :value="s.value">{{s.label}}</option>
+            <option v-for="s in services" :key="s.value" :value="s.value">{{serviceLabel(s)}}</option>
           </select>
         </label>
         <button type="button" :disabled="busy||!carrierDirty||!draft.carrier||!draft.service"
