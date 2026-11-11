@@ -74,11 +74,10 @@ final class DomesticLogisticsController
         ]);
 
         $this->applyView($query, $view);
-        // Individually Owner-approved rollout: review + stockout operate via
-        // Global Grid by default, with an explicit native-table fallback.
-        // Other carrier/Tracking/shipping tabs retain their original default
-        // until their respective action-parity UAT has passed.
-        $approvedGridView = in_array($view, ['review', 'stockout', 'pending'], true);
+        // R4-4: today adopts the same Global Grid as the already approved review,
+        // stockout and pending views. Five other shipping views keep the
+        // original table until their own independent Owner UAT.
+        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today'], true);
         $gridSetting = $request->query('global_grid');
         $gridAvailable = $approvedGridView || GlobalGridPilot::available();
         $gridPilot = $approvedGridView

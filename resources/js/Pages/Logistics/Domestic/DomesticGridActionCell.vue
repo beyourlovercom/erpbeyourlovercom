@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 
-type Row = { id:number; review_status:string; shipment_status?:string }
+type Row = { id:number; review_status:string; shipment_status?:string; tracking_sync_code?:string; tracking_sync_reason?:string }
 type Params = {
   data: Row
   view: string
   canReview: boolean
   canOperate: boolean
   busy: boolean
+  canTrackingSync?:boolean
+  syncEligible?:(id:number)=>boolean
+  syncBusy?:()=>boolean
+  syncTracking?:(id:number)=>void
   native: (row:Row) => void
   approve: (row:Row) => void
   stockout: (row:Row) => void
@@ -23,6 +27,12 @@ const stockout = computed(()=>props.params.canReview && props.params.view==='sto
   && row.value.review_status==='缺货' && row.value.shipment_status==='pending')
 const reopened = computed(()=>props.params.canReview && props.params.view==='pending'
   && row.value.review_status==='已通过')
+const todayReopen = computed(()=>props.params.view==='today' && props.params.canReview
+  && row.value.review_status==='已通过' && row.value.shipment_status==='pending')
+const todaySync = computed(()=>props.params.view==='today' && props.params.canTrackingSync
+  && !!props.params.syncEligible?.(row.value.id))
+const todayRetry = computed(()=>['failed','retry_wait'].includes(row.value.tracking_sync_code??'')
+  || !!row.value.tracking_sync_reason)
 
 const rejectOpen = ref(false)
 const reason = ref('')
@@ -95,6 +105,13 @@ onBeforeUnmount(removeListeners)
       <button v-else-if="stockout" type="button" class="approve" :disabled="params.busy"
         @click.stop="params.restock(row)">已到货-可发货</button>
       <button v-else-if="reopened" type="button" :disabled="params.busy" @click.stop="params.reopen(row)">重新审核</button>
+      <template v-else-if="params.view==='today'">
+        <button v-if="todayReopen" type="button" :disabled="params.busy"
+          @click.stop="params.reopen(row)">重新审核</button>
+        <button v-if="todaySync" type="button" class="native"
+          :disabled="params.syncBusy?.()" @click.stop="params.syncTracking?.(row.id)">{{ todayRetry?'重新同步':'同步官网物流' }}</button>
+        <span v-if="!todayReopen && !todaySync">—</span>
+      </template>
       <button v-else-if="params.view!=='stockout' && params.canOperate" type="button" class="native"
         @click.stop="params.native(row)">原操作</button>
       <span v-else>—</span>

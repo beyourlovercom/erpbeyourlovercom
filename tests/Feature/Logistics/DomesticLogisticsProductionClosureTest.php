@@ -105,8 +105,16 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
                 ->where('globalGridPilotEnabled', false)
                 ->where('view', 'pending'));
 
+        // R4-4 is the fourth independently approved Global Grid view.
         $this->actingAs($viewer)
             ->get('/logistics/china?view=today')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotEnabled', true)
+                ->where('view', 'today'));
+
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=today&global_grid=0')
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('globalGridPilotEnabled', false)

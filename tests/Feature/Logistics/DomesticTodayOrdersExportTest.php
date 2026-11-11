@@ -87,6 +87,55 @@ final class DomesticTodayOrdersExportTest extends TestCase
         self::assertSame('shipped', $weship->fresh()->shipment->shipment_status);
     }
 
+    public function test_r4_4_today_grid_defaults_on_and_fallback_keeps_exact_same_rows(): void
+    {
+        $reviewed = $this->domesticOrder('007-R4-4-TODAY-1', '4PX', true);
+        $reviewed->items()->create([
+            'sku'=>'A1', 'product_summary'=>'Test item 1', 'quantity'=>2,
+            'unit_price'=>'12.00', 'line_revenue'=>'24.00',
+        ]);
+        $shipped = $this->domesticOrder('007-R4-4-TODAY-2', 'Weship', false);
+        $shipped->shipment()->update(['shipment_status'=>'shipped','shipped_at'=>now()]);
+        $shipped->items()->create([
+            'sku'=>'B1','product_summary'=>'Test item 2','quantity'=>1,
+            'unit_price'=>'8.00','line_revenue'=>'8.00',
+        ]);
+        $excluded = $this->domesticOrder('007-R4-4-UNREVIEWED', '4PX', false);
+        $user = $this->viewer();
+
+        $this->actingAs($user)->get('/logistics/china?view=today')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotAvailable',true)
+                ->where('globalGridPilotEnabled',true)
+                ->where('rows.total',2)
+                ->where('rows.data.0.erp_order_id','007-R4-4-TODAY-1')
+                ->where('rows.data.0.items.0.quantity',2)
+                ->where('rows.data.1.erp_order_id','007-R4-4-TODAY-2'));
+
+        $this->actingAs($user)->get('/logistics/china?view=today&global_grid=0')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotEnabled',false)
+                ->where('rows.total',2)
+                ->where('rows.data.0.erp_order_id','007-R4-4-TODAY-1')
+                ->where('rows.data.1.erp_order_id','007-R4-4-TODAY-2'));
+
+        $this->actingAs($user)->get('/logistics/china?view=today&global_grid=1&per_page=20&search=R4-4-TODAY-2')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotEnabled',true)
+                ->where('rows.total',1)
+                ->where('rows.data.0.erp_order_id','007-R4-4-TODAY-2'));
+
+        // Other five unapproved tabs remain original-table by default.
+        foreach (['today-4px','today-weship','exceptions','4px','weship'] as $view) {
+            $this->actingAs($user)->get('/logistics/china?view='.$view)
+                ->assertOk()->assertInertia(fn ($page) => $page
+                    ->where('globalGridPilotEnabled',false));
+        }
+        self::assertSame('pending', $reviewed->fresh()->shipment->shipment_status);
+        self::assertSame('shipped', $shipped->fresh()->shipment->shipment_status);
+        self::assertSame('pending', $excluded->fresh()->shipment->shipment_status);
+    }
+
     public function test_today_export_is_authorized_and_empty_download_has_only_headers(): void
     {
         $this->get('/logistics/china/today/export')->assertRedirect('/login');
