@@ -195,6 +195,8 @@ const onDirtyEvent = (event: Event) => {
   dirty.value = detail?.dirty === true
 }
 const onBeforeUnload = (event: BeforeUnloadEvent) => {
+  // Browser refresh has no Inertia "before" event; save only viewport offsets.
+  captureViewState()
   if (!dirty.value) return
   event.preventDefault()
   event.returnValue = ''
@@ -213,7 +215,10 @@ onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload)
 })
 onBeforeUnmount(() => {
-  captureViewState()
+  // Do NOT capture on component unmount: during client-side Inertia push the
+  // URL prop can already refer to the incoming page while DOM is still old.
+  // That would overwrite the target's saved scroll with zero. The "before"
+  // hook and explicit hot-tab navigation capture the outgoing view instead.
   if (restoreFrame !== null) cancelAnimationFrame(restoreFrame)
   beforeRouteChange()
   stopNavigationListener?.()
