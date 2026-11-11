@@ -51,6 +51,7 @@ const reloadForUser = () => {
 watch(() => props.currentUrl, (next, prev) => {
   if (next !== prev) {
     dirty.value = false
+    approvedTabNavigation = null
     visitCurrent()
     recordCurrent()
   }
@@ -92,7 +93,9 @@ const open = (tab: WorkspaceTab) => {
   if (hot) {
     // No server request for the initial frame. This is a response snapshot,
     // not a live cached AG Grid instance. Server validation still gates actions.
-    const needsRefresh = Date.now() - hot.capturedAt > WORKSPACE_HOT_FRESH_MS
+    // Any operational table must be validated even if it was visited moments
+    // ago; only Dashboard may reuse a 5-second read-only snapshot unchanged.
+    const needsRefresh = hot.component !== 'Dashboard/Index' || Date.now() - hot.capturedAt > WORKSPACE_HOT_FRESH_MS
     if (needsRefresh) hotStatus.value = 'validating'
     workspaceHotCache.markClientRestore(hot.key)
     router.push({
@@ -104,7 +107,7 @@ const open = (tab: WorkspaceTab) => {
           router.reload({
             showProgress: false,
             onSuccess: () => { hotStatus.value = 'idle'; recordCurrent() },
-            onError: () => { hotStatus.value = 'failed' },
+            onError: () => { workspaceHotCache.evict(hot.key); hotStatus.value = 'failed' },
             onNetworkError: () => { hotStatus.value = 'failed' },
             onCancel: () => { hotStatus.value = 'failed' },
           })
