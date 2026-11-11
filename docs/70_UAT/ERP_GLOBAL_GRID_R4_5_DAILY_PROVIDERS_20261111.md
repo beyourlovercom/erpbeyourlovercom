@@ -53,3 +53,16 @@ all-nine-view compact layout and blocking provider warnings. The R4-5-specific
 old footer/CSS were removed to prevent duplicated help or layout regressions.
 Do not deploy an old release candidate based on PR #710. Re-run tests/CI and
 build a new allowlisted overlay against the actual Production pointer.
+
+## Reconciliation with PR #718 and PR #716
+The currently deployed production baseline includes the independently released
+PR #718 wait-stock batch and PR #716 Chinese-only carrier labels. R4-5A merges
+both sets of changes without replacing their routes or business behavior.
+After the latest merge, isolated tests pass: PHP 81/81 (1388 assertions),
+Vue 61/61, Chrome 15/15 with disposable SQLite cleanup PASS. The older
+R4-3F test validates the persisted carrier machine value even when rendered
+text is Chinese. The R4-4 test verifies keyboard batch selection in cases
+where synthetic account column preferences suppress a checkbox; R4-5A and
+wait-stock Chrome cases still directly click the row checkbox.
+Production must be assembled from the CURRENT release pointer, never the
+old PR710 or PR712 candidate. Weship Grid default remains disabled.
