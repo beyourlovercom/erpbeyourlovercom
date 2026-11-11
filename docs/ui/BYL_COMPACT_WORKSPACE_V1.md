@@ -1,9 +1,9 @@
 # BYL Compact Workspace V1.0 — Owner 级全局 UI 规范
 
-> **Rule ID:** `BYL_COMPACT_WORKSPACE_V1`  
-> **Owner approval:** 2026-11-11 / APPROVED / LONG-TERM / MANDATORY  
-> **治理入口：** 仓库根目录 `AGENTS.md`  
-> **改造台账：** [PAGE_MIGRATION_TRACKER_V1.md](./PAGE_MIGRATION_TRACKER_V1.md)  
+> **Rule ID:** `BYL_COMPACT_WORKSPACE_V1`
+> **Owner approval:** 2026-11-11 / APPROVED / LONG-TERM / MANDATORY
+> **治理入口：** 仓库根目录 `AGENTS.md`
+> **改造台账：** [PAGE_MIGRATION_TRACKER_V1.md](./PAGE_MIGRATION_TRACKER_V1.md)
 > **视觉基准：** Owner 于 2026-11-11 确认的「ERP 国内发货·待审核」紧凑布局渲染图；本文件将其版式要求文字化，避免依赖临时聊天图片或本机路径。
 
 ## 1. 目标与范围
