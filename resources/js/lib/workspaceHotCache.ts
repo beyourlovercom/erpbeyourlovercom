@@ -44,11 +44,12 @@ function snapshot(page: Page, userId: number, now: number): HotWorkspacePage | n
   let encoded: string
   try {
     encoded = JSON.stringify(page.props)
-    if (encoded.length > WORKSPACE_HOT_MAX_BYTES) return null
+    const bytes = new TextEncoder().encode(encoded).byteLength
+    if (bytes > WORKSPACE_HOT_MAX_BYTES) return null
     return {
       key, href, component: page.component, props: JSON.parse(encoded),
       version: page.version, userId, capturedAt: now, lastUsed: now,
-      bytes: encoded.length,
+      bytes,
     }
   } catch { return null }
 }
