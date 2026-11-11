@@ -2,6 +2,7 @@
 import { Head, useForm } from '@inertiajs/vue3'
 import { ref, computed, watch } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
+import { useWorkspaceDraftGuard } from '../../../Composables/useWorkspaceDraftGuard'
 import PermissionMatrix from '../../../Components/PermissionMatrix.vue'
 
 type PermissionEntry = { key: string; label: string }
@@ -56,6 +57,15 @@ const permForm = useForm({
 
 watch(permMode, (val) => { permForm.mode = val })
 watch(customPerms, (val) => { permForm.permissions = val })
+
+// Protect real user/permission edits while switching ERP work tabs.
+const initialPermMode = props.user.permission_mode === 'custom' ? 'custom' : 'role'
+const initialCustomPerms = JSON.stringify(props.user.custom_permissions)
+useWorkspaceDraftGuard(() =>
+  profileForm.isDirty || passwordForm.isDirty || roleForm.isDirty || permForm.isDirty
+  || permMode.value !== initialPermMode
+  || (permMode.value === 'custom' && JSON.stringify(customPerms.value) !== initialCustomPerms)
+)
 
 const isCustomMode = computed(() => permMode.value === 'custom')
 
