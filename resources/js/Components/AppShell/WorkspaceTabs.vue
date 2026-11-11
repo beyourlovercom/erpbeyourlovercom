@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { router, usePage } from '@inertiajs/vue3'
 import type { Page } from '@inertiajs/core'
 import { workspaceHotCache, workspaceHotStatus, WORKSPACE_HOT_FRESH_MS } from '../../lib/workspaceHotCache'
+import { workspaceViewState } from '../../lib/workspaceViewState'
 import {
   closeWorkspaceTab, restoreWorkspaceTabs, storageKeyForUser,
   visitWorkspaceTab, workspaceKey, toggleWorkspacePin, type WorkspaceTab, WORKSPACE_TAB_LIMIT, WORKSPACE_PIN_LIMIT,
@@ -19,6 +20,32 @@ const dirty = ref(false)
 const strip = ref<HTMLElement | null>(null)
 const activeKey = computed(() => workspaceKey(props.currentUrl))
 const keyForStorage = computed(() => storageKeyForUser(props.userId))
+
+// D5 stores only scroll offsets for the exact server-backed URL. Search, sort,
+// filters and page numbers stay owned by existing ERP route query parameters.
+const captureViewState = () => {
+  if (typeof document !== 'undefined') workspaceViewState.capture(props.currentUrl, props.userId, document, window)
+}
+let restoreFrame: number | null = null
+const restoreViewState = () => {
+  if (restoreFrame !== null) cancelAnimationFrame(restoreFrame)
+  const route = props.currentUrl
+  const snapshot = workspaceViewState.snapshot(route, props.userId)
+  if (!snapshot) return
+  let attempts = 0
+  const attempt = () => {
+    if (props.currentUrl !== route) return
+    const gridSelectors = Object.keys(snapshot.scrolls).filter(selector => selector.includes('.ag-'))
+    const gridReady = gridSelectors.every(selector => document.querySelector(selector))
+    if (!gridReady && attempts++ < 70) {
+      restoreFrame = requestAnimationFrame(attempt)
+      return
+    }
+    workspaceViewState.restore(route, props.userId, document, window)
+    restoreFrame = null
+  }
+  restoreFrame = requestAnimationFrame(attempt)
+}
 
 const save = () => {
   if (!ready.value) return
@@ -47,6 +74,7 @@ const reloadForUser = () => {
   ready.value = true
   visitCurrent()
   recordCurrent()
+  void nextTick(restoreViewState)
 }
 watch(() => props.currentUrl, (next, prev) => {
   if (next !== prev) {
@@ -54,6 +82,7 @@ watch(() => props.currentUrl, (next, prev) => {
     approvedTabNavigation = null
     visitCurrent()
     recordCurrent()
+    void nextTick(restoreViewState)
   }
 })
 watch(() => props.currentTitle, () => visitCurrent())
@@ -62,6 +91,7 @@ watch(() => props.userId, () => {
   tabs.value = []
   dirty.value = false
   workspaceHotCache.clear()
+  workspaceViewState.clear()
   hotStatus.value = 'idle'
   reloadForUser()
 })
@@ -73,6 +103,7 @@ let approvedTabNavigation: string | null = null
 // A page opts in by publishing erp:workspace-dirty. Guard sidebar/Inertia
 // GET navigation too, not only clicks inside the tab strip. Form POSTs still work.
 const beforeRouteChange = router.on('before', event => {
+  captureViewState()
   if (!dirty.value || event.detail.visit.method !== 'get') return
   const next = event.detail.visit.url
   const target = next.pathname + next.search + next.hash
@@ -87,6 +118,7 @@ const open = (tab: WorkspaceTab) => {
   if (tab.key === activeKey.value && tab.href === props.currentUrl) return
   if (hotStatus.value !== 'idle') { notice.value = '正在核对订单最新数据，请先完成核对'; return }
   if (!allowLeave()) return
+  captureViewState()
   approvedTabNavigation = tab.href
   const hot = workspaceHotCache.get(tab.href, props.userId, page.version)
   hotSize.value = workspaceHotCache.size
@@ -123,6 +155,7 @@ const close = (tab: WorkspaceTab) => {
   if (tab.pinned) { notice.value = '请先取消固定，再关闭该标签'; return }
   if (hotStatus.value !== 'idle') return
   workspaceHotCache.evict(tab.key)
+  workspaceViewState.evict(tab.key)
   hotSize.value = workspaceHotCache.size
   if (tab.key === activeKey.value && !allowLeave()) return
   const result = closeWorkspaceTab(tabs.value, tab.key, activeKey.value)
@@ -167,12 +200,17 @@ onMounted(() => {
   reloadForUser()
   window.addEventListener('erp:workspace-dirty', onDirtyEvent)
   const stop = router.on('navigate', event => {
-    if (event.detail.page && event.detail.page.url === page.url) recordCurrent()
+    if (event.detail.page && event.detail.page.url === page.url) {
+      recordCurrent()
+      void nextTick(restoreViewState)
+    }
   })
   stopNavigationListener = stop
   window.addEventListener('beforeunload', onBeforeUnload)
 })
 onBeforeUnmount(() => {
+  captureViewState()
+  if (restoreFrame !== null) cancelAnimationFrame(restoreFrame)
   beforeRouteChange()
   stopNavigationListener?.()
   window.removeEventListener('erp:workspace-dirty', onDirtyEvent)
