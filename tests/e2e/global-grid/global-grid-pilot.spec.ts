@@ -246,10 +246,31 @@ test('R4-L1 logistics shared Grid handles domestic, allocation and review withou
   await expect(domestic).toBeVisible()
   console.log('R4_L1_DOMESTIC_GRID_DEFAULT_HEADER_TOGGLE_AND_NATIVE_ACTIONS_PASS')
 
-  await page.goto('/logistics/wait-stock?global_grid=1',{waitUntil:'domcontentloaded'})
+  // Owner-approved wait-stock default: no opt-in, six business tabs, saved column menu,
+  // explicit header fallback to the original table and back to the same global grid.
+  await page.goto('/logistics/wait-stock',{waitUntil:'domcontentloaded'})
   const allocation=page.locator('[data-testid="erp-global-grid-v1"]')
   await expect(allocation).toBeVisible({timeout:20000})
   await expect(page.locator('.allocation-table')).toHaveCount(0)
+  await expect(page.getByTestId('allocation-global-grid-toggle')).toHaveText('返回原版表格')
+  await expect(allocation.getByText('007-1110-c99990',{exact:true}).first()).toBeVisible()
+  const allocationColumnSettings=allocation.getByRole('button',{name:'⚙ 列设置'})
+  await allocationColumnSettings.click()
+  await expect(allocation.getByText('原始订单号',{exact:true}).first()).toBeVisible()
+  await expect(allocation.getByText('金额',{exact:true}).first()).toBeVisible()
+  await allocation.getByRole('button',{name:'关闭列设置'}).click()
+  for(const label of ['仓库建议','库存待核实','人工处理','礼品待确认','已处理','全部']){
+    await page.locator('.allocation-page .tabs button').filter({hasText:label}).first().click()
+    await expect(allocation).toBeVisible()
+    await expect(page.locator('.allocation-table')).toHaveCount(0)
+  }
+  await page.getByTestId('allocation-global-grid-toggle').click()
+  await expect(page).toHaveURL(/global_grid=0/)
+  await expect(page.locator('.allocation-table')).toBeVisible()
+  await expect(page.getByTestId('allocation-global-grid-toggle')).toHaveText('切换新版表格')
+  await page.getByTestId('allocation-global-grid-toggle').click()
+  await expect(page).toHaveURL(/global_grid=1/)
+  await expect(allocation).toBeVisible()
   await allocation.getByRole('textbox',{name:'表格内搜索全部记录'}).fill('IMPOSSIBLE-ORDER-327')
   await allocation.getByRole('textbox',{name:'表格内搜索全部记录'}).press('Enter')
   await expect(page).toHaveURL(/search=IMPOSSIBLE-ORDER-327/)
