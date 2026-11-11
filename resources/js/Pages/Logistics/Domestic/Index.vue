@@ -48,6 +48,12 @@ const bulkOptions = computed<BulkChoice[]>(()=>{
       {value:'reject',label:'批量驳回',reasonRequired:true})
   }
   if (props.canReview && props.view==='stockout') result.push({value:'restock',label:'批量已到货-可发货'})
+  // Reuse the existing single footer; only previously eligible shipped Woo
+  // orders may be sent to the existing tracking-sync endpoint.
+  if (props.canTrackingSync && props.view==='today' && props.rows.data.some(row=>
+    selectedBulkOrderIds.value.includes(row.order_id) && eligibleForBatchTracking(row))) {
+    result.push({value:'sync-tracking',label:'批量同步官网物流'})
+  }
   if (props.canArchive && props.view!=='stockout') result.push({value:'archive',label:'批量归档'})
   return result
 })
@@ -88,6 +94,7 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   country:row.country??'',
   source_type:row.source_type??'',
   tracking_sync_code:row.tracking_sync_status??'',
+  tracking_sync_reason:row.tracking_sync_reason??'',
 
   quantity:row.items.map(item=>item.quantity).join(' / ') || '—',
   amount:row.amount!==null&&row.amount!==undefined ? row.amount+' '+(row.amount_currency??'USD'):'—',
@@ -101,6 +108,7 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   destination:[row.country,row.state,row.city].filter(Boolean).join(' / ')||'—',
   tracking_sync_status:row.source_type==='woocommerce'?trackingLabel(row.tracking_sync_status):'—',
 })))
+const todayGridCompact = computed(()=>props.view==='today' && !!props.globalGridPilotEnabled)
 const pendingHasSyncAction = computed(()=>props.view==='pending' && props.canTrackingSync
   && props.rows.data.some(row=>eligibleForTracking(row)))
 const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
@@ -111,8 +119,8 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'review',field:'review_status',headerName:'审核',width:120,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
   gridColumn({colId:'paid_date',field:'paid_date',headerName:'成交日期',width:135}),
-  gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:props.view==='pending'?230:178,
-    ...(props.view==='pending'?{
+  gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:['pending','today'].includes(props.view)?230:178,
+    ...(['pending','today'].includes(props.view)?{
       cellRenderer:DomesticGridPendingSkuCell,
       cellRendererParams:{
         showBarcode:(id:number)=>{
@@ -161,9 +169,9 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',
-    width:props.view==='review'?185:props.view==='stockout'?140:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):210,
-    minWidth:props.view==='review'?185:props.view==='stockout'?136:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):190,
-    maxWidth:props.view==='review'?190:props.view==='stockout'?148:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):210,
+    width:props.view==='review'?185:props.view==='stockout'?140:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):props.view==='today'?(props.canReview&&props.canTrackingSync?242:170):210,
+    minWidth:props.view==='review'?185:props.view==='stockout'?136:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):props.view==='today'?(props.canReview&&props.canTrackingSync?235:162):190,
+    maxWidth:props.view==='review'?190:props.view==='stockout'?148:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):props.view==='today'?(props.canReview&&props.canTrackingSync?250:178):210,
     pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
     cellRenderer:props.view==='pending'?DomesticGridPendingCell:DomesticGridActionCell,cellRendererParams:{
       carrierOptions:props.carrierOptions,
@@ -247,10 +255,21 @@ const pushTracking = (ids:number[], manualOverride = false) => {
     preserveScroll:true,
     onSuccess:(page)=>{
       trackingSelection.value=[]
+      if (props.view==='today') selectedBulkOrderIds.value=[]
       const flash = page.props.flash as {warning?:string;error?:string;success?:string}|undefined
       trackingFeedback.value = flash?.warning || flash?.error || flash?.success || '同步请求已处理，请核对官网同步状态'
+      if (props.view==='today') publishGlobalFeedback({
+        state:flash?.error?'ERROR':flash?.warning?'BLOCKED':'SUCCESS',
+        title:'官网物流同步请求已处理',message:trackingFeedback.value,
+        next:'核对最新官网同步状态；不要重复提交同一单',
+      })
     },
-    onError:(errors)=>{trackingFeedback.value=Object.values(errors).join('；')||'官网同步请求验证未通过'},
+    onError:(errors)=>{
+      trackingFeedback.value=Object.values(errors).join('；')||'官网同步请求验证未通过'
+      if (props.view==='today') publishGlobalFeedback({
+        state:'ERROR',title:'官网物流同步请求失败',message:trackingFeedback.value,
+      })
+    },
     onFinish:()=>{trackingBusy.value=false},
   })
 }
@@ -366,7 +385,7 @@ const switchView = (view:string) => {
   // just because they switched from the approved review view.
   const mode = view === props.view
     ? (props.globalGridPilotEnabled ? '1' : '0')
-    : (['review','stockout','pending'].includes(view) ? '1' : '0')
+    : (['review','stockout','pending','today'].includes(view) ? '1' : '0')
   router.visit('/logistics/china?view=' + encodeURIComponent(view)
     + '&global_grid=' + mode
     + (view === props.view && mode === '1' && domesticGridSearch.value
@@ -421,6 +440,12 @@ const applyGridBatch = async (payload:{action:string;reason:string}) => {
   if (bulkBusy.value || !selectedBulkOrderIds.value.length
     || !bulkOptions.value.some(option=>option.value===payload.action)
     || (payload.action==='reject' && payload.reason.trim().length<3)) return
+  if (payload.action==='sync-tracking') {
+    const eligible=props.rows.data.filter(row=>selectedBulkOrderIds.value.includes(row.order_id)
+      && eligibleForBatchTracking(row)).map(row=>row.order_id)
+    if (eligible.length) pushTracking(eligible)
+    return
+  }
   const ids=[...selectedBulkOrderIds.value]
   bulkBusy.value=true
   try {
@@ -525,12 +550,12 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 <template>
   <Head title="国内发货 · BYL ERP" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP','物流','国内发货']">
-    <section class="domestic-page">
+    <section class="domestic-page" :class="{'domestic-today-grid':todayGridCompact}">
       <header class="domestic-head">
         <div>
-          <p class="eyebrow">FACTORY · 中国工厂</p>
+          <p v-if="!todayGridCompact" class="eyebrow">FACTORY · 中国工厂</p>
           <h1>国内发货</h1>
-          <p>Vita 分仓 → Kaven / 运营确认有货 → Liang 发货 → 下载承运商文件 → 回传 Tracking → Preview → Apply。单个异常订单不会阻断其他正常订单。</p>
+          <p v-if="!todayGridCompact">Vita 分仓 → Kaven / 运营确认有货 → Liang 发货 → 下载承运商文件 → 回传 Tracking → Preview → Apply。单个异常订单不会阻断其他正常订单。</p>
         </div>
         <div class="domestic-head-actions">
           <a class="secondary" href="/logistics/wait-stock">待分配 →</a>
@@ -541,7 +566,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         </div>
       </header>
 
-      <section class="continuity">
+      <section v-if="!todayGridCompact" class="continuity">
         <strong>生产连续性</strong>
         <span>正常订单继续发货；缺电话 / 单号冲突 / Tracking 冲突只阻断对应订单，不阻断整批。</span>
       </section>
@@ -635,7 +660,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               :busy="bulkBusy" @apply="applyGridBatch" />
           </template>
         </GlobalGrid>
-        <div v-if="view!=='review' && view!=='stockout'" class="domestic-grid-legacy-tools">
+        <div v-if="view!=='review' && view!=='stockout' && view!=='today'" class="domestic-grid-legacy-tools">
           <button type="button" class="secondary" data-testid="domestic-native-batch-toggle"
             @click="showBatchLegacyOperations=!showBatchLegacyOperations;activeOperationId=null">
             {{ showBatchLegacyOperations?'收起原批量操作':'使用原批量操作' }}
@@ -723,6 +748,10 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         </table>
       </div>
       <footer>共 {{ rows.total }} 条</footer>
+      <footer v-if="todayGridCompact" class="domestic-footer-help">
+        FACTORY · 中国工厂。Vita 分仓 → 商务确认有货 → Liang 发货 → 下载物流文件 → 回传 Tracking → 核对同步状态。
+        单个异常订单不会阻断其他正常订单；以 ERP 最新发货状态和官网同步回读为准。
+      </footer>
       <div v-if="rejectTarget" class="review-reject-backdrop" @click.self="rejectTarget=null">
         <section class="review-reject-dialog" role="dialog" aria-modal="true" aria-label="驳回国内订单">
           <h2>驳回到 Vita 待分仓</h2>
@@ -756,6 +785,14 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 button:disabled{opacity:.5;cursor:not-allowed}
 .sync-status{font-size:11px;font-weight:700;padding:4px 7px;border-radius:5px;background:#fff1d6;color:#92400e}
 .sync-status.completed{background:#dcfce7;color:#166534}.sync-status.failed{background:#fee2e2;color:#991b1b}.sync-status.retry_wait{background:#fef3c7;color:#92400e}.sync-status.processing{background:#dbeafe;color:#1d4ed8}.sync-failure{display:block;max-width:240px;white-space:normal;color:#b91c1c;font-size:10px;margin-top:4px}
+.domestic-today-grid{padding:9px 12px}
+.domestic-today-grid .domestic-head{align-items:center;gap:8px}
+.domestic-today-grid .domestic-head h1{font-size:21px;margin:0;line-height:1.25}
+.domestic-today-grid .tabs{margin:5px 0 7px}
+.domestic-today-grid .tabs button{padding:6px 10px}
+.domestic-today-grid .today-shortcut{min-height:36px;padding:4px 8px;border-radius:6px}
+.domestic-today-grid .today-shortcuts{margin-bottom:7px}
+.domestic-footer-help{font-size:10px;color:#94a3b8;line-height:1.4;padding:3px 2px}
 .today-shortcuts{display:grid;grid-template-columns:minmax(160px,1fr) minmax(290px,1.4fr) minmax(290px,1.4fr);gap:8px;margin:0 0 10px}.today-shortcut{display:flex;align-items:center;justify-content:space-around;gap:10px;min-width:0;min-height:52px;padding:8px 12px;border:1px solid #dbe4e8;border-radius:9px;background:#fff}.today-shortcut-order{justify-content:flex-start}.today-shortcut a,.today-shortcut button,.today-shortcut span{border:0;background:transparent;color:#0f766e;font-size:14px;font-weight:800;white-space:nowrap;padding:3px 6px;text-decoration:none;cursor:pointer}.today-shortcut a:hover,.today-shortcut button:hover{text-decoration:underline}.today-shortcut a:focus-visible,.today-shortcut button:focus-visible{outline:2px solid #0f8f82;outline-offset:3px;border-radius:4px}.today-shortcut .today-shortcut-disabled{opacity:.5;cursor:default}.provider-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.provider-grid.single{grid-template-columns:1fr}.provider-card{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid #dbe4e8;border-radius:10px;background:#fff}.provider-card>div:first-child{display:flex;flex-direction:column;gap:4px}.provider-card small{color:#64748b}.actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.primary,.secondary,.approve,.approved button{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:0 11px;border-radius:7px;font-size:12px;font-weight:800;text-decoration:none}.primary,.approve{border:1px solid #0f8f82;background:#0f8f82;color:#fff}.secondary,.approved button{border:1px solid #b8c6cc;background:#fff;color:#334155}.hidden{display:none}.preview{margin-bottom:12px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.preview-head{display:flex;justify-content:space-between;gap:12px}.preview-head>div{display:flex;flex-direction:column}.preview p{color:#64748b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #dfe6ea;border-radius:10px;background:#fff}.table-wrap table{width:max-content;min-width:100%;border-collapse:collapse;font-size:12px}.table-wrap th,.table-wrap td{padding:8px;border-bottom:1px solid #e9eef1;text-align:left;white-space:nowrap}.table-wrap th{background:#f8fafc;color:#475569}.orders table{min-width:1500px}.orders a{color:#0f766e;font-weight:800;text-decoration:none}.approved{display:flex;gap:6px;align-items:center;color:#047857;font-weight:800}.approved button{min-height:26px;padding:0 7px;font-size:10px}.danger{color:#b91c1c;font-weight:800}.ready{color:#047857;font-weight:800}.empty{text-align:center!important;padding:30px!important;color:#94a3b8}.status-apply{color:#047857}.status-noop{color:#64748b}.status-blocked{color:#b91c1c}footer{padding:10px 2px;color:#64748b;font-size:12px}
 @media(max-width:900px){.today-shortcuts{grid-template-columns:1fr}.today-shortcut{justify-content:flex-start;gap:22px}}
 @media(max-width:800px){.domestic-page{padding:14px}.domestic-head{flex-direction:column}.pending-batch-card{flex-direction:column}.provider-grid{grid-template-columns:1fr}.provider-card{flex-direction:column}.continuity{align-items:flex-start;flex-direction:column}.preview-head{flex-direction:column}}
