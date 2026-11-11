@@ -309,6 +309,7 @@ final class OrderService
         $query = $orderClass::query()
             ->eligibleForOperations()
             ->with(['items', 'owner', 'address', 'shipment.warehouse', 'shipment.overseaReview', 'operationalMarkers', 'fulfillmentAllocation', 'originalFulfillmentChildren.shipment.warehouse', 'originalFulfillmentChildren.shipment.overseaReview', 'originalFulfillmentChildren.operationalMarkers'])
+            ->when($filters['customer_email_search'] ?? false, fn ($query) => $query->with('customer'))
             ->when($filters['oms_selected_ids'] ?? null, fn ($query, array $ids) => $query->whereKey($ids))
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
@@ -341,6 +342,10 @@ final class OrderService
                         ->orWhere('erp_order_id', 'like', "%{$search}%")
                         ->orWhereHas('externalReferences', fn ($references) => $references->where('reference', 'like', "%{$search}%"))
                         ->orWhereHas('shipment', fn ($shipment) => $shipment->where('tracking_number', 'like', "%{$search}%"));
+                    if ($filters['customer_email_search'] ?? false) {
+                        $nested->orWhereHas('address', fn ($address) => $address->where('email', 'like', "%{$search}%"))
+                            ->orWhereHas('customer', fn ($customer) => $customer->where('email', 'like', "%{$search}%"));
+                    }
                     // OMS Grid can search products from any page; preserve legacy text-search contract.
                     if ($filters['oms_numeric_contains'] ?? false) {
                         $nested->orWhereHas('items', fn ($items) => $items
@@ -424,6 +429,13 @@ final class OrderService
             if (! empty($grid['grid_date'])) {
                 $v = $grid['grid_date'];
                 $query->where('order_date', 'like', "%{$v}%");
+            }
+            if (! empty($grid['grid_email'])) {
+                $v = $grid['grid_email'];
+                $query->where(function (Builder $emailQuery) use ($v): void {
+                    $emailQuery->whereHas('address', fn ($address) => $address->where('email', 'like', "%{$v}%"))
+                        ->orWhereHas('customer', fn ($customer) => $customer->where('email', 'like', "%{$v}%"));
+                });
             }
             if (! empty($grid['grid_recipient'])) {
                 $v = $grid['grid_recipient'];
