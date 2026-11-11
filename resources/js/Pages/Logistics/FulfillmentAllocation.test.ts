@@ -11,6 +11,7 @@ vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { template: '<main><slot /></main>' },
 }))
 vi.mock('../../Components/DataGrid/GlobalGrid.vue', () => ({
+  __esModule: true,
   default: {
     props: ['rows','enableSelection'],
     emits: ['selection-change'],
