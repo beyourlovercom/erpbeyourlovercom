@@ -293,6 +293,7 @@ const gridEnabled = computed(() => props.globalGridPilotAvailable === true && pr
 
       <GlobalGrid
         v-if="gridEnabled"
+        :key="compactMobile ? 'sync-mobile' : 'sync-desktop'"
         :namespace="compactMobile ? 'grid.sync.orders.global.mobile.v1' : 'grid.sync.orders.global.v1'"
         title="全部订单同步进度"
         :rows="gridRows"
