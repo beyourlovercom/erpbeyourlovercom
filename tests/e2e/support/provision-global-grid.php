@@ -238,6 +238,37 @@ DB::transaction(function () use ($product, $warehouse, $owner): void {
         'carrier_selection_source'=>'manual',
     ]);
     $weship->operationalMarkers()->create(['marker'=>'domestic_reviewed','marked_at'=>now()]);
+    // R4-7A original cumulative 4PX scope: a shipped order created 60 days
+    // ago must remain visible, unlike the "today-4px" date-scoped view.
+    $old4px=Order::query()->create([
+        'internal_order_number'=>'INT-E2E-R47-OLD-4PX',
+        'erp_order_id'=>'007-1111-c99982',
+        'source_type'=>OrderSourceType::Manual,
+        'order_kind'=>OrderKind::Customer,
+        'external_order_number'=>'E2E-R47-OLD-4PX',
+        'order_date'=>now()->subDays(60)->toDateString(),
+        'owner_id'=>$owner->id,
+        'order_status'=>OrderStatus::PendingShipment,
+    ]);
+    $old4px->address()->create([
+        'recipient_name'=>'E2E Older Speeda Order',
+        'phone'=>'15550008282','country'=>'DE','city'=>'Berlin',
+        'address_line_1'=>'Synthetic Historical Street 82','postal_code'=>'01000',
+    ]);
+    $old4px->items()->create([
+        'product_id'=>$product->id,'sku'=>'E2E-SKU-0001',
+        'product_summary'=>'Old 4PX History','quantity'=>1,
+        'unit_price'=>'10.00','line_revenue'=>'10.00',
+    ]);
+    $old4px->shipment()->create([
+        'warehouse_id'=>$factory->id,
+        'warehouse_selection_source'=>'manual',
+        'carrier'=>'4PX','service'=>'SD经济挂号-带电',
+        'carrier_selection_source'=>'manual',
+        'shipment_status'=>'shipped',
+        'shipped_at'=>now()->subDays(45),
+        'tracking_number'=>'E2E-R47-TRACK-OLD',
+    ]);
     // R4-6 synthetic-only Factory exception fixtures. No real order,
     // external OMS, return upload, Woo or live Production state is touched.
     foreach ([
