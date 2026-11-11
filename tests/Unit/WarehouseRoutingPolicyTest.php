@@ -4,10 +4,13 @@ namespace Tests\Unit;
 
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 final class WarehouseRoutingPolicyTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_default_policy_keeps_de_automatic_and_us_assisted_only(): void
     {
         $policy = app(WarehouseRoutingPolicy::class);
@@ -118,16 +121,16 @@ final class WarehouseRoutingPolicyTest extends TestCase
         foreach (['AR', 'UA', 'RU'] as $country) $this->assertSame('POSTNL international', $policy->factoryRoute($country)['carrier']);
         foreach (['TH', 'ID', 'VN'] as $country) $this->assertSame('KingTrans', $policy->factoryRoute($country)['carrier']);
 
-        $this->assertSame('4PX / 速达', $policy->displayName('4PX'));
-        $this->assertSame('Weship / 纬狮', $policy->displayName('Weship'));
-        $this->assertSame('POSTNL / 佰事达', $policy->displayName('POSTNL international'));
-        $this->assertSame('Canada Post / 加拿大邮政', $policy->displayName('Canada Post'));
-        $this->assertSame('SF Express / 顺丰速运', $policy->displayName('SF Express'));
-        $this->assertSame('Singapore Post / 新加坡邮政', $policy->displayName('Singapore Post'));
-        $this->assertSame('JD / 京东快递', $policy->displayName('JD'));
-        $this->assertSame('KingTrans / 唐歌', $policy->displayName('KingTrans'));
-        $this->assertSame('USPS / 美国邮政', $policy->displayName('USPS'));
-        $this->assertSame('FedEx / 联邦', $policy->displayName('FedEx'));
+        $this->assertSame('速达', $policy->displayName('4PX'));
+        $this->assertSame('纬狮', $policy->displayName('Weship'));
+        $this->assertSame('佰事达', $policy->displayName('POSTNL international'));
+        $this->assertSame('加拿大邮政', $policy->displayName('Canada Post'));
+        $this->assertSame('顺丰速运', $policy->displayName('SF Express'));
+        $this->assertSame('新加坡邮政', $policy->displayName('Singapore Post'));
+        $this->assertSame('京东快递', $policy->displayName('JD'));
+        $this->assertSame('唐歌', $policy->displayName('KingTrans'));
+        $this->assertSame('美国邮政', $policy->displayName('USPS'));
+        $this->assertSame('联邦快递', $policy->displayName('FedEx'));
     }
 
     public function test_runtime_config_contains_no_business_routing_rules(): void

@@ -29,7 +29,7 @@ final class CarrierService extends Model
 
     public function displayName(): string
     {
-        $parts = array_values(array_filter([trim((string) $this->name_en), trim((string) $this->name_zh)]));
-        return $parts !== [] ? implode(' / ', array_unique($parts)) : $this->service_value;
+        // The stored value remains unchanged for logistics APIs and historical shipments.
+        return trim((string) $this->name_zh) ?: $this->service_value;
     }
 }

@@ -52,6 +52,16 @@ describe('Carrier detail ledger', () => {
     expect(wrapper.text()).toContain('历史 Shipment 原始 service 文本保留不改写')
   })
 
+  it('retains editable English fields while previewing Chinese-only display', async () => {
+    const wrapper = mount(Show, { props: { carrier: 'DHL', carrierDisplayName: '敦豪', carrierMaster, canEditCarrier: true, summary, shipments: { data: [], current_page: 1, last_page: 1, total: 0 } } })
+    await wrapper.findAll('button').find(button => button.text() === '编辑承运商')!.trigger('click')
+    expect((wrapper.get('input[placeholder="例如：4PX"]').element as HTMLInputElement).value).toBe('DHL')
+    expect(wrapper.get('.service-editor-table thead').text()).toContain('英文名称')
+    expect(wrapper.find('input[placeholder="English"]').exists()).toBe(true)
+    expect((wrapper.get('input:disabled[value="敦豪"]').element as HTMLInputElement).value).toBe('敦豪')
+    expect((wrapper.get('input[placeholder="English"]').element as HTMLInputElement).value).toBe('DHL Paket Domestic')
+  })
+
   it('paginates without mutating business data', async () => {
     const wrapper = mount(Show, { props: { carrier: 'DHL', carrierDisplayName: 'DHL / 敦豪', carrierMaster, canEditCarrier: true, summary, shipments: { data: [row], current_page: 1, last_page: 2, total: 51 } } })
     await wrapper.findAll('button').find((button) => button.text() === '下一页')?.trigger('click')
