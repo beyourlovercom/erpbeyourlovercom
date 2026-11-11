@@ -172,7 +172,7 @@ const saveCarrier = () => {
             <label>是否启用<div class="toggle-line"><button type="button" class="switch" :class="{ on: carrierForm.is_active }" @click="carrierForm.is_active = !carrierForm.is_active"><span></span></button><strong>{{ carrierForm.is_active ? '已启用' : '已停用' }}</strong></div><small>停用后不再用于新订单发货，历史数据不受影响</small></label>
             <label>中文名称 *<input v-model="carrierForm.name_zh" placeholder="例如：速达"></label>
             <label>英文名称 *<input v-model="carrierForm.name_en" placeholder="例如：4PX"></label>
-            <label class="span-2">前台显示名<input :value="carrierForm.name_zh || carrierForm.name" disabled><small>业务页面显示中文；中英文名称都可单独修改，原始编码不变</small></label>
+            <label class="span-2">前台显示名<input :value="[carrierForm.name_en, carrierForm.name_zh].filter(Boolean).filter((name, index, values) => values.indexOf(name) === index).join(' / ') || carrierForm.name" disabled><small>承运商品牌保留英文及中文；服务渠道只显示中文，原始编码不变</small></label>
           </div>
         </section>
 

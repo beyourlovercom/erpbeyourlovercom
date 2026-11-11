@@ -58,7 +58,7 @@ describe('Carrier detail ledger', () => {
     expect((wrapper.get('input[placeholder="例如：4PX"]').element as HTMLInputElement).value).toBe('DHL')
     expect(wrapper.get('.service-editor-table thead').text()).toContain('英文名称')
     expect(wrapper.find('input[placeholder="English"]').exists()).toBe(true)
-    expect((wrapper.get('input:disabled[value="敦豪"]').element as HTMLInputElement).value).toBe('敦豪')
+    expect((wrapper.get('input:disabled[value="DHL / 敦豪"]').element as HTMLInputElement).value).toBe('DHL / 敦豪')
     expect((wrapper.get('input[placeholder="English"]').element as HTMLInputElement).value).toBe('DHL Paket Domestic')
   })
 
