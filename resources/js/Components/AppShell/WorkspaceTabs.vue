@@ -24,7 +24,9 @@ const keyForStorage = computed(() => storageKeyForUser(props.userId))
 // D5 stores only scroll offsets for the exact server-backed URL. Search, sort,
 // filters and page numbers stay owned by existing ERP route query parameters.
 const captureViewState = () => {
-  if (typeof document !== 'undefined') workspaceViewState.capture(props.currentUrl, props.userId, document, window)
+  if (typeof document === 'undefined') return
+  if (workspaceViewState.capture(props.currentUrl, props.userId, document, window))
+    workspaceViewState.save(props.userId, window.sessionStorage)
 }
 let restoreFrame: number | null = null
 const restoreViewState = () => {
@@ -68,6 +70,7 @@ const recordCurrent = () => {
   hotSize.value = workspaceHotCache.size
 }
 const reloadForUser = () => {
+  workspaceViewState.hydrate(props.userId, window.sessionStorage)
   let saved: string | null = null
   try { saved = window.sessionStorage.getItem(keyForStorage.value) } catch { /* optional */ }
   tabs.value = restoreWorkspaceTabs(saved)
@@ -156,6 +159,7 @@ const close = (tab: WorkspaceTab) => {
   if (hotStatus.value !== 'idle') return
   workspaceHotCache.evict(tab.key)
   workspaceViewState.evict(tab.key)
+  workspaceViewState.save(props.userId, window.sessionStorage)
   hotSize.value = workspaceHotCache.size
   if (tab.key === activeKey.value && !allowLeave()) return
   const result = closeWorkspaceTab(tabs.value, tab.key, activeKey.value)
