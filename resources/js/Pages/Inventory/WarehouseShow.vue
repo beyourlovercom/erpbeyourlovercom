@@ -143,9 +143,12 @@ const restockConfirming=ref(false)
 const confirmRestockPlan=()=>{if(!props.restockProjection?.summary.products_to_restock)return;if(!window.confirm(`确认冻结当前备货计划？将冻结 ${props.restockProjection.summary.products_to_restock} 个 SKU / ${props.restockProjection.summary.final_units} 件，用于后续 PI 和蓝标生成。此动作不会增加库存。`))return;router.post(`${warehousePath}/restock-plans/confirm`,{}, {preserveScroll:true,onStart:()=>{restockConfirming.value=true},onFinish:()=>{restockConfirming.value=false},onError:(errors)=>{const message=(errors as Record<string,string>).restock_plan||Object.values(errors)[0];if(message)alert(String(message))}})}
 const blueLabelJobSubmitting=ref(false)
 let blueLabelPollTimer:number|null=null
-const pollBlueLabelJob=()=>{const job=props.latestRestockLabelJob;if(!job||job.is_terminal)return;router.reload({only:['latestRestockLabelJob']})}
-onMounted(()=>{blueLabelPollTimer=window.setInterval(pollBlueLabelJob,2500)})
-onBeforeUnmount(()=>{if(blueLabelPollTimer!==null)window.clearInterval(blueLabelPollTimer)})
+// Suspended Chrome tabs must not keep querying job status. A visible return
+// refreshes the existing read-only status without changing the job workflow.
+const pollBlueLabelJob=()=>{if(document.visibilityState==='hidden')return;const job=props.latestRestockLabelJob;if(!job||job.is_terminal)return;router.reload({only:['latestRestockLabelJob']})}
+const onBlueLabelVisible=()=>{if(document.visibilityState==='visible')pollBlueLabelJob()}
+onMounted(()=>{blueLabelPollTimer=window.setInterval(pollBlueLabelJob,2500);document.addEventListener('visibilitychange',onBlueLabelVisible)})
+onBeforeUnmount(()=>{if(blueLabelPollTimer!==null)window.clearInterval(blueLabelPollTimer);document.removeEventListener('visibilitychange',onBlueLabelVisible)})
 const requestBlueLabelJob=()=>{if(!props.latestRestockPlan||props.latestRestockLabelJob)return;router.post(`${warehousePath}/restock-plans/${props.latestRestockPlan.id}/blue-label-jobs`,{}, {preserveScroll:true,onStart:()=>{blueLabelJobSubmitting.value=true},onFinish:()=>{blueLabelJobSubmitting.value=false},onError:(errors)=>{const message=(errors as Record<string,string>).blue_label_job||Object.values(errors)[0];if(message)alert(String(message))}})}
 const kpis=computed(()=>({skus:props.warehouse.inventories.length,onHand:props.warehouse.inventories.reduce((n,i)=>n+i.quantity_on_hand,0),available:props.warehouse.inventories.reduce((n,i)=>n+i.quantity_available,0),low:props.warehouse.inventories.filter(i=>i.stock_status==='low_stock').length,out:props.warehouse.inventories.filter(i=>i.stock_status==='out_of_stock').length}))
 const lastSync=computed(()=>props.warehouse.last_inventory_sync_at?new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(props.warehouse.last_inventory_sync_at)):'尚未同步')
