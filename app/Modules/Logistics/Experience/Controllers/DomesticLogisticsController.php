@@ -6,6 +6,7 @@ use App\Modules\Shell\Application\GlobalGridPilot;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
+use App\Modules\Logistics\Application\Domestic\DomesticCarrierDefaults;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewAccess;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
 use App\Modules\Logistics\Application\Domestic\DomesticTodayOrdersExporter;
@@ -43,6 +44,7 @@ final class DomesticLogisticsController
         private readonly DomesticReviewDecisionService $decisions,
         private readonly DomesticReviewAccess $reviewAccess,
         private readonly OrderProgressQuery $progressQueries,
+        private readonly DomesticCarrierDefaults $carrierDefaults,
     ) {}
 
     public function index(Request $request): Response
@@ -223,12 +225,13 @@ final class DomesticLogisticsController
 
         $factory = $this->factory();
         $orders = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id))
-            ->with(['address', 'items.product', 'externalReferences', 'operationalMarkers'])
+            ->with(['address', 'shipment', 'items.product', 'externalReferences', 'operationalMarkers'])
             ->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', [$carrier])
-                ->where('carrier_selection_source', 'manual'))
+                ->whereIn('carrier_selection_source', ['manual', 'automatic']))
             ->orderBy('order_date')
             ->orderBy('id')
-            ->get();
+            ->get()->filter(fn (Order $order): bool => $order->shipment?->carrier_selection_source === 'manual'
+                || $this->carrierDefaults->ready($order));
 
         try {
             $result = $this->speeda->exportReady($orders, $label);
@@ -439,6 +442,7 @@ final class DomesticLogisticsController
             'carrier' => $shipment?->carrier,
             'service' => $shipment?->service,
             'carrier_selection_source' => $shipment?->carrier_selection_source,
+            'carrier_ready' => $this->carrierDefaults->ready($order),
             'tracking_number' => $shipment?->tracking_number,
             'shipment_status' => $shipment?->shipment_status,
             'shipped_at' => $shipment?->shipped_at?->toIso8601String(),
@@ -446,8 +450,8 @@ final class DomesticLogisticsController
             'export_blockers' => $shipment?->shipment_status !== 'pending'
                 ? ['该单已离开待发货队列，禁止重复导出']
                 : ($stockout ? ['缺货，禁止导出'] : (! $approved ? ['商务尚未审核，禁止导出']
-                    : ($shipment?->carrier_selection_source !== 'manual' || blank($shipment?->service)
-                        ? ['请人工确认物流商和服务类型']
+                    : (! $this->carrierDefaults->ready($order)
+                        ? ['请检查物流商和服务类型']
                         : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
                         ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
                         : ['未选定速达或纬狮承运商'])))),

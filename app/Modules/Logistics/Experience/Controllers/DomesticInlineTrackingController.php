@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
+use App\Modules\Logistics\Application\Domestic\DomesticCarrierDefaults;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Logistics\Application\ShipmentService;
@@ -20,9 +21,10 @@ final class DomesticInlineTrackingController
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly AssistedFulfillmentService $assistedFulfillment,
         private readonly ShipmentWebsiteSyncHandoff $syncHandoff,
+        private readonly DomesticCarrierDefaults $defaults,
     ) {}
 
-    /** Staff must confirm both fields explicitly; this never marks shipped. */
+    /** An operator can override the persisted recommendation; never marks shipped. */
     public function selectCarrierService(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate([
@@ -65,9 +67,8 @@ final class DomesticInlineTrackingController
         $tracking = trim($data['tracking_number']);
         $this->assertNotDuplicate($order, $tracking);
         abort_unless(
-            $shipment->carrier_selection_source === 'manual'
-                && filled($shipment->carrier) && filled($shipment->service),
-            422, '请先人工确认国内物流商及服务类型，再确认发货。',
+            $this->defaults->ready($order),
+            422, '请先选择有效的国内物流商及服务类型，再确认发货。',
         );
 
         $shipped = $this->assistedFulfillment->markShipped($order, [

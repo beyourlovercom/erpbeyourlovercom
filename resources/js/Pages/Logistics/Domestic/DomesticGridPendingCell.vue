@@ -3,7 +3,7 @@ import {computed,nextTick,onBeforeUnmount,ref} from 'vue'
 
 type Row={id:number;order_number:string;review_status:string;shipment_status?:string}
 type Carrier={value:string;label:string;services:{value:string;label:string}[]}
-type Source={order_id:number;review_status:string;shipment_status:string|null;carrier:string|null;service:string|null;carrier_selection_source?:string|null;tracking_number:string|null}
+type Source={order_id:number;review_status:string;shipment_status:string|null;carrier:string|null;service:string|null;carrier_selection_source?:string|null;carrier_ready?:boolean;tracking_number:string|null}
 type Draft={carrier:string;service:string;tracking:string}
 type Params={
   data:Row;canReview:boolean;canOperate:boolean;carrierOptions:Carrier[]
@@ -25,7 +25,7 @@ const id=computed(()=>Number(props.params.data.id))
 const source=computed(()=>props.params.source(id.value))
 const canShip=computed(()=>!!props.params.canOperate && source.value?.review_status==='approved' && source.value.shipment_status==='pending')
 const canReopen=computed(()=>!!props.params.canReview && source.value?.review_status==='approved' && source.value.shipment_status==='pending')
-const carrierConfirmed=computed(()=>source.value?.carrier_selection_source==='manual' && !!source.value.carrier?.trim() && !!source.value.service?.trim())
+const carrierConfirmed=computed(()=>source.value?.carrier_ready===true)
 const busy=computed(()=>props.params.carrierBusy(id.value)||props.params.trackingBusy(id.value))
 const open=ref(false)
 const trigger=ref<HTMLButtonElement|null>(null)
@@ -35,7 +35,7 @@ const draft=ref<Draft>({carrier:'',service:'',tracking:''})
 const xy=ref({top:0,left:0})
 const width=354
 const services=computed(()=>props.params.carrierOptions.find(c=>c.value===draft.value.carrier)?.services??[])
-const carrierDirty=computed(()=>!!source.value && (draft.value.carrier!==(source.value.carrier_selection_source==='manual'?source.value.carrier??'':'') || draft.value.service!==(source.value.carrier_selection_source==='manual'?source.value.service??'':'')))
+const carrierDirty=computed(()=>!!source.value && (draft.value.carrier!==(source.value.carrier??'') || draft.value.service!==(source.value.service??'')))
 const trackDirty=computed(()=>draft.value.tracking.trim()!==(source.value?.tracking_number??''))
 const canSubmitShip=computed(()=>canShip.value&&carrierConfirmed.value&&!carrierDirty.value&&!trackDirty.value&&!!draft.value.tracking.trim()&&!busy.value)
 const reposition=()=>{
@@ -64,8 +64,8 @@ const remove=()=>{
 const reveal=()=>{
   if(!canShip.value||busy.value||open.value)return
   draft.value={
-    carrier:source.value?.carrier_selection_source==='manual'?source.value?.carrier??'':'',
-    service:source.value?.carrier_selection_source==='manual'?source.value?.service??'':'',
+    carrier:source.value?.carrier??'',
+    service:source.value?.service??'',
     tracking:source.value?.tracking_number??'',
   }
   open.value=true

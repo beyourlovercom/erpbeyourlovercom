@@ -241,7 +241,7 @@ final class DomesticBusinessReviewTest extends TestCase
         $this->assertDatabaseHas('order_operational_markers', ['order_id'=>$order->id,'marker'=>'domestic_stockout']);
     }
 
-    public function test_approval_clears_legacy_automatic_provider_and_service_before_pending(): void
+    public function test_approval_persists_existing_country_default_without_manual_confirmation(): void
     {
         $this->withoutVite();
         config()->set('inertia.testing.ensure_pages_exist', false);
@@ -251,17 +251,84 @@ final class DomesticBusinessReviewTest extends TestCase
             'carrier'=>'4PX', 'service'=>'SD经济挂号-带电',
             'carrier_selection_source'=>'automatic',
         ]);
+        self::assertNotNull(app(\App\Modules\Logistics\Application\Domestic\DomesticCarrierDefaults::class)->recommended($order));
         $this->actingAs($reviewer)->post('/logistics/china/orders/'.$order->id.'/approve')
             ->assertRedirect();
         $this->assertDatabaseHas('shipments', [
-            'order_id'=>$order->id, 'carrier'=>null, 'service'=>null,
-            'carrier_selection_source'=>null, 'shipment_status'=>'pending',
+            'order_id'=>$order->id, 'carrier'=>'4PX', 'service'=>'SD经济挂号-带电',
+            'carrier_selection_source'=>'automatic', 'shipment_status'=>'pending',
         ]);
         $this->actingAs($reviewer)->get('/logistics/china?view=pending')->assertInertia(
             fn($page) => $page->where('rows.total',1)
-                ->where('rows.data.0.carrier',null)
-                ->where('rows.data.0.service',null)
+                ->where('rows.data.0.carrier','4PX')
+                ->where('rows.data.0.service','SD经济挂号-带电')
+                ->where('rows.data.0.carrier_ready',true)
         );
+    }
+
+    public function test_factory_country_override_selects_weship_and_preserves_staff_choice(): void
+    {
+        $reviewer = $this->userWith(['domestic.review', 'logistics.view']);
+        $mexico = $this->order();
+        $mexico->address()->update(['country' => 'MX']);
+        $this->actingAs($reviewer)->post('/logistics/china/orders/'.$mexico->id.'/approve')->assertRedirect();
+        $this->assertDatabaseHas('shipments', [
+            'order_id'=>$mexico->id, 'carrier'=>'Weship', 'service'=>'Standard',
+            'carrier_selection_source'=>'automatic', 'shipment_status'=>'pending',
+        ]);
+
+        $custom = $this->order();
+        $custom->address()->update(['country' => 'MX']);
+        $custom->shipment()->update([
+            'carrier'=>'4PX','service'=>'SD标准挂号-带电','carrier_selection_source'=>'manual',
+        ]);
+        $this->actingAs($reviewer)->post('/logistics/china/orders/'.$custom->id.'/approve')->assertRedirect();
+        $this->assertDatabaseHas('shipments', [
+            'order_id'=>$custom->id, 'carrier'=>'4PX', 'service'=>'SD标准挂号-带电',
+            'carrier_selection_source'=>'manual',
+        ]);
+    }
+
+    public function test_missing_destination_cannot_be_automatically_committed(): void
+    {
+        $reviewer = $this->userWith(['domestic.review', 'logistics.view']);
+        $order = $this->order();
+        $order->address()->update(['country' => null]);
+        $this->actingAs($reviewer)->post('/logistics/china/orders/'.$order->id.'/approve')->assertRedirect();
+        $this->assertDatabaseHas('shipments', [
+            'order_id'=>$order->id, 'carrier'=>null, 'service'=>null,
+            'carrier_selection_source'=>null,
+        ]);
+    }
+
+    public function test_existing_pending_routes_backfill_is_dry_run_by_default_and_keeps_manual_overrides(): void
+    {
+        $reviewer = $this->userWith(['domestic.review', 'logistics.view']);
+        $automatic = $this->order();
+        $this->actingAs($reviewer)->post('/logistics/china/orders/'.$automatic->id.'/approve')->assertRedirect();
+        $automatic->shipment()->update([
+            'carrier'=>null,'service'=>null,'carrier_service_id'=>null,'carrier_selection_source'=>null,
+        ]);
+        $manual = $this->order();
+        $manual->shipment()->update([
+            'carrier'=>'4PX','service'=>'SD标准挂号-带电','carrier_selection_source'=>'manual',
+        ]);
+        $this->actingAs($reviewer)->post('/logistics/china/orders/'.$manual->id.'/approve')->assertRedirect();
+        $unreviewed = $this->order();
+        $this->artisan('domestic:backfill-carrier-defaults')->assertExitCode(0);
+        self::assertNull($automatic->fresh()->shipment->carrier);
+        $this->artisan('domestic:backfill-carrier-defaults', ['--apply'=>true])->assertExitCode(0);
+        $this->assertDatabaseHas('shipments', [
+            'order_id'=>$automatic->id,'carrier'=>'4PX','service'=>'SD经济挂号-带电',
+            'carrier_selection_source'=>'automatic',
+        ]);
+        $this->assertDatabaseHas('shipments', [
+            'order_id'=>$manual->id,'carrier'=>'4PX','service'=>'SD标准挂号-带电',
+            'carrier_selection_source'=>'manual',
+        ]);
+        self::assertNull($unreviewed->fresh()->shipment->carrier_selection_source);
+        $this->artisan('domestic:backfill-carrier-defaults', ['--apply'=>true])->assertExitCode(0);
+        self::assertSame('automatic', $automatic->fresh()->shipment->carrier_selection_source);
     }
 
     public function test_rejection_returns_to_vita_with_a_persisted_reason_and_cleared_warehouse(): void

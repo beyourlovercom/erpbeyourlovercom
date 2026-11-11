@@ -145,9 +145,8 @@ final class DomesticTrackingReturnService
                     $messages[] = '订单尚未完成国内商务审核';
                 }
                 if ($shipment->shipment_status === 'pending'
-                    && ($shipment->carrier_selection_source !== 'manual'
-                        || blank($shipment->carrier) || blank($shipment->service))) {
-                    $messages[] = '请先人工确认真实物流商和服务类型';
+                    && (! app(DomesticCarrierDefaults::class)->ready($order))) {
+                    $messages[] = '请先配置有效的物流商和服务类型';
                 }
                 if ($order->workflow_status === 'out_of_stock' || $order->operationalMarkers->contains('marker', 'domestic_stockout')) {
                     $messages[] = '订单已标记缺货，不得由 Tracking 回传确认发货';

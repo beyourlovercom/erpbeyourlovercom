@@ -53,8 +53,8 @@ final class DomesticPendingBatchExporter
             $values = [
                 (string) $order->erp_order_id,
                 $reference,
-                $shipment->carrier_selection_source === 'manual' ? (string) $shipment->carrier : '',
-                $shipment->carrier_selection_source === 'manual' ? (string) $shipment->service : '',
+                ($shipment->carrier_selection_source === 'manual' || app(DomesticCarrierDefaults::class)->ready($order)) ? (string) $shipment->carrier : '',
+                ($shipment->carrier_selection_source === 'manual' || app(DomesticCarrierDefaults::class)->ready($order)) ? (string) $shipment->service : '',
                 '',
                 (string) $address?->recipient_name,
                 (string) $address?->phone,

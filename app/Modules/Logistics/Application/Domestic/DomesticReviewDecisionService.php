@@ -19,6 +19,7 @@ final class DomesticReviewDecisionService
         private readonly AuditRecorder $audit,
         private readonly OrderWorkflowStatusService $workflow,
         private readonly InventoryReservationRepository $reservations,
+        private readonly DomesticCarrierDefaults $carrierDefaults,
     ) {}
 
     public function decide(Order $order, string $decision, ?string $reason, Authenticatable $actor): void
@@ -57,14 +58,9 @@ final class DomesticReviewDecisionService
             }
 
             if (in_array($decision, ['approve', 'restock'], true)) {
-                // Legacy allocated-but-unconfirmed provider defaults are not
-                // staff confirmation. Clear them on the review -> pending gate.
-                if ($locked->shipment->carrier_selection_source !== 'manual') {
-                    $locked->shipment->forceFill([
-                        'carrier' => null, 'service' => null,
-                        'carrier_service_id' => null, 'carrier_selection_source' => null,
-                    ])->save();
-                }
+                // Approved factory orders receive a persisted, country-aware
+                // route. Existing staff overrides are never overwritten.
+                $this->carrierDefaults->fill($locked);
                 $locked->operationalMarkers()->where('marker', 'domestic_stockout')->delete();
                 if ($locked->workflow_status === 'out_of_stock') {
                     $this->workflow->set($locked, 'sending', (int) $locked->workflow_revision, $actor);
