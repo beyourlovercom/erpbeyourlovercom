@@ -202,6 +202,12 @@ const retryValidation = () => {
     onNetworkError: () => { hotStatus.value = 'failed' },
   })
 }
+const onGridLayoutReady = () => {
+  // AG Grid can rehydrate columns after the route is mounted. Restore the
+  // scroll once its own layout is ready; ignore stale/unmounted tab events.
+  if (!mounted) return
+  void nextTick(restoreViewState)
+}
 const onDirtyEvent = (event: Event) => {
   const detail = (event as CustomEvent<{ dirty?: boolean }>).detail
   dirty.value = detail?.dirty === true
@@ -218,6 +224,7 @@ onMounted(() => {
   mounted = true
   reloadForUser()
   window.addEventListener('erp:workspace-dirty', onDirtyEvent)
+  window.addEventListener('erp:workspace-grid-layout-ready', onGridLayoutReady)
   const stop = router.on('navigate', event => {
     if (event.detail.page && event.detail.page.url === page.url) {
       recordCurrent()
@@ -237,6 +244,7 @@ onBeforeUnmount(() => {
   beforeRouteChange()
   stopNavigationListener?.()
   window.removeEventListener('erp:workspace-dirty', onDirtyEvent)
+  window.removeEventListener('erp:workspace-grid-layout-ready', onGridLayoutReady)
   window.removeEventListener('beforeunload', onBeforeUnload)
 })
 </script>
