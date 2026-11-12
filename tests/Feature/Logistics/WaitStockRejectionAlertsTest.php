@@ -23,6 +23,69 @@ final class WaitStockRejectionAlertsTest extends TestCase
         config()->set('inertia.testing.ensure_pages_exist', false);
     }
 
+    public function test_legacy_submitted_overseas_rejection_returns_to_vita_without_mutating_prior_allocation(): void
+    {
+        $operator = $this->viewer();
+        $rejected = $this->pendingOrder($operator, '007-REJECTED-SUBMITTED');
+        $rejected->shipment()->create(['shipment_status' => 'pending', 'warehouse_id' => null]);
+        $rejected->fulfillmentAllocation()->create([
+            'status' => 'submitted', 'decision_source' => 'manual', 'submitted_by' => $operator->id,
+        ]);
+        $this->overseasReject($rejected, $operator, '真实海外驳回留有旧分仓状态');
+
+        // A genuinely submitted order with no rejection must stay out of the queue.
+        $normalSubmitted = $this->pendingOrder($operator, '007-NORMAL-SUBMITTED');
+        $normalSubmitted->shipment()->create(['shipment_status' => 'pending', 'warehouse_id' => null]);
+        $normalSubmitted->fulfillmentAllocation()->create([
+            'status' => 'submitted', 'decision_source' => 'manual', 'submitted_by' => $operator->id,
+        ]);
+
+        // Even with a rejected review, archived, derived, dispatched and
+        // unpaid / completed Woo orders must never bypass existing gates.
+        $archived = $this->pendingOrder($operator, '007-ARCHIVED-SUBMITTED');
+        $archived->shipment()->create(['shipment_status'=>'pending', 'warehouse_id'=>null]);
+        $archived->fulfillmentAllocation()->create(['status'=>'submitted','decision_source'=>'manual']);
+        $this->overseasReject($archived, $operator, '已归档单不可返工');
+        $archived->forceFill(['operational_archived_at'=>now()])->save();
+
+        $derived = $this->pendingOrder($operator, '007-DERIVED-SUBMITTED');
+        $derived->shipment()->create(['shipment_status'=>'pending', 'warehouse_id'=>null]);
+        $derived->fulfillmentAllocation()->create(['status'=>'submitted','decision_source'=>'manual']);
+        $this->overseasReject($derived, $operator, '拆分子单不应进入原单待分仓');
+        $derived->forceFill(['order_kind'=>'fulfillment_derived',
+            'fulfillment_parent_id'=>$normalSubmitted->id])->save();
+
+        $dispatched = $this->pendingOrder($operator, '007-DISPATCHED-SUBMITTED');
+        $dispatched->shipment()->create(['shipment_status'=>'shipped', 'warehouse_id'=>null,
+            'tracking_number'=>'TEST-TRACK-123']);
+        $dispatched->fulfillmentAllocation()->create(['status'=>'submitted','decision_source'=>'manual']);
+        $this->overseasReject($dispatched, $operator, '已有运输信息不可重分仓');
+
+        $completed = $this->pendingOrder($operator, '007-COMPLETED-WOO');
+        $completed->forceFill(['source_type'=>'woocommerce'])->save();
+        $completed->financials()->create(['provider_order_status'=>'completed', 'currency'=>'USD',
+            'paid_at'=>now()]);
+        $completed->shipment()->create(['shipment_status'=>'pending', 'warehouse_id'=>null]);
+        $completed->fulfillmentAllocation()->create(['status'=>'submitted','decision_source'=>'manual']);
+        $this->overseasReject($completed, $operator, '非 Processing 订单保持门禁');
+
+        $this->actingAs($operator)->get('/logistics/wait-stock?rejected=1')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('rejectionFilter', true)
+                ->where('rejectionCount', 1)
+                ->where('orders.total', 1)
+                ->where('pendingTotal', 1)
+                ->where('orders.data.0.id', $rejected->id)
+                ->where('orders.data.0.fulfillment_allocation.status', 'submitted')
+                ->where('orders.data.0.allocation_rejection.source', '海外仓')
+                ->etc());
+
+        // Read-only compatibility: no backfill or live order state mutation.
+        $this->assertDatabaseHas('fulfillment_allocations', [
+            'order_id' => $rejected->id, 'status' => 'submitted',
+        ]);
+    }
+
     public function test_domestic_and_overseas_rejections_have_one_unified_server_filtered_queue(): void
     {
         $operator = $this->viewer();

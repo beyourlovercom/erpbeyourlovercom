@@ -61,7 +61,23 @@ final class OrderProgressQuery
     {
         return $orders->where('order_status', 'pending_shipment')
             ->whereNull('fulfillment_parent_id')
-            ->whereDoesntHave('fulfillmentAllocation', fn ($a) => $a->where('status', 'submitted'))
+            ->where(function (Builder $allocationGate): void {
+                // A completed submission usually stays out of Vita's queue.
+                // Exception: Dede explicitly rejected its *current* overseas
+                // review and unassigned the warehouse. Older rejected orders
+                // retain status=submitted, so they must be read as actionable
+                // without rewriting historical allocation/audit records.
+                $allocationGate->whereDoesntHave('fulfillmentAllocation', fn ($a) => $a->where('status', 'submitted'))
+                    ->orWhere(function (Builder $returned): void {
+                        $returned->whereHas('overseaWarehouseReview', fn ($review) => $review->where('status', 'rejected'))
+                            ->whereHas('shipment', fn ($shipment) => $shipment
+                                ->where('shipment_status', 'pending')
+                                ->whereNull('warehouse_id')
+                                ->whereNull('shipped_at')
+                                ->where(fn ($tracking) => $tracking->whereNull('tracking_number')
+                                    ->orWhere('tracking_number', '')));
+                    });
+            })
             ->where(function (Builder $pending): void {
                 $pending->whereDoesntHave('shipment')
                     ->orWhereHas('shipment', fn ($s) => $s->whereNull('warehouse_id'));
