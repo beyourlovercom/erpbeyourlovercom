@@ -90,6 +90,7 @@ final class OverseaBulkShipmentController extends Controller
                     ...$entry, 'ok' => false, 'status' => 'skipped',
                     'message' => $entry['eligible'] ? '未通过原预检，不允许新增发货' : $entry['message'],
                 ];
+
                 continue;
             }
 
@@ -100,6 +101,7 @@ final class OverseaBulkShipmentController extends Controller
                     'warehouse' => $fresh['warehouse'], 'ok' => false, 'status' => 'skipped',
                     'message' => '订单或 Tracking 在预检后变化，请单独核对',
                 ];
+
                 continue;
             }
 
