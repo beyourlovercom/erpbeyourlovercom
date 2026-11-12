@@ -39,3 +39,15 @@
 
 - 不需要新迁移；无订单状态批量回填，无定时任务修改。
 - 仅以 Draft PR 提供代码审查，必要时取消 PR 或回退对应 commit；不改变正式站。
+
+
+## 2026-11-12 开发环境真实浏览器视觉验收（独立 loopback）
+
+- 范围：本 PR 的工作树 + Google Chrome 浏览器，地址仅 127.0.0.1，APP_ENV=testing，一次性 SQLite 由 E2E runner 创建并自动清理；无实际 Dev/Production 数据和账号操作。
+- 运行方式：TMPDIR=/tmp BYL_E2E_BROWSER=chrome BYL_E2E_SUITE=rejection-visual node tests/e2e/support/run-e2e.mjs。Mac 的 Node 与 PHP 临时目录不同，需 TMPDIR=/tmp 统一一次性数据库安全门禁。
+- 浏览器用例 tests/e2e/global-grid/rejection-visual.spec.ts：**2 passed, 0 failed**；E2E_CLEANUP=PASS。
+- 桌面 1440×900：服务端待分仓总数 29、驳回数 2（驳回记录在正常第一页之外），直接点击「驳回待处理 2」仅出现两个退回订单；原因和来源展示；所有业务单元格实际渲染浅黄色 rgb(255, 245, 214)；右侧固定操作列实际宽度 132px；关闭提醒刷新不再出现；原表格切回仍有驳回说明。
+- 手机 390×844：无页面级横向溢出（document.scrollWidth=390），订单号和操作列同时可见、浅黄色警示显著；点击「查看方案」能在弹窗阅读驳回理由和人员/来源。
+- 浏览器过程发现并修正：原驳回原因列在表格末尾会被横向隐藏，现移动到订单号附近；移动端通过详情弹窗显示完整理由。
+- 机器本地合成证据目录（非 Git 资产）：/Users/a/ai/uat/evidence/erp-rejection-r0r3-20261112/，包含 01-desktop-all-alert.png、02-desktop-rejected-filter.png、03-desktop-legacy-fallback.png、04-mobile-rejected-filter.png、05-mobile-rejection-detail.png。
+- 本地浏览器 UAT 的通过**不等于**正式 Production 发布验收或真人正式站操作验收；仍须 Owner 授权合并、正式站发布。

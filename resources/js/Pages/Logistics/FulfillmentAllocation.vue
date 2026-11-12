@@ -135,6 +135,13 @@ const allocationGridColumns: ColDef<GridListRow>[] = [
   gridColumn({colId:'order_number',field:'order_number',headerName:'订单号',width:185,
     pinned:'left',lockPinned:true,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
+  // Rejected orders are actionable exceptions: keep their warning/reason
+  // beside the pinned order number, not after a long horizontally-scrolling table.
+  gridColumn({colId:'rejection_state',field:'rejection_state',headerName:'驳回状态',width:115}),
+  gridColumn({colId:'reject_reason',field:'reject_reason',headerName:'驳回原因',width:235,tooltipField:'reject_reason'}),
+  gridColumn({colId:'rejection_type',field:'rejection_type',headerName:'驳回来源',width:110,hide:true}),
+  gridColumn({colId:'reject_by',field:'reject_by',headerName:'驳回人员',width:120,hide:true}),
+  gridColumn({colId:'reject_at',field:'reject_at',headerName:'驳回时间',width:175,hide:true}),
   gridColumn({colId:'original_number',field:'original_number',headerName:'原始订单号',width:190,hide:true}),
   gridColumn({colId:'order_date',field:'order_date',headerName:'订单日期',width:125}),
   gridColumn({colId:'order_kind',field:'order_kind',headerName:'订单类型',width:140,hide:true}),
@@ -160,11 +167,6 @@ const allocationGridColumns: ColDef<GridListRow>[] = [
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
   gridColumn({colId:'gift',field:'gift',headerName:'礼品',width:145,hide:true}),
   gridColumn({colId:'owner',field:'owner',headerName:'负责人',width:160,hide:true}),
-  gridColumn({colId:'rejection_state',field:'rejection_state',headerName:'驳回状态',width:115}),
-  gridColumn({colId:'rejection_type',field:'rejection_type',headerName:'驳回来源',width:110,hide:true}),
-  gridColumn({colId:'reject_reason',field:'reject_reason',headerName:'驳回原因',width:235,tooltipField:'reject_reason'}),
-  gridColumn({colId:'reject_by',field:'reject_by',headerName:'驳回人员',width:120,hide:true}),
-  gridColumn({colId:'reject_at',field:'reject_at',headerName:'驳回时间',width:175,hide:true}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',width:132,
     pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'actions',actionsFor:(r:GridListRow)=>{
@@ -622,8 +624,8 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
       <section class="system-explanation"><header><strong>系统推荐结果说明</strong><span>辅助信息，不替代 Vita 的最终判断</span></header><div class="explanation-grid"><div><h4>{{ selectedOrder.allocation_decision.status==='system_recommendation'?'推荐依据':'当前可确认的信息' }}</h4><ul><li v-if="selectedOrder.us_fulfillment_zone?.status==='matched'">收货地址识别为 {{ zoneShort(selectedOrder) }}，仓库优先级：{{ zonePriorityLabel(selectedOrder.us_fulfillment_zone) }}</li><li v-if="selectedOrder.allocation_decision.recommended_plan">系统候选方案：{{ selectedOrder.allocation_decision.recommended_plan.label }}</li><li v-if="selectedOrder.allocation_decision.estimated_cost!=null">估算成本：{{ money(selectedOrder.allocation_decision.estimated_cost,selectedOrder.allocation_decision.currency) }}</li><li>仓库确定后，固定路线承运商会自动带出；特殊情况可人工覆盖。</li></ul></div><div><h4>不能自动推荐 / 需要人工确认时</h4><ul><li v-for="reason in selectedOrder.allocation_decision.manual_reasons" :key="reason">{{ reason }}</li><li v-if="!selectedOrder.allocation_decision.manual_reasons.length">当前无额外阻断原因；提交前仍由 Vita 确认。</li></ul></div></div></section>
 
       <div v-if="selectedOrder.allocation_rejection" class="rejection-plan-alert" role="status">
-        <strong>⚠ {{ selectedOrder.allocation_rejection.source }}已驳回：{{ selectedOrder.allocation_rejection.reason }}</strong>
-        <small>驳回人：{{ selectedOrder.allocation_rejection.by ?? '—' }} · 时间：{{ selectedOrder.allocation_rejection.at ? new Date(selectedOrder.allocation_rejection.at).toLocaleString('zh-CN') : '—' }}</small>
+        <strong>⚠ 已驳回：{{ selectedOrder.allocation_rejection.reason }}</strong>
+        <small>来源：{{ selectedOrder.allocation_rejection.source }} · 驳回人：{{ selectedOrder.allocation_rejection.by ?? '—' }} · 时间：{{ selectedOrder.allocation_rejection.at ? new Date(selectedOrder.allocation_rejection.at).toLocaleString('zh-CN') : '—' }}</small>
       </div>
       <label v-if="!processed(selectedOrder)" class="note-field">运营备注（选填）<textarea v-model="decisionNote" rows="2" placeholder="客户特殊要求、临时仓库情况、人工调整原因…" maxlength="500"/><small>{{ decisionNote.length }}/500</small></label><div v-else-if="selectedOrder.fulfillment_allocation?.decision_note" class="record-note"><strong>运营备注</strong><span>{{ selectedOrder.fulfillment_allocation.decision_note }}</span></div>
       <p v-if="submitError" class="submit-error">{{ submitError }}</p>
