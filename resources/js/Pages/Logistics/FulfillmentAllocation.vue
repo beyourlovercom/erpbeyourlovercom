@@ -126,7 +126,7 @@ const allocationGridColumns: ColDef<GridListRow>[] = [
   gridColumn({colId:'owner',field:'owner',headerName:'负责人',width:160,hide:true}),
   gridColumn({colId:'reject_reason',field:'reject_reason',headerName:'商务驳回说明',width:200,hide:true}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',width:132,
-    pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
+    pinned:'right',
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'actions',actionsFor:(r:GridListRow)=>{
       const order=props.orders.data.find(item=>item.id===r.id)
       return order ? [{label:processed(order)?'查看记录':'查看方案',onClick:()=>openPlan(order)}] : []
@@ -481,7 +481,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
       <GlobalGrid v-if="globalGridPilotEnabled"
         :key="'allocation-grid-'+activeTab"
         namespace="grid.logistics.allocation.global.v1" title="待分仓"
-        :rows="allocationGridRows" :columns="allocationGridColumns" :required-column-ids="['order_number','actions']"
+        :rows="allocationGridRows" :columns="allocationGridColumns" :required-column-ids="['order_number']"
         :enable-selection="canArchive || (canOperate && activeTab!=='processed' && activeTab!=='gift')"
         :selected-order-ids="selectedBulkOrderIds"
         :page="allocationPager" :search="gridSearch ?? ''" search-placeholder="搜索全部订单号 / 收件人..."

@@ -180,15 +180,16 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',
-    width:props.view==='review'?185:props.view==='stockout'?140:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?360:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?242:170):210,
-    minWidth:props.view==='review'?185:props.view==='stockout'?136:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?350:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
-    maxWidth:props.view==='review'?190:props.view==='stockout'?148:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?390:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
-    pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
+    width:props.view==='review'?185:props.view==='stockout'?140:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?116:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?242:170):210,
+    minWidth:props.view==='review'?185:props.view==='stockout'?136:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?100:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
+    maxWidth:props.view==='review'?190:props.view==='stockout'?148:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?130:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
+    pinned:'right',
     cellRenderer:props.view==='exceptions'?GlobalGridCell:(props.view==='pending'||isHistoryProviderView(props.view))?DomesticGridPendingCell:DomesticGridActionCell,
     cellRendererParams:props.view==='exceptions'?{
       mode:'actions',
       actionsFor:(row:GridListRow)=>[{label:'查看订单',href:String(row.order_url??'')}],
     }:{
+      compactActions:isHistoryProviderView(props.view),
       carrierOptions:props.carrierOptions,
       canTrackingSync:props.canTrackingSync,
       syncEligible:(id:number)=>{
@@ -654,7 +655,8 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           :namespace="'grid.logistics.domestic.'+view+'.global.v1'"
           :legacy-preference-namespaces="['grid.logistics.domestic.global.v1']"
           :title="'国内发货 · '+(tabs.find(tab=>tab[0]===view)?.[1]??view)"
-          :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order','actions']"
+          :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order']"
+          :default-pinned-right="view==='4px' ? 0 : 1"
           :enable-selection="true" :selected-order-ids="selectedBulkOrderIds"
           :page="domesticPager" :search="gridSearch??''"
           search-placeholder="搜索当前视图全部订单号 / 收件人..."

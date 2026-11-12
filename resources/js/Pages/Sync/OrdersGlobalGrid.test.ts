@@ -51,7 +51,7 @@ describe('Sync Orders Global Grid R0–R3 canary', () => {
     return { wrapper, component: wrapper.findComponent({name: 'GlobalGrid'}) }
   }
 
-  it('uses shared GlobalGrid engine with two protected right columns and isolated account namespace', async () => {
+  it('uses shared GlobalGrid with optional right columns and isolated account namespace', async () => {
     const { wrapper, component } = await grid()
     expect(wrapper.find('[data-testid="mock-global-grid"]').exists()).toBe(true)
     expect(wrapper.find('.overview-table').exists()).toBe(false)
@@ -59,11 +59,13 @@ describe('Sync Orders Global Grid R0–R3 canary', () => {
     expect(component.props('enableSelection')).toBe(false)
     expect(component.props('clientCsvExport')).toBe(false)
     expect(component.props('defaultPinnedRight')).toBe(2)
-    expect(component.props('requiredColumnIds')).toEqual(['order_number','actions','progress'])
+    expect(component.props('requiredColumnIds')).toEqual(['order_number'])
     const columns = component.props('columns') as Array<Record<string,unknown>>
     expect(columns.at(-2)?.colId).toBe('actions')
     expect(columns.at(-1)?.colId).toBe('progress')
-    expect(columns.slice(-2).every(c => c.lockPinned === true && c.lockPosition === 'right' && c.suppressMovable === true)).toBe(true)
+    expect(columns.slice(-2).every(c=>c.lockPinned !== true && c.lockPosition !== 'right')).toBe(true)
+    expect(columns.find(c=>c.colId==='actions')?.maxWidth).toBe(134)
+    expect((columns.find(c=>c.colId==='actions')?.cellRendererParams as {compactActions?:boolean}).compactActions).toBe(true)
     expect(columns.find(c => c.colId === 'outbound_status')?.hide).toBe(true)
     expect(component.props('page')).toEqual({total:8000,current_page:1,last_page:160,per_page:50})
     expect(wrapper.text()).toContain('返回原表')
@@ -116,7 +118,7 @@ describe('Sync Orders Global Grid R0–R3 canary', () => {
     expect(columns.at(-1)?.colId).toBe('progress')
     expect(columns.at(-1)?.pinned).toBe('right')
     expect(columns.find(col=>col.colId==='order_number')?.width).toBe(132)
-    expect(columns.find(col=>col.colId==='actions')?.width).toBe(102)
+    expect(columns.find(col=>col.colId==='actions')?.width).toBe(100)
     expect(columns.at(-1)?.width).toBe(96)
     wrapper.unmount()
     Object.defineProperty(window,'innerWidth',{configurable:true,value:prior})

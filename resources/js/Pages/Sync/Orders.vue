@@ -256,10 +256,11 @@ const gridColumns = computed<ColDef<GridListRow>[]>(() => [
   c('outbound_status', 'outbound_status', '写回任务状态', 125, { hide: true }),
   c('sync_attempts', 'sync_attempts', '写回尝试次数', 116, { hide: true }),
   c('block_reason', 'block_reason', '同步限制原因', 260, { hide: true }),
-  c('actions', 'id', '操作', compactMobile.value ? 102 : 235, {
-    pinned: 'right', lockPinned: true, lockPosition: 'right', suppressMovable: true,
-    filter: false, sortable: false, cellRenderer: GlobalGridCell,
-    cellRendererParams: { mode: 'actions', actionsFor: (row: GridListRow) => {
+  c('actions', 'id', '操作', compactMobile.value ? 100 : 116, {
+    pinned: 'right',
+    filter: false, sortable: false, minWidth: 95, maxWidth: 134,
+    cellRenderer: GlobalGridCell,
+    cellRendererParams: { mode: 'actions', compactActions: true, actionsFor: (row: GridListRow) => {
       const order = syncOrder(row)
       if (!order) return []
       const actions: { label: string; href?: string; onClick?: () => void }[] = compactMobile.value
@@ -276,7 +277,7 @@ const gridColumns = computed<ColDef<GridListRow>[]>(() => [
     } },
   }),
   c('progress', 'progress_label', '同步进度', compactMobile.value ? 96 : 118, {
-    pinned: 'right', lockPinned: true, lockPosition: 'right', suppressMovable: true,
+    pinned: 'right',
     filter: true, sortable: false, cellRenderer: SyncProgressGridCell,
     floatingFilterComponent: SyncProgressServerFilter,
     tooltipField: 'progress_reason',
@@ -338,7 +339,7 @@ const hasActiveFilters = computed(() => Boolean(
         title="全部订单同步进度"
         :rows="gridRows"
         :columns="gridColumns"
-        :required-column-ids="['order_number', 'actions', 'progress']"
+        :required-column-ids="['order_number']"
         :default-pinned-right="2"
         :page="gridPager"
         :search="gridSearch"

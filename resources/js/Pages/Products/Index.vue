@@ -385,7 +385,7 @@ const doDelete = () => {
       <GlobalGrid v-if="globalGridPilotEnabled && currentView==='standard'"
         namespace="grid.products.global.v1" title="产品总表 · Global Grid V1" :rows="globalProductRows"
         :search="filters.search ?? ''" search-placeholder="搜索全部 SKU / 产品名称 / GTIN..."
-        :columns="globalProductColumns" :required-column-ids="['sku','name','actions']"
+        :columns="globalProductColumns" :required-column-ids="['sku','name']"
         :page="productGridPager" :sort="productGridSort"
         @page-change="goToPage" @page-size-change="size => go({per_page:String(size),page:1})"
         @sort-change="productGlobalSort" @search-change="value => {search=value; go({search:value,page:1})}" />
