@@ -10,7 +10,7 @@ final class Carrier extends Model
 {
     protected $table = 'logistics_carriers';
 
-    protected $fillable = ['name', 'name_en', 'name_zh', 'default_service_id', 'is_active', 'created_by', 'updated_by'];
+    protected $fillable = ['name', 'name_en', 'name_zh', 'display_name', 'default_service_id', 'is_active', 'created_by', 'updated_by'];
 
     protected function casts(): array
     {
@@ -29,7 +29,9 @@ final class Carrier extends Model
 
     public function displayName(): string
     {
-        // Carrier brands retain their recognizable English names; service labels stay Chinese-only.
+        // A user-specified frontend name takes precedence without changing canonical provider keys.
+        $custom = trim((string) $this->display_name);
+        if ($custom !== '') return $custom;
         $parts = array_values(array_filter([trim((string) $this->name_en), trim((string) $this->name_zh)]));
         return $parts !== [] ? implode(' / ', array_unique($parts)) : $this->name;
     }

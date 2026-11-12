@@ -32,6 +32,7 @@ const props = withDefaults(defineProps<{
   globalGridPilotAvailable?: boolean
   globalGridPilotEnabled?: boolean
   orders: Order[]
+  carrierLabels?: Record<string,string>
   canOperate?: boolean
   progressFilterSnapshot?: {
     generated_at: string; total: number; candidates: number; remote_configured: boolean
@@ -218,7 +219,7 @@ const gridRows = computed<GridListRow[]>(() => props.orders.map((order) => ({
   original_number: order.external_order_number || '—',
   date_label: order.order_date || '—',
   recipient: order.recipient_name || '—',
-  carrier_label: order.carrier || '—',
+  carrier_label: order.carrier ? (props.carrierLabels?.[order.carrier] ?? order.carrier) : '—',
   tracking_label: order.tracking_number || '—',
   progress_code: order.progress.code,
   progress_label: order.progress.label,
@@ -394,7 +395,7 @@ const hasActiveFilters = computed(() => Boolean(
               <td>{{ order.order_date?.slice(5) ?? '—' }}</td>
               <td>{{ sourceName(order.source_type) }}</td>
               <td>{{ order.recipient_name || '—' }}</td>
-              <td>{{ order.carrier || '—' }}</td>
+              <td>{{ order.carrier ? (carrierLabels?.[order.carrier] ?? order.carrier) : '—' }}</td>
               <td class="tracking-number" :title="order.tracking_number || ''">{{ order.tracking_number || '—' }}</td>
               <td class="operational-actions">
                 <a class="mvp-button" :href="`/customers/orders/${order.id}`">查看订单</a>

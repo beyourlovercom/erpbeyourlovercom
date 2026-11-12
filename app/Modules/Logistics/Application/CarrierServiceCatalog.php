@@ -120,12 +120,9 @@ final class CarrierServiceCatalog
 
     public function carrierDisplayName(string $carrierName): string
     {
-        $carrier = $this->carrier($carrierName);
-        if (! $carrier) {
-            return trim($carrierName);
-        }
-
-        return $carrier->displayName();
+        // Display historical shipments even when the provider is currently inactive.
+        $carrier = $this->carrier($carrierName) ?? Carrier::query()->where('name', trim($carrierName))->first();
+        return $carrier?->displayName() ?? trim($carrierName);
     }
 
     private function carrier(string $carrierName): ?Carrier

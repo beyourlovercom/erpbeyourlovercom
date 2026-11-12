@@ -39,7 +39,8 @@ final class CarrierMasterV2Test extends TestCase
         self::assertSame('DHL PAKET DOMESTIC', $catalog->defaultService('DHL', 'DE')?->service_value);
         self::assertSame('Standard', $catalog->defaultService('Weship')?->service_value);
         $fourPx = collect($catalog->options())->firstWhere('value', '4PX');
-        self::assertSame('4PX / 速达', $fourPx['label']);
+        self::assertSame('速达', $fourPx['label']);
+        self::assertSame('纬狮', collect($catalog->options())->firstWhere('value', 'Weship')['label']);
         self::assertSame('SD经济挂号-带电', $fourPx['services'][0]['label']);
         self::assertSame('SD经济挂号-带电', $fourPx['services'][0]['value']);
         self::assertNotEmpty($fourPx['services'][0]['name_en']);
@@ -140,6 +141,7 @@ final class CarrierMasterV2Test extends TestCase
         $payload = [
             'name_zh' => '速达物流',
             'name_en' => '4PX',
+            'display_name' => '速达国际',
             'is_active' => true,
             'default_service_id' => $newDefault->id,
             'services' => $services->map(fn ($service): array => [
@@ -158,6 +160,9 @@ final class CarrierMasterV2Test extends TestCase
         $carrier->refresh();
         self::assertSame('4PX', $carrier->name, 'canonical carrier key must stay immutable');
         self::assertSame('速达物流', $carrier->name_zh);
+        self::assertSame('4PX', $carrier->name_en);
+        self::assertSame('速达国际', $carrier->display_name);
+        self::assertSame('速达国际', $carrier->displayName());
         self::assertSame($newDefault->id, $carrier->default_service_id);
         self::assertSame('SD标准挂号-带电（默认）', $newDefault->fresh()->name_zh);
     }

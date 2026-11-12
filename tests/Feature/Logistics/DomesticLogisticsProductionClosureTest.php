@@ -37,7 +37,7 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
     {
         $formal = collect(config('erp_shell_navigation'))->firstWhere('key', 'logistics');
         self::assertSame(
-            ['待分仓', '国内发货', '海外仓发货', '已发待单号', '运输中', '异常订单', '承运商'],
+            ['待分仓', '国内发货', '海外仓发货', '已发待单号', '运输中', '异常订单', '物流商'],
             collect($formal['children'])->pluck('label')->all(),
         );
         self::assertSame(
@@ -337,7 +337,7 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
             $book = IOFactory::load($path);
             $sheet = $book->getActiveSheet();
             self::assertSame('ERP订单号', $sheet->getCell('A1')->getValue());
-            self::assertSame('承运商', $sheet->getCell('C1')->getValue());
+            self::assertSame('物流商', $sheet->getCell('C1')->getValue());
             self::assertSame('Tracking', $sheet->getCell('E1')->getValue());
             self::assertSame('Email', $sheet->getCell('H1')->getValue());
             self::assertSame('SKU', $sheet->getCell('N1')->getValue());
@@ -347,10 +347,10 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
             self::assertSame('1', $sheet->getCell('O2')->getValue());
             self::assertSame('2', $sheet->getCell('O3')->getValue());
             self::assertSame('007-0923-c50101', $sheet->getCell('A2')->getValue());
-            self::assertSame('4PX', $sheet->getCell('C2')->getValue());
+            self::assertSame('速达', $sheet->getCell('C2')->getValue());
             self::assertSame('buyer@example.test', $sheet->getCell('H2')->getValue());
             self::assertSame('007-0923-c50102', $sheet->getCell('A3')->getValue());
-            self::assertSame('DHL', $sheet->getCell('C3')->getValue());
+            self::assertSame('DHL / 敦豪', $sheet->getCell('C3')->getValue());
             self::assertSame('', (string) $sheet->getCell('E2')->getValue());
             $book->disconnectWorksheets();
         } finally {
@@ -360,8 +360,8 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         $sheet = new Spreadsheet;
         $ws = $sheet->getActiveSheet();
         $ws->fromArray([
-            ['ERP订单号', '客户单号', '承运商', '服务', 'Tracking'],
-            ['007-0923-c50101', '', '4PX', '', 'GENERIC-4PX-1'],
+            ['ERP订单号', '客户单号', '物流商', '服务', 'Tracking'],
+            ['007-0923-c50101', '', '速达', '', 'GENERIC-4PX-1'],
             ['007-0923-c50102', '', 'UPS', '', 'GENERIC-WRONG-1'],
         ]);
         $uploadPath = tempnam(sys_get_temp_dir(), 'domestic-generic-').'.xlsx';
@@ -380,7 +380,7 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         self::assertSame(1, $preview['apply_count']);
         self::assertSame(1, $preview['blocked_count']);
         self::assertSame('apply', $preview['rows'][0]['status']);
-        self::assertStringContainsString('承运商与回传文件不一致', $preview['rows'][1]['message']);
+        self::assertStringContainsString('物流商与回传文件不一致', $preview['rows'][1]['message']);
 
         $actor = User::factory()->create(['is_active' => true]);
         $result = app(DomesticTrackingReturnService::class)->apply('generic', $preview, $preview['token'], $actor);
@@ -388,6 +388,29 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         self::assertSame('shipped', $speeda->fresh()->shipment->shipment_status);
         self::assertSame('GENERIC-4PX-1', $speeda->fresh()->shipment->tracking_number);
         self::assertSame('pending', $other->fresh()->shipment->shipment_status);
+    }
+
+    public function test_old_generic_excel_header_and_internal_codes_remain_importable(): void
+    {
+        $sheet = new Spreadsheet;
+        $sheet->getActiveSheet()->fromArray([
+            ['ERP订单号', '承运商', 'Tracking'],
+            ['007-OLD-1', '4PX', '4PX-LEGACY-TRACK'],
+            ['007-OLD-2', 'Weship', 'WESHIP-LEGACY-TRACK'],
+        ]);
+        $path = tempnam(sys_get_temp_dir(), 'domestic-old-header-').'.xlsx';
+        (new Xlsx($sheet))->save($path);
+        $sheet->disconnectWorksheets();
+        try {
+            $file = new UploadedFile($path, 'old-erp-template.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
+            $reader = app(DomesticTrackingReturnReader::class);
+            self::assertSame('generic', $reader->detectProvider($file));
+            $rows = $reader->read('generic', $file);
+            self::assertSame('4PX', $rows[0]['carrier']);
+            self::assertSame('Weship', $rows[1]['carrier']);
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function test_pending_batch_export_expands_multi_sku_without_shifting_amount_or_logistics_note(): void

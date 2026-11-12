@@ -16,7 +16,7 @@ const summary = {
   this_month_count: 1, delivery_status_coverage: 0, in_transit_count: 0, delivered_count: 0, exception_count: 0, last_shipped_at: '2026-09-15T00:00:00Z',
 }
 const carrierMaster = {
-  id: 2, name: 'DHL', name_en: 'DHL', name_zh: '敦豪', display_name: 'DHL / 敦豪', is_active: true, default_service_id: 11,
+  id: 2, name: 'DHL', name_en: 'DHL', name_zh: '敦豪', display_name: 'DHL / 敦豪', custom_display_name: null, is_active: true, default_service_id: 11,
   services: [
     { id: 10, service_key: 'paket_domestic', service_value: 'DHL PAKET DOMESTIC', name_en: 'DHL Paket Domestic', name_zh: '德国境内包裹', display_name: 'DHL Paket Domestic / 德国境内包裹', is_active: true, sort_order: 10 },
     { id: 11, service_key: 'paket_international', service_value: 'DHL PAKET International', name_en: 'DHL Paket International', name_zh: '国际包裹', display_name: 'DHL Paket International / 国际包裹', is_active: true, sort_order: 20 },
@@ -60,7 +60,12 @@ describe('Carrier detail ledger', () => {
     expect((wrapper.get('input[placeholder="例如：4PX"]').element as HTMLInputElement).value).toBe('DHL')
     expect(wrapper.get('.service-editor-table thead').text()).toContain('英文名称')
     expect(wrapper.find('input[placeholder="English"]').exists()).toBe(true)
-    expect((wrapper.get('input:disabled[value="DHL / 敦豪"]').element as HTMLInputElement).value).toBe('DHL / 敦豪')
+    const displayInput=wrapper.get('input[aria-label="前台显示名"]')
+    expect(displayInput.attributes('disabled')).toBeUndefined()
+    await displayInput.setValue('敦豪优先')
+    const save=wrapper.findAll('button').find(button=>button.text()==='保存物流商')!
+    await save.trigger('click')
+    expect(patch).toHaveBeenCalledWith('/logistics/carriers/DHL', expect.objectContaining({display_name:'敦豪优先',name_zh:'敦豪',name_en:'DHL'}), expect.any(Object))
     expect((wrapper.get('input[placeholder="English"]').element as HTMLInputElement).value).toBe('DHL Paket Domestic')
   })
 

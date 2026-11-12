@@ -137,8 +137,8 @@ final class DomesticLogisticsController
                 'blocked_count' => $preview['blocked_count'],
             ] : null,
             'providerStatus' => [
-                '4px' => ['export_ready' => true, 'return_ready' => true, 'label' => '速达 / 4PX'],
-                'weship' => ['export_ready' => true, 'return_ready' => true, 'label' => '纬狮 / Weship', 'note' => '纬狮独立保留原 24 列模板 · XLSX 下载 · XLS/XLSX 回传'],
+                '4px' => ['export_ready' => true, 'return_ready' => true, 'label' => '速达'],
+                'weship' => ['export_ready' => true, 'return_ready' => true, 'label' => '纬狮', 'note' => '纬狮独立保留原 24 列模板 · XLSX 下载 · XLS/XLSX 回传'],
             ],
         ]);
     }

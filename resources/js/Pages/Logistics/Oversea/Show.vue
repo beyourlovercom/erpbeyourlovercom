@@ -61,7 +61,7 @@ const columnDefinitions: GridColumnDefinition<ColumnKey>[] = [
   { key:'order_date', label:'订单日期', defaultVisible:true },
   { key:'status', label:'统一状态', defaultVisible:true },
   { key:'warehouse', label:'Stock 仓库', defaultVisible:true },
-  { key:'carrier', label:'Carrier 物流商', defaultVisible:true },
+  { key:'carrier', label:'物流商', defaultVisible:true },
   { key:'service', label:'运输 / 服务类型', defaultVisible:true },
   { key:'tracking', label:'追踪单号 Tracking No.', defaultVisible:true },
   { key:'note', label:'备注', defaultVisible:true },
@@ -841,6 +841,7 @@ const omsReconcile = async (row:Row) => {
 }
 
 const carrierOption = (name:string) => props.carrierOptions.find(row => row.value === name)
+const carrierDisplay = (name:string|null|undefined) => name ? (carrierOption(name)?.label ?? name) : '—'
 const serviceOptionsFor = (name:string) => carrierOption(name)?.services ?? []
 const defaultServiceFor = (name:string, country?:string|null) => {
   const carrier = carrierOption(name)
@@ -1095,7 +1096,7 @@ const overseaGridRows = computed<GridListRow[]>(()=>visibleRows.value.map(row=>(
   workflow_status:row.workflow_status_projection?.zh??'—',
   review_status:row.review_status==='approved'?'已通过':row.review_status==='stockout'?'缺货':'待审核',
   shipment_status:row.shipment_status==='shipped'?'已发货':row.shipment_status==='pending'?'待发货':row.shipment_status,
-  warehouse_name:row.warehouse_name??'—',carrier:row.carrier??'—',service:row.service??'—',
+  warehouse_name:row.warehouse_name??'—',carrier:carrierDisplay(row.carrier),service:row.service??'—',
   tracking_number:row.tracking_number??'—',note:row.note??'',
   recipient_name:row.recipient_name??'—',country:row.country??'—',
   sku:row.items.map(item=>item.sku??'无SKU').join(' / ')||'—',
@@ -1119,7 +1120,7 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   ...(props.warehouseKey==='us-moreplus'||props.warehouseKey==='us-3sm'?[gridColumn({
     colId:'dispatch',field:'dispatch_status',headerName:'仓库处理状态',width:230,tooltipField:'dispatch_status',
   }),gridColumn({colId:'oms_order',field:'oms_order',headerName:'OMS 单号',width:178})]:[]),
-  gridColumn({colId:'carrier',field:'carrier',headerName:'承运商',width:145}),
+  gridColumn({colId:'carrier',field:'carrier',headerName:'物流商',width:145}),
   gridColumn({colId:'service',field:'service',headerName:'服务渠道',width:154}),
   gridColumn({colId:'tracking',field:'tracking_number',headerName:'Tracking',width:208,sortable:true,tooltipField:'tracking_number'}),
   gridColumn({colId:'note',field:'note',headerName:'备注',width:180,tooltipField:'note'}),
@@ -1260,8 +1261,8 @@ const compactPages = computed<(number|string)[]>(() => {
         <p class="tracking-hint">Tracking 是发货事实主键。仓库状态如“处理中 / Pending”不会阻止发货；有可靠发货时间则沿用，没有则以本次确认时间记为 shipped_at。阻断项必须修正后重新上传。</p>
         <div class="tracking-preview-table-wrap">
           <table class="tracking-preview-table">
-            <thead><tr><th>行</th><th>订单号</th><th>Tracking</th><th>Carrier</th><th>仓库服务</th><th>仓库状态</th><th>发货时间</th><th>结果</th><th>说明</th></tr></thead>
-            <tbody><tr v-for="row in trackingPreviewRows" :key="`${row.row}-${row.order_number}`"><td>{{ row.row }}</td><td>{{ row.order_number }}</td><td>{{ row.tracking_number }}</td><td>{{ row.carrier ?? '—' }}</td><td>{{ row.provider_service ?? '—' }}</td><td>{{ row.provider_status ?? '—' }}</td><td>{{ row.shipped_at }} <small>{{ row.shipped_time_source === 'provider' ? '仓库时间' : 'ERP确认时间' }}</small></td><td><span class="tracking-status" :class="row.status">{{ trackingStatusText(row.status) }}</span></td><td>{{ row.message || '—' }}</td></tr></tbody>
+            <thead><tr><th>行</th><th>订单号</th><th>Tracking</th><th>物流商</th><th>仓库服务</th><th>仓库状态</th><th>发货时间</th><th>结果</th><th>说明</th></tr></thead>
+            <tbody><tr v-for="row in trackingPreviewRows" :key="`${row.row}-${row.order_number}`"><td>{{ row.row }}</td><td>{{ row.order_number }}</td><td>{{ row.tracking_number }}</td><td>{{ carrierDisplay(row.carrier) }}</td><td>{{ row.provider_service ?? '—' }}</td><td>{{ row.provider_status ?? '—' }}</td><td>{{ row.shipped_at }} <small>{{ row.shipped_time_source === 'provider' ? '仓库时间' : 'ERP确认时间' }}</small></td><td><span class="tracking-status" :class="row.status">{{ trackingStatusText(row.status) }}</span></td><td>{{ row.message || '—' }}</td></tr></tbody>
           </table>
         </div>
         <small v-if="trackingImportPreview.rows.length > trackingPreviewRows.length">仅展示前 {{ trackingPreviewRows.length }} 行；应用时仍会校验整份文件。</small>
@@ -1305,8 +1306,8 @@ const compactPages = computed<(number|string)[]>(() => {
                 筛选<span v-if="activeFilterCount" class="oversea-filter-count">{{activeFilterCount}}</span>
               </button>
               <div v-if="showGridFilters" class="oversea-grid-filter-panel" role="group" aria-label="海外仓筛选条件" data-testid="oversea-grid-filter-panel">
-                <label>承运商
-                  <input v-model="gridCarrierDraft" aria-label="筛选承运商" placeholder="例如 USPS" maxlength="80" @keydown.enter.prevent="applyGridFilters" />
+                <label>物流商
+                  <input v-model="gridCarrierDraft" aria-label="筛选物流商" placeholder="例如 USPS" maxlength="80" @keydown.enter.prevent="applyGridFilters" />
                 </label>
                 <label>Tracking
                   <input v-model="gridTrackingDraft" aria-label="筛选 Tracking" placeholder="追踪单号包含…" maxlength="100" @keydown.enter.prevent="applyGridFilters" />

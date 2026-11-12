@@ -46,6 +46,7 @@ type CarrierMaster = {
   name_en: string | null
   name_zh: string | null
   display_name: string
+  custom_display_name: string | null
   is_active: boolean
   default_service_id: number | null
   services: CarrierServiceMaster[]
@@ -100,6 +101,7 @@ const saveCarrier = () => {
   router.patch(`/logistics/carriers/${encodeURIComponent(props.carrier)}`, {
     name_zh: carrierForm.name_zh,
     name_en: carrierForm.name_en,
+    display_name: carrierForm.custom_display_name,
     is_active: carrierForm.is_active,
     default_service_id: carrierForm.default_service_id,
     default_service_key: defaultServiceKey.value,
@@ -161,7 +163,7 @@ const saveCarrier = () => {
     <div v-if="editorOpen" class="carrier-editor-backdrop" @click.self="closeEditor">
       <aside class="carrier-editor-panel" role="dialog" aria-modal="true" aria-label="编辑物流商">
         <header class="carrier-editor-header">
-          <div><p class="mvp-kicker">CARRIER MASTER V2</p><h2>编辑物流商</h2><p>修改物流商基础信息及默认服务类型配置。</p></div>
+          <div><p class="mvp-kicker">物流商管理 V2</p><h2>编辑物流商</h2><p>修改物流商基础信息及默认服务类型配置。</p></div>
           <button type="button" class="carrier-editor-close" @click="closeEditor">×</button>
         </header>
 
@@ -172,7 +174,7 @@ const saveCarrier = () => {
             <label>是否启用<div class="toggle-line"><button type="button" class="switch" :class="{ on: carrierForm.is_active }" @click="carrierForm.is_active = !carrierForm.is_active"><span></span></button><strong>{{ carrierForm.is_active ? '已启用' : '已停用' }}</strong></div><small>停用后不再用于新订单发货，历史数据不受影响</small></label>
             <label>中文名称 *<input v-model="carrierForm.name_zh" placeholder="例如：速达"></label>
             <label>英文名称 *<input v-model="carrierForm.name_en" placeholder="例如：4PX"></label>
-            <label class="span-2">前台显示名<input :value="[carrierForm.name_en, carrierForm.name_zh].filter(Boolean).filter((name, index, values) => values.indexOf(name) === index).join(' / ') || carrierForm.name" disabled><small>物流商品牌保留英文及中文；服务渠道只显示中文，原始编码不变</small></label>
+            <label class="span-2">前台显示名<input v-model="carrierForm.custom_display_name" maxlength="128" placeholder="留空时默认显示中英文名称，例如：速达" aria-label="前台显示名"><small>可自由编辑；仅用于 ERP 页面与 ERP 自有表格展示，不影响内部标识、第三方模板和服务渠道</small></label>
           </div>
         </section>
 

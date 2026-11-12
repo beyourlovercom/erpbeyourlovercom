@@ -22,7 +22,7 @@ const baseProps = {
   canOperate:true,
   canReview:true,
   carrierOptions:[
-    {value:'4PX',label:'4PX / 速达',services:[{value:'SD经济挂号-带电',label:'经济挂号 - 带电'}]},
+    {value:'4PX',label:'速达',services:[{value:'SD经济挂号-带电',label:'经济挂号 - 带电'}]},
     {value:'Weship',label:'纬狮',services:[{value:'标准挂号',label:'标准挂号'}]},
   ],
   trackingImportProvider:'4px' as const,
@@ -34,8 +34,8 @@ const baseProps = {
     ],
   },
   providerStatus:{
-    '4px':{export_ready:true,return_ready:true,label:'速达 / 4PX'},
-    weship:{export_ready:true,return_ready:true,label:'纬狮 / Weship',note:'纬狮独立保留原 24 列模板 · XLSX 下载 · XLS/XLSX 回传'},
+    '4px':{export_ready:true,return_ready:true,label:'速达'},
+    weship:{export_ready:true,return_ready:true,label:'纬狮',note:'纬狮独立保留原 24 列模板 · XLSX 下载 · XLS/XLSX 回传'},
   },
 }
 
@@ -73,6 +73,8 @@ describe('Domestic logistics production workbench', () => {
     expect(carrier.exists()).toBe(true)
     expect(service.exists()).toBe(true)
     expect((carrier.element as HTMLSelectElement).value).toBe('4PX')
+    expect(carrier.text()).toContain('速达')
+    expect(carrier.text()).not.toContain('4PX')
     expect((service.element as HTMLSelectElement).value).toBe('SD经济挂号-带电')
     expect(service.attributes('disabled')).toBeUndefined()
     const ship=wrapper.findAll('button').find(b=>b.text()==='确认发货')!
@@ -95,7 +97,7 @@ describe('Domestic logistics production workbench', () => {
       {value:'SD标准挂号-普货',label:'Standard Registered - General / SD标准挂号-普货',name_zh:'SD标准挂号-普货'},
     ]
     const wrapper = mount(Index,{props:{...baseProps,carrierOptions:[
-      {value:'4PX',label:'4PX / 速达',services},
+      {value:'4PX',label:'速达',services},
       {value:'Weship',label:'纬狮',services:[{value:'标准挂号',label:'标准挂号'}]},
     ]}})
     const service = wrapper.find('select[aria-label^="选择服务类型"]')
@@ -290,7 +292,7 @@ describe('Domestic logistics production workbench', () => {
     expect(wrapper.text()).toContain('国内发货')
     expect(wrapper.text()).toContain('单个异常订单不会阻断其他正常订单')
     expect(wrapper.find('a[href="/logistics/china/export/4px"]').exists()).toBe(true)
-    expect(wrapper.text()).not.toContain('纬狮 / Weship')
+    expect(wrapper.get('.provider-grid').text()).not.toContain('纬狮')
     expect(wrapper.text()).not.toContain('Fail Closed')
     expect(wrapper.find('a[href="/logistics/china/export/weship"]').exists()).toBe(false)
     expect(wrapper.find('input[type="file"]').exists()).toBe(false)
@@ -299,14 +301,14 @@ describe('Domestic logistics production workbench', () => {
 
   it('shows only the matching provider operation card on provider-specific daily tabs', () => {
     const speeda=mount(Index,{props:{...baseProps,view:'today-4px',trackingImportPreview:null,trackingImportProvider:null}})
-    expect(speeda.text()).toContain('速达 / 4PX')
+    expect(speeda.text()).toContain('速达')
     expect(speeda.text()).toContain('所有订单按现有数据填写 SKU / 69条码（空缺留空）')
-    expect(speeda.text()).not.toContain('纬狮 / Weship')
+    expect(speeda.get('.provider-grid').text()).not.toContain('纬狮')
     expect(speeda.find('a[href="/logistics/china/export/4px"]').exists()).toBe(true)
 
     const weship=mount(Index,{props:{...baseProps,view:'today-weship',trackingImportPreview:null,trackingImportProvider:null}})
-    expect(weship.text()).toContain('纬狮 / Weship')
-    expect(weship.text()).not.toContain('速达 / 4PX')
+    expect(weship.text()).toContain('纬狮')
+    expect(weship.get('.provider-grid').text()).not.toContain('速达')
     expect(weship.text()).toContain('纬狮独立保留原 24 列模板')
     expect(weship.text()).not.toContain('Fail Closed')
     expect(weship.text()).toContain('下载纬狮下单表')
