@@ -6,8 +6,12 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use App\Modules\Sync\Application\OrderSyncProgressProjector;
+use App\Modules\Sync\Application\OrderSyncProgressSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -156,6 +160,190 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
             ->assertSessionHasErrors('sort');
         $this->actingAs($user)->get('/sync/orders?global_grid=1&sort=order_number&direction=foobar')
             ->assertSessionHasErrors('direction');
+    }
+
+    public function test_without_background_index_status_filter_fails_closed_without_remote_calls(): void
+    {
+        Cache::flush();
+        $user = $this->viewer();
+        $this->makeOrder('woocommerce', 'INDEX-NOT-READY');
+
+        $this->actingAs($user)->get('/sync/orders?grid_progress=failed')
+            ->assertRedirect()->assertSessionHasErrors('grid_progress');
+        $this->assertDatabaseCount('manual_syncs', 0);
+    }
+
+    public function test_status_filter_rejects_expired_background_snapshot(): void
+    {
+        Cache::flush();
+        $user = $this->viewer();
+        $this->makeOrder('woocommerce', 'INDEX-CACHE-EXPIRY');
+        app(OrderSyncProgressSnapshot::class)->refresh();
+        $this->actingAs($user)->get('/sync/orders?grid_progress=unsynced')
+            ->assertOk();
+
+        $this->travel(13)->minutes();
+        try {
+            $this->actingAs($user)->get('/sync/orders?grid_progress=unsynced')
+                ->assertRedirect()->assertSessionHasErrors('grid_progress');
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    public function test_second_header_status_filter_is_server_wide_and_not_limited_to_current_page(): void
+    {
+        Cache::flush();
+        $user = $this->viewer();
+
+        for ($i = 1; $i <= 55; $i++) {
+            $this->makeOrder('manual', 'FILTER-UNSYNCED-'.str_pad((string) $i, 3, '0', STR_PAD_LEFT));
+        }
+
+        $failed = $this->makeOrder('woocommerce', 'FILTER-FAILED-121');
+        $failed->manualSync()->create(['website_sync_status' => 'failed']);
+
+        $synced = $this->makeOrder('woocommerce', 'FILTER-SYNCED-122');
+        $syncedTracking = 'FILTER-SYNCED-TRACK-122';
+        $synced->shipment()->create([
+            'shipment_status' => 'shipped', 'carrier' => 'USPS',
+            'tracking_number' => $syncedTracking, 'shipped_at' => now(),
+        ]);
+        $synced->manualSync()->create([
+            'website_sync_status' => 'completed', 'synced_at' => now(),
+            'sync_note' => 'verified_tracking_sha256:'.hash('sha256', $syncedTracking).'; verified.',
+        ]);
+        $synced->operationalMarkers()->create(['marker' => 'woo_manual_tracking_verified', 'marked_at' => now()]);
+
+        $notified = $this->makeOrder('woocommerce', 'FILTER-NOTIFIED-123');
+        $notifiedTracking = 'FILTER-NOTIFIED-TRACK-123';
+        $notified->shipment()->create([
+            'shipment_status' => 'shipped', 'carrier' => 'USPS',
+            'tracking_number' => $notifiedTracking, 'shipped_at' => now(),
+        ]);
+        $notified->manualSync()->create([
+            'website_sync_status' => 'completed', 'synced_at' => now(),
+            'sync_note' => 'verified_tracking_sha256:'.hash('sha256', $notifiedTracking).'; Customer Note #941 已接受。',
+        ]);
+        $notified->operationalMarkers()->create(['marker' => 'woo_manual_tracking_verified', 'marked_at' => now()]);
+
+        app(OrderSyncProgressSnapshot::class)->refresh();
+        $base = '/sync/orders?per_page=20&grid_progress=';
+        $this->actingAs($user)->get($base.'unsynced')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('pagination.total', 55)
+                ->has('orders', 20)
+                ->where('orders.0.progress.code', 'unsynced')
+                ->where('progressFilterSnapshot.total', 58)
+                ->where('filters.grid_progress', 'unsynced')
+            );
+
+        foreach (['failed' => $failed, 'synced' => $synced, 'notified' => $notified] as $code => $expected) {
+            $this->actingAs($user)->get($base.$code)->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->where('pagination.total', 1)
+                    ->has('orders', 1)
+                    ->where('orders.0.id', $expected->id)
+                    ->where('orders.0.progress.code', $code)
+                    ->where('filters.grid_progress', $code)
+                );
+        }
+
+        $this->actingAs($user)->get('/sync/orders?grid_progress=unknown')
+            ->assertSessionHasErrors('grid_progress');
+    }
+
+    public function test_unavailable_woo_readback_fails_closed_instead_of_returning_false_complete_status(): void
+    {
+        Cache::flush();
+        $user = $this->viewer();
+        $order = $this->makeOrder('woocommerce', 'SYNC-REMOTE-FAIL-GATE');
+        $order->externalReferences()->create([
+            'provider' => 'woocommerce', 'connection_key' => 'uat-batch-mock', 'reference' => '12345',
+        ]);
+        $order->shipment()->create([
+            'shipment_status' => 'shipped', 'carrier' => 'USPS',
+            'tracking_number' => 'UAT-FAIL-TRACK', 'shipped_at' => now(),
+        ]);
+
+        $inspector = new class implements WooCommerceTrackingBatchInspector, WooCommerceTrackingGateway
+        {
+            public function descriptor(): array
+            {
+                return ['configured' => true, 'url' => 'https://mock.example', 'connection_key' => 'uat-batch-mock'];
+            }
+
+            public function inspectTrackingBatch(array $providerOrderIds): array
+            {
+                throw new \RuntimeException('simulated WooCommerce read outage');
+            }
+
+            public function inspectOrderStatus(int $providerOrderId): string
+            {
+                return 'processing';
+            }
+
+            public function inspectTracking(int $providerOrderId): array
+            {
+                return ['tracking_number' => '', 'provider' => '', 'has_tracking' => false];
+            }
+
+            public function syncTracking(int $providerOrderId, string $providerSlug, string $trackingNumber, string $shipDate, array $lineItems = []): array
+            {
+                throw new \RuntimeException('write must not happen');
+            }
+
+            public function syncOrderStatus(int $providerOrderId, string $status): array
+            {
+                throw new \RuntimeException('write must not happen');
+            }
+        };
+        app()->instance(WooCommerceTrackingGateway::class, $inspector);
+
+        try {
+            app(OrderSyncProgressSnapshot::class)->refresh();
+            self::fail('A Woo read failure must never create an incomplete snapshot');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('WooCommerce', $exception->getMessage());
+        }
+        $this->actingAs($user)->get('/sync/orders?grid_progress=unsynced')
+            ->assertRedirect()->assertSessionHasErrors('grid_progress');
+        $this->assertDatabaseCount('manual_syncs', 0);
+    }
+
+    public function test_column_filters_use_complete_database_and_combine_with_status(): void
+    {
+        Cache::flush();
+        $user = $this->viewer();
+        for ($i = 1; $i <= 51; $i++) {
+            $this->makeOrder('manual', 'FILTER-COMBO-'.str_pad((string) $i, 3, '0', STR_PAD_LEFT));
+        }
+        $failed = $this->makeOrder('woocommerce', 'FILTER-COMBO-TARGET');
+        $failed->manualSync()->create(['website_sync_status' => 'failed']);
+
+        app(OrderSyncProgressSnapshot::class)->refresh();
+        $this->actingAs($user)->get('/sync/orders?grid_order_number=TARGET&grid_progress=failed&per_page=20')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('pagination.total', 1)
+            ->has('orders', 1)
+            ->where('orders.0.id', $failed->id)
+            );
+
+        $this->actingAs($user)->get('/sync/orders?grid_order_number=TARGET&grid_progress=synced')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('pagination.total', 0)
+            ->has('orders', 0)
+            );
+
+        // Human-facing Chinese column search must match persisted English
+        // source codes instead of returning a false empty result.
+        $kol = $this->makeOrder('kol', 'KOL-FILTER-CN');
+        $this->actingAs($user)->get('/sync/orders?grid_source='.rawurlencode('网红'))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('pagination.total', 1)
+                ->has('orders', 1)
+                ->where('orders.0.id', $kol->id)
+            );
     }
 
     public function test_verified_remote_tracking_and_customer_note_receipt_have_distinct_statuses(): void

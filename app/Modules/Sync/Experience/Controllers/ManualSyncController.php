@@ -8,6 +8,7 @@ use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\ManualSyncService;
 use App\Modules\Sync\Application\OrderSyncProgressProjector;
+use App\Modules\Sync\Application\OrderSyncProgressSnapshot;
 use App\Modules\Sync\Application\SyncOrchestrationService;
 use App\Modules\Sync\Application\WooOrderSyncHealthReader;
 use App\Modules\Sync\Infrastructure\Models\SyncOutbox;
@@ -15,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -36,6 +38,13 @@ final class ManualSyncController
             'page' => ['nullable', 'integer', 'min:1'],
             'sort' => ['nullable', Rule::in(['date', 'order_number', 'source'])],
             'direction' => ['nullable', Rule::in(['asc', 'desc'])],
+            'grid_order_number' => ['nullable', 'string', 'max:128'],
+            'grid_date' => ['nullable', 'string', 'max:32'],
+            'grid_source' => ['nullable', 'string', 'max:64'],
+            'grid_recipient' => ['nullable', 'string', 'max:128'],
+            'grid_carrier' => ['nullable', 'string', 'max:128'],
+            'grid_tracking' => ['nullable', 'string', 'max:128'],
+            'grid_progress' => ['nullable', Rule::in(['unsynced', 'failed', 'synced', 'notified'])],
         ]);
         $perPage = (int) ($filters['per_page'] ?? 50);
         $sort = (string) ($filters['sort'] ?? 'date');
@@ -45,6 +54,20 @@ final class ManualSyncController
             'source' => 'source_type',
             default => 'order_date',
         };
+        $statusSnapshot = null;
+        if (filled($filters['grid_progress'] ?? null)) {
+            try {
+                $statusSnapshot = app(OrderSyncProgressSnapshot::class)->snapshot();
+            } catch (\Throwable $exception) {
+                report($exception);
+                // Do not silently fall back to a current-page-only filter or
+                // present an incomplete remote WooCommerce result as complete.
+                throw ValidationException::withMessages([
+                    'grid_progress' => '全部订单状态核验暂时不可用，请稍后重试。没有修改任何订单。',
+                ]);
+            }
+        }
+
         $paginator = Order::query()->withTrashed()
             ->with(['address', 'manualSync', 'shipment', 'fulfillmentParent' => fn ($query) => $query->withTrashed(), 'fulfillmentParent.externalReferences', 'externalReferences', 'operationalMarkers'])
             ->when($filters['source'] ?? null, fn ($query, $source) => $query->where('source_type', $source))
@@ -56,6 +79,38 @@ final class ManualSyncController
                         ->orWhereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$search}%"));
                 });
             })
+            ->when($filters['grid_order_number'] ?? null, fn ($query, string $term) => $query
+                ->where(fn ($nested) => $nested
+                    ->where('erp_order_id', 'like', "%{$term}%")
+                    ->orWhere('external_order_number', 'like', "%{$term}%")
+                    ->orWhere('internal_order_number', 'like', "%{$term}%")))
+            ->when($filters['grid_date'] ?? null, fn ($query, string $term) => $query->where('order_date', 'like', "%{$term}%"))
+            ->when($filters['grid_source'] ?? null, function ($query, string $term): void {
+                // The second header row uses Chinese labels, while the DB
+                // stores English source codes. Support either without SQL
+                // concatenation or loading the entire order table.
+                $labels = [
+                    'woocommerce' => '官网 WooCommerce',
+                    'website' => '网站导入',
+                    'kol' => '网红订单',
+                    'manual' => '手工订单',
+                    'manual_other' => '其他外部导入外采',
+                ];
+                $matches = array_keys(array_filter($labels, fn (string $label): bool => str_contains($label, trim($term))));
+                if ($matches !== []) {
+                    $query->whereIn('source_type', $matches);
+                } else {
+                    $query->where('source_type', 'like', "%{$term}%");
+                }
+            })
+            ->when($filters['grid_recipient'] ?? null, fn ($query, string $term) => $query
+                ->whereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$term}%")))
+            ->when($filters['grid_carrier'] ?? null, fn ($query, string $term) => $query
+                ->whereHas('shipment', fn ($shipment) => $shipment->where('carrier', 'like', "%{$term}%")))
+            ->when($filters['grid_tracking'] ?? null, fn ($query, string $term) => $query
+                ->whereHas('shipment', fn ($shipment) => $shipment->where('tracking_number', 'like', "%{$term}%")))
+            ->when($statusSnapshot !== null, fn ($query) => app(OrderSyncProgressSnapshot::class)
+                ->constrain($query, (string) $filters['grid_progress'], $statusSnapshot))
             ->orderBy($sortColumn, $direction)->orderBy('id', $direction)
             ->paginate($perPage)->withQueryString();
 
@@ -89,6 +144,12 @@ final class ManualSyncController
             ],
             'queueSummary' => $this->orchestration->queueSummary(),
             'canOperate' => $canOperate,
+            'progressFilterSnapshot' => $statusSnapshot === null ? null : [
+                'generated_at' => $statusSnapshot['generated_at'],
+                'total' => $statusSnapshot['total'],
+                'candidates' => $statusSnapshot['candidates'],
+                'remote_configured' => $statusSnapshot['remote_configured'],
+            ],
             'syncRuns' => $recentRuns->map(fn ($run): array => [
                 'id' => $run->id,
                 'run_type' => $run->run_type,
@@ -176,6 +237,13 @@ final class ManualSyncController
                 'per_page' => $perPage,
                 'sort' => $sort,
                 'direction' => $direction,
+                'grid_order_number' => $filters['grid_order_number'] ?? '',
+                'grid_date' => $filters['grid_date'] ?? '',
+                'grid_source' => $filters['grid_source'] ?? '',
+                'grid_recipient' => $filters['grid_recipient'] ?? '',
+                'grid_carrier' => $filters['grid_carrier'] ?? '',
+                'grid_tracking' => $filters['grid_tracking'] ?? '',
+                'grid_progress' => $filters['grid_progress'] ?? '',
             ],
         ]);
     }

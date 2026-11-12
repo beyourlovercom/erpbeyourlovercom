@@ -5,6 +5,7 @@ import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
 import { gridColumn, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
 import SyncProgressGridCell from './SyncProgressGridCell.vue'
+import SyncProgressServerFilter from './SyncProgressServerFilter.vue'
 const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
@@ -32,7 +33,14 @@ const props = withDefaults(defineProps<{
   globalGridPilotEnabled?: boolean
   orders: Order[]
   canOperate?: boolean
-  filters: { search?: string; source?: string; per_page?: number; sort?: string; direction?: 'asc' | 'desc' }
+  progressFilterSnapshot?: {
+    generated_at: string; total: number; candidates: number; remote_configured: boolean
+  } | null
+  filters: {
+    search?: string; source?: string; per_page?: number; sort?: string; direction?: 'asc' | 'desc'
+    grid_order_number?: string; grid_date?: string; grid_source?: string
+    grid_recipient?: string; grid_carrier?: string; grid_tracking?: string; grid_progress?: string
+  }
   pagination?: Pagination
   syncRuns?: SyncRun[]
   queueSummary?: QueueSummary
@@ -52,6 +60,13 @@ const filters = reactive({
   search: props.filters.search ?? '',
   source: props.filters.source ?? '',
   per_page: Number(props.filters.per_page ?? props.pagination.per_page ?? 50),
+  grid_order_number: props.filters.grid_order_number ?? '',
+  grid_date: props.filters.grid_date ?? '',
+  grid_source: props.filters.grid_source ?? '',
+  grid_recipient: props.filters.grid_recipient ?? '',
+  grid_carrier: props.filters.grid_carrier ?? '',
+  grid_tracking: props.filters.grid_tracking ?? '',
+  grid_progress: props.filters.grid_progress ?? '',
 })
 const compactMobile = ref(typeof window !== 'undefined' && window.innerWidth <= 740)
 const syncViewport = () => { compactMobile.value = window.innerWidth <= 740 }
@@ -63,6 +78,13 @@ const gridSort = ref({
   direction: props.filters.direction === 'asc' ? 'asc' as const : 'desc' as const,
 })
 watch(() => props.filters.search, (value) => { gridSearch.value = value ?? '' })
+watch(() => props.filters, (next) => {
+  for (const col of supportedColumnFilters) {
+    const key = ('grid_' + col) as keyof typeof filters
+    ;(filters as Record<string, string | number>)[key] = next[key] ?? ''
+  }
+}, { deep: true })
+
 watch(() => [props.filters.sort, props.filters.direction] as const, ([sort, direction]) => {
   gridSort.value = {
     colId: sort && ['date', 'order_number', 'source'].includes(sort) ? sort : 'date',
@@ -111,6 +133,17 @@ const onGridSort = (next: { colId: string; direction: 'asc' | 'desc' | null }) =
 const onGridPageSize = (size: number | 'all') => {
   if (typeof size !== 'number' || ![20, 50, 100].includes(size)) return
   filters.per_page = size
+  submit(1)
+}
+const supportedColumnFilters = ['order_number', 'date', 'source', 'recipient', 'carrier', 'tracking', 'progress'] as const
+const gridFilterValues = computed(() => Object.fromEntries(
+  supportedColumnFilters.map((key) => [key, String(filters[(('grid_' + key) as keyof typeof filters)] ?? '')]),
+))
+const onGridColumnFilter = ({ colId, value }: { colId: string; value: string }) => {
+  if (!supportedColumnFilters.includes(colId as typeof supportedColumnFilters[number])) return
+  const key = ('grid_' + colId) as keyof typeof filters
+  // These keys are all strings. Preserve other filters and reset page.
+  ;(filters as Record<string, string | number>)[key] = value
   submit(1)
 }
 const sourceName = (source: string) => ({
@@ -244,7 +277,8 @@ const gridColumns = computed<ColDef<GridListRow>[]>(() => [
   }),
   c('progress', 'progress_label', '同步进度', compactMobile.value ? 96 : 118, {
     pinned: 'right', lockPinned: true, lockPosition: 'right', suppressMovable: true,
-    filter: false, sortable: false, cellRenderer: SyncProgressGridCell,
+    filter: true, sortable: false, cellRenderer: SyncProgressGridCell,
+    floatingFilterComponent: SyncProgressServerFilter,
     tooltipField: 'progress_reason',
   }),
 ])
@@ -255,6 +289,10 @@ const gridPager = computed(() => ({
   total: props.pagination.total,
 }))
 const gridEnabled = computed(() => props.globalGridPilotAvailable === true && props.globalGridPilotEnabled === true)
+const hasActiveFilters = computed(() => Boolean(
+  filters.search.trim() || filters.source || supportedColumnFilters.some((key) =>
+    String(filters[(('grid_' + key) as keyof typeof filters)] ?? '').trim() !== ''),
+))
 
 </script>
 
@@ -268,7 +306,7 @@ const gridEnabled = computed(() => props.globalGridPilotAvailable === true && pr
         </div>
         <div class="sync-heading-actions">
           <button v-if="props.globalGridPilotAvailable" class="mvp-button" type="button" data-testid="sync-global-grid-toggle" @click="toggleGrid">{{ gridEnabled ? '返回原表' : '体验 AG 表格' }}</button>
-          <div class="total-counter">全部订单 <strong>{{ props.pagination.total.toLocaleString('zh-CN') }}</strong> 单</div>
+          <div class="total-counter">{{ hasActiveFilters ? '筛选结果' : '全部订单' }} <strong>{{ props.pagination.total.toLocaleString('zh-CN') }}</strong> 单</div>
         </div>
       </div>
 
@@ -305,6 +343,8 @@ const gridEnabled = computed(() => props.globalGridPilotAvailable === true && pr
         :page="gridPager"
         :search="gridSearch"
         :sort="gridSort"
+        :filter-columns="[...supportedColumnFilters]"
+        :filter-values="gridFilterValues"
         :show-search="true"
         :enable-selection="false"
         :client-csv-export="false"
@@ -313,6 +353,7 @@ const gridEnabled = computed(() => props.globalGridPilotAvailable === true && pr
         @page-size-change="onGridPageSize"
         @sort-change="onGridSort"
         @search-change="onGridSearch"
+        @column-search-change="onGridColumnFilter"
       >
         <template #actions>
           <div class="sync-grid-source-filter">
@@ -328,7 +369,12 @@ const gridEnabled = computed(() => props.globalGridPilotAvailable === true && pr
           </div>
         </template>
       </GlobalGrid>
-      <div v-else class="mvp-table-wrap overview-table">
+      <p v-if="gridEnabled && props.progressFilterSnapshot" class="sync-filter-snapshot">
+        全库状态筛选：{{ props.progressFilterSnapshot.total.toLocaleString('zh-CN') }} 单 ·
+        核验快照 {{ new Date(props.progressFilterSnapshot.generated_at).toLocaleString('zh-CN', { hour12: false }) }}
+        <template v-if="!props.progressFilterSnapshot.remote_configured"> · 测试环境未连接官网，仅按 ERP 已有凭证判定</template>
+      </p>
+      <div v-if="!gridEnabled" class="mvp-table-wrap overview-table">
         <table class="mvp-table">
           <thead>
             <tr>
@@ -510,4 +556,5 @@ const gridEnabled = computed(() => props.globalGridPilotAvailable === true && pr
   .overview-table .mvp-table th:last-child, .overview-table .mvp-table td:last-child { width: 94px; padding: 8px 6px; }
   .order-number .mobile-order-meta { display: block; }
 }
+.sync-filter-snapshot{margin:5px 2px 9px;font-size:11px;color:#718096}
 </style>

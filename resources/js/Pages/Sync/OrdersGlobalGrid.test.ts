@@ -16,9 +16,9 @@ vi.mock('../../Components/DataGrid/GlobalGrid.vue', () => ({
     name: 'GlobalGrid',
     props: [
       'namespace','title','columns','rows','requiredColumnIds','page','search','sort',
-      'enableSelection','clientCsvExport','defaultPinnedRight','showSearch',
+      'enableSelection','clientCsvExport','defaultPinnedRight','showSearch','filterColumns','filterValues',
     ],
-    emits: ['page-change','page-size-change','sort-change','search-change'],
+    emits: ['page-change','page-size-change','sort-change','search-change','column-search-change'],
     template: '<section data-testid="mock-global-grid"><slot name="actions"/></section>',
   },
 }))
@@ -34,7 +34,7 @@ const base = {
 }
 const props = (orders = [base]) => ({
   globalGridPilotAvailable: true, globalGridPilotEnabled: true, canOperate: true,
-  orders, filters: { search: '', source: '', per_page: 50, sort: 'date', direction: 'desc' as const },
+  orders, filters: { search: '', source: '', per_page: 50, sort: 'date', direction: 'desc' as const, grid_progress: '' },
   pagination: { total: 8000, current_page: 1, last_page: 160, per_page: 50, from: 1, to: 50 },
 })
 
@@ -68,6 +68,41 @@ describe('Sync Orders Global Grid R0–R3 canary', () => {
     expect(component.props('page')).toEqual({total:8000,current_page:1,last_page:160,per_page:50})
     expect(wrapper.text()).toContain('返回原表')
     expect(wrapper.text()).toContain('已通知')
+  })
+
+  it('enables server-side second-row filters and dispatches full-library sync status selection', async () => {
+    const { component } = await grid()
+    expect(component.props('filterColumns')).toEqual([
+      'order_number','date','source','recipient','carrier','tracking','progress',
+    ])
+    expect(component.props('filterValues')).toMatchObject({ progress: '', tracking: '', recipient: '' })
+    const columns = component.props('columns') as Array<Record<string, unknown>>
+    const status = columns.at(-1)!
+    expect(status.colId).toBe('progress')
+    expect(status.floatingFilterComponent).toBeTruthy()
+    component.vm.$emit('column-search-change', { colId: 'progress', value: 'failed' })
+    expect(get).toHaveBeenCalledWith('/sync/orders', expect.objectContaining({
+      grid_progress: 'failed', global_grid: '1', page: 1,
+    }), expect.any(Object))
+    expect(post).not.toHaveBeenCalled()
+
+    component.vm.$emit('column-search-change', { colId: 'tracking', value: 'TEST-TRACK' })
+    expect(get).toHaveBeenCalledWith('/sync/orders', expect.objectContaining({
+      grid_progress: 'failed', grid_tracking: 'TEST-TRACK', page: 1,
+    }), expect.any(Object))
+
+    component.vm.$emit('column-search-change', { colId: 'unknown_sql_column', value: 'x' })
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('labels server-filtered totals as 筛选结果 rather than 全部订单', async () => {
+    const { wrapper } = await grid({
+      ...props(),
+      filters: { ...props().filters, grid_progress: 'failed' },
+      pagination: { total: 2, current_page: 1, last_page: 1, per_page: 50, from: 1, to: 2 },
+    })
+    expect(wrapper.find('.total-counter').text()).toContain('筛选结果')
+    expect(wrapper.find('.total-counter').text()).toContain('2')
   })
 
   it('mobile preserves visible order identity and sync progress with independent layout', async () => {
