@@ -437,7 +437,8 @@ final class DomesticLogisticsController
             'erp_order_id' => $order->erp_order_id,
             'workflow_status_projection' => $projection,
             'provider_reference' => $reference,
-            'order_url' => '/customers/orders/'.$order->id,
+            // Generic details route redirects by order kind (customer, KOL, derived).
+            'order_url' => '/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,
             'phone' => $order->address?->phone,
             'country' => $order->address?->country,

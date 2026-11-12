@@ -2,6 +2,9 @@
 
 namespace App\Modules\Logistics\Application;
 
+use App\Modules\Audit\Application\AuditActor;
+use App\Modules\Audit\Application\AuditSource;
+use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
@@ -49,6 +52,7 @@ final class OverseaWarehouseReviewService
         private readonly AssistedFulfillmentService $fulfillment,
         private readonly ShipmentService $shipments,
         private readonly NotificationPublisher $notifications,
+        private readonly AuditRecorder $audit,
     ) {}
 
     public function updateDraft(Order $order, array $data, Authenticatable $actor): Order
@@ -211,6 +215,7 @@ final class OverseaWarehouseReviewService
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以驳回');
             abort_unless($locked->shipment?->warehouse_id, 409, '订单尚未分配海外仓');
             $review = $this->reviewForMutation($locked);
+            $before = ['status' => $review->status, 'note' => $review->note];
             $review->forceFill([
                 'status' => 'rejected',
                 'note' => $note,
@@ -218,6 +223,16 @@ final class OverseaWarehouseReviewService
                 'reviewed_by' => $actor->getAuthIdentifier(),
                 'reviewed_at' => now(),
             ])->save();
+
+            // The live review row may be reset after Vita reassigns the order;
+            // the rejection and its human reason must remain in durable audit.
+            $this->audit->record(
+                AuditActor::user($actor, AuditSource::Web), 'oversea.review_reject',
+                OverseaWarehouseReview::class, $review->getKey(), $before,
+                ['status' => 'rejected', 'reason' => $note,
+                    'reviewed_warehouse_id' => $locked->shipment->warehouse_id],
+                'oversea_warehouse_review',
+            );
 
             $cleared = $this->fulfillment->saveDraft($locked, [
                 'warehouse_id' => null,

@@ -360,6 +360,27 @@ final class DomesticBusinessReviewTest extends TestCase
                 ->where('order.domestic_reject_reason', '收件人地址有误，需要 Vita 核对'));
     }
 
+    public function test_domestic_rejection_notifies_operations_and_opens_rejected_queue(): void
+    {
+        $reviewer = $this->userWith(['orders.view', 'logistics.view', 'domestic.review']);
+        $operationsRole = Role::query()->firstOrCreate(
+            ['key' => \App\Modules\Identity\Application\RolePreset::Operations->roleKey()],
+            ['label' => '运营人员'],
+        );
+        $vita = User::factory()->create(['is_active' => true]);
+        $vita->roles()->attach($operationsRole);
+        $order = $this->order();
+
+        $this->actingAs($reviewer)->post('/logistics/china/orders/'.$order->id.'/reject', [
+            'reason' => '请运营重新确认收件地址',
+        ])->assertRedirect('/logistics/china?view=review');
+        $notification = $vita->notifications()->first();
+        $this->assertNotNull($notification);
+        $this->assertSame('国内商务分仓被驳回', $notification->data['title']);
+        $this->assertSame('/logistics/wait-stock?rejected=1', $notification->data['action_url']);
+        $this->assertStringContainsString('请运营重新确认收件地址', $notification->data['message']);
+    }
+
     public function test_rejection_requires_reason_and_logistics_role_alone_cannot_review(): void
     {
         $order = $this->order();
@@ -436,6 +457,22 @@ final class DomesticBusinessReviewTest extends TestCase
         $this->assertDatabaseHas('order_operational_markers', [
             'order_id' => $order->id, 'marker' => 'domestic_reviewed',
         ]);
+    }
+
+    public function test_domestic_grid_kol_order_uses_kind_aware_detail_route(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $actor = $this->userWith(['logistics.view', 'orders.view', 'kol.view', 'kol.views.manage']);
+        $order = $this->order();
+        $order->forceFill(['order_kind' => OrderKind::KolFulfillment])->save();
+
+        $this->actingAs($actor)->get('/logistics/china?view=review')->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.order_url', '/orders/'.$order->id));
+        $this->actingAs($actor)->get('/orders/'.$order->id)
+            ->assertRedirect('/kol/orders/'.$order->id);
     }
 
     private function userWith(array $permissions): User
