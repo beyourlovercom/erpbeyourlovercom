@@ -138,7 +138,7 @@ const allocationGridColumns: ColDef<GridListRow>[] = [
   // Rejected orders are actionable exceptions: keep their warning/reason
   // beside the pinned order number, not after a long horizontally-scrolling table.
   gridColumn({colId:'rejection_state',field:'rejection_state',headerName:'驳回状态',width:115}),
-  gridColumn({colId:'reject_reason',field:'reject_reason',headerName:'驳回原因',width:235,tooltipField:'reject_reason'}),
+  gridColumn({colId:'reject_reason',field:'reject_reason',headerName:'驳回原因',width:320,minWidth:220,tooltipField:'reject_reason'}),
   gridColumn({colId:'rejection_type',field:'rejection_type',headerName:'驳回来源',width:110,hide:true}),
   gridColumn({colId:'reject_by',field:'reject_by',headerName:'驳回人员',width:120,hide:true}),
   gridColumn({colId:'reject_at',field:'reject_at',headerName:'驳回时间',width:175,hide:true}),
@@ -540,8 +540,9 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
       </div>
       <GlobalGrid v-if="globalGridPilotEnabled"
         :key="'allocation-grid-'+activeTab"
-        namespace="grid.logistics.allocation.global.v1" title="待分仓"
-        :rows="allocationGridRows" :columns="allocationGridColumns" :required-column-ids="['order_number','actions']"
+        :namespace="activeTab==='rejected' ? 'grid.logistics.allocation.rejected.v1' : 'grid.logistics.allocation.global.v1'" title="待分仓"
+        :rows="allocationGridRows" :columns="allocationGridColumns"
+        :required-column-ids="activeTab==='rejected' ? ['order_number','reject_reason','actions'] : ['order_number','actions']"
         :enable-selection="canArchive || (canOperate && activeTab!=='processed' && activeTab!=='gift')"
         :selected-order-ids="selectedBulkOrderIds"
         :page="allocationPager" :search="gridSearch ?? ''" search-placeholder="搜索全部订单号 / 收件人..."
