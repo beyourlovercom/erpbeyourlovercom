@@ -31,6 +31,7 @@
 - 国内通知沿用 NotificationPublisher，向有效运营角色发站内通知，直达驳回分类。
 - PHP 测试：**113 passed / 1,666 assertions**（包括国内商务审核、海外工作台、待分仓、原分仓 API、查询预算、人工履约），零失败。
 - Vue Vitest：**2 passed**（第二 Tab、跨页数字展示、可关闭提醒、刷新去重、同数字新事件重提醒）。
+- 全量 Vue/Vitest 基线对比：本分支 868 passed / 5 failed（873 tests）；未修改 main c1d67ebe 866 passed / 5 failed（871 tests）。失败为完全相同的 5 项，均属 WarehouseClearanceGiftPool 和 WarehouseCostCenterP3，**无本分支引入的新失败；全量测试不能标为全绿**。
 - npm run typecheck、npm run build、git diff --check、变更 PHP 文件 php -l 均 PASS。
 - **未进行登录真实 ERP Production 页面或真实订单的视觉/操作验收**；正式站视觉复核与生产发布均需 Owner 单独授权。
 
