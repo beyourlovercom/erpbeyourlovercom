@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Application;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
+use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
@@ -252,6 +253,26 @@ final class FulfillmentAllocationSubmissionService
         $plan['derived_orders'] = $resultOrders;
         $plan['execution_status'] = count($resultOrders) > 1 ? 'derived_orders_materialized' : 'single_order_assigned';
         $allocation->forceFill(['plan_snapshot' => $plan])->save();
+
+        // A previously rejected overseas review must not block the next Dede
+        // review after Vita has successfully reassigned the order. Its original
+        // reason/actor remain in the immutable audit event recorded on reject.
+        $review = OverseaWarehouseReview::query()
+            ->where('order_id', $order->getKey())
+            ->where('status', 'rejected')
+            ->first();
+        if ($review) {
+            $reassigned = $order->fresh('shipment');
+            $review->forceFill([
+                'status' => 'pending',
+                'progress' => 'pending_review',
+                'submitted_warehouse_id' => $reassigned?->shipment?->warehouse_id,
+                'reviewed_warehouse_id' => null,
+                'note' => null,
+                'reviewed_by' => null,
+                'reviewed_at' => null,
+            ])->save();
+        }
 
         return $allocation->fresh();
     }

@@ -463,6 +463,58 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         }
     }
 
+    public function test_rejected_oversea_order_can_be_reallocated_and_returns_to_dede_review(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-NY'], '007-OVERSEA-RETRY');
+
+        $this->actingAs($operator)->post("/logistics/oversea/orders/{$order->id}/reject", [
+            'note' => '收件资料有误，请重新核对',
+        ])->assertRedirect();
+        $this->assertDatabaseHas('audit_records', ['action' => 'oversea.review_reject']);
+        $audit = \App\Modules\Audit\Infrastructure\Models\AuditRecord::query()
+            ->where('action', 'oversea.review_reject')->firstOrFail();
+        $this->assertSame($operator->id, $audit->actor_id);
+        $this->assertSame('收件资料有误，请重新核对', $audit->after['reason']);
+
+        $this->actingAs($operator)->get('/logistics/wait-stock?rejected=1')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('rejectionCount', 1)
+                ->where('orders.total', 1)
+                ->where('orders.data.0.allocation_rejection.reason', '收件资料有误，请重新核对')
+                ->etc());
+
+        $item = $order->items()->firstOrFail();
+        $this->actingAs($operator)->postJson("/logistics/orders/{$order->id}/fulfillment-allocation/manual", [
+            'assignments' => [[
+                'order_item_id' => $item->id,
+                'source_code' => 'US-NY',
+                'carrier' => 'USPS',
+            ]],
+            'decision_note' => 'Vita 确认修改后重新分仓',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id,
+            'status' => 'pending',
+            'note' => null,
+            'reviewed_at' => null,
+            'reviewed_by' => null,
+        ]);
+        $this->actingAs($operator)->get('/logistics/wait-stock?rejected=1')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('rejectionCount', 0)
+                ->where('orders.total', 0)
+                ->etc());
+        $this->actingAs($operator)->get('/logistics/oversea/us-ny?view=review')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.order_id', $order->id)
+                ->where('rows.data.0.review_status', 'pending')
+                ->etc());
+    }
+
     public function test_export_fails_closed_with_422_for_noncanonical_order_reference(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
