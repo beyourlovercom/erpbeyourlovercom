@@ -910,7 +910,10 @@ test('R4-6 exceptions Grid has factual reasons and view-only actions with native
   await expect(grid.getByText('物流已发货，但缺少发货时间',{exact:true})).toBeVisible()
   const actions=grid.locator('.global-cell-actions')
   await expect(actions.first().getByRole('link',{name:'查看订单'})).toBeVisible()
-  await expect(actions.first().getByRole('link',{name:'查看订单'})).toHaveAttribute('href',/\/customers\/orders\/\d+/)
+  // Latest #740 KOL detail routing may point to /orders/{id}, while
+  // customer rows still use /customers/orders/{id}. Both must resolve.
+  await expect(actions.first().getByRole('link',{name:'查看订单'}))
+    .toHaveAttribute('href', /\/(?:customers\/orders|orders)\/\d+/)
   await expect(grid.getByRole('button',{name:'原操作'})).toHaveCount(0)
   await expect(grid.getByRole('button',{name:'确认发货'})).toHaveCount(0)
   await expect(page.getByTestId('domestic-native-batch-toggle')).toHaveCount(0)
