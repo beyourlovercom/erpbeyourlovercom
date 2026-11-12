@@ -19,6 +19,12 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withoutVite();
+    }
+
     public function test_all_orders_are_listed_even_without_manual_sync_and_paginated_instead_of_loaded_all(): void
     {
         $user = $this->viewer();
