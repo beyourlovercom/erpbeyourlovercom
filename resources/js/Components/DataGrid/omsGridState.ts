@@ -44,6 +44,27 @@ export function pinnedStateForVisibleColumns(
   }))
 }
 
+/**
+ * Clamp only out-of-contract saved widths to the current column definition.
+ * A previous pinned operation column could store a 350px width. Removing its
+ * lock alone would keep that width forever in the account preference.
+ * Do not change other columns or the user's chosen pin counts/order.
+ */
+export function restoreColumnWidths(
+  columns: ColumnState[],
+  limits: Record<string, { minWidth?: number; maxWidth?: number }>,
+): ColumnState[] {
+  return columns.map(column => {
+    if (typeof column.width !== 'number' || !Number.isFinite(column.width)) return column
+    const limit = limits[column.colId]
+    if (!limit) return column
+    const low = limit.minWidth ?? 65
+    const high = Math.max(low, limit.maxWidth ?? 800)
+    const width = Math.min(high, Math.max(low, column.width))
+    return width === column.width ? column : { ...column, width }
+  })
+}
+
 export function sanitizeOmsGridPreference(
   raw: unknown,
   allowedIds: string[],

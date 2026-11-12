@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampPinnedCounts, pinnedStateForVisibleColumns, sanitizeOmsGridPreference } from './omsGridState'
+import { clampPinnedCounts, pinnedStateForVisibleColumns, restoreColumnWidths, sanitizeOmsGridPreference } from './omsGridState'
 
 describe('OMS Grid preference normalization', () => {
   it('reserves a scrollable middle column and clamps invalid pin counts', () => {
@@ -37,6 +37,31 @@ describe('OMS Grid preference normalization', () => {
       {colId:'quantity',pinned:null},
       {colId:'sku',pinned:null},
     ])
+  })
+  it('allows zero pinned right columns and a hidden action without forcing it to right',()=>{
+    const state=[
+      {colId:'order',hide:false},
+      {colId:'sku',hide:false},
+      {colId:'actions',hide:false},
+    ]
+    expect(pinnedStateForVisibleColumns(state,1,0)).toEqual([
+      {colId:'order',pinned:'left'}, {colId:'sku',pinned:null}, {colId:'actions',pinned:null},
+    ])
+    expect(pinnedStateForVisibleColumns([{colId:'order',hide:false},
+      {colId:'actions',hide:true}],1,0)).toEqual([
+      {colId:'order',pinned:null}, {colId:'actions',pinned:null},
+    ])
+  })
+  it('migrates a legacy 360px pinned actions width but leaves other saved columns alone',()=>{
+    const state=[{colId:'order',width:200,hide:false},
+      {colId:'actions',width:360,hide:false},
+      {colId:'amount',width:320,hide:false}]
+    const original=JSON.stringify(state)
+    const migrated=restoreColumnWidths(state,{actions:{minWidth:100,maxWidth:130}})
+    expect(migrated.map(col=>col.width)).toEqual([200,130,320])
+    expect(JSON.stringify(state)).toBe(original)
+    expect(restoreColumnWidths(migrated,{actions:{minWidth:100,maxWidth:130}}))
+      .toEqual(migrated)
   })
   it('rejects unknown columns and extreme or invalid persisted values', () => {
     const value = sanitizeOmsGridPreference({

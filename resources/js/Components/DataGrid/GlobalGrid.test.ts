@@ -76,6 +76,37 @@ describe('Global Grid V1 cell links and actions', () => {
     }}})
     expect(good.find('a').attributes('href')).toBe('/products/4')
   })
+  it('compact action menu renders no empty buttons and calls existing guarded callback exactly once', async()=>{
+    const noAction=mount(GlobalGridCell,{props:{params:{
+      mode:'actions',compactActions:true,data:{id:1},actionsFor:()=>[],
+    }}})
+    expect(noAction.text()).toContain('—')
+    expect(noAction.findAll('button')).toHaveLength(0)
+    const spy=vi.fn()
+    const wrapper=mount(GlobalGridCell,{attachTo:document.body,props:{params:{
+      mode:'actions',compactActions:true,data:{id:2},
+      actionsFor:()=>[
+        {label:'查看',href:'/customers/orders/2'},
+        {label:'同步网站',onClick:spy},
+        {label:'禁止操作',onClick:spy,disabled:true},
+      ],
+    }}})
+    expect(wrapper.findAll('button')).toHaveLength(1)
+    expect(wrapper.get('button[aria-label="操作"]').attributes('aria-expanded')).toBe('false')
+    await wrapper.get('button[aria-label="操作"]').trigger('click')
+    expect(wrapper.get('button[aria-label="操作"]').attributes('aria-expanded')).toBe('true')
+    const menu=document.body.querySelector('.global-cell-menu') as HTMLElement
+    expect(menu).not.toBeNull()
+    expect(menu.querySelector('a')?.getAttribute('href')).toBe('/customers/orders/2')
+    const action=[...menu.querySelectorAll('button')].find(button=>button.textContent==='同步网站')
+    expect(action).toBeDefined()
+    action?.click()
+    await wrapper.vm.$nextTick()
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(document.body.querySelector('.global-cell-menu')).toBeNull()
+    wrapper.unmount()
+    noAction.unmount()
+  })
   it('renders only caller-authorized actions and dispatches button click once', async () => {
     const callback = vi.fn()
     const readOnly=mount(GlobalGridCell,{props:{params:{mode:'actions',data:{id:7},

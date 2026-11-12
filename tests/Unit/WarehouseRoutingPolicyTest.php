@@ -121,8 +121,10 @@ final class WarehouseRoutingPolicyTest extends TestCase
         foreach (['AR', 'UA', 'RU'] as $country) $this->assertSame('POSTNL international', $policy->factoryRoute($country)['carrier']);
         foreach (['TH', 'ID', 'VN'] as $country) $this->assertSame('KingTrans', $policy->factoryRoute($country)['carrier']);
 
-        $this->assertSame('4PX / 速达', $policy->displayName('4PX'));
-        $this->assertSame('Weship / 纬狮', $policy->displayName('Weship'));
+        // PR #743 approved Chinese-only display names for domestic providers;
+        // canonical carrier keys and the other international brands stay unchanged.
+        $this->assertSame('速达', $policy->displayName('4PX'));
+        $this->assertSame('纬狮', $policy->displayName('Weship'));
         $this->assertSame('POSTNL / 佰事达', $policy->displayName('POSTNL international'));
         $this->assertSame('Canada Post / 加拿大邮政', $policy->displayName('Canada Post'));
         $this->assertSame('SF Express / 顺丰速运', $policy->displayName('SF Express'));

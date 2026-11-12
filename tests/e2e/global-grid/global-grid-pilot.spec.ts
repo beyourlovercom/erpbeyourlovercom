@@ -450,7 +450,9 @@ test('R4 preference persistence: no default flash, no repeat GET and separate vi
   const stockLayout=await stock.locator('.ag-cell[col-id=actions]').first().evaluate(el=>
     ({width:el.getBoundingClientRect().width,pinned:el.classList.contains('ag-cell-first-right-pinned')}))
   expect(stockLayout.width).toBeLessThanOrEqual(148)
-  expect(stockLayout.pinned).toBe(true)
+  // The old test expected the action to remain pinned even when a saved
+  // layout put it in the middle. G removes this forced lock intentionally.
+  expect(stockLayout.pinned).toBe(false)
   expect(getCount).toBe(1)
   expect(putCount).toBe(0)
   // The first load just seeded the scoped local cache. Repeat reloads must
@@ -908,7 +910,10 @@ test('R4-6 exceptions Grid has factual reasons and view-only actions with native
   await expect(grid.getByText('物流已发货，但缺少发货时间',{exact:true})).toBeVisible()
   const actions=grid.locator('.global-cell-actions')
   await expect(actions.first().getByRole('link',{name:'查看订单'})).toBeVisible()
-  await expect(actions.first().getByRole('link',{name:'查看订单'})).toHaveAttribute('href',/\/customers\/orders\/\d+/)
+  // Latest #740 KOL detail routing may point to /orders/{id}, while
+  // customer rows still use /customers/orders/{id}. Both must resolve.
+  await expect(actions.first().getByRole('link',{name:'查看订单'}))
+    .toHaveAttribute('href', /\/(?:customers\/orders|orders)\/\d+/)
   await expect(grid.getByRole('button',{name:'原操作'})).toHaveCount(0)
   await expect(grid.getByRole('button',{name:'确认发货'})).toHaveCount(0)
   await expect(page.getByTestId('domestic-native-batch-toggle')).toHaveCount(0)
@@ -956,12 +961,27 @@ test('R4-7A 速达历史 Global Grid all-state scope and direct authorized inlin
   await expect(page.locator('.domestic-grid-legacy-tools')).toHaveCount(0)
   await expect(page.getByTestId('domestic-native-batch-toggle')).toHaveCount(0)
   await expect(page.locator('input[type="file"]')).toHaveCount(0)
-  // The already-proven pending inline renderer is used directly, with the
-  // same backend review, carrier, tracking and shipping eligibility gates.
-  const inline=grid.locator('.domestic-pending-actions')
-  await expect(inline.first()).toBeVisible()
-  await expect(inline.getByRole('button',{name:'填写物流'}).first()).toBeVisible()
-  await inline.getByRole('button',{name:'填写物流'}).first().click()
+  // G-P0: the historical view defaults to zero pinned-right columns.
+  // For this operation coverage explicitly opt back into 1 pinned column.
+  await grid.getByRole('button',{name:'⚙ 列设置'}).click()
+  await grid.getByRole('button',{name:'恢复默认'}).click()
+  const rightPin=grid.locator('.oms-pin-row label').filter({hasText:'右侧固定'}).locator('input')
+  await expect(rightPin).toHaveValue('0')
+  // Explicitly put Action at the far right. It is now user-reorderable,
+  // rather than forcibly moved back regardless of chosen column order.
+  await grid.locator('.oms-column-row').filter({hasText:'操作'})
+    .dragTo(grid.locator('.oms-column-row').last())
+  await rightPin.fill('1')
+  await rightPin.press('Tab')
+  await grid.getByRole('button',{name:'关闭列设置'}).click()
+  // G-P1: compact menu is only presentation; it delegates to the same
+  // already-guarded pending review, carrier and shipping API callbacks.
+  const inline=grid.locator('.ag-cell[col-id="actions"].ag-cell-first-right-pinned .domestic-pending-actions button[aria-label="操作"]').first()
+  await expect(inline).toBeVisible()
+  await inline.click()
+  const menu=page.getByRole('group',{name:'订单操作'})
+  await expect(menu.getByRole('button',{name:'填写物流'})).toBeVisible()
+  await menu.getByRole('button',{name:'填写物流'}).click()
   const popup=page.getByTestId('domestic-pending-popover')
   await expect(popup).toBeVisible()
   await expect(popup.getByRole('button',{name:'确认发货'})).toBeDisabled()
@@ -985,4 +1005,92 @@ test('R4-7A 速达历史 Global Grid all-state scope and direct authorized inlin
   await expect(page).toHaveURL(/global_grid=0/)
   await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toHaveCount(0)
   console.log('R4_7A_SPEEDA_HISTORY_DIRECT_INLINE_ACTION_AND_NATIVE_FALLBACK_PASS')
+})
+
+
+test('G-P0/G-P2 operator can unpin and hide Action, legacy width migrates and layout survives reload',async({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().logisticsOperator)
+  await page.goto('/logistics/china?view=4px',{waitUntil:'domcontentloaded'})
+  const grid=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
+  await grid.getByRole('button',{name:'⚙ 列设置'}).click()
+  await grid.getByRole('button',{name:'恢复默认'}).click()
+  const pins=grid.locator('.oms-pin-row label').filter({hasText:'右侧固定'}).locator('input')
+  await expect(pins).toHaveValue('0')
+  const actionLine=grid.locator('.oms-column-row').filter({hasText:'操作'})
+  const checkbox=actionLine.locator('input[type="checkbox"]')
+  await expect(checkbox).toBeEnabled()
+  await expect(checkbox).toBeChecked() // 恢复默认 must re-show the operation column
+  await actionLine.dragTo(grid.locator('.oms-column-row').last())
+  await pins.fill('1')
+  await pins.press('Tab')
+  await expect(pins).toHaveValue('1')
+  const actionCell=grid.locator('.ag-cell[col-id="actions"].ag-cell-first-right-pinned').first()
+  await expect(actionCell).toBeVisible()
+  let width=await actionCell.evaluate(node=>node.getBoundingClientRect().width)
+  expect(width).toBeLessThanOrEqual(130)
+
+  // Emulate legacy layout saved by the prior locked 350-390px operation column.
+  const key=await page.evaluate(()=>Object.keys(localStorage).find(k=>k.endsWith(':grid.logistics.domestic.4px.global.v1')))
+  expect(key).toBeTruthy()
+  await page.evaluate(storageKey=>{
+    const saved=JSON.parse(localStorage.getItem(storageKey!)??'{}')
+    const actions=saved.columns?.find((column:{colId:string})=>column.colId==='actions')
+    if(actions)actions.width=360
+    saved.pinnedRight=1
+    localStorage.setItem(storageKey!,JSON.stringify(saved))
+  },key)
+  await page.reload({waitUntil:'domcontentloaded'})
+  const reopened=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(reopened.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
+  const corrected=reopened.locator('.ag-cell[col-id="actions"].ag-cell-first-right-pinned').first()
+  await expect(corrected).toBeVisible()
+  width=await corrected.evaluate(node=>node.getBoundingClientRect().width)
+  expect(width).toBeLessThanOrEqual(130)
+  await reopened.getByRole('button',{name:'⚙ 列设置'}).click()
+  const newPins=reopened.locator('.oms-pin-row label').filter({hasText:'右侧固定'}).locator('input')
+  await newPins.fill('0')
+  await newPins.press('Tab')
+  await expect(newPins).toHaveValue('0')
+  const actionOption=reopened.locator('.oms-column-row').filter({hasText:'操作'}).locator('input[type="checkbox"]')
+  await actionOption.uncheck()
+  await expect(actionOption).not.toBeChecked()
+  await expect(reopened.locator('.ag-cell[col-id="actions"].ag-cell-first-right-pinned')).toHaveCount(0)
+  await reopened.getByRole('button',{name:'关闭列设置'}).click()
+  await page.reload({waitUntil:'domcontentloaded'})
+  const afterReload=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(afterReload.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
+  await afterReload.getByRole('button',{name:'⚙ 列设置'}).click()
+  await expect(afterReload.locator('.oms-pin-row label').filter({hasText:'右侧固定'}).locator('input')).toHaveValue('0')
+  await expect(afterReload.locator('.oms-column-row').filter({hasText:'操作'}).locator('input[type="checkbox"]')).not.toBeChecked()
+  // Reset synthetic account preference after verification: future tests should
+  // not inherit a hidden action column.
+  await afterReload.getByRole('button',{name:'恢复默认'}).click()
+  await expect(afterReload.locator('.oms-pin-row label').filter({hasText:'右侧固定'}).locator('input')).toHaveValue('0')
+  console.log('G_PIN_0_HIDE_OPERATION_WIDTH_MIGRATION_AND_PERSISTENCE_PASS')
+})
+
+test('G-P3 sync all orders permits right pinned zero and optional actions without losing progress state',async({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().authorized)
+  await page.goto('/sync/orders',{waitUntil:'domcontentloaded'})
+  const grid=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(grid).toBeVisible({timeout:18000})
+  await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
+  await grid.getByRole('button',{name:'⚙ 列设置'}).click()
+  const right=grid.locator('.oms-pin-row label').filter({hasText:'右侧固定'}).locator('input')
+  await right.fill('0')
+  await right.press('Tab')
+  await expect(right).toHaveValue('0')
+  await expect(grid.locator('.oms-column-row').filter({hasText:'操作'}).locator('input')).toBeEnabled()
+  await expect(grid.locator('.oms-column-row').filter({hasText:'同步进度'}).locator('input')).toBeEnabled()
+  await expect(grid.locator('.ag-cell[col-id="actions"].ag-cell-first-right-pinned')).toHaveCount(0)
+  await grid.getByRole('button',{name:'关闭列设置'}).click()
+  await page.reload({waitUntil:'domcontentloaded'})
+  await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
+  await grid.getByRole('button',{name:'⚙ 列设置'}).click()
+  await expect(grid.locator('.oms-pin-row label').filter({hasText:'右侧固定'}).locator('input')).toHaveValue('0')
+  await grid.getByRole('button',{name:'恢复默认'}).click()
+  console.log('G_SYNC_RIGHT_ZERO_NO_LOCK_AND_PROGRESS_UNCHANGED_PASS')
 })

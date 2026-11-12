@@ -12,7 +12,7 @@ import {
   CellStyleModule, LocaleModule, ModuleRegistry, themeBalham,
   type ColDef, type ColGroupDef, type ColumnState, type GridApi, type GridReadyEvent, type SortChangedEvent,
 } from 'ag-grid-community'
-import { clampPinnedCounts, pinnedStateForVisibleColumns, sanitizeOmsGridPreference, type OmsDensity, type OmsGridPreference } from './omsGridState'
+import { clampPinnedCounts, pinnedStateForVisibleColumns, restoreColumnWidths, sanitizeOmsGridPreference, type OmsDensity, type OmsGridPreference } from './omsGridState'
 
 // Only register features used by the shared table. Unused AG Grid community
 // editors, infinite models and optional modules stay out of its lazy chunk.
@@ -279,6 +279,15 @@ const applyPins = () => {
   api.value.applyColumnState({ state: pinned })
   refresh()
 }
+// Header pin/unpin through AG Grid also updates the numeric settings and
+// the stored account preference, not just the column's transient CSS state.
+const onColumnPinned = () => {
+  if (restoring || !api.value || !layoutReady.value) return
+  const visible = api.value.getColumnState().filter(column => !column.hide)
+  pinnedLeft.value = visible.filter(column => column.pinned === 'left').length
+  pinnedRight.value = visible.filter(column => column.pinned === 'right').length
+  scheduleSave()
+}
 const changePins = () => {
   restoring = true
   applyPins()
@@ -292,7 +301,10 @@ const restore = (value: OmsGridPreference) => {
   if (!props.serverPagination) pageSize.value = value.pageSize
   pinnedLeft.value = value.pinnedLeft
   pinnedRight.value = value.pinnedRight
-  const state = value.columns.map(col => ({
+  const limits = Object.fromEntries(leafColumns.value.map(col => [
+    col.colId ?? col.field ?? '', { minWidth: col.minWidth, maxWidth: col.maxWidth },
+  ]))
+  const state = restoreColumnWidths(value.columns, limits).map(col => ({
     ...col,
     hide: required.value.has(col.colId) ? false : col.hide,
     sort: props.serverPagination
@@ -386,18 +398,35 @@ const resetGrid = () => {
   if (!api.value) return
   restoring = true
   api.value.resetColumnState()
+  // AG Grid's resetColumnState can retain a previously hidden column when a
+  // locked pinned column becomes freely movable. "恢复默认" must explicitly
+  // restore original per-definition visibility before recomputing pins.
+  api.value.applyColumnState({ state: leafColumns.value.map(column => ({
+    colId: column.colId ?? column.field ?? '',
+    hide: column.hide === true,
+  })).filter(column => column.colId) })
   api.value.setFilterModel(null)
   api.value.setGridOption('quickFilterText', '')
   query.value = ''
   density.value = 'compact'
   pageSize.value = 50
   if (!props.serverPagination) api.value.setGridOption('paginationPageSize', 50)
-  else emit('page-size-change', 50)
   pinnedLeft.value = props.defaultPinnedLeft
   pinnedRight.value = props.defaultPinnedRight
   applyPins()
+  // Explicit Grid API visibility is needed for formerly lockVisible columns:
+  // resetting their state and pinning alone does not always re-show them.
+  api.value.setColumnsVisible(leafColumns.value
+    .filter(column => column.hide !== true)
+    .map(column => column.colId ?? column.field ?? '').filter(Boolean), true)
   restoring = false
+  // Commit the preference cache BEFORE a real server-page navigation.
+  // Previously every reset emitted page-size-change(50), including when
+  // already 50, immediately reloading an obsolete server-saved layout.
   scheduleSave()
+  if (props.serverPagination && (props.serverPagination.page_size_mode ?? props.serverPagination.per_page) !== 50) {
+    emit('page-size-change', 50)
+  }
 }
 const changePageSize = (event: Event) => {
   const selector = event.target as HTMLSelectElement
@@ -504,7 +533,7 @@ onBeforeUnmount(() => {
           @column-moved="scheduleSave"
           @column-resized="scheduleSave"
           @column-visible="scheduleSave"
-          @column-pinned="scheduleSave"
+          @column-pinned="onColumnPinned"
           @sort-changed="onSortChanged"
           @filter-changed="onFiltered"
           @model-updated="() => { onFiltered(); restoreSelections() }"
@@ -532,9 +561,13 @@ onBeforeUnmount(() => {
           <small>不包含独立的勾选列；始终保留中间滚动区域。</small>
         </div>
         <div class="oms-column-list">
-          <label v-for="(column, index) in orderedColumns" :key="column.colId" class="oms-column-row" draggable="true" @dragstart="startDrag($event, column.colId)" @dragover.prevent @drop="dropColumn($event, column.colId)">
-            <span class="oms-drag">⋮⋮</span><input type="checkbox" :checked="!column.hide" :disabled="required.has(column.colId)" @change="toggleColumn(column.colId, ($event.target as HTMLInputElement).checked)" /><span>{{ names.get(column.colId) || column.colId }}</span><small>{{ index < pinnedLeft && !column.hide ? '左固定' : !column.hide && index >= orderedColumns.length - pinnedRight ? '右固定' : '' }}</small>
-          </label>
+          <div v-for="column in orderedColumns" :key="column.colId" class="oms-column-row" draggable="true" @dragstart="startDrag($event, column.colId)" @dragover.prevent @drop="dropColumn($event, column.colId)">
+            <span class="oms-drag" aria-hidden="true">⋮⋮</span>
+            <input type="checkbox" :aria-label="'显示'+(names.get(column.colId)||column.colId)"
+              :checked="!column.hide" :disabled="required.has(column.colId)" @change="toggleColumn(column.colId, ($event.target as HTMLInputElement).checked)" />
+            <span>{{ names.get(column.colId) || column.colId }}</span>
+            <small>{{ column.pinned === 'left' ? '左固定' : column.pinned === 'right' ? '右固定' : '' }}</small>
+          </div>
         </div>
         <div class="oms-side-bottom"><button type="button" @click="resetGrid">恢复默认</button><button class="primary" type="button" @click="settingsOpen = false">完成</button></div>
       </aside>

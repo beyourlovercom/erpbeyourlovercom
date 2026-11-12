@@ -153,7 +153,7 @@ const columnFilterValues = computed(() =>
     preference-scope="account"
     :default-pinned-left="1"
     :default-pinned-right="1"
-    :required-column-ids="['order_number', 'actions']"
+    :required-column-ids="['order_number']"
     row-identity-key="_oms_line_key"
     selection-order-key="id"
     :selected-order-ids="selectedOrderIds"

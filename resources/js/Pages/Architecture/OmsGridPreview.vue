@@ -126,7 +126,7 @@ const importCsv = async (event: Event) => {
         :rows="orders"
         :default-pinned-left="2"
         :default-pinned-right="1"
-        :required-column-ids="['orderNumber', 'actions']"
+        :required-column-ids="['orderNumber']"
         @selection-change="selectedCount = $event.length"
       >
         <template #actions>

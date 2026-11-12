@@ -154,7 +154,7 @@ const logistics = (order: ProcurementRow) => {
         <GlobalGrid namespace="grid.procurement.orders.global.v1" title="采购订单 · Global Grid V1"
           :columns="globalColumns" :rows="globalRows" :page="gridPager"
           :search="filters.search ?? ''" search-placeholder="搜索全部采购单 / 订单号 / SKU / 商品..."
-          :required-column-ids="['procurement','order_number','actions']"
+          :required-column-ids="['procurement','order_number']"
           @page-change="globalGridPage" @page-size-change="globalGridPageSize" @search-change="globalGridSearch"/>
       </div>
       <div v-else class="mvp-card purchase-table-wrap desktop-list">
