@@ -6,6 +6,8 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
+use App\Modules\Kol\Application\Contracts\WooCouponSettingsGateway;
+use App\Modules\Kol\Infrastructure\WooCommerce\LocalUatWooCouponSettingsGateway;
 use App\Modules\Kol\Infrastructure\AffiliateWp\LocalUatAffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
@@ -19,6 +21,12 @@ use Tests\TestCase;
 class KolFoundationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withoutVite();
+    }
 
     private function userWith(array $permissions): User
     {
@@ -51,6 +59,7 @@ class KolFoundationTest extends TestCase
             'kol.create_auto_provision.coupon_expiry' => null,
         ]);
         $this->app->instance(AffiliateWpGateway::class, new LocalUatAffiliateWpGateway);
+        $this->app->instance(WooCouponSettingsGateway::class, new LocalUatWooCouponSettingsGateway);
     }
 
     private function makeKol(array $attrs = []): Kol
@@ -261,6 +270,7 @@ class KolFoundationTest extends TestCase
             'wordpress_password' => 'StrongPassword123',
             'wordpress_password_confirmation' => 'StrongPassword123',
             'affiliate_coupon_code' => 'ADMIN15',
+            'kol_profile_url' => 'https://www.instagram.com/admin-new-kol/',
             'social_accounts' => [],
         ])->assertRedirect();
 
@@ -282,6 +292,7 @@ class KolFoundationTest extends TestCase
             'wordpress_password' => 'StrongPassword123',
             'wordpress_password_confirmation' => 'StrongPassword123',
             'affiliate_coupon_code' => 'SPECIAL15',
+            'kol_profile_url' => 'https://www.instagram.com/specialist-new-kol/',
             'social_accounts' => [],
         ])->assertRedirect();
 

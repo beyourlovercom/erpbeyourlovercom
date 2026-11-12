@@ -7,6 +7,8 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Kol\Application\AffiliateWp\ConnectorResponse;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
+use App\Modules\Kol\Application\Contracts\WooCouponSettingsGateway;
+use App\Modules\Kol\Infrastructure\WooCommerce\LocalUatWooCouponSettingsGateway;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateCoupon;
@@ -25,6 +27,8 @@ final class KolEditAccountCardTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->withoutVite();
+        $this->app->instance(WooCouponSettingsGateway::class, new LocalUatWooCouponSettingsGateway);
         config([
             'services.andy_core.connection_key' => self::CONNECTION,
             'kol.create_auto_provision.coupon_discount_type' => 'percent',
@@ -146,14 +150,14 @@ final class KolEditAccountCardTest extends TestCase
                 'affiliate_url_slug' => 'editor-choice',
             ], 'affiliate-created'));
         $mock->shouldReceive('provisionCoupon')->once()
-            ->andReturn($this->response([
+            ->andReturnUsing(fn (array $payload) => $this->response([
                 'coupon_id' => 92001,
                 'code' => 'EXISTING15',
                 'normalized_code' => 'existing15',
                 'affiliate_id' => 82001,
                 'discount_type' => 'percent',
                 'amount' => '15',
-                'date_expires' => null,
+                'date_expires' => $payload['expiry'],
             ], 'coupon-created'));
 
         $this->actingAs($user)->postJson("/kol/library/{$kol->id}/affiliate-account", [
@@ -163,6 +167,7 @@ final class KolEditAccountCardTest extends TestCase
             'wordpress_username' => 'editor-choice',
             'affiliate_name' => 'Edited Affiliate Name',
             'affiliate_url_slug' => 'editor-choice',
+            'kol_profile_url' => 'https://www.instagram.com/existing-kol/',
         ])->assertOk()->assertJsonPath('success', true)
             ->assertJsonPath('affiliate_account.wordpress_user_id', 72001)
             ->assertJsonPath('affiliate_account.affiliate_id', 82001)

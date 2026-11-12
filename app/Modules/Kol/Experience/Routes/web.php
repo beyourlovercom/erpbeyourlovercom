@@ -29,6 +29,7 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
     Route::get('/kol/library/{kol}/edit', [KolController::class, 'edit'])->middleware('can:kol.operate')->name('kol.library.edit');
     Route::patch('/kol/library/{kol}', [KolController::class, 'update'])->middleware('can:kol.operate')->name('kol.library.update');
     Route::post('/kol/library/{kol}/affiliate-account', [KolController::class, 'provisionAffiliateAccount'])->middleware('can:kol.operate')->name('kol.library.affiliate-account.store');
+    Route::patch('/kol/library/{kol}/affiliate-coupon', [KolController::class, 'updateAffiliateCoupon'])->middleware('can:kol.operate')->name('kol.library.affiliate-coupon.update');
     Route::post('/kol/library/{kol}/wordpress-password', [KolController::class, 'updateWordpressPassword'])->middleware('can:kol.operate')->name('kol.library.wordpress-password.update');
     Route::post('/kol/library/{kol}/avatar', [KolController::class, 'uploadAvatar'])->middleware('can:kol.operate')->name('kol.library.avatar');
     Route::post('/kol/library/{kol}/opportunities', [KolOpportunityController::class, 'store'])->middleware('can:kol.operate')->name('kol.library.opportunities.store');

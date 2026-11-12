@@ -3,6 +3,7 @@
 namespace App\Modules\Kol\Application\AffiliateWp;
 
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
+use App\Modules\Kol\Application\Contracts\WooCouponSettingsGateway;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -18,7 +19,10 @@ final class CouponProvisioningService
     private const KOL = 'App\\Modules\\Kol\\Infrastructure\\Models\\Kol';
     private const RETRYABLE = ['error', 'conflict', 'readback_mismatch', 'in_progress'];
 
-    public function __construct(private readonly AffiliateWpGateway $gateway) {}
+    public function __construct(
+        private readonly AffiliateWpGateway $gateway,
+        private readonly WooCouponSettingsGateway $wooCouponSettings,
+    ) {}
 
     /** @param array{kol_id:int,code:string,discount_type:string,amount:string,expiry:?string} $input */
     public function provision(string $connectionKey, array $input, Authenticatable $actor): Model
@@ -117,7 +121,8 @@ final class CouponProvisioningService
             'amount' => $amount,
             'expiry' => $expiry,
         ];
-
+        // Keep the frozen Andy Core connector contract unchanged (six fields).
+        // The profile URL goes to WooCommerce's native coupon REST endpoint AFTER creation.
         try {
             $response = $this->gateway->provisionCoupon($payload, $key);
         } catch (RuntimeException $exception) {
@@ -127,7 +132,11 @@ final class CouponProvisioningService
             return $row->fresh();
         }
 
-        return $this->finalize($row, $payload, $response->data);
+        $finalized = $this->finalize($row, $payload, $response->data);
+        if ($finalized->provisioning_status !== 'active' || ! $kol->kol_profile_url) {
+            return $finalized;
+        }
+        return $this->syncCouponSettings($finalized, $kol, (string) $kol->kol_profile_url, substr((string) $expiry, 0, 10));
     }
 
     private function finalize(Model $row, array $payload, mixed $data): Model
@@ -163,6 +172,88 @@ final class CouponProvisioningService
             'last_error_code' => null,
             'last_error_message' => null,
         ]);
+        return $row->fresh();
+    }
+
+    /**
+     * Write only the existing provider Coupon's Description and local expiry date.
+     * Can also repair a previously failed metadata sync, without recreating a Coupon.
+     */
+    public function updateBoundSettings(Model $kol, string $profileUrl, string $expiryDate): Model
+    {
+        if ($kol->archived_at !== null) {
+            throw new DomainException('Archived KOL cannot change WooCommerce coupon settings.');
+        }
+        $connectionKey = trim((string) config('services.andy_core.connection_key', 'beyourlover.com'));
+        if ($connectionKey === '' || $connectionKey !== trim((string) config('services.woocommerce.connection_key'))) {
+            throw new DomainException('WooCommerce and Affiliate connector connection keys do not match.');
+        }
+        $accountClass = self::ACCOUNT;
+        $account = $accountClass::query()
+            ->where('connection_key', $connectionKey)
+            ->where('kol_id', $kol->getKey())
+            ->where('reconciliation_status', 'present')
+            ->whereNotNull('affiliate_id')->first();
+        $couponClass = self::COUPON;
+        $coupon = $couponClass::query()
+            ->where('connection_key', $connectionKey)->where('kol_id', $kol->getKey())
+            ->whereNotNull('coupon_id')->orderByDesc('id')->first();
+        if (! $account || ! $coupon || (int) $coupon->affiliate_id !== (int) $account->affiliate_id) {
+            throw new DomainException('Exact KOL Affiliate/Coupon binding is missing or inconsistent.');
+        }
+
+        $updated = $this->syncCouponSettings($coupon, $kol, $profileUrl, $expiryDate);
+        if ($updated->provisioning_status !== 'active') {
+            throw new DomainException('WooCommerce Coupon update was not verified; no ERP profile changes were saved. '.$updated->last_error_code);
+        }
+        $kol->update(['kol_profile_url' => $profileUrl]);
+
+        return $updated->fresh();
+    }
+
+    private function syncCouponSettings(Model $row, Model $kol, string $url, string $date): Model
+    {
+        try {
+            $connectorKey = trim((string) config('services.andy_core.connection_key', 'beyourlover.com'));
+            $wooKey = trim((string) config('services.woocommerce.connection_key'));
+            if ($connectorKey === '' || $wooKey === '' || $connectorKey !== $wooKey || $row->connection_key !== $connectorKey) {
+                throw new RuntimeException('WooCommerce and Affiliate connector identities must match before Coupon write.');
+            }
+            if ((int) $row->coupon_id < 1 || $date === '') {
+                throw new RuntimeException('Missing authoritative Coupon ID or expiry date for metadata sync.');
+            }
+            $result = $this->wooCouponSettings->sync(
+                (int) $row->coupon_id,
+                (string) $row->code,
+                (int) $row->affiliate_id,
+                $url,
+                $date,
+            );
+            if ((int) ($result['coupon_id'] ?? 0) !== (int) $row->coupon_id
+                || (string) ($result['description'] ?? '') !== $url
+                || (string) ($result['date_expires'] ?? '') !== $date) {
+                throw new RuntimeException('Coupon metadata gateway read-back did not match exact values.');
+            }
+            $row->update([
+                // Local calendar date shown in the existing KOL editor.
+                'date_expires' => $date.' 23:59:59',
+                'provisioning_status' => 'active',
+                'sync_status' => 'synced',
+                'last_successful_sync_at' => now(),
+                'last_error_code' => null,
+                'last_error_message' => null,
+            ]);
+        } catch (\Throwable $error) {
+            // The provider Coupon already exists, possibly including a successful
+            // timed-out PUT. Never retry the creation endpoint for this failure.
+            $row->update([
+                'provisioning_status' => 'metadata_sync_failed',
+                'sync_status' => 'error',
+                'last_error_code' => 'WOO_COUPON_METADATA_SYNC_FAILED',
+                'last_error_message' => mb_substr($error->getMessage(), 0, 500),
+            ]);
+        }
+
         return $row->fresh();
     }
 

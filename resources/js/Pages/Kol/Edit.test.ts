@@ -82,7 +82,31 @@ describe('Kol/Edit VI contract', () => {
     expect(card.find('input[autocomplete="username"]').exists()).toBe(true)
     expect(card.find('input[placeholder="默认与 Username 相同"]').exists()).toBe(true)
     expect(card.find('input[placeholder="推广链接标识"]').exists()).toBe(true)
-    expect(card.findAll('.kol-credential-rows > .erp-form-field')).toHaveLength(5)
+    expect(card.findAll('.kol-credential-rows > .erp-form-field')).toHaveLength(7)
+    expect(card.find('input[placeholder="https://www.instagram.com/username/"]').exists()).toBe(true)
+    expect(card.text()).toContain('Code 有效期')
+  })
+
+  it('offers an explicit WooCommerce Description/expiry editor only for a bound coupon', () => {
+    const wrapper = mount(Edit, { props: {
+      ...defaultProps,
+      kol: { ...baseKol, kol_profile_url: 'https://www.instagram.com/creator/' },
+      affiliateAccount: {
+        connection_key: 'beyourlover.com', affiliate_id: 7, wordpress_user_id: 8,
+        wordpress_user_login: 'creator', affiliate_name: 'Creator',
+        affiliate_url_slug: 'creator', affiliate_referral_url: null,
+        wordpress_user_email: 'creator@example.test', provider_status: 'active',
+        provisioning_status: 'active', sync_status: 'synced',
+        reconciliation_status: 'present', last_successful_sync_at: null, last_error_code: null,
+        coupon: { coupon_id: 42, code: 'CREATOR20', date_expires: '2029-07-21T23:59:59Z', provider_status: 'active', provisioning_status: 'active', sync_status: 'synced' },
+      },
+    } })
+    const editor = wrapper.find('.kol-bound-coupon-edit')
+    expect(editor.exists()).toBe(true)
+    expect((editor.find('input[type="date"]').element as HTMLInputElement).value).toBe('2029-07-21')
+    expect(editor.text()).toContain('保存到 WooCommerce')
+    expect(wrapper.text()).toContain('Description')
+    expect(wrapper.text()).not.toContain('WordPress 后台单独调整')
   })
 
   it('uses erp-form-page wrapper — no mvp-page', () => {
