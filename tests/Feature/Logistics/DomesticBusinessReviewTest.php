@@ -438,6 +438,22 @@ final class DomesticBusinessReviewTest extends TestCase
         ]);
     }
 
+    public function test_domestic_grid_kol_order_uses_kind_aware_detail_route(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $actor = $this->userWith(['logistics.view', 'orders.view', 'kol.view', 'kol.views.manage']);
+        $order = $this->order();
+        $order->forceFill(['order_kind' => OrderKind::KolFulfillment])->save();
+
+        $this->actingAs($actor)->get('/logistics/china?view=review')->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.order_url', '/orders/'.$order->id));
+        $this->actingAs($actor)->get('/orders/'.$order->id)
+            ->assertRedirect('/kol/orders/'.$order->id);
+    }
+
     private function userWith(array $permissions): User
     {
         $role = Role::query()->create(['key' => 'review-test-'.uniqid(), 'label' => 'Review Test']);

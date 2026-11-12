@@ -13,6 +13,13 @@ final class KolLogisticsReadOnlyTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+    }
+
     public function test_specialist_sees_only_own_kol_tracking_and_no_customer_pii(): void
     {
         $emma = $this->userWith(['kol.view', 'orders.view']);
@@ -123,6 +130,27 @@ final class KolLogisticsReadOnlyTest extends TestCase
             ->assertOk()->assertInertia(fn ($page) => $page->where('orders.total', 1));
         $this->actingAs($emma)->get('/kol/logistics?search='.$foreign->external_order_number)
             ->assertOk()->assertInertia(fn ($page) => $page->where('orders.total', 0));
+    }
+
+    public function test_archived_and_trashed_kol_orders_never_appear_in_logistics(): void
+    {
+        $manager = $this->userWith(['kol.view', 'orders.view', 'kol.views.manage']);
+        $active = $this->order($manager, 'kol_fulfillment', 'active');
+        $operational = $this->order($manager, 'kol_fulfillment', 'op-archived');
+        $operational->forceFill(['operational_archived_at' => now()])->save();
+        $preserved = $this->order($manager, 'kol_fulfillment', 'trash-archived');
+        $preserved->forceFill(['archived_at' => now()])->save();
+        $trashed = $this->order($manager, 'kol_fulfillment', 'trashed');
+        $trashed->delete();
+
+        $this->actingAs($manager)->get('/kol/logistics')->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('orders.total', 1)
+                ->where('orders.data.0.id', $active->id));
+        foreach ([$operational, $preserved, $trashed] as $excluded) {
+            $this->actingAs($manager)->get('/kol/logistics?search=dbid:'.$excluded->id)
+                ->assertOk()->assertInertia(fn ($page) => $page->where('orders.total', 0));
+        }
     }
 
     private function userWith(array $keys): User
