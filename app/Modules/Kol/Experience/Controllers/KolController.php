@@ -434,7 +434,9 @@ final class KolController
         }
 
         return response()->json([
-            'message' => 'WooCommerce 优惠码 Description 和有效期已通过原生 API 回读验证。',
+            'message' => app()->environment(['local', 'testing']) && (bool) config('services.andy_core.uat_fake', false)
+                ? '本地 UAT 模拟同步成功（未调用真实 WooCommerce API）。'
+                : 'WooCommerce 优惠码 Description 和有效期已通过原生 API 回读验证。',
             'success' => true,
             'affiliate_account' => $this->affiliateAccountData($kol->fresh()),
             'kol_profile_url' => $kol->fresh()->kol_profile_url,

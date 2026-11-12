@@ -69,6 +69,7 @@ final class KolCouponSettingsHttpTest extends TestCase
 
     public function test_exact_bound_coupon_update_writes_two_fields_without_new_coupon(): void
     {
+        config(['services.andy_core.uat_fake' => true]);
         $user = $this->actor();
         [$kol, $coupon] = $this->bound($user);
         $mock = Mockery::mock(WooCouponSettingsGateway::class);
@@ -81,6 +82,7 @@ final class KolCouponSettingsHttpTest extends TestCase
             ->patchJson("/kol/library/{$kol->id}/affiliate-coupon", $this->body())
             ->assertOk()
             ->assertJsonPath('success', true)
+            ->assertJsonPath('message', '本地 UAT 模拟同步成功（未调用真实 WooCommerce API）。')
             ->assertJsonPath('affiliate_account.coupon.code', 'CREATOR20')
             ->assertJsonPath('kol_profile_url', 'https://www.instagram.com/new/');
         self::assertSame('2030-12-31', $coupon->fresh()->date_expires?->format('Y-m-d'));
