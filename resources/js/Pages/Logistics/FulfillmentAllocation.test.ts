@@ -139,6 +139,37 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe('Rejected overseas legacy allocation compatibility', () => {
+  it('treats a rejected but historically submitted order as actionable, not processed', async () => {
+    const returned = {
+      ...processedOrder,
+      id: 81,
+      erp_order_id: '007-REJECTED-SUBMITTED',
+      allocation_rejection: { source:'海外仓', reason:'仓库要求重新分仓', by:'Dede', at:null },
+    }
+    const wrapper = mountPage({
+      ...props,
+      orders: { ...props.orders, data:[returned], total:1 },
+      pendingTotal:1,
+      rejectionCount:1,
+      rejectionFilter:true,
+      rejectionNoticeVersion:'legacy-submitted-rejection',
+      globalGridPilotEnabled:false,
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="allocation-rejected-tab"]').text()).toContain('1')
+    expect(wrapper.findAll('.allocation-table tbody tr')).toHaveLength(1)
+    expect(wrapper.find('.allocation-table tbody tr').text()).toContain('仓库要求重新分仓')
+    expect(wrapper.find('.allocation-table .sticky-action button').text()).toBe('查看方案')
+    await wrapper.find('.allocation-table .sticky-action button').trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain('⚠ 已驳回：仓库要求重新分仓')
+    expect(document.body.textContent).toContain('确认人工分配并提交')
+    expect(document.body.textContent).not.toContain('分仓已完成')
+    wrapper.unmount()
+  })
+})
+
 describe('Vita Fulfillment Allocation V1.1', () => {
   it('reuses Global Grid multi-selection and batch footer, with a second explicit confirmation', async () => {
     const fetchSpy = vi.fn().mockResolvedValue({

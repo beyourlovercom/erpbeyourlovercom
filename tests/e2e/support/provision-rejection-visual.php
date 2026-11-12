@@ -51,6 +51,11 @@ DB::transaction(static function () use ($owner, $product, $domestic, $overseas):
         'order_date'=>now()->subDays(2)->toDateString(),
     ])->save();
     $overseas->forceFill(['order_date'=>now()->subDays(3)->toDateString()])->save();
+    $overseas->shipment()->create(['warehouse_id'=>null, 'shipment_status'=>'pending']);
+    $overseas->fulfillmentAllocation()->create([
+        'status'=>'submitted', 'decision_source'=>'manual', 'submitted_by'=>$owner->id,
+        'submitted_at'=>now()->subHours(1),
+    ]);
     OverseaWarehouseReview::query()->create([
         'order_id'=>$overseas->id,
         'status'=>'rejected',

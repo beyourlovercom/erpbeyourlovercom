@@ -201,7 +201,11 @@ const selectedStockWarnings = computed(() => {
   }))
 })
 
-const processed = (order:Order) => Boolean(order.fulfillment_allocation?.status === 'submitted' || localSubmitted[order.id])
+// An overseas rejection revokes the *effective* completion state even when
+// historical fulfillment_allocations.status still says submitted. Keep a
+// successful local reallocation processed until the refreshed server page lands.
+const processed = (order:Order) => Boolean(localSubmitted[order.id]
+  || (order.fulfillment_allocation?.status === 'submitted' && !order.allocation_rejection))
 const hasGift = (order:Order) => order.items.some(item => item.is_gift)
 const guidanceById = computed(() => new Map(props.orders.data.map(order =>
   [order.id, allocationGuidance(order, props.warehouses, processed(order))] as const)))

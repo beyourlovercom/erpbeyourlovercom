@@ -565,6 +565,12 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $operator = $this->userWith(['logistics.view', 'logistics.operate']);
         $warehouses = $this->warehouses();
         $order = $this->orderAt($warehouses['US-NY'], '007-OVERSEA-RETRY');
+        $this->markAsPaidWooOrder($order, 'WC-OVERSEA-RETRY');
+        // Reproduce actual Production: initial Vita allocation was already
+        // submitted before Dede rejected the overseas warehouse assignment.
+        $order->fulfillmentAllocation()->create([
+            'status' => 'submitted', 'decision_source' => 'manual', 'submitted_by' => $operator->id,
+        ]);
 
         $this->actingAs($operator)->post("/logistics/oversea/orders/{$order->id}/reject", [
             'note' => '收件资料有误，请重新核对',
