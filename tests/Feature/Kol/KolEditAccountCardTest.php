@@ -25,6 +25,7 @@ final class KolEditAccountCardTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->withoutVite();
         config([
             'services.andy_core.connection_key' => self::CONNECTION,
             'kol.create_auto_provision.coupon_discount_type' => 'percent',
@@ -146,14 +147,15 @@ final class KolEditAccountCardTest extends TestCase
                 'affiliate_url_slug' => 'editor-choice',
             ], 'affiliate-created'));
         $mock->shouldReceive('provisionCoupon')->once()
-            ->andReturn($this->response([
+            ->andReturnUsing(fn (array $payload) => $this->response([
                 'coupon_id' => 92001,
                 'code' => 'EXISTING15',
                 'normalized_code' => 'existing15',
                 'affiliate_id' => 82001,
                 'discount_type' => 'percent',
                 'amount' => '15',
-                'date_expires' => null,
+                'date_expires' => $payload['expiry'],
+                'profile_url_sha256' => hash('sha256', $payload['profile_url']),
             ], 'coupon-created'));
 
         $this->actingAs($user)->postJson("/kol/library/{$kol->id}/affiliate-account", [
@@ -163,6 +165,7 @@ final class KolEditAccountCardTest extends TestCase
             'wordpress_username' => 'editor-choice',
             'affiliate_name' => 'Edited Affiliate Name',
             'affiliate_url_slug' => 'editor-choice',
+            'kol_profile_url' => 'https://www.instagram.com/existing-kol/',
         ])->assertOk()->assertJsonPath('success', true)
             ->assertJsonPath('affiliate_account.wordpress_user_id', 72001)
             ->assertJsonPath('affiliate_account.affiliate_id', 82001)

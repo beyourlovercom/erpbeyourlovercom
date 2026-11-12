@@ -117,6 +117,9 @@ final class CouponProvisioningService
             'amount' => $amount,
             'expiry' => $expiry,
         ];
+        if (filter_var((string) $kol->kol_profile_url, FILTER_VALIDATE_URL)) {
+            $payload['profile_url'] = $kol->kol_profile_url;
+        }
 
         try {
             $response = $this->gateway->provisionCoupon($payload, $key);
@@ -140,7 +143,8 @@ final class CouponProvisioningService
                     && (int) ($data['affiliate_id'] ?? 0) === (int) $payload['affiliate_id']
                     && (string) ($data['discount_type'] ?? '') === $payload['discount_type']
                     && $this->canonicalDecimal((string) ($data['amount'] ?? '')) === $payload['amount']
-                    && $this->sameExpiry($payload['expiry'], $data['date_expires'] ?? null);
+                    && $this->sameExpiry($payload['expiry'], $data['date_expires'] ?? null)
+                    && (! isset($payload['profile_url']) || ($data['profile_url_sha256'] ?? null) === hash('sha256', $payload['profile_url']));
             } catch (DomainException) {
                 $ok = false;
             }

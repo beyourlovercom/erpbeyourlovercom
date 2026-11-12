@@ -5,6 +5,7 @@ import axios from 'axios'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
+import { plusThreeYears } from './couponExpiryDate'
 
 type OwnerOption = { value: number; label: string }
 
@@ -29,7 +30,7 @@ const languageOptions = [
   { value: 'zh', label: 'Chinese' },
   { value: 'other', label: '其他' },
 ]
-type AffiliateCoupon = { coupon_id: number | null; code: string | null; provider_status: string | null; provisioning_status: string | null; sync_status: string | null }
+type AffiliateCoupon = { coupon_id: number | null; code: string | null; date_expires?: string | null; provider_status: string | null; provisioning_status: string | null; sync_status: string | null }
 type AffiliateAccount = {
   connection_key: string
   affiliate_id: number | null
@@ -60,7 +61,7 @@ type KolDetail = {
   id: number; display_name: string; avatar_url?: string | null; avatar_source?: string | null; avatar_updated_at?: string | null; legal_name: string | null; country_code: string | null; language: string | null
   status: string; relationship_stage: string; cooperation_type: string | null; owner_id: number | null
   approval_manager_id?: number | null; finance_owner_id?: number | null
-  joined_at: string | null; notes: string | null
+  joined_at: string | null; kol_profile_url?: string | null; notes: string | null
   contact_email: string | null; contact_phone: string | null; contact_whatsapp: string | null; other_contact: string | null
   preferred_contact_method: string
   tax_id: string | null; payout_method: string | null; payout_account: string | null
@@ -96,6 +97,8 @@ const accountMessage = ref('')
 const accountPassword = ref('')
 const accountPasswordConfirmation = ref('')
 const accountCouponCode = ref('')
+const accountCouponExpiry = ref(plusThreeYears(props.kol.joined_at ?? new Date().toISOString().slice(0, 10)))
+const accountCouponExpiryManuallyEdited = ref(false)
 const accountUsername = ref(props.kol.display_name.trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9_.@-]/g, '').slice(0, 60))
 const accountAffiliateName = ref(accountUsername.value)
 const accountAffiliateUrl = ref(accountUsername.value)
@@ -131,6 +134,8 @@ const provisionAffiliateAccount = async () => {
   if (!validWordpressPassword(accountPassword.value)) { accountError.value = 'Password 需为 12–128 位，并至少包含 1 个英文字母和 1 个数字。'; return }
   if (accountPassword.value !== accountPasswordConfirmation.value) { accountError.value = '两次输入的 Password 不一致。'; return }
   if (!accountCouponCode.value.trim()) { accountError.value = 'Code 必填。'; return }
+  if (!form.kol_profile_url.trim()) { accountError.value = '网红链接必填。'; return }
+  if (!accountCouponExpiry.value) { accountError.value = '请设置 Code 有效期。'; return }
   accountProvisioning.value = true
   try {
     const response = await axios.post(`/kol/library/${props.kol.id}/affiliate-account`, {
@@ -140,6 +145,8 @@ const provisionAffiliateAccount = async () => {
       password: accountPassword.value,
       password_confirmation: accountPasswordConfirmation.value,
       affiliate_coupon_code: accountCouponCode.value.trim(),
+      affiliate_coupon_expiry: accountCouponExpiry.value,
+      kol_profile_url: form.kol_profile_url.trim(),
     })
     affiliateAccountState.value = response.data.affiliate_account as AffiliateAccount
     accountMessage.value = response.data.message || '账号操作完成。'
@@ -385,6 +392,7 @@ const form = useForm({
   relationship_stage: props.kol.relationship_stage,
   cooperation_type: ['免费发帖', '长期合作', '付费发帖'].includes(props.kol.cooperation_type ?? '') ? props.kol.cooperation_type! : '免费发帖',
   joined_at: props.kol.joined_at ?? '',
+  kol_profile_url: props.kol.kol_profile_url ?? '',
   notes: props.kol.notes ?? '',
   contact_email: props.kol.contact_email ?? '',
   contact_phone: props.kol.contact_phone ?? '',
@@ -446,6 +454,10 @@ const addSalesPerformance = () => {
 const removeSalesPerformance = (index: number) => {
   form.sales_performance_entries.splice(index, 1)
 }
+
+watch(() => form.joined_at, date => {
+  if (!accountCouponExpiryManuallyEdited.value) accountCouponExpiry.value = plusThreeYears(date)
+})
 
 const submit = () => {
   form.transform(data => ({
@@ -611,8 +623,16 @@ const breadcrumbs = [
                 <div><span>AffiliateWP ID</span><strong>{{ affiliateAccountState.affiliate_id ? `#${affiliateAccountState.affiliate_id}` : '—' }}</strong></div>
                 <div><span>Affiliate 状态</span><strong>{{ affiliateAccountState.provider_status || affiliateAccountState.provisioning_status || '—' }}</strong></div>
                 <div><span>Coupon Code</span><strong>{{ affiliateAccountState.coupon?.code || '—' }}</strong></div>
+                <div><span>Code 到期日</span><strong>{{ affiliateAccountState.coupon?.date_expires?.slice(0, 10) || '—' }}</strong></div>
+                <div><span>网红链接</span><strong><a v-if="form.kol_profile_url && /^https?:\/\//i.test(form.kol_profile_url)" :href="form.kol_profile_url" rel="noopener noreferrer" target="_blank">{{ form.kol_profile_url }}</a><span v-else>—</span></strong></div>
                 <div><span>Coupon 状态</span><strong>{{ affiliateAccountState.coupon?.provider_status || affiliateAccountState.coupon?.provisioning_status || '—' }}</strong></div>
                 <div><span>最近同步</span><strong>{{ affiliateAccountState.last_successful_sync_at ? affiliateAccountState.last_successful_sync_at.replace('T', ' ').replace('Z', '') : (affiliateAccountState.sync_status || '—') }}</strong></div>
+              </div>
+              <div class="erp-form-field kol-bound-profile-url">
+                <label class="erp-form-label">网红链接（保存 KOL 资料）</label>
+                <input v-model="form.kol_profile_url" type="url" class="erp-input" maxlength="500" placeholder="https://www.instagram.com/username/">
+                <p class="erp-form-helper">修改 ERP 红人链接不会覆盖已经发出的 WooCommerce 优惠码，原优惠码 Description 可从 WordPress 后台单独调整。</p>
+                <p v-if="form.errors.kol_profile_url" class="erp-field-error">{{ form.errors.kol_profile_url }}</p>
               </div>
               <p v-if="affiliateAccountState.last_error_code" class="kol-account-warning">最近账号异常：{{ affiliateAccountState.last_error_code }}</p>
               <div class="kol-account-actions">
@@ -665,9 +685,19 @@ const breadcrumbs = [
                   <label class="erp-form-label">Email <span class="erp-form-required">*</span></label>
                   <input :value="accountEmail" type="email" class="erp-input" readonly placeholder="请先保存 KOL 联系邮箱">
                 </div>
-                <div class="erp-form-field kol-credential-secondary">
+                <div class="erp-form-field kol-credential-newrow">
                   <label class="erp-form-label">Code <span class="erp-form-required">*</span></label>
                   <input v-model="accountCouponCode" type="text" autocomplete="off" class="erp-input" maxlength="255" placeholder="例如 ANDY15">
+                </div>
+                <div class="erp-form-field kol-credential-metadata">
+                  <label class="erp-form-label">Code 有效期 <span class="erp-form-required">*</span></label>
+                  <input v-model="accountCouponExpiry" type="date" class="erp-input" required @input="accountCouponExpiryManuallyEdited = true">
+                  <p class="erp-form-helper">默认加入日期顺延三年，可修改。</p>
+                </div>
+                <div class="erp-form-field kol-credential-metadata">
+                  <label class="erp-form-label">网红链接 <span class="erp-form-required">*</span></label>
+                  <input v-model="form.kol_profile_url" type="url" class="erp-input" maxlength="500" required placeholder="https://www.instagram.com/username/">
+                  <p v-if="form.errors.kol_profile_url" class="erp-field-error">{{ form.errors.kol_profile_url }}</p>
                 </div>
               </div>
               <p class="erp-form-helper">前三项默认与 Username 相同，可单独覆盖；独立 Affiliate URL 需要 Custom Affiliate Slugs。用户名开户后不可修改，密码不保存到 ERP。</p>
@@ -1310,8 +1340,10 @@ const breadcrumbs = [
 .kol-collaboration-list{display:grid;gap:10px;margin-top:14px}.kol-collaboration-row{display:flex;justify-content:space-between;gap:16px;padding:12px 14px;border:1px solid var(--erp-border);border-radius:12px}.kol-collaboration-row>div{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.kol-collaboration-row span{color:var(--erp-text-muted);font-size:13px}.kol-collab-product-row{display:grid;grid-template-columns:minmax(0,1fr) 110px auto;gap:8px;margin-bottom:8px}.erp-checkbox-label{display:flex;align-items:center;gap:8px}@media(max-width:800px){.kol-collaboration-row{flex-direction:column}.kol-collab-product-row{grid-template-columns:1fr}}
 .kol-credential-rows { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px 18px; align-items: start; }
 .kol-credential-rows > .erp-form-field { grid-column: span 4; min-width: 0; }
-.kol-credential-rows > .kol-credential-secondary { grid-column: span 3; }
+.kol-credential-rows > .kol-credential-secondary { grid-column: span 6; }
+.kol-credential-rows > .kol-credential-newrow { grid-column: 1 / span 4; }
+.kol-credential-rows > .kol-credential-metadata { grid-column: span 4; }
 .kol-password-pair { grid-column: span 6; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-@media (max-width: 900px) { .kol-credential-rows > .erp-form-field { grid-column: span 6; } .kol-password-pair { grid-column: span 12; } }
-@media (max-width: 560px) { .kol-credential-rows > .erp-form-field { grid-column: span 12; } .kol-password-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .kol-credential-rows > .erp-form-field { grid-column: span 6; } .kol-credential-rows > .kol-credential-newrow { grid-column: 1 / span 6; } .kol-password-pair { grid-column: span 12; } }
+@media (max-width: 560px) { .kol-credential-rows > .erp-form-field, .kol-credential-rows > .kol-credential-newrow { grid-column: span 12; } .kol-password-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

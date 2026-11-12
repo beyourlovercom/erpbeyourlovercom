@@ -102,6 +102,8 @@ final class KolController
             'relationship_stage' => 'required|string|in:prospect,contacted,negotiating,cooperating,long_term,paused,ended',
             'cooperation_type' => 'nullable|string|in:免费发帖,长期合作,付费发帖',
             'joined_at' => 'nullable|date',
+            'kol_profile_url' => 'required|url:http,https|max:500',
+            'affiliate_coupon_expiry' => 'nullable|date_format:Y-m-d|after_or_equal:today',
             'notes' => 'nullable|string|max:5000',
             'contact_email' => 'required|email|max:255',
             'wordpress_username' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.@-]+$/D'],
@@ -165,6 +167,7 @@ final class KolController
         );
         $password = (string) $data['wordpress_password'];
         $couponCode = (string) $data['affiliate_coupon_code'];
+        $couponExpiryDate = $data['affiliate_coupon_expiry'] ?? null;
         $socialAccounts = $data['social_accounts'] ?? [];
         $salesPerformanceEntries = $data['sales_performance_entries'] ?? [];
         unset(
@@ -174,6 +177,7 @@ final class KolController
             $data['wordpress_password'],
             $data['wordpress_password_confirmation'],
             $data['affiliate_coupon_code'],
+            $data['affiliate_coupon_expiry'],
             $data['social_accounts'],
             $data['sales_performance_entries'],
         );
@@ -188,6 +192,7 @@ final class KolController
             $user,
             $profile['name'],
             $profile['slug'],
+            $couponExpiryDate,
         );
         unset($password);
 
@@ -306,6 +311,7 @@ final class KolController
             'relationship_stage' => 'required|string|in:prospect,contacted,negotiating,cooperating,long_term,paused,ended',
             'cooperation_type' => 'nullable|string|in:免费发帖,长期合作,付费发帖',
             'joined_at' => 'nullable|date',
+            'kol_profile_url' => 'nullable|url:http,https|max:500',
             'notes' => 'nullable|string|max:5000',
             'contact_email' => 'nullable|email|max:255',
             'contact_phone' => 'nullable|string|max:64',
@@ -369,6 +375,8 @@ final class KolController
             'password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
             'password_confirmation' => 'required|string|max:128',
             'affiliate_coupon_code' => 'required|string|max:255',
+            'kol_profile_url' => 'required|url:http,https|max:500',
+            'affiliate_coupon_expiry' => 'nullable|date_format:Y-m-d|after_or_equal:today',
         ]);
 
         $username = \App\Modules\Kol\Application\AffiliateWp\KolProvisioningService::resolveUsername(
@@ -378,6 +386,7 @@ final class KolController
             $data['affiliate_name'] ?? null, $data['affiliate_url_slug'] ?? null, $username
         );
         $password = (string) $data['password'];
+        $kol->update(['kol_profile_url' => $data['kol_profile_url']]);
         $result = $this->editAccount->provision(
             $kol,
             $password,
@@ -386,6 +395,7 @@ final class KolController
             $request->user(),
             $profile['name'],
             $profile['slug'],
+            $data['affiliate_coupon_expiry'] ?? null,
         );
         unset($password, $data['password'], $data['password_confirmation']);
 
@@ -495,6 +505,7 @@ final class KolController
             'coupon' => $coupon ? [
                 'coupon_id' => $coupon->coupon_id !== null ? (int) $coupon->coupon_id : null,
                 'code' => $coupon->code,
+                'date_expires' => $coupon->date_expires?->toIso8601String(),
                 'provider_status' => $coupon->provider_status,
                 'provisioning_status' => $coupon->provisioning_status,
                 'sync_status' => $coupon->sync_status,
@@ -594,6 +605,7 @@ final class KolController
             'owner_id' => $kol->owner_id,
             'owner' => $kol->owner ? ['id' => $kol->owner->id, 'name' => $kol->owner->name] : null,
             'joined_at' => $kol->joined_at?->format('Y-m-d'),
+            'kol_profile_url' => $kol->kol_profile_url,
             'archived_at' => $kol->archived_at?->format('Y-m-d H:i:s'),
             'notes' => $kol->notes,
             'contact_email' => $kol->contact_email,

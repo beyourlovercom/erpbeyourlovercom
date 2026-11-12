@@ -82,7 +82,9 @@ describe('Kol/Edit VI contract', () => {
     expect(card.find('input[autocomplete="username"]').exists()).toBe(true)
     expect(card.find('input[placeholder="默认与 Username 相同"]').exists()).toBe(true)
     expect(card.find('input[placeholder="推广链接标识"]').exists()).toBe(true)
-    expect(card.findAll('.kol-credential-rows > .erp-form-field')).toHaveLength(5)
+    expect(card.findAll('.kol-credential-rows > .erp-form-field')).toHaveLength(7)
+    expect(card.find('input[placeholder="https://www.instagram.com/username/"]').exists()).toBe(true)
+    expect(card.text()).toContain('Code 有效期')
   })
 
   it('uses erp-form-page wrapper — no mvp-page', () => {

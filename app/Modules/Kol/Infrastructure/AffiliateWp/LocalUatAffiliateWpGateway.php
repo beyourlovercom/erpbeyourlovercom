@@ -256,6 +256,7 @@ final class LocalUatAffiliateWpGateway implements AffiliateWpGateway
             'discount_type' => (string) ($payload['discount_type'] ?? ''),
             'amount' => (string) ($payload['amount'] ?? ''),
             'date_expires' => $payload['expiry'] ?? null,
+            'profile_url_sha256' => hash('sha256', (string) ($payload['profile_url'] ?? '')),
         ]);
     }
 
