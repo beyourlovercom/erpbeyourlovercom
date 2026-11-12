@@ -160,6 +160,7 @@ final class OverseaWarehouseReviewService
             abort_if($locked->externalReferences->contains('provider', 'historical_logistics'), 409, '历史物流订单不可操作。');
             $review = $this->reviewForMutation($locked);
             abort_unless($review->status === 'pending', 409, '只有待审核订单可标记缺货。');
+            $before = ['status' => $review->status, 'reviewed_warehouse_id' => $review->reviewed_warehouse_id];
             $review->forceFill([
                 'status' => 'stockout',
                 'progress' => 'pending_review',
@@ -167,6 +168,12 @@ final class OverseaWarehouseReviewService
                 'reviewed_by' => $actor->getAuthIdentifier(),
                 'reviewed_at' => now(),
             ])->save();
+            $this->audit->record(
+                AuditActor::user($actor, AuditSource::Web), 'oversea.review_stockout',
+                OverseaWarehouseReview::class, $review->getKey(), $before,
+                ['status' => 'stockout', 'reviewed_warehouse_id' => $locked->shipment->warehouse_id],
+                'oversea_warehouse_review',
+            );
         });
     }
 
@@ -186,6 +193,13 @@ final class OverseaWarehouseReviewService
             $review->forceFill(['status' => 'pending', 'reviewed_warehouse_id' => null,
                 'reviewed_by' => null, 'reviewed_at' => null])->save();
             $this->approve($locked, $actor);
+            $this->audit->record(
+                AuditActor::user($actor, AuditSource::Web), 'oversea.review_restock',
+                OverseaWarehouseReview::class, $review->getKey(),
+                ['status' => 'stockout', 'reviewed_warehouse_id' => $locked->shipment->warehouse_id],
+                ['status' => 'approved', 'reviewed_warehouse_id' => $locked->shipment->warehouse_id],
+                'oversea_warehouse_review',
+            );
         });
     }
 

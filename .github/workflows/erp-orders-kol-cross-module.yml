@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths:
       - 'app/Modules/Orders/**'
+      - 'app/Modules/Logistics/Application/OverseaWarehouseReviewService.php'
+      - 'app/Modules/Logistics/Experience/Controllers/OverseaWarehouseController.php'
+      - 'app/Modules/Logistics/Experience/Routes/web.php'
+      - 'resources/js/Pages/Logistics/Oversea/**'
+      - 'tests/Feature/Logistics/OverseaWarehouseWorkbenchTest.php'
       - 'app/Modules/Kol/**'
       - 'app/Modules/Identity/Application/RolePreset.php'
       - 'resources/js/Pages/Orders/**'
@@ -50,6 +55,8 @@ jobs:
         run: npx vitest run resources/js/Pages/Orders/Show.test.ts
       - name: OMS P3 preview and confirm interaction (same PR head)
         run: npx vitest run resources/js/Components/Orders/OrderOmsTransfer.test.ts
+      - name: Overseas review UI, column filters and bulk action contract (same PR head)
+        run: npx vitest run resources/js/Pages/Logistics/Oversea/Show.test.ts resources/js/Components/DataGrid/GlobalGrid.test.ts resources/js/Components/DataGrid/GridBatchFooterControls.test.ts
       - name: Build frontend for Inertia HTTP assertions
         run: npm run build
       - name: Prepare isolated SQLite test environment
@@ -60,6 +67,8 @@ jobs:
           php artisan migrate:fresh --force
       - name: Order item preview route, authorization and actual save/readback contract
         run: php artisan test tests/Feature/Orders/OrderItemAmendmentPreflightTest.php
+      - name: Overseas review HTTP, permissions, batch and audit readback contract (same PR head)
+        run: php artisan test tests/Feature/Logistics/OverseaWarehouseWorkbenchTest.php
       - name: Orders and KOL HTTP authorization and identity regression
         run: php artisan test tests/Feature/Orders tests/Feature/Kol
       - name: Diff check

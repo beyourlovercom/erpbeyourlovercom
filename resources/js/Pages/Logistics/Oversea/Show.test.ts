@@ -105,6 +105,38 @@ describe('oversea domestic-style Global Grid review operation contract', () => {
     expect(columns.find(col=>col.colId==='actions')?.cellRenderer).toBeTruthy()
     expect(grid.props('enableSelection')).toBe(true)
   })
+  it('wires direct per-row approval to the exact overseas HTTP review route and blocks view-only actors', async () => {
+    routerPost.mockClear()
+    const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'pending' as const}]}
+    const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:reviewRows,canReview:true})
+    await flushPromises()
+    const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+    const actions=(grid.props('columns') as {colId:string;cellRendererParams?:Record<string,any>}[])
+      .find(col=>col.colId==='actions')?.cellRendererParams
+    expect(actions).toBeTruthy()
+    actions?.approve({id:99})
+    expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/orders/99/approve',{},expect.any(Object))
+    const noAccess=mountPage({globalGridEnabled:true,view:'review',rows:reviewRows,canReview:false})
+    await flushPromises()
+    const denied=(noAccess.findComponent({name:'MockGlobalGrid'}).props('columns') as {colId:string;cellRendererParams?:Record<string,any>}[])
+      .find(col=>col.colId==='actions')?.cellRendererParams
+    routerPost.mockClear()
+    denied?.approve({id:99})
+    expect(routerPost).not.toHaveBeenCalled()
+  })
+  it('wires stockout and reason-required rejection to their respective overseas HTTP routes', async () => {
+    routerPost.mockClear()
+    const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'pending' as const}]}
+    const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:reviewRows,canReview:true})
+    await flushPromises()
+    const actions=(wrapper.findComponent({name:'MockGlobalGrid'}).props('columns') as {colId:string;cellRendererParams?:Record<string,any>}[])
+      .find(col=>col.colId==='actions')?.cellRendererParams
+    actions?.stockout({id:99})
+    expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/orders/99/stockout',{},expect.any(Object))
+    routerPost.mockClear()
+    actions?.reject({id:99},'x')
+    expect(routerPost).not.toHaveBeenCalled()
+  })
   it('provides a domestic-style batch footer for review selection', async () => {
     const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'pending' as const}]}
     const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:reviewRows,canReview:true})
