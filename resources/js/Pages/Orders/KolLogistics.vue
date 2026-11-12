@@ -58,7 +58,7 @@ const page = (number: number) => router.get('/kol/logistics', { ...filters, page
           <div class="meta"><span>业务单号：{{ order.external_order_number }}</span><span>订单日期：{{ order.order_date || '—' }}</span></div>
           <div class="details">
             <span>仓库：{{ order.warehouse || (order.shipment_status === 'pending' ? '待分配' : '未记录') }}</span>
-            <span>承运商：{{ order.carrier || '待确认' }}</span>
+            <span>物流商：{{ order.carrier || '待确认' }}</span>
             <span>单号：{{ order.tracking_number || '未填写' }}</span>
             <span v-if="isManager">负责人：{{ order.owner || '—' }}</span>
           </div>

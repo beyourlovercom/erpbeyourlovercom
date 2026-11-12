@@ -460,7 +460,7 @@ final class DomesticLogisticsController
                         ? ['请检查物流商和服务类型']
                         : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
                         ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
-                        : ['未选定速达或纬狮承运商'])))),
+                        : ['未选定速达或纬狮物流商'])))),
             'items' => $order->items->map(fn ($item) => [
                 'sku' => $item->sku,
                 'quantity' => (int) $item->quantity,

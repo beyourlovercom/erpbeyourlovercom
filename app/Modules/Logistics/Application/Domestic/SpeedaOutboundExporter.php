@@ -110,7 +110,7 @@ final class SpeedaOutboundExporter
 
         $path = base_path(self::TEMPLATE);
         if (! is_file($path)) {
-            throw new RuntimeException('国内承运商 24 列基础模板未安装。');
+            throw new RuntimeException('国内物流商 24 列基础模板未安装。');
         }
 
         $book = IOFactory::load($path);
@@ -200,7 +200,7 @@ final class SpeedaOutboundExporter
 
         $tmp = tempnam(sys_get_temp_dir(), 'domestic-provider-outbound-');
         if ($tmp === false) {
-            throw new RuntimeException('无法创建国内承运商导出临时文件。');
+            throw new RuntimeException('无法创建国内物流商导出临时文件。');
         }
         try {
             (new Xlsx($book))->save($tmp);
@@ -210,7 +210,7 @@ final class SpeedaOutboundExporter
             @unlink($tmp);
         }
         if (! is_string($bytes)) {
-            throw new RuntimeException('无法读取国内承运商导出文件。');
+            throw new RuntimeException('无法读取国内物流商导出文件。');
         }
 
         return $bytes;

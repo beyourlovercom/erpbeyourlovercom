@@ -53,7 +53,7 @@ const columnDefinitions: GridColumnDefinition<ColumnKey>[] = [
   { key:'order', label:'订单号', defaultVisible:true },
   { key:'status', label:'统一状态', defaultVisible:true },
   { key:'warehouse', label:'Stock 仓库', defaultVisible:true },
-  { key:'carrier', label:'Carrier 承运商', defaultVisible:true },
+  { key:'carrier', label:'Carrier 物流商', defaultVisible:true },
   { key:'service', label:'运输 / 服务类型', defaultVisible:true },
   { key:'tracking', label:'追踪单号 Tracking No.', defaultVisible:true },
   { key:'note', label:'备注', defaultVisible:true },
@@ -629,7 +629,7 @@ const batchCodeText:Record<string,string> = {
   created:'已创建', existing:'已存在', status_updated:'已更新发货状态', canceled:'OMS 已取消', unknown_status:'状态待核实',
   in_progress:'已有同步处理中', create_disabled:'未创建（开关关闭）', not_found:'OMS 暂未找到',
   identity_mismatch:'身份不匹配', preflight_blocked:'创建前检查阻断', blocked:'已阻断', uncertain:'结果待核实', error:'失败',
-  carrier_verification_required:'需核对实际承运商', canary_order_not_authorized:'未获单笔下发授权',
+  carrier_verification_required:'需核对实际物流商', canary_order_not_authorized:'未获单笔下发授权',
 }
 const syncWarehouse = async () => {
   if (batchBusy.value || props.warehouseKey !== 'us-3sm' || !props.canOperate) return
@@ -988,7 +988,7 @@ const compactPages = computed<(number|string)[]>(() => {
         </aside>
         <main class="oversea-main">
       <header class="oversea-heading">
-        <div><h1>{{ pageTitle }}</h1><p v-if="warehouseKey === 'us-3sm'">审核通过后，下载订单文件，在世迈 OMS 人工导入。重复导入前先检查当前草稿箱，避免重复下单。</p><p v-else>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终承运商，不能假定 USPS Priority。</p></div>
+        <div><h1>{{ pageTitle }}</h1><p v-if="warehouseKey === 'us-3sm'">审核通过后，下载订单文件，在世迈 OMS 人工导入。重复导入前先检查当前草稿箱，避免重复下单。</p><p v-else>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终物流商，不能假定 USPS Priority。</p></div>
         <div class="oversea-file-actions">
           <button v-if="shipoutProductionBatchUi && warehouseKey==='us-moreplus'" type="button"
             class="file-button primary" :disabled="shipoutBatchBusy || Boolean(shipoutBatchStatus && ['queued','running','awaiting_oms','paused'].includes(shipoutBatchStatus.status))"

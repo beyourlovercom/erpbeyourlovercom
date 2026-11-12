@@ -429,7 +429,7 @@ describe('Oversea Dede file exchange workbench', () => {
       {order_ids:[99],manual_override:false},expect.objectContaining({preserveScroll:true}))
     expect(mountPage({canTrackingSync:false}).text()).not.toContain('同步官网物流')
 
-    const conflict={...shipped,tracking_sync_status:'conflict',tracking_sync_reason:'官网已有相同 Tracking，但承运商不一致'}
+    const conflict={...shipped,tracking_sync_status:'conflict',tracking_sync_reason:'官网已有相同 Tracking，但物流商不一致'}
     const conflictWrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
       canTrackingSync:true,trackingImportPreview:null,rows:{...usSmPendingRows,data:[conflict]}})
     expect(conflictWrapper.text()).toContain('冲突待核对')

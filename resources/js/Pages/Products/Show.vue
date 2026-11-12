@@ -18,7 +18,7 @@ const orderDefinitions: GridColumnDefinition<OrderColumn>[] = [
   { key: 'order_number', label: 'ERP订单号' }, { key: 'date', label: '日期' }, { key: 'quantity', label: '数量' }, { key: 'revenue', label: '收入' }, { key: 'status', label: '状态' },
 ]
 const shipmentDefinitions: GridColumnDefinition<ShipmentColumn>[] = [
-  { key: 'order_number', label: 'ERP订单号' }, { key: 'carrier', label: '承运商' }, { key: 'tracking', label: '追踪号' }, { key: 'shipped_at', label: '发货日期' }, { key: 'status', label: '状态' },
+  { key: 'order_number', label: 'ERP订单号' }, { key: 'carrier', label: '物流商' }, { key: 'tracking', label: '追踪号' }, { key: 'shipped_at', label: '发货日期' }, { key: 'status', label: '状态' },
 ]
 const relationDefinitions: GridColumnDefinition<RelationColumn>[] = [
   { key: 'type', label: '类型' }, { key: 'order_number', label: 'ERP订单号 / 关联对象' }, { key: 'details', label: '关键信息' }, { key: 'status', label: '状态' },

@@ -61,7 +61,7 @@ final class LogisticsTrackingPushController
                     && filled($shipment->tracking_number)
                     && $shipment->shipped_at !== null,
                     422,
-                    '必须先完成发货并填写承运商、Tracking 和发货时间',
+                    '必须先完成发货并填写物流商、Tracking 和发货时间',
                 );
             }
         }

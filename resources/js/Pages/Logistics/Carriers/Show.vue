@@ -122,13 +122,13 @@ const saveCarrier = () => {
 </script>
 
 <template>
-  <Head :title="`${carrierDisplayName} · 承运商 · BYL ERP`" />
-  <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '承运商', carrierDisplayName]">
+  <Head :title="`${carrierDisplayName} · 物流商 · BYL ERP`" />
+  <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '物流商', carrierDisplayName]">
     <section class="mvp-page carrier-detail-page">
       <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading carrier-heading">
         <div><p class="mvp-kicker">Carrier Shipment Ledger</p><h2>{{ carrierDisplayName }}</h2><p>真实 Shipment 历史、计费重量、实际物流费用与 Provider raw evidence。</p></div>
-        <div class="carrier-heading-actions"><button v-if="canEditCarrier" type="button" class="mvp-button carrier-edit-button" @click="openEditor">编辑承运商</button><Link class="mvp-button" href="/logistics/carriers">返回承运商</Link></div>
+        <div class="carrier-heading-actions"><button v-if="canEditCarrier" type="button" class="mvp-button carrier-edit-button" @click="openEditor">编辑物流商</button><Link class="mvp-button" href="/logistics/carriers">返回物流商</Link></div>
       </div>
 
       <div class="carrier-kpis">
@@ -151,7 +151,7 @@ const saveCarrier = () => {
             <tr v-for="row in shipments.data" :key="row.id">
               <td v-for="column in grid.visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link"><strong>{{ row.erp_order_id ?? '—' }}</strong></Link><span v-else><strong>{{ row.erp_order_id ?? '—' }}</strong></span></template><template v-else-if="column.key === 'shipped_at'">{{ dateTime(row.shipped_at) }}</template><template v-else-if="column.key === 'order_kind'">{{ orderKind(row.order_kind) }}</template><template v-else-if="column.key === 'warehouse'">{{ row.warehouse_name ?? '—' }}</template><template v-else-if="column.key === 'destination'">{{ row.destination_country ?? '—' }}</template><template v-else-if="column.key === 'channel'"><span class="service-cell">{{ row.service_display_name ?? row.service ?? '—' }}</span></template><template v-else-if="column.key === 'tracking'">{{ row.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'items'" class="items-cell"><template v-for="item in row.items" :key="item.product_url ?? item.sku"><Link v-if="item.product_url" :href="item.product_url" class="mvp-link">{{ item.sku || item.product_summary || '未命名' }}</Link><span v-else>{{ item.sku || item.product_summary || '未命名' }}</span> × {{ item.quantity }}；</template></template><template v-else-if="column.key === 'weight'">{{ row.chargeable_weight_kg === null ? '—' : `${Number(row.chargeable_weight_kg).toFixed(3)} kg` }}</template><template v-else-if="column.key === 'cost'">{{ rowMoney(row) }}</template><template v-else-if="column.key === 'shipment_status'">{{ row.shipment_status ?? '—' }}</template><template v-else-if="column.key === 'delivery_status'">{{ row.delivery_status ?? '—' }}</template><template v-else-if="column.key === 'handler'">{{ row.handler_name ?? '—' }}</template><template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'billing'">{{ row.billing_document_number ?? row.provider_reference ?? '—' }}</template><template v-else-if="column.key === 'source'">{{ row.data_source ?? '—' }}</template><template v-else><details v-if="row.raw_evidence"><summary>查看</summary><pre>{{ JSON.stringify(row.raw_evidence, null, 2) }}</pre></details><span v-else>—</span></template></td>
             </tr>
-            <tr v-if="shipments.data.length === 0"><td :colspan="grid.visibleColumns.length" class="mvp-empty">暂无该承运商物流记录。</td></tr>
+            <tr v-if="shipments.data.length === 0"><td :colspan="grid.visibleColumns.length" class="mvp-empty">暂无该物流商物流记录。</td></tr>
           </tbody>
         </table>
       </div>
@@ -159,9 +159,9 @@ const saveCarrier = () => {
     </section>
 
     <div v-if="editorOpen" class="carrier-editor-backdrop" @click.self="closeEditor">
-      <aside class="carrier-editor-panel" role="dialog" aria-modal="true" aria-label="编辑承运商">
+      <aside class="carrier-editor-panel" role="dialog" aria-modal="true" aria-label="编辑物流商">
         <header class="carrier-editor-header">
-          <div><p class="mvp-kicker">CARRIER MASTER V2</p><h2>编辑承运商</h2><p>修改承运商基础信息及默认服务类型配置。</p></div>
+          <div><p class="mvp-kicker">CARRIER MASTER V2</p><h2>编辑物流商</h2><p>修改物流商基础信息及默认服务类型配置。</p></div>
           <button type="button" class="carrier-editor-close" @click="closeEditor">×</button>
         </header>
 
@@ -172,7 +172,7 @@ const saveCarrier = () => {
             <label>是否启用<div class="toggle-line"><button type="button" class="switch" :class="{ on: carrierForm.is_active }" @click="carrierForm.is_active = !carrierForm.is_active"><span></span></button><strong>{{ carrierForm.is_active ? '已启用' : '已停用' }}</strong></div><small>停用后不再用于新订单发货，历史数据不受影响</small></label>
             <label>中文名称 *<input v-model="carrierForm.name_zh" placeholder="例如：速达"></label>
             <label>英文名称 *<input v-model="carrierForm.name_en" placeholder="例如：4PX"></label>
-            <label class="span-2">前台显示名<input :value="[carrierForm.name_en, carrierForm.name_zh].filter(Boolean).filter((name, index, values) => values.indexOf(name) === index).join(' / ') || carrierForm.name" disabled><small>承运商品牌保留英文及中文；服务渠道只显示中文，原始编码不变</small></label>
+            <label class="span-2">前台显示名<input :value="[carrierForm.name_en, carrierForm.name_zh].filter(Boolean).filter((name, index, values) => values.indexOf(name) === index).join(' / ') || carrierForm.name" disabled><small>物流商品牌保留英文及中文；服务渠道只显示中文，原始编码不变</small></label>
           </div>
         </section>
 
@@ -203,7 +203,7 @@ const saveCarrier = () => {
 
         <div class="carrier-history-note">ⓘ <strong>历史兼容提示</strong>：历史 Shipment 原始 service 文本保留不改写；停用仅影响新发货。</div>
         <p v-if="editorError" class="carrier-editor-error">{{ editorError }}</p>
-        <footer class="carrier-editor-actions"><button type="button" class="mvp-button" :disabled="editorSaving" @click="closeEditor">取消</button><button type="button" class="mvp-button carrier-save-button" :disabled="editorSaving" @click="saveCarrier">{{ editorSaving ? '保存中…' : '保存承运商' }}</button></footer>
+        <footer class="carrier-editor-actions"><button type="button" class="mvp-button" :disabled="editorSaving" @click="closeEditor">取消</button><button type="button" class="mvp-button carrier-save-button" :disabled="editorSaving" @click="saveCarrier">{{ editorSaving ? '保存中…' : '保存物流商' }}</button></footer>
       </aside>
     </div>
   </AuthenticatedLayout>

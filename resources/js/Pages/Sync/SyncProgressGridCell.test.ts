@@ -20,9 +20,9 @@ describe('Sync progress AG Grid cell', () => {
   })
   it('explains conflicts without submitting or mutating an order', async () => {
     const wrapper=mount(SyncProgressGridCell, { props: { params: { data: {
-      progress_code:'failed', progress_label:'同步失败', progress_reason:'官网承运商与 ERP 不一致',
+      progress_code:'failed', progress_label:'同步失败', progress_reason:'官网物流商与 ERP 不一致',
     } } } })
     await wrapper.get('button').trigger('click')
-    expect(window.alert).toHaveBeenCalledWith('官网承运商与 ERP 不一致')
+    expect(window.alert).toHaveBeenCalledWith('官网物流商与 ERP 不一致')
   })
 })

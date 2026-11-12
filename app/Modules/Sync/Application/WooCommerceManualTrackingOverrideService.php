@@ -62,7 +62,7 @@ final class WooCommerceManualTrackingOverrideService
         if (strtolower(trim((string) $shipment?->shipment_status)) !== 'shipped'
             || ! filled($shipment?->carrier)
             || ! $shipment?->shipped_at) {
-            throw new DomainException('订单尚未正式发货，或缺少承运商、Tracking、发货时间，不能将官网标记为 Completed。');
+            throw new DomainException('订单尚未正式发货，或缺少物流商、Tracking、发货时间，不能将官网标记为 Completed。');
         }
         $aggregate = $this->completionSemantics->aggregateForOrder($root);
 
@@ -100,7 +100,7 @@ final class WooCommerceManualTrackingOverrideService
                 && trim((string) ($item['provider'] ?? '')) === $slug
             );
             if ($sameNumber !== [] && $alreadyPublished === []) {
-                throw new DomainException('官网已有相同 Tracking，但承运商不一致或无法核验；为避免覆盖现有物流，请人工核对。');
+                throw new DomainException('官网已有相同 Tracking，但物流商不一致或无法核验；为避免覆盖现有物流，请人工核对。');
             }
             if ($alreadyPublished !== []) {
                 // If a later B/C package reached Woo but Customer Note failed,

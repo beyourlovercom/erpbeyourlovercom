@@ -245,7 +245,7 @@ const gridColumns = computed<ColDef<GridListRow>[]>(() => [
   c('date', 'date_label', '订单日期', 128, { sortable: true, sortingOrder: ['asc', 'desc'] }),
   c('source', 'source_label', '订单来源', 125, { sortable: true, sortingOrder: ['asc', 'desc'] }),
   c('recipient', 'recipient', '收件人', 145),
-  c('carrier', 'carrier_label', '承运商', 120),
+  c('carrier', 'carrier_label', '物流商', 120),
   c('tracking', 'tracking_label', '物流单号', 180),
   c('shipment_status', 'shipment_status', '发货状态', 120, { hide: true }),
   c('parcel', 'parcel', '包裹 A/B/C', 115, { hide: true }),
@@ -379,7 +379,7 @@ const hasActiveFilters = computed(() => Boolean(
           <thead>
             <tr>
               <th>订单号</th><th>日期</th><th>订单来源</th><th>收件人</th>
-              <th>承运商</th><th>物流单号</th><th>操作</th><th>同步进度</th>
+              <th>物流商</th><th>物流单号</th><th>操作</th><th>同步进度</th>
             </tr>
           </thead>
           <tbody>
