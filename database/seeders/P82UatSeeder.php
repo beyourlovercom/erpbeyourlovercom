@@ -29,19 +29,21 @@ use Illuminate\Support\Facades\Schema;
  *   P82-CHINA  — 8 days old, China-direct warehouse → no USD 10 fallback
  *   P82-RESTATE — actual replaced an estimate → audit trail
  *
- * Login: owner@p82.uat / P82-uat-owner-2026
+ * Credentials: BYL_P82_UAT_EMAIL (synthetic @example.invalid) and
+ * BYL_P82_UAT_PASSWORD (local-only, >= 16 characters). Never commit real values.
  */
 final class P82UatSeeder extends Seeder
 {
-    private const UAT_EMAIL    = 'owner@p82.uat';
-    private const UAT_PASSWORD = 'P82-uat-owner-2026';
+    private const UAT_EMAIL_ENV = 'BYL_P82_UAT_EMAIL';
+    private const UAT_PASSWORD_ENV = 'BYL_P82_UAT_PASSWORD';
 
     public function run(): void
     {
         abort_unless(app()->environment(['local', 'testing']), 500, 'P8.2 UAT seeding is restricted to local/testing environments.');
+        [$uatEmail, $uatPassword] = self::credentials();
         abort_unless(Schema::hasTable('orders'), 500, 'Migrations must run first.');
 
-        $user = $this->user();
+        $user = $this->user($uatEmail, $uatPassword);
 
         // Warehouses (idempotent)
         $overseas = Warehouse::firstOrCreate(['slug' => 'us-la'], [
@@ -130,8 +132,8 @@ final class P82UatSeeder extends Seeder
         $this->command->line('');
         $this->command->line('P8.2 UAT fixture seeded successfully.');
         $this->command->line('');
-        $this->command->line(sprintf('  Login: %s', self::UAT_EMAIL));
-        $this->command->line(sprintf('  Password: %s', self::UAT_PASSWORD));
+        $this->command->line(sprintf('  Login: %s', $uatEmail));
+        $this->command->line('  Password: supplied via BYL_P82_UAT_PASSWORD (not printed)');
         $this->command->line('');
         $this->command->line('  Order IDs:');
         $this->command->line(sprintf('    P82-FRESH  → id=%d  (fresh_estimate_allowed, 3d)',  $fresh->id));
@@ -143,7 +145,29 @@ final class P82UatSeeder extends Seeder
         $this->command->line(sprintf('    P82-RESTATE→ id=%d  (actual replaced estimate)',     $restate->id));
     }
 
-    private function user(): User
+    /**
+     * No fixture credential values or public-domain accounts are shipped in code.
+     * Validate both values before making any database changes.
+     *
+     * @return array{string,string}
+     */
+    private static function credentials(): array
+    {
+        $email = getenv(self::UAT_EMAIL_ENV);
+        $password = getenv(self::UAT_PASSWORD_ENV);
+
+        if (!is_string($email) || !preg_match('/^[A-Za-z0-9._%+-]+@example\\.invalid$/D', $email)) {
+            throw new \RuntimeException('Set BYL_P82_UAT_EMAIL to a synthetic @example.invalid address.');
+        }
+
+        if (!is_string($password) || strlen($password) < 16) {
+            throw new \RuntimeException('Set BYL_P82_UAT_PASSWORD to a local-only secret of at least 16 characters.');
+        }
+
+        return [$email, $password];
+    }
+
+    private function user(string $email, string $password): User
     {
         $perm = Permission::firstOrCreate(['key' => 'accounting.view'], ['label' => 'Accounting View']);
         $permOrders = Permission::firstOrCreate(['key' => 'orders.view'], ['label' => 'Orders View']);
@@ -153,8 +177,8 @@ final class P82UatSeeder extends Seeder
         $role->permissions()->syncWithoutDetaching([$perm->id, $permOrders->id, $permDash->id]);
 
         $user = User::firstOrCreate(
-            ['email' => self::UAT_EMAIL],
-            ['name' => 'P8.2 UAT Owner', 'password' => Hash::make(self::UAT_PASSWORD), 'is_active' => true],
+            ['email' => $email],
+            ['name' => 'P8.2 UAT Owner', 'password' => Hash::make($password), 'is_active' => true],
         );
         $user->roles()->syncWithoutDetaching([$role->id]);
 
