@@ -29,7 +29,7 @@ final class KolLogisticsController
         $search = trim((string) ($filters['search'] ?? ''));
         $status = (string) ($filters['status'] ?? 'all');
 
-        $query = Order::query()
+        $query = Order::query()->eligibleForOperations()
             ->where('order_kind', OrderKind::KolFulfillment->value)
             ->with(['shipment.warehouse', 'owner']);
 

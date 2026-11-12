@@ -20,6 +20,7 @@ final class WarehouseShipmentProjection
         $base = Shipment::query()
             ->where('warehouse_id', $warehouse->id)
             ->whereHas('order', fn ($q) => $q
+                ->eligibleForOperations()
                 ->where('order_status', '!=', 'cancelled')
                 ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
 
