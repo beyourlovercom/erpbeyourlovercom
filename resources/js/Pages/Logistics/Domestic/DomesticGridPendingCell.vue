@@ -136,7 +136,7 @@ onBeforeUnmount(remove)
         <div v-if="compactOpen" ref="compactEl" class="domestic-pending-compact-menu" role="group"
           aria-label="订单操作" :style="{top:compactXY.top+'px',left:compactXY.left+'px'}" @pointerdown.stop>
           <button v-if="canShip" type="button" :disabled="busy" @click.stop="reveal">填写物流</button>
-          <button v-if="canShip" type="button" :disabled="!carrierConfirmed||!(source?.tracking_number??'').trim()||busy"
+          <button v-if="canShip" type="button" :disabled="needsOutbound||!carrierConfirmed||!(source?.tracking_number??'').trim()||busy"
             @click.stop="close();params.confirmShip(id,(source?.tracking_number??'').trim())">确认发货</button>
           <button v-if="canReopen" type="button" :disabled="busy"
             @click.stop="close();params.reopenPending(id)">重新审核</button>

@@ -43,6 +43,28 @@ describe('G-P1 compact cumulative Speeda history actions', () => {
     expect(document.querySelector('.domestic-pending-popover')).toBeNull()
     view.unmount()
   })
+  it('never bypasses overseas MorePlus proof requirement via compact or direct actions', async () => {
+    for(const compactActions of [false,true]){
+      const p={...params(),compactActions,source:()=>({...source,tracking_number:'CF123456789DE'}),
+        requiresOutboundReference:()=>true}
+      const view=mount(Cell,{props:{params:p},attachTo:document.body})
+      if(compactActions){
+        await view.get('button[aria-label="操作"]').trigger('click')
+        const menu=document.querySelector('.domestic-pending-compact-menu')!
+        const ship=[...menu.querySelectorAll('button')].find(b=>b.textContent==='确认发货') as HTMLButtonElement
+        expect(ship.disabled).toBe(true)
+        const edit=[...menu.querySelectorAll('button')].find(b=>b.textContent==='填写物流') as HTMLButtonElement
+        edit.click()
+      }else await view.find('button.pending-edit').trigger('click')
+      await view.vm.$nextTick()
+      const editor=document.querySelector('.domestic-pending-popover')!
+      expect(editor.querySelector('input[aria-label="真实出库单号"]')).not.toBeNull()
+      const confirm=[...editor.querySelectorAll('button')].find(b=>b.textContent==='确认发货') as HTMLButtonElement
+      expect(confirm.disabled).toBe(true)
+      expect(p.confirmShip).not.toHaveBeenCalled()
+      view.unmount()
+    }
+  })
   it('with no permission and no sync-eligible shipment renders only a dash', () => {
     const p = { ...params(), canOperate: false, canReview: false }
     const view = mount(Cell, { props: { params: p } })
