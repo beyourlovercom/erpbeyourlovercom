@@ -330,12 +330,12 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
               <div class="kol-password-pair">
                 <div class="erp-form-field">
                   <label class="erp-form-label">Password <span class="erp-form-required">*</span></label>
-                  <input v-model="form.wordpress_password" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password }" minlength="12" maxlength="128" required>
+                  <input v-model="form.wordpress_password" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password }" minlength="6" maxlength="128" required>
                   <p v-if="form.errors.wordpress_password" class="erp-field-error">{{ form.errors.wordpress_password }}</p>
                 </div>
                 <div class="erp-form-field">
                   <label class="erp-form-label">确认 Password <span class="erp-form-required">*</span></label>
-                  <input v-model="form.wordpress_password_confirmation" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password_confirmation }" minlength="12" maxlength="128" required>
+                  <input v-model="form.wordpress_password_confirmation" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password_confirmation }" minlength="6" maxlength="128" required>
                   <p v-if="form.errors.wordpress_password_confirmation" class="erp-field-error">{{ form.errors.wordpress_password_confirmation }}</p>
                 </div>
               </div>

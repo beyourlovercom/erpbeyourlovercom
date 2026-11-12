@@ -69,8 +69,8 @@ class KolCreateAutoProvisionTest extends TestCase
             'relationship_stage' => 'prospect',
             'contact_email' => $email,
             'wordpress_username' => 'creator-login',
-            'wordpress_password' => 'StrongPassword123',
-            'wordpress_password_confirmation' => 'StrongPassword123',
+            'wordpress_password' => 'Abc123',
+            'wordpress_password_confirmation' => 'Abc123',
             'affiliate_coupon_code' => $code,
             'social_accounts' => [],
         ];
@@ -137,7 +137,7 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertSame('active', $coupon->provisioning_status);
         self::assertSame(92001, $coupon->coupon_id);
 
-        self::assertSame('StrongPassword123', $capturedAffiliatePayload['password']);
+        self::assertSame('Abc123', $capturedAffiliatePayload['password']);
         self::assertSame('reject', $capturedAffiliatePayload['existing_account_policy']);
         self::assertSame('new-kol@example.test', $capturedAffiliatePayload['email']);
         self::assertSame('creator-login', $capturedAffiliatePayload['preferred_username']);
@@ -149,7 +149,7 @@ class KolCreateAutoProvisionTest extends TestCase
             .DB::table('notifications')->get()->toJson()
             .DB::table('kol_affiliate_accounts')->get()->toJson()
             .DB::table('kol_affiliate_coupons')->get()->toJson();
-        self::assertStringNotContainsString('StrongPassword123', $persisted);
+        self::assertStringNotContainsString('Abc123', $persisted);
     }
 
     public function test_existing_provider_identity_blocks_before_kol_creation(): void
@@ -273,8 +273,8 @@ class KolCreateAutoProvisionTest extends TestCase
         $mock->shouldNotReceive('provisionAffiliate');
         $mock->shouldNotReceive('provisionCoupon');
         $payload = $this->payload();
-        $payload['wordpress_password'] = 'short1';
-        $payload['wordpress_password_confirmation'] = 'short1';
+        $payload['wordpress_password'] = 'shor1';
+        $payload['wordpress_password_confirmation'] = 'shor1';
 
         $this->actingAs($specialist)->from('/kol/library/create')
             ->post('/kol/library', $payload)
