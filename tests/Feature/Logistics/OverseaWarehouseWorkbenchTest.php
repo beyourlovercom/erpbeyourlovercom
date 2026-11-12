@@ -58,6 +58,49 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->where('globalGridEnabled', false));
     }
 
+    public function test_overseas_archive_permission_is_exposed_only_to_authorized_staff(): void
+    {
+        $viewer = $this->userWith(['logistics.view']);
+        $incomplete = $this->userWith(['logistics.view', 'orders.archive']);
+        $archiver = $this->userWith(['logistics.view', 'orders.view', 'orders.archive']);
+        $this->warehouses();
+
+        $this->actingAs($viewer)->get('/logistics/oversea?view=review')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('canArchive', false));
+        $this->actingAs($incomplete)->get('/logistics/oversea?view=review')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('canArchive', false));
+        $this->actingAs($archiver)->get('/logistics/oversea?view=review')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('canArchive', true));
+    }
+
+    public function test_overseas_batch_archive_reuses_audited_order_endpoint_and_removes_orders_from_active_lists(): void
+    {
+        $archiver = $this->userWith(['logistics.view', 'orders.view', 'orders.archive']);
+        $viewer = $this->userWith(['logistics.view', 'orders.view']);
+        $warehouses = $this->warehouses();
+        $first = $this->orderAt($warehouses['US-NY'], '007-OVERSEA-ARCHIVE-NY');
+        $second = $this->orderAt($warehouses['DE'], '007-OVERSEA-ARCHIVE-DE');
+        $payload = ['order_ids' => [$first->id, $second->id]];
+
+        $this->actingAs($viewer)->postJson('/orders/archive/batch', $payload)->assertForbidden();
+        $this->assertDatabaseHas('orders', ['id' => $first->id, 'operational_archived_at' => null]);
+        $this->actingAs($archiver)->get('/logistics/oversea?view=review')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 2));
+        $this->actingAs($archiver)->postJson('/orders/archive/batch', $payload)
+            ->assertOk()->assertJsonPath('success_count', 2)->assertJsonPath('failed_count', 0);
+        self::assertNotNull($first->fresh()->operational_archived_at);
+        self::assertNotNull($second->fresh()->operational_archived_at);
+        $this->assertDatabaseHas('audit_records', ['action' => 'order.operational_archived', 'entity_id' => $first->id]);
+        $this->assertDatabaseHas('shipments', ['order_id' => $first->id, 'shipment_status' => 'pending']);
+        $this->assertDatabaseHas('shipments', ['order_id' => $second->id, 'shipment_status' => 'pending']);
+        foreach (['review', 'pending', 'stockout', 'all'] as $view) {
+            $this->actingAs($archiver)->get('/logistics/oversea?view='.$view)
+                ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        }
+        $this->actingAs($archiver)->postJson('/orders/archive/batch', $payload)
+            ->assertOk()->assertJsonPath('success_count', 0)->assertJsonPath('failed_count', 2);
+    }
+
     public function test_oversea_grid_search_filters_canonical_orders_and_ignores_unapproved_sort_fields(): void
     {
         $user = $this->userWith(['logistics.view']);
