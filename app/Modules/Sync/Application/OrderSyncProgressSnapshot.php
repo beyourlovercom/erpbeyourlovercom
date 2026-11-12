@@ -70,7 +70,7 @@ final class OrderSyncProgressSnapshot
         $connection = DB::connection();
         $identity = $connection->getName().':'.(string) $connection->getDatabaseName().':'.(string) config('app.url');
 
-        return 'erp:sync:orders:progress-full-snapshot:v2:'.sha1($identity);
+        return 'erp:sync:orders:progress-full-snapshot:v3:'.sha1($identity);
     }
 
     /**
@@ -83,13 +83,15 @@ final class OrderSyncProgressSnapshot
         $remoteConfigured = $gateway instanceof Contracts\WooCommerceTrackingBatchInspector
             && ($gateway->descriptor()['configured'] ?? false) === true;
 
-        $total = Order::query()->withTrashed()->count();
+        // Match the visible active order queue, including for cached totals.
+        // Never include archived/soft-deleted orders in the status index.
+        $total = Order::query()->eligibleForOperations()->count();
         $candidates = 0;
         $nonUnsynced = [];
         $tracker = app(LogisticsTrackingListStatus::class);
         $projector = app(OrderSyncProgressProjector::class);
 
-        Order::query()->withTrashed()
+        Order::query()->eligibleForOperations()
             ->where(fn (Builder $query): Builder => $query
                 ->whereHas('shipment')
                 ->orWhereHas('manualSync'))

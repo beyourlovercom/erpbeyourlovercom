@@ -68,7 +68,10 @@ final class ManualSyncController
             }
         }
 
-        $paginator = Order::query()->withTrashed()
+        // Sync is an active operational queue, not an archive/deletion ledger.
+        // Reuse the Order domain gate so archived/soft-deleted orders AND
+        // children of archived/deleted parents never surface as sync actions.
+        $paginator = Order::query()->eligibleForOperations()
             ->with(['address', 'manualSync', 'shipment', 'fulfillmentParent' => fn ($query) => $query->withTrashed(), 'fulfillmentParent.externalReferences', 'externalReferences', 'operationalMarkers'])
             ->when($filters['source'] ?? null, fn ($query, $source) => $query->where('source_type', $source))
             ->when($filters['search'] ?? null, function ($query, string $search): void {
