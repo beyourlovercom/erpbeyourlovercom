@@ -77,6 +77,64 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 2));
     }
 
+    public function test_overseas_review_stockout_holds_shipping_and_restock_reuses_approval_gate(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-NY'], '007-OVERSEA-GRID-STOCKOUT');
+
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=review')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.data.0.order_date', '2026-09-10'));
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/stockout", [])->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $order->id, 'status' => 'stockout']);
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=review')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=stockout')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.review_status', 'stockout')
+            ->where('rows.data.0.workflow_status_projection.zh', '缺货'));
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve", [])->assertStatus(409);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'shipment_status' => 'pending', 'tracking_number' => null,
+        ]);
+
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/restock", [])->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id, 'status' => 'approved', 'reviewed_warehouse_id' => $warehouses['US-NY']->id,
+        ]);
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=stockout')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 1));
+    }
+
+    public function test_overseas_batch_review_applies_independently_and_never_bypasses_review_role(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $viewer = $this->userWith(['logistics.view']);
+        $warehouses = $this->warehouses();
+        $first = $this->orderAt($warehouses['US-SM'], '007-OVERSEA-BULK-A');
+        $second = $this->orderAt($warehouses['US-SM'], '007-OVERSEA-BULK-B');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$second->id}/approve")->assertRedirect();
+
+        $payload = ['order_ids' => [$first->id, $second->id], 'action' => 'stockout'];
+        $this->actingAs($viewer)->postJson('/logistics/oversea/batch-review', $payload)->assertForbidden();
+        $this->actingAs($user)->postJson('/logistics/oversea/batch-review', $payload)
+            ->assertOk()->assertJsonPath('success_count', 1)->assertJsonPath('failed_count', 1)
+            ->assertJsonPath('results.0.order_id', $first->id)
+            ->assertJsonPath('results.0.ok', true)
+            ->assertJsonPath('results.1.ok', false);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $first->id, 'status' => 'stockout']);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $second->id, 'status' => 'approved']);
+        $this->actingAs($user)->postJson('/logistics/oversea/batch-review', [
+            'order_ids' => [$first->id], 'action' => 'reject',
+        ])->assertUnprocessable()->assertJsonValidationErrors('reason');
+    }
+
     public function test_warehouse_page_is_isolated_and_uses_frozen_carrier_mapping(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);

@@ -2,15 +2,15 @@
 
 use App\Modules\Logistics\Experience\Controllers\CarrierController;
 use App\Modules\Logistics\Experience\Controllers\ChinaSmallPacketBarcode69Controller;
-use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Logistics\Experience\Controllers\DomesticInlineTrackingController;
+use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsTrackingPushController;
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
 use App\Modules\Logistics\Experience\Controllers\ShipOutMorePlusController;
-use App\Modules\Logistics\Experience\Controllers\ShipOutProductionV1Controller;
 use App\Modules\Logistics\Experience\Controllers\ShipOutProductionBatchController;
+use App\Modules\Logistics\Experience\Controllers\ShipOutProductionV1Controller;
 use App\Modules\Logistics\Experience\Controllers\XlwmsReshipmentController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsSingleOrderController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsWarehouseBatchController;
@@ -53,6 +53,12 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/china/orders/{order}/restock', [DomesticLogisticsController::class, 'restock'])->middleware('can:domestic.review')->name('logistics.china.restock');
     Route::post('/logistics/china/orders/{order}/reject', [DomesticLogisticsController::class, 'reject'])->middleware('can:domestic.review')->name('logistics.china.reject');
     Route::post('/logistics/china/orders/{order}/reopen-review', [DomesticLogisticsController::class, 'reopenReview'])->middleware('can:domestic.review')->name('logistics.china.reopen-review');
+    Route::post('/logistics/oversea/batch-review', [OverseaWarehouseController::class, 'batchReview'])
+        ->middleware([...$review, 'throttle:15,1'])->name('logistics.oversea.batch-review');
+    Route::post('/logistics/oversea/orders/{order}/stockout', [OverseaWarehouseController::class, 'stockout'])
+        ->middleware($review)->whereNumber('order')->name('logistics.oversea.stockout');
+    Route::post('/logistics/oversea/orders/{order}/restock', [OverseaWarehouseController::class, 'restock'])
+        ->middleware($review)->whereNumber('order')->name('logistics.oversea.restock');
     Route::get('/logistics/oversea/{warehouse?}', [OverseaWarehouseController::class, 'index'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea');
     Route::get('/logistics/oversea/us-3sm/orders/{order}/manual-export',
         [OverseaWarehouseController::class, 'exportManualUsSmOrder'])

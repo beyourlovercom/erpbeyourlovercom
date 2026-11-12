@@ -23,6 +23,7 @@ use App\Modules\Orders\Application\OrderWorkflowStatus;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -34,6 +35,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 final class OverseaWarehouseController
 {
@@ -41,7 +43,7 @@ final class OverseaWarehouseController
 
     private const PER_PAGE_OPTIONS = [20, 50, 100];
 
-    private const VIEWS = ['review', 'pending', 'issued', 'shipped', 'exceptions', 'all'];
+    private const VIEWS = ['review', 'stockout', 'pending', 'issued', 'shipped', 'exceptions', 'all'];
 
     public function __construct(
         private readonly OverseaWarehouseReviewService $reviews,
@@ -430,6 +432,60 @@ final class OverseaWarehouseController
         return back()->with('success', $message);
     }
 
+    /** The same review privileges as single-order actions; each row validates independently. */
+    public function batchReview(Request $request): JsonResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $data = $request->validate([
+            'order_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'action' => ['required', Rule::in(['approve', 'stockout', 'reject', 'restock'])],
+            'reason' => ['required_if:action,reject', 'nullable', 'string', 'min:3', 'max:500'],
+        ]);
+        $results = [];
+        foreach ($data['order_ids'] as $orderId) {
+            $id = (int) $orderId;
+            try {
+                $order = Order::query()->findOrFail($id);
+                match ($data['action']) {
+                    'approve' => $this->reviews->approve($order, $request->user()),
+                    'stockout' => $this->reviews->stockout($order, $request->user()),
+                    'restock' => $this->reviews->restock($order, $request->user()),
+                    'reject' => $this->reviews->reject($order, trim($data['reason']), $request->user()),
+                };
+                $results[] = ['order_id' => $id, 'ok' => true, 'message' => '已处理'];
+            } catch (HttpExceptionInterface $e) {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => $e->getStatusCode() === 403 ? '无操作权限' : ($e->getMessage() ?: '状态已变化')];
+            } catch (ModelNotFoundException $e) {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => '订单不存在'];
+            } catch (DomainException|InvalidArgumentException $e) {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => '业务状态不允许操作'];
+            }
+        }
+
+        return response()->json([
+            'results' => $results,
+            'success_count' => count(array_filter($results, fn (array $r): bool => $r['ok'])),
+            'failed_count' => count(array_filter($results, fn (array $r): bool => ! $r['ok'])),
+        ]);
+    }
+
+    public function stockout(Request $request, Order $order): RedirectResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $this->reviews->stockout($order, $request->user());
+
+        return back()->with('success', '订单已标记缺货，禁止发货。');
+    }
+
+    public function restock(Request $request, Order $order): RedirectResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $this->reviews->restock($order, $request->user());
+
+        return back()->with('success', '已确认到货并审核通过，进入待发货。');
+    }
+
     public function approve(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate(['note' => ['sometimes', 'nullable', 'string', 'max:1000']]);
@@ -450,7 +506,7 @@ final class OverseaWarehouseController
 
     public function reject(Request $request, Order $order): RedirectResponse
     {
-        $data = $request->validate(['note' => ['required', 'string', 'max:1000']]);
+        $data = $request->validate(['note' => ['required', 'string', 'min:3', 'max:500']]);
         $this->reviews->reject($order, trim($data['note']), $request->user());
 
         return back()->with('success', '订单已驳回并退回运营重新分仓');
@@ -491,6 +547,11 @@ final class OverseaWarehouseController
     {
         if ($view === 'review') {
             $this->progressQueries->overseasReview($query);
+
+            return;
+        }
+        if ($view === 'stockout') {
+            $this->progressQueries->overseasStockout($query);
 
             return;
         }
@@ -621,6 +682,7 @@ final class OverseaWarehouseController
             'erp_order_id' => $order?->erp_order_id,
             'order_url' => $order ? "/orders/{$order->id}" : null,
             'recipient_name' => $order?->address?->recipient_name,
+            'order_date' => $order?->order_date?->toDateString(),
             'country' => $order?->address?->country,
             'warehouse_id' => $shipment->warehouse_id,
             'warehouse_name' => $shipment->warehouse?->name,
@@ -630,7 +692,9 @@ final class OverseaWarehouseController
             'tracking_number' => $shipment->tracking_number,
             'progress' => $review?->progress ?? 'pending_review',
             'note' => $review?->note,
-            'review_status' => $effectiveApproved ? 'approved' : 'pending',
+            'review_status' => $effectiveApproved ? 'approved'
+                : ($review?->status === 'stockout'
+                    && (int) $review->reviewed_warehouse_id === (int) $shipment->warehouse_id ? 'stockout' : 'pending'),
             'shipment_status' => $shipment->shipment_status,
             'workflow_status_projection' => $order ? $this->workflowStatusProjection->for($order) : null,
             'workflow_revision' => (int) ($order?->workflow_revision ?? 0),
