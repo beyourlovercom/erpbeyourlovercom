@@ -9,6 +9,7 @@ const { routerPost, routerPatch, routerVisit, routerReload } = vi.hoisted(() => 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
   router: { post: routerPost, patch: routerPatch, visit: routerVisit, reload: routerReload },
+  usePage: () => ({ props:{ auth:{user:{id:1}} } }),
 }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
 vi.mock('../../../Components/DataGrid/GlobalGrid.vue', () => ({ __esModule:true, default: {name:'MockGlobalGrid',props:['columns','rows','enableSelection','selectedOrderIds','filterColumns','requiredColumnIds','defaultPinnedRight'],template:'<div class="test-global-grid"><slot name="actions" /><slot name="footer-left" /></div>'} }))
@@ -310,6 +311,94 @@ describe('oversea domestic-style Global Grid review operation contract', () => {
       vi.unstubAllGlobals()
     }
   })
+  it('adds bulk confirm shipment to the existing single footer only on authorized pending views',async()=>{
+    const pending=mountPage({globalGridEnabled:true,warehouseKey:'all',warehouse:null,
+      view:'pending',rows:usSmPendingRows,canReview:false,canOperate:true,canArchive:true})
+    await flushPromises()
+    pending.findComponent({name:'MockGlobalGrid'}).vm.$emit('selection-change',[{id:99}])
+    await pending.vm.$nextTick()
+    const options=pending.find('select[aria-label="批量操作"]')
+    expect(options.text()).toContain('批量归档')
+    expect(options.text()).toContain('批量确认发货')
+    expect(pending.findAll('[data-testid="grid-batch-footer"]')).toHaveLength(1)
+    const unauthorized=mountPage({globalGridEnabled:true,view:'pending',rows:usSmPendingRows,
+      canOperate:false,canReview:false,canArchive:true})
+    // Non-operator users may not even receive this operational grid.
+    expect(unauthorized.text()).not.toContain('批量确认发货')
+    const all=mountPage({globalGridEnabled:true,view:'all',rows:usSmPendingRows,canOperate:true,canArchive:true})
+    // The full historical view is read-only for this bulk shipment action.
+    expect(all.text()).not.toContain('批量确认发货')
+  })
+
+  it('shows explicit preflight and confirmation before batch shipment, never sends real order in unit test',async()=>{
+    routerReload.mockClear()
+    const wrapper=mountPage({globalGridEnabled:true,warehouseKey:'all',warehouse:null,view:'pending',
+      rows:usSmPendingRows,canReview:false,canOperate:true,canArchive:true})
+    await flushPromises()
+    wrapper.findComponent({name:'MockGlobalGrid'}).vm.$emit('selection-change',[{id:99}])
+    await wrapper.vm.$nextTick()
+    await wrapper.find('select[aria-label="批量操作"]').setValue('bulk_ship')
+    const fetchMock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        token:'a'.repeat(48),expires_in_seconds:600,total:1,eligible_count:1,blocked_count:0,
+        warning:'必须核实仓库真实出库',
+        results:[{order_id:99,order_no:'007-OVERSEA-USSM-99',warehouse:'US-SM',
+          tracking_number:'9400111899223856928888',eligible:true,message:'预检通过'}],
+      })})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        total:1,success_count:1,failed_count:0,auto_retry:false,woo_completed:false,
+        results:[{order_id:99,order_no:'007-OVERSEA-USSM-99',warehouse:'US-SM',
+          tracking_number:'9400111899223856928888',eligible:true,ok:true,status:'shipped',message:'ERP 已发货'}],
+      })})
+    vi.stubGlobal('fetch',fetchMock)
+    try{
+      await wrapper.find('button.apply-batch').trigger('click')
+      await flushPromises()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0][0]).toBe('/logistics/oversea/bulk-ship/preview')
+      expect(JSON.parse((fetchMock.mock.calls[0][1] as {body:string}).body))
+        .toEqual({order_ids:[99]})
+      const modal=wrapper.get('[data-testid="oversea-bulk-ship-modal"]')
+      expect(modal.text()).toContain('可确认 1 单')
+      expect(modal.find('.confirm').attributes('disabled')).toBeDefined()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      await modal.find('.oversea-bulk-ship-ack input').setValue(true)
+      await modal.find('.confirm').trigger('click')
+      await flushPromises()
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock.mock.calls[1][0]).toBe('/logistics/oversea/bulk-ship/apply')
+      expect(JSON.parse((fetchMock.mock.calls[1][1] as {body:string}).body))
+        .toEqual({token:'a'.repeat(48),confirmation:'CONFIRM_REAL_WAREHOUSE_DISPATCH'})
+      expect(modal.text()).toContain('ERP 已确认发货 1 单')
+      expect(routerReload).toHaveBeenCalledWith({only:['rows','viewCounts']})
+    }finally{vi.unstubAllGlobals()}
+  })
+
+  it('blocks confirmation if all selected rows are ineligible and skips apply endpoint',async()=>{
+    const wrapper=mountPage({globalGridEnabled:true,warehouseKey:'all',warehouse:null,view:'pending',
+      rows:usSmPendingRows,canOperate:true,canArchive:true})
+    await flushPromises()
+    wrapper.findComponent({name:'MockGlobalGrid'}).vm.$emit('selection-change',[{id:99}])
+    await wrapper.vm.$nextTick()
+    await wrapper.find('select[aria-label="批量操作"]').setValue('bulk_ship')
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      token:'b'.repeat(48),expires_in_seconds:600,total:1,eligible_count:0,blocked_count:1,
+      warning:'MorePlus 须专属 OMS 核验',
+      results:[{order_id:99,order_no:'007-OVERSEA-USSM-99',warehouse:'US-LA',
+        tracking_number:'',eligible:false,message:'需核实 OMS 出库单'}],
+    })})
+    vi.stubGlobal('fetch',fetchMock)
+    try{
+      await wrapper.find('button.apply-batch').trigger('click')
+      await flushPromises()
+      const dialog=wrapper.get('[data-testid="oversea-bulk-ship-modal"]')
+      expect(dialog.text()).toContain('阻断 1 单')
+      await dialog.find('.oversea-bulk-ship-ack input').setValue(true)
+      expect(dialog.find('.confirm').attributes('disabled')).toBeDefined()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    }finally{vi.unstubAllGlobals()}
+  })
+
   it('hides archive unless the user has orders.archive, including stockout view', async () => {
     const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'pending' as const}]}
     const noPermission=mountPage({globalGridEnabled:true,view:'review',rows:reviewRows,canReview:true,canArchive:false})

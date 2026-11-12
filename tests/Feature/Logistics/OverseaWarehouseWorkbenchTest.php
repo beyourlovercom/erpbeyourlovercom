@@ -1870,6 +1870,126 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
     }
 
     /** @return array<string,Warehouse> */
+    public function test_bulk_ship_requires_operator_and_previews_without_writes_then_is_one_use(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $viewer = $this->userWith(['logistics.view']);
+        $warehouses = $this->warehouses();
+        $carrier = Carrier::query()->firstOrCreate(['name' => 'DHL'], [
+            'name_en' => 'DHL', 'name_zh' => '敦豪', 'is_active' => true,
+        ]);
+        $carrier->services()->firstOrCreate(['service_value' => 'DHL PAKET International'], [
+            'service_key' => 'uat-g-bulk', 'is_active' => true, 'sort_order' => 1,
+        ]);
+        $germany = $this->orderAt($warehouses['DE'], '007-G-BULK-DE', 'DE');
+        $moreplus = $this->orderAt($warehouses['US-LA'], '007-G-BULK-LA');
+        $this->actingAs($operator)->post("/logistics/oversea/orders/{$germany->id}/approve")->assertRedirect();
+        $this->actingAs($operator)->post("/logistics/oversea/orders/{$moreplus->id}/approve")->assertRedirect();
+        $germany->shipment()->update([
+            'carrier' => 'DHL', 'service' => 'DHL PAKET International',
+            'tracking_number' => 'CF123456789DE',
+        ]);
+        $moreplus->shipment()->update([
+            'carrier' => 'USPS', 'service' => 'Priority', 'tracking_number' => '9400111899223856929999',
+        ]);
+        $ids = [$germany->id, $moreplus->id];
+        $url = '/logistics/oversea/bulk-ship';
+        $this->actingAs($viewer)->postJson($url.'/preview', ['order_ids' => $ids])->assertForbidden();
+        $preview = $this->actingAs($operator)->postJson($url.'/preview', ['order_ids' => $ids])
+            ->assertOk()
+            ->assertJsonPath('eligible_count', 1)
+            ->assertJsonPath('blocked_count', 1)
+            ->assertJsonPath('results.0.eligible', true)
+            ->assertJsonPath('results.1.eligible', false)
+            ->assertJsonPath('results.1.warehouse', 'US-LA')
+            ->json();
+        $this->assertDatabaseHas('shipments', ['order_id' => $germany->id, 'shipment_status' => 'pending']);
+        $this->assertDatabaseHas('shipments', ['order_id' => $moreplus->id, 'shipment_status' => 'pending']);
+        $this->actingAs($viewer)->postJson($url.'/apply', [
+            'token' => $preview['token'], 'confirmation' => 'CONFIRM_REAL_WAREHOUSE_DISPATCH',
+        ])->assertForbidden();
+        $this->actingAs($operator)->postJson($url.'/apply', [
+            'token' => $preview['token'], 'confirmation' => 'CONFIRM_REAL_WAREHOUSE_DISPATCH',
+        ])->assertOk()->assertJsonPath('success_count', 1)->assertJsonPath('failed_count', 1)
+            ->assertJsonPath('results.0.status', 'shipped')
+            ->assertJsonPath('results.1.status', 'skipped')
+            ->assertJsonPath('auto_retry', false)->assertJsonPath('woo_completed', false);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $germany->id, 'shipment_status' => 'shipped', 'tracking_number' => 'CF123456789DE',
+        ]);
+        $this->assertDatabaseHas('shipments', ['order_id' => $moreplus->id, 'shipment_status' => 'pending']);
+        $this->assertDatabaseHas('audit_records', ['entity_id' => $germany->id, 'action' => 'shipment.marked_shipped']);
+        $this->assertDatabaseMissing('audit_records', ['entity_id' => $moreplus->id, 'action' => 'shipment.marked_shipped']);
+        $this->actingAs($operator)->postJson($url.'/apply', [
+            'token' => $preview['token'], 'confirmation' => 'CONFIRM_REAL_WAREHOUSE_DISPATCH',
+        ])->assertStatus(409);
+        $this->assertDatabaseCount('shipments', 2);
+    }
+
+    public function test_bulk_ship_stale_preview_does_not_ship_and_missing_tracking_isolated(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $carrier = Carrier::query()->firstOrCreate(['name' => 'DHL'], [
+            'name_en' => 'DHL', 'name_zh' => '敦豪', 'is_active' => true,
+        ]);
+        $carrier->services()->firstOrCreate(['service_value' => 'DHL PAKET International'], [
+            'service_key' => 'uat-g-bulk-stale', 'is_active' => true, 'sort_order' => 1,
+        ]);
+        $first = $this->orderAt($warehouses['DE'], '007-G-BULK-STALE-DE', 'DE');
+        $second = $this->orderAt($warehouses['DE'], '007-G-BULK-NO-TRACKING', 'DE');
+        foreach ([$first, $second] as $order) {
+            $this->actingAs($operator)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+            $order->shipment()->update(['carrier' => 'DHL', 'service' => 'DHL PAKET International']);
+        }
+        $first->shipment()->update(['tracking_number' => 'CF123456789DE']);
+        $url = '/logistics/oversea/bulk-ship';
+        $data = $this->actingAs($operator)->postJson($url.'/preview', [
+            'order_ids' => [$first->id, $second->id],
+        ])->assertOk()->assertJsonPath('eligible_count', 1)
+            ->assertJsonPath('blocked_count', 1)->json();
+        // Warehouse changes Tracking after preflight: do not confirm the stale number.
+        $first->shipment()->update(['tracking_number' => 'CF123456780DE']);
+        $this->actingAs($operator)->postJson($url.'/apply', [
+            'token' => $data['token'], 'confirmation' => 'CONFIRM_REAL_WAREHOUSE_DISPATCH',
+        ])->assertOk()->assertJsonPath('success_count', 0)
+            ->assertJsonPath('failed_count', 2)->assertJsonPath('results.0.status', 'skipped');
+        $this->assertDatabaseHas('shipments', ['order_id' => $first->id, 'shipment_status' => 'pending']);
+        $this->assertDatabaseHas('shipments', ['order_id' => $second->id, 'shipment_status' => 'pending']);
+    }
+
+    public function test_bulk_ship_uses_existing_us_sm_contract_and_rejects_duplicate_tracking_or_invalid_confirmation(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $first = $this->orderAt($warehouses['US-SM'], '007-G-BULK-USSM');
+        $second = $this->orderAt($warehouses['US-SM'], '007-G-BULK-USSM-DUP');
+        foreach ([$first, $second] as $order) {
+            $this->actingAs($operator)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+            $order->shipment()->update(['carrier' => 'USPS']);
+        }
+        $first->shipment()->update(['tracking_number' => '9400111899223856988123']);
+        $second->shipment()->update(['tracking_number' => '9400111899223856988123']);
+        $url = '/logistics/oversea/bulk-ship';
+        $this->actingAs($operator)->postJson($url.'/preview', [
+            'order_ids' => [$first->id, $second->id],
+        ])->assertOk()->assertJsonPath('eligible_count', 0);
+        $second->shipment()->update(['tracking_number' => null]);
+        $preview = $this->actingAs($operator)->postJson($url.'/preview', [
+            'order_ids' => [$first->id],
+        ])->assertOk()->assertJsonPath('eligible_count', 1)->json();
+        $this->actingAs($operator)->postJson($url.'/apply', [
+            'token' => $preview['token'],
+        ])->assertUnprocessable()->assertJsonValidationErrors('confirmation');
+        $this->assertDatabaseHas('shipments', ['order_id' => $first->id, 'shipment_status' => 'pending']);
+        $this->actingAs($operator)->postJson($url.'/apply', [
+            'token' => $preview['token'], 'confirmation' => 'CONFIRM_REAL_WAREHOUSE_DISPATCH',
+        ])->assertOk()->assertJsonPath('success_count', 1);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $first->id, 'shipment_status' => 'shipped', 'tracking_number' => '9400111899223856988123',
+        ]);
+    }
+
     private function warehouses(): array
     {
         $rows = [

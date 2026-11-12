@@ -122,6 +122,28 @@ const reviewSelection = ref<number[]>([])
 // review/shipout/tracking eligibility. This does not grant archive permission.
 const archiveSelection = ref<number[]>([])
 const archivePending = ref<number[]|null>(null)
+type BulkShipRow = {
+  order_id:number;order_no:string;warehouse:string|null;tracking_number:string
+  eligible:boolean;message:string;status?:string;ok?:boolean
+}
+type BulkShipPreview = {
+  token:string;expires_in_seconds:number;total:number;eligible_count:number
+  blocked_count:number;results:BulkShipRow[];warning:string
+}
+type BulkShipResult = {
+  total:number;success_count:number;failed_count:number;results:BulkShipRow[]
+}
+const bulkShipSelection = ref<number[]>([])
+const bulkShipPreview = ref<BulkShipPreview|null>(null)
+const bulkShipReport = ref<BulkShipResult|null>(null)
+const bulkShipBusy = ref(false)
+const bulkShipMessage = ref('')
+const bulkShipAcknowledged = ref(false)
+const bulkShipPendingIds = ref<number[]>([])
+const bulkShipPreviewScope = computed(()=>props.canOperate && props.view==='pending')
+const bulkShipSelectedCount = computed(() => props.canArchive && props.view!=='stockout'
+  ? archiveSelection.value.length : bulkShipSelection.value.length)
+
 const reviewBusy = ref(false)
 const bulkBusy = ref(false)
 const gridReviewError = ref('')
@@ -1028,10 +1050,91 @@ const reviewBulkOptions = computed(()=> {
   if(props.canReview && props.view==='stockout')result.push({value:'restock',label:'批量已到货-可发货'})
   // Same audited operational archive endpoint and permission as domestic grids.
   if(props.canArchive && props.view!=='stockout')result.push({value:'archive',label:'批量归档'})
+  if(bulkShipPreviewScope.value)result.push({value:'bulk_ship',label:'批量确认发货'})
   return result
 })
+const batchShipPost = async (path:string, data:Record<string,unknown>) => {
+  const response=await fetch(path,{
+    method:'POST',credentials:'same-origin',cache:'no-store',
+    headers:{Accept:'application/json','Content-Type':'application/json',
+      'X-Requested-With':'XMLHttpRequest',...currentCsrfHeaders()},
+    body:JSON.stringify(data),
+  })
+  const result=await response.json().catch(()=>({})) as Record<string,any>
+  if(!response.ok)throw Error(response.status===419?'登录会话已过期，请刷新后核对':
+    response.status===409?'预检已过期或重复提交，请先核对真实发货结果':String(result.message??'批量确认发货失败'))
+  return result
+}
+const previewBulkShip = async () => {
+  if(!bulkShipPreviewScope.value||bulkShipBusy.value)return
+  const ids=[...new Set(bulkShipSelection.value)]
+  if(!ids.length)return
+  if(ids.length>50){
+    publishGlobalFeedback({state:'BLOCKED',title:'批量确认发货最多 50 单',message:'请缩小勾选范围。'})
+    return
+  }
+  bulkShipBusy.value=true
+  bulkShipMessage.value=''
+  bulkShipPreview.value=null
+  bulkShipReport.value=null
+  bulkShipAcknowledged.value=false
+  bulkShipPendingIds.value=ids
+  try{
+    const result=await batchShipPost('/logistics/oversea/bulk-ship/preview',{order_ids:ids}) as BulkShipPreview
+    if(!Array.isArray(result.results)||result.total!==ids.length)throw Error('预检返回订单清单不完整，请勿继续')
+    bulkShipPreview.value=result
+  }catch(error){
+    bulkShipMessage.value=error instanceof Error?error.message:'批量预检失败，未修改订单'
+    bulkShipPendingIds.value=[]
+  }finally{bulkShipBusy.value=false}
+}
+const confirmBulkShip = async () => {
+  if(!bulkShipPreviewScope.value||bulkShipBusy.value||!bulkShipPreview.value?.eligible_count
+    ||!bulkShipAcknowledged.value)return
+  const current=[...new Set(bulkShipSelection.value)]
+  if(current.length!==bulkShipPendingIds.value.length
+    ||current.some(id=>!bulkShipPendingIds.value.includes(id))){
+    bulkShipMessage.value='勾选订单已变化，请关闭窗口后重新预检'
+    bulkShipPreview.value=null
+    return
+  }
+  const token=bulkShipPreview.value.token
+  bulkShipBusy.value=true
+  bulkShipMessage.value=''
+  try{
+    const result=await batchShipPost('/logistics/oversea/bulk-ship/apply',{
+      token,confirmation:'CONFIRM_REAL_WAREHOUSE_DISPATCH',
+    }) as BulkShipResult
+    if(!Array.isArray(result.results)||result.total!==bulkShipPendingIds.value.length)
+      throw Error('批量处理回执不完整，请逐单检查，禁止直接重试')
+    bulkShipPreview.value=null
+    bulkShipReport.value=result
+    bulkShipSelection.value=[]
+    archiveSelection.value=[]
+    publishGlobalFeedback({state:result.failed_count?'BLOCKED':'SUCCESS',
+      title:'海外仓批量确认发货：成功 '+result.success_count+' 单，未完成 '+result.failed_count+' 单',
+      message:'ERP 仅登记真实出库，官网由同步模块处理；失败订单请根据逐单回执单独核对。'})
+    router.reload({only:['rows','viewCounts']})
+  }catch(error){
+    bulkShipPreview.value=null // outcome may be unknown; never reuse token
+    bulkShipMessage.value=(error instanceof Error?error.message:'批量执行回执未知')
+      +'；请逐单检查订单状态和回执，禁止直接重复提交'
+  }finally{bulkShipBusy.value=false}
+}
+const closeBulkShip = () => {
+  if(bulkShipBusy.value)return
+  bulkShipPreview.value=null
+  bulkShipReport.value=null
+  bulkShipMessage.value=''
+  bulkShipAcknowledged.value=false
+  bulkShipPendingIds.value=[]
+}
 const applyReviewBulk = async (payload:{action:string;reason:string}) => {
   if(bulkBusy.value||!reviewBulkOptions.value.some(opt=>opt.value===payload.action))return
+  if(payload.action==='bulk_ship'){
+    await previewBulkShip()
+    return
+  }
   if(payload.action==='archive'){
     if(!props.canArchive||props.view==='stockout'||!archiveSelection.value.length)return
     if(archiveSelection.value.length>50){
@@ -1134,6 +1237,8 @@ const submitJump = () => {
   goPage(page)
 }
 watch(()=>[props.view,props.warehouseKey,props.rows.current_page,props.rows.per_page],()=>{
+  bulkShipSelection.value=[]
+  if(!bulkShipBusy.value)closeBulkShip()
   reviewSelection.value=[]
   archiveSelection.value=[]
   archivePending.value=null
@@ -1142,6 +1247,7 @@ watch(()=>visibleRows.value,rows=>{
   const present=new Set(rows.map(row=>row.order_id))
   reviewSelection.value=reviewSelection.value.filter(id=>present.has(id))
   archiveSelection.value=archiveSelection.value.filter(id=>present.has(id))
+  bulkShipSelection.value=bulkShipSelection.value.filter(id=>present.has(id))
   archivePending.value=null
 })
 const nativeOperationRows = computed(()=>gridEnabled.value
@@ -1311,6 +1417,8 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
 ])
 const onGridSelection = (rows:GridListRow[]) => {
   const ids=new Set(rows.map(row=>Number(row.id)).filter(id=>Number.isSafeInteger(id)&&id>0))
+  bulkShipSelection.value=bulkShipPreviewScope.value
+    ?visibleRows.value.filter(row=>ids.has(row.order_id)&&row.shipment_status==='pending').map(row=>row.order_id):[]
   archiveSelection.value=props.canArchive && props.view!=='stockout'
     ?visibleRows.value.filter(row=>ids.has(row.order_id)).map(row=>row.order_id):[]
   if(props.canReview && ['review','stockout'].includes(props.view)){
@@ -1460,8 +1568,8 @@ const compactPages = computed<(number|string)[]>(() => {
           :required-column-ids="['order']" :page="rows" row-identity-key="id"
           :search="gridSearch??''" :sort="gridSort??undefined"
           :filter-columns="[]" :filter-values="gridFilters??{}"
-          :enable-selection="Boolean((canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || canTrackingSync || showShipoutSelection)"
-          :selected-order-ids="(canArchive && view!=='stockout')?archiveSelection:(canReview && ['review','stockout'].includes(view))?reviewSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
+          :enable-selection="Boolean((canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || bulkShipPreviewScope || canTrackingSync || showShipoutSelection)"
+          :selected-order-ids="(canArchive && view!=='stockout')?archiveSelection:bulkShipPreviewScope?bulkShipSelection:(canReview && ['review','stockout'].includes(view))?reviewSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
           search-placeholder="搜索全部订单号 / Tracking / 收件人 / SKU..."
           @search-change="searchGrid" @sort-change="sortGrid"
           @selection-change="onGridSelection" @page-change="gridNavigate({page:$event})"
@@ -1487,10 +1595,55 @@ const compactPages = computed<(number|string)[]>(() => {
             </div>
           </template>
           <template #footer-left>
-            <GridBatchFooterControls :selected-count="(canArchive && view!=='stockout')?archiveSelection.length:reviewSelection.length" :options="reviewBulkOptions"
-              :busy="bulkBusy" @apply="applyReviewBulk" />
+            <GridBatchFooterControls :selected-count="bulkShipPreviewScope?bulkShipSelectedCount:(canArchive && view!=='stockout')?archiveSelection.length:reviewSelection.length"
+              :options="reviewBulkOptions" :busy="bulkBusy || bulkShipBusy" @apply="applyReviewBulk" />
           </template>
         </GlobalGrid>
+        <div v-if="bulkShipPreview || bulkShipReport || bulkShipMessage" class="oversea-archive-overlay"
+          data-testid="oversea-bulk-ship-modal" role="presentation">
+          <section class="oversea-archive-dialog oversea-bulk-ship-dialog" role="dialog"
+            aria-modal="true" aria-label="海外仓批量确认发货">
+            <h2>批量确认发货 · 逐单校验</h2>
+            <template v-if="bulkShipPreview">
+              <p>已选 {{ bulkShipPreview.total }} 单 ·
+                <strong>可确认 {{ bulkShipPreview.eligible_count }} 单</strong> ·
+                阻断 {{ bulkShipPreview.blocked_count }} 单</p>
+              <p>{{ bulkShipPreview.warning }} 系统不会自动重复发货或直接修改官网状态。</p>
+              <div class="oversea-bulk-ship-rows">
+                <div v-for="item in bulkShipPreview.results" :key="item.order_id" class="oversea-bulk-ship-row">
+                  <strong>{{ item.order_no }}</strong><span>{{ item.warehouse||'未知仓库' }}</span>
+                  <span :class="item.eligible?'bulk-shippable':'bulk-ship-blocked'">{{ item.eligible?'可确认':'阻断' }}</span>
+                  <span>{{ item.eligible ? item.tracking_number : item.message }}</span>
+                </div>
+              </div>
+              <label class="oversea-bulk-ship-ack"><input v-model="bulkShipAcknowledged" type="checkbox" />
+                我已核实所有可确认订单由对应仓库真实出库，Tracking 属实。仅更新 ERP，官网同步按原任务执行。
+              </label>
+              <div class="oversea-archive-dialog-actions">
+                <button type="button" :disabled="bulkShipBusy" @click="closeBulkShip">取消</button>
+                <button type="button" class="confirm" :disabled="bulkShipBusy || !bulkShipAcknowledged || !bulkShipPreview.eligible_count"
+                  @click="confirmBulkShip">{{bulkShipBusy?'正在逐单确认…':'确认发货 '+bulkShipPreview.eligible_count+' 单'}}</button>
+              </div>
+            </template>
+            <template v-else-if="bulkShipReport">
+              <p>ERP 已确认发货 {{bulkShipReport.success_count}} 单；未完成 {{bulkShipReport.failed_count}} 单。没有自动重试。</p>
+              <div class="oversea-bulk-ship-rows">
+                <div v-for="item in bulkShipReport.results" :key="item.order_id" class="oversea-bulk-ship-row">
+                  <strong>{{item.order_no}}</strong><span>{{item.warehouse||'未知'}}</span>
+                  <span :class="item.ok?'bulk-shippable':'bulk-ship-blocked'">{{item.ok?'成功':'未完成'}}</span>
+                  <span>{{item.message}}</span>
+                </div>
+              </div>
+              <div class="oversea-archive-dialog-actions">
+                <button type="button" @click="closeBulkShip">关闭结果</button>
+              </div>
+            </template>
+            <template v-else>
+              <p role="alert">{{bulkShipMessage}}</p>
+              <div class="oversea-archive-dialog-actions"><button type="button" @click="closeBulkShip">关闭并核对订单</button></div>
+            </template>
+          </section>
+        </div>
         <div v-if="archivePending" class="oversea-archive-overlay" data-testid="oversea-archive-confirm" role="presentation">
           <section class="oversea-archive-dialog" role="dialog" aria-modal="true" aria-label="海外仓批量归档确认">
             <h2>确认批量归档 {{archivePending.length}} 条订单？</h2>
@@ -1816,4 +1969,16 @@ const compactPages = computed<(number|string)[]>(() => {
 .oversea-archive-dialog-actions button{border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:9px 14px;cursor:pointer}
 .oversea-archive-dialog-actions .confirm{background:#b91c1c;color:#fff;border-color:#b91c1c}
 .oversea-archive-dialog-actions button:disabled{opacity:.5;cursor:not-allowed}
+</style>
+
+<style scoped>
+.oversea-bulk-ship-dialog{max-width:min(880px,94vw);width:800px}
+.oversea-bulk-ship-rows{max-height:42vh;overflow:auto;border:1px solid #d8e1eb;border-radius:6px;margin:10px 0}
+.oversea-bulk-ship-row{display:grid;grid-template-columns:minmax(145px,1fr) 95px 64px minmax(180px,2fr);
+  gap:9px;align-items:center;padding:8px 11px;font-size:12px;border-bottom:1px solid #e2e8f0}
+.oversea-bulk-ship-row:last-child{border-bottom:0}
+.oversea-bulk-ship-row>span:last-child{overflow-wrap:anywhere}
+.oversea-bulk-ship-ack{display:flex;gap:8px;align-items:start;font-size:12px;color:#24364e;margin:12px 0}
+.oversea-bulk-ship-ack input{margin-top:2px}
+.bulk-shippable{color:#11694b}.bulk-ship-blocked{color:#a63623}
 </style>
