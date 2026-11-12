@@ -112,6 +112,21 @@ describe('oversea domestic-style Global Grid review operation contract', () => {
     expect(typeof actions.cellRendererParams?.native).toBe('function')
   })
 
+  it('G leaves PR751 pending direct Tracking editor and 260px safe action width intact',async()=>{
+    const wrapper=mountPage({globalGridEnabled:true,view:'pending',rows:usSmPendingRows,canOperate:true})
+    await flushPromises()
+    const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+    const actions=(grid.props('columns') as {colId:string;pinned?:string;lockPinned?:boolean;lockVisible?:boolean;minWidth?:number;maxWidth?:number;cellRendererParams?:Record<string,any>}[]).find(c=>c.colId==='actions')!
+    expect(grid.props('requiredColumnIds')).toEqual(['order'])
+    expect(actions.pinned).toBe('right')
+    expect(actions.lockPinned).not.toBe(true)
+    expect(actions.lockVisible).not.toBe(true)
+    expect(actions.minWidth).toBe(258)
+    expect(actions.maxWidth).toBe(275)
+    expect(typeof actions.cellRendererParams?.saveTracking).toBe('function')
+    expect(typeof actions.cellRendererParams?.confirmShip).toBe('function')
+  })
+
   it('shows the order date and uses the existing domestic inline review cell actions', async () => {
     const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:usSmPendingRows,canReview:true})
     await flushPromises()
@@ -122,6 +137,113 @@ describe('oversea domestic-style Global Grid review operation contract', () => {
     expect(columns.find(col=>col.colId==='actions')?.headerName).toBe('操作')
     expect(columns.find(col=>col.colId==='actions')?.cellRenderer).toBeTruthy()
     expect(grid.props('enableSelection')).toBe(true)
+  })
+  it('exposes reviewer identity and inline Tracking editing only for authorized approved pending rows', async () => {
+    const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],reviewer_name:'dede',reviewed_at:'2026-11-12 08:10:18'}]}
+    const page=mountPage({globalGridEnabled:true,warehouseKey:'de-tianyun',rows:reviewRows})
+    await flushPromises()
+    const grid=page.findComponent({name:'MockGlobalGrid'})
+    const columns=grid.props('columns') as {colId:string;headerName:string;editable?:any;onCellValueChanged?:any;valueFormatter?:any}[]
+    expect(columns.find(col=>col.colId==='reviewer')?.headerName).toBe('审核人')
+    expect(columns.find(col=>col.colId==='reviewed_at')?.headerName).toBe('审核时间（北京时间）')
+    const gridRows=grid.props('rows') as {reviewer_name:string;reviewed_at:string;tracking_number:string}[]
+    expect(gridRows[0].reviewer_name).toBe('dede')
+    expect(gridRows[0].reviewed_at).toBe('2026-11-12 08:10:18')
+    const tracking=columns.find(col=>col.colId==='tracking')!
+    expect(tracking.valueFormatter({value:''})).toBe('—')
+    expect(tracking.editable({data:{id:99}})).toBe(true)
+    const patch=vi.spyOn(axios,'patch').mockResolvedValueOnce({data:{
+      order_id:99,shipment_status:'pending',tracking_number:'CF123456789DE',carrier:'USPS',service:null,note:null,
+      auto_shipped:false,website_sync:null,tracking_moved:false,message:'字段已保存',
+    }})
+    const refresh=vi.fn()
+    const event={data:{id:99,tracking_number:'CF123456789DE'},newValue:' CF123456789DE ',node:{},api:{refreshCells:refresh}}
+    tracking.onCellValueChanged(event)
+    await flushPromises()
+    expect(patch).toHaveBeenCalledWith('/logistics/oversea/orders/99/draft',
+      {tracking_number:'CF123456789DE'},expect.any(Object))
+    expect(event.data.tracking_number).toBe('CF123456789DE')
+    expect(refresh).toHaveBeenCalled()
+    patch.mockRestore()
+    const blocked=mountPage({globalGridEnabled:true,rows:reviewRows,canOperate:false})
+    await flushPromises()
+    const blockedTracking=(blocked.findComponent({name:'MockGlobalGrid'}).props('columns') as typeof columns)
+      .find(col=>col.colId==='tracking')!
+    expect(blockedTracking.editable({data:{id:99}})).toBe(false)
+    const shipped=mountPage({globalGridEnabled:true,rows:{...reviewRows,data:[{...reviewRows.data[0],shipment_status:'shipped'}]}})
+    await flushPromises()
+    const shippedTracking=(shipped.findComponent({name:'MockGlobalGrid'}).props('columns') as typeof columns)
+      .find(col=>col.colId==='tracking')!
+    expect(shippedTracking.editable({data:{id:99}})).toBe(false)
+  })
+  it('rolls back a Tracking cell on a server conflict without manufacturing a save', async () => {
+    const page=mountPage({globalGridEnabled:true,rows:usSmPendingRows})
+    await flushPromises()
+    const tracking=(page.findComponent({name:'MockGlobalGrid'}).props('columns') as {colId:string;onCellValueChanged?:any}[])
+      .find(col=>col.colId==='tracking')!
+    const patch=vi.spyOn(axios,'patch').mockRejectedValueOnce({response:{status:409}})
+    const refresh=vi.fn()
+    const event={data:{id:99,tracking_number:'INVALID'},newValue:'INVALID',node:{},api:{refreshCells:refresh}}
+    tracking.onCellValueChanged(event)
+    await flushPromises()
+    expect(event.data.tracking_number).toBe('')
+    expect(refresh).toHaveBeenCalled()
+    patch.mockRestore()
+  })
+  it('reuses the domestic pending route selectors and three-action cell for every overseas pending warehouse', async () => {
+    const page=mountPage({globalGridEnabled:true,view:'pending',warehouseKey:'all',rows:usSmPendingRows})
+    await flushPromises()
+    const columns=page.findComponent({name:'MockGlobalGrid'}).props('columns') as
+      {colId:string;cellRenderer?:{__name?:string}|unknown;cellRendererParams?:Record<string,any>}[]
+    for(const id of ['carrier','service','actions']){
+      expect(columns.find(column=>column.colId===id)?.cellRenderer).toBeTruthy()
+    }
+    expect(columns.find(column=>column.colId==='carrier')?.cellRendererParams?.saveCarrier).toBeTypeOf('function')
+    expect(columns.find(column=>column.colId==='service')?.cellRendererParams?.saveCarrier).toBeTypeOf('function')
+    const actions=columns.find(column=>column.colId==='actions')!.cellRendererParams!
+    expect(actions.confirmShip).toBeTypeOf('function')
+    expect(actions.saveTracking).toBeTypeOf('function')
+    expect(actions.reopenPending).toBeTypeOf('function')
+    expect(actions.requiresOutboundReference(99)).toBe(false)
+  })
+  it('routes confirmed overseas shipment by canonical row warehouse, not active selected rail', async () => {
+    routerPost.mockClear()
+    const germany={...usSmPendingRows.data[0],warehouse_code:'DE',carrier:'DHL',service:'DHL PAKET International',tracking_number:'CF123456789DE'}
+    const services=[{value:'DHL PAKET International',label:'DHL PAKET International'}]
+    const carrierOptions=[{value:'DHL',label:'DHL',services}]
+    const page=mountPage({globalGridEnabled:true,view:'pending',warehouseKey:'all',carrierOptions,
+      rows:{...usSmPendingRows,data:[germany]}})
+    await flushPromises()
+    const actions=(page.findComponent({name:'MockGlobalGrid'}).props('columns') as
+      {colId:string;cellRendererParams?:Record<string,any>}[]).find(c=>c.colId==='actions')!.cellRendererParams!
+    actions.confirmShip(99,'CF123456789DE')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/orders/99/manual-ship',
+      {tracking_number:'CF123456789DE'},expect.any(Object))
+    routerPost.mockClear()
+    actions.confirmShip(99,'CHANGED-UNSAVED')
+    expect(routerPost).not.toHaveBeenCalled()
+    const sm={...germany,warehouse_code:'US-SM'}
+    const second=mountPage({globalGridEnabled:true,view:'pending',warehouseKey:'all',carrierOptions,
+      rows:{...usSmPendingRows,data:[sm]}})
+    await flushPromises()
+    const smActions=(second.findComponent({name:'MockGlobalGrid'}).props('columns') as
+      {colId:string;cellRendererParams?:Record<string,any>}[]).find(c=>c.colId==='actions')!.cellRendererParams!
+    smActions.confirmShip(99,'CF123456789DE')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/us-3sm/orders/99/manual-ship',
+      {tracking_number:'CF123456789DE'},expect.any(Object))
+    routerPost.mockClear()
+    const moreplus={...germany,warehouse_code:'US-LA'}
+    const third=mountPage({globalGridEnabled:true,view:'pending',warehouseKey:'all',carrierOptions,
+      rows:{...usSmPendingRows,data:[moreplus]}})
+    await flushPromises()
+    const mpActions=(third.findComponent({name:'MockGlobalGrid'}).props('columns') as
+      {colId:string;cellRendererParams?:Record<string,any>}[]).find(c=>c.colId==='actions')!.cellRendererParams!
+    expect(mpActions.requiresOutboundReference(99)).toBe(true)
+    mpActions.confirmShip(99,'CF123456789DE')
+    expect(routerPost).not.toHaveBeenCalled()
+    mpActions.confirmShip(99,'CF123456789DE','MP-UAT-123')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/us-moreplus/orders/99/manual-ship',
+      {tracking_number:'CF123456789DE',outbound_reference:'MP-UAT-123',confirmation:'CONFIRM_MOREPLUS_MANUAL_SHIPPED_99'},expect.any(Object))
   })
   it('wires direct per-row approval to the exact overseas HTTP review route and blocks view-only actors', async () => {
     routerPost.mockClear()

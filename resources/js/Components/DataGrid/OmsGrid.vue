@@ -9,19 +9,20 @@ import {
   PaginationModule, RowSelectionModule, TextFilterModule, NumberFilterModule,
   QuickFilterModule, CsvExportModule, TooltipModule, ColumnAutoSizeModule,
   GridStateModule, EventApiModule, CellApiModule, DragAndDropModule,
-  CellStyleModule, LocaleModule, ModuleRegistry, themeBalham,
+  CellStyleModule, LocaleModule, TextEditorModule, ModuleRegistry, themeBalham,
   type ColDef, type ColGroupDef, type ColumnState, type GridApi, type GridReadyEvent, type SortChangedEvent,
 } from 'ag-grid-community'
 import { clampPinnedCounts, pinnedStateForVisibleColumns, restoreColumnWidths, sanitizeOmsGridPreference, type OmsDensity, type OmsGridPreference } from './omsGridState'
 
 // Only register features used by the shared table. Unused AG Grid community
 // editors, infinite models and optional modules stay out of its lazy chunk.
+// Tracking in the overseas workbench uses the native text editor.
 ModuleRegistry.registerModules([
   ClientSideRowModelModule, ColumnApiModule, RowApiModule, RenderApiModule,
   PaginationModule, RowSelectionModule, TextFilterModule, NumberFilterModule,
   QuickFilterModule, CsvExportModule, TooltipModule, ColumnAutoSizeModule,
   GridStateModule, EventApiModule, CellApiModule, DragAndDropModule,
-  CellStyleModule, LocaleModule,
+  CellStyleModule, LocaleModule, TextEditorModule,
 ])
 type GridRow = Record<string, unknown>
 type GridColumn = ColDef<GridRow> | ColGroupDef<GridRow>

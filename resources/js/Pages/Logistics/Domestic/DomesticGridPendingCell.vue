@@ -14,7 +14,8 @@ type Params={
   feedback:(id:number)=>string
   saveCarrier:(id:number,carrier:string,service:string)=>void
   saveTracking:(id:number,tracking:string)=>void
-  confirmShip:(id:number,tracking:string)=>void
+  confirmShip:(id:number,tracking:string,outboundReference?:string)=>void
+  requiresOutboundReference?:(id:number)=>boolean
   reopenPending:(id:number)=>void
   canTrackingSync:boolean
   syncEligible:(id:number)=>boolean
@@ -37,13 +38,15 @@ const trigger=ref<HTMLButtonElement|null>(null)
 const floating=ref<HTMLElement|null>(null)
 const carrierEl=ref<HTMLSelectElement|null>(null)
 const draft=ref<Draft>({carrier:'',service:'',tracking:''})
+const outbound=ref('')
+const needsOutbound=computed(()=>props.params.requiresOutboundReference?.(id.value)===true)
 const xy=ref({top:0,left:0})
 const width=354
 const services=computed(()=>props.params.carrierOptions.find(c=>c.value===draft.value.carrier)?.services??[])
 const serviceLabel=(s:{value:string;label:string;name_zh?:string|null})=>draft.value.carrier==='4PX'?(s.name_zh?.trim()||s.value):s.label
 const carrierDirty=computed(()=>!!source.value && (draft.value.carrier!==(source.value.carrier??'') || draft.value.service!==(source.value.service??'')))
 const trackDirty=computed(()=>draft.value.tracking.trim()!==(source.value?.tracking_number??''))
-const canSubmitShip=computed(()=>canShip.value&&carrierConfirmed.value&&!carrierDirty.value&&!trackDirty.value&&!!draft.value.tracking.trim()&&!busy.value)
+const canSubmitShip=computed(()=>canShip.value&&carrierConfirmed.value&&!carrierDirty.value&&!trackDirty.value&&!!draft.value.tracking.trim()&&!busy.value&&(!needsOutbound.value||outbound.value.trim().length>=3))
 const reposition=()=>{
   if(!open.value||!trigger.value)return
   const b=trigger.value.getBoundingClientRect()
@@ -91,13 +94,13 @@ const reveal=()=>{
     service:source.value?.service??'',
     tracking:source.value?.tracking_number??'',
   }
-  // Convert the compact menu into the existing shipment editor without
-  // leaving the menu's scroll-close listeners attached to that editor.
+  // Keep main's compact-menu listener cleanup while opening the editor.
   if(compactOpen.value){
     compactOpen.value=false
     window.removeEventListener('resize',close)
     window.removeEventListener('scroll',close,true)
   }
+  outbound.value=''
   open.value=true
   reposition()
   document.addEventListener('pointerdown',outside,true)
@@ -117,7 +120,7 @@ const saveTracking=()=>{
 }
 const confirm=()=>{
   if(!canSubmitShip.value)return
-  props.params.confirmShip(id.value,draft.value.tracking.trim())
+  props.params.confirmShip(id.value,draft.value.tracking.trim(),outbound.value.trim())
   close()
 }
 onBeforeUnmount(remove)
@@ -133,7 +136,7 @@ onBeforeUnmount(remove)
         <div v-if="compactOpen" ref="compactEl" class="domestic-pending-compact-menu" role="group"
           aria-label="订单操作" :style="{top:compactXY.top+'px',left:compactXY.left+'px'}" @pointerdown.stop>
           <button v-if="canShip" type="button" :disabled="busy" @click.stop="reveal">填写物流</button>
-          <button v-if="canShip" type="button" :disabled="!carrierConfirmed||!(source?.tracking_number??'').trim()||busy"
+          <button v-if="canShip" type="button" :disabled="needsOutbound||!carrierConfirmed||!(source?.tracking_number??'').trim()||busy"
             @click.stop="close();params.confirmShip(id,(source?.tracking_number??'').trim())">确认发货</button>
           <button v-if="canReopen" type="button" :disabled="busy"
             @click.stop="close();params.reopenPending(id)">重新审核</button>
@@ -146,7 +149,7 @@ onBeforeUnmount(remove)
     <template v-if="canShip">
       <button ref="trigger" type="button" class="pending-edit" :disabled="busy" :aria-expanded="open"
         @click.stop="open?close():reveal()">填写物流</button>
-      <button type="button" class="pending-confirm" :disabled="!carrierConfirmed||!(source?.tracking_number??'').trim()||busy"
+      <button type="button" class="pending-confirm" :disabled="needsOutbound||!carrierConfirmed||!(source?.tracking_number??'').trim()||busy"
         @click.stop="params.confirmShip(id,(source?.tracking_number??'').trim())">确认发货</button>
     </template>
     <button v-if="canReopen" type="button" class="pending-reopen" :disabled="busy"
@@ -179,13 +182,16 @@ onBeforeUnmount(remove)
           <input v-model="draft.tracking" aria-label="Tracking" maxlength="128" placeholder="填写真实物流单号"
             :disabled="busy" />
         </label>
+        <label v-if="needsOutbound">真实出库单号
+          <input v-model="outbound" aria-label="真实出库单号" maxlength="90" placeholder="MorePlus 仓库真实出库参考号" :disabled="busy" />
+        </label>
         <div class="domestic-pending-popover-buttons">
           <button type="button" :disabled="busy||!trackDirty" @click.stop="saveTracking">暂存单号</button>
           <button type="button" class="pending-confirm" :disabled="!canSubmitShip" @click.stop="confirm">确认发货</button>
           <button type="button" @click.stop="close">取消</button>
         </div>
         <small v-if="params.feedback(id)" role="status">{{params.feedback(id)}}</small>
-        <small v-else>物流商及单号均需先确认保存；暂存不会发货。</small>
+        <small v-else>{{needsOutbound?'MorePlus 需核实 OMS 原单及真实出库单号；暂存不发货。':'物流商及单号均需先确认保存；暂存不会发货。'}}</small>
       </div>
     </Teleport>
   </div>

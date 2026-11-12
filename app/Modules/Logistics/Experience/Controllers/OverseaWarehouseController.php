@@ -80,7 +80,7 @@ final class OverseaWarehouseController
         }
 
         $base = Shipment::query()
-            ->with(['order.address', 'order.items.product', 'order.manualSync', 'order.fulfillmentParent', 'order.fulfillmentAllocation', 'order.operationalMarkers', 'order.originalFulfillmentChildren.shipment.warehouse', 'order.originalFulfillmentChildren.shipment.overseaReview', 'order.originalFulfillmentChildren.operationalMarkers', 'warehouse', 'overseaReview'])
+            ->with(['order.address', 'order.items.product', 'order.manualSync', 'order.fulfillmentParent', 'order.fulfillmentAllocation', 'order.operationalMarkers', 'order.originalFulfillmentChildren.shipment.warehouse', 'order.originalFulfillmentChildren.shipment.overseaReview', 'order.originalFulfillmentChildren.operationalMarkers', 'warehouse', 'overseaReview.reviewer'])
             ->whereIn('warehouse_id', collect($warehouseMap)->pluck('id')->all())
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
                 ->where('order_status', '!=', 'cancelled')
@@ -258,7 +258,8 @@ final class OverseaWarehouseController
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
-            'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),
+            'canOperate' => ($warehouseKey !== 'all' || $view === 'pending')
+                && $this->executionAccess->allows($request->user()),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
             'carrierOptions' => $this->carrierServices->options(),
             'trackingImportPreview' => $warehouseKey === 'all' ? null : (collect((array) $request->session()->get($this->trackingSessionKey($warehouseKey), []))->except('normalized_rows')->all() ?: null),
@@ -686,6 +687,7 @@ final class OverseaWarehouseController
             'order_date' => $order?->order_date?->toDateString(),
             'country' => $order?->address?->country,
             'warehouse_id' => $shipment->warehouse_id,
+            'warehouse_code' => $shipment->warehouse?->code,
             'warehouse_name' => $shipment->warehouse?->name,
             'carrier' => $shipment->carrier ?: OverseaWarehouseReviewService::carrierForWarehouseCode($shipment->warehouse?->code),
             'service' => $shipment->service,
@@ -693,6 +695,8 @@ final class OverseaWarehouseController
             'tracking_number' => $shipment->tracking_number,
             'progress' => $review?->progress ?? 'pending_review',
             'note' => $review?->note,
+            'reviewer_name' => $review?->reviewer?->name,
+            'reviewed_at' => $review?->reviewed_at?->copy()->timezone('Asia/Shanghai')->format('Y-m-d H:i'),
             'review_status' => $effectiveApproved ? 'approved'
                 : ($review?->status === 'stockout'
                     && (int) $review->reviewed_warehouse_id === (int) $shipment->warehouse_id ? 'stockout' : 'pending'),
