@@ -686,6 +686,7 @@ final class OverseaWarehouseController
             'order_date' => $order?->order_date?->toDateString(),
             'country' => $order?->address?->country,
             'warehouse_id' => $shipment->warehouse_id,
+            'warehouse_code' => $shipment->warehouse?->code,
             'warehouse_name' => $shipment->warehouse?->name,
             'carrier' => $shipment->carrier ?: OverseaWarehouseReviewService::carrierForWarehouseCode($shipment->warehouse?->code),
             'service' => $shipment->service,

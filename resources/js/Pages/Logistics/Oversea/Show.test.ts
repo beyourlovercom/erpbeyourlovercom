@@ -157,6 +157,61 @@ describe('oversea domestic-style Global Grid review operation contract', () => {
     expect(refresh).toHaveBeenCalled()
     patch.mockRestore()
   })
+  it('reuses the domestic pending route selectors and three-action cell for every overseas pending warehouse', async () => {
+    const page=mountPage({globalGridEnabled:true,view:'pending',warehouseKey:'all',rows:usSmPendingRows})
+    await flushPromises()
+    const columns=page.findComponent({name:'MockGlobalGrid'}).props('columns') as
+      {colId:string;cellRenderer?:{__name?:string}|unknown;cellRendererParams?:Record<string,any>}[]
+    for(const id of ['carrier','service','actions']){
+      expect(columns.find(column=>column.colId===id)?.cellRenderer).toBeTruthy()
+    }
+    expect(columns.find(column=>column.colId==='carrier')?.cellRendererParams?.saveCarrier).toBeTypeOf('function')
+    expect(columns.find(column=>column.colId==='service')?.cellRendererParams?.saveCarrier).toBeTypeOf('function')
+    const actions=columns.find(column=>column.colId==='actions')!.cellRendererParams!
+    expect(actions.confirmShip).toBeTypeOf('function')
+    expect(actions.saveTracking).toBeTypeOf('function')
+    expect(actions.reopenPending).toBeTypeOf('function')
+    expect(actions.requiresOutboundReference(99)).toBe(false)
+  })
+  it('routes confirmed overseas shipment by canonical row warehouse, not active selected rail', async () => {
+    routerPost.mockClear()
+    const germany={...usSmPendingRows.data[0],warehouse_code:'DE',carrier:'DHL',service:'DHL PAKET International',tracking_number:'CF123456789DE'}
+    const services=[{value:'DHL PAKET International',label:'DHL PAKET International'}]
+    const carrierOptions=[{value:'DHL',label:'DHL',services}]
+    const page=mountPage({globalGridEnabled:true,view:'pending',warehouseKey:'all',carrierOptions,
+      rows:{...usSmPendingRows,data:[germany]}})
+    await flushPromises()
+    const actions=(page.findComponent({name:'MockGlobalGrid'}).props('columns') as
+      {colId:string;cellRendererParams?:Record<string,any>}[]).find(c=>c.colId==='actions')!.cellRendererParams!
+    actions.confirmShip(99,'CF123456789DE')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/orders/99/manual-ship',
+      {tracking_number:'CF123456789DE'},expect.any(Object))
+    routerPost.mockClear()
+    actions.confirmShip(99,'CHANGED-UNSAVED')
+    expect(routerPost).not.toHaveBeenCalled()
+    const sm={...germany,warehouse_code:'US-SM'}
+    const second=mountPage({globalGridEnabled:true,view:'pending',warehouseKey:'all',carrierOptions,
+      rows:{...usSmPendingRows,data:[sm]}})
+    await flushPromises()
+    const smActions=(second.findComponent({name:'MockGlobalGrid'}).props('columns') as
+      {colId:string;cellRendererParams?:Record<string,any>}[]).find(c=>c.colId==='actions')!.cellRendererParams!
+    smActions.confirmShip(99,'CF123456789DE')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/us-3sm/orders/99/manual-ship',
+      {tracking_number:'CF123456789DE'},expect.any(Object))
+    routerPost.mockClear()
+    const moreplus={...germany,warehouse_code:'US-LA'}
+    const third=mountPage({globalGridEnabled:true,view:'pending',warehouseKey:'all',carrierOptions,
+      rows:{...usSmPendingRows,data:[moreplus]}})
+    await flushPromises()
+    const mpActions=(third.findComponent({name:'MockGlobalGrid'}).props('columns') as
+      {colId:string;cellRendererParams?:Record<string,any>}[]).find(c=>c.colId==='actions')!.cellRendererParams!
+    expect(mpActions.requiresOutboundReference(99)).toBe(true)
+    mpActions.confirmShip(99,'CF123456789DE')
+    expect(routerPost).not.toHaveBeenCalled()
+    mpActions.confirmShip(99,'CF123456789DE','MP-UAT-123')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/us-moreplus/orders/99/manual-ship',
+      {tracking_number:'CF123456789DE',outbound_reference:'MP-UAT-123',confirmation:'CONFIRM_MOREPLUS_MANUAL_SHIPPED_99'},expect.any(Object))
+  })
   it('wires direct per-row approval to the exact overseas HTTP review route and blocks view-only actors', async () => {
     routerPost.mockClear()
     const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'pending' as const}]}

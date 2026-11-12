@@ -11,6 +11,7 @@ use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
+use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
@@ -463,6 +464,69 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertDatabaseHas('shipments', [
             'order_id' => $order->id, 'carrier' => 'FedEx', 'carrier_selection_source' => 'manual',
         ]);
+    }
+
+    public function test_non_oms_overseas_pending_quick_ship_enforces_approval_and_uses_canonical_tracking_handoff(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $viewer = $this->userWith(['logistics.view']);
+        $warehouses = $this->warehouses();
+        $carrier = Carrier::query()->firstOrCreate(
+            ['name' => 'DHL'], ['name_en' => 'DHL', 'name_zh' => '敦豪', 'is_active' => true]);
+        $carrier->services()->firstOrCreate(['service_value' => 'DHL PAKET International'], [
+            'service_key' => 'uat-paket', 'is_active' => true, 'sort_order' => 1,
+        ]);
+        $pending = $this->orderAt($warehouses['DE'], '007-OVERSEA-QUICKSHIP-UNAPPROVED', 'DE');
+        $url = "/logistics/oversea/orders/{$pending->id}/manual-ship";
+        $payload = ['tracking_number' => 'CF123456789DE'];
+        $this->actingAs($viewer)->post($url, $payload)->assertForbidden();
+        $this->actingAs($operator)->post($url, $payload)->assertStatus(409);
+        $this->assertDatabaseHas('shipments', ['order_id' => $pending->id, 'shipment_status' => 'pending']);
+
+        $this->actingAs($operator)->post("/logistics/oversea/orders/{$pending->id}/approve")->assertRedirect();
+        // An incomplete warehouse service must never mark this order as shipped.
+        $pending->shipment()->update(['service' => null]);
+        $this->actingAs($operator)->post($url, $payload)->assertStatus(422);
+        $this->assertDatabaseHas('shipments', ['order_id' => $pending->id, 'shipment_status' => 'pending']);
+
+        $this->actingAs($operator)->patch("/logistics/oversea/orders/{$pending->id}/draft", [
+            'carrier' => 'DHL', 'service' => 'DHL PAKET International',
+        ])->assertRedirect();
+        $this->actingAs($operator)->post($url, $payload)->assertRedirect();
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $pending->id, 'tracking_number' => 'CF123456789DE', 'shipment_status' => 'shipped',
+        ]);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $pending->id, 'status' => 'approved', 'progress' => 'shipped',
+        ]);
+        $this->assertDatabaseHas('audit_records', ['action' => 'shipment.marked_shipped']);
+        $this->actingAs($operator)->post($url, $payload)->assertStatus(409);
+    }
+
+    public function test_non_oms_overseas_quick_ship_excludes_moreplus_and_three_sm(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        foreach (['US-LA', 'US-SM'] as $code) {
+            $order = $this->orderAt($warehouses[$code], '007-OVERSEA-QUICKSHIP-BLOCK-'.str_replace('-', '', $code));
+            $this->actingAs($operator)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+            $this->actingAs($operator)->post("/logistics/oversea/orders/{$order->id}/manual-ship", [
+                'tracking_number' => 'TRACKING12345',
+            ])->assertStatus(409);
+            $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending']);
+        }
+    }
+
+    public function test_all_overseas_pending_rows_preserve_warehouse_code_for_safe_per_warehouse_actions(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $w = $this->warehouses();
+        $order = $this->orderAt($w['DE'], '007-OVERSEA-ALL-WAREHOUSE-ROUTE', 'DE');
+        $this->actingAs($operator)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $this->actingAs($operator)->get('/logistics/oversea?view=pending')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('rows.data.0.order_id', $order->id)
+                ->where('rows.data.0.warehouse_code', 'DE'));
     }
 
     public function test_tracking_number_can_be_entered_before_shipping(): void
