@@ -180,7 +180,13 @@ describe('Kol/Create VI contract', () => {
     expect(wrapper.text()).toContain('免费发帖')
     expect(wrapper.text()).toContain('长期合作')
     expect(wrapper.text()).toContain('付费发帖')
-    expect((wrapper.find('input[type="date"]').element as HTMLInputElement).value).toBe(new Date().toISOString().slice(0, 10))
+    const now = new Date()
+    const localDate = [
+      String(now.getFullYear()).padStart(4, '0'),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-')
+    expect((wrapper.find('input[type="date"]').element as HTMLInputElement).value).toBe(localDate)
     const platformSelects = wrapper.findAll('.kol-sa-row select')
     expect(platformSelects).toHaveLength(2)
     expect((platformSelects[0].element as HTMLSelectElement).value).toBe('instagram')
