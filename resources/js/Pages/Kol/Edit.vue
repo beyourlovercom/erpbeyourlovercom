@@ -119,7 +119,7 @@ const apiErrorMessage = (error: any, fallback: string) => {
   return error?.response?.data?.message || fallback
 }
 
-const validWordpressPassword = (value: string) => value.length >= 12 && value.length <= 128 && /[A-Za-z]/.test(value) && /[0-9]/.test(value)
+const validWordpressPassword = (value: string) => value.length >= 6 && value.length <= 128 && /[A-Za-z]/.test(value) && /[0-9]/.test(value)
 
 const provisionAffiliateAccount = async () => {
   accountError.value = ''
@@ -128,7 +128,7 @@ const provisionAffiliateAccount = async () => {
   if (!accountUsername.value.trim()) { accountError.value = 'WordPress Username 必填。'; return }
   if (!accountAffiliateName.value.trim()) { accountError.value = 'Affiliate Name 必填。'; return }
   if (!accountAffiliateUrl.value.trim()) { accountError.value = 'Affiliate URL 必填。'; return }
-  if (!validWordpressPassword(accountPassword.value)) { accountError.value = 'Password 需为 12–128 位，并至少包含 1 个英文字母和 1 个数字。'; return }
+  if (!validWordpressPassword(accountPassword.value)) { accountError.value = 'Password 需为 6–128 位，并至少包含 1 个英文字母和 1 个数字。'; return }
   if (accountPassword.value !== accountPasswordConfirmation.value) { accountError.value = '两次输入的 Password 不一致。'; return }
   if (!accountCouponCode.value.trim()) { accountError.value = 'Code 必填。'; return }
   accountProvisioning.value = true
@@ -156,7 +156,7 @@ const provisionAffiliateAccount = async () => {
 const updateWordpressPassword = async () => {
   passwordResetError.value = ''
   passwordResetMessage.value = ''
-  if (!validWordpressPassword(newWordpressPassword.value)) { passwordResetError.value = '新 Password 需为 12–128 位，并至少包含 1 个英文字母和 1 个数字。'; return }
+  if (!validWordpressPassword(newWordpressPassword.value)) { passwordResetError.value = '新 Password 需为 6–128 位，并至少包含 1 个英文字母和 1 个数字。'; return }
   if (newWordpressPassword.value !== newWordpressPasswordConfirmation.value) { passwordResetError.value = '两次输入的新 Password 不一致。'; return }
   passwordResetting.value = true
   try {
@@ -622,14 +622,14 @@ const breadcrumbs = [
                 <div class="erp-form-grid">
                   <div class="erp-form-field">
                     <label class="erp-form-label">新 Password <span class="erp-form-required">*</span></label>
-                    <input v-model="newWordpressPassword" type="password" autocomplete="new-password" class="erp-input" minlength="12" maxlength="128">
+                    <input v-model="newWordpressPassword" type="password" autocomplete="new-password" class="erp-input" minlength="6" maxlength="128">
                   </div>
                   <div class="erp-form-field">
                     <label class="erp-form-label">确认新 Password <span class="erp-form-required">*</span></label>
-                    <input v-model="newWordpressPasswordConfirmation" type="password" autocomplete="new-password" class="erp-input" minlength="12" maxlength="128">
+                    <input v-model="newWordpressPasswordConfirmation" type="password" autocomplete="new-password" class="erp-input" minlength="6" maxlength="128">
                   </div>
                 </div>
-                <p class="erp-form-helper">12–128 位，至少包含 1 个英文字母和 1 个数字；仅用于本次修改，不保存到 ERP。</p>
+                <p class="erp-form-helper">6–128 位，至少包含 1 个英文字母和 1 个数字；仅用于本次修改，不保存到 ERP。</p>
                 <p v-if="passwordResetError" class="erp-field-error">{{ passwordResetError }}</p>
                 <button type="button" class="erp-btn erp-btn-primary" :disabled="passwordResetting" @click="updateWordpressPassword">{{ passwordResetting ? '更新中…' : '更新 WordPress 密码' }}</button>
               </div>
@@ -654,11 +654,11 @@ const breadcrumbs = [
                 <div class="kol-password-pair">
                   <div class="erp-form-field">
                     <label class="erp-form-label">Password <span class="erp-form-required">*</span></label>
-                    <input v-model="accountPassword" type="password" autocomplete="new-password" class="erp-input" minlength="12" maxlength="128">
+                    <input v-model="accountPassword" type="password" autocomplete="new-password" class="erp-input" minlength="6" maxlength="128">
                   </div>
                   <div class="erp-form-field">
                     <label class="erp-form-label">确认 Password <span class="erp-form-required">*</span></label>
-                    <input v-model="accountPasswordConfirmation" type="password" autocomplete="new-password" class="erp-input" minlength="12" maxlength="128">
+                    <input v-model="accountPasswordConfirmation" type="password" autocomplete="new-password" class="erp-input" minlength="6" maxlength="128">
                   </div>
                 </div>
                 <div class="erp-form-field kol-credential-secondary">

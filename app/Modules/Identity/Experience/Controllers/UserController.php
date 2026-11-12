@@ -175,7 +175,7 @@ final class UserController
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
-            'password' => ['required', 'string', 'min:12', 'confirmed'],
+            'password' => ['required', 'string', 'min:6', 'confirmed'],
             'role' => ['required', Rule::in(array_column(RolePreset::options(), 'value'))],
         ];
     }
@@ -191,7 +191,7 @@ final class UserController
     private function passwordRules(): array
     {
         return [
-            'password' => ['required', 'string', 'min:12', 'confirmed'],
+            'password' => ['required', 'string', 'min:6', 'confirmed'],
         ];
     }
 
@@ -214,7 +214,7 @@ final class UserController
             'email.unique' => '该邮箱已被使用。',
             'password.required' => '密码为必填项。',
             'password.string' => '密码格式不正确。',
-            'password.min' => '密码至少需要 12 个字符。',
+            'password.min' => '密码至少需要 6 个字符。',
             'password.confirmed' => '两次输入的密码不一致。',
             'role.required' => '请选择角色。',
             'role.in' => '所选角色无效。',

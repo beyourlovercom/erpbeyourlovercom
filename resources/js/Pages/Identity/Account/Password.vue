@@ -26,11 +26,11 @@ const submit = () => form.put('/account/password', {
         <div class="mvp-form-grid">
           <label>原密码<input v-model="form.current_password" type="password" required autocomplete="current-password"></label>
           <span v-if="form.errors.current_password" class="mvp-field-error">{{ form.errors.current_password }}</span>
-          <label>新密码<input v-model="form.password" type="password" required autocomplete="new-password"></label>
+          <label>新密码<input v-model="form.password" type="password" minlength="6" required autocomplete="new-password"></label>
           <span v-if="form.errors.password" class="mvp-field-error">{{ form.errors.password }}</span>
-          <label>确认新密码<input v-model="form.password_confirmation" type="password" required autocomplete="new-password"></label>
+          <label>确认新密码<input v-model="form.password_confirmation" type="password" minlength="6" required autocomplete="new-password"></label>
         </div>
-        <p class="mvp-muted">新密码至少 12 个字符，并包含大写字母、小写字母和数字。</p>
+        <p class="mvp-muted">新密码至少 6 个字符，并包含大写字母、小写字母和数字。</p>
         <div class="mvp-form-actions">
           <button class="mvp-button mvp-button-primary" :disabled="form.processing">保存新密码</button>
         </div>
