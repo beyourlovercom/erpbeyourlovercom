@@ -5,9 +5,11 @@ import { computed, defineAsyncComponent, nextTick, reactive, ref, watch, onMount
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowStatusPill.vue'
 import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
-import type { ColDef } from 'ag-grid-community'
+import type { NewValueParams, ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
 import DomesticGridActionCell from '../Domestic/DomesticGridActionCell.vue'
+import DomesticGridPendingCell from '../Domestic/DomesticGridPendingCell.vue'
+import DomesticGridPendingRouteCell from '../Domestic/DomesticGridPendingRouteCell.vue'
 import GridBatchFooterControls from '../../../Components/DataGrid/GridBatchFooterControls.vue'
 import { currentCsrfHeaders } from '../../../lib/csrfHeaders'
 import { gridColumn, type GridListRow } from '../../../Components/DataGrid/useGlobalGridListAdapter'
@@ -48,8 +50,8 @@ type ShipOutStatus = {
 }
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; order_date?:string|null; recipient_name:string|null; country:string|null
-  warehouse_id:number; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
-  progress:string; note:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'|'stockout'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
+  warehouse_id:number; warehouse_code?:string|null; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
+  progress:string; note:string|null; reviewer_name?:string|null; reviewed_at?:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'|'stockout'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
   web_draft?:WebDraft|null
   shipout_production?:ShipOutDispatchState|null
 }
@@ -916,6 +918,7 @@ const saveDraft = async (row:Row,payload:Record<string,string|number|null>) => {
     row.note=data.note
     row.carrier=data.carrier
     row.service=data.service
+    if(payload.carrier)row.carrier_selection_source='manual'
     row.tracking_number=data.tracking_number
     row.shipment_status=data.shipment_status
     const d=draft(row)
@@ -1148,13 +1151,80 @@ const openGridOperation = (id:number) => {
   activeOperationId.value=id
   void nextTick(()=>document.querySelector('.oversea-native-workflow')?.scrollIntoView({block:'nearest',behavior:'smooth'}))
 }
+const pendingSource = (id:number) => {
+  const row=visibleRows.value.find(item=>item.order_id===id)
+  if(!row)return undefined
+  const carrier=props.carrierOptions.find(option=>option.value===row.carrier)
+  return {...row,carrier_ready:!!carrier?.services.some(service=>service.value===row.service)}
+}
+const pendingCanShip = (row:Row) => props.canOperate && props.view==='pending'
+  && row.review_status==='approved' && row.shipment_status==='pending'
+const pendingFeedback = (id:number) => rowErrors[id]||inlineSaveFeedback[id]||''
+const pendingCarrierSave = (id:number,carrier:string,service:string) => {
+  const row=visibleRows.value.find(item=>item.order_id===id)
+  if(!row||!pendingCanShip(row)||!carrier||!service)return
+  const option=props.carrierOptions.find(item=>item.value===carrier)
+  if(!option?.services.some(item=>item.value===service))return
+  void saveDraft(row,{carrier,service})
+}
+const pendingTrackingSave = (id:number,tracking:string) => {
+  const row=visibleRows.value.find(item=>item.order_id===id)
+  if(row&&pendingCanShip(row))void saveDraft(row,{tracking_number:tracking.trim()||null})
+}
+const pendingWarehouseCode = (id:number) => String(visibleRows.value.find(row=>row.order_id===id)?.warehouse_code??'').toUpperCase()
+const confirmGridPendingShip = (id:number,tracking:string,outboundReference?:string) => {
+  const row=visibleRows.value.find(item=>item.order_id===id)
+  if(!row||!pendingCanShip(row)||inlineSaveBusy[id])return
+  if(!tracking.trim() || tracking.trim()!==String(row.tracking_number??'').trim()){
+    rowErrors[id]='请先暂存真实 Tracking，再确认发货';return
+  }
+  if(!pendingSource(id)?.carrier_ready){rowErrors[id]='请先保存有效的物流商与服务渠道';return}
+  const warehouse=pendingWarehouseCode(id)
+  rowErrors[id]=''
+  if(warehouse==='US-SM'){
+    manualShipUsSm(row)
+  }else if(warehouse==='US-LA'){
+    if(!outboundReference?.trim()){
+      rowErrors[id]='MorePlus 必须先核实真实出库单号及 OMS 原单';return
+    }
+    draft(row).outbound_ref=outboundReference.trim()
+    manualShipMorePlus(row)
+  }else if(['US-NY','DE','CA'].includes(warehouse)){
+    router.post('/logistics/oversea/orders/'+id+'/manual-ship',{tracking_number:tracking.trim()}, {
+      preserveScroll:true,preserveState:true,
+      onError:(errors)=>{rowErrors[id]=Object.values(errors).join('；')||'发货确认失败，请核对真实出库状态'},
+    })
+  }else rowErrors[id]='当前仓库不支持逐单手工发货'
+}
+const saveGridTracking = async (event:NewValueParams<GridListRow>) => {
+  const row=visibleRows.value.find(item=>item.order_id===Number(event.data?.id))
+  const previous=row?.tracking_number??''
+  const next=String(event.newValue??'').trim()
+  const revert=()=>{
+    if(event.data) event.data.tracking_number=previous
+    event.api?.refreshCells({rowNodes:event.node?[event.node]:undefined,columns:['tracking'],force:true})
+  }
+  if(!row || !props.canOperate || row.review_status!=='approved' || row.shipment_status!=='pending'
+      || inlineSaveBusy[row.order_id]){revert();return}
+  if(next===previous){revert();return}
+  const saved=await saveDraft(row,{tracking_number:next||null})
+  if(!saved){
+    revert()
+    publishGlobalFeedback({state:'ERROR',title:'Tracking 保存失败',message:rowErrors[row.order_id]||'请核对订单后重试'})
+    return
+  }
+  if(event.data) event.data.tracking_number=saved.tracking_number??''
+  if(event.node) event.api?.refreshCells({rowNodes:[event.node],columns:['tracking'],force:true})
+  publishGlobalFeedback({state:'SUCCESS',title:'Tracking 已保存',message:`订单 ${row.erp_order_id??row.order_id} 的物流单号已写入 ERP`})
+}
 const overseaGridRows = computed<GridListRow[]>(()=>visibleRows.value.map(row=>({
   id:row.order_id,line:row.line,order_number:row.erp_order_id??'—',order_url:row.order_url,order_date:row.order_date??'—',
   workflow_status:row.workflow_status_projection?.zh??'—',
   review_status:row.review_status==='approved'?'已通过':row.review_status==='stockout'?'缺货':'待审核',
+  reviewer_name:row.reviewer_name??'—',reviewed_at:row.reviewed_at??'—',
   shipment_status:row.shipment_status==='shipped'?'已发货':row.shipment_status==='pending'?'待发货':row.shipment_status,
   warehouse_name:row.warehouse_name??'—',carrier:carrierDisplay(row.carrier),service:row.service??'—',
-  tracking_number:row.tracking_number??'—',note:row.note??'',
+  tracking_number:row.tracking_number??'',note:row.note??'',
   recipient_name:row.recipient_name??'—',country:row.country??'—',
   sku:row.items.map(item=>item.sku??'无SKU').join(' / ')||'—',
   quantity:row.items.map(item=>item.quantity).join(' / ')||'—',
@@ -1171,15 +1241,37 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'order_date',field:'order_date',headerName:'订单日期',width:128,minWidth:108}),
   gridColumn({colId:'status',field:'workflow_status',headerName:'统一状态',width:132}),
   gridColumn({colId:'review',field:'review_status',headerName:'审核状态',width:110}),
+  gridColumn({colId:'reviewer',field:'reviewer_name',headerName:'审核人',width:100}),
+  gridColumn({colId:'reviewed_at',field:'reviewed_at',headerName:'审核时间（北京时间）',width:162}),
   gridColumn({colId:'shipment',field:'shipment_status',headerName:'发货状态',width:114}),
   gridColumn({colId:'warehouse',field:'warehouse_name',headerName:'仓库',width:82,minWidth:76,maxWidth:82,
     tooltipField:'warehouse_name',cellStyle:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}),
   ...(props.warehouseKey==='us-moreplus'||props.warehouseKey==='us-3sm'?[gridColumn({
     colId:'dispatch',field:'dispatch_status',headerName:'仓库处理状态',width:230,tooltipField:'dispatch_status',
   }),gridColumn({colId:'oms_order',field:'oms_order',headerName:'OMS 单号',width:178})]:[]),
-  gridColumn({colId:'carrier',field:'carrier',headerName:'物流商',width:145}),
-  gridColumn({colId:'service',field:'service',headerName:'服务渠道',width:154}),
-  gridColumn({colId:'tracking',field:'tracking_number',headerName:'Tracking',width:208,sortable:true,tooltipField:'tracking_number'}),
+  gridColumn({colId:'carrier',field:'carrier',headerName:'物流商',width:145,
+    ...(props.view==='pending'?{cellRenderer:DomesticGridPendingRouteCell,cellRendererParams:{
+      source:pendingSource,carrierOptions:props.carrierOptions,canOperate:props.canOperate,
+      carrierBusy:(id:number)=>!!inlineSaveBusy[id],saveCarrier:pendingCarrierSave,
+    }}:{}),
+  }),
+  gridColumn({colId:'service',field:'service',headerName:'服务渠道',width:154,
+    ...(props.view==='pending'?{cellRenderer:DomesticGridPendingRouteCell,cellRendererParams:{
+      source:pendingSource,carrierOptions:props.carrierOptions,canOperate:props.canOperate,
+      carrierBusy:(id:number)=>!!inlineSaveBusy[id],saveCarrier:pendingCarrierSave,
+    }}:{}),
+  }),
+  gridColumn({colId:'tracking',field:'tracking_number',headerName:'Tracking',width:208,sortable:true,
+    editable:params=>{
+      const row=visibleRows.value.find(item=>item.order_id===Number(params.data?.id))
+      return Boolean(props.canOperate && row?.review_status==='approved' && row.shipment_status==='pending'
+        && !inlineSaveBusy[row.order_id])
+    },
+    singleClickEdit:true,cellEditor:'agTextCellEditor',
+    valueFormatter:params=>String(params.value??'').trim()||'—',
+    tooltipValueGetter:params=>String(params.value??'').trim()||'点击填写 Tracking',
+    onCellValueChanged:event=>{void saveGridTracking(event)},
+  }),
   gridColumn({colId:'note',field:'note',headerName:'备注',width:180,tooltipField:'note'}),
   gridColumn({colId:'recipient',field:'recipient_name',headerName:'收件人',width:140}),
   gridColumn({colId:'country',field:'country',headerName:'国家',width:106}),
@@ -1187,9 +1279,25 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'quantity',field:'quantity',headerName:'数量',width:95}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:126}),
   gridColumn({colId:'shipped_at',field:'shipped_at',headerName:'发货时间',width:188,sortable:true}),
-  gridColumn({colId:'actions',field:'id',headerName:'操作',width:194,minWidth:190,maxWidth:203,
+  gridColumn({colId:'actions',field:'id',headerName:'操作',
+    width:props.view==='pending'?260:194,minWidth:props.view==='pending'?258:190,maxWidth:props.view==='pending'?275:203,
     pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
-    cellRenderer:DomesticGridActionCell,cellRendererParams:{
+    cellRenderer:props.view==='pending'?DomesticGridPendingCell:DomesticGridActionCell,
+    cellRendererParams:{
+      ...(props.view==='pending'?{
+        source:pendingSource,carrierOptions:props.carrierOptions,
+        carrierBusy:(id:number)=>!!inlineSaveBusy[id],trackingBusy:(id:number)=>!!inlineSaveBusy[id],
+        feedback:pendingFeedback,saveCarrier:pendingCarrierSave,saveTracking:pendingTrackingSave,
+        confirmShip:confirmGridPendingShip,
+        requiresOutboundReference:(id:number)=>pendingWarehouseCode(id)==='US-LA',
+        reopenPending:(id:number)=>{const row=visibleRows.value.find(item=>item.order_id===id)
+          if(row&&props.canReview&&row.review_status==='approved'&&row.shipment_status==='pending')reopenReview(row)},
+        canTrackingSync:props.canTrackingSync,
+        syncEligible:(id:number)=>{const row=visibleRows.value.find(item=>item.order_id===id);return !!row&&eligibleForBatchTracking(row)},
+        syncBusy:()=>trackingBusy.value,
+        syncTracking:(id:number)=>{const row=visibleRows.value.find(item=>item.order_id===id)
+          if(row&&props.canTrackingSync&&eligibleForBatchTracking(row))pushTracking([id],true)},
+      }:{}),
       view:props.view,canReview:props.canReview,canOperate:props.canOperate,
       get busy(){return reviewBusy.value},
       native:(r:GridListRow)=>openGridOperation(Number(r.id)),
