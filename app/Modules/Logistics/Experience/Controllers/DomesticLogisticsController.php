@@ -74,10 +74,11 @@ final class DomesticLogisticsController
         ]);
 
         $this->applyView($query, $view);
-        // R4-6: exceptions is a read-only Grid migration. Do not change the
-        // existing exception predicate or grant any new corrective action.
-        // Historical carrier lists remain native until their own gates.
-        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today', 'today-4px', 'today-weship', 'exceptions'], true);
+        // R4-7A: the cumulative 4PX view has an independent Global Grid gate.
+        // The Weship historical view remains native until R4-7A Owner PASS.
+        // Preserve original provider-only predicate, all shipment states,
+        // existing shipping guards and native fallback.
+        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today', 'today-4px', 'today-weship', 'exceptions', '4px'], true);
         $gridSetting = $request->query('global_grid');
         $gridAvailable = $approvedGridView || GlobalGridPilot::available();
         $gridPilot = $approvedGridView

@@ -360,6 +360,30 @@ describe('Domestic logistics production workbench', () => {
     expect(native.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('切换新版表')
   })
 
+  it('R4-7A 速达历史默认 Grid：直接业务操作，无原操作或重复表，回退原表仍可用',()=>{
+    const speeda=mount(Index,{props:{...baseProps,view:'4px',
+      globalGridPilotAvailable:true,globalGridPilotEnabled:true,
+      trackingImportProvider:null,trackingImportPreview:null,canTrackingSync:true}})
+    expect(speeda.find('.domestic-compact-workspace').exists()).toBe(true)
+    expect(speeda.find('.table-wrap.orders table').exists()).toBe(false)
+    expect(speeda.find('[data-testid="domestic-native-batch-toggle"]').exists()).toBe(false)
+    expect(speeda.find('input[type="file"]').exists()).toBe(false)
+    expect(speeda.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('返回原表')
+    expect(speeda.findAll('.provider-grid a')).toHaveLength(0)
+
+    const fallback=mount(Index,{props:{...baseProps,view:'4px',
+      globalGridPilotAvailable:true,globalGridPilotEnabled:false,
+      trackingImportProvider:null,trackingImportPreview:null}})
+    expect(fallback.find('.table-wrap.orders table').exists()).toBe(true)
+    expect(fallback.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('切换新版表')
+
+    const weship=mount(Index,{props:{...baseProps,view:'weship',
+      globalGridPilotAvailable:false,globalGridPilotEnabled:false,
+      trackingImportProvider:null,trackingImportPreview:null}})
+    expect(weship.find('.table-wrap.orders table').exists()).toBe(true)
+    expect(weship.find('[data-testid="domestic-global-grid-toggle"]').exists()).toBe(false)
+  })
+
   it('shows a mixed-carrier ERP batch download/upload only on the pending work queue', () => {
     const pending=mount(Index,{props:{...baseProps,view:'pending',trackingImportPreview:null,trackingImportProvider:null}})
     expect(pending.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(true)

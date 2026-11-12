@@ -44,6 +44,8 @@ type BulkChoice = {value:string; label:string; reasonRequired?:boolean}
 const selectedBulkOrderIds = ref<number[]>([])
 const bulkBusy = ref(false)
 const isDailyProviderView = (view:string)=>['today','today-4px','today-weship'].includes(view)
+const isHistoryProviderView = (view:string)=>view==='4px' // R4-7A only; Weship remains isolated until R4-7B
+const isProviderWorkView = (view:string)=>isDailyProviderView(view)||isHistoryProviderView(view)
 const bulkOptions = computed<BulkChoice[]>(()=>{
   const result:BulkChoice[] = []
   if (props.canReview && props.view==='review') {
@@ -53,7 +55,7 @@ const bulkOptions = computed<BulkChoice[]>(()=>{
   if (props.canReview && props.view==='stockout') result.push({value:'restock',label:'批量已到货-可发货'})
   // Reuse the existing single footer; only previously eligible shipped Woo
   // orders may be sent to the existing tracking-sync endpoint.
-  if (props.canTrackingSync && isDailyProviderView(props.view) && props.rows.data.some(row=>
+  if (props.canTrackingSync && isProviderWorkView(props.view) && props.rows.data.some(row=>
     selectedBulkOrderIds.value.includes(row.order_id) && eligibleForBatchTracking(row))) {
     result.push({value:'sync-tracking',label:'批量同步官网物流'})
   }
@@ -178,11 +180,11 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',
-    width:props.view==='review'?185:props.view==='stockout'?140:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?242:170):210,
-    minWidth:props.view==='review'?185:props.view==='stockout'?136:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
-    maxWidth:props.view==='review'?190:props.view==='stockout'?148:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
+    width:props.view==='review'?185:props.view==='stockout'?140:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?360:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?242:170):210,
+    minWidth:props.view==='review'?185:props.view==='stockout'?136:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?350:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
+    maxWidth:props.view==='review'?190:props.view==='stockout'?148:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?390:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
     pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
-    cellRenderer:props.view==='exceptions'?GlobalGridCell:props.view==='pending'?DomesticGridPendingCell:DomesticGridActionCell,
+    cellRenderer:props.view==='exceptions'?GlobalGridCell:(props.view==='pending'||isHistoryProviderView(props.view))?DomesticGridPendingCell:DomesticGridActionCell,
     cellRendererParams:props.view==='exceptions'?{
       mode:'actions',
       actionsFor:(row:GridListRow)=>[{label:'查看订单',href:String(row.order_url??'')}],
@@ -271,7 +273,7 @@ const pushTracking = (ids:number[], manualOverride = false) => {
       if (isDailyProviderView(props.view)) selectedBulkOrderIds.value=[]
       const flash = page.props.flash as {warning?:string;error?:string;success?:string}|undefined
       trackingFeedback.value = flash?.warning || flash?.error || flash?.success || '同步请求已处理，请核对官网同步状态'
-      if (isDailyProviderView(props.view)) publishGlobalFeedback({
+      if (isProviderWorkView(props.view)) publishGlobalFeedback({
         state:flash?.error?'ERROR':flash?.warning?'BLOCKED':'SUCCESS',
         title:'官网物流同步请求已处理',message:trackingFeedback.value,
         next:'核对最新官网同步状态；不要重复提交同一单',
@@ -279,7 +281,7 @@ const pushTracking = (ids:number[], manualOverride = false) => {
     },
     onError:(errors)=>{
       trackingFeedback.value=Object.values(errors).join('；')||'官网同步请求验证未通过'
-      if (isDailyProviderView(props.view)) publishGlobalFeedback({
+      if (isProviderWorkView(props.view)) publishGlobalFeedback({
         state:'ERROR',title:'官网物流同步请求失败',message:trackingFeedback.value,
       })
     },
@@ -398,7 +400,7 @@ const switchView = (view:string) => {
   // just because they switched from the approved review view.
   const mode = view === props.view
     ? (props.globalGridPilotEnabled ? '1' : '0')
-    : (['review','stockout','pending','today','today-4px','today-weship','exceptions'].includes(view) ? '1' : '0')
+    : (['review','stockout','pending','today','today-4px','today-weship','exceptions','4px'].includes(view) ? '1' : '0')
   router.visit('/logistics/china?view=' + encodeURIComponent(view)
     + '&global_grid=' + mode
     + (view === props.view && mode === '1' && domesticGridSearch.value
@@ -665,7 +667,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               :busy="bulkBusy" @apply="applyGridBatch" />
           </template>
         </GlobalGrid>
-        <div v-if="view!=='review' && view!=='stockout' && view!=='exceptions' && !isDailyProviderView(view)" class="domestic-grid-legacy-tools">
+        <div v-if="view!=='review' && view!=='stockout' && view!=='exceptions' && !isProviderWorkView(view)" class="domestic-grid-legacy-tools">
           <button type="button" class="secondary" data-testid="domestic-native-batch-toggle"
             @click="showBatchLegacyOperations=!showBatchLegacyOperations;activeOperationId=null">
             {{ showBatchLegacyOperations?'收起原批量操作':'使用原批量操作' }}
@@ -674,7 +676,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
             @click="activeOperationId=null">收起单笔操作</button>
         </div>
       </div>
-      <div v-if="!globalGridPilotEnabled || (view!=='review' && view!=='stockout' && (activeOperationId!==null || showBatchLegacyOperations))" class="table-wrap orders">
+      <div v-if="!globalGridPilotEnabled || (view!=='review' && view!=='stockout' && !isProviderWorkView(view) && (activeOperationId!==null || showBatchLegacyOperations))" class="table-wrap orders">
         <table>
           <thead><tr><th v-if="canTrackingSync && view!=='stockout'">选择</th><th>#</th><th>{{ view==='stockout' ? '操作' : '审核' }}</th><th>ERP 订单</th><th>订单状态</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>承运商单号</th><th>Carrier</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view==='pending'">SKU</th><th v-if="view==='pending'">数量</th><th v-if="view==='pending'">金额</th><th v-if="view!=='review' && view!=='pending'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync && view!=='stockout'">操作</th></tr></thead>
           <tbody>
