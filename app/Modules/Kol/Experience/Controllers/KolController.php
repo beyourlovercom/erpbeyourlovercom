@@ -5,6 +5,7 @@ namespace App\Modules\Kol\Experience\Controllers;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolCreateAutoProvisionService;
+use App\Modules\Kol\Application\AffiliateWp\CouponProvisioningService;
 use App\Modules\Kol\Application\KolEditAccountService;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Application\KolService;
@@ -30,6 +31,7 @@ final class KolController
         private readonly SavedViewService $views,
         private readonly KolCreateAutoProvisionService $autoProvision,
         private readonly KolEditAccountService $editAccount,
+        private readonly CouponProvisioningService $couponSettings,
         private readonly UserUiPreferenceService $uiPreferences,
     ) {}
 
@@ -408,6 +410,35 @@ final class KolController
             'success' => $result['success'],
             'affiliate_account' => $this->affiliateAccountData($kol),
         ], $result['success'] ? 200 : 202);
+    }
+
+    public function updateAffiliateCoupon(Request $request, Kol $kol): JsonResponse
+    {
+        $this->authorizeKolAccess($request, $kol);
+        $data = $request->validate([
+            'kol_profile_url' => 'required|url:http,https|max:500',
+            'affiliate_coupon_expiry' => 'required|date_format:Y-m-d|after_or_equal:today',
+        ]);
+        try {
+            $this->couponSettings->updateBoundSettings(
+                $kol,
+                (string) $data['kol_profile_url'],
+                (string) $data['affiliate_coupon_expiry'],
+            );
+        } catch (\DomainException $error) {
+            return response()->json([
+                'message' => $error->getMessage(),
+                'success' => false,
+                'affiliate_account' => $this->affiliateAccountData($kol->fresh()),
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'WooCommerce 优惠码 Description 和有效期已通过原生 API 回读验证。',
+            'success' => true,
+            'affiliate_account' => $this->affiliateAccountData($kol->fresh()),
+            'kol_profile_url' => $kol->fresh()->kol_profile_url,
+        ]);
     }
 
     public function updateWordpressPassword(Request $request, Kol $kol): JsonResponse

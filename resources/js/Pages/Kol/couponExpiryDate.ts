@@ -5,3 +5,10 @@ export const plusThreeYears = (joinedDate: string): string => {
   const lastDay = new Date(Date.UTC(y + 3, m, 0)).getUTCDate()
   return [String(y + 3).padStart(4, '0'), String(m).padStart(2, '0'), String(Math.min(d, lastDay)).padStart(2, '0')].join('-')
 }
+
+
+// Use the operator's local date for default KOL join date, not UTC midnight.
+export const localTodayDate = (): string => {
+  const now = new Date()
+  return [String(now.getFullYear()).padStart(4, '0'), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-')
+}

@@ -5,7 +5,7 @@ import { useWorkspaceDraftGuard } from '../../Composables/useWorkspaceDraftGuard
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
-import { plusThreeYears } from './couponExpiryDate'
+import { plusThreeYears, localTodayDate } from './couponExpiryDate'
 
 type OwnerOption = { value: number; label: string }
 
@@ -49,7 +49,7 @@ const form = useForm({
   finance_owner_id: '',
   relationship_stage: 'prospect',
   cooperation_type: '免费发帖',
-  joined_at: new Date().toISOString().slice(0, 10),
+  joined_at: localTodayDate(),
   notes: '',
   contact_email: '',
   wordpress_username: '',
@@ -58,7 +58,7 @@ const form = useForm({
   wordpress_password: '',
   wordpress_password_confirmation: '',
   affiliate_coupon_code: '',
-  affiliate_coupon_expiry: plusThreeYears(new Date().toISOString().slice(0, 10)),
+  affiliate_coupon_expiry: plusThreeYears(localTodayDate()),
   kol_profile_url: '',
   contact_phone: '',
   contact_whatsapp: '',
@@ -131,7 +131,7 @@ const removeSocialAccount = (index: number) => {
 }
 
 const addSalesPerformance = () => {
-  form.sales_performance_entries.push({ order_count: '', recorded_at: new Date().toISOString().slice(0, 10), source: '', note: '' })
+  form.sales_performance_entries.push({ order_count: '', recorded_at: localTodayDate(), source: '', note: '' })
 }
 const removeSalesPerformance = (index: number) => {
   form.sales_performance_entries.splice(index, 1)

@@ -7,6 +7,8 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Kol\Application\AffiliateWp\ConnectorResponse;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
+use App\Modules\Kol\Application\Contracts\WooCouponSettingsGateway;
+use App\Modules\Kol\Infrastructure\WooCommerce\LocalUatWooCouponSettingsGateway;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateCoupon;
@@ -26,6 +28,7 @@ final class KolEditAccountCardTest extends TestCase
     {
         parent::setUp();
         $this->withoutVite();
+        $this->app->instance(WooCouponSettingsGateway::class, new LocalUatWooCouponSettingsGateway);
         config([
             'services.andy_core.connection_key' => self::CONNECTION,
             'kol.create_auto_provision.coupon_discount_type' => 'percent',
@@ -155,7 +158,6 @@ final class KolEditAccountCardTest extends TestCase
                 'discount_type' => 'percent',
                 'amount' => '15',
                 'date_expires' => $payload['expiry'],
-                'profile_url_sha256' => hash('sha256', $payload['profile_url']),
             ], 'coupon-created'));
 
         $this->actingAs($user)->postJson("/kol/library/{$kol->id}/affiliate-account", [

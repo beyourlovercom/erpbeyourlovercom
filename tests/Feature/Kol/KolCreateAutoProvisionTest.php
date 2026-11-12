@@ -7,6 +7,8 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Kol\Application\AffiliateWp\ConnectorResponse;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
+use App\Modules\Kol\Application\Contracts\WooCouponSettingsGateway;
+use App\Modules\Kol\Infrastructure\WooCommerce\LocalUatWooCouponSettingsGateway;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateCoupon;
@@ -41,6 +43,7 @@ class KolCreateAutoProvisionTest extends TestCase
         $mock = Mockery::mock(AffiliateWpGateway::class);
         $mock->shouldReceive('descriptor')->andReturn(['connection_key' => self::CONNECTION])->byDefault();
         $this->app->instance(AffiliateWpGateway::class, $mock);
+        $this->app->instance(WooCouponSettingsGateway::class, new LocalUatWooCouponSettingsGateway);
         config([
             'kol.create_auto_provision.coupon_discount_type' => 'percent',
             'kol.create_auto_provision.coupon_amount' => '15',
@@ -108,7 +111,6 @@ class KolCreateAutoProvisionTest extends TestCase
                 self::assertSame('percent', $payload['discount_type']);
                 self::assertSame('15', $payload['amount']);
                 self::assertSame('2029-11-12T23:59:59+00:00', $payload['expiry']);
-                self::assertSame('https://www.instagram.com/new-kol/', $payload['profile_url']);
                 self::assertNotSame('', $key);
                 return true;
             })
@@ -120,7 +122,6 @@ class KolCreateAutoProvisionTest extends TestCase
                 'discount_type' => 'percent',
                 'amount' => '15',
                 'date_expires' => $payload['expiry'],
-                'profile_url_sha256' => hash('sha256', $payload['profile_url']),
             ], 'coupon-provision'));
 
         $response = $this->actingAs($specialist)->post('/kol/library', $this->payload());
@@ -260,7 +261,6 @@ class KolCreateAutoProvisionTest extends TestCase
                 'coupon_id' => 94011, 'code' => 'NEWKOL15', 'normalized_code' => 'newkol15',
                 'affiliate_id' => 93011, 'discount_type' => 'percent', 'amount' => '15',
                 'date_expires' => $payload['expiry'],
-                'profile_url_sha256' => hash('sha256', $payload['profile_url']),
             ], 'coupon-ok'));
         $payload = $this->payload();
         $payload['affiliate_name'] = 'Custom Affiliate Name';

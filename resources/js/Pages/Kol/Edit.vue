@@ -5,7 +5,7 @@ import axios from 'axios'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
-import { plusThreeYears } from './couponExpiryDate'
+import { plusThreeYears, localTodayDate } from './couponExpiryDate'
 
 type OwnerOption = { value: number; label: string }
 
@@ -91,13 +91,20 @@ const props = withDefaults(defineProps<{
 
 const affiliateAccountState = ref<AffiliateAccount | null>(props.affiliateAccount ?? null)
 const accountIsBound = computed(() => Boolean(affiliateAccountState.value?.affiliate_id && affiliateAccountState.value?.wordpress_user_id))
+const boundCouponExpiry = ref(affiliateAccountState.value?.coupon?.date_expires?.slice(0, 10) || plusThreeYears(props.kol.joined_at ?? localTodayDate()))
+const couponSaving = ref(false)
+const couponUpdateError = ref('')
+const couponUpdateMessage = ref('')
+watch(() => affiliateAccountState.value?.coupon?.date_expires, date => {
+  if (date) boundCouponExpiry.value = date.slice(0, 10)
+})
 const accountProvisioning = ref(false)
 const accountError = ref('')
 const accountMessage = ref('')
 const accountPassword = ref('')
 const accountPasswordConfirmation = ref('')
 const accountCouponCode = ref('')
-const accountCouponExpiry = ref(plusThreeYears(props.kol.joined_at ?? new Date().toISOString().slice(0, 10)))
+const accountCouponExpiry = ref(plusThreeYears(props.kol.joined_at ?? localTodayDate()))
 const accountCouponExpiryManuallyEdited = ref(false)
 const accountUsername = ref(props.kol.display_name.trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9_.@-]/g, '').slice(0, 60))
 const accountAffiliateName = ref(accountUsername.value)
@@ -123,6 +130,35 @@ const apiErrorMessage = (error: any, fallback: string) => {
 }
 
 const validWordpressPassword = (value: string) => value.length >= 12 && value.length <= 128 && /[A-Za-z]/.test(value) && /[0-9]/.test(value)
+
+const saveBoundCouponSettings = async () => {
+  couponUpdateError.value = ''
+  couponUpdateMessage.value = ''
+  if (!form.kol_profile_url?.trim() || !/^https?:\/\//i.test(form.kol_profile_url.trim())) {
+    couponUpdateError.value = '请填写有效网红主页 URL。'
+    return
+  }
+  if (!boundCouponExpiry.value) {
+    couponUpdateError.value = '请设置有效的 Code 到期日期。'
+    return
+  }
+  couponSaving.value = true
+  try {
+    const response = await axios.patch('/kol/library/' + props.kol.id + '/affiliate-coupon', {
+      kol_profile_url: form.kol_profile_url.trim(),
+      affiliate_coupon_expiry: boundCouponExpiry.value,
+    })
+    affiliateAccountState.value = response.data.affiliate_account as AffiliateAccount
+    couponUpdateMessage.value = response.data.message || 'WooCommerce 优惠码已同步。'
+  } catch (error: any) {
+    couponUpdateError.value = apiErrorMessage(error, '优惠码同步失败，请确认 WooCommerce 后再重试。')
+    if (error?.response?.data?.affiliate_account) {
+      affiliateAccountState.value = error.response.data.affiliate_account as AffiliateAccount
+    }
+  } finally {
+    couponSaving.value = false
+  }
+}
 
 const provisionAffiliateAccount = async () => {
   accountError.value = ''
@@ -449,7 +485,7 @@ const removeSocialAccount = (index: number) => {
 }
 
 const addSalesPerformance = () => {
-  form.sales_performance_entries.push({ order_count: '', recorded_at: new Date().toISOString().slice(0, 10), source: '', note: '' })
+  form.sales_performance_entries.push({ order_count: '', recorded_at: localTodayDate(), source: '', note: '' })
 }
 const removeSalesPerformance = (index: number) => {
   form.sales_performance_entries.splice(index, 1)
@@ -631,9 +667,19 @@ const breadcrumbs = [
               <div class="erp-form-field kol-bound-profile-url">
                 <label class="erp-form-label">网红链接（保存 KOL 资料）</label>
                 <input v-model="form.kol_profile_url" type="url" class="erp-input" maxlength="500" placeholder="https://www.instagram.com/username/">
-                <p class="erp-form-helper">修改 ERP 红人链接不会覆盖已经发出的 WooCommerce 优惠码，原优惠码 Description 可从 WordPress 后台单独调整。</p>
+                <p class="erp-form-helper">点击“保存到 WooCommerce”后，写入对应优惠码的 Description，不修改 Code 和折扣设置。</p>
                 <p v-if="form.errors.kol_profile_url" class="erp-field-error">{{ form.errors.kol_profile_url }}</p>
               </div>
+              <div v-if="affiliateAccountState.coupon?.coupon_id" class="kol-bound-coupon-edit">
+                <div class="erp-form-field">
+                  <label class="erp-form-label">Code 有效期</label>
+                  <input v-model="boundCouponExpiry" type="date" class="erp-input">
+                  <p class="erp-form-helper">按 WordPress 网站本地日历日期结束，可直接修改或延长。</p>
+                </div>
+                <button type="button" class="erp-btn erp-btn-primary" :disabled="couponSaving || !boundCouponExpiry" @click="saveBoundCouponSettings">{{ couponSaving ? '同步中…' : '保存到 WooCommerce' }}</button>
+              </div>
+              <p v-if="couponUpdateError" class="erp-field-error">{{ couponUpdateError }}</p>
+              <p v-if="couponUpdateMessage" class="kol-account-success">{{ couponUpdateMessage }}</p>
               <p v-if="affiliateAccountState.last_error_code" class="kol-account-warning">最近账号异常：{{ affiliateAccountState.last_error_code }}</p>
               <div class="kol-account-actions">
                 <button type="button" class="erp-btn erp-btn-secondary" @click="passwordResetOpen = !passwordResetOpen; passwordResetError = ''; passwordResetMessage = ''">{{ passwordResetOpen ? '取消设置新密码' : '设置新的 WordPress 密码' }}</button>
@@ -1308,6 +1354,8 @@ const breadcrumbs = [
 .kol-account-facts > div { min-height: 70px; padding: 12px 14px; border: 1px solid #e4eaed; border-radius: 10px; background: #f8fafc; }
 .kol-account-facts span { display: block; margin-bottom: 6px; color: #7a8c94; font-size: 12px; }
 .kol-account-facts strong { display: block; overflow-wrap: anywhere; color: #263238; font-size: 14px; }
+.kol-bound-coupon-edit { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.kol-bound-coupon-edit .erp-form-field { flex: 1 1 240px; }
 .kol-account-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .kol-account-password-panel { margin-top: 16px; padding: 16px; border: 1px solid #dbe5e8; border-radius: 10px; background: #f8fafc; }
 .kol-account-warning { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; background: #fff7e6; color: #9a6700; font-size: 13px; }
