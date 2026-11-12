@@ -1281,7 +1281,7 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'shipped_at',field:'shipped_at',headerName:'发货时间',width:188,sortable:true}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',
     width:props.view==='pending'?260:194,minWidth:props.view==='pending'?258:190,maxWidth:props.view==='pending'?275:203,
-    pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
+    pinned:'right',
     cellRenderer:props.view==='pending'?DomesticGridPendingCell:DomesticGridActionCell,
     cellRendererParams:{
       ...(props.view==='pending'?{
@@ -1457,7 +1457,7 @@ const compactPages = computed<(number|string)[]>(() => {
         <GlobalGrid :key="'oversea-grid-'+warehouseKey+'-'+view"
           :namespace="'grid.logistics.oversea.'+view+'.global.v1'"
           :title="pageTitle" :columns="overseaGridColumns" :rows="overseaGridRows"
-          :required-column-ids="['order','actions']" :page="rows" row-identity-key="id"
+          :required-column-ids="['order']" :page="rows" row-identity-key="id"
           :search="gridSearch??''" :sort="gridSort??undefined"
           :filter-columns="[]" :filter-values="gridFilters??{}"
           :enable-selection="Boolean((canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || canTrackingSync || showShipoutSelection)"

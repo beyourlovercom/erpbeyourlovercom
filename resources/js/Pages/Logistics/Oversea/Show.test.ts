@@ -11,7 +11,7 @@ vi.mock('@inertiajs/vue3', () => ({
   router: { post: routerPost, patch: routerPatch, visit: routerVisit, reload: routerReload },
 }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
-vi.mock('../../../Components/DataGrid/GlobalGrid.vue', () => ({ __esModule:true, default: {name:'MockGlobalGrid',props:['columns','rows','enableSelection','selectedOrderIds','filterColumns'],template:'<div class="test-global-grid"><slot name="actions" /><slot name="footer-left" /></div>'} }))
+vi.mock('../../../Components/DataGrid/GlobalGrid.vue', () => ({ __esModule:true, default: {name:'MockGlobalGrid',props:['columns','rows','enableSelection','selectedOrderIds','filterColumns','requiredColumnIds','defaultPinnedRight'],template:'<div class="test-global-grid"><slot name="actions" /><slot name="footer-left" /></div>'} }))
 
 const warehouseOptions = [
   { key: 'us-moreplus', id: 1, code: 'US-LA', label: '美西 MorePlus 仓', carrier: 'USPS', url: '/logistics/oversea/us-moreplus' },
@@ -94,6 +94,39 @@ describe('oversea Global Grid with narrow persistent warehouse rail', () => {
 })
 
 describe('oversea domestic-style Global Grid review operation contract', () => {
+  it('G overseas actions may be unpinned, hidden and reordered without altering workflow callbacks',async()=>{
+    const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:usSmPendingRows,canReview:true})
+    await flushPromises()
+    const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+    const columns=grid.props('columns') as {colId:string;pinned?:string;lockPinned?:boolean;lockVisible?:boolean;suppressMovable?:boolean;minWidth?:number;maxWidth?:number;cellRendererParams?:Record<string,any>}[]
+    const actions=columns.find(col=>col.colId==='actions')!
+    expect(grid.props('requiredColumnIds')).toEqual(['order'])
+    expect(actions.pinned).toBe('right') // keep familiar default; user may choose 0
+    expect(actions.lockPinned).not.toBe(true)
+    expect(actions.lockVisible).not.toBe(true)
+    expect(actions.suppressMovable).not.toBe(true)
+    expect(actions.minWidth).toBe(190)
+    expect(actions.maxWidth).toBe(203)
+    expect(typeof actions.cellRendererParams?.approve).toBe('function')
+    expect(typeof actions.cellRendererParams?.reject).toBe('function')
+    expect(typeof actions.cellRendererParams?.native).toBe('function')
+  })
+
+  it('G leaves PR751 pending direct Tracking editor and 260px safe action width intact',async()=>{
+    const wrapper=mountPage({globalGridEnabled:true,view:'pending',rows:usSmPendingRows,canOperate:true})
+    await flushPromises()
+    const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+    const actions=(grid.props('columns') as {colId:string;pinned?:string;lockPinned?:boolean;lockVisible?:boolean;minWidth?:number;maxWidth?:number;cellRendererParams?:Record<string,any>}[]).find(c=>c.colId==='actions')!
+    expect(grid.props('requiredColumnIds')).toEqual(['order'])
+    expect(actions.pinned).toBe('right')
+    expect(actions.lockPinned).not.toBe(true)
+    expect(actions.lockVisible).not.toBe(true)
+    expect(actions.minWidth).toBe(258)
+    expect(actions.maxWidth).toBe(275)
+    expect(typeof actions.cellRendererParams?.saveTracking).toBe('function')
+    expect(typeof actions.cellRendererParams?.confirmShip).toBe('function')
+  })
+
   it('shows the order date and uses the existing domestic inline review cell actions', async () => {
     const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:usSmPendingRows,canReview:true})
     await flushPromises()
