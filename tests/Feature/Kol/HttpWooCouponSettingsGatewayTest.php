@@ -45,6 +45,7 @@ final class HttpWooCouponSettingsGatewayTest extends TestCase
         $calls = [];
         Http::fake(function (Request $request) use (&$provider, &$calls) {
             $calls[] = $request->method();
+            self::assertTrue($request->hasHeader('User-Agent', 'Mozilla/5.0 (compatible; BYL-ERP-WooCommerce-Inbound/1.0; +https://www.beyourlover.com/)'));
             self::assertSame('https://coupon.example.test/wp-json/wc/v3/coupons/42', $request->url());
             if ($request->method() === 'PUT') {
                 self::assertSame([
