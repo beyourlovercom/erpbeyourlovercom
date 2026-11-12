@@ -212,7 +212,7 @@ final class WarehouseBatchDispatch
                 // OMS status+tracking does NOT prove actual last-mile carrier,
                 // even if USPS was requested. Prevent premature ERP/Woo shipping.
                 return $this->result($orderId, 'carrier_verification_required',
-                    'OMS 已出库并有 Tracking，须核实 USPS / 真实承运商后人工确认发货');
+                    'OMS 已出库并有 Tracking，须核实 USPS / 真实物流商后人工确认发货');
             }
             if ($status['status_code'] === '4') return $this->result($orderId, 'canceled', 'OMS 已取消，未标记发货');
             return $this->result($orderId, 'unknown_status', 'OMS 状态未确认，未标记发货');

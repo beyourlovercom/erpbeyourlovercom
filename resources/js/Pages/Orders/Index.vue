@@ -193,7 +193,7 @@ const customerColumns: ColDef<GridListRow>[] = [
   gridColumn({ colId:'quantity', field:'quantity', headerName:'产品数量', width:110 }),
   gridColumn({ colId:'product_names', field:'product_names', headerName:'产品名称', width:230 }),
   gridColumn({ colId:'warehouse', field:'warehouse', headerName:'仓库', width:150 }),
-  gridColumn({ colId:'carrier', field:'carrier', headerName:'承运商', width:140 }),
+  gridColumn({ colId:'carrier', field:'carrier', headerName:'物流商', width:140 }),
   gridColumn({ colId:'tracking', field:'tracking', headerName:'追踪单号', width:175 }),
   gridColumn({ colId:'status', field:'status', headerName:'订单状态', width:140,
     cellRenderer:GlobalGridCell, cellRendererParams:{ mode:'badge' } }),

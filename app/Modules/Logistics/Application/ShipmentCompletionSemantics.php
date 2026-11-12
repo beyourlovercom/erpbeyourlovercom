@@ -22,7 +22,7 @@ final class ShipmentCompletionSemantics
         abort_unless(
             filled($shipment->carrier) && filled($shipment->tracking_number),
             $statusCode,
-            '完结需要已确认承运商和追踪号',
+            '完结需要已确认物流商和追踪号',
         );
     }
 

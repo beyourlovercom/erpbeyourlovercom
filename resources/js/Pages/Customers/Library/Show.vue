@@ -73,7 +73,7 @@ const orderDefinitions: GridColumnDefinition<OrderColumn>[] = [
     { key: 'order_status', label: '订单状态' }, { key: 'shipment_status', label: '物流状态' },
 ]
 const shipmentDefinitions: GridColumnDefinition<ShipmentColumn>[] = [
-    { key: 'order_number', label: 'ERP订单号' }, { key: 'carrier', label: '承运商' }, { key: 'tracking', label: '追踪号' },
+    { key: 'order_number', label: 'ERP订单号' }, { key: 'carrier', label: '物流商' }, { key: 'tracking', label: '追踪号' },
     { key: 'shipped_at', label: '发货日期' }, { key: 'status', label: '状态' },
 ]
 const orderGrid = reactive(useAccountGridPreferences<OrderColumn>({ namespace: 'grid.customers.library.show.orders.v1', definitions: orderDefinitions, requiredKeys: ['order_number'] }))

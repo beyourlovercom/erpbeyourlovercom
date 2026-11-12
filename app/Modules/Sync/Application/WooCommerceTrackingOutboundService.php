@@ -234,7 +234,7 @@ final class WooCommerceTrackingOutboundService
         $trackingNumber = trim((string) $shipment->tracking_number);
         $carrier = trim((string) $shipment->carrier);
         if ($trackingNumber === '' || $carrier === '' || ! $shipment->shipped_at) {
-            throw new DomainException('发货记录缺少承运商、Tracking 或发货时间。');
+            throw new DomainException('发货记录缺少物流商、Tracking 或发货时间。');
         }
 
         $lineItems = $order->items->map(function ($item): array {
@@ -334,7 +334,7 @@ final class WooCommerceTrackingOutboundService
             }
         }
 
-        throw new DomainException("承运商 {$carrier} 尚未配置 AfterShip provider slug。只有显式映射的承运商可以自动写回。");
+        throw new DomainException("物流商 {$carrier} 尚未配置 AfterShip provider slug。只有显式映射的物流商可以自动写回。");
     }
 
     private function forgetRemoteTrackingSnapshot(int $providerOrderId): void
