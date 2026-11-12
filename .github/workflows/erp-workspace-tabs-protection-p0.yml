@@ -1,0 +1,36 @@
+name: ERP Workspace Tabs P0 Protection
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-frozen-workspace-tabs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install exact npm dependencies
+        run: npm ci
+      - name: Mandatory production tab bundle build with no environment flags
+        env:
+          VITE_ERP_WORKSPACE_TABS: '0'
+          VITE_ERP_WORKSPACE_CANARY_IDS: 'never-authorized-id'
+          VITE_ERP_WORKSPACE_DEFAULT_ON: '0'
+        run: |
+          npm run build
+          node ops/production/verify-workspace-tabs-build.mjs
+      - name: Test that a disabled tab bundle fails build protection
+        run: node --test ops/production/verify-workspace-tabs-build.test.mjs
+      - name: Verify build-time all-staff rollout constants remain frozen
+        run: |
+          grep -Fq "'import.meta.env.VITE_ERP_WORKSPACE_TABS': JSON.stringify('1')" vite.config.js
+          grep -Fq "'import.meta.env.VITE_ERP_WORKSPACE_CANARY_IDS': JSON.stringify('*')" vite.config.js
+          grep -Fq "'import.meta.env.VITE_ERP_WORKSPACE_DEFAULT_ON': JSON.stringify('1')" vite.config.js

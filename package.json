@@ -3,7 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "vite build",
+        "build": "vite build && node ops/production/verify-workspace-tabs-build.mjs",
         "dev": "vite",
         "test": "vitest run",
         "test:e2e": "node tests/e2e/support/run-e2e.mjs",

@@ -1,3 +1,9 @@
+# HIGHEST OWNER-FROZEN ERP WORKSPACE TABS P0 (2026-11-12)
+
+**Rule ID: `BYL_ERP_WORKSPACE_TABS_P0_FROZEN` / OWNER APPROVED.** ERP V4 navigation tabs are a permanent, all-authenticated-user default-on Production feature. Preserve **30 navigation tabs, 3 pinned tabs**, the existing hot-cache behavior and per-user `?erp_v4_tabs=0` emergency session opt-out. Subsequent Grid, ERP, KOL, logistics, frontend styling or asset-only releases MUST NOT disable/replace the workspace tab system.
+
+**MANDATORY RELEASE GATE:** Every Production candidate MUST build with `npm run build` (which includes the post-bundle verifier), automatically embedding `VITE_ERP_WORKSPACE_TABS=1`, `VITE_ERP_WORKSPACE_CANARY_IDS=*`, `VITE_ERP_WORKSPACE_DEFAULT_ON=1` in `vite.config.js` and failing at Vite `generateBundle` if the Tab component is tree-shaken. Independently run `node ops/production/verify-workspace-tabs-build.mjs` on the FINAL candidate's `public/build` BEFORE switching the Production symlink, and after switch confirm the active hashed `AuthenticatedLayout` JS is served with HTTP 200 and still contains `erp_v4_tabs`. No exceptions for surgical overlay or rebuilt-assets-only releases; copying an older build with tabs OFF is also forbidden. The always-on GitHub `ERP Workspace Tabs P0 Protection` workflow must PASS for PRs. Any regression is a BLOCK, not a reason to roll back this frozen feature. Intentional global disable requires NEW explicit Owner authorization; browser session opt-out remains supported.
+
 # REPOSITORY EXECUTION GOVERNANCE GATE
 
 Before any formal task, read:
