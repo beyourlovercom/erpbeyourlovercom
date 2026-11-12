@@ -128,7 +128,7 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.1.children.3.label', '已发待单号')
             ->where('shellNavigation.1.children.4.label', '运输中')
             ->where('shellNavigation.1.children.5.label', '异常订单')
-            ->where('shellNavigation.1.children.6.label', '承运商'));
+            ->where('shellNavigation.1.children.6.label', '物流商'));
 
         $withPrototype = $this->userWith(['dashboard.view', 'logistics.view', 'prototype.view'], 'operator-with-prototype');
         $this->actingAs($withPrototype)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
@@ -139,7 +139,7 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.1.children.3.label', '已发待单号')
             ->where('shellNavigation.1.children.4.label', '运输中')
             ->where('shellNavigation.1.children.5.label', '异常订单')
-            ->where('shellNavigation.1.children.6.label', '承运商'));
+            ->where('shellNavigation.1.children.6.label', '物流商'));
     }
 
     public function test_owner_approved_kol_logistics_entry_is_visible_only_with_kol_permission(): void
