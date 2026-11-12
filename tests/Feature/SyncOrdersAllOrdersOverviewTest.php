@@ -47,7 +47,7 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
             );
     }
 
-    public function test_every_source_and_original_order_number_is_searchable_and_archived_orders_stay_visible(): void
+    public function test_every_active_source_is_searchable_while_archived_orders_are_hidden(): void
     {
         $user = $this->viewer();
         $woo = $this->makeOrder('woocommerce', 'WOO-OVERVIEW-1');
@@ -59,16 +59,14 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
 
         $this->actingAs($user)->get('/sync/orders')->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('orders', 5)
-                ->where('pagination.total', 5)
+                ->has('orders', 4)
+                ->where('pagination.total', 4)
             );
 
         $this->actingAs($user)->get('/sync/orders?search=IMPORTED-ORIGINAL-132')->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('orders', 1)
-                ->where('orders.0.id', $imported->id)
-                ->where('orders.0.external_order_number', 'IMPORTED-ORIGINAL-132')
-                ->where('orders.0.archived', true)
+                ->has('orders', 0)
+                ->where('pagination.total', 0)
             );
 
         $this->actingAs($user)->get('/sync/orders?source=woocommerce')->assertOk()
@@ -81,7 +79,7 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
         $this->actingAs($user)->get('/sync/orders?source=not_a_source')->assertSessionHasErrors('source');
     }
 
-    public function test_split_child_keeps_real_woocommerce_root_identity_after_parent_was_archived(): void
+    public function test_child_of_soft_deleted_parent_is_hidden_then_restored_to_original_woo_identity(): void
     {
         $user = $this->viewer();
         $parent = $this->makeOrder('woocommerce', 'WOO-ROOT-ARCHIVED');
@@ -91,13 +89,79 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
 
         $this->actingAs($user)->get('/sync/orders?search=SPLIT-CHILD-B')->assertOk()
             ->assertInertia(fn (Assert $page) => $page
+                ->has('orders', 0)
+                ->where('pagination.total', 0)
+            );
+        $parent->restore();
+
+        $this->actingAs($user)->get('/sync/orders?search=SPLIT-CHILD-B')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
                 ->has('orders', 1)
+                ->where('pagination.total', 1)
                 ->where('orders.0.id', $child->id)
                 ->where('orders.0.root_order_id', $parent->id)
                 ->where('orders.0.source_type', 'woocommerce')
                 ->where('orders.0.fulfillment_suffix', 'B')
-                ->where('orders.0.archived', true)
-                ->where('orders.0.can_sync', false)
+                ->where('orders.0.archived', false)
+            );
+    }
+
+    public function test_archive_soft_delete_operational_archive_and_archived_parent_are_excluded_from_all_sync_modes(): void
+    {
+        Cache::flush();
+        $user = $this->viewer();
+
+        $normal = $this->makeOrder('woocommerce', 'ACTIVE-ONLY-OK');
+        $normal->manualSync()->create(['website_sync_status' => 'failed']);
+
+        $legacy = $this->makeOrder('kol', 'ACTIVE-ONLY-LEGACY-ARCHIVED');
+        $legacy->forceFill(['archived_at' => now()])->save();
+        $legacy->manualSync()->create(['website_sync_status' => 'failed']);
+
+        $operational = $this->makeOrder('website', 'ACTIVE-ONLY-OPERATIONAL-ARCHIVED');
+        $operational->forceFill(['operational_archived_at' => now()])->save();
+        $operational->manualSync()->create(['website_sync_status' => 'failed']);
+
+        $deleted = $this->makeOrder('manual_other', 'ACTIVE-ONLY-SOFT-DELETED');
+        $deleted->manualSync()->create(['website_sync_status' => 'failed']);
+        $deleted->delete();
+
+        $root = $this->makeOrder('woocommerce', 'ACTIVE-ONLY-ROOT');
+        $child = $this->makeOrder('manual', 'ACTIVE-ONLY-CHILD');
+        $child->forceFill(['fulfillment_parent_id' => $root->id, 'fulfillment_suffix' => 'B'])->save();
+        $child->manualSync()->create(['website_sync_status' => 'failed']);
+        $root->forceFill(['operational_archived_at' => now()])->save();
+
+        $this->actingAs($user)->get('/sync/orders')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('pagination.total', 1)
+                ->has('orders', 1)
+                ->where('orders.0.id', $normal->id)
+            );
+        $this->actingAs($user)->get('/sync/orders?global_grid=0')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('pagination.total', 1)
+                ->where('orders.0.id', $normal->id)
+            );
+        foreach ([$legacy, $operational, $deleted, $root, $child] as $hidden) {
+            $this->actingAs($user)->get('/sync/orders?search='.$hidden->erp_order_id)
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('pagination.total', 0)->has('orders', 0));
+        }
+
+        $snapshot = app(OrderSyncProgressSnapshot::class)->refresh();
+        self::assertSame(1, $snapshot['total']);
+        self::assertSame(1, $snapshot['candidates']);
+        $this->actingAs($user)->get('/sync/orders?grid_progress=failed')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('pagination.total', 1)
+                ->where('progressFilterSnapshot.total', 1)
+                ->where('orders.0.id', $normal->id)
+            );
+
+        $this->actingAs($user)->get('/sync/orders?grid_progress=failed&search=ACTIVE-ONLY-SOFT-DELETED')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('pagination.total', 0)->has('orders', 0)
             );
     }
 
