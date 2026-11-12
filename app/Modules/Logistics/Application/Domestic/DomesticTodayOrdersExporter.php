@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
+use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
 use Illuminate\Support\Collection;
@@ -18,7 +19,7 @@ use RuntimeException;
  */
 final class DomesticTodayOrdersExporter
 {
-    public function __construct(private readonly WarehouseOrderReference $references) {}
+    public function __construct(private readonly WarehouseOrderReference $references, private readonly CarrierServiceCatalog $carriers) {}
 
     /** @param Collection<int, Order> $orders */
     public function export(Collection $orders): string
@@ -28,7 +29,7 @@ final class DomesticTodayOrdersExporter
         $sheet->setTitle('今日订单SKU明细');
         $sheet->fromArray([[
             '订单号', 'SKU', '数量', '单价', '物流商',
-            '承运商单号', '币种', '商品名称', '发货状态',
+            '物流商单号', '币种', '商品名称', '发货状态',
         ]]);
 
         $line = 2;
@@ -42,11 +43,7 @@ final class DomesticTodayOrdersExporter
             }
 
             $carrier = (string) $shipment?->carrier;
-            $carrierLabel = match (strtolower(trim($carrier))) {
-                '4px' => '速达 / 4PX',
-                'weship' => '纬狮 / Weship',
-                default => $carrier,
-            };
+            $carrierLabel = $this->carriers->carrierDisplayName($carrier);
 
             // Preserve orders without items in the report without inventing a SKU or price.
             foreach ($order->items->isEmpty() ? [null] : $order->items->sortBy('id') as $item) {

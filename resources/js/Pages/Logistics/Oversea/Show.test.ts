@@ -62,7 +62,7 @@ describe('oversea Global Grid with narrow persistent warehouse rail', () => {
     expect(wrapper.find('[data-testid="oversea-grid-filter-panel"]').exists()).toBe(false)
     await wrapper.find('[data-testid="oversea-grid-filter-trigger"]').trigger('click')
     expect(wrapper.find('[data-testid="oversea-grid-filter-panel"]').exists()).toBe(true)
-    await wrapper.find('input[aria-label="筛选承运商"]').setValue('USPS')
+    await wrapper.find('input[aria-label="筛选物流商"]').setValue('USPS')
     await wrapper.find('input[aria-label="筛选 Tracking"]').setValue('9400')
     await wrapper.find('.oversea-filter-apply').trigger('click')
     const url=routerVisit.mock.lastCall?.[0] as string

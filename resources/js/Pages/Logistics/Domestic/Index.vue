@@ -84,6 +84,7 @@ const gridNavigation = useGlobalGridListAdapter({
   pageSize:()=>props.rows.per_page??50,
   context:()=>({view:props.view}),
 })
+const displayCarrier = (carrier:string|null|undefined) => props.carrierOptions.find(item=>item.value.toLowerCase()===(carrier??'').toLowerCase())?.label ?? carrier ?? '—'
 const nativeOperationRows = computed(()=>!props.globalGridPilotEnabled || showBatchLegacyOperations.value
   ? props.rows.data : props.rows.data.filter(row=>row.order_id===activeOperationId.value))
 const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
@@ -107,7 +108,7 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   amount:row.amount!==null&&row.amount!==undefined ? row.amount+' '+(row.amount_currency??'USD'):'—',
   export_status:row.export_blockers.length ? row.export_blockers.join(' / '):'可导出',
   provider_reference:row.provider_reference??'—',
-  carrier:row.carrier??'—',
+  carrier:displayCarrier(row.carrier),
   service:row.service??'—',
   tracking_number:row.tracking_number??'—',
   recipient_name:row.recipient_name??'—',
@@ -148,7 +149,7 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'amount',field:'amount',headerName:'金额',width:134}),
   gridColumn({colId:'export',field:'export_status',headerName:'导出状态',width:175}),
   gridColumn({colId:'provider_ref',field:'provider_reference',headerName:'物流商单号',width:180}),
-  gridColumn({colId:'carrier',field:'carrier',headerName:'Carrier',width:156,
+  gridColumn({colId:'carrier',field:'carrier',headerName:'物流商',width:156,
     ...(props.view==='pending'?{cellRenderer:DomesticGridPendingRouteCell,cellRendererParams:{
       source:(id:number)=>props.rows.data.find(item=>item.order_id===id),
       carrierOptions:props.carrierOptions,canOperate:props.canOperate,
@@ -612,14 +613,14 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 
       <section v-if="view==='today-4px' || view==='today-weship'" class="provider-grid single">
         <article v-if="view!=='today-weship'" class="provider-card">
-          <div><strong>速达 / 4PX</strong></div>
+          <div><strong>速达</strong></div>
           <div class="actions">
             <a class="primary" href="/logistics/china/export/4px">下载速达下单表</a>
 
           </div>
         </article>
         <article v-if="view!=='today-4px'" class="provider-card">
-          <div><strong>纬狮 / Weship</strong><small v-if="!providerStatus.weship.export_ready" role="alert">{{ providerStatus.weship.reason }}</small></div>
+          <div><strong>纬狮</strong><small v-if="!providerStatus.weship.export_ready" role="alert">{{ providerStatus.weship.reason }}</small></div>
           <div class="actions">
             <a v-if="providerStatus.weship.export_ready" class="primary" href="/logistics/china/export/weship">下载纬狮下单表</a>
 
@@ -636,9 +637,9 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         <p>阻断订单不参与发货。可应用订单逐单登记 ERP Shipment；官网物流由同步模块每 30 分钟处理一次，最终状态以官网回读为准。</p>
         <div class="table-wrap">
         <div v-if="trackingFeedback" class="tracking-action-feedback" role="status">{{ trackingFeedback }}</div>
-          <table><thead><tr><th>行</th><th>订单号</th><th>Tracking</th><th>Carrier</th><th>Provider 状态</th><th>结果</th><th>说明</th></tr></thead>
+          <table><thead><tr><th>行</th><th>订单号</th><th>Tracking</th><th>物流商</th><th>Provider 状态</th><th>结果</th><th>说明</th></tr></thead>
           <tbody><tr v-for="row in previewRows" :key="row.row + '-' + row.order_number">
-            <td>{{ row.row }}</td><td>{{ row.order_number }}</td><td>{{ row.tracking_number || '—' }}</td><td>{{ row.carrier }}</td><td>{{ row.provider_status ?? '—' }}</td>
+            <td>{{ row.row }}</td><td>{{ row.order_number }}</td><td>{{ row.tracking_number || '—' }}</td><td>{{ displayCarrier(row.carrier) }}</td><td>{{ row.provider_status ?? '—' }}</td>
             <td><b :class="'status-' + row.status">{{ statusLabel(row.status) }}</b></td><td>{{ row.message || '—' }}</td>
           </tr></tbody></table>
         </div>
@@ -678,7 +679,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
       </div>
       <div v-if="!globalGridPilotEnabled || (view!=='review' && view!=='stockout' && !isProviderWorkView(view) && (activeOperationId!==null || showBatchLegacyOperations))" class="table-wrap orders">
         <table>
-          <thead><tr><th v-if="canTrackingSync && view!=='stockout'">选择</th><th>#</th><th>{{ view==='stockout' ? '操作' : '审核' }}</th><th>ERP 订单</th><th>订单状态</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>物流商单号</th><th>Carrier</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view==='pending'">SKU</th><th v-if="view==='pending'">数量</th><th v-if="view==='pending'">金额</th><th v-if="view!=='review' && view!=='pending'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync && view!=='stockout'">操作</th></tr></thead>
+          <thead><tr><th v-if="canTrackingSync && view!=='stockout'">选择</th><th>#</th><th>{{ view==='stockout' ? '操作' : '审核' }}</th><th>ERP 订单</th><th>订单状态</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>物流商单号</th><th>物流商</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view==='pending'">SKU</th><th v-if="view==='pending'">数量</th><th v-if="view==='pending'">金额</th><th v-if="view!=='review' && view!=='pending'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync && view!=='stockout'">操作</th></tr></thead>
           <tbody>
             <tr v-for="row in nativeOperationRows" :key="row.order_id">
               <td v-if="canTrackingSync && view!=='stockout'"><input v-if="eligibleForBatchTracking(row)" type="checkbox"
@@ -708,7 +709,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                   <option value="">请选择物流商</option>
                   <option v-for="option in carrierOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
                 </select>
-                <span v-else>{{ row.shipment_status==='pending' && row.carrier_selection_source!=='manual' ? '—' : (row.carrier ?? '—') }}</span>
+                <span v-else>{{ row.shipment_status==='pending' && row.carrier_selection_source!=='manual' ? '—' : displayCarrier(row.carrier) }}</span>
               </td>
               <td class="domestic-service-cell">
                 <template v-if="view==='pending' && canQuickShip(row)">

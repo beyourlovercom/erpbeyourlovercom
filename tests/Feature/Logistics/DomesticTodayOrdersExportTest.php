@@ -56,7 +56,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
         try {
             $book = IOFactory::load($path);
             $sheet = $book->getActiveSheet();
-            self::assertSame(['订单号','SKU','数量','单价','物流商','承运商单号','币种','商品名称','发货状态'],
+            self::assertSame(['订单号','SKU','数量','单价','物流商','物流商单号','币种','商品名称','发货状态'],
                 array_map(fn (string $col) => $sheet->getCell($col.'1')->getValue(), range('A','I')));
             self::assertSame(4, $sheet->getHighestDataRow());
             self::assertSame('007-TEST-TODAY-1', $sheet->getCell('A2')->getValue());
@@ -65,7 +65,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
             self::assertSame(DataType::TYPE_NUMERIC, $sheet->getCell('C2')->getDataType());
             self::assertSame(12.75, $sheet->getCell('D2')->getValue());
             self::assertSame(DataType::TYPE_NUMERIC, $sheet->getCell('D2')->getDataType());
-            self::assertSame('速达 / 4PX', $sheet->getCell('E2')->getValue());
+            self::assertSame('速达', $sheet->getCell('E2')->getValue());
             self::assertSame('USD', $sheet->getCell('G2')->getValue());
             self::assertSame('007-TEST-TODAY-1', $sheet->getCell('A3')->getValue());
             self::assertSame('=HYPERLINK("https://example.invalid","BAD")', $sheet->getCell('B3')->getValue());
@@ -76,7 +76,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
             self::assertSame('VX357A', $sheet->getCell('B4')->getValue());
             self::assertSame(3, $sheet->getCell('C4')->getValue());
             self::assertSame(18.0, $sheet->getCell('D4')->getValue());
-            self::assertSame('纬狮 / Weship', $sheet->getCell('E4')->getValue());
+            self::assertSame('纬狮', $sheet->getCell('E4')->getValue());
             self::assertSame('shipped', $sheet->getCell('I4')->getValue());
             $book->disconnectWorksheets();
         } finally {

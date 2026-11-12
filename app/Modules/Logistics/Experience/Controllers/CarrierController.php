@@ -104,6 +104,7 @@ final class CarrierController
         $payload = $request->validate([
             'name_zh' => ['required', 'string', 'max:128'],
             'name_en' => ['required', 'string', 'max:128'],
+            'display_name' => ['nullable', 'string', 'max:128'],
             'is_active' => ['required', 'boolean'],
             'default_service_id' => ['nullable', 'integer'],
             'default_service_key' => ['nullable', 'string', 'max:80'],
@@ -163,6 +164,9 @@ final class CarrierController
             $master->forceFill([
                 'name_zh' => trim((string) $payload['name_zh']),
                 'name_en' => trim((string) $payload['name_en']),
+                'display_name' => array_key_exists('display_name', $payload)
+                    ? (trim((string) ($payload['display_name'] ?? '')) ?: null)
+                    : $master->display_name,
                 'is_active' => (bool) $payload['is_active'],
                 'default_service_id' => $default->id,
                 'updated_by' => $actorId,
@@ -180,6 +184,7 @@ final class CarrierController
             'name' => $carrier->name,
             'name_en' => $carrier->name_en,
             'name_zh' => $carrier->name_zh,
+            'custom_display_name' => $carrier->display_name,
             'display_name' => $carrier->displayName(),
             'is_active' => (bool) $carrier->is_active,
             'default_service_id' => $carrier->default_service_id ? (int) $carrier->default_service_id : null,

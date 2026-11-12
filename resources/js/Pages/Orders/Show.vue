@@ -169,6 +169,7 @@ const props = withDefaults(defineProps<{
 
 
 const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
+const carrierDisplay = (name:string|null|undefined) => name ? (carrierOption(name)?.label ?? name) : '—'
 const contextualDefaultService = (name:string, country?:string|null) => {
   const carrier = carrierOption(name)
   if (!carrier) return ''
@@ -1239,7 +1240,7 @@ onBeforeUnmount(() => {
                     <td><span class="ord-segment-status" :class="`status-${segment.shipment.shipment_status}`">{{ segment.shipment.status_label }}</span></td>
                     <td>
                       <div class="ord-carrier-service">
-                        <strong>{{ segment.shipment.carrier ?? '—' }}</strong>
+                        <strong>{{ carrierDisplay(segment.shipment.carrier) }}</strong>
                         <small>{{ segment.shipment.service ?? '—' }}</small>
                       </div>
                     </td>
@@ -1268,7 +1269,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="ord-fulfillment-item">
                 <small class="ord-fulfillment-label">物流商</small>
-                <strong class="ord-fulfillment-value">{{ order.shipment?.carrier ?? '—' }}</strong>
+                <strong class="ord-fulfillment-value">{{ carrierDisplay(order.shipment?.carrier) }}</strong>
               </div>
               <div class="ord-fulfillment-item">
                 <small class="ord-fulfillment-label">运输 / 服务类型</small>

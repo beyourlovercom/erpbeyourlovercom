@@ -18,6 +18,7 @@ type ColumnKey = 'order_number' | 'source' | 'date' | 'recipient' | 'country' | 
 
 const props = defineProps<{
   orderKind: string
+  carrierLabels?: Record<string,string>
   orderScope: string
   orders: Paginated<Order>
   filters: Record<string, string>
@@ -173,7 +174,7 @@ const customerRows = computed<GridListRow[]>(() => props.orders.data.map(order =
   quantity: order.items?.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0) ?? 0,
   product_names: order.items?.map(item => item.product_summary).filter(Boolean).join(' / ') || '—',
   warehouse: order.shipment?.warehouse_name ?? '—',
-  carrier: order.shipment?.carrier ?? '—',
+  carrier: order.shipment?.carrier ? (props.carrierLabels?.[order.shipment.carrier] ?? order.shipment.carrier) : '—',
   tracking: order.shipment?.tracking_number ?? '—',
   status: order.workflow_status_projection?.zh ?? order.order_status_label,
   owner: order.owner?.name ?? '—',

@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
+use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use DomainException;
@@ -17,6 +18,7 @@ final class DomesticPendingBatchExporter
     public function __construct(
         private readonly WarehouseOrderReference $references,
         private readonly DomesticReviewAmountResolver $amounts,
+        private readonly CarrierServiceCatalog $carriers,
     ) {}
 
     /** @param Collection<int,Order> $orders */
@@ -36,7 +38,7 @@ final class DomesticPendingBatchExporter
 
         $maxItems = max(1, (int) $eligible->max(fn (Order $order) => $order->items->count()));
         $headers = [
-            'ERP订单号', '客户单号', '承运商', '服务', 'Tracking',
+            'ERP订单号', '客户单号', '物流商', '服务', 'Tracking',
             '收件人', '电话', 'Email', '国家/地区', '州/省', '城市', '邮编', '地址',
         ];
         for ($i = 1; $i <= $maxItems; $i++) {
@@ -69,7 +71,7 @@ final class DomesticPendingBatchExporter
             $values = [
                 (string) $order->erp_order_id,
                 $reference,
-                ($shipment->carrier_selection_source === 'manual' || app(DomesticCarrierDefaults::class)->ready($order)) ? (string) $shipment->carrier : '',
+                ($shipment->carrier_selection_source === 'manual' || app(DomesticCarrierDefaults::class)->ready($order)) ? $this->carriers->carrierDisplayName((string) $shipment->carrier) : '',
                 ($shipment->carrier_selection_source === 'manual' || app(DomesticCarrierDefaults::class)->ready($order)) ? (string) $shipment->service : '',
                 '',
                 (string) $address?->recipient_name,
