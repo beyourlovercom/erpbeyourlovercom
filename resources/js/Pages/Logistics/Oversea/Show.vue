@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
 import axios from 'axios'
-import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, defineAsyncComponent, nextTick, reactive, ref, watch, onMounted, onUnmounted } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowStatusPill.vue'
 import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
+import type { ColDef } from 'ag-grid-community'
+import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
+import { gridColumn, type GridListRow } from '../../../Components/DataGrid/useGlobalGridListAdapter'
+const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../../Composables/useAccountGridPreferences'
 import { publishGlobalFeedback } from '../../../lib/globalFeedback'
 import { resolveWarehousePortal } from '../../../lib/warehousePortal'
@@ -65,6 +69,7 @@ type TrackingImportRow = { row:number; order_id:number|null; order_number:string
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
+  globalGridEnabled?:boolean; gridSearch?:string; gridSort?:{colId:string;direction:'asc'|'desc'}|null; gridFilters?:Record<string,string>
   shipoutProductionBatchUi?:boolean; shipoutProductionBatchDryRun?:boolean; shipoutProductionBatchPaused?:boolean;
   shipoutProductionLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
   shipoutProductionUi?:boolean; shipoutProductionReadEnabled?:boolean; shipoutProductionDispatchEnabled?:boolean; shipoutProductionMinOrderId?:number; shipoutProductionOperatorAllowed?:boolean
@@ -78,6 +83,11 @@ const grid = reactive(useAccountGridPreferences<ColumnKey>({
   definitions:columnDefinitions,
 }))
 const canEditRow = computed(() => props.canOperate || (props.canReview && props.view === 'review'))
+const gridEnabled = computed(() => props.globalGridEnabled === true)
+const activeOperationId = ref<number|null>(null)
+const gridSearchText = ref(props.gridSearch??'')
+watch(() => props.gridSearch, value => {gridSearchText.value=value??''})
+watch(() => [props.warehouseKey, props.view, props.rows.current_page], () => {activeOperationId.value=null})
 // Only the updated row is changed after save. Navigation and filtering
 // still read the canonical server state.
 const visibleRows = ref<Row[]>([...props.rows.data])
@@ -832,14 +842,33 @@ const viewTabs = [
 const pageTitle = computed(() => props.warehouse ? `海外仓发货 · ${props.warehouse.label}` : '海外仓发货 · 全部海外仓')
 const warehousePortal = computed(() => resolveWarehousePortal(props.warehouse?.url ?? ''))
 const basePath = computed(() => props.warehouse ? props.warehouse.url : '/logistics/oversea')
-const switchView = (view:string) => {
-  if(view!=='pending'){
-    shipoutBatchSelection.value=[]
-    shipoutBatchPreview.value=null
+type GridQueryValue = string|number|null|undefined
+const gridNavigate = (overrides:Record<string,GridQueryValue> = {}, path = basePath.value) => {
+  const params:Record<string,GridQueryValue> = {
+    view:props.view, page:props.rows.current_page, per_page:props.rows.per_page||50,
+    global_grid:gridEnabled.value?'1':'0',search:gridSearchText.value,
+    sort_col:props.gridSort?.colId??'line',sort_dir:props.gridSort?.direction??'desc',
+    filter_carrier:props.gridFilters?.carrier??'',filter_tracking:props.gridFilters?.tracking??'',
+    ...overrides,
   }
-  router.visit(`${basePath.value}?view=${encodeURIComponent(view)}&page=1&per_page=${props.rows.per_page || 50}`, { preserveScroll:true, preserveState:true, only:['rows','view','viewCounts','warehouse','warehouseKey','warehouseOptions','canReview','canOperate','carrierOptions'] })
- }
-const switchWarehouse = (url:string) => router.visit(`${url}?view=${encodeURIComponent(props.view)}&page=1&per_page=${props.rows.per_page || 50}`, { preserveScroll:true, preserveState:true })
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key,value])=>{if(value!==null&&value!==undefined&&value!=='')query.set(key,String(value))})
+  router.visit(path+'?'+query.toString(),{preserveScroll:true,preserveState:true})
+}
+const switchView = (view:string) => {
+  if(view!=='pending') {shipoutBatchSelection.value=[];shipoutBatchPreview.value=null}
+  gridNavigate({view,page:1})
+}
+const switchWarehouse = (url:string) => gridNavigate({page:1},url)
+const toggleGrid = () => gridNavigate({global_grid:gridEnabled.value?'0':'1',page:1})
+const searchGrid = (value:string) => {gridSearchText.value=value;gridNavigate({search:value,page:1})}
+const sortGrid = (sort:{colId:string;direction:'asc'|'desc'|null}) => gridNavigate({
+  sort_col:sort.direction?sort.colId:'line',sort_dir:sort.direction??'desc',page:1,
+})
+const filterGrid = (filter:{colId:string;value:string}) => {
+  if(!['carrier','tracking'].includes(filter.colId))return
+  gridNavigate({['filter_'+filter.colId]:filter.value,page:1})
+}
 type InlineDraftSaved = {
   order_id:number;shipment_status:string;tracking_number:string|null
   carrier:string|null;service:string|null;note:string|null
@@ -943,7 +972,17 @@ const reject = (row:Row) => {
   router.post(`/logistics/oversea/orders/${row.order_id}/reject`, { note }, { preserveScroll:true, preserveState:true })
 }
 const itemText = (row:Row) => row.items.map(item => `${item.sku ?? '无SKU'} × ${item.quantity}`).join(' / ') || '—'
-const pageUrl = (page:number, perPage:number = props.rows.per_page || 50) => `${basePath.value}?view=${encodeURIComponent(props.view)}&page=${page}&per_page=${perPage}`
+const pageUrl = (page:number, perPage:number = props.rows.per_page || 50) => {
+  if(!gridEnabled.value)return `${basePath.value}?view=${encodeURIComponent(props.view)}&page=${page}&per_page=${perPage}`
+  const q=new URLSearchParams({view:props.view,page:String(page),per_page:String(perPage),global_grid:gridEnabled.value?'1':'0'})
+  if(gridEnabled.value){
+    if(gridSearchText.value)q.set('search',gridSearchText.value)
+    if(props.gridSort?.colId)q.set('sort_col',props.gridSort.colId)
+    if(props.gridSort?.direction)q.set('sort_dir',props.gridSort.direction)
+    for(const key of ['carrier','tracking'])if(props.gridFilters?.[key])q.set('filter_'+key,props.gridFilters[key])
+  }
+  return basePath.value+'?'+q.toString()
+}
 const goPage = (page:number) => {
   const next = Math.max(1, Math.min(props.rows.last_page || 1, page))
   router.visit(pageUrl(next), { preserveScroll:true, preserveState:true })
@@ -957,6 +996,70 @@ const submitJump = () => {
   const page = Number(jumpPage.value)
   if (!Number.isInteger(page)) return
   goPage(page)
+}
+const nativeOperationRows = computed(()=>gridEnabled.value
+  ? visibleRows.value.filter(row=>row.order_id===activeOperationId.value)
+  : visibleRows.value)
+const openGridOperation = (id:number) => {
+  activeOperationId.value=id
+  void nextTick(()=>document.querySelector('.oversea-native-workflow')?.scrollIntoView({block:'nearest',behavior:'smooth'}))
+}
+const overseaGridRows = computed<GridListRow[]>(()=>visibleRows.value.map(row=>({
+  id:row.order_id,line:row.line,order_number:row.erp_order_id??'—',order_url:row.order_url,
+  workflow_status:row.workflow_status_projection?.zh??'—',
+  review_status:row.review_status==='approved'?'已通过':'待审核',
+  shipment_status:row.shipment_status==='shipped'?'已发货':row.shipment_status==='pending'?'待发货':row.shipment_status,
+  warehouse_name:row.warehouse_name??'—',carrier:row.carrier??'—',service:row.service??'—',
+  tracking_number:row.tracking_number??'—',note:row.note??'',
+  recipient_name:row.recipient_name??'—',country:row.country??'—',
+  sku:row.items.map(item=>item.sku??'无SKU').join(' / ')||'—',
+  quantity:row.items.map(item=>item.quantity).join(' / ')||'—',
+  tracking_sync_status:row.source_type==='woocommerce'?trackingLabel(row.tracking_sync_status):'—',
+  dispatch_status:row.warehouse_dispatch?.label??'—',
+  oms_order:row.xlwms?.oms_order_no??row.shipout_production?.provider_order_id??'—',
+  shipped_at:row.shipped_at??'—',
+})))
+const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
+  gridColumn({colId:'order',field:'order_number',headerName:'订单号',width:194,minWidth:165,
+    pinned:'left',lockPinned:true,lockVisible:true,suppressMovable:true,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>String(r.order_url??'')}}),
+  gridColumn({colId:'line',field:'line',headerName:'#',width:75,sortable:true}),
+  gridColumn({colId:'status',field:'workflow_status',headerName:'统一状态',width:132}),
+  gridColumn({colId:'review',field:'review_status',headerName:'审核状态',width:110}),
+  gridColumn({colId:'shipment',field:'shipment_status',headerName:'发货状态',width:114}),
+  gridColumn({colId:'warehouse',field:'warehouse_name',headerName:'仓库',width:82,minWidth:76,maxWidth:82,
+    tooltipField:'warehouse_name',cellStyle:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}),
+  ...(props.warehouseKey==='us-moreplus'||props.warehouseKey==='us-3sm'?[gridColumn({
+    colId:'dispatch',field:'dispatch_status',headerName:'仓库处理状态',width:230,tooltipField:'dispatch_status',
+  }),gridColumn({colId:'oms_order',field:'oms_order',headerName:'OMS 单号',width:178})]:[]),
+  gridColumn({colId:'carrier',field:'carrier',headerName:'承运商',width:145}),
+  gridColumn({colId:'service',field:'service',headerName:'服务渠道',width:154}),
+  gridColumn({colId:'tracking',field:'tracking_number',headerName:'Tracking',width:208,sortable:true,tooltipField:'tracking_number'}),
+  gridColumn({colId:'note',field:'note',headerName:'备注',width:180,tooltipField:'note'}),
+  gridColumn({colId:'recipient',field:'recipient_name',headerName:'收件人',width:140}),
+  gridColumn({colId:'country',field:'country',headerName:'国家',width:106}),
+  gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:210,tooltipField:'sku'}),
+  gridColumn({colId:'quantity',field:'quantity',headerName:'数量',width:95}),
+  gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:126}),
+  gridColumn({colId:'shipped_at',field:'shipped_at',headerName:'发货时间',width:188,sortable:true}),
+  gridColumn({colId:'actions',field:'id',headerName:'操作',width:198,minWidth:178,maxWidth:222,
+    pinned:'right',lockPinned:true,lockVisible:true,suppressMovable:true,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'actions',actionsFor:(r:GridListRow)=>[
+      {label:activeOperationId.value===Number(r.id)?'收起操作':'办理 / 审核',
+        onClick:()=>activeOperationId.value===Number(r.id)?activeOperationId.value=null:openGridOperation(Number(r.id))},
+      {label:'详情',href:String(r.order_url??'')},
+    ]},
+  }),
+])
+const onGridSelection = (rows:GridListRow[]) => {
+  const ids=new Set(rows.map(row=>Number(row.id)).filter(id=>Number.isSafeInteger(id)&&id>0))
+  if(showShipoutSelection.value){
+    shipoutBatchSelection.value=visibleRows.value.filter(row=>ids.has(row.order_id)
+      && row.shipment_status==='pending' && !row.shipout_production?.attempted).map(row=>row.order_id)
+  }else if(props.canTrackingSync){
+    trackingSelection.value=visibleRows.value.filter(row=>ids.has(row.order_id)
+      && eligibleForBatchTracking(row)).map(row=>row.order_id)
+  }
 }
 const compactPages = computed<(number|string)[]>(() => {
   const last = props.rows.last_page || 1
@@ -981,15 +1084,16 @@ const compactPages = computed<(number|string)[]>(() => {
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP','物流','海外仓发货', warehouse?.label ?? '全部海外仓']">
     <section class="oversea-page">
       <div class="oversea-workbench">
-        <aside class="warehouse-rail" aria-label="海外仓切换">
+        <aside class="warehouse-rail" aria-label="海外仓切换" data-testid="oversea-compact-warehouse-rail">
           <p class="warehouse-rail-title">海外仓</p>
-          <button type="button" class="warehouse-link" :class="{ active: warehouseKey === 'all' }" @click="switchWarehouse('/logistics/oversea')">全部海外仓</button>
-          <button v-for="option in warehouseOptions" :key="option.key" type="button" class="warehouse-link" :class="{ active: warehouseKey === option.key }" @click="switchWarehouse(option.url)">{{ option.label }}</button>
+          <button type="button" class="warehouse-link" title="全部海外仓" :aria-label="'切换仓库：全部海外仓'" :class="{ active: warehouseKey === 'all' }" @click="switchWarehouse('/logistics/oversea')">全部海外仓</button>
+          <button v-for="option in warehouseOptions" :key="option.key" type="button" class="warehouse-link" :title="option.label" :aria-label="'切换仓库：'+option.label" :class="{ active: warehouseKey === option.key }" @click="switchWarehouse(option.url)">{{ option.label }}</button>
         </aside>
         <main class="oversea-main">
       <header class="oversea-heading">
         <div><h1>{{ pageTitle }}</h1><p v-if="warehouseKey === 'us-3sm'">审核通过后，下载订单文件，在世迈 OMS 人工导入。重复导入前先检查当前草稿箱，避免重复下单。</p><p v-else>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终承运商，不能假定 USPS Priority。</p></div>
         <div class="oversea-file-actions">
+          <button type="button" class="file-button" data-testid="oversea-global-grid-toggle" @click="toggleGrid">{{gridEnabled?'返回原表':'切换新版表'}}</button>
           <button v-if="shipoutProductionBatchUi && warehouseKey==='us-moreplus'" type="button"
             class="file-button primary" :disabled="shipoutBatchBusy || Boolean(shipoutBatchStatus && ['queued','running','awaiting_oms','paused'].includes(shipoutBatchStatus.status))"
             @click="shipoutBatchCheck">一键推送仓库</button>
@@ -1085,7 +1189,25 @@ const compactPages = computed<(number|string)[]>(() => {
         <button type="button" class="file-button" @click="trackingSelection=[]">清除选择</button>
       </div>
       <div v-if="trackingFeedback" class="tracking-action-feedback" role="status">{{ trackingFeedback }}</div>
-      <div class="oversea-table-wrap">
+      <div v-if="gridEnabled" class="oversea-grid-main" data-testid="oversea-global-grid-workbench">
+        <GlobalGrid :key="'oversea-grid-'+warehouseKey+'-'+view"
+          :namespace="'grid.logistics.oversea.'+view+'.global.v1'"
+          :title="pageTitle" :columns="overseaGridColumns" :rows="overseaGridRows"
+          :required-column-ids="['order','actions']" :page="rows" row-identity-key="id"
+          :search="gridSearch??''" :sort="gridSort??undefined"
+          :filter-columns="['carrier','tracking']" :filter-values="gridFilters??{}"
+          :enable-selection="Boolean(canTrackingSync || showShipoutSelection)"
+          :selected-order-ids="showShipoutSelection?shipoutBatchSelection:trackingSelection"
+          search-placeholder="搜索全部订单号 / Tracking / 收件人 / SKU..."
+          @search-change="searchGrid" @sort-change="sortGrid" @column-search-change="filterGrid"
+          @selection-change="onGridSelection" @page-change="gridNavigate({page:$event})"
+          @page-size-change="($event!=='all')&&gridNavigate({per_page:$event,page:1})" />
+        <div v-if="activeOperationId!==null" class="native-operation-heading">
+          <strong>当前订单操作 · 完整原有业务功能</strong>
+          <button type="button" class="file-button" @click="activeOperationId=null">收起订单操作</button>
+        </div>
+      </div>
+      <div v-if="!gridEnabled || activeOperationId!==null" class="oversea-table-wrap oversea-native-workflow">
         <table class="oversea-table">
           <thead><tr>
             <th v-if="canTrackingSync || showShipoutSelection">
@@ -1103,7 +1225,7 @@ const compactPages = computed<(number|string)[]>(() => {
             <ColumnSettingsHeader :columns="grid.columns" :sync-state="grid.syncState" @toggle="grid.toggle" @start-drag="grid.startDrag" @drop="grid.drop" @reset="grid.reset" />
           </tr></thead>
           <tbody>
-            <tr v-for="row in visibleRows" :key="row.order_id">
+            <tr v-for="row in nativeOperationRows" :key="row.order_id">
               <td v-if="canTrackingSync || showShipoutSelection">
                 <input v-if="showShipoutSelection && row.shipment_status==='pending'" type="checkbox"
                   :aria-label="'选择推送 '+(row.erp_order_id??row.order_id)"
@@ -1270,13 +1392,13 @@ const compactPages = computed<(number|string)[]>(() => {
                 type="button" :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">{{ (['failed','retry_wait'].includes(row.tracking_sync_status ?? '') || !!row.tracking_sync_reason) ? '重新同步' : '同步官网物流' }}</button><span v-else>—</span></td>
               <td class="settings-spacer" aria-hidden="true"></td>
             </tr>
-            <tr v-if="!visibleRows.length"><td :colspan="grid.visibleColumns.length + (['us-3sm','us-moreplus'].includes(warehouseKey) ? 3 : 2) + 1 + (canTrackingSync?2:0)" class="empty-cell">当前视图暂无订单</td></tr>
+            <tr v-if="!nativeOperationRows.length"><td :colspan="grid.visibleColumns.length + (['us-3sm','us-moreplus'].includes(warehouseKey) ? 3 : 2) + 1 + (canTrackingSync?2:0)" class="empty-cell">当前视图暂无订单</td></tr>
 
           </tbody>
         </table>
       </div>
 
-      <footer class="oversea-footer">
+      <footer v-if="!gridEnabled" class="oversea-footer">
         <div class="pagination-summary">
           <span>共 {{ visibleTotal }} 条</span>
           <span>第 {{ rows.current_page }} / {{ rows.last_page }} 页</span>
@@ -1339,4 +1461,21 @@ const compactPages = computed<(number|string)[]>(() => {
 .tracking-sync-status.completed{color:#166534;background:#dcfce7}
 .tracking-sync-status.failed{color:#991b1b;background:#fee2e2}.tracking-sync-status.retry_wait{color:#92400e;background:#fef3c7}.tracking-sync-failure{display:block;max-width:240px;white-space:normal;font-size:10px;color:#b91c1c;margin-top:4px}
 .tracking-sync-status.processing{color:#1d4ed8;background:#dbeafe}
+</style>
+
+<style scoped>
+/* Owner PASS: warehouse switching stays visible, never consumes over five CJK glyphs. */
+.oversea-page{padding:8px 9px 20px 5px}
+.oversea-workbench{grid-template-columns:60px minmax(0,1fr);gap:8px}
+.warehouse-rail{box-sizing:border-box;min-width:0;width:60px;padding:4px 2px;top:10px}
+.warehouse-rail-title{margin:3px 2px 5px;font-size:11px;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.warehouse-link{box-sizing:border-box;display:block;width:100%;min-width:0;max-width:100%;padding:7px 2px;font-size:11.5px;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oversea-heading{margin-bottom:7px;align-items:center;gap:10px}
+.oversea-heading h1{font-size:20px}
+.oversea-file-actions{gap:6px;align-items:center}
+.oversea-file-actions .file-button{height:32px;padding:0 10px;font-size:12px}
+.oversea-grid-main{min-width:0;margin:6px 0 9px}
+.native-operation-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;color:#475569;font-size:12px}
+.oversea-native-workflow{margin-top:8px}
+@media(max-width:900px){.oversea-workbench{grid-template-columns:60px minmax(0,1fr)}.warehouse-rail{position:sticky;top:8px;display:block;width:60px;overflow:visible}.warehouse-rail-title{display:block}.warehouse-link{width:100%;flex:none}.oversea-page{padding:8px 5px}}
 </style>

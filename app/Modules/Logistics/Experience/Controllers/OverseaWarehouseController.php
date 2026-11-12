@@ -88,7 +88,36 @@ final class OverseaWarehouseController
         }
         $this->applyView($base, $view);
 
-        $shipments = $base->latest('id')->paginate($perPage)->withQueryString();
+        // Global Grid V1: keep queries on canonical Shipment/Order records.
+        // The legacy UI is a reversible presentation choice, not a new data path.
+        $gridEnabled = (string) $request->query('global_grid', '1') !== '0';
+        $gridSearch = mb_substr(trim((string) $request->query('search', '')), 0, 100);
+        $gridFilters = [
+            'carrier' => mb_substr(trim((string) $request->query('filter_carrier', '')), 0, 80),
+            'tracking' => mb_substr(trim((string) $request->query('filter_tracking', '')), 0, 100),
+        ];
+        $sortable = ['line' => 'id', 'shipped_at' => 'shipped_at', 'tracking' => 'tracking_number'];
+        $sortCol = (string) $request->query('sort_col', 'line');
+        $sortCol = array_key_exists($sortCol, $sortable) ? $sortCol : 'line';
+        $sortDir = strtolower((string) $request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        if ($gridEnabled) {
+            if ($gridSearch !== '') {
+                $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $gridSearch).'%';
+                $base->where(fn ($q) => $q
+                    ->where('tracking_number', 'like', $like)
+                    ->orWhereHas('order', fn ($orders) => $orders->where('erp_order_id', 'like', $like))
+                    ->orWhereHas('order.address', fn ($addresses) => $addresses->where('recipient_name', 'like', $like))
+                    ->orWhereHas('order.items', fn ($items) => $items->where('sku', 'like', $like)));
+            }
+            foreach (['carrier' => 'carrier', 'tracking' => 'tracking_number'] as $key => $field) {
+                if ($gridFilters[$key] !== '') {
+                    $base->where($field, 'like', '%'.str_replace(['%', '_'], ['\\%', '\\_'], $gridFilters[$key]).'%');
+                }
+            }
+        }
+
+        $shipments = $base->orderBy($sortable[$gridEnabled ? $sortCol : 'line'], $gridEnabled ? $sortDir : 'desc')
+            ->paginate($perPage)->withQueryString();
         $trackingStatuses = app(LogisticsTrackingListStatus::class)
             ->forShipments($shipments->getCollection()->pluck('id')->all());
         $start = ($shipments->currentPage() - 1) * $shipments->perPage();
@@ -137,6 +166,10 @@ final class OverseaWarehouseController
             'warehouse' => $selectedWarehouse,
             'warehouseOptions' => array_values($warehouseMap),
             'view' => $view,
+            'globalGridEnabled' => $gridEnabled,
+            'gridSearch' => $gridEnabled ? $gridSearch : '',
+            'gridSort' => $gridEnabled ? ['colId' => $sortCol, 'direction' => $sortDir] : null,
+            'gridFilters' => $gridEnabled ? $gridFilters : ['carrier' => '', 'tracking' => ''],
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => [
                 ...$this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id), $shipOutAttempts->get($shipment->order_id), $shipOutBatchItems->get($shipment->order_id), $shipOutReadbacks->get($shipment->order_id)),
                 // Logistics access alone is not enough for editing an order's staff workflow progress.

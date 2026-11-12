@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import axios from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Show from './Show.vue'
@@ -11,6 +11,7 @@ vi.mock('@inertiajs/vue3', () => ({
   router: { post: routerPost, patch: routerPatch, visit: routerVisit, reload: routerReload },
 }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
+vi.mock('../../../Components/DataGrid/GlobalGrid.vue', () => ({ __esModule:true, default: {template:'<div class="test-global-grid" />'} }))
 
 const warehouseOptions = [
   { key: 'us-moreplus', id: 1, code: 'US-LA', label: '美西 MorePlus 仓', carrier: 'USPS', url: '/logistics/oversea/us-moreplus' },
@@ -39,6 +40,29 @@ const mountPage = (overrides: Record<string, unknown> = {}) => mount(Show, { pro
   canReview: true, canOperate: true, carrierOptions: [], trackingImportPreview: preview, xlwmsOmsWebEnabled:true,
   shipoutProductionMinOrderId:1, shipoutProductionOperatorAllowed:true, ...overrides,
 } })
+
+describe('oversea Global Grid with narrow persistent warehouse rail', () => {
+  beforeEach(() => {routerVisit.mockClear()})
+  it('uses the new grid without rendering the legacy table until a row is opened', async () => {
+    const wrapper=mountPage({globalGridEnabled:true,rows:usSmPendingRows,gridSearch:'',gridSort:{colId:'line',direction:'desc'}})
+    await flushPromises()
+    expect(wrapper.find('[data-testid="oversea-compact-warehouse-rail"]').exists()).toBe(true)
+    expect(wrapper.find('.warehouse-link[title="美国3世迈仓"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="oversea-global-grid-workbench"]').exists()).toBe(true)
+    expect(wrapper.find('.test-global-grid').exists()).toBe(true)
+    expect(wrapper.find('.oversea-native-workflow').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="oversea-global-grid-toggle"]').text()).toBe('返回原表')
+  })
+  it('switches warehouses from the narrow sidebar without losing the current status or grid mode', async () => {
+    const wrapper=mountPage({globalGridEnabled:true,view:'pending',gridSearch:'',gridSort:{colId:'line',direction:'desc'}})
+    await wrapper.find('.warehouse-link[title="美国3世迈仓"]').trigger('click')
+    const url=routerVisit.mock.calls[0][0] as string
+    expect(url).toContain('/logistics/oversea/us-3sm?')
+    expect(url).toContain('view=pending')
+    expect(url).toContain('global_grid=1')
+    expect(url).toContain('page=1')
+  })
+})
 
 describe('warehouse OMS portal inside the overseas page heading', () => {
   it('renders the 世迈 OMS link within the page heading, not the global header', () => {
