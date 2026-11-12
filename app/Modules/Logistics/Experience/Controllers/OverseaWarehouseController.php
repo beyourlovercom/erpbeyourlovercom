@@ -258,7 +258,8 @@ final class OverseaWarehouseController
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
-            'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),
+            'canOperate' => ($warehouseKey !== 'all' || $view === 'pending')
+                && $this->executionAccess->allows($request->user()),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
             'carrierOptions' => $this->carrierServices->options(),
             'trackingImportPreview' => $warehouseKey === 'all' ? null : (collect((array) $request->session()->get($this->trackingSessionKey($warehouseKey), []))->except('normalized_rows')->all() ?: null),

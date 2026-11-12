@@ -466,6 +466,22 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ]);
     }
 
+    public function test_all_overseas_pending_allows_authorized_shipping_actions_without_unlocking_other_views(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $viewer = $this->userWith(['logistics.view']);
+        $w = $this->warehouses();
+        $order = $this->orderAt($w['DE'], '007-OVERSEA-ALL-PENDING-OPERATE', 'DE');
+        $this->actingAs($operator)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $this->actingAs($operator)->get('/logistics/oversea?view=pending')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('canOperate', true)
+                ->where('rows.data.0.warehouse_code', 'DE'));
+        $this->actingAs($operator)->get('/logistics/oversea?view=all')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('canOperate', false));
+        $this->actingAs($viewer)->get('/logistics/oversea?view=pending')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('canOperate', false));
+    }
+
     public function test_non_oms_overseas_pending_quick_ship_enforces_approval_and_uses_canonical_tracking_handoff(): void
     {
         $operator = $this->userWith(['logistics.view', 'logistics.operate']);
