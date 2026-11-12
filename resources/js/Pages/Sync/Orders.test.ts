@@ -44,7 +44,7 @@ describe('Sync all-orders simple status UI', () => {
   })
 
   it('distinguishes failed, synced, notified and unsynced without inferring email delivery', () => {
-    const failed = { ...woo, id: 2, progress: { code: 'failed' as const, label: '同步失败', reason: '承运商冲突' }, can_sync: false, can_reconcile: true }
+    const failed = { ...woo, id: 2, progress: { code: 'failed' as const, label: '同步失败', reason: '物流商冲突' }, can_sync: false, can_reconcile: true }
     const synced = { ...woo, id: 3, progress: { code: 'synced' as const, label: '已同步', reason: null }, can_sync: false }
     const notified = { ...woo, id: 4, progress: { code: 'notified' as const, label: '已通知', reason: 'Customer Note 回读通过' }, can_sync: false }
     const wrapper = mount(Orders, { props: props([woo, failed, synced, notified]) })
@@ -56,7 +56,7 @@ describe('Sync all-orders simple status UI', () => {
 
   it('shows 同步网站 on every unsuccessful operator row while retaining server-backed safety gates', async () => {
     const archived = { ...woo, id: 2, archived: true, can_sync: false, can_reconcile: false, sync_block_reason: '订单已归档，请先恢复' }
-    const conflict = { ...woo, id: 3, progress: { code: 'failed' as const, label: '同步失败', reason: '承运商冲突' }, can_sync: false, can_reconcile: true, sync_block_reason: '官网物流存在冲突' }
+    const conflict = { ...woo, id: 3, progress: { code: 'failed' as const, label: '同步失败', reason: '物流商冲突' }, can_sync: false, can_reconcile: true, sync_block_reason: '官网物流存在冲突' }
     const readonly = { ...woo, id: 4, can_sync: false, can_reconcile: false, can_operate: false }
     const synced = { ...woo, id: 5, progress: { code: 'synced' as const, label: '已同步', reason: null }, can_sync: false }
     const notified = { ...woo, id: 6, progress: { code: 'notified' as const, label: '已通知', reason: null }, can_sync: false }

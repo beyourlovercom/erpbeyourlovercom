@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository;
+use App\Modules\Sync\Infrastructure\EloquentSyncOrchestrationRepository;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
 use App\Modules\Sync\Application\SyncOrchestrationService;
 use App\Modules\Sync\Application\SyncRunStatus;
@@ -93,6 +95,69 @@ final class SyncOrchestrationServiceTest extends TestCase
             'id' => $first['outbox']->id,
             'status' => 'completed',
             'attempts' => 2,
+        ]);
+    }
+
+    public function test_old_timezone_drift_pending_intent_is_isolated_without_remote_write_or_outbox_change(): void
+    {
+        $order = $this->order(7305);
+        $tracking = app(WooCommerceTrackingOutboundService::class);
+        $stored = $tracking->enqueueForPeriodicSync($order);
+        $record = $stored['outbox'];
+        $payload = $record->payload;
+        unset($payload['shipped_at_contract']);
+        DB::table('sync_outbox')->where('id', $record->id)->update(['payload' => json_encode($payload)]);
+
+        // Emulate MySQL session TZ conversion of the exact same persisted
+        // TIMESTAMP: DB canonical time stays UTC; Eloquent model is 8h behind.
+        $real = app(EloquentSyncOrchestrationRepository::class);
+        $repository = \Mockery::mock(SyncOrchestrationRepository::class);
+        $repository->shouldReceive('dueTrackingOutbox')->andReturnUsing(
+            fn (int $limit, ?int $after = null) => $real->dueTrackingOutbox($limit, $after)
+        );
+        $repository->shouldReceive('shipmentWithOrder')->andReturnUsing(
+            function (int $id) use ($real) {
+                $shipment = $real->shipmentWithOrder($id);
+                $raw = $shipment->getAttributes();
+                $raw['shipped_at'] = '2026-08-27 16:30:00';
+                $shipment->setRawAttributes($raw);
+                $shipment->order->setRelation('shipment', $shipment);
+
+                return $shipment;
+            }
+        );
+        $this->app->instance(SyncOrchestrationRepository::class, $repository);
+
+        $run = app(SyncOrchestrationService::class)->retryPending(null);
+        self::assertSame(1, $run->requested_items);
+        self::assertSame(1, $run->skipped_items);
+        self::assertSame(0, $run->succeeded_items);
+        self::assertSame(0, $this->gateway->writeCalls);
+        $this->assertDatabaseHas('sync_run_items', [
+            'outbox_id' => $record->id,
+            'status' => 'skipped',
+            'result_code' => 'legacy_timezone_hold',
+        ]);
+        $this->assertDatabaseHas('sync_outbox', [
+            'id' => $record->id,
+            'status' => 'pending',
+            'attempts' => 0,
+        ]);
+    }
+
+    public function test_changed_tracking_number_remains_truth_changed_without_any_automatic_push(): void
+    {
+        $order = $this->order(7306);
+        $stored = app(WooCommerceTrackingOutboundService::class)->enqueueForPeriodicSync($order);
+        $record = $stored['outbox'];
+        $order->shipment->update(['tracking_number' => 'UPDATED-TRACK-7306']);
+
+        $run = app(SyncOrchestrationService::class)->retryPending(null);
+        self::assertSame(1, $run->skipped_items);
+        self::assertSame(0, $this->gateway->writeCalls);
+        $this->assertDatabaseHas('sync_run_items', [
+            'outbox_id' => $record->id,
+            'result_code' => 'truth_changed',
         ]);
     }
 

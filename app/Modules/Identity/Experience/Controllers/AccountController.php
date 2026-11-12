@@ -56,7 +56,7 @@ final class AccountController
     {
         $data = $request->validate([
             'current_password' => ['required', 'current_password:web'],
-            'password' => ['required', 'confirmed', Password::min(12)->mixedCase()->numbers()],
+            'password' => ['required', 'confirmed', Password::min(6)->mixedCase()->numbers()],
         ], [
             'current_password.current_password' => '原密码不正确。',
             'password.confirmed' => '两次输入的新密码不一致。',

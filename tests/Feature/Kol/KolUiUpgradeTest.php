@@ -6,6 +6,8 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
+use App\Modules\Kol\Application\Contracts\WooCouponSettingsGateway;
+use App\Modules\Kol\Infrastructure\WooCommerce\LocalUatWooCouponSettingsGateway;
 use App\Modules\Kol\Infrastructure\AffiliateWp\LocalUatAffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolSalesPerformance;
@@ -20,6 +22,7 @@ class KolUiUpgradeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->withoutVite();
         config([
             'services.andy_core.connection_key' => 'beyourlover.com',
             'kol.create_auto_provision.coupon_discount_type' => 'percent',
@@ -27,6 +30,7 @@ class KolUiUpgradeTest extends TestCase
             'kol.create_auto_provision.coupon_expiry' => null,
         ]);
         $this->app->instance(AffiliateWpGateway::class, new LocalUatAffiliateWpGateway);
+        $this->app->instance(WooCouponSettingsGateway::class, new LocalUatWooCouponSettingsGateway);
     }
 
     private function userWith(array $permissions): User
@@ -57,6 +61,7 @@ class KolUiUpgradeTest extends TestCase
             'wordpress_password' => 'StrongPassword123',
             'wordpress_password_confirmation' => 'StrongPassword123',
             'affiliate_coupon_code' => 'UIUPGRADE15',
+            'kol_profile_url' => 'https://www.instagram.com/ui-upgrade-kol/',
             'social_accounts' => [],
         ], $overrides);
     }

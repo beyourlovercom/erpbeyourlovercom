@@ -2,6 +2,9 @@
 
 namespace App\Modules\Logistics\Application;
 
+use App\Modules\Audit\Application\AuditActor;
+use App\Modules\Audit\Application\AuditSource;
+use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
@@ -49,6 +52,7 @@ final class OverseaWarehouseReviewService
         private readonly AssistedFulfillmentService $fulfillment,
         private readonly ShipmentService $shipments,
         private readonly NotificationPublisher $notifications,
+        private readonly AuditRecorder $audit,
     ) {}
 
     public function updateDraft(Order $order, array $data, Authenticatable $actor): Order
@@ -109,10 +113,15 @@ final class OverseaWarehouseReviewService
         DB::transaction(function () use ($order, $actor, $note): void {
             $locked = Order::query()->with('shipment.warehouse')->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以审核');
+            abort_if($locked->archived_at !== null || $locked->isOperationallyArchived() || $locked->trashed(), 409, '归档订单不可审核。');
             abort_unless($locked->shipment?->warehouse_id, 409, '订单尚未分配海外仓');
+            abort_unless($locked->shipment->shipment_status === 'pending'
+                && blank($locked->shipment->tracking_number) && $locked->shipment->shipped_at === null,
+                409, '已有真实出库事实的订单不可审核。');
             $warehouseCode = self::canonicalWarehouseCode($locked->shipment->warehouse?->code);
             abort_unless($warehouseCode !== null, 422, '该订单不是海外仓订单');
             $review = $this->reviewForMutation($locked);
+            abort_unless($review->status === 'pending', 409, '订单已审核或缺货，请先解除对应状态。');
             $carrier = self::CARRIER_BY_CODE[$warehouseCode] ?? null;
             $manualCarrier = $locked->shipment->carrier_selection_source === 'manual'
                 && filled($locked->shipment->carrier);
@@ -131,6 +140,66 @@ final class OverseaWarehouseReviewService
                 'reviewed_by' => $actor->getAuthIdentifier(),
                 'reviewed_at' => now(),
             ])->save();
+        });
+    }
+
+    /** Hold an unshipped overseas allocation in the canonical review ledger.
+     * No Shipment/Tracking/Woo write occurs; only approved reviews may ship.
+     */
+    public function stockout(Order $order, Authenticatable $actor): void
+    {
+        DB::transaction(function () use ($order, $actor): void {
+            $locked = Order::query()->with(['shipment.warehouse', 'externalReferences'])
+                ->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            abort_if($locked->archived_at !== null || $locked->isOperationallyArchived() || $locked->trashed(), 409, '归档订单不可操作。');
+            abort_unless($locked->order_status?->value === 'pending_shipment'
+                && $locked->shipment?->shipment_status === 'pending'
+                && blank($locked->shipment->tracking_number) && $locked->shipment->shipped_at === null,
+                409, '订单已有发货事实或不在待审核状态。');
+            abort_unless(self::canonicalWarehouseCode($locked->shipment->warehouse?->code) !== null, 422, '该订单不是海外仓订单');
+            abort_if($locked->externalReferences->contains('provider', 'historical_logistics'), 409, '历史物流订单不可操作。');
+            $review = $this->reviewForMutation($locked);
+            abort_unless($review->status === 'pending', 409, '只有待审核订单可标记缺货。');
+            $before = ['status' => $review->status, 'reviewed_warehouse_id' => $review->reviewed_warehouse_id];
+            $review->forceFill([
+                'status' => 'stockout',
+                'progress' => 'pending_review',
+                'reviewed_warehouse_id' => $locked->shipment->warehouse_id,
+                'reviewed_by' => $actor->getAuthIdentifier(),
+                'reviewed_at' => now(),
+            ])->save();
+            $this->audit->record(
+                AuditActor::user($actor, AuditSource::Web), 'oversea.review_stockout',
+                OverseaWarehouseReview::class, $review->getKey(), $before,
+                ['status' => 'stockout', 'reviewed_warehouse_id' => $locked->shipment->warehouse_id],
+                'oversea_warehouse_review',
+            );
+        });
+    }
+
+    /** Restocking is Dede's explicit stock review: it reuses the usual approval gate. */
+    public function restock(Order $order, Authenticatable $actor): void
+    {
+        DB::transaction(function () use ($order, $actor): void {
+            $locked = Order::query()->with('shipment.warehouse')->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            abort_unless($locked->order_status?->value === 'pending_shipment'
+                && $locked->shipment?->shipment_status === 'pending'
+                && blank($locked->shipment->tracking_number) && $locked->shipment->shipped_at === null,
+                409, '已有出库事实的订单不可解除缺货。');
+            $review = $this->reviewForMutation($locked);
+            abort_unless($review->status === 'stockout'
+                && (int) $review->reviewed_warehouse_id === (int) $locked->shipment->warehouse_id,
+                409, '只有当前仓库的缺货订单可以确认到货。');
+            $review->forceFill(['status' => 'pending', 'reviewed_warehouse_id' => null,
+                'reviewed_by' => null, 'reviewed_at' => null])->save();
+            $this->approve($locked, $actor);
+            $this->audit->record(
+                AuditActor::user($actor, AuditSource::Web), 'oversea.review_restock',
+                OverseaWarehouseReview::class, $review->getKey(),
+                ['status' => 'stockout', 'reviewed_warehouse_id' => $locked->shipment->warehouse_id],
+                ['status' => 'approved', 'reviewed_warehouse_id' => $locked->shipment->warehouse_id],
+                'oversea_warehouse_review',
+            );
         });
     }
 
@@ -160,6 +229,7 @@ final class OverseaWarehouseReviewService
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以驳回');
             abort_unless($locked->shipment?->warehouse_id, 409, '订单尚未分配海外仓');
             $review = $this->reviewForMutation($locked);
+            $before = ['status' => $review->status, 'note' => $review->note];
             $review->forceFill([
                 'status' => 'rejected',
                 'note' => $note,
@@ -167,6 +237,16 @@ final class OverseaWarehouseReviewService
                 'reviewed_by' => $actor->getAuthIdentifier(),
                 'reviewed_at' => now(),
             ])->save();
+
+            // The live review row may be reset after Vita reassigns the order;
+            // the rejection and its human reason must remain in durable audit.
+            $this->audit->record(
+                AuditActor::user($actor, AuditSource::Web), 'oversea.review_reject',
+                OverseaWarehouseReview::class, $review->getKey(), $before,
+                ['status' => 'rejected', 'reason' => $note,
+                    'reviewed_warehouse_id' => $locked->shipment->warehouse_id],
+                'oversea_warehouse_review',
+            );
 
             $cleared = $this->fulfillment->saveDraft($locked, [
                 'warehouse_id' => null,

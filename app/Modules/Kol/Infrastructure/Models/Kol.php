@@ -28,6 +28,7 @@ class Kol extends Model
         'relationship_stage',
         'cooperation_type',
         'joined_at',
+        'kol_profile_url',
         'archived_at',
         'notes',
         'contact_email',

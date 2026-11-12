@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Application\Domestic;
 
+use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use Illuminate\Http\UploadedFile;
 use InvalidArgumentException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -9,6 +10,31 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 final class DomesticTrackingReturnReader
 {
     private const MAX_ROWS = 1000;
+
+    /** @var array<string,string>|null */
+    private ?array $carrierAliases = null;
+
+    // Both old and new ERP-owned batch exports must resolve to unchanged Shipment carrier codes.
+    private function canonicalCarrier(string $name): string
+    {
+        $name = trim($name);
+        if ($name === '') return '';
+        if ($this->carrierAliases === null) {
+            $this->carrierAliases = [];
+            foreach (Carrier::query()->get(['name','name_en','name_zh','display_name']) as $carrier) {
+                foreach ([$carrier->name, $carrier->name_en, $carrier->name_zh, $carrier->display_name, $carrier->displayName()] as $label) {
+                    $label = trim((string) $label);
+                    if ($label !== '') $this->carrierAliases[mb_strtolower($label)] = $carrier->name;
+                }
+            }
+            // Legacy bilingual labels may be present in older exports.
+            $this->carrierAliases['4px / 速达'] = '4PX';
+            $this->carrierAliases['速达 / 4px'] = '4PX';
+            $this->carrierAliases['weship / 纬狮'] = 'Weship';
+            $this->carrierAliases['纬狮 / weship'] = 'Weship';
+        }
+        return $this->carrierAliases[mb_strtolower($name)] ?? $name;
+    }
 
     /** Identify the existing import template by exact column names, never by filename. */
     public function detectProvider(UploadedFile $file): string
@@ -35,7 +61,7 @@ final class DomesticTrackingReturnReader
                 && (in_array('运单号', $names, true) || in_array('服务商单号', $names, true))) {
                 return 'weship';
             }
-            if (in_array('ERP订单号', $names, true) && in_array('承运商', $names, true)
+            if (in_array('ERP订单号', $names, true) && (in_array('物流商', $names, true) || in_array('承运商', $names, true))
                 && in_array('Tracking', $names, true)) {
                 return 'generic';
             }
@@ -74,9 +100,12 @@ final class DomesticTrackingReturnReader
             $required = match ($provider) {
                 '4px' => ['原单号', '转单号'],
                 'weship' => ['客户单号'],
-                'generic' => ['ERP订单号', '承运商', 'Tracking'],
+                'generic' => ['ERP订单号', 'Tracking'],
                 default => throw new InvalidArgumentException('不支持的国内物流回传格式。'),
             };
+            if ($provider === 'generic' && ! isset($index['物流商']) && ! isset($index['承运商'])) {
+                throw new InvalidArgumentException('回传表缺少必填列：物流商');
+            }
             foreach ($required as $header) {
                 if (! array_key_exists($header, $index)) {
                     throw new InvalidArgumentException("回传表缺少必填列：{$header}");
@@ -108,7 +137,8 @@ final class DomesticTrackingReturnReader
                 } else {
                     $reference = trim((string) ($values[$index['ERP订单号']] ?? ''));
                     $tracking = trim((string) ($values[$index['Tracking']] ?? ''));
-                    $carrier = trim((string) ($values[$index['承运商']] ?? ''));
+                    $carrierColumn = $index['物流商'] ?? $index['承运商'];
+                    $carrier = $this->canonicalCarrier((string) ($values[$carrierColumn] ?? ''));
                     $status = 'ERP批量登记';
                 }
                 if ($reference === '') {

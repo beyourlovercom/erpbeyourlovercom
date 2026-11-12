@@ -123,9 +123,9 @@ const effectivePermissions = computed(() =>
         <h3>设置新密码</h3>
         <p>出于安全考虑，系统不会显示或找回原密码，只能设置一个新密码。</p>
         <div class="mvp-form-grid">
-          <label>新密码<input v-model="passwordForm.password" type="password" autocomplete="new-password"></label>
+          <label>新密码<input v-model="passwordForm.password" type="password" minlength="6" autocomplete="new-password"></label>
           <span v-if="passwordForm.errors.password" class="mvp-field-error">{{ passwordForm.errors.password }}</span>
-          <label>确认新密码<input v-model="passwordForm.password_confirmation" type="password" autocomplete="new-password"></label>
+          <label>确认新密码<input v-model="passwordForm.password_confirmation" type="password" minlength="6" autocomplete="new-password"></label>
         </div>
         <div class="mvp-form-actions"><button class="mvp-button mvp-button-primary" :disabled="passwordForm.processing">更新密码</button></div>
       </form>

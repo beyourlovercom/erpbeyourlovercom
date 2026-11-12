@@ -137,8 +137,8 @@ final class DomesticLogisticsController
                 'blocked_count' => $preview['blocked_count'],
             ] : null,
             'providerStatus' => [
-                '4px' => ['export_ready' => true, 'return_ready' => true, 'label' => '速达 / 4PX'],
-                'weship' => ['export_ready' => true, 'return_ready' => true, 'label' => '纬狮 / Weship', 'note' => '纬狮独立保留原 24 列模板 · XLSX 下载 · XLS/XLSX 回传'],
+                '4px' => ['export_ready' => true, 'return_ready' => true, 'label' => '速达'],
+                'weship' => ['export_ready' => true, 'return_ready' => true, 'label' => '纬狮', 'note' => '纬狮独立保留原 24 列模板 · XLSX 下载 · XLS/XLSX 回传'],
             ],
         ]);
     }
@@ -437,7 +437,8 @@ final class DomesticLogisticsController
             'erp_order_id' => $order->erp_order_id,
             'workflow_status_projection' => $projection,
             'provider_reference' => $reference,
-            'order_url' => '/customers/orders/'.$order->id,
+            // Generic details route redirects by order kind (customer, KOL, derived).
+            'order_url' => '/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,
             'phone' => $order->address?->phone,
             'country' => $order->address?->country,
@@ -459,7 +460,7 @@ final class DomesticLogisticsController
                         ? ['请检查物流商和服务类型']
                         : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
                         ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
-                        : ['未选定速达或纬狮承运商'])))),
+                        : ['未选定速达或纬狮物流商'])))),
             'items' => $order->items->map(fn ($item) => [
                 'sku' => $item->sku,
                 'quantity' => (int) $item->quantity,

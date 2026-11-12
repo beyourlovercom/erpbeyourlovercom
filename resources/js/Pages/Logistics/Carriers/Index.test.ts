@@ -19,12 +19,12 @@ describe('Carrier master workspace', () => {
     expect(wrapper.text()).toContain('DHL')
     expect(wrapper.text()).toContain('USD 42.00')
     expect(wrapper.find('a[href="/logistics/carriers/DHL"]').exists()).toBe(true)
-    expect(wrapper.text()).not.toContain('新增承运商')
+    expect(wrapper.text()).not.toContain('新增物流商')
   })
 
   it('shows the top-right add carrier control only to operators', async () => {
     const wrapper = mount(Index, { props: { carriers: [carrier], canOperate: true } })
-    const button = wrapper.findAll('button').find((item) => item.text().includes('新增承运商'))
+    const button = wrapper.findAll('button').find((item) => item.text().includes('新增物流商'))
     expect(button).toBeTruthy()
     await button!.trigger('click')
     expect(wrapper.find('form.carrier-create').exists()).toBe(true)

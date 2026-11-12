@@ -15,7 +15,7 @@ return [
         ['key' => 'logistics-awaiting-tracking', 'label' => '已发待单号', 'path' => '/logistics/awaiting-tracking', 'route' => 'logistics.awaiting-tracking', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'logistics-in-transit', 'label' => '运输中', 'path' => '/logistics/in-transit', 'route' => 'logistics.in-transit', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'logistics-exceptions', 'label' => '异常订单', 'path' => '/logistics/exceptions', 'route' => 'logistics.exceptions', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
-        ['key' => 'logistics-carriers', 'label' => '承运商', 'path' => '/logistics/carriers', 'route' => 'logistics.carriers', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
+        ['key' => 'logistics-carriers', 'label' => '物流商', 'path' => '/logistics/carriers', 'route' => 'logistics.carriers', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
     ]],
     ['key' => 'sync', 'label' => '同步', 'emoji' => '🔄', 'path' => '/sync', 'route' => 'shell.sync', 'permission' => 'sync.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false, 'children' => [
         ['key' => 'sync-orders', 'label' => '同步订单', 'path' => '/sync/orders', 'route' => 'sync.orders', 'permission' => 'sync.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],

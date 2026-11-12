@@ -3,6 +3,7 @@
 namespace App\Modules\Sync\Experience\Controllers;
 
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
+use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -146,6 +147,7 @@ final class ManualSyncController
                 'can_import_today' => app(WooOrderManualSyncAccess::class)->allows($request->user()),
             ],
             'queueSummary' => $this->orchestration->queueSummary(),
+            'carrierLabels' => Carrier::query()->get()->mapWithKeys(fn (Carrier $row): array => [$row->name => $row->displayName()])->all(),
             'canOperate' => $canOperate,
             'progressFilterSnapshot' => $statusSnapshot === null ? null : [
                 'generated_at' => $statusSnapshot['generated_at'],

@@ -63,7 +63,7 @@ final class CarrierController
             'created_by' => $request->user()?->getAuthIdentifier(),
         ]);
 
-        return redirect()->route('logistics.carriers')->with('success', '承运商已新增');
+        return redirect()->route('logistics.carriers')->with('success', '物流商已新增');
     }
 
     public function show(Request $request, string $carrier): Response
@@ -104,6 +104,7 @@ final class CarrierController
         $payload = $request->validate([
             'name_zh' => ['required', 'string', 'max:128'],
             'name_en' => ['required', 'string', 'max:128'],
+            'display_name' => ['nullable', 'string', 'max:128'],
             'is_active' => ['required', 'boolean'],
             'default_service_id' => ['nullable', 'integer'],
             'default_service_key' => ['nullable', 'string', 'max:80'],
@@ -163,13 +164,16 @@ final class CarrierController
             $master->forceFill([
                 'name_zh' => trim((string) $payload['name_zh']),
                 'name_en' => trim((string) $payload['name_en']),
+                'display_name' => array_key_exists('display_name', $payload)
+                    ? (trim((string) ($payload['display_name'] ?? '')) ?: null)
+                    : $master->display_name,
                 'is_active' => (bool) $payload['is_active'],
                 'default_service_id' => $default->id,
                 'updated_by' => $actorId,
             ])->save();
         });
 
-        return back()->with('success', '承运商配置已保存');
+        return back()->with('success', '物流商配置已保存');
     }
 
     /** @return array<string,mixed> */
@@ -180,6 +184,7 @@ final class CarrierController
             'name' => $carrier->name,
             'name_en' => $carrier->name_en,
             'name_zh' => $carrier->name_zh,
+            'custom_display_name' => $carrier->display_name,
             'display_name' => $carrier->displayName(),
             'is_active' => (bool) $carrier->is_active,
             'default_service_id' => $carrier->default_service_id ? (int) $carrier->default_service_id : null,

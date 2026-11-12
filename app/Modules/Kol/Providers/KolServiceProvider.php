@@ -3,6 +3,9 @@
 namespace App\Modules\Kol\Providers;
 
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
+use App\Modules\Kol\Application\Contracts\WooCouponSettingsGateway;
+use App\Modules\Kol\Infrastructure\WooCommerce\HttpWooCouponSettingsGateway;
+use App\Modules\Kol\Infrastructure\WooCommerce\LocalUatWooCouponSettingsGateway;
 use App\Modules\Kol\Application\Contracts\AffiliateCommissionEvidenceReader;
 use App\Modules\Kol\Experience\Console\Commands\AffiliateAccountPreviewCommand;
 use App\Modules\Kol\Experience\Console\Commands\AffiliateWpHealthCommand;
@@ -23,6 +26,10 @@ final class KolServiceProvider extends ServiceProvider
             : HttpAffiliateWpGateway::class;
 
         $this->app->bind(AffiliateWpGateway::class, $gateway);
+        $this->app->bind(WooCouponSettingsGateway::class,
+            $this->app->environment(['local', 'testing']) && (bool) config('services.andy_core.uat_fake', false)
+                ? LocalUatWooCouponSettingsGateway::class
+                : HttpWooCouponSettingsGateway::class);
     }
 
     public function boot(): void

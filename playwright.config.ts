@@ -28,7 +28,7 @@ export default defineConfig({
     ],
     // Import browser cases create 3 disposable orders and run as a dedicated UAT
     // suite. Keep the general foundation suite's shared seeded fixtures unchanged.
-    testIgnore: ['oms-import', 'global-grid'].includes(process.env.BYL_E2E_SUITE ?? '')
+    testIgnore: ['oms-import', 'global-grid', 'rejection-visual'].includes(process.env.BYL_E2E_SUITE ?? '')
         ? [] : ['**/oms-import-browser.spec.ts', '**/global-grid-pilot.spec.ts'],
     fullyParallel: false,
     workers: 1,

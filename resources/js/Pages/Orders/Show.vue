@@ -169,6 +169,7 @@ const props = withDefaults(defineProps<{
 
 
 const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
+const carrierDisplay = (name:string|null|undefined) => name ? (carrierOption(name)?.label ?? name) : '—'
 const contextualDefaultService = (name:string, country?:string|null) => {
   const carrier = carrierOption(name)
   if (!carrier) return ''
@@ -1212,7 +1213,7 @@ onBeforeUnmount(() => {
                     <th>商品</th>
                     <th>仓库</th>
                     <th>状态</th>
-                    <th>承运商 / 渠道</th>
+                    <th>物流商 / 渠道</th>
                     <th>追踪号</th>
                     <th>操作</th>
                   </tr>
@@ -1239,7 +1240,7 @@ onBeforeUnmount(() => {
                     <td><span class="ord-segment-status" :class="`status-${segment.shipment.shipment_status}`">{{ segment.shipment.status_label }}</span></td>
                     <td>
                       <div class="ord-carrier-service">
-                        <strong>{{ segment.shipment.carrier ?? '—' }}</strong>
+                        <strong>{{ carrierDisplay(segment.shipment.carrier) }}</strong>
                         <small>{{ segment.shipment.service ?? '—' }}</small>
                       </div>
                     </td>
@@ -1267,8 +1268,8 @@ onBeforeUnmount(() => {
                 <strong class="ord-fulfillment-value">{{ order.shipment?.warehouse_name ?? '未选择' }}</strong>
               </div>
               <div class="ord-fulfillment-item">
-                <small class="ord-fulfillment-label">承运商</small>
-                <strong class="ord-fulfillment-value">{{ order.shipment?.carrier ?? '—' }}</strong>
+                <small class="ord-fulfillment-label">物流商</small>
+                <strong class="ord-fulfillment-value">{{ carrierDisplay(order.shipment?.carrier) }}</strong>
               </div>
               <div class="ord-fulfillment-item">
                 <small class="ord-fulfillment-label">运输 / 服务类型</small>
@@ -1802,7 +1803,7 @@ onBeforeUnmount(() => {
             <select v-model="shipmentEditor.warehouse_id" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.warehouse_id }" :aria-invalid="Boolean(shipmentFieldErrors.warehouse_id)" :disabled="!canOperateLogistics" @change="applyShipmentWarehouseDefault(); clearShipmentFieldError('warehouse_id')"><option :value="null">请选择仓库</option><option v-for="warehouse in warehouses ?? []" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} · {{ warehouse.code }}</option></select><small v-if="shipmentFieldErrors.warehouse_id" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.warehouse_id }}</small>
           </label>
           <label>物流商
-            <select v-model="shipmentEditor.carrier" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.carrier }" :aria-invalid="Boolean(shipmentFieldErrors.carrier)" :disabled="!canOperateLogistics" @change="applyShipmentCarrierDefault(); clearShipmentFieldError('carrier')"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions ?? []" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="shipmentFieldErrors.carrier" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.carrier }}</small>
+            <select v-model="shipmentEditor.carrier" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.carrier }" :aria-invalid="Boolean(shipmentFieldErrors.carrier)" :disabled="!canOperateLogistics" @change="applyShipmentCarrierDefault(); clearShipmentFieldError('carrier')"><option value="">请选择物流商</option><option v-for="carrier in carrierOptions ?? []" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="shipmentFieldErrors.carrier" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.carrier }}</small>
           </label>
           <label>运输 / 服务类型<select v-model="shipmentEditor.service" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.service }" :aria-invalid="Boolean(shipmentFieldErrors.service)" :disabled="!canOperateLogistics || !shipmentEditor.carrier" @change="clearShipmentFieldError('service')"><option value="">请选择服务类型</option><option v-for="service in shipmentServiceOptions" :key="service.id" :value="service.value">{{ service.label }}</option></select><small v-if="shipmentFieldErrors.service" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.service }}</small></label>
           <label>Tracking<input v-model="shipmentEditor.tracking_number" class="erp-input" :class="{ 'ord-field-invalid': shipmentFieldErrors.tracking_number }" :aria-invalid="Boolean(shipmentFieldErrors.tracking_number)" :disabled="!canOperateLogistics" placeholder="追踪号，可稍后补录" @input="clearShipmentFieldError('tracking_number')"><small v-if="shipmentFieldErrors.tracking_number" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.tracking_number }}</small></label>

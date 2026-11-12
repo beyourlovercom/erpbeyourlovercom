@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Application;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
+use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
@@ -96,9 +97,9 @@ final class FulfillmentAllocationSubmissionService
                 $defaultCarrier = trim((string) ($route['carrier'] ?? ''));
                 $providedCarrier = $isFactory ? '' : trim((string) ($row['carrier'] ?? ''));
                 $carrier = $providedCarrier !== '' ? $providedCarrier : $defaultCarrier;
-                abort_if($carrier === '' && ! $isFactory, 422, "发货仓 {$row['source_code']} 无法自动确定承运商，请 Vita 人工选择");
+                abort_if($carrier === '' && ! $isFactory, 422, "发货仓 {$row['source_code']} 无法自动确定物流商，请 Vita 人工选择");
                 if ($providedCarrier !== '') {
-                    abort_unless(Carrier::query()->where('name', $providedCarrier)->where('is_active', true)->exists(), 422, "承运商 {$providedCarrier} 未启用");
+                    abort_unless(Carrier::query()->where('name', $providedCarrier)->where('is_active', true)->exists(), 422, "物流商 {$providedCarrier} 未启用");
                 }
                 $service = $row['service'] ?? null;
                 if ($service === null && ($providedCarrier === '' || strcasecmp($providedCarrier, $defaultCarrier) === 0)) {
@@ -121,7 +122,7 @@ final class FulfillmentAllocationSubmissionService
             $carrierConflict = $resolvedAssignments->groupBy('source_code')->contains(
                 fn ($rows): bool => $rows->map(fn (array $row): string => $row['carrier'].'|'.($row['service'] ?? ''))->unique()->count() > 1
             );
-            abort_if($carrierConflict, 422, '同一发货仓在同一履约组内必须使用同一承运商');
+            abort_if($carrierConflict, 422, '同一发货仓在同一履约组内必须使用同一物流商');
 
             $warehouseByCode = Warehouse::query()->where('is_active', true)
                 ->whereIn(DB::raw('UPPER(code)'), self::ALLOWED_SOURCE_CODES)
@@ -252,6 +253,26 @@ final class FulfillmentAllocationSubmissionService
         $plan['derived_orders'] = $resultOrders;
         $plan['execution_status'] = count($resultOrders) > 1 ? 'derived_orders_materialized' : 'single_order_assigned';
         $allocation->forceFill(['plan_snapshot' => $plan])->save();
+
+        // A previously rejected overseas review must not block the next Dede
+        // review after Vita has successfully reassigned the order. Its original
+        // reason/actor remain in the immutable audit event recorded on reject.
+        $review = OverseaWarehouseReview::query()
+            ->where('order_id', $order->getKey())
+            ->where('status', 'rejected')
+            ->first();
+        if ($review) {
+            $reassigned = $order->fresh('shipment');
+            $review->forceFill([
+                'status' => 'pending',
+                'progress' => 'pending_review',
+                'submitted_warehouse_id' => $reassigned?->shipment?->warehouse_id,
+                'reviewed_warehouse_id' => null,
+                'note' => null,
+                'reviewed_by' => null,
+                'reviewed_at' => null,
+            ])->save();
+        }
 
         return $allocation->fresh();
     }

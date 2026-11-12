@@ -23,6 +23,7 @@ use App\Modules\Orders\Application\OrderWorkflowStatus;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -34,6 +35,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 final class OverseaWarehouseController
 {
@@ -41,7 +43,7 @@ final class OverseaWarehouseController
 
     private const PER_PAGE_OPTIONS = [20, 50, 100];
 
-    private const VIEWS = ['review', 'pending', 'issued', 'shipped', 'exceptions', 'all'];
+    private const VIEWS = ['review', 'stockout', 'pending', 'issued', 'shipped', 'exceptions', 'all'];
 
     public function __construct(
         private readonly OverseaWarehouseReviewService $reviews,
@@ -88,7 +90,36 @@ final class OverseaWarehouseController
         }
         $this->applyView($base, $view);
 
-        $shipments = $base->latest('id')->paginate($perPage)->withQueryString();
+        // Global Grid V1: keep queries on canonical Shipment/Order records.
+        // The legacy UI is a reversible presentation choice, not a new data path.
+        $gridEnabled = (string) $request->query('global_grid', '1') !== '0';
+        $gridSearch = mb_substr(trim((string) $request->query('search', '')), 0, 100);
+        $gridFilters = [
+            'carrier' => mb_substr(trim((string) $request->query('filter_carrier', '')), 0, 80),
+            'tracking' => mb_substr(trim((string) $request->query('filter_tracking', '')), 0, 100),
+        ];
+        $sortable = ['line' => 'id', 'shipped_at' => 'shipped_at', 'tracking' => 'tracking_number'];
+        $sortCol = (string) $request->query('sort_col', 'line');
+        $sortCol = array_key_exists($sortCol, $sortable) ? $sortCol : 'line';
+        $sortDir = strtolower((string) $request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        if ($gridEnabled) {
+            if ($gridSearch !== '') {
+                $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $gridSearch).'%';
+                $base->where(fn ($q) => $q
+                    ->where('tracking_number', 'like', $like)
+                    ->orWhereHas('order', fn ($orders) => $orders->where('erp_order_id', 'like', $like))
+                    ->orWhereHas('order.address', fn ($addresses) => $addresses->where('recipient_name', 'like', $like))
+                    ->orWhereHas('order.items', fn ($items) => $items->where('sku', 'like', $like)));
+            }
+            foreach (['carrier' => 'carrier', 'tracking' => 'tracking_number'] as $key => $field) {
+                if ($gridFilters[$key] !== '') {
+                    $base->where($field, 'like', '%'.str_replace(['%', '_'], ['\\%', '\\_'], $gridFilters[$key]).'%');
+                }
+            }
+        }
+
+        $shipments = $base->orderBy($sortable[$gridEnabled ? $sortCol : 'line'], $gridEnabled ? $sortDir : 'desc')
+            ->paginate($perPage)->withQueryString();
         $trackingStatuses = app(LogisticsTrackingListStatus::class)
             ->forShipments($shipments->getCollection()->pluck('id')->all());
         $start = ($shipments->currentPage() - 1) * $shipments->perPage();
@@ -137,6 +168,10 @@ final class OverseaWarehouseController
             'warehouse' => $selectedWarehouse,
             'warehouseOptions' => array_values($warehouseMap),
             'view' => $view,
+            'globalGridEnabled' => $gridEnabled,
+            'gridSearch' => $gridEnabled ? $gridSearch : '',
+            'gridSort' => $gridEnabled ? ['colId' => $sortCol, 'direction' => $sortDir] : null,
+            'gridFilters' => $gridEnabled ? $gridFilters : ['carrier' => '', 'tracking' => ''],
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => [
                 ...$this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id), $shipOutAttempts->get($shipment->order_id), $shipOutBatchItems->get($shipment->order_id), $shipOutReadbacks->get($shipment->order_id)),
                 // Logistics access alone is not enough for editing an order's staff workflow progress.
@@ -222,6 +257,7 @@ final class OverseaWarehouseController
             'xlwmsBatchEnabled' => $canRunXlwms && (bool) config('xlwms.warehouse_batch_dispatch_enabled', false) && (int) config('xlwms.live_order_id', 0) > 0,
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canReview' => $this->reviewAccess->allows($request->user()),
+            'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
             'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
             'carrierOptions' => $this->carrierServices->options(),
@@ -397,6 +433,60 @@ final class OverseaWarehouseController
         return back()->with('success', $message);
     }
 
+    /** The same review privileges as single-order actions; each row validates independently. */
+    public function batchReview(Request $request): JsonResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $data = $request->validate([
+            'order_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'action' => ['required', Rule::in(['approve', 'stockout', 'reject', 'restock'])],
+            'reason' => ['required_if:action,reject', 'nullable', 'string', 'min:3', 'max:500'],
+        ]);
+        $results = [];
+        foreach ($data['order_ids'] as $orderId) {
+            $id = (int) $orderId;
+            try {
+                $order = Order::query()->findOrFail($id);
+                match ($data['action']) {
+                    'approve' => $this->reviews->approve($order, $request->user()),
+                    'stockout' => $this->reviews->stockout($order, $request->user()),
+                    'restock' => $this->reviews->restock($order, $request->user()),
+                    'reject' => $this->reviews->reject($order, trim($data['reason']), $request->user()),
+                };
+                $results[] = ['order_id' => $id, 'ok' => true, 'message' => '已处理'];
+            } catch (HttpExceptionInterface $e) {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => $e->getStatusCode() === 403 ? '无操作权限' : ($e->getMessage() ?: '状态已变化')];
+            } catch (ModelNotFoundException $e) {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => '订单不存在'];
+            } catch (DomainException|InvalidArgumentException $e) {
+                $results[] = ['order_id' => $id, 'ok' => false, 'message' => '业务状态不允许操作'];
+            }
+        }
+
+        return response()->json([
+            'results' => $results,
+            'success_count' => count(array_filter($results, fn (array $r): bool => $r['ok'])),
+            'failed_count' => count(array_filter($results, fn (array $r): bool => ! $r['ok'])),
+        ]);
+    }
+
+    public function stockout(Request $request, Order $order): RedirectResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $this->reviews->stockout($order, $request->user());
+
+        return back()->with('success', '订单已标记缺货，禁止发货。');
+    }
+
+    public function restock(Request $request, Order $order): RedirectResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $this->reviews->restock($order, $request->user());
+
+        return back()->with('success', '已确认到货并审核通过，进入待发货。');
+    }
+
     public function approve(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate(['note' => ['sometimes', 'nullable', 'string', 'max:1000']]);
@@ -417,7 +507,7 @@ final class OverseaWarehouseController
 
     public function reject(Request $request, Order $order): RedirectResponse
     {
-        $data = $request->validate(['note' => ['required', 'string', 'max:1000']]);
+        $data = $request->validate(['note' => ['required', 'string', 'min:3', 'max:500']]);
         $this->reviews->reject($order, trim($data['note']), $request->user());
 
         return back()->with('success', '订单已驳回并退回运营重新分仓');
@@ -458,6 +548,11 @@ final class OverseaWarehouseController
     {
         if ($view === 'review') {
             $this->progressQueries->overseasReview($query);
+
+            return;
+        }
+        if ($view === 'stockout') {
+            $this->progressQueries->overseasStockout($query);
 
             return;
         }
@@ -588,6 +683,7 @@ final class OverseaWarehouseController
             'erp_order_id' => $order?->erp_order_id,
             'order_url' => $order ? "/orders/{$order->id}" : null,
             'recipient_name' => $order?->address?->recipient_name,
+            'order_date' => $order?->order_date?->toDateString(),
             'country' => $order?->address?->country,
             'warehouse_id' => $shipment->warehouse_id,
             'warehouse_name' => $shipment->warehouse?->name,
@@ -597,7 +693,9 @@ final class OverseaWarehouseController
             'tracking_number' => $shipment->tracking_number,
             'progress' => $review?->progress ?? 'pending_review',
             'note' => $review?->note,
-            'review_status' => $effectiveApproved ? 'approved' : 'pending',
+            'review_status' => $effectiveApproved ? 'approved'
+                : ($review?->status === 'stockout'
+                    && (int) $review->reviewed_warehouse_id === (int) $shipment->warehouse_id ? 'stockout' : 'pending'),
             'shipment_status' => $shipment->shipment_status,
             'workflow_status_projection' => $order ? $this->workflowStatusProjection->for($order) : null,
             'workflow_revision' => (int) ($order?->workflow_revision ?? 0),

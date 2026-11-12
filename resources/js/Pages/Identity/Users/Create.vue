@@ -17,9 +17,9 @@ const submit = () => form.post('/settings/users')
           <span v-if="form.errors.name" class="mvp-field-error">{{ form.errors.name }}</span>
           <label>邮箱<input v-model="form.email" type="email" required></label>
           <span v-if="form.errors.email" class="mvp-field-error">{{ form.errors.email }}</span>
-          <label>密码<input v-model="form.password" type="password" required autocomplete="new-password"></label>
+          <label>密码<input v-model="form.password" type="password" minlength="6" required autocomplete="new-password"></label>
           <span v-if="form.errors.password" class="mvp-field-error">{{ form.errors.password }}</span>
-          <label>确认密码<input v-model="form.password_confirmation" type="password" required autocomplete="new-password"></label>
+          <label>确认密码<input v-model="form.password_confirmation" type="password" minlength="6" required autocomplete="new-password"></label>
           <label>角色
             <select v-model="form.role" required>
               <option value="" disabled>请选择角色</option>

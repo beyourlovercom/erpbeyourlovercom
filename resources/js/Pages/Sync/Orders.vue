@@ -32,6 +32,7 @@ const props = withDefaults(defineProps<{
   globalGridPilotAvailable?: boolean
   globalGridPilotEnabled?: boolean
   orders: Order[]
+  carrierLabels?: Record<string,string>
   canOperate?: boolean
   progressFilterSnapshot?: {
     generated_at: string; total: number; candidates: number; remote_configured: boolean
@@ -218,7 +219,7 @@ const gridRows = computed<GridListRow[]>(() => props.orders.map((order) => ({
   original_number: order.external_order_number || '—',
   date_label: order.order_date || '—',
   recipient: order.recipient_name || '—',
-  carrier_label: order.carrier || '—',
+  carrier_label: order.carrier ? (props.carrierLabels?.[order.carrier] ?? order.carrier) : '—',
   tracking_label: order.tracking_number || '—',
   progress_code: order.progress.code,
   progress_label: order.progress.label,
@@ -245,7 +246,7 @@ const gridColumns = computed<ColDef<GridListRow>[]>(() => [
   c('date', 'date_label', '订单日期', 128, { sortable: true, sortingOrder: ['asc', 'desc'] }),
   c('source', 'source_label', '订单来源', 125, { sortable: true, sortingOrder: ['asc', 'desc'] }),
   c('recipient', 'recipient', '收件人', 145),
-  c('carrier', 'carrier_label', '承运商', 120),
+  c('carrier', 'carrier_label', '物流商', 120),
   c('tracking', 'tracking_label', '物流单号', 180),
   c('shipment_status', 'shipment_status', '发货状态', 120, { hide: true }),
   c('parcel', 'parcel', '包裹 A/B/C', 115, { hide: true }),
@@ -380,7 +381,7 @@ const hasActiveFilters = computed(() => Boolean(
           <thead>
             <tr>
               <th>订单号</th><th>日期</th><th>订单来源</th><th>收件人</th>
-              <th>承运商</th><th>物流单号</th><th>操作</th><th>同步进度</th>
+              <th>物流商</th><th>物流单号</th><th>操作</th><th>同步进度</th>
             </tr>
           </thead>
           <tbody>
@@ -395,7 +396,7 @@ const hasActiveFilters = computed(() => Boolean(
               <td>{{ order.order_date?.slice(5) ?? '—' }}</td>
               <td>{{ sourceName(order.source_type) }}</td>
               <td>{{ order.recipient_name || '—' }}</td>
-              <td>{{ order.carrier || '—' }}</td>
+              <td>{{ order.carrier ? (carrierLabels?.[order.carrier] ?? order.carrier) : '—' }}</td>
               <td class="tracking-number" :title="order.tracking_number || ''">{{ order.tracking_number || '—' }}</td>
               <td class="operational-actions">
                 <a class="mvp-button" :href="`/customers/orders/${order.id}`">查看订单</a>

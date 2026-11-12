@@ -7,7 +7,7 @@ import GridBatchFooterControls from '../../Components/DataGrid/GridBatchFooterCo
 import { publishGlobalFeedback } from '../../lib/globalFeedback'
 import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
 const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import StockExceptionConfirmDialog from '../../Components/Logistics/StockExceptionConfirmDialog.vue'
 import { allocationStockWarnings } from '../../lib/allocationStockWarning'
@@ -25,14 +25,45 @@ type AllocationDecision = { status:'system_recommendation'|'manual_review'; stat
 type DerivedOrderRecord = { order_id:number; erp_order_id:string|null; derived:boolean; suffix:string|null; warehouse_id:number|null; warehouse_code:string|null; warehouse_name:string|null; carrier?:string|null; service?:string|null; carrier_selection_source?:string|null; items:Array<{ sku:string|null; source_sku?:string|null; resolved_fulfillment_sku?:string|null; product_summary:string|null; quantity:number }> }
 type ExistingAllocation = { status:string; decision_source:'system_recommendation'|'manual'; selected_plan_key:string|null; decision_note:string|null; plan_snapshot:(Plan & { derived_orders?:DerivedOrderRecord[] })|null; submitted_at:string|null }
 type CarrierRoute = { carrier:string|null; carrier_label:string|null; service:string|null; automatic:boolean }
-type Order = { id:number; erp_order_id:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
+type AllocationRejection = { source:string; reason:string; by:string|null; at:string|null }
+type Order = { allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
 type Warehouse = { id:number; slug:string; code:string; name:string; country_code:string|null; can_auto_allocate:boolean }
 type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
-type TabKey = 'pending'|'recommendation'|'inventory'|'manual'|'gift'|'processed'
+type TabKey = 'pending'|'rejected'|'recommendation'|'inventory'|'manual'|'gift'|'processed'
 
-const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; canOperate:boolean; canArchive?:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string }>()
-const activeTab = ref<TabKey>('pending')
+const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; rejectionCount:number; rejectionNoticeVersion:string; rejectionFilter:boolean; canOperate:boolean; canArchive?:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string }>()
+const activeTab = ref<TabKey>(props.rejectionFilter ? 'rejected' : 'pending')
+watch(() => props.rejectionFilter, isRejected => {
+  if (isRejected) activeTab.value = 'rejected'
+  else if (activeTab.value === 'rejected') activeTab.value = 'pending'
+})
+// Only the dismissible banner is acknowledged per browser tab. The visible
+// rejected tab and its server-backed count are never suppressed.
+const rejectionNoticeKey = computed(() => 'erp-wait-stock-rejection-alert-v2:' + props.rejectionNoticeVersion)
+const rejectionNoticeDismissed = ref(true)
+function loadRejectionNotice() {
+  try { rejectionNoticeDismissed.value = sessionStorage.getItem(rejectionNoticeKey.value) === 'dismissed' }
+  catch { rejectionNoticeDismissed.value = false }
+}
+onMounted(loadRejectionNotice)
+watch(rejectionNoticeKey, loadRejectionNotice)
+function dismissRejectionNotice() {
+  rejectionNoticeDismissed.value = true
+  try { sessionStorage.setItem(rejectionNoticeKey.value, 'dismissed') } catch { /* no storage permission */ }
+}
+function changeTab(tab:TabKey) {
+  if ((tab === 'rejected') === props.rejectionFilter) { activeTab.value = tab; return }
+  activeTab.value = tab
+  const term = (props.gridSearch ?? '').trim()
+  router.get('/logistics/wait-stock', {
+    ...(tab === 'rejected' ? { rejected:'1' } : {}),
+    ...(term ? { search:term } : {}),
+    per_page:props.orders.per_page,
+    global_grid:props.globalGridPilotEnabled ? '1' : '0',
+    page:1,
+  }, { preserveScroll:true, preserveState:true, replace:true })
+}
 const selectedOrderId = ref<number|null>(null)
 const decisionNote = ref('')
 const submitError = ref('')
@@ -60,6 +91,7 @@ const gridNavigation = useGlobalGridListAdapter({
   enabled: () => !!props.globalGridPilotEnabled,
   search: () => gridSearchText.value,
   pageSize: () => props.orders.per_page,
+  context: () => props.rejectionFilter ? { rejected:'1' } : {},
 })
 const allocationGridRows = computed<GridListRow[]>(() => filteredOrders.value.map((order,index) => ({
   id: order.id,
@@ -90,7 +122,11 @@ const allocationGridRows = computed<GridListRow[]>(() => filteredOrders.value.ma
   status: guidanceFor(order).status,
   gift: hasGift(order) ? '含礼品 · 待核实' : '无礼品',
   owner: order.owner_label ?? '—',
-  reject_reason: order.domestic_reject_reason ?? '—',
+  rejection_state: order.allocation_rejection ? '已驳回' : '—',
+  rejection_type: order.allocation_rejection?.source ?? '—',
+  reject_reason: order.allocation_rejection?.reason ?? '—',
+  reject_by: order.allocation_rejection?.by ?? '—',
+  reject_at: order.allocation_rejection?.at ? new Date(order.allocation_rejection.at).toLocaleString('zh-CN') : '—',
 })))
 // Shared account-level column preferences: all available fields are configurable,
 // while only the high-value daily allocation columns appear on first load.
@@ -99,6 +135,13 @@ const allocationGridColumns: ColDef<GridListRow>[] = [
   gridColumn({colId:'order_number',field:'order_number',headerName:'订单号',width:185,
     pinned:'left',lockPinned:true,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
+  // Rejected orders are actionable exceptions: keep their warning/reason
+  // beside the pinned order number, not after a long horizontally-scrolling table.
+  gridColumn({colId:'rejection_state',field:'rejection_state',headerName:'驳回状态',width:115}),
+  gridColumn({colId:'reject_reason',field:'reject_reason',headerName:'驳回原因',width:235,tooltipField:'reject_reason'}),
+  gridColumn({colId:'rejection_type',field:'rejection_type',headerName:'驳回来源',width:110,hide:true}),
+  gridColumn({colId:'reject_by',field:'reject_by',headerName:'驳回人员',width:120,hide:true}),
+  gridColumn({colId:'reject_at',field:'reject_at',headerName:'驳回时间',width:175,hide:true}),
   gridColumn({colId:'original_number',field:'original_number',headerName:'原始订单号',width:190,hide:true}),
   gridColumn({colId:'order_date',field:'order_date',headerName:'订单日期',width:125}),
   gridColumn({colId:'order_kind',field:'order_kind',headerName:'订单类型',width:140,hide:true}),
@@ -124,7 +167,6 @@ const allocationGridColumns: ColDef<GridListRow>[] = [
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
   gridColumn({colId:'gift',field:'gift',headerName:'礼品',width:145,hide:true}),
   gridColumn({colId:'owner',field:'owner',headerName:'负责人',width:160,hide:true}),
-  gridColumn({colId:'reject_reason',field:'reject_reason',headerName:'商务驳回说明',width:200,hide:true}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',width:132,
     pinned:'right',
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'actions',actionsFor:(r:GridListRow)=>{
@@ -132,6 +174,11 @@ const allocationGridColumns: ColDef<GridListRow>[] = [
       return order ? [{label:processed(order)?'查看记录':'查看方案',onClick:()=>openPlan(order)}] : []
     }}}),
 ]
+// Keep the visual warning across normal and pinned cells without changing
+// shared Global Grid layout or business selection logic.
+for (const column of allocationGridColumns) {
+  column.cellClass = params => params.data?.rejection_state === '已驳回' ? 'allocation-rejected-cell' : ''
+}
 const allocationPager = computed(()=>({current_page:props.orders.current_page,last_page:props.orders.last_page,per_page:props.orders.per_page,total:props.orders.total}))
 
 const selectedOrder = computed(() => props.orders.data.find(order => order.id === selectedOrderId.value) ?? null)
@@ -154,13 +201,18 @@ const selectedStockWarnings = computed(() => {
   }))
 })
 
-const processed = (order:Order) => Boolean(order.fulfillment_allocation?.status === 'submitted' || localSubmitted[order.id])
+// An overseas rejection revokes the *effective* completion state even when
+// historical fulfillment_allocations.status still says submitted. Keep a
+// successful local reallocation processed until the refreshed server page lands.
+const processed = (order:Order) => Boolean(localSubmitted[order.id]
+  || (order.fulfillment_allocation?.status === 'submitted' && !order.allocation_rejection))
 const hasGift = (order:Order) => order.items.some(item => item.is_gift)
 const guidanceById = computed(() => new Map(props.orders.data.map(order =>
   [order.id, allocationGuidance(order, props.warehouses, processed(order))] as const)))
 const guidanceFor = (order:Order) => guidanceById.value.get(order.id)!
 const counts = computed(() => ({
-  pending: props.orders.data.filter(order => !processed(order)).length,
+  pending: props.pendingTotal,
+  rejected: props.rejectionCount,
   recommendation: props.orders.data.filter(order => !processed(order) && guidanceFor(order).group === 'recommendation').length,
   inventory: props.orders.data.filter(order => !processed(order) && guidanceFor(order).group === 'inventory').length,
   manual: props.orders.data.filter(order => !processed(order) && guidanceFor(order).group === 'manual').length,
@@ -168,6 +220,7 @@ const counts = computed(() => ({
   processed: props.orders.data.filter(processed).length,
 }))
 const filteredOrders = computed(() => props.orders.data.filter(order => {
+  if (activeTab.value === 'rejected') return !processed(order) && !!order.allocation_rejection
   if (activeTab.value === 'processed') return processed(order)
   if (processed(order)) return false
   if (activeTab.value === 'gift') return hasGift(order)
@@ -272,7 +325,7 @@ async function confirmGridBatch(){
         return (order?.erp_order_id??row.order_id)+'：'+row.message
       }).join('；'):(archive?'已归档至运营归档清单。':'所有成功订单均已逐单经过原有分仓门禁。'),
     })
-    router.reload({only:['orders','pendingTotal']})
+    router.reload({only:['orders','pendingTotal','rejectionCount']})
   } catch(error){
     publishGlobalFeedback({state:'ERROR',title:archive?'批量归档未确认':'批量分仓未确认',
       message:(error instanceof Error?error.message:'请求失败')+
@@ -382,7 +435,7 @@ function splitConstraintError(order:Order){
   const sources=[...new Set(values)]
   const maxSources=order.allocation_decision.policy.max_sources || 26
   if(sources.length>maxSources)return `最多允许 ${maxSources} 个履约来源`
-  for(const source of sources){ if(source!=='FACTORY' && !(manualCarriers[order.id]?.[source] || defaultCarrier(order,source))) return `发货仓 ${sourceLabel(source)} 需要选择物流承运商` }
+  for(const source of sources){ if(source!=='FACTORY' && !(manualCarriers[order.id]?.[source] || defaultCarrier(order,source))) return `发货仓 ${sourceLabel(source)} 需要选择物流商` }
   for(const item of order.items){
     if(!item.is_gift)continue
     const source=manualAssignments[order.id][item.id]
@@ -405,7 +458,7 @@ function matchesRecommendation(order:Order){
     return canonicalWarehouseCode(source)===canonicalWarehouseCode(segment.source_code) && (source==='FACTORY' || carrier===(recommendedCarrier??''))
   })
 }
-async function submitRecommended(){ const order=selectedOrder.value,decision=order?.allocation_decision; if(!order||!decision?.recommended_plan_key||!decision.can_use_recommendation||!props.canOperate)return; submitting.value=true; submitError.value=''; try{ const r=await fetch(`/logistics/orders/${order.id}/fulfillment-allocation/recommended`,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},body:JSON.stringify({plan_key:decision.recommended_plan_key,decision_note:decisionNote.value})}); const b=await r.json().catch(()=>({})) as {message?:string;submitted_at?:string}; if(!r.ok)throw new Error(b.message??`提交失败（${r.status}）`); localSubmitted[order.id]={source:'system_recommendation',submittedAt:b.submitted_at??new Date().toISOString()}; closePlan() }catch(e){ submitError.value=e instanceof Error?e.message:'提交失败，请重试' }finally{submitting.value=false} }
+async function submitRecommended(){ const order=selectedOrder.value,decision=order?.allocation_decision; if(!order||!decision?.recommended_plan_key||!decision.can_use_recommendation||!props.canOperate)return; submitting.value=true; submitError.value=''; try{ const r=await fetch(`/logistics/orders/${order.id}/fulfillment-allocation/recommended`,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},body:JSON.stringify({plan_key:decision.recommended_plan_key,decision_note:decisionNote.value})}); const b=await r.json().catch(()=>({})) as {message?:string;submitted_at?:string}; if(!r.ok)throw new Error(b.message??`提交失败（${r.status}）`); localSubmitted[order.id]={source:'system_recommendation',submittedAt:b.submitted_at??new Date().toISOString()}; closePlan(); router.reload({only:['orders','pendingTotal','rejectionCount']}) }catch(e){ submitError.value=e instanceof Error?e.message:'提交失败，请重试' }finally{submitting.value=false} }
 async function submitManual(stockExceptionAcknowledged = false) {
   const order = selectedOrder.value
   if (!order || !props.canOperate) return
@@ -447,6 +500,7 @@ async function submitManual(stockExceptionAcknowledged = false) {
     }
     localSubmitted[order.id] = { source: 'manual', submittedAt: body.submitted_at ?? new Date().toISOString() }
     closePlan()
+    router.reload({only:['orders','pendingTotal','rejectionCount']})
   } catch (error) {
     submitError.value = error instanceof Error ? error.message : '提交失败，请重试'
   } finally {
@@ -471,13 +525,19 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         </div>
       </header>
       <nav class="tabs">
-        <button :class="{active:activeTab==='pending'}" @click="activeTab='pending'">全部 <span>{{ counts.pending }}</span></button>
-        <button :class="{active:activeTab==='recommendation'}" @click="activeTab='recommendation'">仓库建议 <span>{{ counts.recommendation }}</span></button>
-        <button :class="{active:activeTab==='inventory'}" @click="activeTab='inventory'">库存待核实 <span>{{ counts.inventory }}</span></button>
-        <button :class="{active:activeTab==='manual'}" @click="activeTab='manual'">人工处理 <span>{{ counts.manual }}</span></button>
-        <button :class="{active:activeTab==='gift'}" @click="activeTab='gift'">礼品待确认 <span>{{ counts.gift }}</span></button>
-        <button :class="{active:activeTab==='processed'}" @click="activeTab='processed'">已处理 <span>{{ counts.processed }}</span></button>
+        <button :class="{active:activeTab==='pending'}" @click="changeTab('pending')">全部 <span>{{ counts.pending }}</span></button>
+        <button data-testid="allocation-rejected-tab" :class="{active:activeTab==='rejected',warning:counts.rejected>0}" @click="changeTab('rejected')">⚠ 驳回待处理 <span>{{ counts.rejected }}</span></button>
+        <button :class="{active:activeTab==='recommendation'}" @click="changeTab('recommendation')">仓库建议 <span>{{ counts.recommendation }}</span></button>
+        <button :class="{active:activeTab==='inventory'}" @click="changeTab('inventory')">库存待核实 <span>{{ counts.inventory }}</span></button>
+        <button :class="{active:activeTab==='manual'}" @click="changeTab('manual')">人工处理 <span>{{ counts.manual }}</span></button>
+        <button :class="{active:activeTab==='gift'}" @click="changeTab('gift')">礼品待确认 <span>{{ counts.gift }}</span></button>
+        <button :class="{active:activeTab==='processed'}" @click="changeTab('processed')">已处理 <span>{{ counts.processed }}</span></button>
       </nav>
+      <div v-if="props.rejectionCount > 0 && !rejectionNoticeDismissed" class="rejection-alert" role="alert" data-testid="allocation-rejection-alert">
+        <strong>⚠ {{ props.rejectionCount }} 个订单被驳回，等待 Vita 重新处理</strong>
+        <button type="button" @click="changeTab('rejected')">查看驳回订单</button>
+        <button type="button" class="alert-close" aria-label="知道了，不再重复提醒" @click="dismissRejectionNotice">×</button>
+      </div>
       <GlobalGrid v-if="globalGridPilotEnabled"
         :key="'allocation-grid-'+activeTab"
         namespace="grid.logistics.allocation.global.v1" title="待分仓"
@@ -494,9 +554,9 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         </template>
       </GlobalGrid>
       <div v-else class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>SKU 摘要</th><th>收件信息摘要</th><th>区域 / 优先仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
-        <tr v-for="(order,index) in filteredOrders" :key="order.id">
+        <tr v-for="(order,index) in filteredOrders" :key="order.id" :class="{'rejected-row':!!order.allocation_rejection}">
           <td>{{ index+1 }}</td>
-          <td><Link v-if="order.order_url" class="order-link" :href="order.order_url">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.domestic_reject_reason" class="domestic-rejection">商务驳回：{{ order.domestic_reject_reason }}</small></td>
+          <td><Link v-if="order.order_url" class="order-link" :href="order.order_url">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.allocation_rejection" class="domestic-rejection">⚠ {{ order.allocation_rejection.source }}驳回：{{ order.allocation_rejection.reason }}</small></td>
           <td class="sku-list"><div v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? item.product_summary ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-if="item.is_gift" :class="item.resolved_fulfillment_sku?'gift-done':'gift-pending'">{{ item.resolved_fulfillment_sku ? `→ ${item.resolved_fulfillment_sku}` : '待解析' }}</span></div></td>
           <td class="address-summary"><strong>{{ order.recipient_name ?? '—' }}</strong><span>{{ addressLine(order) || '—' }}</span><small v-if="order.phone">{{ order.phone }}</small></td>
           <td><template v-if="order.country==='US'"><span :class="['zone-chip',order.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(order) }}</span><div class="zone-priority">{{ zonePriorityLabel(order.us_fulfillment_zone) }}</div></template><span v-else>{{ order.country ?? '—' }}</span></td>
@@ -520,7 +580,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
             归档会将订单移出正常运营队列，但不会删除订单。归档记录可在运营归档清单中查看，
             有恢复权限的管理员可恢复。请确认仅归档不再需要处理的订单。
           </p>
-          <p v-else class="batch-caution">系统会逐单复核订单付款状态、推荐方案、SKU、库存和承运商。
+          <p v-else class="batch-caution">系统会逐单复核订单付款状态、推荐方案、SKU、库存和物流商。
             库存异常、礼品未解析或推荐过期均不会自动放行；部分成功后不得盲目重复提交。</p>
           <div v-if="batchReview.ids.length" class="batch-list">
             {{ batchReview.ids.slice(0,12).map(id=>props.orders.data.find(order=>order.id===id)?.erp_order_id??id).join('、') }}
@@ -541,15 +601,15 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
       <header class="modal-header"><div><p class="eyebrow">FULFILLMENT PLAN</p><h2>履约方案详情</h2></div><button class="icon-button" @click="closePlan">×</button></header>
 
       <section v-if="!processed(selectedOrder)" class="primary-allocation">
-        <div class="section-title"><div><h3>SKU 履约分配</h3><p>先确认发货仓，再确认物流承运商；系统不能判断的项目由 Vita 人工补齐。</p></div><span class="limit-chip">最多 {{ selectedOrder.allocation_decision.policy.max_sources }} 个履约来源</span></div>
-        <div class="manual-table-wrap"><table><thead><tr><th>SKU</th><th>数量</th><th>库存参考</th><th>系统推荐 / 人工备选</th><th>选择发货仓</th><th>选择物流承运商</th><th>实际履约 SKU</th></tr></thead><tbody>
+        <div class="section-title"><div><h3>SKU 履约分配</h3><p>先确认发货仓，再确认物流商；系统不能判断的项目由 Vita 人工补齐。</p></div><span class="limit-chip">最多 {{ selectedOrder.allocation_decision.policy.max_sources }} 个履约来源</span></div>
+        <div class="manual-table-wrap"><table><thead><tr><th>SKU</th><th>数量</th><th>库存参考</th><th>系统推荐 / 人工备选</th><th>选择发货仓</th><th>选择物流商</th><th>实际履约 SKU</th></tr></thead><tbody>
           <tr v-for="item in selectedOrder.items" :key="item.id">
             <td><strong>{{ item.sku??item.product_summary }}</strong><span v-if="item.is_gift" class="gift-tag">礼品</span></td>
             <td>{{ item.quantity }}</td>
             <td><div class="stock-list"><span v-for="warehouse in warehouseOptions" :key="warehouse.code" :class="item.is_gift?giftStockClass(item,warehouse):availabilityClass(item,warehouse)">{{ warehouse.name }}：{{ item.is_gift?giftStockLabel(item,warehouse):availabilityLabel(item,warehouse) }}</span></div></td>
             <td><div class="warehouse-advice" :class="warehouseAdvice(selectedOrder,item).kind"><strong>{{ warehouseAdvice(selectedOrder,item).label }}</strong><small>{{ warehouseAdvice(selectedOrder,item).detail }}</small></div></td>
             <td><select v-model="manualAssignments[selectedOrder.id][item.id]" @change="onWarehouseChanged(selectedOrder,item)"><option value="">请选择</option><option v-for="warehouse in warehouseOptions" :key="warehouse.code" :value="canonicalWarehouseCode(warehouse.code)">{{ warehouse.name }}</option></select></td>
-            <td><div class="carrier-cell"><span v-if="manualAssignments[selectedOrder.id][item.id]==='FACTORY'" class="manual-route">待发货阶段人工确认</span><select v-else :value="carrierForItem(selectedOrder,item)" :disabled="!manualAssignments[selectedOrder.id][item.id]" @change="onCarrierChanged(selectedOrder,item,$event)"><option value="">请选择承运商</option><option v-for="carrier in props.carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="manualAssignments[selectedOrder.id][item.id] && carrierForItem(selectedOrder,item)" :class="carrierIsDefault(selectedOrder,item)?'auto-route':'manual-route'">{{ carrierIsDefault(selectedOrder,item)?'系统默认':'人工覆盖' }}</small></div></td>
+            <td><div class="carrier-cell"><span v-if="manualAssignments[selectedOrder.id][item.id]==='FACTORY'" class="manual-route">待发货阶段人工确认</span><select v-else :value="carrierForItem(selectedOrder,item)" :disabled="!manualAssignments[selectedOrder.id][item.id]" @change="onCarrierChanged(selectedOrder,item,$event)"><option value="">请选择物流商</option><option v-for="carrier in props.carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="manualAssignments[selectedOrder.id][item.id] && carrierForItem(selectedOrder,item)" :class="carrierIsDefault(selectedOrder,item)?'auto-route':'manual-route'">{{ carrierIsDefault(selectedOrder,item)?'系统默认':'人工覆盖' }}</small></div></td>
             <td><template v-if="item.is_gift"><select v-model="manualGiftMappings[selectedOrder.id][item.id]" :disabled="!manualAssignments[selectedOrder.id][item.id]"><option value="">请选择实际礼品</option><option v-for="option in availableGiftOptions(item,manualAssignments[selectedOrder.id][item.id])" :key="option.mapping_id" :value="String(option.mapping_id)">{{ option.fulfillment_sku }} · {{ option.fulfillment_name }} · 有货 {{option.quantity_available}}</option></select><small v-if="chosenGift(item,selectedOrder)" class="resolved-note">{{ chosenGift(item,selectedOrder)?.fulfillment_sku }} · {{ sourceLabel(manualAssignments[selectedOrder.id][item.id]) }}</small><small v-else-if="manualAssignments[selectedOrder.id][item.id]&&giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])" class="mapping-missing">{{giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])}}</small></template><span v-else>—</span></td>
           </tr>
         </tbody></table></div>
@@ -557,7 +617,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         <p class="constraint">分仓规则：每个订单商品仍只归属一个履约来源，不拆数量；一个订单可以按实际仓库需要生成 A/B/C… 多个履约单，海外仓与中国工厂可组合。</p>
       </section>
 
-      <section v-else class="processed-primary"><div class="record-banner"><div><strong>分仓已完成</strong><span>后续物流只处理已确定仓库、承运商与实际履约 SKU 的执行订单。</span></div><span class="status-chip done">{{ selectedOrder.fulfillment_allocation?.decision_source==='manual'?'人工确认':'采用系统推荐' }}</span></div><div class="segment-grid"><article v-for="child in selectedOrder.fulfillment_allocation?.plan_snapshot?.derived_orders??[]" :key="child.order_id" class="segment-card"><header><div><small>{{ child.derived?`衍生订单 ${child.suffix??''}`:'原订单直接履约' }}</small><h3>{{ child.erp_order_id }}</h3></div><div class="record-route"><span>{{ child.warehouse_code?sourceLabel(child.warehouse_code):(child.warehouse_name??'—') }}</span><strong>{{ carrierLabel(child.carrier) }}</strong></div></header><table><thead><tr><th>实际履约 SKU</th><th>来源</th><th>数量</th></tr></thead><tbody><tr v-for="item in child.items" :key="`${child.order_id}-${item.sku}`"><td><strong>{{ item.resolved_fulfillment_sku??item.sku }}</strong></td><td>{{ item.source_sku??item.sku }}</td><td>{{ item.quantity }}</td></tr></tbody></table></article></div></section>
+      <section v-else class="processed-primary"><div class="record-banner"><div><strong>分仓已完成</strong><span>后续物流只处理已确定仓库、物流商与实际履约 SKU 的执行订单。</span></div><span class="status-chip done">{{ selectedOrder.fulfillment_allocation?.decision_source==='manual'?'人工确认':'采用系统推荐' }}</span></div><div class="segment-grid"><article v-for="child in selectedOrder.fulfillment_allocation?.plan_snapshot?.derived_orders??[]" :key="child.order_id" class="segment-card"><header><div><small>{{ child.derived?`衍生订单 ${child.suffix??''}`:'原订单直接履约' }}</small><h3>{{ child.erp_order_id }}</h3></div><div class="record-route"><span>{{ child.warehouse_code?sourceLabel(child.warehouse_code):(child.warehouse_name??'—') }}</span><strong>{{ carrierLabel(child.carrier) }}</strong></div></header><table><thead><tr><th>实际履约 SKU</th><th>来源</th><th>数量</th></tr></thead><tbody><tr v-for="item in child.items" :key="`${child.order_id}-${item.sku}`"><td><strong>{{ item.resolved_fulfillment_sku??item.sku }}</strong></td><td>{{ item.source_sku??item.sku }}</td><td>{{ item.quantity }}</td></tr></tbody></table></article></div></section>
 
       <div class="top-grid">
         <section class="info-card"><header><strong>订单信息</strong><span :class="selectedOrder.allocation_decision.status==='manual_review'?'mini-warn':'mini-good'">{{ selectedOrder.allocation_decision.status_label }}</span></header><dl><dt>订单号</dt><dd>{{ selectedOrder.erp_order_id }}</dd><dt>收件人</dt><dd>{{ selectedOrder.recipient_name ?? '—' }}</dd><dt>联系电话</dt><dd>{{ selectedOrder.phone ?? '—' }}</dd><dt>订单商品</dt><dd><span class="order-item-chip" v-for="item in selectedOrder.items" :key="item.id">{{ item.sku??item.product_summary }} × {{ item.quantity }}</span></dd><dt>收货地址</dt><dd>{{ addressLine(selectedOrder) || '—' }}</dd></dl></section>
@@ -565,8 +625,12 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         <section v-if="selectedOrder.country==='US'" class="map-card"><header><strong>地图区域划分</strong><small>美国物理美东 / 美西区域</small></header><svg viewBox="0 0 420 230" role="img" aria-label="美国美东美西分仓区域示意图"><defs><clipPath id="usClip"><path d="M30 70 L55 38 L95 43 L125 53 L165 46 L200 58 L235 53 L270 65 L305 61 L345 75 L380 98 L395 122 L378 143 L350 150 L330 169 L300 164 L280 185 L244 190 L215 175 L185 182 L152 171 L122 175 L96 159 L68 154 L52 135 L35 126 Z"/></clipPath></defs><g clip-path="url(#usClip)"><rect x="0" y="0" width="212" height="230" class="map-west"/><rect x="212" y="0" width="208" height="230" class="map-east"/></g><path d="M30 70 L55 38 L95 43 L125 53 L165 46 L200 58 L235 53 L270 65 L305 61 L345 75 L380 98 L395 122 L378 143 L350 150 L330 169 L300 164 L280 185 L244 190 L215 175 L185 182 L152 171 L122 175 L96 159 L68 154 L52 135 L35 126 Z" class="map-outline"/><line x1="212" y1="43" x2="212" y2="184" class="map-divider"/><text x="83" y="112" class="map-label">美西区</text><text x="293" y="112" class="map-label">美东区</text><g v-if="selectedOrder.us_fulfillment_zone?.status==='matched'" :transform="selectedOrder.us_fulfillment_zone?.zone==='west'?'translate(110 132)':'translate(310 132)'" class="map-pin"><circle r="12"/><text x="0" y="4" text-anchor="middle">●</text></g><g v-else class="map-unknown"><circle cx="212" cy="132" r="13"/><text x="212" y="137" text-anchor="middle">?</text></g></svg><div class="map-result"><strong>{{ selectedOrder.postal_code ?? 'ZIP 未知' }}</strong><span>{{ zoneShort(selectedOrder) }}</span></div></section>
       </div>
 
-      <section class="system-explanation"><header><strong>系统推荐结果说明</strong><span>辅助信息，不替代 Vita 的最终判断</span></header><div class="explanation-grid"><div><h4>{{ selectedOrder.allocation_decision.status==='system_recommendation'?'推荐依据':'当前可确认的信息' }}</h4><ul><li v-if="selectedOrder.us_fulfillment_zone?.status==='matched'">收货地址识别为 {{ zoneShort(selectedOrder) }}，仓库优先级：{{ zonePriorityLabel(selectedOrder.us_fulfillment_zone) }}</li><li v-if="selectedOrder.allocation_decision.recommended_plan">系统候选方案：{{ selectedOrder.allocation_decision.recommended_plan.label }}</li><li v-if="selectedOrder.allocation_decision.estimated_cost!=null">估算成本：{{ money(selectedOrder.allocation_decision.estimated_cost,selectedOrder.allocation_decision.currency) }}</li><li>仓库确定后，固定路线承运商会自动带出；特殊情况可人工覆盖。</li></ul></div><div><h4>不能自动推荐 / 需要人工确认时</h4><ul><li v-for="reason in selectedOrder.allocation_decision.manual_reasons" :key="reason">{{ reason }}</li><li v-if="!selectedOrder.allocation_decision.manual_reasons.length">当前无额外阻断原因；提交前仍由 Vita 确认。</li></ul></div></div></section>
+      <section class="system-explanation"><header><strong>系统推荐结果说明</strong><span>辅助信息，不替代 Vita 的最终判断</span></header><div class="explanation-grid"><div><h4>{{ selectedOrder.allocation_decision.status==='system_recommendation'?'推荐依据':'当前可确认的信息' }}</h4><ul><li v-if="selectedOrder.us_fulfillment_zone?.status==='matched'">收货地址识别为 {{ zoneShort(selectedOrder) }}，仓库优先级：{{ zonePriorityLabel(selectedOrder.us_fulfillment_zone) }}</li><li v-if="selectedOrder.allocation_decision.recommended_plan">系统候选方案：{{ selectedOrder.allocation_decision.recommended_plan.label }}</li><li v-if="selectedOrder.allocation_decision.estimated_cost!=null">估算成本：{{ money(selectedOrder.allocation_decision.estimated_cost,selectedOrder.allocation_decision.currency) }}</li><li>仓库确定后，固定路线物流商会自动带出；特殊情况可人工覆盖。</li></ul></div><div><h4>不能自动推荐 / 需要人工确认时</h4><ul><li v-for="reason in selectedOrder.allocation_decision.manual_reasons" :key="reason">{{ reason }}</li><li v-if="!selectedOrder.allocation_decision.manual_reasons.length">当前无额外阻断原因；提交前仍由 Vita 确认。</li></ul></div></div></section>
 
+      <div v-if="selectedOrder.allocation_rejection" class="rejection-plan-alert" role="status">
+        <strong>⚠ 已驳回：{{ selectedOrder.allocation_rejection.reason }}</strong>
+        <small>来源：{{ selectedOrder.allocation_rejection.source }} · 驳回人：{{ selectedOrder.allocation_rejection.by ?? '—' }} · 时间：{{ selectedOrder.allocation_rejection.at ? new Date(selectedOrder.allocation_rejection.at).toLocaleString('zh-CN') : '—' }}</small>
+      </div>
       <label v-if="!processed(selectedOrder)" class="note-field">运营备注（选填）<textarea v-model="decisionNote" rows="2" placeholder="客户特殊要求、临时仓库情况、人工调整原因…" maxlength="500"/><small>{{ decisionNote.length }}/500</small></label><div v-else-if="selectedOrder.fulfillment_allocation?.decision_note" class="record-note"><strong>运营备注</strong><span>{{ selectedOrder.fulfillment_allocation.decision_note }}</span></div>
       <p v-if="submitError" class="submit-error">{{ submitError }}</p>
       <footer class="modal-actions"><button class="secondary" :disabled="submitting" @click="closePlan">关闭</button><button v-if="!processed(selectedOrder)&&props.canOperate" class="primary green" :disabled="submitting" @click="submitPrimary">{{ submitting?'提交中…':(matchesRecommendation(selectedOrder)?'采用推荐并提交分仓':'确认人工分配并提交') }}</button><span v-else-if="processed(selectedOrder)" class="submitted-note">该订单分仓决策已提交</span></footer>
@@ -621,4 +685,14 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
 .sku-list>div:last-child{margin-bottom:0}
 .zone-priority{margin-top:3px}
 @media(max-width:800px){.page-heading{flex-wrap:wrap}.principle{width:100%;justify-content:flex-start}.tabs{overflow-x:auto;white-space:nowrap}}
+.tabs button.warning{color:#b45309;font-weight:800}.tabs button.warning span{color:#b45309}
+.tabs button.warning.active{border-bottom-color:#d97706}
+.rejection-alert{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 11px;border:1px solid #f3cd7e;border-radius:8px;background:#fffbeb;color:#92400e;font-size:12px}
+.rejection-alert strong{font-weight:750}.rejection-alert button{border:1px solid #e6b85a;border-radius:6px;padding:5px 9px;color:#92400e;background:#fff;cursor:pointer;font-weight:700}
+.rejection-alert .alert-close{margin-left:auto;border:0;background:transparent;font-size:19px;line-height:1;padding:2px 7px}
+:deep(.ag-cell.allocation-rejected-cell){background:#fff5d6!important;color:#92400e}
+.rejected-row td:not(.sticky-action){background:#fff8e6}.rejected-row td.sticky-action{background:#fff8e6!important}
+.domestic-rejection{display:block;margin-top:4px;color:#a16207;font-weight:750}
+.rejection-plan-alert{display:grid;gap:5px;margin:12px 18px;padding:10px 12px;border-radius:8px;border:1px solid #f4cf7a;background:#fffbeb;color:#92400e}
+.rejection-plan-alert small{color:#92400e}
 </style>

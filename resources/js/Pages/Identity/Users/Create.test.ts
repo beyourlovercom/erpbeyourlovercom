@@ -49,10 +49,17 @@ describe('user create page', () => {
         }
     })
 
+    it('sets the browser minimum to six characters on both new-password inputs', () => {
+        const wrapper = mount(Create, { props: { rolePresets: [] } })
+        const passwordInputs = wrapper.findAll('input[autocomplete="new-password"]')
+        expect(passwordInputs).toHaveLength(2)
+        for (const input of passwordInputs) expect(input.attributes('minlength')).toBe('6')
+    })
+
     it('surfaces server-side validation errors in Chinese', () => {
-        form = { ...form, errors: { email: '该邮箱已被使用。', password: '密码至少需要 12 个字符。' } }
+        form = { ...form, errors: { email: '该邮箱已被使用。', password: '密码至少需要 6 个字符。' } }
         const wrapper = mount(Create, { props: { rolePresets: [] } })
         expect(wrapper.text()).toContain('该邮箱已被使用');
-        expect(wrapper.text()).toContain('密码至少需要 12 个字符');
+        expect(wrapper.text()).toContain('密码至少需要 6 个字符');
     })
 })

@@ -5,6 +5,7 @@ import { useWorkspaceDraftGuard } from '../../Composables/useWorkspaceDraftGuard
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
+import { plusThreeYears, localTodayDate } from './couponExpiryDate'
 
 type OwnerOption = { value: number; label: string }
 
@@ -48,7 +49,7 @@ const form = useForm({
   finance_owner_id: '',
   relationship_stage: 'prospect',
   cooperation_type: '免费发帖',
-  joined_at: new Date().toISOString().slice(0, 10),
+  joined_at: localTodayDate(),
   notes: '',
   contact_email: '',
   wordpress_username: '',
@@ -57,6 +58,8 @@ const form = useForm({
   wordpress_password: '',
   wordpress_password_confirmation: '',
   affiliate_coupon_code: '',
+  affiliate_coupon_expiry: plusThreeYears(localTodayDate()),
+  kol_profile_url: '',
   contact_phone: '',
   contact_whatsapp: '',
   other_contact: '',
@@ -102,6 +105,11 @@ const form = useForm({
 // Only publish the unsaved boolean; no KOL or payment details are stored.
 useWorkspaceDraftGuard(() => form.isDirty)
 
+const couponExpiryManuallyEdited = ref(false)
+watch(() => form.joined_at, date => {
+  if (!couponExpiryManuallyEdited.value) form.affiliate_coupon_expiry = plusThreeYears(date)
+})
+
 const usernameManuallyEdited = ref(false)
 const affiliateNameManuallyEdited = ref(false)
 const affiliateUrlManuallyEdited = ref(false)
@@ -123,7 +131,7 @@ const removeSocialAccount = (index: number) => {
 }
 
 const addSalesPerformance = () => {
-  form.sales_performance_entries.push({ order_count: '', recorded_at: new Date().toISOString().slice(0, 10), source: '', note: '' })
+  form.sales_performance_entries.push({ order_count: '', recorded_at: localTodayDate(), source: '', note: '' })
 }
 const removeSalesPerformance = (index: number) => {
   form.sales_performance_entries.splice(index, 1)
@@ -330,12 +338,12 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
               <div class="kol-password-pair">
                 <div class="erp-form-field">
                   <label class="erp-form-label">Password <span class="erp-form-required">*</span></label>
-                  <input v-model="form.wordpress_password" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password }" minlength="12" maxlength="128" required>
+                  <input v-model="form.wordpress_password" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password }" minlength="6" maxlength="128" required>
                   <p v-if="form.errors.wordpress_password" class="erp-field-error">{{ form.errors.wordpress_password }}</p>
                 </div>
                 <div class="erp-form-field">
                   <label class="erp-form-label">确认 Password <span class="erp-form-required">*</span></label>
-                  <input v-model="form.wordpress_password_confirmation" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password_confirmation }" minlength="12" maxlength="128" required>
+                  <input v-model="form.wordpress_password_confirmation" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password_confirmation }" minlength="6" maxlength="128" required>
                   <p v-if="form.errors.wordpress_password_confirmation" class="erp-field-error">{{ form.errors.wordpress_password_confirmation }}</p>
                 </div>
               </div>
@@ -344,10 +352,21 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <input v-model="form.contact_email" type="email" autocomplete="email" class="erp-input" :class="{ 'has-error': form.errors.contact_email }" maxlength="255" required placeholder="name@example.com">
                 <p v-if="form.errors.contact_email" class="erp-field-error">{{ form.errors.contact_email }}</p>
               </div>
-              <div class="erp-form-field kol-credential-secondary">
+              <div class="erp-form-field kol-credential-newrow">
                 <label class="erp-form-label">Code <span class="erp-form-required">*</span></label>
                 <input v-model="form.affiliate_coupon_code" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_coupon_code }" maxlength="255" required placeholder="例如 ANDY15">
                 <p v-if="form.errors.affiliate_coupon_code" class="erp-field-error">{{ form.errors.affiliate_coupon_code }}</p>
+              </div>
+              <div class="erp-form-field kol-credential-metadata">
+                <label class="erp-form-label">Code 有效期 <span class="erp-form-required">*</span></label>
+                <input v-model="form.affiliate_coupon_expiry" type="date" class="erp-input" :class="{ 'has-error': form.errors.affiliate_coupon_expiry }" required @input="couponExpiryManuallyEdited = true">
+                <p v-if="form.errors.affiliate_coupon_expiry" class="erp-field-error">{{ form.errors.affiliate_coupon_expiry }}</p>
+                <p class="erp-form-helper">默认加入日期顺延三年，可自行修改。</p>
+              </div>
+              <div class="erp-form-field kol-credential-metadata">
+                <label class="erp-form-label">网红链接 <span class="erp-form-required">*</span></label>
+                <input v-model="form.kol_profile_url" type="url" class="erp-input" :class="{ 'has-error': form.errors.kol_profile_url }" maxlength="500" required placeholder="https://www.instagram.com/username/">
+                <p v-if="form.errors.kol_profile_url" class="erp-field-error">{{ form.errors.kol_profile_url }}</p>
               </div>
             </div>
             <p class="erp-form-helper">前三项默认继承网红 Username，可单独覆盖；Affiliate URL 为推广链接标识，独立标识需 Custom Affiliate Slugs 支持。用户名开户后不可修改；密码不保存到 ERP。</p>
@@ -637,8 +656,10 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
 }
 .kol-credential-rows { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px 18px; align-items: start; }
 .kol-credential-rows > .erp-form-field { grid-column: span 4; min-width: 0; }
-.kol-credential-rows > .kol-credential-secondary { grid-column: span 3; }
+.kol-credential-rows > .kol-credential-secondary { grid-column: span 6; }
+.kol-credential-rows > .kol-credential-newrow { grid-column: 1 / span 4; }
+.kol-credential-rows > .kol-credential-metadata { grid-column: span 4; }
 .kol-password-pair { grid-column: span 6; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-@media (max-width: 900px) { .kol-credential-rows > .erp-form-field { grid-column: span 6; } .kol-password-pair { grid-column: span 12; } }
-@media (max-width: 560px) { .kol-credential-rows > .erp-form-field { grid-column: span 12; } .kol-password-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .kol-credential-rows > .erp-form-field { grid-column: span 6; } .kol-credential-rows > .kol-credential-newrow { grid-column: 1 / span 6; } .kol-password-pair { grid-column: span 12; } }
+@media (max-width: 560px) { .kol-credential-rows > .erp-form-field, .kol-credential-rows > .kol-credential-newrow { grid-column: span 12; } .kol-password-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

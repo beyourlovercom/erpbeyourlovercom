@@ -99,7 +99,9 @@ final class OrderSyncProgressSnapshot
                 'shipment', 'manualSync', 'operationalMarkers',
                 'fulfillmentParent' => fn ($query) => $query->withTrashed(),
             ])
-            ->chunkById(100, function ($orders) use ($tracker, $projector, $remoteConfigured, &$nonUnsynced, &$candidates, $started): void {
+            // Up to three 100-order read-only Woo batches per index chunk;
+            // gateway caps concurrent provider requests at three.
+            ->chunkById(300, function ($orders) use ($tracker, $projector, $remoteConfigured, &$nonUnsynced, &$candidates, $started): void {
                 if (microtime(true) - $started > 150) {
                     throw new RuntimeException('后台全库核验超过 150 秒安全限制，本轮索引不更新');
                 }

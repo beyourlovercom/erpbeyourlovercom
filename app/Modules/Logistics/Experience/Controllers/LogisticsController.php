@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
+use App\Modules\Logistics\Application\AllocationRejectionReadModel;
 use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Shell\Application\GlobalGridPilot;
 use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
@@ -61,6 +62,7 @@ final class LogisticsController
         private readonly GiftSkuResolutionService $giftSkuResolutions,
         private readonly LogisticsExecutionAccess $executionAccess,
         private readonly LogisticsStatusSummary $statusSummary,
+        private readonly AllocationRejectionReadModel $rejectionReadModel,
         private readonly UsFulfillmentZoneResolver $usZones,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly CarrierServiceCatalog $carrierServices,
@@ -72,8 +74,18 @@ final class LogisticsController
         // This page has graduated from the Owner-only pilot. Legacy stays available via ?global_grid=0.
         $gridPilot = $request->query('global_grid') !== '0';
         $search = $gridPilot ? trim(mb_substr((string) $request->query('search', ''), 0, 100)) : '';
+        $rejectionFilter = $request->query('rejected') === '1';
+        $rejectionSnapshot = $this->rejectionReadModel->snapshot(
+            $this->statusSummary->pendingAllocationQuery()
+        );
+        $rejectionCount = $rejectionSnapshot['count'];
         $query = $this->statusSummary->pendingAllocationQuery()
-            ->with(['address', 'items.product', 'owner', 'financials', 'shipment.warehouse', 'fulfillmentAllocation', 'externalReferences:id,order_id,provider']);
+            ->with(['address', 'items.product', 'owner', 'financials', 'shipment.warehouse',
+                'fulfillmentAllocation', 'externalReferences:id,order_id,provider',
+                'domesticRejecter:id,name', 'overseaWarehouseReview.reviewer:id,name']);
+        if ($rejectionFilter) {
+            $this->rejectionReadModel->onlyRejected($query);
+        }
         if ($search !== '') {
             $term = '%'.addcslashes($search, '%_\\').'%';
             $query->where(function ($builder) use ($term): void {
@@ -106,7 +118,10 @@ final class LogisticsController
             'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context, $activeReservations, $paymentDecisions))->toArray(),
             'warehouses' => $warehouses,
             'carrierOptions' => $this->carrierServices->options(),
-            'pendingTotal' => $orders->total(),
+            'pendingTotal' => $rejectionFilter ? $this->statusSummary->waitStockCount() : $orders->total(),
+            'rejectionCount' => $rejectionCount,
+            'rejectionNoticeVersion' => $rejectionSnapshot['notice_version'],
+            'rejectionFilter' => $rejectionFilter,
             'canOperate' => $this->allocationAccess->allows($request->user()),
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
             'globalGridPilotAvailable' => true,
@@ -262,7 +277,7 @@ final class LogisticsController
                 ? [] : $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
             $carrier = trim((string) ($route['carrier'] ?? ''));
             if ($carrier === '' && strtoupper(trim((string) $warehouse->code)) !== 'FACTORY') {
-                throw ValidationException::withMessages(['assignments' => "{$warehouse->name} 尚未配置默认承运商，请进入完整待分仓流程。"]);
+                throw ValidationException::withMessages(['assignments' => "{$warehouse->name} 尚未配置默认物流商，请进入完整待分仓流程。"]);
             }
 
             return [
@@ -775,6 +790,7 @@ final class LogisticsController
             'order_status' => $order->order_status,
             'order_url' => $this->orderUrl($order),
             'domestic_reject_reason' => $order->domestic_reject_reason,
+            'allocation_rejection' => $this->rejectionReadModel->forOrder($order),
             'erp_order_id' => $order->erp_order_id,
             'internal_order_number' => $order->internal_order_number,
             'order_kind' => $order->order_kind?->value,

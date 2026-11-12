@@ -43,11 +43,15 @@ Artisan::command('sync:refresh-progress-index', function (): int {
     }
 })->purpose('Build a read-only cached status index for Sync AG Grid filtering');
 
+// A full verified Woo status index can take over a minute. Run it as a
+// background schedule event so it never delays the independent 30-minute
+// orders/Tracking sync jobs. Existing locks prevent overlapping refreshes.
 Schedule::command('sync:refresh-progress-index --no-interaction')
     ->everyFiveMinutes()
     ->name('sync.orders.progress-index')
     ->withoutOverlapping(10)
-    ->onOneServer();
+    ->onOneServer()
+    ->runInBackground();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

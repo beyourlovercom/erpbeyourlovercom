@@ -123,6 +123,7 @@ final class OrderController
         return Inertia::render('Orders/Index', [
             'orderKind' => $kind?->value ?? 'all',
             'orderScope' => $scope === 'external_warehouse' ? 'external_warehouse' : 'all',
+            'carrierLabels' => collect($this->carrierServices->options())->mapWithKeys(fn (array $row): array => [$row['value'] => $row['label']])->all(),
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order, $trackingStatuses[(int) $order->shipment?->id] ?? null, $customerGlobalGridEnabled))->toArray(),
             'filters' => [
                 ...$request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']),

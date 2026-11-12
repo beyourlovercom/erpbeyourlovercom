@@ -4,6 +4,7 @@ namespace App\Modules\Kol\Application;
 
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Application\AffiliateWp\CouponProvisioningService;
+use App\Modules\Kol\Application\AffiliateWp\KolCouponExpiry;
 use App\Modules\Kol\Application\AffiliateWp\KolProvisioningService;
 use App\Modules\Kol\Application\Approval\KolApprovalService;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
@@ -39,6 +40,7 @@ final class KolCreateAutoProvisionService
         Authenticatable $actor,
         ?string $affiliateName = null,
         ?string $affiliateUrlSlug = null,
+        ?string $couponExpiryDate = null,
     ): array {
         if (! KolScope::canOperate($actor)) {
             throw new AuthorizationException('KOL operation permission is required.');
@@ -80,7 +82,7 @@ final class KolCreateAutoProvisionService
                 'code' => $code,
                 'discount_type' => $couponPolicy['discount_type'],
                 'amount' => $couponPolicy['amount'],
-                'expiry' => $couponPolicy['expiry'],
+                'expiry' => KolCouponExpiry::resolve($kol->joined_at?->format('Y-m-d'), $couponExpiryDate),
             ], $actor);
 
             if ($coupon->provisioning_status !== 'active') {
@@ -155,13 +157,12 @@ final class KolCreateAutoProvisionService
         }
     }
 
-    /** @return array{discount_type:string,amount:string,expiry:?string} */
+    /** @return array{discount_type:string,amount:string} */
     private function couponPolicy(): array
     {
         $type = (string) config('kol.create_auto_provision.coupon_discount_type', 'percent');
         $amount = trim((string) config('kol.create_auto_provision.coupon_amount', ''));
-        $expiry = config('kol.create_auto_provision.coupon_expiry');
-        if (! in_array($type, ['percent', 'fixed_cart', 'fixed_product'], true)
+                if (! in_array($type, ['percent', 'fixed_cart', 'fixed_product'], true)
             || ! preg_match('/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/', $amount)) {
             throw ValidationException::withMessages(['affiliate_coupon_code' => 'KOL 自动 Coupon 策略尚未配置，请联系管理员。']);
         }
@@ -172,8 +173,7 @@ final class KolCreateAutoProvisionService
         return [
             'discount_type' => $type,
             'amount' => $amount,
-            'expiry' => is_string($expiry) && trim($expiry) !== '' ? $expiry : null,
-        ];
+                    ];
     }
 
     /** @return array{kol:Kol,success:bool,affiliate_status:?string,coupon_status:?string} */

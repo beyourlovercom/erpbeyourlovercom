@@ -8,6 +8,8 @@ use App\Modules\Sync\Application\WooCommerceOrderStatusUnsupportedException;
 use App\Modules\Sync\Application\WooCommerceTrackingConflictException;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -64,15 +66,49 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingBatchIn
         }
 
         $result = [];
-        foreach (array_chunk($ids, 100) as $chunk) {
-            $payload = $this->client()->get($this->baseUrl().'/wp-json/wc/v3/orders', [
-                'include' => $chunk,
-                'per_page' => count($chunk),
-            ])->throw()->json();
+        // The full Sync Grid refresh inspects ~2k orders. Bounded triple
+        // read-only concurrency avoids ~20 serial Woo roundtrips while never
+        // writing an order or launching an unbounded request pool.
+        $chunks = array_chunk($ids, 100);
+        foreach (array_chunk($chunks, 3) as $group) {
+            $payloads = [];
+            if (count($group) === 1) {
+                $chunk = $group[0];
+                $payloads[] = $this->client()->get($this->baseUrl().'/wp-json/wc/v3/orders', [
+                    'include' => $chunk,
+                    'per_page' => count($chunk),
+                ])->throw()->json();
+            } else {
+                $responses = Http::pool(function (Pool $pool) use ($group): void {
+                    foreach ($group as $index => $chunk) {
+                        $pool->as((string) $index)
+                            ->acceptJson()
+                            ->withHeaders(['User-Agent' => self::UserAgent])
+                            ->withBasicAuth(
+                                (string) config('services.woocommerce.consumer_key'),
+                                (string) config('services.woocommerce.consumer_secret'),
+                            )
+                            ->timeout(max(1, (int) config('services.woocommerce.timeout', 15)))
+                            ->get($this->baseUrl().'/wp-json/wc/v3/orders', [
+                                'include' => $chunk,
+                                'per_page' => count($chunk),
+                            ]);
+                    }
+                });
 
-            if (! is_array($payload)) {
-                throw new RuntimeException('WooCommerce order batch response is invalid.');
+                foreach ($group as $index => $chunk) {
+                    $response = $responses[(string) $index] ?? null;
+                    if (! $response instanceof Response) {
+                        throw new RuntimeException('WooCommerce order batch read did not return a valid response.');
+                    }
+                    $payloads[] = $response->throw()->json();
+                }
             }
+
+            foreach ($payloads as $payload) {
+                if (! is_array($payload)) {
+                    throw new RuntimeException('WooCommerce order batch response is invalid.');
+                }
 
             foreach ($payload as $order) {
                 if (! is_array($order) || (int) ($order['id'] ?? 0) <= 0) {
@@ -110,6 +146,7 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingBatchIn
                     'has_tracking' => $items !== [],
                     'checked_at' => now()->toIso8601String(),
                 ];
+                }
             }
         }
 

@@ -5,6 +5,7 @@ namespace App\Modules\Kol\Experience\Controllers;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolCreateAutoProvisionService;
+use App\Modules\Kol\Application\AffiliateWp\CouponProvisioningService;
 use App\Modules\Kol\Application\KolEditAccountService;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Application\KolService;
@@ -30,6 +31,7 @@ final class KolController
         private readonly SavedViewService $views,
         private readonly KolCreateAutoProvisionService $autoProvision,
         private readonly KolEditAccountService $editAccount,
+        private readonly CouponProvisioningService $couponSettings,
         private readonly UserUiPreferenceService $uiPreferences,
     ) {}
 
@@ -102,12 +104,14 @@ final class KolController
             'relationship_stage' => 'required|string|in:prospect,contacted,negotiating,cooperating,long_term,paused,ended',
             'cooperation_type' => 'nullable|string|in:免费发帖,长期合作,付费发帖',
             'joined_at' => 'nullable|date',
+            'kol_profile_url' => 'required|url:http,https|max:500',
+            'affiliate_coupon_expiry' => 'nullable|date_format:Y-m-d|after_or_equal:today',
             'notes' => 'nullable|string|max:5000',
             'contact_email' => 'required|email|max:255',
             'wordpress_username' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.@-]+$/D'],
             'affiliate_name' => ['nullable', 'string', 'max:120'],
             'affiliate_url_slug' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/D'],
-            'wordpress_password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
+            'wordpress_password' => ['required', 'string', 'min:6', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
             'wordpress_password_confirmation' => 'required|string|max:128',
             'affiliate_coupon_code' => 'required|string|max:255',
             'contact_phone' => 'nullable|string|max:64',
@@ -165,6 +169,7 @@ final class KolController
         );
         $password = (string) $data['wordpress_password'];
         $couponCode = (string) $data['affiliate_coupon_code'];
+        $couponExpiryDate = $data['affiliate_coupon_expiry'] ?? null;
         $socialAccounts = $data['social_accounts'] ?? [];
         $salesPerformanceEntries = $data['sales_performance_entries'] ?? [];
         unset(
@@ -174,6 +179,7 @@ final class KolController
             $data['wordpress_password'],
             $data['wordpress_password_confirmation'],
             $data['affiliate_coupon_code'],
+            $data['affiliate_coupon_expiry'],
             $data['social_accounts'],
             $data['sales_performance_entries'],
         );
@@ -188,6 +194,7 @@ final class KolController
             $user,
             $profile['name'],
             $profile['slug'],
+            $couponExpiryDate,
         );
         unset($password);
 
@@ -306,6 +313,7 @@ final class KolController
             'relationship_stage' => 'required|string|in:prospect,contacted,negotiating,cooperating,long_term,paused,ended',
             'cooperation_type' => 'nullable|string|in:免费发帖,长期合作,付费发帖',
             'joined_at' => 'nullable|date',
+            'kol_profile_url' => 'nullable|url:http,https|max:500',
             'notes' => 'nullable|string|max:5000',
             'contact_email' => 'nullable|email|max:255',
             'contact_phone' => 'nullable|string|max:64',
@@ -366,9 +374,11 @@ final class KolController
             'wordpress_username' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.@-]+$/D'],
             'affiliate_name' => ['nullable', 'string', 'max:120'],
             'affiliate_url_slug' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/D'],
-            'password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
+            'password' => ['required', 'string', 'min:6', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
             'password_confirmation' => 'required|string|max:128',
             'affiliate_coupon_code' => 'required|string|max:255',
+            'kol_profile_url' => 'required|url:http,https|max:500',
+            'affiliate_coupon_expiry' => 'nullable|date_format:Y-m-d|after_or_equal:today',
         ]);
 
         $username = \App\Modules\Kol\Application\AffiliateWp\KolProvisioningService::resolveUsername(
@@ -378,6 +388,7 @@ final class KolController
             $data['affiliate_name'] ?? null, $data['affiliate_url_slug'] ?? null, $username
         );
         $password = (string) $data['password'];
+        $kol->update(['kol_profile_url' => $data['kol_profile_url']]);
         $result = $this->editAccount->provision(
             $kol,
             $password,
@@ -386,6 +397,7 @@ final class KolController
             $request->user(),
             $profile['name'],
             $profile['slug'],
+            $data['affiliate_coupon_expiry'] ?? null,
         );
         unset($password, $data['password'], $data['password_confirmation']);
 
@@ -400,11 +412,42 @@ final class KolController
         ], $result['success'] ? 200 : 202);
     }
 
+    public function updateAffiliateCoupon(Request $request, Kol $kol): JsonResponse
+    {
+        $this->authorizeKolAccess($request, $kol);
+        $data = $request->validate([
+            'kol_profile_url' => 'required|url:http,https|max:500',
+            'affiliate_coupon_expiry' => 'required|date_format:Y-m-d|after_or_equal:today',
+        ]);
+        try {
+            $this->couponSettings->updateBoundSettings(
+                $kol,
+                (string) $data['kol_profile_url'],
+                (string) $data['affiliate_coupon_expiry'],
+            );
+        } catch (\DomainException $error) {
+            return response()->json([
+                'message' => $error->getMessage(),
+                'success' => false,
+                'affiliate_account' => $this->affiliateAccountData($kol->fresh()),
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => app()->environment(['local', 'testing']) && (bool) config('services.andy_core.uat_fake', false)
+                ? '本地 UAT 模拟同步成功（未调用真实 WooCommerce API）。'
+                : 'WooCommerce 优惠码 Description 和有效期已通过原生 API 回读验证。',
+            'success' => true,
+            'affiliate_account' => $this->affiliateAccountData($kol->fresh()),
+            'kol_profile_url' => $kol->fresh()->kol_profile_url,
+        ]);
+    }
+
     public function updateWordpressPassword(Request $request, Kol $kol): JsonResponse
     {
         $this->authorizeKolAccess($request, $kol);
         $data = $request->validate([
-            'password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
+            'password' => ['required', 'string', 'min:6', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
             'password_confirmation' => 'required|string|max:128',
         ]);
 
@@ -495,6 +538,7 @@ final class KolController
             'coupon' => $coupon ? [
                 'coupon_id' => $coupon->coupon_id !== null ? (int) $coupon->coupon_id : null,
                 'code' => $coupon->code,
+                'date_expires' => $coupon->date_expires?->toIso8601String(),
                 'provider_status' => $coupon->provider_status,
                 'provisioning_status' => $coupon->provisioning_status,
                 'sync_status' => $coupon->sync_status,
@@ -594,6 +638,7 @@ final class KolController
             'owner_id' => $kol->owner_id,
             'owner' => $kol->owner ? ['id' => $kol->owner->id, 'name' => $kol->owner->name] : null,
             'joined_at' => $kol->joined_at?->format('Y-m-d'),
+            'kol_profile_url' => $kol->kol_profile_url,
             'archived_at' => $kol->archived_at?->format('Y-m-d H:i:s'),
             'notes' => $kol->notes,
             'contact_email' => $kol->contact_email,
