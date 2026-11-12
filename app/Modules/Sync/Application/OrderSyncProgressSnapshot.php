@@ -4,6 +4,7 @@ namespace App\Modules\Sync\Application;
 
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -20,18 +21,56 @@ use RuntimeException;
  */
 final class OrderSyncProgressSnapshot
 {
-    private const TTL_SECONDS = 300;
+    private const CACHE_MINUTES = 18;
+
+    private const MAX_AGE_MINUTES = 12;
 
     /**
      * @return array{generated_at:string,total:int,candidates:int,remote_configured:bool,non_unsynced:array<int,string>}
      */
     public function snapshot(): array
     {
-        $connection = DB::connection();
-        $identity = $connection->getName().':'.(string) $connection->getDatabaseName();
-        $key = 'erp:sync:orders:progress-full-snapshot:v1:'.sha1($identity);
+        // Never build the full remote Woo snapshot in an employee HTTP
+        // request. Scheduled/CLI refresh is the only permitted builder.
+        $value = Cache::get($this->cacheKey());
+        if (! is_array($value) || ! isset($value['generated_at'], $value['non_unsynced'])
+            || ! is_array($value['non_unsynced'])
+            || now()->diffInSeconds(CarbonImmutable::parse($value['generated_at']), false) < -self::MAX_AGE_MINUTES * 60) {
+            throw new RuntimeException('同步状态全库索引尚未就绪或已过期，请在后台重新核验');
+        }
 
-        return Cache::remember($key, now()->addSeconds(self::TTL_SECONDS), fn (): array => $this->build());
+        return $value;
+    }
+
+    /**
+     * Read-only but potentially slow; MUST run via scheduled/CLI command,
+     * never from an HTTP request. Redis lock avoids duplicate Woo batch reads.
+     *
+     * @return array{generated_at:string,total:int,candidates:int,remote_configured:bool,non_unsynced:array<int,string>}
+     */
+    public function refresh(): array
+    {
+        $lock = Cache::lock($this->cacheKey().':refresh-lock', 240);
+        if (! $lock->get()) {
+            throw new RuntimeException('已有全库状态核验任务执行中');
+        }
+
+        try {
+            $snapshot = $this->build();
+            Cache::put($this->cacheKey(), $snapshot, now()->addMinutes(self::CACHE_MINUTES));
+
+            return $snapshot;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function cacheKey(): string
+    {
+        $connection = DB::connection();
+        $identity = $connection->getName().':'.(string) $connection->getDatabaseName().':'.(string) config('app.url');
+
+        return 'erp:sync:orders:progress-full-snapshot:v2:'.sha1($identity);
     }
 
     /**
@@ -59,8 +98,8 @@ final class OrderSyncProgressSnapshot
                 'fulfillmentParent' => fn ($query) => $query->withTrashed(),
             ])
             ->chunkById(100, function ($orders) use ($tracker, $projector, $remoteConfigured, &$nonUnsynced, &$candidates, $started): void {
-                if (microtime(true) - $started > 35) {
-                    throw new RuntimeException('全部订单状态回读超过安全时间限制，未提供不完整筛选结果');
+                if (microtime(true) - $started > 150) {
+                    throw new RuntimeException('后台全库核验超过 150 秒安全限制，本轮索引不更新');
                 }
 
                 $ids = $orders->pluck('shipment.id')->filter()->map(fn ($id): int => (int) $id)->all();

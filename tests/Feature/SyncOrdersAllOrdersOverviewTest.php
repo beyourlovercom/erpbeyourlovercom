@@ -9,6 +9,7 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use App\Modules\Sync\Application\OrderSyncProgressProjector;
+use App\Modules\Sync\Application\OrderSyncProgressSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -161,6 +162,35 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
             ->assertSessionHasErrors('direction');
     }
 
+    public function test_without_background_index_status_filter_fails_closed_without_remote_calls(): void
+    {
+        Cache::flush();
+        $user = $this->viewer();
+        $this->makeOrder('woocommerce', 'INDEX-NOT-READY');
+
+        $this->actingAs($user)->get('/sync/orders?grid_progress=failed')
+            ->assertRedirect()->assertSessionHasErrors('grid_progress');
+        $this->assertDatabaseCount('manual_syncs', 0);
+    }
+
+    public function test_status_filter_rejects_expired_background_snapshot(): void
+    {
+        Cache::flush();
+        $user = $this->viewer();
+        $this->makeOrder('woocommerce', 'INDEX-CACHE-EXPIRY');
+        app(OrderSyncProgressSnapshot::class)->refresh();
+        $this->actingAs($user)->get('/sync/orders?grid_progress=unsynced')
+            ->assertOk();
+
+        $this->travel(13)->minutes();
+        try {
+            $this->actingAs($user)->get('/sync/orders?grid_progress=unsynced')
+                ->assertRedirect()->assertSessionHasErrors('grid_progress');
+        } finally {
+            $this->travelBack();
+        }
+    }
+
     public function test_second_header_status_filter_is_server_wide_and_not_limited_to_current_page(): void
     {
         Cache::flush();
@@ -197,6 +227,7 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
         ]);
         $notified->operationalMarkers()->create(['marker' => 'woo_manual_tracking_verified', 'marked_at' => now()]);
 
+        app(OrderSyncProgressSnapshot::class)->refresh();
         $base = '/sync/orders?per_page=20&grid_progress=';
         $this->actingAs($user)->get($base.'unsynced')->assertOk()
             ->assertInertia(fn (Assert $page) => $page
@@ -269,6 +300,12 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
         };
         app()->instance(WooCommerceTrackingGateway::class, $inspector);
 
+        try {
+            app(OrderSyncProgressSnapshot::class)->refresh();
+            self::fail('A Woo read failure must never create an incomplete snapshot');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('WooCommerce', $exception->getMessage());
+        }
         $this->actingAs($user)->get('/sync/orders?grid_progress=unsynced')
             ->assertRedirect()->assertSessionHasErrors('grid_progress');
         $this->assertDatabaseCount('manual_syncs', 0);
@@ -284,6 +321,7 @@ final class SyncOrdersAllOrdersOverviewTest extends TestCase
         $failed = $this->makeOrder('woocommerce', 'FILTER-COMBO-TARGET');
         $failed->manualSync()->create(['website_sync_status' => 'failed']);
 
+        app(OrderSyncProgressSnapshot::class)->refresh();
         $this->actingAs($user)->get('/sync/orders?grid_order_number=TARGET&grid_progress=failed&per_page=20')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('pagination.total', 1)

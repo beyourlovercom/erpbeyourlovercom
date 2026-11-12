@@ -4,6 +4,7 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutSandboxLabelStage;
 use App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository;
+use App\Modules\Sync\Application\OrderSyncProgressSnapshot;
 use App\Modules\Sync\Application\SyncOrchestrationService;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Inspiring;
@@ -19,6 +20,34 @@ if ((bool) config('xlwms.inventory_sync_schedule_enabled', false)) {
         ->cron('*/'.(int) config('xlwms.inventory_sync_schedule_minutes', 30).' * * * *')
         ->name('xlwms.inventory.sync')->withoutOverlapping();
 }
+
+// Read-only Sync status index: the full Woo batch inspection must never
+// block a human /sync/orders filter request. No Woo writes are performed.
+Artisan::command('sync:refresh-progress-index', function (): int {
+    try {
+        $snapshot = app(OrderSyncProgressSnapshot::class)->refresh();
+        $this->line(json_encode([
+            'result' => 'ok',
+            'generated_at' => $snapshot['generated_at'],
+            'total_orders' => $snapshot['total'],
+            'candidate_orders' => $snapshot['candidates'],
+            'remote_configured' => $snapshot['remote_configured'],
+        ]));
+
+        return Command::SUCCESS;
+    } catch (Throwable $exception) {
+        report($exception);
+        $this->error('只读全库状态核验失败：'.get_class($exception));
+
+        return Command::FAILURE;
+    }
+})->purpose('Build a read-only cached status index for Sync AG Grid filtering');
+
+Schedule::command('sync:refresh-progress-index --no-interaction')
+    ->everyFiveMinutes()
+    ->name('sync.orders.progress-index')
+    ->withoutOverlapping(10)
+    ->onOneServer();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
