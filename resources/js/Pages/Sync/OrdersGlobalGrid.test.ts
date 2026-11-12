@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Orders from './Orders.vue'
+import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
 
 const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({
@@ -64,14 +65,51 @@ describe('Sync Orders Global Grid R0–R3 canary', () => {
     expect(columns.at(-2)?.colId).toBe('actions')
     expect(columns.at(-1)?.colId).toBe('progress')
     expect(columns.slice(-2).every(c=>c.lockPinned !== true && c.lockPosition !== 'right')).toBe(true)
-    expect(columns.find(c=>c.colId==='actions')?.maxWidth).toBe(134)
-    expect((columns.find(c=>c.colId==='actions')?.cellRendererParams as {compactActions?:boolean}).compactActions).toBe(true)
+    const action=columns.find(c=>c.colId==='actions')!
+    expect(action.width).toBe(178)
+    expect(action.minWidth).toBe(178)
+    expect(action.maxWidth).toBe(330)
+    expect((action.cellRendererParams as {compactActions?:boolean}).compactActions).not.toBe(true)
     expect(columns.find(c => c.colId === 'outbound_status')?.hide).toBe(true)
     expect(component.props('page')).toEqual({total:8000,current_page:1,last_page:160,per_page:50})
     expect(wrapper.text()).toContain('返回原表')
     expect(wrapper.text()).toContain('已通知')
   })
 
+  it('shows direct actions with no dropdown and sizes rare 3/4-action rows without truncation', async()=>{
+    const {component}=await grid()
+    const actions=(component.props('columns') as Array<Record<string,any>>).find(c=>c.colId==='actions')!
+    const items=actions.cellRendererParams.actionsFor({id:10})
+    expect(items.map((item:{label:string})=>item.label)).toEqual(['查看','同步网站'])
+    expect(actions.cellRendererParams.compactActions).toBeUndefined()
+    expect(actions.width).toBeGreaterThanOrEqual(160)
+
+    const failed={...base,progress:{code:'failed' as const,label:'失败',reason:'待核对'},
+      can_sync:false,can_reconcile:true}
+    const {component:failureGrid}=await grid(props([failed]))
+    const failCol=(failureGrid.props('columns') as Array<Record<string,any>>).find(c=>c.colId==='actions')!
+    expect(failCol.width).toBe(310)
+    expect(failCol.cellRendererParams.actionsFor({id:10}).map((item:{label:string})=>item.label))
+      .toEqual(['查看','同步网站','核对官网','原因'])
+    expect(failCol.cellRendererParams.compactActions).toBeUndefined()
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('shows 查看 and 同步网站 as directly clickable controls without an extra 操作 dropdown',async()=>{
+    const {component}=await grid()
+    const col=(component.props('columns') as Array<Record<string,any>>).find(c=>c.colId==='actions')!
+    const cell=mount(GlobalGridCell,{props:{params:{...col.cellRendererParams,data:{id:10}}}})
+    expect(cell.find('button[aria-label="操作"]').exists()).toBe(false)
+    expect(cell.get('a').text()).toBe('查看')
+    expect(cell.get('a').attributes('href')).toBe('/customers/orders/10')
+    expect(cell.get('button').text()).toBe('同步网站')
+    expect(post).not.toHaveBeenCalled()
+    await cell.get('button').trigger('click')
+    // Test-only mocked router; never sends actual order tracking data.
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(post).toHaveBeenCalledWith('/sync/orders/10/tracking-outbound')
+    cell.unmount()
+  })
   it('enables server-side second-row filters and dispatches full-library sync status selection', async () => {
     const { component } = await grid()
     expect(component.props('filterColumns')).toEqual([
