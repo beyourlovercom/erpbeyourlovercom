@@ -78,7 +78,7 @@ const props = defineProps<{
   shipoutProductionLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
   shipoutProductionUi?:boolean; shipoutProductionReadEnabled?:boolean; shipoutProductionDispatchEnabled?:boolean; shipoutProductionMinOrderId?:number; shipoutProductionOperatorAllowed?:boolean
   workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[];
-  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean; xlwmsOmsWebEnabled?:boolean
+  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canArchive?:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean; xlwmsOmsWebEnabled?:boolean
 
 }>()
 
@@ -116,6 +116,10 @@ const inlineSaveBusy = reactive<Record<number,boolean>>({})
 const inlineSaveFeedback = reactive<Record<number,string>>({})
 const trackingSelection = ref<number[]>([])
 const reviewSelection = ref<number[]>([])
+// All visible eligible rows may be operationally archived, independently of
+// review/shipout/tracking eligibility. This does not grant archive permission.
+const archiveSelection = ref<number[]>([])
+const archivePending = ref<number[]|null>(null)
 const reviewBusy = ref(false)
 const bulkBusy = ref(false)
 const gridReviewError = ref('')
@@ -1013,17 +1017,28 @@ const rejectGrid = (row:Row,reason:string) => {
   })
 }
 const reviewBulkOptions = computed(()=> {
-  if(!props.canReview)return []
-  if(props.view==='review')return [
+  const result:{value:string;label:string;reasonRequired?:boolean}[]=[]
+  if(props.canReview && props.view==='review')result.push(
     {value:'approve',label:'批量通过'}, {value:'stockout',label:'批量缺货'},
     {value:'reject',label:'批量驳回',reasonRequired:true},
-  ]
-  if(props.view==='stockout')return [{value:'restock',label:'批量已到货-可发货'}]
-  return []
+  )
+  if(props.canReview && props.view==='stockout')result.push({value:'restock',label:'批量已到货-可发货'})
+  // Same audited operational archive endpoint and permission as domestic grids.
+  if(props.canArchive && props.view!=='stockout')result.push({value:'archive',label:'批量归档'})
+  return result
 })
 const applyReviewBulk = async (payload:{action:string;reason:string}) => {
-  if(bulkBusy.value||!props.canReview||!reviewSelection.value.length
-    ||!reviewBulkOptions.value.some(opt=>opt.value===payload.action)
+  if(bulkBusy.value||!reviewBulkOptions.value.some(opt=>opt.value===payload.action))return
+  if(payload.action==='archive'){
+    if(!props.canArchive||props.view==='stockout'||!archiveSelection.value.length)return
+    if(archiveSelection.value.length>50){
+      publishGlobalFeedback({state:'BLOCKED',title:'每批最多归档 50 单',message:'请减少勾选后再归档。'})
+      return
+    }
+    archivePending.value=[...archiveSelection.value]
+    return
+  }
+  if(!props.canReview||!reviewSelection.value.length
     ||(payload.action==='reject'&&payload.reason.trim().length<3))return
   if(reviewSelection.value.length>50){
     publishGlobalFeedback({state:'BLOCKED',title:'每批最多处理 50 单',message:'当前选中 '+reviewSelection.value.length+' 单，请先减少勾选。'})
@@ -1047,6 +1062,39 @@ const applyReviewBulk = async (payload:{action:string;reason:string}) => {
     router.reload({only:['rows','viewCounts']})
   }catch(error){
     publishGlobalFeedback({state:'ERROR',title:'海外仓批量审核未完成',message:error instanceof Error?error.message:'请刷新后核对订单状态。'})
+  }finally{bulkBusy.value=false}
+}
+const confirmArchive = async () => {
+  const ids=archivePending.value
+  if(bulkBusy.value||!props.canArchive||props.view==='stockout'||!ids?.length||ids.length>50)return
+  const present=new Set(visibleRows.value.map(row=>row.order_id))
+  if(ids.some(id=>!present.has(id))){
+    archivePending.value=null
+    publishGlobalFeedback({state:'BLOCKED',title:'归档选择已变化',message:'请刷新页面后重新勾选，避免归档过时订单。'})
+    return
+  }
+  bulkBusy.value=true
+  archivePending.value=null
+  try{
+    const response=await fetch('/orders/archive/batch', {
+      method:'POST',credentials:'same-origin',cache:'no-store',
+      headers:{Accept:'application/json','Content-Type':'application/json','X-Requested-With':'XMLHttpRequest',...currentCsrfHeaders()},
+      body:JSON.stringify({order_ids:ids}),
+    })
+    const data=await response.json() as {message?:string;results?:{order_id:number;ok:boolean;message:string}[]}
+    if(!response.ok)throw new Error(response.status===419?'登录会话已过期，请刷新后核对。':data.message||'归档请求未完成')
+    if(!Array.isArray(data.results)||data.results.length!==ids.length)throw new Error('归档结果不完整，请查看运营归档清单核对，不要直接重试。')
+    const failed=data.results.filter(item=>!item.ok)
+    const failureIds=new Set(failed.map(item=>item.order_id))
+    archiveSelection.value=ids.filter(id=>failureIds.has(id))
+    reviewSelection.value=reviewSelection.value.filter(id=>failureIds.has(id))
+    publishGlobalFeedback({state:failed.length?'BLOCKED':'SUCCESS',
+      title:'海外仓批量归档：成功 '+(ids.length-failed.length)+' 条，失败 '+failed.length+' 条',
+      message:failed.length?failed.slice(0,8).map(item=>item.order_id+'：'+item.message).join('；'):'已进入运营归档清单，并从活跃物流列表排除。'})
+    router.reload({only:['rows','viewCounts']})
+  }catch(error){
+    publishGlobalFeedback({state:'ERROR',title:'批量归档状态未确认',
+      message:(error instanceof Error?error.message:'未知请求错误')+'；请先核对运营归档清单，切勿直接重复提交。'})
   }finally{bulkBusy.value=false}
 }
 const reopenReview = (row:Row) => router.post(`/logistics/oversea/orders/${row.order_id}/reopen-review`, {}, { preserveScroll:true })
@@ -1082,8 +1130,17 @@ const submitJump = () => {
   if (!Number.isInteger(page)) return
   goPage(page)
 }
-watch(()=>[props.view,props.warehouseKey,props.rows.current_page,props.rows.per_page],()=>{reviewSelection.value=[]})
-watch(()=>visibleRows.value,rows=>{const present=new Set(rows.map(row=>row.order_id));reviewSelection.value=reviewSelection.value.filter(id=>present.has(id))})
+watch(()=>[props.view,props.warehouseKey,props.rows.current_page,props.rows.per_page],()=>{
+  reviewSelection.value=[]
+  archiveSelection.value=[]
+  archivePending.value=null
+})
+watch(()=>visibleRows.value,rows=>{
+  const present=new Set(rows.map(row=>row.order_id))
+  reviewSelection.value=reviewSelection.value.filter(id=>present.has(id))
+  archiveSelection.value=archiveSelection.value.filter(id=>present.has(id))
+  archivePending.value=null
+})
 const nativeOperationRows = computed(()=>gridEnabled.value
   ? visibleRows.value.filter(row=>row.order_id===activeOperationId.value)
   : visibleRows.value)
@@ -1146,6 +1203,8 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
 ])
 const onGridSelection = (rows:GridListRow[]) => {
   const ids=new Set(rows.map(row=>Number(row.id)).filter(id=>Number.isSafeInteger(id)&&id>0))
+  archiveSelection.value=props.canArchive && props.view!=='stockout'
+    ?visibleRows.value.filter(row=>ids.has(row.order_id)).map(row=>row.order_id):[]
   if(props.canReview && ['review','stockout'].includes(props.view)){
     reviewSelection.value=visibleRows.value.filter(row=>ids.has(row.order_id) && row.shipment_status==='pending'
       && (props.view==='review'?row.review_status==='pending':row.review_status==='stockout')).map(row=>row.order_id)
@@ -1293,8 +1352,8 @@ const compactPages = computed<(number|string)[]>(() => {
           :required-column-ids="['order','actions']" :page="rows" row-identity-key="id"
           :search="gridSearch??''" :sort="gridSort??undefined"
           :filter-columns="[]" :filter-values="gridFilters??{}"
-          :enable-selection="Boolean((canReview && ['review','stockout'].includes(view)) || canTrackingSync || showShipoutSelection)"
-          :selected-order-ids="(canReview && ['review','stockout'].includes(view))?reviewSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
+          :enable-selection="Boolean((canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || canTrackingSync || showShipoutSelection)"
+          :selected-order-ids="(canArchive && view!=='stockout')?archiveSelection:(canReview && ['review','stockout'].includes(view))?reviewSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
           search-placeholder="搜索全部订单号 / Tracking / 收件人 / SKU..."
           @search-change="searchGrid" @sort-change="sortGrid"
           @selection-change="onGridSelection" @page-change="gridNavigate({page:$event})"
@@ -1320,10 +1379,20 @@ const compactPages = computed<(number|string)[]>(() => {
             </div>
           </template>
           <template #footer-left>
-            <GridBatchFooterControls :selected-count="reviewSelection.length" :options="reviewBulkOptions"
+            <GridBatchFooterControls :selected-count="(canArchive && view!=='stockout')?archiveSelection.length:reviewSelection.length" :options="reviewBulkOptions"
               :busy="bulkBusy" @apply="applyReviewBulk" />
           </template>
         </GlobalGrid>
+        <div v-if="archivePending" class="oversea-archive-overlay" data-testid="oversea-archive-confirm" role="presentation">
+          <section class="oversea-archive-dialog" role="dialog" aria-modal="true" aria-label="海外仓批量归档确认">
+            <h2>确认批量归档 {{archivePending.length}} 条订单？</h2>
+            <p>归档后，这些订单将从所有活跃物流列表移除，保留订单、历史物流信息与审计记录；管理员可在运营归档清单恢复。</p>
+            <div class="oversea-archive-dialog-actions">
+              <button type="button" :disabled="bulkBusy" @click="archivePending=null">取消</button>
+              <button type="button" class="confirm" :disabled="bulkBusy" @click="confirmArchive">确认归档 {{archivePending.length}} 条</button>
+            </div>
+          </section>
+        </div>
         <div v-if="activeOperationId!==null" class="native-operation-heading">
           <strong>当前订单操作 · 完整原有业务功能</strong>
           <button type="button" class="file-button" @click="activeOperationId=null">收起订单操作</button>
@@ -1628,4 +1697,15 @@ const compactPages = computed<(number|string)[]>(() => {
 .oversea-filter-panel-buttons{display:flex;justify-content:flex-end;gap:6px}
 .oversea-filter-panel-buttons button{white-space:nowrap;padding:5px 9px}
 .oversea-filter-panel-buttons .oversea-filter-apply{background:#075bea;color:white;border-color:#075bea}
+</style>
+
+<style scoped>
+.oversea-archive-overlay{position:fixed;z-index:1300;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,23,42,.48)}
+.oversea-archive-dialog{width:min(480px,100%);padding:22px;border-radius:10px;background:#fff;box-shadow:0 20px 70px rgba(15,23,42,.25);color:#1e293b}
+.oversea-archive-dialog h2{font-size:18px;line-height:1.5;margin:0 0 10px}
+.oversea-archive-dialog p{font-size:13px;line-height:1.7;margin:0 0 18px;color:#475569}
+.oversea-archive-dialog-actions{display:flex;justify-content:flex-end;gap:10px}
+.oversea-archive-dialog-actions button{border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:9px 14px;cursor:pointer}
+.oversea-archive-dialog-actions .confirm{background:#b91c1c;color:#fff;border-color:#b91c1c}
+.oversea-archive-dialog-actions button:disabled{opacity:.5;cursor:not-allowed}
 </style>

@@ -137,6 +137,61 @@ describe('oversea domestic-style Global Grid review operation contract', () => {
     actions?.reject({id:99},'x')
     expect(routerPost).not.toHaveBeenCalled()
   })
+  it('adds audited batch archive for authorized staff in all-overseas review with explicit confirmation', async () => {
+    const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'pending' as const}]}
+    const wrapper=mountPage({globalGridEnabled:true,warehouseKey:'all',warehouse:null,view:'review',
+      rows:reviewRows,canReview:true,canArchive:true})
+    await flushPromises()
+    const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+    expect(grid.props('enableSelection')).toBe(true)
+    grid.vm.$emit('selection-change',[{id:99}])
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('select[aria-label="批量操作"]').text()).toContain('批量归档')
+    await wrapper.find('select[aria-label="批量操作"]').setValue('archive')
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      results:[{order_id:99,ok:true,message:'已归档'}],success_count:1,failed_count:0,
+    })})
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      await wrapper.find('button.apply-batch').trigger('click')
+      expect(fetchMock).not.toHaveBeenCalled()
+      const confirm=wrapper.find('[data-testid="oversea-archive-confirm"]')
+      expect(confirm.exists()).toBe(true)
+      expect(confirm.text()).toContain('确认批量归档 1 条订单')
+      await confirm.find('.confirm').trigger('click')
+      await flushPromises()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0][0]).toBe('/orders/archive/batch')
+      const options=fetchMock.mock.calls[0][1] as {method:string;body:string}
+      expect(options.method).toBe('POST')
+      expect(JSON.parse(options.body)).toEqual({order_ids:[99]})
+      expect(routerReload).toHaveBeenCalledWith({only:['rows','viewCounts']})
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+  it('hides archive unless the user has orders.archive, including stockout view', async () => {
+    const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'pending' as const}]}
+    const noPermission=mountPage({globalGridEnabled:true,view:'review',rows:reviewRows,canReview:true,canArchive:false})
+    await flushPromises()
+    noPermission.findComponent({name:'MockGlobalGrid'}).vm.$emit('selection-change',[{id:99}])
+    await noPermission.vm.$nextTick()
+    expect(noPermission.find('select[aria-label="批量操作"]').text()).not.toContain('批量归档')
+    const stockout=mountPage({globalGridEnabled:true,view:'stockout',rows:reviewRows,canReview:true,canArchive:true})
+    await flushPromises()
+    stockout.findComponent({name:'MockGlobalGrid'}).vm.$emit('selection-change',[{id:99}])
+    await stockout.vm.$nextTick()
+    expect(stockout.text()).not.toContain('批量归档')
+  })
+  it('allows archiving other overseas tabs without review permissions but still requires archive permission', async () => {
+    const wrapper=mountPage({globalGridEnabled:true,view:'all',rows:usSmPendingRows,canReview:false,canArchive:true})
+    await flushPromises()
+    const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+    expect(grid.props('enableSelection')).toBe(true)
+    grid.vm.$emit('selection-change',[{id:99}])
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('select[aria-label="批量操作"]').text()).toContain('批量归档')
+  })
   it('provides a domestic-style batch footer for review selection', async () => {
     const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'pending' as const}]}
     const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:reviewRows,canReview:true})
