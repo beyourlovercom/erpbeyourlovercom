@@ -107,7 +107,7 @@ final class KolController
             'wordpress_username' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.@-]+$/D'],
             'affiliate_name' => ['nullable', 'string', 'max:120'],
             'affiliate_url_slug' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/D'],
-            'wordpress_password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
+            'wordpress_password' => ['required', 'string', 'min:6', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
             'wordpress_password_confirmation' => 'required|string|max:128',
             'affiliate_coupon_code' => 'required|string|max:255',
             'contact_phone' => 'nullable|string|max:64',
@@ -366,7 +366,7 @@ final class KolController
             'wordpress_username' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.@-]+$/D'],
             'affiliate_name' => ['nullable', 'string', 'max:120'],
             'affiliate_url_slug' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/D'],
-            'password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
+            'password' => ['required', 'string', 'min:6', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
             'password_confirmation' => 'required|string|max:128',
             'affiliate_coupon_code' => 'required|string|max:255',
         ]);
@@ -404,7 +404,7 @@ final class KolController
     {
         $this->authorizeKolAccess($request, $kol);
         $data = $request->validate([
-            'password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
+            'password' => ['required', 'string', 'min:6', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
             'password_confirmation' => 'required|string|max:128',
         ]);
 

@@ -32,7 +32,7 @@ class CreateErpUser extends Command
         $validator = Validator::make(compact('name', 'email', 'password', 'password_confirmation', 'roleKey'), [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
-            'password' => ['required', 'string', 'min:12', 'confirmed'],
+            'password' => ['required', 'string', 'min:6', 'confirmed'],
             'password_confirmation' => ['required', 'same:password'],
             'roleKey' => ['required', Rule::in($roleChoices)],
         ], ['password.confirmed' => 'Password confirmation does not match.']);

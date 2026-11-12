@@ -17,7 +17,7 @@ class CreateErpUserCommandTest extends TestCase
     {
         $this->artisan('erp:user:create')->expectsQuestion('Name', 'Owner')->expectsQuestion('Email', 'owner@example.test')
             ->expectsQuestion('Password', 'independent-secret-123')->expectsQuestion('Confirm password', 'different-secret-123')
-            ->expectsChoice('Role', 'operations', ['logistics', 'sales_representative', 'kol_specialist', 'kol_manager', 'finance', 'operations', 'writer', 'administrator'])->assertExitCode(1);
+            ->expectsChoice('Role', 'operations', ['logistics', 'sales_representative', 'kol_specialist', 'kol_manager', 'finance', 'domestic_business', 'operations', 'writer', 'administrator'])->assertExitCode(1);
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('role_user', 0);
         $this->assertDatabaseCount('roles', 0);
@@ -26,10 +26,10 @@ class CreateErpUserCommandTest extends TestCase
 
     public function test_provisioning_secret_is_never_logged_or_persisted_in_plaintext(): void
     {
-        $secret = 'BYL-TEST-SECRET-NOT-LOGGED-987!';
+        $secret = 'Abc123';
         $this->artisan('erp:user:create')->expectsQuestion('Name', 'Owner')->expectsQuestion('Email', 'owner@example.test')
             ->expectsQuestion('Password', $secret)->expectsQuestion('Confirm password', $secret)
-            ->expectsChoice('Role', 'operations', ['logistics', 'sales_representative', 'kol_specialist', 'kol_manager', 'finance', 'operations', 'writer', 'administrator'])->assertExitCode(0);
+            ->expectsChoice('Role', 'operations', ['logistics', 'sales_representative', 'kol_specialist', 'kol_manager', 'finance', 'domestic_business', 'operations', 'writer', 'administrator'])->assertExitCode(0);
         $user = User::where('email', 'owner@example.test')->firstOrFail();
         $this->assertTrue(Hash::check($secret, $user->password));
         $this->assertNotSame($secret, $user->password);
@@ -47,7 +47,7 @@ class CreateErpUserCommandTest extends TestCase
         $secret = 'BYL-FRESH-ADMIN-SECRET-123!';
         $this->artisan('erp:user:create')->expectsQuestion('Name', 'Production Owner')->expectsQuestion('Email', 'owner@example.test')
             ->expectsQuestion('Password', $secret)->expectsQuestion('Confirm password', $secret)
-            ->expectsChoice('Role', 'administrator', ['logistics', 'sales_representative', 'kol_specialist', 'kol_manager', 'finance', 'operations', 'writer', 'administrator'])->assertExitCode(0);
+            ->expectsChoice('Role', 'administrator', ['logistics', 'sales_representative', 'kol_specialist', 'kol_manager', 'finance', 'domestic_business', 'operations', 'writer', 'administrator'])->assertExitCode(0);
 
         $user = User::where('email', 'owner@example.test')->firstOrFail();
         $role = Role::where('key', 'role_preset_administrator')->firstOrFail();

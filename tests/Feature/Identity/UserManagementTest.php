@@ -117,6 +117,23 @@ final class UserManagementTest extends TestCase
         $editResponse->assertDontSee($target->password, false);
     }
 
+    public function test_six_character_password_works_on_user_creation_and_admin_reset(): void
+    {
+        $admin = $this->userWith(['system.permissions.manage']);
+        $this->actingAs($admin)->post('/settings/users', [
+            'name' => 'Six Character User', 'email' => 'six-char@example.test',
+            'password' => 'Abc123', 'password_confirmation' => 'Abc123',
+            'role' => RolePreset::Writer->value,
+        ])->assertRedirect('/settings/users');
+
+        $target = User::where('email', 'six-char@example.test')->firstOrFail();
+        $this->assertTrue(Hash::check('Abc123', $target->password));
+        $this->actingAs($admin)->post('/settings/users/'.$target->id.'/password', [
+            'password' => 'Zed123', 'password_confirmation' => 'Zed123',
+        ])->assertRedirect('/settings/users');
+        $this->assertTrue(Hash::check('Zed123', $target->fresh()->password));
+    }
+
     public function test_password_must_meet_minimum_strength_and_be_confirmed(): void
     {
         $admin = $this->userWith(['system.permissions.manage']);

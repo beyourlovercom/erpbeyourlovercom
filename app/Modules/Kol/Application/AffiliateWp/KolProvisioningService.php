@@ -88,7 +88,7 @@ final class KolProvisioningService
         if (! $actor->can('kol.operate')) {
             throw new AuthorizationException;
         }
-        if (strlen($password) < 12 || strlen($password) > 128 || ! preg_match('/[A-Za-z]/', $password) || ! preg_match('/\d/', $password)) {
+        if (strlen($password) < 6 || strlen($password) > 128 || ! preg_match('/[A-Za-z]/', $password) || ! preg_match('/\d/', $password)) {
             throw new DomainException('WordPress password does not satisfy the create-provision policy.');
         }
 
@@ -100,7 +100,7 @@ final class KolProvisioningService
         if (! $actor->can('kol.operate')) {
             throw new AuthorizationException;
         }
-        if (strlen($password) < 12 || strlen($password) > 128 || ! preg_match('/[A-Za-z]/', $password) || ! preg_match('/\d/', $password)) {
+        if (strlen($password) < 6 || strlen($password) > 128 || ! preg_match('/[A-Za-z]/', $password) || ! preg_match('/\d/', $password)) {
             throw new DomainException('WordPress password does not satisfy the provision policy.');
         }
 

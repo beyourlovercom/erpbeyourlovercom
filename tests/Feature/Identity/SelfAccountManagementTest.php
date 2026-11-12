@@ -63,19 +63,19 @@ class SelfAccountManagementTest extends TestCase
 
         $this->actingAs($user)->put('/account/password', [
             'current_password' => 'WrongPassword123',
-            'password' => 'NewPassword123',
-            'password_confirmation' => 'NewPassword123',
+            'password' => 'Abc123',
+            'password_confirmation' => 'Abc123',
         ])->assertSessionHasErrors('current_password');
 
         $this->assertTrue(Hash::check('OldPassword123', $user->fresh()->password));
 
         $this->actingAs($user)->put('/account/password', [
             'current_password' => 'OldPassword123',
-            'password' => 'NewPassword123',
-            'password_confirmation' => 'NewPassword123',
+            'password' => 'Abc123',
+            'password_confirmation' => 'Abc123',
         ])->assertRedirect();
 
-        $this->assertTrue(Hash::check('NewPassword123', $user->fresh()->password));
+        $this->assertTrue(Hash::check('Abc123', $user->fresh()->password));
         $record = AuditRecord::query()->where('action', 'user.password_changed')->latest('id')->firstOrFail();
         $this->assertSame('password_changed_by_user', $record->reason);
         $this->assertNull($record->before);
