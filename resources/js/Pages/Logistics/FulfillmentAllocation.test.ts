@@ -262,7 +262,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     await flushPromises()
 
     expect(document.body.textContent).toContain('SKU 履约分配')
-    expect(document.body.textContent).toContain('先确认发货仓，再确认物流承运商')
+    expect(document.body.textContent).toContain('先确认发货仓，再确认物流商')
     expect(document.body.textContent).toContain('当前将生成 2 个履约订单')
     expect(document.body.textContent).toContain('007-0911-40414A')
     expect(document.body.textContent).toContain('007-0911-40414B')

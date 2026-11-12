@@ -63,7 +63,7 @@ final class CarrierController
             'created_by' => $request->user()?->getAuthIdentifier(),
         ]);
 
-        return redirect()->route('logistics.carriers')->with('success', '承运商已新增');
+        return redirect()->route('logistics.carriers')->with('success', '物流商已新增');
     }
 
     public function show(Request $request, string $carrier): Response
@@ -169,7 +169,7 @@ final class CarrierController
             ])->save();
         });
 
-        return back()->with('success', '承运商配置已保存');
+        return back()->with('success', '物流商配置已保存');
     }
 
     /** @return array<string,mixed> */

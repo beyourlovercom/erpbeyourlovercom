@@ -42,8 +42,8 @@ describe('Carrier detail ledger', () => {
 
   it('opens the approved carrier master editor with bilingual service catalog', async () => {
     const wrapper = mount(Show, { props: { carrier: 'DHL', carrierDisplayName: 'DHL / 敦豪', carrierMaster, canEditCarrier: true, summary, shipments: { data: [row], current_page: 1, last_page: 2, total: 51 } } })
-    await wrapper.findAll('button').find(button => button.text() === '编辑承运商')!.trigger('click')
-    expect(wrapper.get('[role="dialog"][aria-label="编辑承运商"]').text()).toContain('默认规则说明')
+    await wrapper.findAll('button').find(button => button.text() === '编辑物流商')!.trigger('click')
+    expect(wrapper.get('[role="dialog"][aria-label="编辑物流商"]').text()).toContain('默认规则说明')
     expect(wrapper.text()).toContain('运输 / 服务类型')
     expect(wrapper.get('.service-editor-table thead').text()).toContain('前台显示名')
     expect(wrapper.get('.service-editor-table thead').text()).not.toContain('记录值')
@@ -56,7 +56,7 @@ describe('Carrier detail ledger', () => {
 
   it('retains editable English fields while previewing Chinese-only display', async () => {
     const wrapper = mount(Show, { props: { carrier: 'DHL', carrierDisplayName: '敦豪', carrierMaster, canEditCarrier: true, summary, shipments: { data: [], current_page: 1, last_page: 1, total: 0 } } })
-    await wrapper.findAll('button').find(button => button.text() === '编辑承运商')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === '编辑物流商')!.trigger('click')
     expect((wrapper.get('input[placeholder="例如：4PX"]').element as HTMLInputElement).value).toBe('DHL')
     expect(wrapper.get('.service-editor-table thead').text()).toContain('英文名称')
     expect(wrapper.find('input[placeholder="English"]').exists()).toBe(true)

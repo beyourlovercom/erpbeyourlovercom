@@ -241,7 +241,7 @@ final class LogisticsTrackingListStatus
 
             $result[$shipmentId] = [
                 'status' => 'conflict',
-                'reason' => '官网已有相同 Tracking，但承运商不一致或无法核验，系统不会覆盖',
+                'reason' => '官网已有相同 Tracking，但物流商不一致或无法核验，系统不会覆盖',
                 'remote_tracking_conflict' => true,
                 'remote_order_status' => (string) ($snapshot['order_status'] ?? ''),
                 'verified_at' => $snapshot['checked_at'] ?? now()->toIso8601String(),
@@ -281,7 +281,7 @@ final class LogisticsTrackingListStatus
         }
 
         if ($outbox['remote_tracking_conflict'] ?? false) {
-            return ['status' => 'conflict', 'reason' => $outbox['reason'] ?? '官网 Tracking 承运商冲突'];
+            return ['status' => 'conflict', 'reason' => $outbox['reason'] ?? '官网 Tracking 物流商冲突'];
         }
         if ($outbox['verified_remote_tracking'] ?? false) {
             return ['status' => 'completed', 'reason' => null, 'verified_at' => $outbox['verified_at'] ?? null];

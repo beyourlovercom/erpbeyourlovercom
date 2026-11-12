@@ -153,10 +153,10 @@ final class OverseaTrackingReturnService
                 ? $activeCarriers->get(mb_strtolower($carrierInput))
                 : ($shipment?->carrier ?: (OverseaWarehouseReviewService::CARRIER_BY_CODE[$code] ?? null));
             if (! $carrier) {
-                $messages[] = '承运商为空或未启用';
+                $messages[] = '物流商为空或未启用';
             }
             if ($carrierInput !== '' && ! $activeCarriers->has(mb_strtolower($carrierInput))) {
-                $messages[] = '文件中的承运商未启用';
+                $messages[] = '文件中的物流商未启用';
             }
 
             $providerShippedAt = $this->providerShippedAt($row['shipped_at'] ?? null);

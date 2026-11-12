@@ -390,7 +390,7 @@ describe('Domestic logistics production workbench', () => {
     expect(pending.text()).toContain('⏫上传物流单号')
     expect(pending.find('input[type="file"]').attributes('accept')).toBe('.xls,.xlsx')
     expect(pending.text()).toContain('自动识别格式')
-    expect(pending.text()).toContain('不改变承运商下单模板')
+    expect(pending.text()).toContain('不改变物流商下单模板')
 
     const history=mount(Index,{props:{...baseProps,view:'4px',trackingImportPreview:null,trackingImportProvider:null}})
     expect(history.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(false)
@@ -493,7 +493,7 @@ describe('Domestic logistics production workbench', () => {
     expect(mount(Index,{props:{...baseProps,canTrackingSync:false}}).text()).not.toContain('同步官网物流')
     expect(mount(Index,{props:{...baseProps,canTrackingSync:true}}).find('input[aria-label^="选择同步"]').exists()).toBe(false)
 
-    const conflict={...shipped,tracking_sync_status:'conflict',tracking_sync_reason:'官网已有相同 Tracking，但承运商不一致'}
+    const conflict={...shipped,tracking_sync_status:'conflict',tracking_sync_reason:'官网已有相同 Tracking，但物流商不一致'}
     const conflictWrapper=mount(Index,{props:{...baseProps,canTrackingSync:true,rows:{...baseProps.rows,data:[conflict]}}})
     expect(conflictWrapper.text()).toContain('冲突待核对')
     expect(conflictWrapper.find('input[aria-label^="选择同步"]').exists()).toBe(false)

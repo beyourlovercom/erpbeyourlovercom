@@ -155,9 +155,9 @@ final class DomesticTrackingReturnService
                     ? trim((string) ($source['carrier'] ?? ''))
                     : ($provider === '4px' ? '4PX' : 'Weship');
                 if ($expectedCarrier === '') {
-                    $messages[] = '承运商为空';
+                    $messages[] = '物流商为空';
                 } elseif (strcasecmp(trim((string) $shipment->carrier), $expectedCarrier) !== 0) {
-                    $messages[] = '订单承运商与回传文件不一致';
+                    $messages[] = '订单物流商与回传文件不一致';
                 }
                 if ($shipment->shipment_status === 'pending' && filled($shipment->tracking_number) && strcasecmp((string) $shipment->tracking_number, $tracking) !== 0) {
                     $messages[] = 'ERP 已有不同 Tracking，禁止覆盖';
