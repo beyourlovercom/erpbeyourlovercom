@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
 use App\Modules\Sync\Application\SyncOrchestrationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -20,6 +21,7 @@ final class SyncOrchestrationControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->withoutVite();
         $this->gateway = new ControllerFakeTrackingGateway;
         $this->app->instance(WooCommerceTrackingGateway::class, $this->gateway);
     }
@@ -114,13 +116,35 @@ final class SyncOrchestrationControllerTest extends TestCase
     }
 }
 
-final class ControllerFakeTrackingGateway implements WooCommerceTrackingGateway
+final class ControllerFakeTrackingGateway implements WooCommerceTrackingGateway, WooCommerceTrackingBatchInspector
 {
     public int $writeCalls = 0;
 
     public function descriptor(): array
     {
         return ['configured' => true, 'url' => 'https://shop.test', 'connection_key' => 'shop-a'];
+    }
+
+    private array $trackingByOrder = [];
+
+    public function inspectTrackingBatch(array $providerOrderIds): array
+    {
+        $result = [];
+        foreach ($providerOrderIds as $id) {
+            $record = $this->trackingByOrder[$id] ?? null;
+            $result[$id] = [
+                'order_status' => 'processing',
+                'tracking_items' => $record ? [[
+                    'tracking_number' => $record['tracking'],
+                    'provider' => $record['slug'],
+                    'ship_date' => null,
+                ]] : [],
+                'has_tracking' => (bool) $record,
+                'checked_at' => now()->toIso8601String(),
+            ];
+        }
+
+        return $result;
     }
 
     public function inspectOrderStatus(int $providerOrderId): string
@@ -141,6 +165,10 @@ final class ControllerFakeTrackingGateway implements WooCommerceTrackingGateway
         array $lineItems = [],
     ): array {
         $this->writeCalls++;
+        $this->trackingByOrder[$providerOrderId] = [
+            'tracking' => $trackingNumber,
+            'slug' => $providerSlug,
+        ];
 
         return ['written' => true, 'verified' => true];
     }

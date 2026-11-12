@@ -268,7 +268,7 @@ final class WooCommerceTrackingOutboundService
 
         $providerOrderId = (int) $reference->reference;
         $providerSlug = $this->resolveCarrier($carrier);
-        $shippedAt = CarbonImmutable::parse($shipment->shipped_at)->utc();
+        $shippedAt = ShipmentUtcTimestamp::forShipment($shipment);
         $lineItemFingerprint = collect($lineItems)
             ->sortBy('id')
             ->map(fn (array $item): string => $item['id'].':'.$item['quantity'])
@@ -291,6 +291,7 @@ final class WooCommerceTrackingOutboundService
             'provider_slug' => $providerSlug,
             'tracking_number' => $trackingNumber,
             'shipped_at' => $shippedAt->toIso8601String(),
+            'shipped_at_contract' => ShipmentUtcTimestamp::CONTRACT,
             'line_items' => $lineItems,
         ];
 
