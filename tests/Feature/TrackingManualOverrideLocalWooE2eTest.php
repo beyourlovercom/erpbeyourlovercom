@@ -68,8 +68,9 @@ final class TrackingManualOverrideLocalWooE2eTest extends TestCase
             'line_revenue' => '12.00',
         ]);
         $child->shipment()->create([
-            'shipment_status' => 'pending',
-            'carrier' => getenv('TRACKING_MANUAL_LOCAL_NO_CARRIER') === '1' ? null : 'USPS',
+            'shipment_status' => 'shipped',
+            'carrier' => 'USPS',
+            'shipped_at' => now(),
             'tracking_number' => 'LOCAL-ONLY-V31-CHILD-A',
         ]);
 
@@ -82,7 +83,7 @@ final class TrackingManualOverrideLocalWooE2eTest extends TestCase
         self::assertSame('completed', $gateway->inspectOrderStatus((int) $fixture['order_id']));
         self::assertSame('LOCAL-ONLY-V31-CHILD-A', $gateway->inspectTracking((int) $fixture['order_id'])['tracking_number']);
         self::assertSame(
-            getenv('TRACKING_MANUAL_LOCAL_NO_CARRIER') === '1' ? 'other' : 'usps',
+            'usps',
             $gateway->inspectTracking((int) $fixture['order_id'])['provider'],
         );
         $this->assertDatabaseHas('order_operational_markers', [
@@ -91,7 +92,7 @@ final class TrackingManualOverrideLocalWooE2eTest extends TestCase
         $this->assertDatabaseHas('manual_syncs', [
             'order_id' => $child->id, 'website_sync_status' => 'completed',
         ]);
-        self::assertSame('pending', $child->shipment->fresh()->shipment_status);
+        self::assertSame('shipped', $child->shipment->fresh()->shipment_status);
         self::assertSame('shared', $child->fresh()->workflow_status);
         self::assertNull($root->fresh()->workflow_status);
         $this->assertDatabaseHas('order_workflow_status_histories', [
@@ -131,8 +132,9 @@ final class TrackingManualOverrideLocalWooE2eTest extends TestCase
             'line_revenue' => '12.00',
         ]);
         $childB->shipment()->create([
-            'shipment_status' => 'pending',
+            'shipment_status' => 'shipped',
             'carrier' => 'USPS',
+            'shipped_at' => now(),
             'tracking_number' => 'LOCAL-ONLY-V31-CHILD-B',
         ]);
         self::assertSame('completed', $service->pushOne($childB, null)['status']);

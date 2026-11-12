@@ -6,8 +6,10 @@ use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
 use App\Modules\Sync\Application\WooCommerceOrderStatusOutboundService;
 use App\Modules\Sync\Application\WooCommerceOrderStatusUnsupportedException;
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -36,6 +38,7 @@ final class MultiShipmentParentAggregateStatusTest extends TestCase
         $this->assertDatabaseHas('order_operational_markers', ['order_id' => $parent->id, 'marker' => 'partially_shipped']);
 
         $shipmentB->update(['shipment_status' => 'shipped', 'carrier' => '4PX', 'tracking_number' => 'TRACK-B', 'shipped_at' => now()]);
+        $gateway->publishedTracking = ['TRACK-A', 'TRACK-B'];
         $completed = app(WooCommerceOrderStatusOutboundService::class)->pushOne($b->fresh());
         $this->assertSame(ShipmentCompletionSemantics::Completed, $completed['aggregate']);
         $this->assertSame('completed', $completed['woo_status']);
@@ -70,12 +73,70 @@ final class MultiShipmentParentAggregateStatusTest extends TestCase
 
         $result = app(WooCommerceOrderStatusOutboundService::class)->pushOne($a);
         self::assertSame(ShipmentCompletionSemantics::PartiallyShipped, $result['aggregate']);
-        self::assertSame('completed', $result['woo_status']);
-        self::assertSame(['completed'], $gateway->statuses);
+        self::assertSame('blocked_unshipped_segments', $result['status']);
+        self::assertNull($result['woo_status']);
+        self::assertSame([], $gateway->statuses);
         self::assertSame('pending_shipment', $parent->fresh()->order_status->value);
         $this->assertDatabaseHas('order_operational_markers', [
             'order_id' => $parent->id, 'marker' => 'woo_manual_force_completed',
         ]);
+    }
+
+    public function test_completed_requires_every_split_package_published_on_website(): void
+    {
+        config(['services.woocommerce.url' => 'https://shop.test',
+            'services.woocommerce.connection_key' => 'shop-a']);
+        $gateway = new AggregateStatusFakeGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        [$parent, $a, $b] = $this->splitScenario();
+        $this->shipment($a, 'shipped', 'USPS', 'TRACK-A');
+        $this->shipment($b, 'shipped', '4PX', 'TRACK-B');
+
+        $gateway->publishedTracking = ['TRACK-A'];
+        $blocked = app(WooCommerceOrderStatusOutboundService::class)->pushOne($a);
+        self::assertSame('blocked_tracking_not_verified', $blocked['status']);
+        self::assertSame('woo_package_tracking_not_yet_published', $blocked['reason']);
+        self::assertSame([], $gateway->statuses);
+        $this->assertDatabaseCount('sync_outbox', 0);
+
+        $gateway->publishedTracking[] = 'TRACK-B';
+        $completed = app(WooCommerceOrderStatusOutboundService::class)->pushOne($a->fresh());
+        self::assertSame('completed', $completed['status']);
+        self::assertSame(['completed'], $gateway->statuses);
+    }
+
+    public function test_manual_override_blocks_unshipped_split_child_before_any_remote_write(): void
+    {
+        config(['services.woocommerce.url' => 'https://shop.test', 'services.woocommerce.connection_key' => 'shop-a']);
+        $this->app->instance(WooCommerceTrackingGateway::class, new AggregateStatusFakeGateway);
+        [$parent, $a, $b] = $this->splitScenario();
+        $this->shipment($a, 'shipped', 'USPS', 'TRACK-A');
+        $this->shipment($b, 'pending', null, null);
+
+        try {
+            app(\App\Modules\Sync\Application\WooCommerceManualTrackingOverrideService::class)
+                ->pushOne($a, null);
+            self::fail('An incompletely shipped split must not be completed on Woo.');
+        } catch (DomainException $exception) {
+            self::assertStringContainsString('未发货的 A/B/C', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id' => $parent->id, 'marker' => 'woo_manual_force_completed',
+        ]);
+        self::assertSame('pending_shipment', $parent->fresh()->order_status->value);
+    }
+
+    public function test_tracking_without_actual_shipment_does_not_authorize_completion(): void
+    {
+        [$parent, $a, $b] = $this->splitScenario();
+        $this->shipment($a, 'pending', 'USPS', 'PREPRINTED-TRACK');
+        $this->shipment($b, 'pending', null, null);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('尚未正式发货');
+        app(\App\Modules\Sync\Application\WooCommerceManualTrackingOverrideService::class)
+            ->pushOne($a, null);
     }
 
     public function test_unregistered_completed_delivered_status_is_terminal_and_does_not_retry(): void
@@ -92,6 +153,7 @@ final class MultiShipmentParentAggregateStatusTest extends TestCase
         [$parent, $a, $b] = $this->splitScenario();
         $shipmentA = $this->shipment($a, 'completed', 'USPS', 'TRACK-A');
         $shipmentB = $this->shipment($b, 'completed', '4PX', 'TRACK-B');
+        $gateway->publishedTracking = ['TRACK-A', 'TRACK-B'];
         $this->delivery($shipmentA, 'delivered');
         $this->delivery($shipmentB, 'delivered');
 
@@ -151,7 +213,7 @@ final class MultiShipmentParentAggregateStatusTest extends TestCase
             'shipment_status' => $status,
             'carrier' => $carrier,
             'tracking_number' => $tracking,
-            'shipped_at' => $status === 'shipped' ? now() : null,
+            'shipped_at' => in_array($status, ['shipped', 'completed'], true) ? now() : null,
         ]);
     }
 
@@ -165,12 +227,26 @@ final class MultiShipmentParentAggregateStatusTest extends TestCase
     }
 }
 
-final class AggregateStatusFakeGateway implements WooCommerceTrackingGateway
+final class AggregateStatusFakeGateway implements WooCommerceTrackingGateway, WooCommerceTrackingBatchInspector
 {
     /** @var array<int,string> */
     public array $statuses = [];
 
     public ?string $unsupported = null;
+
+    public array $publishedTracking = [];
+
+    public function inspectTrackingBatch(array $providerOrderIds): array
+    {
+        $items = array_map(
+            fn (string $number): array => [
+                'tracking_number' => $number, 'provider' => 'usps', 'ship_date' => null,
+            ],
+            $this->publishedTracking,
+        );
+        return [9001 => ['order_status' => 'processing', 'tracking_items' => $items,
+            'has_tracking' => $items !== [], 'checked_at' => now()->toIso8601String()]];
+    }
 
     public function descriptor(): array
     {

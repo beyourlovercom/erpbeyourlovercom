@@ -2,6 +2,7 @@
 
 namespace App\Modules\Sync\Application;
 
+use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceCustomerNoteGateway;
@@ -19,6 +20,8 @@ final class WooCommerceManualTrackingOverrideService
         private readonly ManualSyncService $manualSync,
         private readonly OrderWorkflowStatusService $workflowStatus,
         private readonly WooCommerceCustomerNoteGateway $customerNotes,
+        private readonly ShipmentCompletionSemantics $completionSemantics,
+        private readonly WooCommerceCompletionTrackingEvidence $completionTrackingEvidence,
     ) {}
 
     /**
@@ -52,6 +55,16 @@ final class WooCommerceManualTrackingOverrideService
         if ($source !== 'woocommerce') {
             throw new DomainException('订单没有对应的 WooCommerce 官网母订单，无法同步 AfterShip。');
         }
+
+        // P0: Tracking typed into ERP is NOT confirmation of actual shipment.
+        // Do not send a premature Completed email for a pending package,
+        // including when only child A has a number and B/C are still pending.
+        if (strtolower(trim((string) $shipment?->shipment_status)) !== 'shipped'
+            || ! filled($shipment?->carrier)
+            || ! $shipment?->shipped_at) {
+            throw new DomainException('订单尚未正式发货，或缺少承运商、Tracking、发货时间，不能将官网标记为 Completed。');
+        }
+        $aggregate = $this->completionSemantics->aggregateForOrder($root);
 
         $descriptor = $this->gateway->descriptor();
         if (! ($descriptor['configured'] ?? false)) {
@@ -90,8 +103,27 @@ final class WooCommerceManualTrackingOverrideService
                 throw new DomainException('官网已有相同 Tracking，但承运商不一致或无法核验；为避免覆盖现有物流，请人工核对。');
             }
             if ($alreadyPublished !== []) {
+                // If a later B/C package reached Woo but Customer Note failed,
+                // recover its single notification before marking ERP Shared.
+                // Never notify the first package again.
+                $suffix = strtoupper(trim((string) $order->fulfillment_suffix));
+                $laterSplit = $order->fulfillment_parent_id !== null
+                    && preg_match('/^[B-Z][0-9]*$/', $suffix) === 1;
+                $legacyManual = $root->operationalMarkers()
+                    ->where('marker', 'woo_manual_force_completed')->exists();
+                $notification = null;
+                $wasAlreadyShared = (string) $order->workflow_status === 'shared';
+                if ($laterSplit && $beforeStatus === 'completed'
+                    && $legacyManual && ! $wasAlreadyShared) {
+                    $notification = $this->customerNotes->notifyPackage($providerId, $slug, $number);
+                    if (! ($notification['verified'] ?? false)) {
+                        throw new \RuntimeException('官网后续包裹客户通知未核验，ERP 暂不标记已通知。');
+                    }
+                }
                 $this->forgetRemoteTrackingSnapshot($connection, $providerId);
-                $this->completeFromExistingWebsiteTracking($order, $actor, $providerId, $number);
+                $this->completeFromExistingWebsiteTracking(
+                    $order, $actor, $providerId, $number, $notification !== null
+                );
 
                 return [
                     'status' => 'completed',
@@ -100,15 +132,23 @@ final class WooCommerceManualTrackingOverrideService
                     'provider_order_id' => $providerId,
                     'order_status_sync' => 'unchanged',
                     'manual_override' => true,
-                    'customer_note_id' => null,
-                    'customer_note_created' => false,
-                    'notification_channel' => 'existing_website_tracking',
+                    'customer_note_id' => $notification['note_id'] ?? null,
+                    'customer_note_created' => (bool) ($notification['created'] ?? false),
+                    'notification_channel' => $notification !== null ? 'customer_note'
+                        : 'existing_website_tracking',
                 ];
             }
         }
 
         $parentAlreadyManuallyCompleted = $root->operationalMarkers()
             ->where('marker', 'woo_manual_force_completed')->exists();
+        if ($beforeStatus === 'processing' && ! in_array($aggregate, [
+            ShipmentCompletionSemantics::Completed,
+            ShipmentCompletionSemantics::PartiallyDelivered,
+            ShipmentCompletionSemantics::CompletedDelivered,
+        ], true)) {
+            throw new DomainException('母订单仍有未发货的 A/B/C 包裹：不允许提前设置官网 Completed。请等待完整发货后同步状态。');
+        }
         if ($beforeStatus !== 'processing') {
             // After A completed the Woo mother, B/C may still add their own
             // AfterShip package without modifying a non-processing Woo state.
@@ -157,6 +197,20 @@ final class WooCommerceManualTrackingOverrideService
         );
         if (! ($tracking['verified'] ?? false)) {
             throw new \RuntimeException('官网 AfterShip Tracking 写入后回读未通过。');
+        }
+
+        // A Woo Completed email may be sent only after every active shipped
+        // package is already visible in Woo AfterShip; a verified ERP shipment
+        // alone does not prove its Tracking was published on the website.
+        if ($beforeStatus === 'processing') {
+            try {
+                $evidence = $this->completionTrackingEvidence->check($root, $providerId);
+            } catch (\Throwable) {
+                throw new DomainException('官网物流核验失败：暂不把订单设置 Completed，请稍后重试。');
+            }
+            if (! $evidence['verified']) {
+                throw new DomainException('仍有包裹 Tracking 未成功写入官网，禁止提前 Completed：'.$evidence['reason']);
+            }
         }
 
         // Only a Woo order that STARTED as processing may be updated to
@@ -250,8 +304,9 @@ final class WooCommerceManualTrackingOverrideService
         ?Authenticatable $actor,
         int $providerOrderId,
         string $trackingNumber,
+        bool $customerNoteVerified = false,
     ): void {
-        DB::transaction(function () use ($order, $actor, $providerOrderId, $trackingNumber): void {
+        DB::transaction(function () use ($order, $actor, $providerOrderId, $trackingNumber, $customerNoteVerified): void {
             $fingerprint = hash('sha256', $trackingNumber);
             $this->manualSync->completeVerifiedManualOverride(
                 $order,
@@ -263,6 +318,9 @@ final class WooCommerceManualTrackingOverrideService
                 ['marker' => 'woo_manual_tracking_verified'],
                 ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()],
             );
+            if ($customerNoteVerified) {
+                $this->workflowStatus->setAfterVerifiedWebsiteTracking($order, $actor);
+            }
         });
     }
 

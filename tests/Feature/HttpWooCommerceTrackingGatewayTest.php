@@ -191,6 +191,20 @@ final class HttpWooCommerceTrackingGatewayTest extends TestCase
             && ($request->data()['status'] ?? null) === 'completed');
     }
 
+    public function test_existing_woo_completed_is_never_automatically_reverted_to_processing(): void
+    {
+        Http::fake([
+            'https://shop.test/wp-json/wc/v3/orders/7001' =>
+                Http::response($this->remoteOrder(status: 'completed'), 200),
+        ]);
+        try {
+            app(HttpWooCommerceTrackingGateway::class)->syncOrderStatus(7001, 'processing');
+            self::fail('Historical Woo Completed must not be reverted to processing.');
+        } catch (WooCommerceOrderStatusUnsupportedException) {
+            Http::assertNotSent(fn (Request $request): bool => $request->method() === 'PUT');
+        }
+    }
+
     public function test_refunded_order_blocks_tracking_before_remote_put(): void
     {
         Http::fake([

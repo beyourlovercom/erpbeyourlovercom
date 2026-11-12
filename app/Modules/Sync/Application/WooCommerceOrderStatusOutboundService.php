@@ -13,6 +13,7 @@ final class WooCommerceOrderStatusOutboundService
         private readonly WooCommerceTrackingGateway $gateway,
         private readonly SyncOutboxService $outbox,
         private readonly ShipmentAggregateStatusService $aggregateStatus,
+        private readonly WooCommerceCompletionTrackingEvidence $completionTrackingEvidence,
     ) {}
 
     /** @return array<string,mixed> */
@@ -42,7 +43,40 @@ final class WooCommerceOrderStatusOutboundService
         // be rolled back to processing by later partial-shipment auto sync.
         $manualCompleted = $root->operationalMarkers()
             ->where('marker', 'woo_manual_force_completed')->exists();
-        $wooStatus = $manualCompleted ? 'completed' : (string) $aggregate['woo_status'];
+        // A legacy override may have completed Woo while B/C were pending.
+        // Never send Completed again while ERP has incomplete fulfillments,
+        // and never silently revert historic Woo Completed to Processing.
+        if ($manualCompleted && ! in_array((string) $aggregate['aggregate'], [
+            'completed', 'partially_delivered', 'completed_delivered',
+        ], true)) {
+            return [
+                'status' => 'blocked_unshipped_segments',
+                'aggregate' => $aggregate['aggregate'],
+                'woo_status' => null,
+                'reason' => 'legacy_manual_override_has_unshipped_segments',
+            ];
+        }
+        $wooStatus = (string) $aggregate['woo_status'];
+        if (in_array($wooStatus, ['completed', 'completed-delivered'], true)) {
+            try {
+                $evidence = $this->completionTrackingEvidence->check($root, $providerOrderId);
+            } catch (Throwable) {
+                return [
+                    'status' => 'blocked_tracking_not_verified',
+                    'aggregate' => $aggregate['aggregate'],
+                    'woo_status' => $wooStatus,
+                    'reason' => 'woo_tracking_inspection_failed',
+                ];
+            }
+            if (! $evidence['verified']) {
+                return [
+                    'status' => 'blocked_tracking_not_verified',
+                    'aggregate' => $aggregate['aggregate'],
+                    'woo_status' => $wooStatus,
+                    'reason' => $evidence['reason'],
+                ];
+            }
+        }
         $fingerprint = hash('sha256', implode('|', [$connectionKey, $providerOrderId, $aggregate['aggregate'], $wooStatus, $aggregate['state_fingerprint']]));
         $record = $this->outbox->enqueue([
             'idempotency_key' => 'woo-order-status:'.$fingerprint,

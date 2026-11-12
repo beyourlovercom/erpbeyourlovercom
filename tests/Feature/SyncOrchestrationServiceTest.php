@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
 use App\Modules\Sync\Application\SyncOrchestrationService;
 use App\Modules\Sync\Application\SyncRunStatus;
 use App\Modules\Sync\Application\WooCommerceTrackingOutboundService;
@@ -170,7 +171,7 @@ final class SyncOrchestrationServiceTest extends TestCase
     }
 }
 
-final class OrchestrationFakeGateway implements WooCommerceTrackingGateway
+final class OrchestrationFakeGateway implements WooCommerceTrackingGateway, WooCommerceTrackingBatchInspector
 {
     public int $writeCalls = 0;
 
@@ -206,6 +207,24 @@ final class OrchestrationFakeGateway implements WooCommerceTrackingGateway
         ];
     }
 
+    public function inspectTrackingBatch(array $providerOrderIds): array
+    {
+        $result = [];
+        foreach ($providerOrderIds as $id) {
+            $record = $this->remote[$id] ?? [];
+            $valid = ! empty($record['tracking_number']) && ! empty($record['provider']);
+            $result[$id] = [
+                'order_status' => 'processing',
+                'tracking_items' => $valid
+                    ? [['tracking_number' => $record['tracking_number'],
+                        'provider' => $record['provider'], 'ship_date' => null]]
+                    : [],
+                'has_tracking' => $valid, 'checked_at' => now()->toIso8601String(),
+            ];
+        }
+        return $result;
+    }
+
     public function syncTracking(
         int $providerOrderId,
         string $providerSlug,
@@ -217,7 +236,9 @@ final class OrchestrationFakeGateway implements WooCommerceTrackingGateway
         if ($this->failWrites) {
             throw new RuntimeException('synthetic transient failure');
         }
-
+        $this->remote[$providerOrderId] = [
+            'tracking_number' => $trackingNumber, 'provider' => $providerSlug, 'has_tracking' => true,
+        ];
         return ['written' => true, 'verified' => true];
     }
 
