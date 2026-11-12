@@ -26,7 +26,7 @@ final class HttpWooCouponSettingsGateway implements WooCouponSettingsGateway
 
         $url = $base.'/wp-json/wc/v3/coupons/'.$couponId;
         $http = Http::acceptJson()->withBasicAuth($key, $secret)
-            ->withHeaders(['User-Agent' => 'BYL-ERP-KOL-Coupon-Settings/1.0'])
+            ->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; BYL-ERP-WooCommerce-Inbound/1.0; +https://www.beyourlover.com/)'])
             ->timeout(max(1, (int) config('services.woocommerce.timeout', 15)));
 
         $before = $http->get($url)->throw()->json();
