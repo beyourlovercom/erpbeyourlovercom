@@ -1078,6 +1078,11 @@ test('G-P3 sync all orders permits right pinned zero and optional actions withou
   const grid=page.locator('[data-testid="erp-global-grid-v1"]')
   await expect(grid).toBeVisible({timeout:18000})
   await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
+  // Owner G third-table feedback: direct action links, not extra dropdown clicks.
+  // Do not actually sync any orders during read-only browser tests.
+  const actionCells=grid.locator('.ag-cell[col-id="actions"]')
+  await expect(actionCells.first().getByRole('link',{name:'查看'})).toBeVisible()
+  await expect(actionCells.getByRole('button',{name:'操作'})).toHaveCount(0)
   await grid.getByRole('button',{name:'⚙ 列设置'}).click()
   const right=grid.locator('.oms-pin-row label').filter({hasText:'右侧固定'}).locator('input')
   await right.fill('0')

@@ -235,6 +235,17 @@ const gridRows = computed<GridListRow[]>(() => props.orders.map((order) => ({
 })))
 const c = (colId: string, field: string, headerName: string, width: number, opts: Record<string, unknown> = {}): ColDef<GridListRow> =>
   gridColumn({ colId, field, headerName, width, minWidth: 85, ...opts })
+// Sync is a daily operation list: do not hide 查看 / 同步网站 behind
+// an extra menu click. Size the one action column to what THIS page needs,
+// instead of reserving the 300px four-action maximum for every order.
+const visibleSyncActionCount = computed(() => compactMobile.value ? 1 : props.orders.reduce((max, order) => {
+  const canTry = order.can_operate && ['unsynced','failed'].includes(order.progress.code)
+  return Math.max(max, 1 + Number(canTry)
+    + Number(canTry && order.can_reconcile && !order.can_sync)
+    + Number(order.progress.code === 'failed'))
+}, 1))
+const syncActionColumnWidth = computed(() =>
+  compactMobile.value ? 100 : [112, 178, 246, 310][Math.min(3, visibleSyncActionCount.value - 1)])
 const gridColumns = computed<ColDef<GridListRow>[]>(() => [
   c('order_number', 'order_number', '订单号', compactMobile.value ? 132 : 190, {
     sortable: true, sortingOrder: ['asc', 'desc'], tooltipField: 'original_number',
@@ -257,11 +268,13 @@ const gridColumns = computed<ColDef<GridListRow>[]>(() => [
   c('outbound_status', 'outbound_status', '写回任务状态', 125, { hide: true }),
   c('sync_attempts', 'sync_attempts', '写回尝试次数', 116, { hide: true }),
   c('block_reason', 'block_reason', '同步限制原因', 260, { hide: true }),
-  c('actions', 'id', '操作', compactMobile.value ? 100 : 116, {
+  c('actions', 'id', '操作', syncActionColumnWidth.value, {
     pinned: 'right',
-    filter: false, sortable: false, minWidth: 95, maxWidth: 134,
+    filter: false, sortable: false,
+    minWidth: compactMobile.value ? 95 : syncActionColumnWidth.value,
+    maxWidth: compactMobile.value ? 134 : 330,
     cellRenderer: GlobalGridCell,
-    cellRendererParams: { mode: 'actions', compactActions: true, actionsFor: (row: GridListRow) => {
+    cellRendererParams: { mode: 'actions', actionsFor: (row: GridListRow) => {
       const order = syncOrder(row)
       if (!order) return []
       const actions: { label: string; href?: string; onClick?: () => void }[] = compactMobile.value
