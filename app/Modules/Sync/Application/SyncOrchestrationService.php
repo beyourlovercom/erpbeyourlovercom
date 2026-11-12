@@ -331,6 +331,26 @@ final class SyncOrchestrationService
                 return;
             }
 
+            $legacyModelTime = $shipment->shipped_at
+                ? \Carbon\CarbonImmutable::parse($shipment->shipped_at)->utc()->toIso8601String()
+                : null;
+            if (ShipmentUtcTimestamp::holdLegacyTimezoneIntent(
+                (array) $record->payload,
+                (array) ($prepared['intent']['payload'] ?? []),
+                $legacyModelTime,
+            )) {
+                $this->runs->finishItem(
+                    $item,
+                    SyncRunItemStatus::Skipped,
+                    'legacy_timezone_hold',
+                    'legacy_timezone_hold',
+                    'Legacy UTC timezone drift verified. Automatic retry isolated pending operator review.',
+                    $record->id,
+                );
+
+                return;
+            }
+
             $result = $this->tracking->pushOne($shipment->order, $actor);
             $this->finishFromTrackingResult($item, $result);
         } catch (DomainException $exception) {
