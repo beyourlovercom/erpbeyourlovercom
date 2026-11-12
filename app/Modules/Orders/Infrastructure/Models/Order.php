@@ -119,6 +119,16 @@ class Order extends Model
         return $this->hasOne('App\\Modules\\Logistics\\Infrastructure\\Models\\FulfillmentAllocation');
     }
 
+    public function overseaWarehouseReview(): HasOne
+    {
+        return $this->hasOne('App\\Modules\\Logistics\\Infrastructure\\Models\\OverseaWarehouseReview');
+    }
+
+    public function domesticRejecter(): BelongsTo
+    {
+        return $this->belongsTo('App\\Modules\\Identity\\Infrastructure\\Models\\User', 'domestic_rejected_by');
+    }
+
     public function manualSync(): HasOne
     {
         return $this->hasOne('App\\Modules\\Sync\\Infrastructure\\Models\\ManualSync');

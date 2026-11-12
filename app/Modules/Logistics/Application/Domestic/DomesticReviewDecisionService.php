@@ -7,6 +7,9 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Identity\Application\RolePreset;
+use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\NotificationCenter\Application\NotificationPublisher;
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -20,6 +23,7 @@ final class DomesticReviewDecisionService
         private readonly OrderWorkflowStatusService $workflow,
         private readonly InventoryReservationRepository $reservations,
         private readonly DomesticCarrierDefaults $carrierDefaults,
+        private readonly NotificationPublisher $notifications,
     ) {}
 
     public function decide(Order $order, string $decision, ?string $reason, Authenticatable $actor): void
@@ -116,6 +120,21 @@ final class DomesticReviewDecisionService
                 ],
                 'domestic_business_review',
             );
+            if ($decision === 'reject') {
+                $returnedOrder = $locked->fulfillmentParent ?? $locked;
+                User::query()->where('is_active', true)
+                    ->whereHas('roles', fn ($q) => $q->where('key', RolePreset::Operations->roleKey()))
+                    ->get()
+                    ->each(fn (User $user) => $this->notifications->publishToUser($user, [
+                        'category' => 'logistics',
+                        'title' => '国内商务分仓被驳回',
+                        'message' => "订单 {$returnedOrder->erp_order_id} 被驳回：" . trim((string) $reason),
+                        'action_url' => '/logistics/wait-stock?rejected=1',
+                        'entity_type' => 'order',
+                        'entity_id' => (string) $returnedOrder->getKey(),
+                        'actor_name' => $actor->name ?? null,
+                    ]));
+            }
         });
     }
 

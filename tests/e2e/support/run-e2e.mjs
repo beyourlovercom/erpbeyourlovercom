@@ -65,15 +65,22 @@ async function runFoundation() {
     await runManagedChild('php', ['tests/e2e/support/provision-users.php'], { env, signal: abortController.signal });
     assertNotAborted(abortController.signal);
     const suite = process.env.BYL_E2E_SUITE ?? 'all';
-    if (!['all', 'kol-role', 'tracking-ux', 'oms-import', 'global-grid'].includes(suite)) {
-        throw new Error('BYL_E2E_SUITE must be all, kol-role, tracking-ux, oms-import or global-grid.');
+    if (!['all', 'kol-role', 'tracking-ux', 'oms-import', 'global-grid', 'rejection-visual'].includes(suite)) {
+        throw new Error('BYL_E2E_SUITE must be all, kol-role, tracking-ux, oms-import, global-grid or rejection-visual.');
     }
-    if (suite === 'global-grid') {
+    if (suite === 'global-grid' || suite === 'rejection-visual') {
         await runManagedChild('php', ['tests/e2e/support/provision-global-grid.php'], {
             env, signal: abortController.signal,
         });
     }
-    const testArgs = suite === 'global-grid'
+    if (suite === 'rejection-visual') {
+        await runManagedChild('php', ['tests/e2e/support/provision-rejection-visual.php'], {
+            env, signal: abortController.signal,
+        });
+    }
+    const testArgs = suite === 'rejection-visual'
+        ? [playwrightCli, 'test', 'tests/e2e/global-grid/rejection-visual.spec.ts', '--project=chromium', '--timeout=90000']
+        : suite === 'global-grid'
         ? [playwrightCli, 'test', 'tests/e2e/global-grid/global-grid-pilot.spec.ts', '--project=chromium', '--timeout=90000']
         : suite === 'oms-import'
         ? [playwrightCli, 'test', 'tests/e2e/orders/oms-import-browser.spec.ts', '--project=chromium', '--timeout=90000']
@@ -85,7 +92,7 @@ async function runFoundation() {
     await runManagedChild(process.execPath, testArgs, {
         env,
         signal: abortController.signal,
-        timeout: suite === 'kol-role' ? 360_000 : suite === 'oms-import' || suite === 'global-grid' ? 360_000 : 120_000,
+        timeout: suite === 'kol-role' ? 360_000 : suite === 'oms-import' || suite === 'global-grid' || suite === 'rejection-visual' ? 360_000 : 120_000,
     });
 }
 

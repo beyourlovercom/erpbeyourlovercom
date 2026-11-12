@@ -360,6 +360,27 @@ final class DomesticBusinessReviewTest extends TestCase
                 ->where('order.domestic_reject_reason', '收件人地址有误，需要 Vita 核对'));
     }
 
+    public function test_domestic_rejection_notifies_operations_and_opens_rejected_queue(): void
+    {
+        $reviewer = $this->userWith(['orders.view', 'logistics.view', 'domestic.review']);
+        $operationsRole = Role::query()->firstOrCreate(
+            ['key' => \App\Modules\Identity\Application\RolePreset::Operations->roleKey()],
+            ['label' => '运营人员'],
+        );
+        $vita = User::factory()->create(['is_active' => true]);
+        $vita->roles()->attach($operationsRole);
+        $order = $this->order();
+
+        $this->actingAs($reviewer)->post('/logistics/china/orders/'.$order->id.'/reject', [
+            'reason' => '请运营重新确认收件地址',
+        ])->assertRedirect('/logistics/china?view=review');
+        $notification = $vita->notifications()->first();
+        $this->assertNotNull($notification);
+        $this->assertSame('国内商务分仓被驳回', $notification->data['title']);
+        $this->assertSame('/logistics/wait-stock?rejected=1', $notification->data['action_url']);
+        $this->assertStringContainsString('请运营重新确认收件地址', $notification->data['message']);
+    }
+
     public function test_rejection_requires_reason_and_logistics_role_alone_cannot_review(): void
     {
         $order = $this->order();
