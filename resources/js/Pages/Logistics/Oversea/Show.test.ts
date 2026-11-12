@@ -11,7 +11,7 @@ vi.mock('@inertiajs/vue3', () => ({
   router: { post: routerPost, patch: routerPatch, visit: routerVisit, reload: routerReload },
 }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
-vi.mock('../../../Components/DataGrid/GlobalGrid.vue', () => ({ __esModule:true, default: {name:'MockGlobalGrid',props:['columns','rows','enableSelection','selectedOrderIds'],template:'<div class="test-global-grid"><slot name="footer-left" /></div>'} }))
+vi.mock('../../../Components/DataGrid/GlobalGrid.vue', () => ({ __esModule:true, default: {name:'MockGlobalGrid',props:['columns','rows','enableSelection','selectedOrderIds','filterColumns'],template:'<div class="test-global-grid"><slot name="actions" /><slot name="footer-left" /></div>'} }))
 
 const warehouseOptions = [
   { key: 'us-moreplus', id: 1, code: 'US-LA', label: '美西 MorePlus 仓', carrier: 'USPS', url: '/logistics/oversea/us-moreplus' },
@@ -52,6 +52,35 @@ describe('oversea Global Grid with narrow persistent warehouse rail', () => {
     expect(wrapper.find('.test-global-grid').exists()).toBe(true)
     expect(wrapper.find('.oversea-native-workflow').exists()).toBe(false)
     expect(wrapper.find('[data-testid="oversea-global-grid-toggle"]').text()).toBe('返回原表')
+  })
+  it('removes the empty floating-filter second header row and keeps both filters in a compact top popover', async () => {
+    const wrapper=mountPage({globalGridEnabled:true,rows:usSmPendingRows,view:'review',gridSearch:'',
+      gridFilters:{carrier:'',tracking:''}})
+    await flushPromises()
+    const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+    expect(grid.props('filterColumns')).toEqual([])
+    expect(wrapper.find('[data-testid="oversea-grid-filter-panel"]').exists()).toBe(false)
+    await wrapper.find('[data-testid="oversea-grid-filter-trigger"]').trigger('click')
+    expect(wrapper.find('[data-testid="oversea-grid-filter-panel"]').exists()).toBe(true)
+    await wrapper.find('input[aria-label="筛选承运商"]').setValue('USPS')
+    await wrapper.find('input[aria-label="筛选 Tracking"]').setValue('9400')
+    await wrapper.find('.oversea-filter-apply').trigger('click')
+    const url=routerVisit.mock.lastCall?.[0] as string
+    expect(url).toContain('filter_carrier=USPS')
+    expect(url).toContain('filter_tracking=9400')
+    expect(url).toContain('view=review')
+    expect(url).toContain('page=1')
+  })
+  it('allows clearing active carrier and tracking filters without restoring the second row', async () => {
+    const wrapper=mountPage({globalGridEnabled:true,gridFilters:{carrier:'USPS',tracking:'94'}})
+    await flushPromises()
+    expect(wrapper.find('.oversea-filter-count').text()).toBe('2')
+    await wrapper.find('[data-testid="oversea-grid-filter-trigger"]').trigger('click')
+    await wrapper.find('.oversea-filter-panel-buttons button').trigger('click')
+    const url=routerVisit.mock.lastCall?.[0] as string
+    expect(url).not.toContain('filter_carrier=')
+    expect(url).not.toContain('filter_tracking=')
+    expect(wrapper.find('[data-testid="oversea-grid-filter-panel"]').exists()).toBe(false)
   })
   it('switches warehouses from the narrow sidebar without losing the current status or grid mode', async () => {
     const wrapper=mountPage({globalGridEnabled:true,view:'pending',gridSearch:'',gridSort:{colId:'line',direction:'desc'}})

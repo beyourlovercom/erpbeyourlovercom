@@ -90,6 +90,16 @@ const canEditRow = computed(() => props.canOperate || (props.canReview && props.
 const gridEnabled = computed(() => props.globalGridEnabled === true)
 const activeOperationId = ref<number|null>(null)
 const gridSearchText = ref(props.gridSearch??'')
+// Domestic-style single-toolbar filters: avoid AG Grid's mostly-empty floating-filter row.
+const showGridFilters = ref(false)
+const gridCarrierDraft = ref(props.gridFilters?.carrier??'')
+const gridTrackingDraft = ref(props.gridFilters?.tracking??'')
+watch(()=>[props.gridFilters?.carrier,props.gridFilters?.tracking],()=>{
+  gridCarrierDraft.value=props.gridFilters?.carrier??''
+  gridTrackingDraft.value=props.gridFilters?.tracking??''
+})
+const activeFilterCount = computed(()=>['carrier','tracking'].filter(key=>Boolean(props.gridFilters?.[key])).length)
+
 watch(() => props.gridSearch, value => {gridSearchText.value=value??''})
 watch(() => [props.warehouseKey, props.view, props.rows.current_page], () => {activeOperationId.value=null})
 // Only the updated row is changed after save. Navigation and filtering
@@ -873,9 +883,15 @@ const searchGrid = (value:string) => {gridSearchText.value=value;gridNavigate({s
 const sortGrid = (sort:{colId:string;direction:'asc'|'desc'|null}) => gridNavigate({
   sort_col:sort.direction?sort.colId:'line',sort_dir:sort.direction??'desc',page:1,
 })
-const filterGrid = (filter:{colId:string;value:string}) => {
-  if(!['carrier','tracking'].includes(filter.colId))return
-  gridNavigate({['filter_'+filter.colId]:filter.value,page:1})
+const applyGridFilters = () => {
+  showGridFilters.value=false
+  gridNavigate({filter_carrier:gridCarrierDraft.value.trim(),filter_tracking:gridTrackingDraft.value.trim(),page:1})
+}
+const clearGridFilters = () => {
+  gridCarrierDraft.value=''
+  gridTrackingDraft.value=''
+  showGridFilters.value=false
+  gridNavigate({filter_carrier:'',filter_tracking:'',page:1})
 }
 type InlineDraftSaved = {
   order_id:number;shipment_status:string;tracking_number:string|null
@@ -1275,13 +1291,33 @@ const compactPages = computed<(number|string)[]>(() => {
           :title="pageTitle" :columns="overseaGridColumns" :rows="overseaGridRows"
           :required-column-ids="['order','actions']" :page="rows" row-identity-key="id"
           :search="gridSearch??''" :sort="gridSort??undefined"
-          :filter-columns="['carrier','tracking']" :filter-values="gridFilters??{}"
+          :filter-columns="[]" :filter-values="gridFilters??{}"
           :enable-selection="Boolean((canReview && ['review','stockout'].includes(view)) || canTrackingSync || showShipoutSelection)"
           :selected-order-ids="(canReview && ['review','stockout'].includes(view))?reviewSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
           search-placeholder="搜索全部订单号 / Tracking / 收件人 / SKU..."
-          @search-change="searchGrid" @sort-change="sortGrid" @column-search-change="filterGrid"
+          @search-change="searchGrid" @sort-change="sortGrid"
           @selection-change="onGridSelection" @page-change="gridNavigate({page:$event})"
           @page-size-change="($event!=='all')&&gridNavigate({per_page:$event,page:1})">
+          <template #actions>
+            <div class="oversea-grid-filter-wrap" @keydown.esc.stop="showGridFilters=false">
+              <button type="button" class="oversea-grid-filter-trigger" data-testid="oversea-grid-filter-trigger"
+                :aria-expanded="showGridFilters" @click="showGridFilters=!showGridFilters">
+                筛选<span v-if="activeFilterCount" class="oversea-filter-count">{{activeFilterCount}}</span>
+              </button>
+              <div v-if="showGridFilters" class="oversea-grid-filter-panel" role="group" aria-label="海外仓筛选条件" data-testid="oversea-grid-filter-panel">
+                <label>承运商
+                  <input v-model="gridCarrierDraft" aria-label="筛选承运商" placeholder="例如 USPS" maxlength="80" @keydown.enter.prevent="applyGridFilters" />
+                </label>
+                <label>Tracking
+                  <input v-model="gridTrackingDraft" aria-label="筛选 Tracking" placeholder="追踪单号包含…" maxlength="100" @keydown.enter.prevent="applyGridFilters" />
+                </label>
+                <div class="oversea-filter-panel-buttons">
+                  <button type="button" @click="clearGridFilters">清空筛选</button>
+                  <button type="button" class="oversea-filter-apply" @click="applyGridFilters">应用筛选</button>
+                </div>
+              </div>
+            </div>
+          </template>
           <template #footer-left>
             <GridBatchFooterControls :selected-count="reviewSelection.length" :options="reviewBulkOptions"
               :busy="bulkBusy" @apply="applyReviewBulk" />
@@ -1577,4 +1613,18 @@ const compactPages = computed<(number|string)[]>(() => {
 
 <style scoped>
 .decision.stockout{border-color:#e3ac78;background:#fff9f1;color:#9a3412}
+</style>
+
+<style scoped>
+/* Keep overseas column filters in the primary toolbar, like the domestic grid;
+   no floating-filter/empty second header row across unrelated columns. */
+.oversea-grid-filter-wrap{position:relative;display:inline-flex;align-items:center}
+.oversea-grid-filter-trigger{white-space:nowrap}
+.oversea-filter-count{display:inline-flex;align-items:center;justify-content:center;margin-left:5px;border-radius:20px;min-width:16px;height:16px;background:#e0ecff;color:#1e40af;font-size:10px;padding:0 3px}
+.oversea-grid-filter-panel{position:absolute;z-index:120;top:calc(100% + 6px);left:0;width:245px;max-width:min(245px,80vw);box-sizing:border-box;display:grid;gap:10px;padding:12px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 12px 34px rgba(15,23,42,.15);font-size:12px;color:#334155}
+.oversea-grid-filter-panel label{display:grid;gap:5px;font-weight:600}
+.oversea-grid-filter-panel input{box-sizing:border-box;width:100%;height:30px;padding:4px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:5px}
+.oversea-filter-panel-buttons{display:flex;justify-content:flex-end;gap:6px}
+.oversea-filter-panel-buttons button{white-space:nowrap;padding:5px 9px}
+.oversea-filter-panel-buttons .oversea-filter-apply{background:#075bea;color:white;border-color:#075bea}
 </style>
