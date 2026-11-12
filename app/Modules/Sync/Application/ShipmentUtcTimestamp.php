@@ -38,8 +38,16 @@ final class ShipmentUtcTimestamp
             return self::fromEpoch((int) $row->utc_epoch);
         }
 
-        // SQLite's DATETIME has no session conversion; tests use UTC storage.
-        return CarbonImmutable::parse($shipment->shipped_at)->utc();
+        // SQLite's DATETIME has no session conversion; persisted test facts
+        // are UTC and should not depend on stale in-memory model attributes.
+        $raw = $connection->table($shipment->getTable())
+            ->where('id', $shipment->getKey())
+            ->value('shipped_at');
+        if ($raw === null) {
+            throw new DomainException('Shipment UTC 时间无法核验，禁止推送 Tracking。');
+        }
+
+        return CarbonImmutable::parse((string) $raw, 'UTC')->utc();
     }
 
     public static function fromEpoch(int $epoch): CarbonImmutable
