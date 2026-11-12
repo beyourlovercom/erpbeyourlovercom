@@ -125,8 +125,8 @@ final class OrderProgressQuery
                         $factory->whereHas('shipment.warehouse', fn ($w) => $w->where('code', 'FACTORY'))
                             ->whereHas('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_reviewed'));
                     })->orWhereHas('shipment', fn ($shipment) => $shipment
-                        ->whereHas('overseaReview', fn ($r) => $r->where('status', 'approved')
-                            ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id')))),
+                    ->whereHas('overseaReview', fn ($r) => $r->where('status', 'approved')
+                        ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id')))),
             'progress_conflict' => $orders->where(function (Builder $q): void {
                 $this->directConflict($q)
                     ->orWhereHas('originalFulfillmentChildren', fn (Builder $child) => $this->directConflict($child));
@@ -142,20 +142,20 @@ final class OrderProgressQuery
     private function directConflict(Builder $orders): Builder
     {
         return $orders->where(function (Builder $bad): void {
-                $bad->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'shipped')
-                    ->whereNull('shipped_at'))
-                    ->orWhere(function (Builder $factory): void {
-                        $factory->whereHas('shipment', fn ($s) => $s
-                            ->where('shipment_status', 'shipped')->whereHas('warehouse', fn ($w) => $w->where('code', 'FACTORY'))
-                            ->where(fn ($t) => $t->whereNull('tracking_number')->orWhere('tracking_number', '')))
-                            ->whereDoesntHave('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_reviewed'));
-                    })
-                    ->orWhere(function (Builder $stale): void {
-                        $stale->where('order_status', 'shipped')->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending'));
-                    })
-                    ->orWhere(function (Builder $stock): void {
-                        $stock->where('workflow_status', 'out_of_stock')->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'shipped'));
-                    });
+            $bad->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'shipped')
+                ->whereNull('shipped_at'))
+                ->orWhere(function (Builder $factory): void {
+                    $factory->whereHas('shipment', fn ($s) => $s
+                        ->where('shipment_status', 'shipped')->whereHas('warehouse', fn ($w) => $w->where('code', 'FACTORY'))
+                        ->where(fn ($t) => $t->whereNull('tracking_number')->orWhere('tracking_number', '')))
+                        ->whereDoesntHave('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_reviewed'));
+                })
+                ->orWhere(function (Builder $stale): void {
+                    $stale->where('order_status', 'shipped')->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending'));
+                })
+                ->orWhere(function (Builder $stock): void {
+                    $stock->where('workflow_status', 'out_of_stock')->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'shipped'));
+                });
         });
     }
 
@@ -164,11 +164,23 @@ final class OrderProgressQuery
     {
         return $shipments->where('shipment_status', 'pending')->where(function ($q): void {
             $q->whereDoesntHave('overseaReview')
-                ->orWhereHas('overseaReview', fn ($r) => $r->where('status', '!=', 'approved'))
+                ->orWhereHas('overseaReview', fn ($r) => $r->whereNotIn('status', ['approved', 'stockout']))
                 ->orWhereHas('overseaReview', fn ($r) => $r
-                    ->where('status', 'approved')
-                    ->whereColumn('reviewed_warehouse_id', '!=', 'shipments.warehouse_id'));
+                    ->whereIn('status', ['approved', 'stockout'])
+                    ->where(function ($mismatch): void {
+                        $mismatch->whereNull('reviewed_warehouse_id')
+                            ->orWhereColumn('reviewed_warehouse_id', '!=', 'shipments.warehouse_id');
+                    }));
         });
+    }
+
+    /** Stockout remains allocated, is excluded from the review queue and cannot ship. */
+    public function overseasStockout(Builder $shipments): Builder
+    {
+        return $shipments->where('shipment_status', 'pending')
+            ->whereHas('overseaReview', fn ($review) => $review
+                ->where('status', 'stockout')
+                ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));
     }
 
     /** $shipments is a Shipment model query. */

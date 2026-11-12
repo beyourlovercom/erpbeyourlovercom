@@ -2,8 +2,9 @@
 
 namespace App\Modules\Orders\Application;
 
-use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
+use App\Modules\Orders\Infrastructure\Models\Order;
+use Illuminate\Support\Collection;
 
 /**
  * One read-only operational phase derived from authoritative facts.
@@ -72,6 +73,7 @@ final class OrderProgressResolver
                     && blank($shipment->tracking_number)) {
                 return 'progress_conflict';
             }
+
             return $shipment->shipment_status === 'completed'
                 ? 'completed'
                 : (filled($shipment->tracking_number) ? 'shipping' : 'sent');
@@ -95,6 +97,11 @@ final class OrderProgressResolver
 
         if ($overseas) {
             $approval = $shipment->overseaReview;
+            if ($approval?->status === 'stockout'
+                && (int) $approval->reviewed_warehouse_id === (int) $shipment->warehouse_id) {
+                return 'out_of_stock';
+            }
+
             return $approval && $approval->status === 'approved'
                 && (int) $approval->reviewed_warehouse_id === (int) $shipment->warehouse_id
                 ? 'sending' : 'pending_review';
@@ -104,7 +111,7 @@ final class OrderProgressResolver
     }
 
     /** Non-executable source order follows a read-only rollup of its own fulfillment segments. */
-    private function aggregateChildren(\Illuminate\Support\Collection $children): string
+    private function aggregateChildren(Collection $children): string
     {
         $phases = $children->map(fn (Order $child): ?string => $this->resolve($child))->values();
 

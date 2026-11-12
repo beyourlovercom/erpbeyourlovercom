@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import axios from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Show from './Show.vue'
@@ -11,6 +11,7 @@ vi.mock('@inertiajs/vue3', () => ({
   router: { post: routerPost, patch: routerPatch, visit: routerVisit, reload: routerReload },
 }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
+vi.mock('../../../Components/DataGrid/GlobalGrid.vue', () => ({ __esModule:true, default: {name:'MockGlobalGrid',props:['columns','rows','enableSelection','selectedOrderIds','filterColumns'],template:'<div class="test-global-grid"><slot name="actions" /><slot name="footer-left" /></div>'} }))
 
 const warehouseOptions = [
   { key: 'us-moreplus', id: 1, code: 'US-LA', label: '美西 MorePlus 仓', carrier: 'USPS', url: '/logistics/oversea/us-moreplus' },
@@ -39,6 +40,115 @@ const mountPage = (overrides: Record<string, unknown> = {}) => mount(Show, { pro
   canReview: true, canOperate: true, carrierOptions: [], trackingImportPreview: preview, xlwmsOmsWebEnabled:true,
   shipoutProductionMinOrderId:1, shipoutProductionOperatorAllowed:true, ...overrides,
 } })
+
+describe('oversea Global Grid with narrow persistent warehouse rail', () => {
+  beforeEach(() => {routerVisit.mockClear()})
+  it('uses the new grid without rendering the legacy table until a row is opened', async () => {
+    const wrapper=mountPage({globalGridEnabled:true,rows:usSmPendingRows,gridSearch:'',gridSort:{colId:'line',direction:'desc'}})
+    await flushPromises()
+    expect(wrapper.find('[data-testid="oversea-compact-warehouse-rail"]').exists()).toBe(true)
+    expect(wrapper.find('.warehouse-link[title="美国3世迈仓"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="oversea-global-grid-workbench"]').exists()).toBe(true)
+    expect(wrapper.find('.test-global-grid').exists()).toBe(true)
+    expect(wrapper.find('.oversea-native-workflow').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="oversea-global-grid-toggle"]').text()).toBe('返回原表')
+  })
+  it('removes the empty floating-filter second header row and keeps both filters in a compact top popover', async () => {
+    const wrapper=mountPage({globalGridEnabled:true,rows:usSmPendingRows,view:'review',gridSearch:'',
+      gridFilters:{carrier:'',tracking:''}})
+    await flushPromises()
+    const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+    expect(grid.props('filterColumns')).toEqual([])
+    expect(wrapper.find('[data-testid="oversea-grid-filter-panel"]').exists()).toBe(false)
+    await wrapper.find('[data-testid="oversea-grid-filter-trigger"]').trigger('click')
+    expect(wrapper.find('[data-testid="oversea-grid-filter-panel"]').exists()).toBe(true)
+    await wrapper.find('input[aria-label="筛选承运商"]').setValue('USPS')
+    await wrapper.find('input[aria-label="筛选 Tracking"]').setValue('9400')
+    await wrapper.find('.oversea-filter-apply').trigger('click')
+    const url=routerVisit.mock.lastCall?.[0] as string
+    expect(url).toContain('filter_carrier=USPS')
+    expect(url).toContain('filter_tracking=9400')
+    expect(url).toContain('view=review')
+    expect(url).toContain('page=1')
+  })
+  it('allows clearing active carrier and tracking filters without restoring the second row', async () => {
+    const wrapper=mountPage({globalGridEnabled:true,gridFilters:{carrier:'USPS',tracking:'94'}})
+    await flushPromises()
+    expect(wrapper.find('.oversea-filter-count').text()).toBe('2')
+    await wrapper.find('[data-testid="oversea-grid-filter-trigger"]').trigger('click')
+    await wrapper.find('.oversea-filter-panel-buttons button').trigger('click')
+    const url=routerVisit.mock.lastCall?.[0] as string
+    expect(url).not.toContain('filter_carrier=')
+    expect(url).not.toContain('filter_tracking=')
+    expect(wrapper.find('[data-testid="oversea-grid-filter-panel"]').exists()).toBe(false)
+  })
+  it('switches warehouses from the narrow sidebar without losing the current status or grid mode', async () => {
+    const wrapper=mountPage({globalGridEnabled:true,view:'pending',gridSearch:'',gridSort:{colId:'line',direction:'desc'}})
+    await wrapper.find('.warehouse-link[title="美国3世迈仓"]').trigger('click')
+    const url=routerVisit.mock.calls[0][0] as string
+    expect(url).toContain('/logistics/oversea/us-3sm?')
+    expect(url).toContain('view=pending')
+    expect(url).toContain('global_grid=1')
+    expect(url).toContain('page=1')
+  })
+})
+
+describe('oversea domestic-style Global Grid review operation contract', () => {
+  it('shows the order date and uses the existing domestic inline review cell actions', async () => {
+    const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:usSmPendingRows,canReview:true})
+    await flushPromises()
+    const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+    expect(grid.exists()).toBe(true)
+    const columns=grid.props('columns') as {colId:string;headerName:string;cellRenderer?:unknown}[]
+    expect(columns.find(col=>col.colId==='order_date')?.headerName).toBe('订单日期')
+    expect(columns.find(col=>col.colId==='actions')?.headerName).toBe('操作')
+    expect(columns.find(col=>col.colId==='actions')?.cellRenderer).toBeTruthy()
+    expect(grid.props('enableSelection')).toBe(true)
+  })
+  it('wires direct per-row approval to the exact overseas HTTP review route and blocks view-only actors', async () => {
+    routerPost.mockClear()
+    const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'pending' as const}]}
+    const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:reviewRows,canReview:true})
+    await flushPromises()
+    const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+    const actions=(grid.props('columns') as {colId:string;cellRendererParams?:Record<string,any>}[])
+      .find(col=>col.colId==='actions')?.cellRendererParams
+    expect(actions).toBeTruthy()
+    actions?.approve({id:99})
+    expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/orders/99/approve',{},expect.any(Object))
+    const noAccess=mountPage({globalGridEnabled:true,view:'review',rows:reviewRows,canReview:false})
+    await flushPromises()
+    const denied=(noAccess.findComponent({name:'MockGlobalGrid'}).props('columns') as {colId:string;cellRendererParams?:Record<string,any>}[])
+      .find(col=>col.colId==='actions')?.cellRendererParams
+    routerPost.mockClear()
+    denied?.approve({id:99})
+    expect(routerPost).not.toHaveBeenCalled()
+  })
+  it('wires stockout and reason-required rejection to their respective overseas HTTP routes', async () => {
+    routerPost.mockClear()
+    const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'pending' as const}]}
+    const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:reviewRows,canReview:true})
+    await flushPromises()
+    const actions=(wrapper.findComponent({name:'MockGlobalGrid'}).props('columns') as {colId:string;cellRendererParams?:Record<string,any>}[])
+      .find(col=>col.colId==='actions')?.cellRendererParams
+    actions?.stockout({id:99})
+    expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/orders/99/stockout',{},expect.any(Object))
+    routerPost.mockClear()
+    actions?.reject({id:99},'x')
+    expect(routerPost).not.toHaveBeenCalled()
+  })
+  it('provides a domestic-style batch footer for review selection', async () => {
+    const reviewRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'pending' as const}]}
+    const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:reviewRows,canReview:true})
+    await flushPromises()
+    const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+    grid.vm.$emit('selection-change',[{id:99}])
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-testid="grid-batch-footer"]').exists()).toBe(true)
+    expect(wrapper.find('select[aria-label="批量操作"]').text()).toContain('批量缺货')
+    expect(wrapper.find('select[aria-label="批量操作"]').text()).toContain('批量驳回')
+  })
+})
 
 describe('warehouse OMS portal inside the overseas page heading', () => {
   it('renders the 世迈 OMS link within the page heading, not the global header', () => {
@@ -668,7 +778,7 @@ describe('ShipOut Production V1 three-account scoped UI', () => {
 })
 
 describe('R12 six-list overseas dispatch state without duplicate submission', () => {
-  it('shows exactly six tabs and prominent red anomaly status', () => {
+  it('shows seven tabs including stockout and prominent red anomaly status', () => {
     const anomaly={...usSmPendingRows.data[0],order_id:7903,
       shipout_production:{attempted:true,is_oms_created:false,status:'oms_quarantined',
         label:'EzeeShip 运输服务失败 · 已隔离（禁止自动重发）',provider_order_id:'OMS-ERR-1'},
@@ -677,7 +787,8 @@ describe('R12 six-list overseas dispatch state without duplicate submission', ()
         last_checked_at:'2026-11-10T11:00:00Z',detail:'待人工核对',can_retry_local_block:false}}
     const page=mountPage({view:'exceptions',rows:{...usSmPendingRows,data:[anomaly],total:1},
       shipoutProductionUi:true,shipoutProductionReadEnabled:true,canOperate:true})
-    expect(page.findAll('button.oversea-tab')).toHaveLength(6)
+    expect(page.findAll('button.oversea-tab')).toHaveLength(7)
+    expect(page.text()).toContain('缺货单')
     expect(page.text()).toContain('待审核')
     expect(page.text()).toContain('待发货')
     expect(page.text()).toContain('已下发')

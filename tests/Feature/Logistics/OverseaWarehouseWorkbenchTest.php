@@ -4,6 +4,7 @@ namespace Tests\Feature\Logistics;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
@@ -39,6 +40,102 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         // build output. The Vue app is independently built/tested in CI.
         $this->withoutVite();
         config()->set('inertia.testing.ensure_pages_exist', false);
+    }
+
+    public function test_oversea_global_grid_is_default_with_explicit_legacy_fallback(): void
+    {
+        $user = $this->userWith(['logistics.view']);
+        $this->warehouses();
+
+        $this->actingAs($user)->get('/logistics/oversea?view=review')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('globalGridEnabled', true)
+            ->where('gridSearch', '')
+            ->where('gridSort.colId', 'line')
+            ->where('gridSort.direction', 'desc'));
+        $this->actingAs($user)->get('/logistics/oversea?view=review&global_grid=0')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('globalGridEnabled', false));
+    }
+
+    public function test_oversea_grid_search_filters_canonical_orders_and_ignores_unapproved_sort_fields(): void
+    {
+        $user = $this->userWith(['logistics.view']);
+        $warehouses = $this->warehouses();
+        $matching = $this->orderAt($warehouses['US-NY'], '007-GRID-FINDME');
+        $this->orderAt($warehouses['US-NY'], '007-GRID-HIDDEN');
+
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=review&search=FINDME&sort_col=unsafe_column')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('globalGridEnabled', true)
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $matching->id)
+            ->where('gridSort.colId', 'line'));
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=review&filter_carrier=NONEXISTENT')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        // The explicit fallback does not acquire new filter semantics.
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=review&global_grid=0&search=FINDME')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 2));
+    }
+
+    public function test_overseas_review_stockout_holds_shipping_and_restock_reuses_approval_gate(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-NY'], '007-OVERSEA-GRID-STOCKOUT');
+
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=review')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.data.0.order_date', '2026-09-10'));
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/stockout", [])->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $order->id, 'status' => 'stockout']);
+        $this->assertDatabaseHas('audit_records', ['action' => 'oversea.review_stockout']);
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=review')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=stockout')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.review_status', 'stockout')
+            ->where('rows.data.0.workflow_status_projection.zh', '缺货'));
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve", [])->assertStatus(409);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'shipment_status' => 'pending', 'tracking_number' => null,
+        ]);
+
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/restock", [])->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id, 'status' => 'approved', 'reviewed_warehouse_id' => $warehouses['US-NY']->id,
+        ]);
+        $this->assertDatabaseHas('audit_records', ['action' => 'oversea.review_restock']);
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=stockout')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->actingAs($user)->get('/logistics/oversea/us-ny?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 1));
+    }
+
+    public function test_overseas_batch_review_applies_independently_and_never_bypasses_review_role(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $viewer = $this->userWith(['logistics.view']);
+        $warehouses = $this->warehouses();
+        $first = $this->orderAt($warehouses['US-SM'], '007-OVERSEA-BULK-A');
+        $second = $this->orderAt($warehouses['US-SM'], '007-OVERSEA-BULK-B');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$second->id}/approve")->assertRedirect();
+
+        $payload = ['order_ids' => [$first->id, $second->id], 'action' => 'stockout'];
+        $this->actingAs($viewer)->postJson('/logistics/oversea/batch-review', $payload)->assertForbidden();
+        $this->actingAs($user)->postJson('/logistics/oversea/batch-review', $payload)
+            ->assertOk()->assertJsonPath('success_count', 1)->assertJsonPath('failed_count', 1)
+            ->assertJsonPath('results.0.order_id', $first->id)
+            ->assertJsonPath('results.0.ok', true)
+            ->assertJsonPath('results.1.ok', false);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $first->id, 'status' => 'stockout']);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $second->id, 'status' => 'approved']);
+        $this->actingAs($user)->postJson('/logistics/oversea/batch-review', [
+            'order_ids' => [$first->id], 'action' => 'reject',
+        ])->assertUnprocessable()->assertJsonValidationErrors('reason');
     }
 
     public function test_warehouse_page_is_isolated_and_uses_frozen_carrier_mapping(): void
@@ -473,17 +570,17 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             'note' => '收件资料有误，请重新核对',
         ])->assertRedirect();
         $this->assertDatabaseHas('audit_records', ['action' => 'oversea.review_reject']);
-        $audit = \App\Modules\Audit\Infrastructure\Models\AuditRecord::query()
+        $audit = AuditRecord::query()
             ->where('action', 'oversea.review_reject')->firstOrFail();
         $this->assertSame($operator->id, $audit->actor_id);
         $this->assertSame('收件资料有误，请重新核对', $audit->after['reason']);
 
         $this->actingAs($operator)->get('/logistics/wait-stock?rejected=1')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-                ->where('rejectionCount', 1)
-                ->where('orders.total', 1)
-                ->where('orders.data.0.allocation_rejection.reason', '收件资料有误，请重新核对')
-                ->etc());
+            ->where('rejectionCount', 1)
+            ->where('orders.total', 1)
+            ->where('orders.data.0.allocation_rejection.reason', '收件资料有误，请重新核对')
+            ->etc());
 
         $item = $order->items()->firstOrFail();
         $this->actingAs($operator)->postJson("/logistics/orders/{$order->id}/fulfillment-allocation/manual", [
@@ -504,15 +601,15 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ]);
         $this->actingAs($operator)->get('/logistics/wait-stock?rejected=1')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-                ->where('rejectionCount', 0)
-                ->where('orders.total', 0)
-                ->etc());
+            ->where('rejectionCount', 0)
+            ->where('orders.total', 0)
+            ->etc());
         $this->actingAs($operator)->get('/logistics/oversea/us-ny?view=review')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-                ->where('rows.total', 1)
-                ->where('rows.data.0.order_id', $order->id)
-                ->where('rows.data.0.review_status', 'pending')
-                ->etc());
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $order->id)
+            ->where('rows.data.0.review_status', 'pending')
+            ->etc());
     }
 
     public function test_export_fails_closed_with_422_for_noncanonical_order_reference(): void
