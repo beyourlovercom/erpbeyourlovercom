@@ -80,7 +80,7 @@ final class OverseaWarehouseController
         }
 
         $base = Shipment::query()
-            ->with(['order.address', 'order.items.product', 'order.manualSync', 'order.fulfillmentParent', 'order.fulfillmentAllocation', 'order.operationalMarkers', 'order.originalFulfillmentChildren.shipment.warehouse', 'order.originalFulfillmentChildren.shipment.overseaReview', 'order.originalFulfillmentChildren.operationalMarkers', 'warehouse', 'overseaReview'])
+            ->with(['order.address', 'order.items.product', 'order.manualSync', 'order.fulfillmentParent', 'order.fulfillmentAllocation', 'order.operationalMarkers', 'order.originalFulfillmentChildren.shipment.warehouse', 'order.originalFulfillmentChildren.shipment.overseaReview', 'order.originalFulfillmentChildren.operationalMarkers', 'warehouse', 'overseaReview.reviewer'])
             ->whereIn('warehouse_id', collect($warehouseMap)->pluck('id')->all())
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
                 ->where('order_status', '!=', 'cancelled')
@@ -693,6 +693,8 @@ final class OverseaWarehouseController
             'tracking_number' => $shipment->tracking_number,
             'progress' => $review?->progress ?? 'pending_review',
             'note' => $review?->note,
+            'reviewer_name' => $review?->reviewer?->name,
+            'reviewed_at' => $review?->reviewed_at?->copy()->timezone('Asia/Shanghai')->format('Y-m-d H:i'),
             'review_status' => $effectiveApproved ? 'approved'
                 : ($review?->status === 'stockout'
                     && (int) $review->reviewed_warehouse_id === (int) $shipment->warehouse_id ? 'stockout' : 'pending'),

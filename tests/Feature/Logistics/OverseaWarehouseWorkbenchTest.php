@@ -380,6 +380,9 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             'status' => 'approved',
             'reviewed_warehouse_id' => $warehouses['DE']->id,
         ]);
+        $this->assertDatabaseHas('audit_records', [
+            'action' => 'oversea.review_approve', 'actor_id' => $user->id,
+        ]);
         $this->assertDatabaseHas('shipments', [
             'order_id' => $order->id,
             'warehouse_id' => $warehouses['DE']->id,
@@ -389,6 +392,8 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
 
         $this->actingAs($user)->get('/logistics/oversea/de-tianyun?view=pending')->assertInertia(
             fn (Assert $page) => $page->where('rows.total', 1)->where('rows.data.0.order_id', $order->id)
+                ->where('rows.data.0.reviewer_name', $user->name)
+                ->where('rows.data.0.reviewed_at', fn ($date) => is_string($date) && $date !== '')
         );
         $this->actingAs($user)->get('/logistics/oversea/de-tianyun?view=review')->assertInertia(
             fn (Assert $page) => $page->where('rows.total', 0)
@@ -408,6 +413,9 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertDatabaseHas('oversea_warehouse_reviews', [
             'order_id' => $order->id, 'status' => 'pending', 'progress' => 'pending_review',
             'reviewed_warehouse_id' => null, 'reviewed_by' => null, 'reviewed_at' => null,
+        ]);
+        $this->assertDatabaseHas('audit_records', [
+            'action' => 'oversea.review_reopen', 'actor_id' => $user->id,
         ]);
         $this->assertDatabaseHas('shipments', [
             'order_id' => $order->id, 'warehouse_id' => $warehouses['US-LA']->id, 'carrier' => 'USPS',
