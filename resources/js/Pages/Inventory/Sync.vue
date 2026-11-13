@@ -60,6 +60,8 @@ interface BatchResult {
   preview_warning_rows: number
   preview_zeroed_skus: number
   preview_error_rows: number
+  preview_importable_rows: number
+  preview_skipped_rows: number
   has_blockers: boolean
   confirmed_at: string | null
   aggregated_rows: AggregatedRow[]
@@ -307,10 +309,10 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
               class="px-5 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               @click="doConfirm"
             >
-              {{ confirming ? '导入中…' : batch?.status === 'confirmed' ? '已导入库存' : '2. 确认导入库存' }}
+              {{ confirming ? '导入中…' : batch?.status === 'confirmed' ? '已导入库存' : batch?.sync_mode === 'partial' && batch.preview_skipped_rows > 0 ? '2. 导入 ' + batch.preview_importable_rows + ' 条（跳过 ' + batch.preview_skipped_rows + ' 条）' : '2. 确认导入库存' }}
             </button>
-            <span v-if="!batch" class="text-xs text-gray-400">请先预览数据，确认无错误后再导入。</span>
-            <span v-else-if="batch.has_blockers" class="text-xs text-red-600">预览存在错误，修正后才能导入。</span>
+            <span v-if="!batch" class="text-xs text-gray-400">请先预览数据；部分同步自动跳过错误行，全量同步保持严格校验。</span>
+            <span v-else-if="batch.has_blockers" class="text-xs text-red-600">{{ batch.sync_mode === 'full' ? '全量同步有错误，禁止导入。' : '没有可导入的有效行，请核对 SKU 和数量。' }}</span>
             <span v-else-if="batch.status === 'confirmed'" class="text-xs text-green-700">本批次已写入库存。</span>
             <button v-if="batch || error" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900" @click="resetForm">重置</button>
           </div>
@@ -328,7 +330,7 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
             class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
             :class="batch.status === 'confirmed' ? 'bg-green-100 text-green-800' : batch.has_blockers ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'"
           >
-            {{ batch.status === 'confirmed' ? '已确认' : batch.has_blockers ? '有错误' : '待确认' }}
+            {{ batch.status === 'confirmed' ? '已确认' : batch.has_blockers ? '禁止导入' : batch.preview_skipped_rows > 0 ? '部分可导入' : '待确认' }}
           </span>
         </div>
 
@@ -343,6 +345,7 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
             ['未匹配 SKU', batch.preview_unmatched_skus],
             ['警告行', batch.preview_warning_rows],
             ['错误行', batch.preview_error_rows],
+            ['可导入行', batch.preview_importable_rows],
           ]" :key="String(metric[0])" class="bg-gray-50 rounded p-3">
             <div class="text-xs text-gray-500">{{ metric[0] }}</div>
             <div class="text-xl font-bold text-gray-900">{{ metric[1] }}</div>
@@ -355,7 +358,12 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
 
         <!-- Blocker notice -->
         <div v-if="batch.has_blockers" class="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
-          存在 {{ batch.preview_error_rows }} 个错误行，确认按钮已禁用。请修正数据后重新预览。
+          {{ batch.sync_mode === 'full' ? '全量同步不允许忽略错误行，请修正数据或切换部分同步。' : '当前没有可导入的有效 SKU，全部错误行均已隔离，库存不会被修改。' }}
+        </div>
+        <div v-if="batch.preview_skipped_rows > 0 && batch.sync_mode === 'partial' && !batch.has_blockers"
+             class="bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-900">
+          本批次 {{ batch.preview_importable_rows }} 条有效数据可以导入；{{ batch.preview_skipped_rows }} 条错误数据将自动跳过且不修改其库存。
+          请核对下方 ERP 聚合结果。{{ batch.status === 'confirmed' ? '有效数据已写入，错误行已忽略。' : '点击确认仅更新有效 SKU。' }}
         </div>
 
         <!-- Full sync warning -->
@@ -428,7 +436,7 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
         <!-- Confirm result -->
         <div v-if="batch.status === 'confirmed'" class="flex items-center gap-2 text-green-700 text-sm pt-2">
           <span>✓</span>
-          <span>已于 {{ batch.confirmed_at ? new Date(batch.confirmed_at).toLocaleString('zh-CN') : '—' }} 确认导入库存</span>
+          <span>已于 {{ batch.confirmed_at ? new Date(batch.confirmed_at).toLocaleString('zh-CN') : '—' }} 导入 {{ batch.preview_importable_rows }} 条有效数据，跳过 {{ batch.preview_skipped_rows }} 条错误行</span>
         </div>
 
         <div v-if="confirmError" class="text-red-600 text-sm">{{ confirmError }}</div>
