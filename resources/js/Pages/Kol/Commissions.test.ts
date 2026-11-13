@@ -1,6 +1,12 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Commissions from './Commissions.vue'
+vi.mock('../../Components/DataGrid/OmsGrid.vue', () => ({ default: {
+  name: 'OmsGrid',
+  props: ['namespace','rows','columns','serverPagination','enableSelection','selectedOrderIds'],
+  template: '<div data-testid="kol-test-oms-grid"><span v-for="r in rows" :key="r.id">{{r.id}}</span></div>',
+} }))
+
 
 const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue'
+import { computed } from 'vue'
 import type { ColDef } from 'ag-grid-community'
+import GlobalGrid from '../../../Components/DataGrid/GlobalGrid.vue'
 import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
 import { gridColumn, type GridListRow } from '../../../Components/DataGrid/useGlobalGridListAdapter'
-const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
 
 export type KolModuleColumn = {
   key: string; label: string; width?: number; hidden?: boolean

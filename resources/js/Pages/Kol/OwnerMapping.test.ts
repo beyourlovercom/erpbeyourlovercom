@@ -2,6 +2,12 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import axios from 'axios'
 import OwnerMapping from './OwnerMapping.vue'
+vi.mock('../../Components/DataGrid/OmsGrid.vue', () => ({ default: {
+  name: 'OmsGrid',
+  props: ['namespace','rows','columns','serverPagination','enableSelection','selectedOrderIds'],
+  template: '<div data-testid="kol-test-oms-grid"><span v-for="r in rows" :key="r.id">{{r.id}}</span></div>',
+} }))
+
 
 const { routerGet } = vi.hoisted(() => ({ routerGet: vi.fn() }))
 vi.mock('axios', () => ({ default: { post: vi.fn(), delete: vi.fn() } }))
