@@ -1,6 +1,12 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Payouts from './Payouts.vue'
+vi.mock('../../Components/DataGrid/OmsGrid.vue', () => ({ default: {
+  name: 'OmsGrid',
+  props: ['namespace','rows','columns','serverPagination','enableSelection','selectedOrderIds'],
+  template: '<div data-testid="kol-test-oms-grid"><span v-for="r in rows" :key="r.id">{{r.id}}</span></div>',
+} }))
+
 
 const { postMock, formPostMock } = vi.hoisted(() => ({ postMock: vi.fn(), formPostMock: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({
@@ -20,8 +26,10 @@ const requests = [
 
 describe('KOL payout workflow', () => {
   beforeEach(() => { postMock.mockReset(); formPostMock.mockReset() })
-  it('renders eligible referrals and approved payout requests', () => {
+  it('renders eligible referrals and approved payout requests', async () => {
     const wrapper = mount(Payouts, { props: { connectionKey: 'test.example.com', eligible, requests, canRequest: true, canApprove: false, canManage: true } })
+    await wrapper.get('[data-testid="kol-payout-eligible-grid-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="kol-payout-requests-grid-toggle"]').trigger('click')
     expect(wrapper.text()).toContain('Commission Payout Workflow')
     expect(wrapper.text()).toContain('Affiliate #7 · KOL #5')
     expect(wrapper.text()).toContain('#101 · approved')
@@ -35,6 +43,7 @@ describe('KOL payout workflow', () => {
 
   it('keeps ERP order number visible while allowing configurable columns to reorder', async () => {
     const wrapper = mount(Payouts, { props: { connectionKey: 'test.example.com', eligible, requests: [], canRequest: true, canApprove: false, canManage: false } })
+    await wrapper.get('[data-testid="kol-payout-eligible-grid-toggle"]').trigger('click')
     await wrapper.get('.column-settings-trigger').trigger('click')
     const required = wrapper.findAll('.column-setting-row').find(row => row.text().includes('ERP订单号'))!
     expect(required.get('input').attributes('disabled')).toBeDefined()
@@ -44,6 +53,7 @@ describe('KOL payout workflow', () => {
   })
   it('manager can select exact referrals and submit approval request', async () => {
     const wrapper = mount(Payouts, { props: { connectionKey: 'test.example.com', eligible, requests: [], canRequest: true, canApprove: false, canManage: false } })
+    await wrapper.get('[data-testid="kol-payout-eligible-grid-toggle"]').trigger('click')
     const checks = wrapper.findAll('input[type="checkbox"]')
     await checks[0].setValue(true); await checks[1].setValue(true)
     const submit = wrapper.findAll('button').find(b => b.text().includes('提交审批'))!

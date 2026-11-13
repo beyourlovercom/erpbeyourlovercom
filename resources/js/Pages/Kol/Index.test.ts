@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import Index from './Index.vue'
 import type { GridPreferenceValue } from '../../Composables/useAccountGridPreferences'
 
@@ -11,7 +12,6 @@ vi.mock('@inertiajs/vue3', () => ({
 }))
 vi.mock('axios', () => ({ default: { put: putMock } }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
-
 const row = (overrides: Record<string, unknown> = {}) => ({
   id: 1,
   display_name: 'Bound Creator',
@@ -44,10 +44,10 @@ const row = (overrides: Record<string, unknown> = {}) => ({
 
 type KolGridColumnKey = 'account' | 'level' | 'city' | 'country_region' | 'categories' | 'products' | 'content_format' | 'product_quantity' | 'relationship_stage' | 'status' | 'mcn_agency' | 'owner' | 'followers' | 'published' | 'historical_order_count' | 'joined_at' | 'internal_contact'
 
-const mountPage = (rows: ReturnType<typeof row>[], gridPreference: GridPreferenceValue<KolGridColumnKey> | null = null) => mount(Index, {
+const mountPage = (rows: ReturnType<typeof row>[], gridPreference: GridPreferenceValue<KolGridColumnKey> | null = null, legacy = true) => mount(Index, {
   props: {
-    kols: { data: rows, current_page: 1, last_page: 1, per_page: 30, total: rows.length },
-    filters: {},
+    kols: { data: rows, current_page: 1, last_page: 1, per_page: legacy ? 30 : 50, total: rows.length },
+    filters: { legacy_grid: legacy ? '1' : '0' },
     savedViews: [],
     ownerOptions: [],
     canOperate: true,
@@ -128,5 +128,38 @@ describe('KOL library Affiliate account visibility and grid preferences', () => 
     const reordered = wrapper.findAll('th').map(th => th.text()).filter(Boolean)
     expect(reordered.slice(0, 4)).toEqual(['红人名称', '账号', '粉丝数', '等级'])
     expect(putMock).toHaveBeenCalledWith('/ui/preferences/grid.kol.library.v1', expect.any(Object))
+  })
+})
+
+
+describe('KOL library default shared AG Grid V1 contracts', () => {
+  const page = readFileSync('resources/js/Pages/Kol/Index.vue', 'utf8')
+  it('uses default new AG Grid, scoped server rows and a real legacy fallback switch', () => {
+    expect(page).toContain('const legacyTable = ref(props.filters.legacy_grid')
+    expect(page).toContain('<GlobalGrid v-if="!legacyTable"')
+    expect(page).toContain('v-else class="kol-grid-shell"')
+    expect(page).toContain('data-testid="kol-grid-switch"')
+    expect(page).toContain('namespace="grid.kol.library.global.v1"')
+    expect(page).toContain(':page="gridPager"')
+    expect(page).toContain('WordPress: ')
+    expect(page).toContain('affiliate_id: kol.affiliate_account')
+    expect(page).toContain('gridRows = computed')
+  })
+  it('connects real server-side search, filters, sort and pagination', () => {
+    expect(page).toContain('@page-change="goToPage"')
+    expect(page).toContain('@page-size-change="gridPageSize"')
+    expect(page).toContain('@search-change="gridSearch"')
+    expect(page).toContain('@sort-change="gridSort"')
+    expect(page).toContain('@column-search-change="gridColumnFilter"')
+    expect(page).toContain('grid_account')
+    expect(page).toContain('grid_owner')
+    expect(page).toContain('sortFields')
+    expect(page).toContain("[20, 30, 50, 100].includes(size)")
+  })
+  it('respects KOL edit permissions and does not invent bulk write actions', () => {
+    expect(page).toContain('...(props.canOperate ?')
+    expect(page).toContain("{label:'查看',href:String(row.detail_url)}")
+    expect(page).toContain(':enable-selection="false"')
+    expect(page).not.toContain("router.post('/kol/bulk-archive'")
   })
 })

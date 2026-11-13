@@ -174,6 +174,81 @@ class KolFoundationTest extends TestCase
         $this->assertNotContains($otherKol->id, $ids);
     }
 
+    public function test_global_grid_pagination_is_bounded_and_server_sort_is_allowlisted(): void
+    {
+        $admin = $this->adminUser();
+        for ($i = 1; $i <= 22; $i++) {
+            $this->makeKol([
+                'display_name' => sprintf('Grid Creator %02d', $i),
+                'owner_id' => $admin->id,
+                'shipping_city' => sprintf('City %02d', 23 - $i),
+            ]);
+        }
+
+        $response = $this->actingAs($admin)->get('/kol/library?per_page=20&sort=shipping_city&direction=asc');
+        $response->assertOk();
+        $pager = $response->original->getData()['page']['props']['kols'];
+        self::assertSame(20, $pager['per_page']);
+        self::assertSame(22, $pager['total']);
+        self::assertCount(20, $pager['data']);
+        self::assertSame('City 01', $pager['data'][0]['shipping_city']);
+
+        $invalid = $this->actingAs($admin)->get('/kol/library?per_page=999&sort=not_a_column');
+        self::assertSame(50, $invalid->original->getData()['page']['props']['kols']['per_page']);
+        self::assertSame('0', $invalid->original->getData()['page']['props']['filters']['legacy_grid']);
+        $legacy = $this->actingAs($admin)->get('/kol/library?legacy_grid=1');
+        self::assertSame(30, $legacy->original->getData()['page']['props']['kols']['per_page']);
+    }
+
+    public function test_global_grid_account_and_email_search_stays_inside_owner_scope(): void
+    {
+        config(['services.andy_core.connection_key' => 'beyourlover.com']);
+        $specialist = $this->specialistUser();
+        $other = $this->adminUser();
+        $own = $this->makeKol([
+            'display_name' => 'Own Creator', 'owner_id' => $specialist->id,
+            'contact_email' => 'creator@example.test', 'shipping_city' => 'Austin', 'country_code' => 'US',
+        ]);
+        $hidden = $this->makeKol([
+            'display_name' => 'Hidden Creator', 'owner_id' => $other->id,
+            'contact_email' => 'hidden@example.test', 'shipping_city' => 'Austin', 'country_code' => 'US',
+        ]);
+        foreach ([[$own, 19001, 'creator-unique-wp'], [$hidden, 19002, 'hidden-unique-wp']] as [$kol, $affiliateId, $login]) {
+            KolAffiliateAccount::create([
+                'connection_key' => 'beyourlover.com', 'affiliate_id' => $affiliateId,
+                'kol_id' => $kol->id, 'wordpress_user_id' => $affiliateId + 10000,
+                'wordpress_user_login' => $login,
+                'provider_status' => 'active', 'origin' => 'external_sync',
+            ]);
+        }
+        foreach (['search=creator%40example.test', 'search=creator-unique-wp',
+            'grid_account=19001', 'grid_account=creator-unique-wp',
+            'grid_city=Austin&grid_country=US', 'grid_email=creator%40example.test',
+            'grid_owner='.urlencode($specialist->name)] as $query) {
+            $response = $this->actingAs($specialist)->get('/kol/library?'.$query.'&per_page=50');
+            $response->assertOk();
+            $ids = array_column($response->original->getData()['page']['props']['kols']['data'], 'id');
+            self::assertSame([$own->id], $ids, 'Unexpected scoped rows for '.$query);
+        }
+        $response = $this->actingAs($specialist)->get('/kol/library?grid_account=19002&owner_id='.$other->id);
+        self::assertSame(0, $response->original->getData()['page']['props']['kols']['total']);
+    }
+
+    public function test_global_grid_system_views_apply_real_stage_and_my_owner_filters(): void
+    {
+        $admin = $this->adminUser();
+        $other = $this->adminUser();
+        $mine = $this->makeKol(['display_name' => 'My Prospect', 'owner_id' => $admin->id, 'relationship_stage' => 'prospect']);
+        $otherKol = $this->makeKol(['display_name' => 'Another Negotiating', 'owner_id' => $other->id, 'relationship_stage' => 'negotiating']);
+        $this->makeKol(['display_name' => 'Another Cooperating', 'owner_id' => $other->id, 'relationship_stage' => 'cooperating']);
+
+        $mineResponse = $this->actingAs($admin)->get('/kol/library?view=my_kols');
+        self::assertSame([$mine->id], array_column($mineResponse->original->getData()['page']['props']['kols']['data'], 'id'));
+
+        $negotiating = $this->actingAs($admin)->get('/kol/library?view=negotiating');
+        self::assertSame([$otherKol->id], array_column($negotiating->original->getData()['page']['props']['kols']['data'], 'id'));
+    }
+
     public function test_library_projects_account_synced_grid_preference_namespace_and_value(): void
     {
         $user = $this->userWith(['kol.view']);

@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import { Head, Link, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import { ref } from 'vue'
+import KolModuleGrid, { type KolModuleColumn } from './Shared/KolModuleGrid.vue'
 
 type ReferralRow = {
   id:number; referral_id:number; affiliate_id:number; order_reference:string
@@ -15,6 +17,30 @@ type StatusSummary = Record<string,{count:number;amount:string}>
 type Summary = { referrals:number; commission_amount:string; currency:string|null; by_status:StatusSummary; affiliate_unresolved:number; order_unresolved:number }
 const props = defineProps<{ canSync:boolean; canRequestPayouts:boolean; canManagePayouts:boolean; connectionKey:string; referrals:ReferralRow[]; summary:Summary }>()
 const form = useForm<{ referral_sync?:string }>({})
+const legacyTable = ref(false)
+const gridRows = computed(() => props.referrals.map(r => ({
+  id:r.id, referral:'#'+r.referral_id, context:r.context, reference:r.order_reference,
+  kol:r.kol?.display_name || '未解析 KOL', kol_id:r.kol?.id ?? null,
+  affiliate:'#'+r.affiliate_id, order:r.order?.erp_order_id || '历史订单未解析',
+  order_url:r.order?.id ? '/customers/orders/'+r.order.id : '',
+  amount:r.currency+' '+r.commission_amount, status:r.provider_status,
+  date:time(r.referral_date), payout:r.payout_id ? '#'+r.payout_id : '—',
+  reconciliation:r.reconciliation_status, affine:r.affiliate_resolution_status,
+  order_resolution:r.order_resolution_status,
+})))
+const gridColumns:KolModuleColumn[]=[
+  {key:'referral',label:'Referral ID',width:120},{key:'reference',label:'来源订单引用',width:190},
+  {key:'kol',label:'KOL',width:180,kind:'link',hrefFor:r=> r.kol_id ? '/kol/library/'+r.kol_id : ''},
+  {key:'affiliate',label:'Affiliate',width:125},
+  {key:'order',label:'Canonical Order',width:200,kind:'link',hrefFor:r=>String(r.order_url)},
+  {key:'amount',label:'佣金',width:145},
+  {key:'status',label:'Provider 状态',width:135,kind:'badge'},
+  {key:'date',label:'时间',width:180},{key:'payout',label:'Payout evidence',width:155},
+  {key:'reconciliation',label:'对账',width:160,kind:'badge'},
+  {key:'affine',label:'Affiliate 解析',width:140,hidden:true},
+  {key:'order_resolution',label:'订单解析',width:140,hidden:true},
+  {key:'context',label:'Referral context',width:145,hidden:true},
+]
 const breadcrumbs = [{ label:'BYL ERP', href:'/dashboard' }, '网红', '佣金与结算']
 const statusRows = computed(() => Object.entries(props.summary.by_status).sort((a,b) => b[1].count-a[1].count))
 function syncNow():void { if(props.canSync && !form.processing) form.post('/kol/commissions/sync',{preserveScroll:true}) }
@@ -40,7 +66,12 @@ function orderLabel(row:ReferralRow):string { return row.order?.erp_order_id || 
       <div v-if="statusRows.length" class="mvp-card status-strip">
         <div v-for="[status,bucket] in statusRows" :key="status"><strong>{{ status }}</strong><span>{{ bucket.count }} 条 · {{ summary.currency || '' }} {{ bucket.amount }}</span></div>
       </div>
-      <div v-if="referrals.length" class="mvp-card table-wrap">
+      <div class="kol-grid-switch"><strong>Referral Mirror · {{ referrals.length }} 条已加载</strong>
+        <button type="button" data-testid="kol-commission-grid-toggle" @click="legacyTable=!legacyTable">{{ legacyTable?'切回新表':'查看原表' }}</button>
+      </div>
+      <KolModuleGrid v-if="!legacyTable && referrals.length" namespace="grid.kol.commissions.global.v1"
+        title="Referral / Commission" :rows="gridRows" :columns="gridColumns" />
+      <div v-if="legacyTable && referrals.length" class="mvp-card table-wrap">
         <table class="commission-table">
           <thead><tr><th>Referral</th><th>KOL / Affiliate</th><th>Canonical Order</th><th>佣金</th><th>Provider 状态</th><th>时间</th><th>Payout evidence</th><th>对账</th></tr></thead>
           <tbody><tr v-for="row in referrals" :key="row.id">
@@ -61,5 +92,7 @@ function orderLabel(row:ReferralRow):string { return row.order?.erp_order_id || 
 </template>
 
 <style scoped>
+.kol-grid-switch{display:flex;align-items:center;justify-content:space-between;gap:12px}.kol-grid-switch button{border:1px solid #cbd5e1;border-radius:7px;background:#fff;padding:7px 12px;cursor:pointer}
+
 .commission-page{display:grid;gap:14px}.commission-heading{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.commission-heading p{max-width:760px}.heading-actions{display:flex;gap:8px;align-items:center}.heading-actions a{border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:9px 13px;text-decoration:none;color:#334155}.commission-heading button{border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:9px 13px;cursor:pointer}.commission-heading button:disabled{cursor:not-allowed;color:#94a3b8;background:#f8fafc}.commission-error{padding:13px 16px;color:#991b1b}.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.summary-card{padding:15px 17px}.summary-card span,.summary-card small{display:block;color:#64748b;font-size:12px}.summary-card strong{display:block;margin:5px 0;font-size:22px;color:#0f172a}.status-strip{display:flex;gap:12px;flex-wrap:wrap;padding:12px 16px}.status-strip div{min-width:140px}.status-strip strong,.status-strip span{display:block}.status-strip span{font-size:12px;color:#64748b;margin-top:3px}.table-wrap{overflow-x:auto}.commission-table{width:100%;min-width:1220px;border-collapse:collapse}.commission-table th,.commission-table td{padding:12px 14px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top}.commission-table th{font-size:12px;color:#64748b}.commission-table td{font-size:13px;color:#334155}.commission-table small{display:block;margin-top:3px;color:#64748b;font-size:12px}.muted{color:#94a3b8}.empty{min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#64748b}.empty strong{color:#0f172a}.empty p{margin:6px 0 0}@media(max-width:1050px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.commission-heading{flex-direction:column}}
 </style>

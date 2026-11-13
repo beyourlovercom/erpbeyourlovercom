@@ -1,6 +1,12 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
+vi.mock('../../../Components/DataGrid/OmsGrid.vue', () => ({ default: {
+  name: 'OmsGrid',
+  props: ['namespace','rows','columns','serverPagination','enableSelection','selectedOrderIds'],
+  template: '<div data-testid="kol-test-oms-grid"><span v-for="r in rows" :key="r.id">{{r.id}}</span></div>',
+} }))
+
 
 const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }))
 
@@ -64,6 +70,7 @@ describe('AffiliateWP workspace', () => {
   it('renders Influencer mirror rows and exposes the M1.4C Coupon mode', async () => {
     const wrapper = mount(Index, { props: props({ affiliates: [affiliate] }) })
 
+    await wrapper.get('[data-testid="kol-affiliate-grid-toggle"]').trigger('click')
     expect(wrapper.text()).toContain('Alice Creator')
     expect(wrapper.text()).toContain('101')
     expect(wrapper.text()).toContain('5001')
@@ -106,8 +113,9 @@ describe('AffiliateWP workspace', () => {
     expect(postMock).toHaveBeenCalledWith('/kol/affiliatewp/sync', { preserveScroll: true })
   })
 
-  it('keeps binding actions visible but disabled for specialists', () => {
+  it('keeps binding actions visible but disabled for specialists', async () => {
     const wrapper = mount(Index, { props: props({ affiliates: [affiliate] }) })
+    await wrapper.get('[data-testid="kol-affiliate-grid-toggle"]').trigger('click')
     const bindButton = wrapper.findAll('button').find((button) => button.text() === '绑定现有 KOL')
     const convertButton = wrapper.findAll('button').find((button) => button.text() === '转为新 KOL')
     expect(bindButton?.attributes('disabled')).toBeDefined()
@@ -127,6 +135,7 @@ describe('AffiliateWP workspace', () => {
       }),
     })
 
+    await wrapper.get('[data-testid="kol-affiliate-grid-toggle"]').trigger('click')
     await wrapper.findAll('button').find((button) => button.text() === '绑定现有 KOL')!.trigger('click')
     expect(wrapper.find('[data-testid="bind-panel"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Existing KOL')
@@ -135,6 +144,34 @@ describe('AffiliateWP workspace', () => {
     expect(wrapper.find('[data-testid="convert-panel"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('不会改变 AffiliateWP 当前 Provider 状态')
     expect(wrapper.text()).toContain('Manager Owner')
+  })
+
+  it('never infers provider IDs with missing values as invalid numbers in either new grid', async () => {
+    const unbound = { ...affiliate, id: 99, affiliate_id: null, wordpress_user_id: null,
+      display_name: 'Pending Provider Identity', provider_status: 'pending' }
+    const coupon = {
+      id: 10, coupon_id: null, code: 'UAT-NO-ID', normalized_code: 'uat-no-id',
+      discount_type: 'percent', amount: '15.00', provider_status: 'pending',
+      date_expires: null, affiliate_id: null, kol: null, origin: 'external_sync',
+      sync_status: 'synced', reconciliation_status: 'present', provisioning_status: 'not_requested',
+      last_error_code: null, last_error_message: null, last_successful_sync_at: null,
+    }
+    const wrapper = mount(Index, { props: props({
+      affiliates: [affiliate, unbound], coupons: [coupon],
+    }) })
+    const affiliateGrid = wrapper.findComponent({ name: 'KolModuleGrid' })
+    expect(affiliateGrid.exists()).toBe(true)
+    const values = affiliateGrid.props('rows') as Array<Record<string, unknown>>
+    expect(values[0].affiliate_id).toBe('#101')
+    expect(values[0].wp_user).toBe('#5001')
+    expect(values[1].affiliate_id).toBe('—')
+    expect(values[1].wp_user).toBe('—')
+    await wrapper.findAll('button').find(button => button.text() === 'Coupon')!.trigger('click')
+    const couponGrid = wrapper.findComponent({ name: 'KolModuleGrid' })
+    expect(couponGrid.exists()).toBe(true)
+    const couponRow = (couponGrid.props('rows') as Array<Record<string, unknown>>)[0]
+    expect(couponRow.coupon_id).toBe('—')
+    expect(couponRow.affiliate_id).toBe('—')
   })
 
   it('shows approved KOL provisioning entry and posts to the existing Core D route', async () => {

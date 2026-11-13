@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3'
 import axios from 'axios'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import KolModuleGrid, { type KolModuleColumn } from './Shared/KolModuleGrid.vue'
 
 type Attachment = { id:number; name:string; mime_type:string|null; url:string; created_at:string|null }
 type ContentRow = { id:number; kol_id:number; kol:{id:number;display_name:string}|null; collaboration_id:number|null; collaboration:{id:number;primary_post_url:string|null;cooperation_type:string|null}|null; platform:string; content_type:string; publication_status:'unpublished'|'published'; post_url:string|null; planned_publish_at:string|null; published_at:string|null; evidence_classification:string; attachments:Attachment[]; created_at:string|null }
@@ -15,9 +16,45 @@ const search = ref(props.filters.search ?? '')
 const publicationStatus = ref(props.filters.publication_status ?? '')
 const platform = ref(props.filters.platform ?? '')
 const evidence = ref(props.filters.evidence ?? '')
-const filterPayload = () => ({ search:search.value||undefined, publication_status:publicationStatus.value||undefined, platform:platform.value||undefined, evidence:evidence.value||undefined })
+const pageSize = ref(String(props.filters.per_page ?? props.contents.per_page ?? 50))
+const legacyTable = ref(false)
+const filterPayload = () => ({ search:search.value||undefined, publication_status:publicationStatus.value||undefined, platform:platform.value||undefined, evidence:evidence.value||undefined, per_page:pageSize.value })
 const applyFilters = () => router.get('/kol/content', filterPayload(), { preserveState:true, replace:true })
 const goPage = (page:number) => router.get('/kol/content', { ...filterPayload(), page }, { preserveState:true, replace:true })
+const gridSearch = (term:string) => { search.value=term; router.get('/kol/content', {...filterPayload(),page:1},{preserveState:true,replace:true}) }
+const gridPageSize = (size:number|'all') => {
+  if(size==='all') return
+  pageSize.value=String([20,50,100].includes(size)?size:50)
+  router.get('/kol/content', {...filterPayload(),page:1},{preserveState:true,replace:true})
+}
+const gridRows = computed(() => props.contents.data.map(c => ({
+  id:c.id, kol_id:c.kol_id, name:c.kol?.display_name ?? 'KOL #'+c.kol_id,
+  content:'#'+c.id+' · '+typeLabel(c.content_type),
+  platform:platformLabel(c.platform), post_url:c.post_url ?? '待提供 URL', link_url:c.post_url ?? '',
+  status:statusLabel(c.publication_status), evidence:evidenceLabel(c.evidence_classification)+' ('+c.attachments.length+')',
+  planned:dateLabel(c.planned_publish_at), published:dateLabel(c.published_at),
+  collaboration:c.collaboration ? '#'+c.collaboration.id+' · '+(c.collaboration.cooperation_type || '正式合作') : '—',
+})))
+const gridColumns: KolModuleColumn[] = [
+  {key:'content',label:'内容',width:160},
+  {key:'name',label:'KOL',width:185,kind:'link',hrefFor:r=>'/kol/library/'+r.kol_id},
+  {key:'platform',label:'平台',width:135},
+  {key:'post_url',label:'Content 发布 URL',width:240,kind:'link',hrefFor:r=>String(r.link_url)},
+  {key:'status',label:'发布状态',width:135,kind:'badge'},
+  {key:'evidence',label:'发布素材',width:175},
+  {key:'planned',label:'计划发布日期',width:140},
+  {key:'published',label:'实际发布日期',width:140},
+  {key:'collaboration',label:'正式合作',width:170},
+  {key:'actions',label:'操作',width:100,kind:'actions',actionsFor:r=>{
+    const item=props.contents.data.find(c=>c.id===Number(r.id))
+    return props.canOperate && item ? [{label:'编辑',onClick:()=>{void openEdit(item)}}] : []
+  }},
+]
+const gridPager = computed(() => ({
+  current_page:props.contents.current_page,last_page:props.contents.last_page,
+  per_page:props.contents.per_page,total:props.contents.total,
+}))
+
 
 const drawerOpen = ref(false)
 const saving = ref(false)
@@ -181,7 +218,14 @@ const breadcrumbs=[{label:'BYL ERP',href:'/dashboard'},{label:'网红',href:'/ko
         <div class="content-search"><span>⌕</span><input v-model="search" placeholder="搜索 KOL / 合作 / URL ..."><button type="submit">搜索</button></div>
       </form>
 
-      <div class="content-table-wrap">
+      <div class="kol-grid-switch"><strong>内容与发布 · {{ contents.total }} 条</strong>
+        <button type="button" data-testid="kol-content-grid-toggle" @click="legacyTable=!legacyTable">{{ legacyTable?'切回新表':'查看原表' }}</button>
+      </div>
+      <KolModuleGrid v-if="!legacyTable" namespace="grid.kol.content.global.v1" title="内容与发布"
+        :rows="gridRows" :columns="gridColumns" :page="gridPager" :search="search"
+        search-placeholder="搜索全部 KOL / 发帖 URL ..."
+        @page-change="goPage" @page-size-change="gridPageSize" @search-change="gridSearch" />
+      <div v-else class="content-table-wrap">
         <table class="content-table">
           <thead><tr><th>内容</th><th>KOL</th><th>平台</th><th>Content 发布 URL</th><th>发布状态</th><th>发布素材</th><th>发布日期</th><th>正式合作</th><th></th></tr></thead>
           <tbody>
@@ -201,7 +245,7 @@ const breadcrumbs=[{label:'BYL ERP',href:'/dashboard'},{label:'网红',href:'/ko
         </table>
       </div>
 
-      <div v-if="contents.last_page > 1" class="mvp-pagination">
+      <div v-if="legacyTable && contents.last_page > 1" class="mvp-pagination">
         <button class="mvp-button" type="button" :disabled="contents.current_page <= 1" @click="goPage(contents.current_page - 1)">上一页</button>
         <span>第 {{ contents.current_page }} / {{ contents.last_page }} 页 · 共 {{ contents.total }} 条</span>
         <button class="mvp-button" type="button" :disabled="contents.current_page >= contents.last_page" @click="goPage(contents.current_page + 1)">下一页</button>
@@ -258,6 +302,8 @@ const breadcrumbs=[{label:'BYL ERP',href:'/dashboard'},{label:'网红',href:'/ko
 </template>
 
 <style scoped>
+.kol-grid-switch{display:flex;align-items:center;justify-content:space-between;gap:12px}.kol-grid-switch button{border:1px solid #cbd5e1;border-radius:7px;background:#fff;padding:7px 12px;cursor:pointer}
+
 .content-page{max-width:none}.content-toolbar{display:flex;gap:10px;align-items:center;margin:18px 0}.content-toolbar select,.content-search{height:40px;border:1px solid #d7dee7;border-radius:8px;background:#fff}.content-toolbar select{padding:0 34px 0 12px;color:#344054}.content-search{display:flex;align-items:center;flex:1;min-width:280px;padding-left:12px}.content-search span{color:#98a2b3}.content-search input{flex:1;border:0;outline:0;padding:0 10px;background:transparent}.content-search button{height:100%;padding:0 16px;border:0;border-left:1px solid #e5e7eb;background:transparent;cursor:pointer}.content-table-wrap{overflow:auto;border:1px solid #e5eaf0;border-radius:10px;background:#fff}.content-table{width:100%;border-collapse:collapse;min-width:1180px}.content-table th{padding:12px 14px;text-align:left;font-size:12px;color:#667085;background:#f8fafc;border-bottom:1px solid #e8edf2}.content-table td{padding:12px 14px;font-size:13px;color:#344054;border-bottom:1px solid #eef2f6;vertical-align:middle}.content-table tr:last-child td{border-bottom:0}.content-table td small{display:block;color:#98a2b3;margin-top:4px}.content-cell{display:flex;align-items:center;gap:10px}.content-thumb{width:48px;height:48px;border-radius:7px;overflow:hidden;background:#f1f5f9;display:grid;place-items:center;color:#98a2b3;flex:0 0 auto}.content-thumb img{width:100%;height:100%;object-fit:cover}.content-kol-link{font-weight:600;color:#367d76}.platform-chip{font-weight:600}.url-cell{max-width:220px}.url-cell a{display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#32736d}.publication-pill{display:inline-flex;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:700}.publication-pill.is-published{background:#e9f7f3;color:#2c7a6d}.publication-pill.is-unpublished{background:#eef4fb;color:#52749b}.asset-summary{font-weight:600}.mvp-pagination{display:flex;justify-content:center;gap:12px;align-items:center;margin-top:16px}
 .content-drawer-backdrop{position:fixed;inset:0;z-index:1600;background:rgba(15,23,42,.44);display:flex;justify-content:flex-end}.content-drawer{width:min(840px,calc(100vw - 260px));height:100dvh;background:#f8fafc;box-shadow:-18px 0 50px rgba(15,23,42,.18);overflow:hidden;display:flex;flex-direction:column;border-radius:16px 0 0 16px}.drawer-header{position:sticky;top:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 24px;background:#fff;border-bottom:1px solid #e4e9ef}.drawer-header h2{margin:0;font-size:22px;color:#101828}.drawer-header p{margin:4px 0 0;font-size:13px;color:#667085}.drawer-actions{display:flex;align-items:center;gap:10px}.drawer-btn{height:38px;padding:0 16px;border:1px solid #d0d7e0;border-radius:7px;background:#fff;color:#344054;font-weight:600;cursor:pointer}.drawer-btn:hover:not(:disabled){background:#f8fafc}.drawer-btn:disabled{opacity:.48;cursor:not-allowed}.drawer-btn-primary{border-color:#2f8f83;background:#2f8f83;color:#fff}.drawer-btn-primary:hover:not(:disabled){background:#287d73}.drawer-close{width:34px;height:34px;border:0;background:transparent;font-size:26px;line-height:1;color:#344054;cursor:pointer}.drawer-scroll{padding:14px 18px 28px;overflow-y:auto}.drawer-section{padding:16px;margin-bottom:12px;background:#fff;border:1px solid #e1e7ee;border-radius:10px}.drawer-section h3{margin:0 0 14px;font-size:16px;color:#1d2939}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}.field{display:flex;flex-direction:column;gap:6px;margin-bottom:13px}.field:last-child{margin-bottom:0}.field label,.reference-box label{font-size:12px;font-weight:700;color:#344054}.field input,.field select,.kol-search-row input{width:100%;height:38px;border:1px solid #d2d9e2;border-radius:7px;padding:0 11px;background:#fff;color:#344054;outline:none}.field input:focus,.field select:focus,.kol-search-row input:focus{border-color:#6bb5aa;box-shadow:0 0 0 3px rgba(47,143,131,.08)}.field input:disabled{background:#f2f4f7;color:#98a2b3}.field small,.reference-box small{font-size:11px;color:#7d8998}.readonly-field{height:38px;display:flex;align-items:center;padding:0 11px;border:1px solid #d2d9e2;border-radius:7px;background:#f7f9fb;color:#475467}.kol-search-row,.reference-row{display:flex;gap:8px}.kol-search-row input,.reference-url{flex:1}.reference-box{padding:12px;margin-top:2px;border:1px solid #e4e9ef;border-radius:8px;background:#fafbfc}.reference-row{margin:7px 0 6px}.status-field{max-width:360px}.status-toggle{display:grid;grid-template-columns:1fr 1fr;height:36px;border:1px solid #cfd7df;border-radius:7px;overflow:hidden;background:#fff}.status-toggle button{border:0;background:#fff;color:#667085;font-weight:700;cursor:pointer}.status-toggle button+button{border-left:1px solid #cfd7df}.status-toggle button.active{color:#247a70;background:#eff9f6;box-shadow:inset 0 0 0 1px #47a596}.upload-zone{display:flex;align-items:center;gap:14px;min-height:76px;padding:12px 14px;border:1px dashed #aeb9c7;border-radius:8px;background:#fcfdff;cursor:pointer;outline:none}.upload-zone:focus{border-color:#4ba395;box-shadow:0 0 0 3px rgba(47,143,131,.08)}.upload-main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center}.upload-main strong{font-size:13px;color:#344054}.upload-main small{font-size:11px;color:#98a2b3}.upload-icon{font-size:22px;color:#5b6b7d}.sync-btn{flex:0 0 auto}.asset-card{display:grid;grid-template-columns:48px 1fr auto auto;gap:10px;align-items:center;margin-top:10px;padding:9px;border:1px solid #e1e7ee;border-radius:8px;background:#fff}.asset-card.is-pending{background:#f7fbfa}.asset-preview{width:48px;height:48px;border-radius:6px;overflow:hidden;background:#edf2f7;display:grid;place-items:center;font-size:11px;font-weight:700;color:#667085}.asset-preview img{width:100%;height:100%;object-fit:cover}.asset-meta{min-width:0}.asset-meta strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:#344054}.asset-meta small{font-size:11px;color:#98a2b3}.asset-card a,.asset-card button{border:0;background:transparent;color:#2f8f83;font-weight:600;text-decoration:none;cursor:pointer}.asset-card .danger-link{color:#d54b4b}.private-note{margin:10px 0 0;font-size:11px;color:#667085}.form-error{margin-bottom:12px;padding:10px 12px;border:1px solid #f2b8b5;border-radius:7px;background:#fff5f4;color:#a33b34;font-size:12px}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:1000px){.content-drawer{width:min(840px,calc(100vw - 32px))}.content-toolbar{flex-wrap:wrap}.content-search{flex-basis:100%}}@media(max-width:720px){.content-drawer{width:100vw;border-radius:0}.drawer-header{padding:14px}.drawer-actions .drawer-btn:first-child{display:none}.drawer-scroll{padding:10px}.two-col{grid-template-columns:1fr}.reference-row{flex-direction:column}.status-field{max-width:none}.upload-zone{flex-direction:column}.sync-btn{width:100%}}

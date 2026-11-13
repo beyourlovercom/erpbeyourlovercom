@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import KolModuleGrid, { type KolModuleColumn } from '../Shared/KolModuleGrid.vue'
 import { useForm } from '@inertiajs/vue3'
 
 export type CouponRow = {
@@ -17,6 +18,25 @@ const syncForm = useForm<{ coupon_sync?: string }>({})
 const form = useForm<{ kol_id: number | null; code: string; discount_type: string; amount: string; expiry_date: string; coupon_provision?: string }>({
   kol_id: null, code: '', discount_type: 'percent', amount: '', expiry_date: '',
 })
+const legacyCouponTable = ref(false)
+const couponGridRows = computed(() => props.coupons.map(c => ({
+  id:c.id, code:c.code || '（空 Coupon Code）', coupon_id:c.coupon_id == null ? '—' : '#' + c.coupon_id,
+  kol:c.kol?.display_name ?? '未绑定 KOL', affiliate_id:c.affiliate_id == null ? '—' : '#' + c.affiliate_id,
+  amount:c.amount === null ? '—' : c.amount, discount_type:c.discount_type ?? '—',
+  expires:time(c.date_expires), provider:c.provider_status || '—',
+  provisioning:c.provisioning_status, error:c.last_error_code ? c.last_error_code+' · '+(c.last_error_message||'') : '—',
+  reconciliation:c.reconciliation_status, sync:c.sync_status,
+  synced_at:time(c.last_successful_sync_at),
+})))
+const couponGridColumns: KolModuleColumn[] = [
+  {key:'code',label:'Coupon Code',width:205},{key:'coupon_id',label:'Coupon ID',width:125},
+  {key:'kol',label:'KOL',width:165},{key:'affiliate_id',label:'Affiliate ID',width:120},
+  {key:'amount',label:'折扣金额',width:115},{key:'discount_type',label:'类型',width:120},
+  {key:'expires',label:'到期日',width:190},{key:'provider',label:'Provider',width:135,kind:'badge'},
+  {key:'provisioning',label:'Provision',width:145,kind:'badge'},{key:'error',label:'错误反馈',width:260},
+  {key:'reconciliation',label:'对账',width:145},{key:'sync',label:'同步',width:145},
+  {key:'synced_at',label:'同步时间',width:190,hidden:true},
+]
 const selected = computed(() => props.couponCandidates.find((row) => row.kol_id === form.kol_id) ?? null)
 const canSubmit = computed(() => props.canManageAffiliates && !!form.kol_id && form.code.trim() !== '' && form.amount !== '' && !form.processing)
 
@@ -60,7 +80,13 @@ function time(value: string | null): string {
     </div>
   </div>
 
-  <div v-if="coupons.length" class="mvp-card coupon-table-wrap">
+  <div class="coupon-grid-choice">
+    <strong>Coupon / WooCommerce 镜像</strong>
+    <button type="button" data-testid="kol-coupon-grid-toggle" @click="legacyCouponTable=!legacyCouponTable">{{ legacyCouponTable ? '切回新表' : '查看原表' }}</button>
+  </div>
+  <KolModuleGrid v-if="!legacyCouponTable && coupons.length" namespace="grid.kol.coupons.global.v1"
+    title="Affiliate Coupons" :rows="couponGridRows" :columns="couponGridColumns" />
+  <div v-if="legacyCouponTable && coupons.length" class="mvp-card coupon-table-wrap">
     <table class="coupon-table">
       <thead><tr><th>Coupon</th><th>Coupon ID</th><th>KOL / Affiliate</th><th>折扣</th><th>到期</th><th>Provider</th><th>Provision</th><th>同步</th></tr></thead>
       <tbody><tr v-for="coupon in coupons" :key="coupon.id">
@@ -79,6 +105,8 @@ function time(value: string | null): string {
 </template>
 
 <style scoped>
+.coupon-grid-choice{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px}.coupon-grid-choice button{background:#fff;border:1px solid #cbd5e1;border-radius:7px;padding:7px 12px;cursor:pointer}
+
 .coupon-error { padding: 14px 18px; color: #991b1b; }
 .coupon-create { padding: 0; }
 .coupon-create-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:16px 18px; border-bottom:1px solid #e2e8f0; }
