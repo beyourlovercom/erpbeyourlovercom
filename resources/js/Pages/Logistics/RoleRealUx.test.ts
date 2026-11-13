@@ -1,4 +1,6 @@
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
+import { router } from '@inertiajs/vue3'
+import LogisticsL2Grid from './LogisticsL2Grid.vue'
 import { describe, expect, it, vi } from 'vitest'
 import AwaitingTracking from './AwaitingTracking.vue'
 import InTransit from './InTransit.vue'
@@ -43,6 +45,67 @@ const reviewRow = {
 }
 
 describe('Logistics role real UX', () => {
+  it('R5-L2 new Grid renders only once and navigates to unchanged original table on request', async()=>{
+    const props={shipments:page(),statusBar,canOperate:true,
+      globalGridPilotAvailable:true,globalGridPilotEnabled:true,gridSearch:'',
+      gridSort:{colId:'shipped_at',direction:'desc' as const}}
+    for(const [component,path] of [
+      [AwaitingTracking,'/logistics/awaiting-tracking'],
+      [InTransit,'/logistics/in-transit'],
+      [Exceptions,'/logistics/exceptions'],
+    ] as const){
+      const wrapper=mount(component,{props,global:{stubs:{LogisticsL2Grid:true}}})
+      await flushPromises()
+      expect(wrapper.findAllComponents(LogisticsL2Grid)).toHaveLength(1)
+      expect(wrapper.find('.mvp-table-wrap').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="l2-global-grid-toggle"]').text()).toBe('返回原表')
+      await wrapper.get('[data-testid="l2-global-grid-toggle"]').trigger('click')
+      expect(vi.mocked(router.get)).toHaveBeenCalledWith(path,
+        {global_grid:'0',page:1},expect.objectContaining({replace:true}))
+      wrapper.unmount()
+    }
+  })
+
+  it('R5-L2 view-only roles cannot access newly added action editors even when Grid is enabled',async()=>{
+    for(const component of [AwaitingTracking,InTransit,Exceptions]){
+      const wrapper=mount(component,{props:{
+        shipments:page(),statusBar,canOperate:false,
+        globalGridPilotAvailable:true,globalGridPilotEnabled:true,
+      },global:{stubs:{LogisticsL2Grid:true}}})
+      await flushPromises()
+      wrapper.getComponent(LogisticsL2Grid).vm.$emit('open',shipment)
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('[data-testid="l2-grid-editor"]').exists()).toBe(false)
+      expect(wrapper.find('.mvp-table-wrap').exists()).toBe(false)
+      wrapper.unmount()
+    }
+  })
+
+  it('R5-L2 operator opens the old guarded action form from the new Grid, no auto POST',async()=>{
+    const before=vi.mocked(router.post).mock.calls.length
+    const cases=[
+      [AwaitingTracking,'填写真实 Tracking'],
+      [InTransit,'标记运输异常'],
+      [Exceptions,'处理异常订单'],
+    ] as const
+    for(const [component,expected] of cases){
+      const wrapper=mount(component,{props:{
+        shipments:page(),statusBar,canOperate:true,
+        globalGridPilotAvailable:true,globalGridPilotEnabled:true,
+      },global:{stubs:{LogisticsL2Grid:true}}})
+      await flushPromises()
+      wrapper.getComponent(LogisticsL2Grid).vm.$emit('open',shipment)
+      await wrapper.vm.$nextTick()
+      expect(wrapper.get('[data-testid="l2-grid-editor"]').text()).toContain(expected)
+      if(component!==Exceptions){
+        expect(wrapper.get('[data-testid="l2-grid-editor"]').find('button.mvp-button-primary').attributes('disabled'))
+          .toBeDefined()
+      }
+      wrapper.unmount()
+    }
+    expect(vi.mocked(router.post).mock.calls.length).toBe(before)
+  })
+
   it('makes awaiting-tracking read-only for view-only roles', () => {
     const wrapper = mount(AwaitingTracking, { props: { shipments: page({ ...shipment, tracking_number: null }), statusBar, canOperate: false } })
     expect(wrapper.text()).toContain('当前角色为只读模式')

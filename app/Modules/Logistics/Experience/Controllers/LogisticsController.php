@@ -347,14 +347,18 @@ final class LogisticsController
             ->whereNotNull('shipped_at')
             ->whereNull('tracking_number')
             ->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))
-            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
-            ->latest('shipped_at')->latest('id')
-            ->paginate(self::PER_PAGE)->withQueryString();
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
+        $grid = $this->l2GridSettings($request, $shipments);
+        $shipments = $shipments->paginate($grid['pageSize'])->withQueryString();
 
         return Inertia::render('Logistics/AwaitingTracking', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
             'statusBar' => $this->statusSummary->statusBar(),
             'canOperate' => $this->executionAccess->allows($request->user()),
+            'globalGridPilotAvailable' => $grid['available'],
+            'globalGridPilotEnabled' => $grid['enabled'],
+            'gridSearch' => $grid['search'],
+            'gridSort' => $grid['sort'],
         ]);
     }
 
@@ -366,14 +370,18 @@ final class LogisticsController
             ->whereNotNull('tracking_number')
             ->where('tracking_number', '!=', '')
             ->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))
-            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
-            ->latest('shipped_at')->latest('id')
-            ->paginate(self::PER_PAGE)->withQueryString();
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
+        $grid = $this->l2GridSettings($request, $shipments);
+        $shipments = $shipments->paginate($grid['pageSize'])->withQueryString();
 
         return Inertia::render('Logistics/InTransit', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
             'statusBar' => $this->statusSummary->statusBar(),
             'canOperate' => $this->executionAccess->allows($request->user()),
+            'globalGridPilotAvailable' => $grid['available'],
+            'globalGridPilotEnabled' => $grid['enabled'],
+            'gridSearch' => $grid['search'],
+            'gridSort' => $grid['sort'],
         ]);
     }
 
@@ -383,15 +391,72 @@ final class LogisticsController
             ->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])
             ->where('shipment_status', 'exception')
             ->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))
-            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
-            ->latest('shipped_at')->latest('id')
-            ->paginate(self::PER_PAGE)->withQueryString();
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
+        $grid = $this->l2GridSettings($request, $shipments);
+        $shipments = $shipments->paginate($grid['pageSize'])->withQueryString();
 
         return Inertia::render('Logistics/Exceptions', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
             'statusBar' => $this->statusSummary->statusBar(),
             'canOperate' => $this->executionAccess->allows($request->user()),
+            'globalGridPilotAvailable' => $grid['available'],
+            'globalGridPilotEnabled' => $grid['enabled'],
+            'gridSearch' => $grid['search'],
+            'gridSort' => $grid['sort'],
         ]);
+    }
+
+    /**
+     * Three L2 logistics queues share exactly one server-authoritative
+     * search / pagination / sorting contract. All queue inclusion predicates
+     * are applied BEFORE this read-only adapter and remain unchanged.
+     */
+    private function l2GridSettings(Request $request, \Illuminate\Database\Eloquent\Builder $query): array
+    {
+        $available = GlobalGridPilot::available();
+        $enabled = GlobalGridPilot::enabled($request);
+        $search = $enabled ? trim(mb_substr((string) $request->query('search', ''), 0, 100)) : '';
+        if ($search !== '') {
+            $term = '%'.addcslashes($search, '%_\\').'%';
+            $query->where(fn ($scope) => $scope
+                ->where('tracking_number', 'like', $term)
+                ->orWhere('logistics_note', 'like', $term)
+                ->orWhere('carrier', 'like', $term)
+                ->orWhere('service', 'like', $term)
+                ->orWhereHas('order', fn ($order) => $order
+                    ->where('erp_order_id', 'like', $term)
+                    ->orWhere('external_order_number', 'like', $term)
+                    ->orWhereHas('address', fn ($address) => $address
+                        ->where('recipient_name', 'like', $term))));
+        }
+
+        // Sort only fields on the shipments table. No untrusted SQL columns.
+        $sortMap = [
+            'shipped_at' => 'shipped_at',
+            'carrier' => 'carrier',
+            'tracking_number' => 'tracking_number',
+        ];
+        $sort = $enabled ? (string) $request->query('sort', '') : '';
+        $direction = strtolower((string) $request->query('direction', 'desc')) === 'asc' ? 'asc' : 'desc';
+        if ($enabled && isset($sortMap[$sort])) {
+            $query->reorder()->orderBy($sortMap[$sort], $direction)->orderByDesc('id');
+        } else {
+            $query->latest('shipped_at')->latest('id');
+            $sort = 'shipped_at';
+            $direction = 'desc';
+        }
+
+        $requestedSize = (int) $request->query('per_page', self::PER_PAGE);
+        $pageSize = $enabled && in_array($requestedSize, [20, 50, 100], true)
+            ? $requestedSize : self::PER_PAGE;
+
+        return [
+            'available' => $available,
+            'enabled' => $enabled,
+            'search' => $search,
+            'sort' => ['colId' => $sort, 'direction' => $direction],
+            'pageSize' => $pageSize,
+        ];
     }
 
     public function review(Request $request): Response

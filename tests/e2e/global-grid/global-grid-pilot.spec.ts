@@ -1221,3 +1221,69 @@ test('overseas bulk confirm ships only after preview and explicit acknowledgemen
   expect(applyRequests).toBe(0)
   console.log('OVERSEA_BATCH_SHIP_BROWSER_PREVIEW_CONFIRM_NO_APPLY_PASS')
 })
+
+
+test('R5-L2 all three logistics pilot Grids preserve native workflows, roles and one-click original table',async({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().logisticsOperator)
+  const pages=[
+    ['/logistics/awaiting-tracking','007-E2E-R5L2-AWAIT'],
+    ['/logistics/in-transit','007-E2E-R5L2-TRANSIT'],
+    ['/logistics/exceptions','007-E2E-R5L2-EXCEPTION'],
+  ] as const
+  const pendingMutationRequests:string[]=[]
+  await page.route('**/logistics/orders/**',async(route)=>{
+    if(route.request().method()!=='GET'){
+      pendingMutationRequests.push(route.request().url())
+      await route.abort()
+      return
+    }
+    await route.continue()
+  })
+  for(const [path,number] of pages){
+    await page.goto(path+'?global_grid=1',{waitUntil:'domcontentloaded'})
+    const grid=page.getByTestId('erp-global-grid-v1')
+    await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
+    await expect(grid.getByText(number,{exact:true})).toBeVisible()
+    await expect(page.locator('.mvp-table-wrap')).toHaveCount(0)
+    await expect(page.getByTestId('l2-global-grid-toggle')).toHaveText('返回原表')
+    const search=grid.getByRole('textbox',{name:'表格内搜索全部记录'})
+    await search.fill(number)
+    await search.press('Enter')
+    await expect(page).toHaveURL(/search=/)
+    await expect(grid.getByText(number,{exact:true})).toBeVisible()
+    await page.getByLabel('服务端每页条数').selectOption('20')
+    await expect(page).toHaveURL(/per_page=20/)
+    await grid.getByRole('button',{name:'⚙ 列设置'}).click()
+    await expect(grid.locator('.oms-pin-row label').filter({hasText:'右侧固定'}).locator('input')).toHaveValue('1')
+    await grid.getByRole('button',{name:'关闭列设置'}).click()
+    if(path.includes('awaiting-tracking')){
+      await grid.getByRole('button',{name:'填写 Tracking'}).click()
+      await expect(page.getByTestId('l2-grid-editor')).toContainText('填写真实 Tracking')
+      await expect(page.getByRole('button',{name:'保存 Tracking'})).toBeDisabled()
+      await page.getByRole('button',{name:'取消',exact:true}).click()
+    }else if(path.includes('in-transit')){
+      await grid.getByRole('button',{name:'操作',exact:true}).first().click()
+      await page.getByRole('group',{name:'订单操作'}).getByRole('button',{name:'标记异常'}).click()
+      await expect(page.getByTestId('l2-grid-editor')).toContainText('标记运输异常')
+      await expect(page.getByRole('button',{name:'确认标记异常'})).toBeDisabled()
+      await page.getByRole('button',{name:'取消',exact:true}).click()
+    }else{
+      await grid.getByRole('button',{name:'处理异常'}).click()
+      await expect(page.getByTestId('l2-grid-editor')).toContainText('处理异常订单')
+      await page.getByTestId('l2-grid-editor').getByRole('button',{name:'暂停订单'}).click()
+      await expect(page.getByTestId('l2-grid-editor').getByRole('button',{name:'确认暂停订单'})).toBeDisabled()
+      await page.getByRole('button',{name:'关闭操作'}).click()
+    }
+    await page.getByTestId('l2-global-grid-toggle').click()
+    await expect(page).toHaveURL(/global_grid=0/)
+    await expect(page.getByTestId('erp-global-grid-v1')).toHaveCount(0)
+    await expect(page.locator('.mvp-table-wrap')).toContainText(number)
+    await page.getByTestId('l2-global-grid-toggle').click()
+    await expect(page).toHaveURL(/global_grid=1/)
+    await expect(page.getByTestId('erp-global-grid-v1')).toBeVisible()
+    console.log('R5_L2_GRID_AND_NATIVE_FALLBACK_PASS',path)
+  }
+  expect(pendingMutationRequests).toEqual([])
+  console.log('R5_L2_THREE_QUEUES_ZERO_SHIPMENT_WRITES_PASS')
+})

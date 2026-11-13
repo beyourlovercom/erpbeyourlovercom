@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import LogisticsL2Grid, { type L2Row } from './LogisticsL2Grid.vue'
 import StatusBar from '../../Components/Logistics/StatusBar.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
@@ -24,7 +25,15 @@ type ShipmentRow = {
 }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 
-const props = defineProps<{ shipments: Paginated<ShipmentRow>; statusBar?: { key: string; label: string; url: string; count: number }[]; canOperate: boolean }>()
+const props = defineProps<{ shipments: Paginated<ShipmentRow>; statusBar?: { key: string; label: string; url: string; count: number }[]; canOperate: boolean;
+  globalGridPilotAvailable?:boolean;globalGridPilotEnabled?:boolean;
+  gridSearch?:string;gridSort?:{colId:string;direction:'asc'|'desc'} }>()
+const selectedGridRow = ref<L2Row|null>(null)
+const toggleGrid = () => {
+  selectedGridRow.value=null
+  router.get('/logistics/in-transit',{global_grid:props.globalGridPilotEnabled?'0':'1',page:1},
+    {preserveScroll:true,preserveState:true,replace:true})
+}
 type ColumnKey = 'order_number' | 'recipient' | 'country' | 'warehouse' | 'carrier' | 'tracking' | 'shipped_at'
 const definitions: GridColumnDefinition<ColumnKey>[] = [{ key: 'order_number', label: '订单号' }, { key: 'recipient', label: '收件人' }, { key: 'country', label: '国家' }, { key: 'warehouse', label: '仓库' }, { key: 'carrier', label: '物流商 / 渠道' }, { key: 'tracking', label: '追踪号' }, { key: 'shipped_at', label: '发货时间' }]
 const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = useAccountGridPreferences<ColumnKey>({ namespace: 'grid.logistics.in-transit.v1', definitions, requiredKeys: ['order_number'] })
@@ -67,7 +76,22 @@ const goToPage = (page: number) => router.get('/logistics/in-transit', { page },
     <section class="mvp-page">
       <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading"><div><p class="mvp-kicker">Logistics OS V1</p><h2>运输中</h2><p>已有追踪号、正在运输的物流单。<strong v-if="!props.canOperate"> 当前角色为只读模式。</strong></p></div></div>
-      <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr>
+      <div v-if="globalGridPilotAvailable" class="l2-grid-switch"><button
+        type="button" class="mvp-button" data-testid="l2-global-grid-toggle" @click="toggleGrid">
+        {{ globalGridPilotEnabled?'返回原表':'体验新版表格' }}</button></div>
+      <LogisticsL2Grid v-if="globalGridPilotEnabled" :mode="'transit'" path="/logistics/in-transit" title="运输中"
+        :shipments="shipments" :can-operate="canOperate" :search="gridSearch" :sort="gridSort"
+        @open="selectedGridRow=$event" @copy="copyTracking($event)" />
+      <div v-if="globalGridPilotEnabled && selectedGridRow && canOperate" class="l2-grid-editor" data-testid="l2-grid-editor">
+        <strong>{{ selectedGridRow.erp_order_id }} · 标记运输异常</strong>
+        <label>异常原因（必填）<textarea v-model="exceptionNotes[selectedGridRow.order_id]" rows="2"
+          placeholder="请简述异常情况" /></label>
+        <button class="mvp-button mvp-button-primary" type="button"
+          :disabled="!(exceptionNotes[selectedGridRow.order_id]??'').trim()"
+          @click="submitException(selectedGridRow)">确认标记异常</button>
+        <button class="mvp-button" type="button" @click="selectedGridRow=null">取消</button>
+      </div>
+      <div v-if="!globalGridPilotEnabled" class="mvp-table-wrap"><table class="mvp-table"><thead><tr>
         <th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" />
       </tr></thead><tbody>
         <template v-for="row in shipments.data" :key="row.shipment_id">
@@ -91,7 +115,7 @@ const goToPage = (page: number) => router.get('/logistics/in-transit', { page },
         </template>
         <tr v-if="shipments.data.length === 0"><td :colspan="visibleColumns.length + 2" class="mvp-empty">暂无运输中物流单</td></tr>
       </tbody></table></div>
-      <div v-if="shipments.last_page > 1" class="mvp-pagination">
+      <div v-if="!globalGridPilotEnabled && shipments.last_page > 1" class="mvp-pagination">
         <button class="mvp-button" :disabled="shipments.current_page <= 1" @click="goToPage(shipments.current_page - 1)">上一页</button>
         <span>第 {{ shipments.current_page }} / {{ shipments.last_page }} 页 · 共 {{ shipments.total }} 条</span>
         <button class="mvp-button" :disabled="shipments.current_page >= shipments.last_page" @click="goToPage(shipments.current_page + 1)">下一页</button>
@@ -105,4 +129,13 @@ const goToPage = (page: number) => router.get('/logistics/in-transit', { page },
 .exception-form { display: grid; gap: 10px; }
 .exception-form label { display: grid; gap: 5px; font-size: 12px; color: #5f737c; }
 .exception-form textarea { width: 100%; border: 1px solid #cfdade; border-radius: 7px; padding: 8px 10px; background: #fff; color: #142126; }
+</style>
+
+<style scoped>
+.l2-grid-switch{margin:4px 0 8px}
+.l2-grid-editor{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:8px 0;padding:10px;
+  border:1px solid #dbe4ea;border-radius:7px;background:#f8fafc;font-size:12px}
+.l2-grid-editor>label{display:grid;gap:3px}
+.l2-grid-editor textarea{width:min(370px,86vw);min-height:48px;padding:7px;border:1px solid #ccd6dd;border-radius:5px}
+.l2-grid-editor-actions{display:flex;gap:5px;flex-wrap:wrap}
 </style>

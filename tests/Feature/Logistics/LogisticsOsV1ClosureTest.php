@@ -43,7 +43,7 @@ final class LogisticsOsV1ClosureTest extends TestCase
                 ->assertOk()->assertInertia(fn (Assert $page) => $page
                     ->where($dataKey.'.per_page', 50)
                     ->where($dataKey.'.total', 0));
-            $this->actingAs($viewer)->get($url.'?per_page=20&search=NO-SUCH-ORDER-L1-424')
+            $this->actingAs($viewer)->get($url.'?global_grid=0&per_page=20&search=NO-SUCH-ORDER-L1-424')
                 ->assertOk()->assertInertia(fn (Assert $page) => $page
                     ->where('globalGridPilotEnabled', false)
                     ->where($dataKey.'.per_page', 50));
@@ -55,6 +55,79 @@ final class LogisticsOsV1ClosureTest extends TestCase
     }
 
     // ── Acceptance criteria 2 & 3: dispatch without tracking ──────────────────
+
+    public function test_r5_l2_global_grid_three_queues_keep_authoritative_search_pagination_and_native_fallback(): void
+    {
+        [$operator, $pendingOrder, $carrier] = $this->scenario();
+        $this->dispatch($operator, $pendingOrder, $carrier, null);
+
+        [$anotherOperator, $transitOrder, $otherCarrier] = $this->scenario();
+        $this->dispatch($anotherOperator, $transitOrder, $otherCarrier, 'R5L2-TRANSIT-UNIQUE-001');
+
+        [$exceptionOperator, $exceptionOrder, $exceptionCarrier] = $this->scenario();
+        $this->dispatch($exceptionOperator, $exceptionOrder, $exceptionCarrier, 'R5L2-EXCEPTION-UNIQUE-002');
+        $this->actingAs($exceptionOperator)->post("/logistics/orders/{$exceptionOrder->id}/mark-exception", [
+            'logistics_note' => 'R5-L2 合成异常说明',
+        ])->assertRedirect();
+
+        $paths = [
+            ['/logistics/awaiting-tracking', 'Logistics/AwaitingTracking', $pendingOrder->id],
+            ['/logistics/in-transit', 'Logistics/InTransit', $transitOrder->id],
+            ['/logistics/exceptions', 'Logistics/Exceptions', $exceptionOrder->id],
+        ];
+        $viewer = $this->userWith(['logistics.view']);
+
+        foreach ($paths as [$path, $component, $expectedId]) {
+            $this->actingAs($viewer)->get($path.'?global_grid=1&per_page=20')
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->component($component)
+                    ->where('globalGridPilotAvailable', true)
+                    ->where('globalGridPilotEnabled', true)
+                    ->where('canOperate', false)
+                    ->where('shipments.per_page', 20)
+                    ->where('shipments.total', 1)
+                    ->where('shipments.data.0.order_id', $expectedId));
+            $this->actingAs($viewer)->get($path.'?global_grid=0&per_page=20')
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->where('globalGridPilotEnabled', false)
+                    ->where('shipments.per_page', 50)
+                    ->where('shipments.total', 1)
+                    ->where('shipments.data.0.order_id', $expectedId));
+            $this->actingAs($viewer)->get($path.'?global_grid=1&per_page=100')
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->where('globalGridPilotEnabled', true)
+                    ->where('shipments.per_page', 100)
+                    ->where('shipments.total', 1));
+            $this->actingAs($viewer)->get($path.'?global_grid=1&per_page=999999')
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->where('shipments.per_page', 50));
+            $this->actingAs($viewer)->get($path.'?global_grid=1&search=NO-R5-L2-MATCH')
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->where('shipments.total', 0));
+            $this->actingAs($viewer)->get($path.'?global_grid=1&sort=carrier&direction=asc')
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->where('gridSort.colId', 'carrier')
+                    ->where('gridSort.direction', 'asc'));
+            $this->actingAs($viewer)->get($path.'?global_grid=1&sort=DROP_TABLE&direction=asc')
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->where('gridSort.colId', 'shipped_at')
+                    ->where('gridSort.direction', 'desc'));
+        }
+        foreach ([
+            ['/logistics/awaiting-tracking', $pendingOrder->erp_order_id, $pendingOrder->id],
+            ['/logistics/in-transit', 'R5L2-TRANSIT-UNIQUE-001', $transitOrder->id],
+            ['/logistics/exceptions', 'R5-L2 合成异常说明', $exceptionOrder->id],
+        ] as [$path, $search, $id]) {
+            $this->actingAs($viewer)->get($path.'?global_grid=1&search='.urlencode($search))
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->where('shipments.total', 1)
+                    ->where('shipments.data.0.order_id', $id));
+        }
+
+        $this->assertDatabaseHas('shipments', ['order_id' => $pendingOrder->id, 'shipment_status' => 'shipped', 'tracking_number' => null]);
+        $this->assertDatabaseHas('shipments', ['order_id' => $transitOrder->id, 'shipment_status' => 'shipped', 'tracking_number' => 'R5L2-TRANSIT-UNIQUE-001']);
+        $this->assertDatabaseHas('shipments', ['order_id' => $exceptionOrder->id, 'shipment_status' => 'exception']);
+    }
 
     public function test_dispatch_without_tracking_is_accepted(): void
     {
@@ -647,7 +720,11 @@ final class LogisticsOsV1ClosureTest extends TestCase
             'carrier' => $carrier->name,
             'service' => 'Ground',
         ])->assertRedirect();
-        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        // Never duplicate an already approved warehouse review during reship.
+        $reviewStatus = $order->fresh(['shipment.overseaReview'])->shipment?->overseaReview?->status;
+        if ($reviewStatus !== 'approved') {
+            $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        }
         $this->actingAs($user)->post("/logistics/orders/{$order->id}/ship", $payload)->assertRedirect();
     }
 

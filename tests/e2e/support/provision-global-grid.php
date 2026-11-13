@@ -110,6 +110,43 @@ DB::transaction(function () use ($product, $warehouse, $owner): void {
         'status'=>'approved','progress'=>'sending_pending',
         'reviewed_by'=>$owner->id,'reviewed_at'=>now(),
     ]);
+    // R5-L2 three separate synthetic queue rows, all in ephemeral SQLite.
+    // No real order, ShipOut or Woo API is called by the browser test.
+    $r5l2Cases = [
+        ['AWAIT','007-E2E-R5L2-AWAIT',null,'shipped',''],
+        ['TRANSIT','007-E2E-R5L2-TRANSIT','E2E-R5L2-TRANSIT-TRK','shipped',''],
+        ['EXCEPTION','007-E2E-R5L2-EXCEPTION','E2E-R5L2-EXCEPTION-TRK','exception','E2E synthetic delayed parcel'],
+    ];
+    foreach($r5l2Cases as [$suffix,$number,$tracking,$status,$note]){
+        $l2Order=Order::query()->create([
+            'internal_order_number'=>'INT-E2E-R5L2-'.$suffix,
+            'erp_order_id'=>$number,
+            'source_type'=>OrderSourceType::Manual,
+            'order_kind'=>OrderKind::Customer,
+            'external_order_number'=>'E2E-R5L2-SRC-'.$suffix,
+            'order_date'=>now()->toDateString(),
+            'owner_id'=>$owner->id,
+            'order_status'=>OrderStatus::Shipped,
+        ]);
+        $l2Order->address()->create([
+            'recipient_name'=>'E2E L2 '.$suffix,
+            'phone'=>'15550001456','country'=>'DE','city'=>'Berlin',
+            'address_line_1'=>'Synthetic L2 Street '.$suffix,'postal_code'=>'10003',
+        ]);
+        $l2Order->items()->create([
+            'product_id'=>$product->id,'sku'=>'E2E-SKU-0001',
+            'product_summary'=>'E2E L2 Synthetic Logistics Product',
+            'quantity'=>1,'unit_price'=>'10.00','line_revenue'=>'10.00',
+        ]);
+        $l2Order->shipment()->create([
+            'warehouse_id'=>$warehouse->id,
+            'warehouse_selection_source'=>'manual',
+            'carrier'=>'DHL','service'=>'Paket Domestic',
+            'shipment_status'=>$status,
+            'tracking_number'=>$tracking,'shipped_at'=>now(),
+            'logistics_note'=>$note ?: null,
+        ]);
+    }
     // R4-L1 Logistics: isolated synthetic domestic and review fixtures.
     $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
     $domestic = Order::query()->create([
