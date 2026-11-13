@@ -77,6 +77,7 @@ describe('Logistics role real UX', () => {
       },global:{stubs:{LogisticsL2Grid:true}}})
       await flushPromises()
       wrapper.getComponent(LogisticsL2Grid).vm.$emit('open',shipment)
+      wrapper.getComponent(LogisticsL2Grid).vm.$emit('choose-action',shipment,'pause','暂停订单')
       await wrapper.vm.$nextTick()
       expect(wrapper.find('[data-testid="l2-grid-editor"]').exists()).toBe(false)
       expect(wrapper.find('.mvp-table-wrap').exists()).toBe(false)
@@ -89,7 +90,7 @@ describe('Logistics role real UX', () => {
     const cases=[
       [AwaitingTracking,'填写真实 Tracking'],
       [InTransit,'标记运输异常'],
-      [Exceptions,'处理异常订单'],
+      [Exceptions,'暂停订单'],
     ] as const
     for(const [component,expected] of cases){
       const wrapper=mount(component,{props:{
@@ -97,13 +98,15 @@ describe('Logistics role real UX', () => {
         globalGridPilotAvailable:true,globalGridPilotEnabled:true,
       },global:{stubs:{LogisticsL2Grid:true}}})
       await flushPromises()
-      wrapper.getComponent(LogisticsL2Grid).vm.$emit('open',shipment)
+      if(component===Exceptions) {
+        wrapper.getComponent(LogisticsL2Grid).vm.$emit('choose-action',shipment,'pause','暂停订单')
+      } else {
+        wrapper.getComponent(LogisticsL2Grid).vm.$emit('open',shipment)
+      }
       await wrapper.vm.$nextTick()
       expect(wrapper.get('[data-testid="l2-grid-editor"]').text()).toContain(expected)
-      if(component!==Exceptions){
-        expect(wrapper.get('[data-testid="l2-grid-editor"]').find('button.mvp-button-primary').attributes('disabled'))
-          .toBeDefined()
-      }
+      expect(wrapper.get('[data-testid="l2-grid-editor"]').find('button.mvp-button-primary').attributes('disabled'))
+        .toBeDefined()
       wrapper.unmount()
     }
     expect(vi.mocked(router.post).mock.calls.length).toBe(before)

@@ -1257,23 +1257,43 @@ test('R5-L2 all three logistics pilot Grids preserve native workflows, roles and
     await grid.getByRole('button',{name:'⚙ 列设置'}).click()
     await expect(grid.locator('.oms-pin-row label').filter({hasText:'右侧固定'}).locator('input')).toHaveValue('1')
     await grid.getByRole('button',{name:'关闭列设置'}).click()
+    // Every eligible operation is directly visible inside the Action cell:
+    // no "操作 ▾" collapsed dropdown, popover action group or overflow.
+    await expect(grid.getByRole('button',{name:'操作',exact:true})).toHaveCount(0)
+    await expect(page.getByRole('group',{name:'订单操作'})).toHaveCount(0)
+    const actionCell=grid.locator('.ag-cell[col-id="actions"]').filter({has:page.locator('.global-cell-actions')}).first()
+    await expect(actionCell).toBeVisible()
     if(path.includes('awaiting-tracking')){
+      await expect(actionCell.getByRole('button')).toHaveCount(1)
       await grid.getByRole('button',{name:'填写 Tracking'}).click()
       await expect(page.getByTestId('l2-grid-editor')).toContainText('填写真实 Tracking')
       await expect(page.getByRole('button',{name:'保存 Tracking'})).toBeDisabled()
       await page.getByRole('button',{name:'取消',exact:true}).click()
     }else if(path.includes('in-transit')){
-      await grid.getByRole('button',{name:'操作',exact:true}).first().click()
-      await page.getByRole('group',{name:'订单操作'}).getByRole('button',{name:'标记异常'}).click()
+      await expect(actionCell.getByRole('button',{name:'复制追踪'})).toBeVisible()
+      await expect(actionCell.getByRole('button',{name:'标记异常'})).toBeVisible()
+      await expect(actionCell.getByRole('button')).toHaveCount(2)
+      await actionCell.getByRole('button',{name:'标记异常'}).click()
       await expect(page.getByTestId('l2-grid-editor')).toContainText('标记运输异常')
       await expect(page.getByRole('button',{name:'确认标记异常'})).toBeDisabled()
       await page.getByRole('button',{name:'取消',exact:true}).click()
     }else{
-      await grid.getByRole('button',{name:'处理异常'}).click()
-      await expect(page.getByTestId('l2-grid-editor')).toContainText('处理异常订单')
-      await page.getByTestId('l2-grid-editor').getByRole('button',{name:'暂停订单'}).click()
+      const allOperations=['暂停订单','重新派件','重新发货','联系用户','取消订单（不退款）','解除异常']
+      await expect(actionCell.getByRole('button')).toHaveCount(6)
+      for(const action of allOperations){
+        const control=actionCell.getByRole('button',{name:action,exact:true})
+        await expect(control).toBeVisible()
+      }
+      const bounds=await actionCell.evaluate(el=>{
+        const controls=Array.from(el.querySelectorAll('.global-cell-actions button'))
+        const cell=el.getBoundingClientRect()
+        return {cellRight:cell.right,buttonRight:Math.max(...controls.map(btn=>btn.getBoundingClientRect().right))}
+      })
+      expect(bounds.buttonRight).toBeLessThanOrEqual(bounds.cellRight+2)
+      await actionCell.getByRole('button',{name:'暂停订单'}).click()
+      await expect(page.getByTestId('l2-grid-editor')).toContainText('暂停订单')
       await expect(page.getByTestId('l2-grid-editor').getByRole('button',{name:'确认暂停订单'})).toBeDisabled()
-      await page.getByRole('button',{name:'关闭操作'}).click()
+      await page.getByTestId('l2-grid-editor').getByRole('button',{name:'取消'}).click()
     }
     await page.getByTestId('l2-global-grid-toggle').click()
     await expect(page).toHaveURL(/global_grid=0/)

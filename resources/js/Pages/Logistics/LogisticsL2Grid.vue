@@ -22,6 +22,7 @@ const emit = defineEmits<{
   (event:'open',row:L2Row):void
   (event:'copy',row:L2Row):void
   (event:'resolve',row:L2Row):void
+  (event:'choose-action',row:L2Row,path:string,label:string):void
 }>()
 const term = ref(props.search??'')
 watch(()=>props.search,v=>{term.value=v??''})
@@ -52,9 +53,13 @@ const columns = computed<ColDef<GridListRow>[]>(()=>{
     gridColumn({colId:'shipped_at',field:'date',headerName:'发货日期',width:160,sortable:true}),
   ]
   if(props.mode==='exceptions')base.push(gridColumn({colId:'reason',field:'note_summary',headerName:'异常原因',width:225}))
-  base.push(gridColumn({colId:'actions',field:'order_id',headerName:'操作',width:118,
+  // Owner P0: render ALL row actions inline, never the GlobalGridCell
+  // compact "操作 ▾" dropdown. 6 exception actions require real column width.
+  const actionWidth = props.mode==='exceptions' ? 560 : props.mode==='transit' ? 194 : 142
+  base.push(gridColumn({colId:'actions',field:'order_id',headerName:'操作',
+    width:actionWidth,minWidth:actionWidth,
     cellRenderer:GlobalGridCell,
-    cellRendererParams:{mode:'actions',compactActions:props.mode==='transit',
+    cellRendererParams:{mode:'actions',compactActions:false,
       actionsFor:(row:GridListRow)=>{
         const origin=props.shipments.data.find(x=>x.shipment_id===Number(row.shipment_id))
         if(!origin)return []
@@ -63,10 +68,17 @@ const columns = computed<ColDef<GridListRow>[]>(()=>{
           {label:'复制追踪',onClick:()=>emit('copy',origin)},
           ...(props.canOperate?[{label:'标记异常',onClick:()=>emit('open',origin)}]:[]),
         ]
-        return props.canOperate?[
-          {label:'处理异常',onClick:()=>emit('open',origin)},
+        if(!props.canOperate)return []
+        const actions=[
+          ['pause','暂停订单'],['redispatch','重新派件'],['reship','重新发货'],
+          ['contact-user','联系用户'],['cancel-exception','取消订单（不退款）'],
+        ] as const
+        return [
+          ...actions.map(([path,label])=>({
+            label,onClick:()=>emit('choose-action',origin,path,label),
+          })),
           {label:'解除异常',onClick:()=>emit('resolve',origin)},
-        ]:[]
+        ]
       },
     },
   }))

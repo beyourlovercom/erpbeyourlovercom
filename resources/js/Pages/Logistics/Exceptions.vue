@@ -46,6 +46,11 @@ const resolve = (row: ShipmentRow) => {
   router.post(`/logistics/orders/${row.order_id}/resolve-exception`, {}, { preserveScroll: true })
 }
 const action = (row: ShipmentRow, path: string, label: string) => { if (!props.canOperate) return; activeAction.value = { orderId: row.order_id, path, label }; notes[row.order_id] ??= '' }
+const chooseGridAction = (row: L2Row, path: string, label: string) => {
+  if (!props.canOperate) return
+  selectedGridRow.value = row
+  action(row, path, label)
+}
 const submitAction = (row: ShipmentRow) => { if (!props.canOperate) return; const note = (notes[row.order_id] ?? '').trim(); if (!note) return; router.post(`/logistics/orders/${row.order_id}/${activeAction.value?.path}`, { logistics_note: note }, { preserveScroll: true }); activeAction.value = null }
 
 const goToPage = (page: number) => router.get('/logistics/exceptions', { page }, { preserveState: true, replace: true })
@@ -63,25 +68,16 @@ const goToPage = (page: number) => router.get('/logistics/exceptions', { page },
       </div>
       <LogisticsL2Grid v-if="globalGridPilotEnabled" :mode="'exceptions'" path="/logistics/exceptions" title="异常订单"
         :shipments="shipments" :can-operate="canOperate" :search="gridSearch" :sort="gridSort"
-        @open="selectedGridRow=$event" @resolve="resolve($event)" />
-      <div v-if="globalGridPilotEnabled && selectedGridRow && canOperate" class="l2-grid-editor" data-testid="l2-grid-editor">
-        <strong>{{ selectedGridRow.erp_order_id }} · 处理异常订单</strong>
-        <div class="l2-grid-editor-actions">
-          <button v-for="(actionDef,i) in [
-             ['pause','暂停订单'],['redispatch','重新派件'],['reship','重新发货'],
-             ['contact-user','联系用户'],['cancel-exception','取消订单（不退款）']
-           ]" :key="i" type="button" class="mvp-button"
-            @click="action(selectedGridRow,actionDef[0],actionDef[1])">{{ actionDef[1] }}</button>
-          <button type="button" class="mvp-button" @click="resolve(selectedGridRow)">解除异常</button>
-        </div>
-        <template v-if="activeAction?.orderId===selectedGridRow.order_id">
-          <label>{{ activeAction.label }}说明（必填）<textarea
-            v-model="notes[selectedGridRow.order_id]" rows="2" required /></label>
-          <button type="button" class="mvp-button mvp-button-primary"
-            :disabled="!(notes[selectedGridRow.order_id]??'').trim()"
-            @click="submitAction(selectedGridRow)">确认{{ activeAction.label }}</button>
-        </template>
-        <button class="mvp-button" type="button" @click="selectedGridRow=null;activeAction=null">关闭操作</button>
+        @choose-action="chooseGridAction" @resolve="resolve($event)" />
+      <div v-if="globalGridPilotEnabled && selectedGridRow && canOperate && activeAction?.orderId===selectedGridRow.order_id"
+        class="l2-grid-editor" data-testid="l2-grid-editor">
+        <strong>{{ selectedGridRow.erp_order_id }} · {{ activeAction.label }}</strong>
+        <label>{{ activeAction.label }}说明（必填）<textarea
+          v-model="notes[selectedGridRow.order_id]" rows="2" required /></label>
+        <button type="button" class="mvp-button mvp-button-primary"
+          :disabled="!(notes[selectedGridRow.order_id]??'').trim()"
+          @click="submitAction(selectedGridRow)">确认{{ activeAction.label }}</button>
+        <button class="mvp-button" type="button" @click="selectedGridRow=null;activeAction=null">取消</button>
       </div>
       <div v-if="!globalGridPilotEnabled" class="mvp-table-wrap"><table class="mvp-table"><thead><tr>
         <th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" />
