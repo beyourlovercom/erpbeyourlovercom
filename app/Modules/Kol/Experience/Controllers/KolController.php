@@ -244,7 +244,7 @@ final class KolController
         $affiliateReady = $correctSite && $affiliateId > 0
             && ($affiliateAccount['provider_status'] ?? null) === 'active';
         $affiliateAdminUrl = $correctSite && $affiliateId > 0
-            ? 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&action=edit&affiliate_id='.$affiliateId
+            ? 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&affiliate_id='.$affiliateId.'&action=edit_affiliate'
             : null;
         $affiliateListUrl = ($correctSite || ($affiliateAccount === null && $failureReason !== null
             && trim((string) config('services.andy_core.connection_key')) === KolAffiliateIdentity::CONNECTION_KEY))

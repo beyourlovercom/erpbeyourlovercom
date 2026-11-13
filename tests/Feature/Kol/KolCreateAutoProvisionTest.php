@@ -354,7 +354,7 @@ class KolCreateAutoProvisionTest extends TestCase
         $this->actingAs($specialist)->get('/kol/library/'.$kol->id)->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('affiliateReady', false)
-                ->where('affiliateAdminUrl', 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&action=edit&affiliate_id=93001')
+                ->where('affiliateAdminUrl', 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&affiliate_id=93001&action=edit_affiliate')
                 ->where('kolCreateFailureReason', 'affiliate_readback_mismatch')
                 ->where('affiliateAccount.last_error_code', 'READBACK_MISMATCH'));
         $notification = json_decode((string) DB::table('notifications')->firstOrFail()->data, true, 512, JSON_THROW_ON_ERROR);
