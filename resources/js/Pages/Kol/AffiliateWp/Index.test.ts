@@ -146,6 +146,34 @@ describe('AffiliateWP workspace', () => {
     expect(wrapper.text()).toContain('Manager Owner')
   })
 
+  it('never infers provider IDs with missing values as invalid numbers in either new grid', async () => {
+    const unbound = { ...affiliate, id: 99, affiliate_id: null, wordpress_user_id: null,
+      display_name: 'Pending Provider Identity', provider_status: 'pending' }
+    const coupon = {
+      id: 10, coupon_id: null, code: 'UAT-NO-ID', normalized_code: 'uat-no-id',
+      discount_type: 'percent', amount: '15.00', provider_status: 'pending',
+      date_expires: null, affiliate_id: null, kol: null, origin: 'external_sync',
+      sync_status: 'synced', reconciliation_status: 'present', provisioning_status: 'not_requested',
+      last_error_code: null, last_error_message: null, last_successful_sync_at: null,
+    }
+    const wrapper = mount(Index, { props: props({
+      affiliates: [affiliate, unbound], coupons: [coupon],
+    }) })
+    const affiliateGrid = wrapper.findComponent({ name: 'KolModuleGrid' })
+    expect(affiliateGrid.exists()).toBe(true)
+    const values = affiliateGrid.props('rows') as Array<Record<string, unknown>>
+    expect(values[0].affiliate_id).toBe('#101')
+    expect(values[0].wp_user).toBe('#5001')
+    expect(values[1].affiliate_id).toBe('—')
+    expect(values[1].wp_user).toBe('—')
+    await wrapper.findAll('button').find(button => button.text() === 'Coupon')!.trigger('click')
+    const couponGrid = wrapper.findComponent({ name: 'KolModuleGrid' })
+    expect(couponGrid.exists()).toBe(true)
+    const couponRow = (couponGrid.props('rows') as Array<Record<string, unknown>>)[0]
+    expect(couponRow.coupon_id).toBe('—')
+    expect(couponRow.affiliate_id).toBe('—')
+  })
+
   it('shows approved KOL provisioning entry and posts to the existing Core D route', async () => {
     const wrapper = mount(Index, {
       props: props({ canManageAffiliates: true, provisioningCandidates: [candidate] }),

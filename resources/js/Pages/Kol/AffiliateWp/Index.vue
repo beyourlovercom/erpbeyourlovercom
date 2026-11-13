@@ -65,8 +65,10 @@ const affiliateGridRows = computed(() => props.affiliates.map(a => ({
   id: a.id,
   influencer: a.display_name || a.email || '未命名 Affiliate',
   email: a.email || '—',
-  affiliate_id: a.affiliate_id ?? '—',
-  wp_user: a.wordpress_user_id ?? '—',
+  // Keep provider IDs as text: mixing numeric cells with em-dash placeholders
+  // otherwise makes AG Grid infer numbers and render "Invalid Number".
+  affiliate_id: a.affiliate_id == null ? '—' : '#' + a.affiliate_id,
+  wp_user: a.wordpress_user_id == null ? '—' : '#' + a.wordpress_user_id,
   wp_email: a.wordpress_user_email || '—',
   kol: a.kol?.display_name || '未绑定',
   kol_id: a.kol?.id ?? null,

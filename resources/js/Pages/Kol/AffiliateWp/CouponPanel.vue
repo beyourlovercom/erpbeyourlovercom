@@ -20,8 +20,8 @@ const form = useForm<{ kol_id: number | null; code: string; discount_type: strin
 })
 const legacyCouponTable = ref(false)
 const couponGridRows = computed(() => props.coupons.map(c => ({
-  id:c.id, code:c.code || '（空 Coupon Code）', coupon_id:c.coupon_id ?? '—',
-  kol:c.kol?.display_name ?? '未绑定 KOL', affiliate_id:c.affiliate_id ?? '—',
+  id:c.id, code:c.code || '（空 Coupon Code）', coupon_id:c.coupon_id == null ? '—' : '#' + c.coupon_id,
+  kol:c.kol?.display_name ?? '未绑定 KOL', affiliate_id:c.affiliate_id == null ? '—' : '#' + c.affiliate_id,
   amount:c.amount === null ? '—' : c.amount, discount_type:c.discount_type ?? '—',
   expires:time(c.date_expires), provider:c.provider_status || '—',
   provisioning:c.provisioning_status, error:c.last_error_code ? c.last_error_code+' · '+(c.last_error_message||'') : '—',
