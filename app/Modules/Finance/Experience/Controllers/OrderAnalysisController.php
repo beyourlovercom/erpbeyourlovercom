@@ -145,7 +145,7 @@ final class OrderAnalysisController
                 'costEntries',
                 'owner',
                 'fulfillmentAllocation',
-                'items:id,order_id,product_id,sku,product_summary',
+                'items:id,order_id,product_id,source_product_id,sku,source_sku,product_summary,source_product_summary',
             ])
             ->where('order_kind', 'customer')
             // Operational archive removes current finance worklist/dashboard
@@ -251,9 +251,9 @@ final class OrderAnalysisController
     {
         $products = $order->items
             ->map(fn ($item): array => [
-                'product_id' => $item->product_id,
-                'sku' => $item->sku,
-                'name' => $item->product_summary,
+                'product_id' => $item->source_product_id ?: $item->product_id,
+                'sku' => $item->source_sku ?: $item->sku,
+                'name' => $item->source_product_summary ?: $item->product_summary,
             ])
             ->unique(fn (array $item): string => ($item['product_id'] ?? 'null').'|'.$item['sku'].'|'.$item['name'])
             ->values()

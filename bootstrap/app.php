@@ -5,6 +5,7 @@ use App\Modules\Identity\Experience\Console\Commands\StaffAccessReadinessAuditCo
 use App\Modules\Logistics\Experience\Console\Commands\AutomaticAllocationCommand;
 use App\Modules\Logistics\Experience\Console\Commands\BackfillDomesticCarrierDefaultsCommand;
 use App\Modules\Logistics\Experience\Console\Commands\ShipOutProductionCanaryOperatorCommand;
+use App\Modules\Logistics\Experience\Console\Commands\RepairWarehousePhysicalSkuCommand;
 use App\Modules\Runtime\Experience\Console\Commands\RuntimeHealthCommand;
 use App\Modules\Identity\Experience\Middleware\ApplyLocalAdminBypass;
 use App\Modules\Identity\Experience\Middleware\EnsureActiveAuthenticatedUser;
@@ -31,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
         AutomaticAllocationCommand::class,
         BackfillDomesticCarrierDefaultsCommand::class,
         ShipOutProductionCanaryOperatorCommand::class,
+        RepairWarehousePhysicalSkuCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [

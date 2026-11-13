@@ -26,7 +26,7 @@ final class FulfillmentAllocationStockGate
 
         foreach ($assignments as $assignment) {
             $item = $items->get((int) ($assignment['order_item_id'] ?? 0));
-            if (! $item || strcasecmp(trim((string) $item->sku), 'gift') === 0) {
+            if (! $item || strcasecmp(trim((string) ($item->source_sku ?: $item->sku)), 'gift') === 0) {
                 // Gift mappings have their own hard SKU and stock eligibility gate.
                 continue;
             }
@@ -36,7 +36,7 @@ final class FulfillmentAllocationStockGate
             if ($code === 'US-AMZ') {
                 continue;
             }
-            $productId = (int) ($item->product_id ?? 0);
+            $productId = (int) ($item->source_product_id ?: $item->product_id);
             $key = $code.':'.($productId > 0 ? $productId : 'sku:'.($item->sku ?? $item->id));
             if (! isset($groups[$key])) {
                 $groups[$key] = [

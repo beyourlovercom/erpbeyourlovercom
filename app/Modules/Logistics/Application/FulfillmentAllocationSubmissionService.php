@@ -21,6 +21,7 @@ final class FulfillmentAllocationSubmissionService
         private readonly FulfillmentAllocationDecisionService $decisions,
         private readonly FulfillmentDerivedOrderService $derivedOrders,
         private readonly GiftSkuResolutionService $giftSkuResolutions,
+        private readonly WarehousePhysicalSkuResolver $physicalSkus,
         private readonly UsFulfillmentZoneResolver $usZones,
         private readonly WarehouseRoutingPolicy $warehouseRouting,
         private readonly CarrierRoutingPolicy $carrierRouting,
@@ -82,13 +83,7 @@ final class FulfillmentAllocationSubmissionService
             $resolvedAssignments = $normalized->map(function (array $row) use ($locked): array {
                 $item = $locked->items->firstWhere('id', $row['order_item_id']);
                 abort_unless($item, 422, '分仓方案包含不属于原订单的 SKU');
-                $resolution = $this->giftSkuResolutions->resolve($item, $row['source_code'], $row['gift_mapping_id']);
-                if ($resolution !== null) {
-                    $item->forceFill([
-                        'source_sku' => $item->source_sku ?: $item->sku,
-                        'resolved_fulfillment_sku' => $resolution['resolved_fulfillment_sku'],
-                    ])->save();
-                }
+                $resolution = $this->physicalSkus->resolve($item, $row['source_code'], $row['gift_mapping_id']);
 
                 // Warehouse allocation must not preselect domestic dispatch logistics.
                 // Overseas allocation retains its existing recommended routing.
@@ -140,15 +135,17 @@ final class FulfillmentAllocationSubmissionService
                     $resolution = $assignment['resolution'] ?? null;
                     return [
                         'order_item_id' => (int) $item->id,
-                        'product_id' => $item->product_id ? (int) $item->product_id : null,
-                        'sku' => $item->sku,
-                        'source_sku' => $item->sku,
-                        'product_summary' => $item->product_summary,
+                        'product_id' => $resolution['source_product_id'],
+                        'sku' => $resolution['source_sku'],
+                        'source_sku' => $resolution['source_sku'],
+                        'source_product_id' => $resolution['source_product_id'],
+                        'source_product_summary' => $resolution['source_product_summary'],
+                        'product_summary' => $resolution['source_product_summary'],
                         'quantity' => (int) $item->quantity,
                         'gift_mapping_id' => $resolution['gift_mapping_id'] ?? null,
-                        'resolved_product_id' => $resolution['resolved_product_id'] ?? null,
-                        'resolved_fulfillment_sku' => $resolution['resolved_fulfillment_sku'] ?? $item->sku,
-                        'resolved_product_summary' => $resolution['resolved_product_summary'] ?? $item->product_summary,
+                        'resolved_product_id' => $resolution['resolved_product_id'],
+                        'resolved_fulfillment_sku' => $resolution['resolved_fulfillment_sku'],
+                        'resolved_product_summary' => $resolution['resolved_product_summary'] ?? $resolution['source_product_summary'],
                     ];
                 })->values()->all();
                 return [
@@ -202,6 +199,7 @@ final class FulfillmentAllocationSubmissionService
                     'service' => $row['service'],
                     'carrier_selection_source' => $row['carrier_selection_source'],
                     'resolved_fulfillment_sku' => $row['resolution']['resolved_fulfillment_sku'] ?? null,
+                    'resolved_product_id' => $row['resolution']['resolved_product_id'] ?? null,
                 ])->all(),
                 'decision_note' => $this->nullableNote($note),
             ], $actor);
@@ -212,9 +210,9 @@ final class FulfillmentAllocationSubmissionService
     private function decisionFor(Order $order): array
     {
         $items = $order->items->map(fn ($item): array => [
-            'product_id' => $item->product_id,
+            'product_id' => $item->source_product_id ?: $item->product_id,
             'quantity' => (int) $item->quantity,
-            'sku' => $item->sku,
+            'sku' => $item->source_sku ?: $item->sku,
         ])->values()->all();
         $productIds = collect($items)->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
         $context = array_replace($this->recommendations->prepare($productIds), $this->plans->prepare($productIds));
@@ -236,6 +234,10 @@ final class FulfillmentAllocationSubmissionService
 
     private function persistAndMaterialize(Order $order, array $attributes, Authenticatable $actor): FulfillmentAllocation
     {
+        if (($attributes['decision_source'] ?? null) === 'system_recommendation') {
+            $plan = $this->resolveRecommendedPlan($order, $attributes['plan_snapshot'] ?? []);
+            $attributes['plan_snapshot'] = $plan;
+        }
         $allocation = $this->persist($order, $attributes, $actor);
         if ($order->domestic_reject_reason !== null) {
             $order->forceFill([
@@ -275,6 +277,38 @@ final class FulfillmentAllocationSubmissionService
         }
 
         return $allocation->fresh();
+    }
+
+    /**
+     * Recommendation and manual allocation must materialize through the same
+     * physical warehouse SKU resolver, before any shipment becomes visible.
+     */
+    private function resolveRecommendedPlan(Order $order, array $plan): array
+    {
+        $segments = collect($plan['segments'] ?? [])->map(function (array $segment) use ($order): array {
+            $code = (string) ($segment['source_code'] ?? '');
+            $items = collect($segment['items'] ?? [])->map(function (array $row) use ($order, $code): array {
+                $matches = $order->items->filter(fn ($item): bool =>
+                    (int) ($item->source_product_id ?: $item->product_id) === (int) ($row['product_id'] ?? 0)
+                );
+                abort_unless($matches->count() === 1, 422, '推荐分仓商品不能唯一对应订单行，必须手工分仓');
+                $item = $matches->first();
+                $resolved = $this->physicalSkus->resolve($item, $code, null);
+                return [
+                    ...$row,
+                    'order_item_id' => (int) $item->id,
+                    'sku' => $resolved['source_sku'],
+                    'source_sku' => $resolved['source_sku'],
+                    'source_product_id' => $resolved['source_product_id'],
+                    'source_product_summary' => $resolved['source_product_summary'],
+                    'resolved_product_id' => $resolved['resolved_product_id'],
+                    'resolved_fulfillment_sku' => $resolved['resolved_fulfillment_sku'],
+                    'resolved_product_summary' => $resolved['resolved_product_summary'] ?? $resolved['source_product_summary'],
+                ];
+            })->values()->all();
+            return [...$segment, 'items' => $items];
+        })->values()->all();
+        return [...$plan, 'segments' => $segments];
     }
 
     private function persist(Order $order, array $attributes, Authenticatable $actor): FulfillmentAllocation

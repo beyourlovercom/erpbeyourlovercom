@@ -23,7 +23,9 @@ final class FulfillmentDerivedOrderService
 
         if ($segments->count() === 1) {
             $segment = $segments->first();
+            $this->assertParentShipmentMayBeReplaced($parent);
             $this->clearPendingChildren($parent);
+            $this->materializeSingleOrderItems($parent, $segment);
             $this->assignShipment($parent, $segment, $actor);
 
             return [$this->summary($parent->fresh(['items', 'shipment.warehouse']), $segment, false)];
@@ -32,12 +34,28 @@ final class FulfillmentDerivedOrderService
         abort_if(blank($parent->erp_order_id), 422, '原订单缺少 ERP 订单号，不能生成拆分订单');
         abort_if(strlen((string) $parent->erp_order_id) > 63, 422, '原订单号过长，不能追加拆单后缀');
         $this->assertParentShipmentMayBeReplaced($parent);
+        $this->restoreSourceItems($parent);
+        $parent->load('items');
         $parent->shipment?->delete();
 
         $children = collect();
         foreach ($segments as $index => $segment) {
             $suffix = $this->suffixForIndex($index);
             $children->push($this->upsertChild($parent, $suffix, $segment, $actor));
+        }
+
+        // Parent is a financial/source record in split fulfillment; preserve source
+        // SKU while exposing the selected fulfillment resolution for audit.
+        foreach ($segments as $segment) {
+            foreach ($segment['items'] ?? [] as $planned) {
+                $item = $parent->items->firstWhere('id', (int) ($planned['order_item_id'] ?? 0));
+                if ($item) $item->forceFill([
+                    'source_sku' => $item->source_sku ?: $item->sku,
+                    'source_product_id' => $item->source_product_id ?: $item->product_id,
+                    'source_product_summary' => $item->source_product_summary ?: $item->product_summary,
+                    'resolved_fulfillment_sku' => $planned['resolved_fulfillment_sku'] ?? $item->sku,
+                ])->save();
+            }
         }
 
         $keepSuffixes = $children->pluck('fulfillment_suffix')->all();
@@ -107,6 +125,8 @@ final class FulfillmentDerivedOrderService
             $resolvedSummary = trim((string) ($segmentItem['resolved_product_summary'] ?? ''));
             $child->items()->create([
                 'product_id' => $resolvedProductId,
+                'source_product_id' => $source->source_product_id ?: $source->product_id,
+                'source_product_summary' => $source->source_product_summary ?: $source->product_summary,
                 'woocommerce_line_item_id' => $source->woocommerce_line_item_id,
                 'product_summary' => $resolvedSummary !== '' ? $resolvedSummary : $source->product_summary,
                 'sku' => $resolvedSku !== '' ? $resolvedSku : $source->sku,
@@ -120,6 +140,47 @@ final class FulfillmentDerivedOrderService
 
         $this->assignShipment($child->fresh(['items', 'shipment']), $segment, $actor);
         return $child->fresh(['items', 'shipment.warehouse']);
+    }
+
+    /** A one-warehouse order is itself the outbound order, not just an allocation preview. */
+    private function materializeSingleOrderItems(Order $order, array $segment): void
+    {
+        $items = collect($segment['items'] ?? []);
+        abort_unless($items->count() === $order->items->count(), 422, '单仓履约明细与原订单行数不一致');
+        $seen = [];
+        foreach ($items as $planned) {
+            $item = $order->items->firstWhere('id', (int) ($planned['order_item_id'] ?? 0));
+            abort_unless($item && ! isset($seen[$item->id]), 422, '单仓履约商品行身份无效');
+            $seen[$item->id] = true;
+            $sourceSku = trim((string) ($item->source_sku ?: $item->sku));
+            $sourceProductId = (int) ($item->source_product_id ?: $item->product_id);
+            $resolvedSku = trim((string) ($planned['resolved_fulfillment_sku'] ?? ''));
+            $resolvedProductId = (int) ($planned['resolved_product_id'] ?? $sourceProductId);
+            abort_unless($resolvedSku !== '' && $resolvedProductId > 0, 422, '分仓未得到真实履约 SKU 或商品身份');
+            $item->forceFill([
+                'source_sku' => $sourceSku,
+                'source_product_id' => $sourceProductId,
+                'source_product_summary' => $item->source_product_summary ?: $item->product_summary,
+                'sku' => $resolvedSku,
+                'product_id' => $resolvedProductId,
+                'product_summary' => $planned['resolved_product_summary'] ?: ($item->source_product_summary ?: $item->product_summary),
+                'resolved_fulfillment_sku' => $resolvedSku,
+            ])->save();
+        }
+    }
+
+    /** Restore immutable order-source identity when the non-shipping parent becomes a split. */
+    private function restoreSourceItems(Order $parent): void
+    {
+        foreach ($parent->items as $item) {
+            if (! $item->source_sku && ! $item->source_product_id) continue;
+            $item->forceFill([
+                'sku' => $item->source_sku ?: $item->sku,
+                'product_id' => $item->source_product_id ?: $item->product_id,
+                'product_summary' => $item->source_product_summary ?: $item->product_summary,
+                'resolved_fulfillment_sku' => null,
+            ])->save();
+        }
     }
 
     private function assignShipment(Order $order, array $segment, Authenticatable $actor): void

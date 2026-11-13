@@ -185,7 +185,7 @@ final class LogisticsController
                         $this->allocationSubmissions->submitRecommended($locked, $planKey, null, $request->user());
                     } else {
                         abort_if($locked->items->isEmpty() || $locked->items->contains(
-                            fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0
+                            fn ($item): bool => strcasecmp(trim((string) ($item->source_sku ?: $item->sku)), 'gift') === 0
                         ), 422, '礼品或空 SKU 订单需逐单确认，已跳过。');
                         $assignments = $locked->items->map(fn ($item): array => [
                             'order_item_id' => (int) $item->id,
@@ -261,7 +261,7 @@ final class LogisticsController
         ]);
 
         $order->loadMissing(['address', 'items']);
-        if ($order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0)) {
+        if ($order->items->contains(fn ($item): bool => strcasecmp(trim((string) ($item->source_sku ?: $item->sku)), 'gift') === 0)) {
             throw ValidationException::withMessages(['assignments' => 'gift 订单需要在“待分仓”中选择实际履约礼品 SKU。']);
         }
 
@@ -822,9 +822,9 @@ final class LogisticsController
                 'product_summary' => $item->product_summary,
                 'quantity' => $item->quantity,
                 'availability' => $context['availability'][$item->product_id] ?? [],
-                'is_gift' => $this->giftSkuResolutions->isGiftSku($item->sku),
+                'is_gift' => $this->giftSkuResolutions->isGiftSku($item->source_sku ?: $item->sku),
                 'gift_options_by_warehouse' => array_key_exists('gift_resolution', $context)
-                    ? $this->giftSkuResolutions->options((string) $item->sku, (int) $item->quantity, $context['gift_resolution'])
+                    ? $this->giftSkuResolutions->options((string) ($item->source_sku ?: $item->sku), (int) $item->quantity, $context['gift_resolution'])
                     : [],
             ])->values()->all(),
             'warehouse_recommendation' => $recommendation,
