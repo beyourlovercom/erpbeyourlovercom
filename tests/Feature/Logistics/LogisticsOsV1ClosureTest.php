@@ -43,7 +43,9 @@ final class LogisticsOsV1ClosureTest extends TestCase
                 ->assertOk()->assertInertia(fn (Assert $page) => $page
                     ->where($dataKey.'.per_page', 50)
                     ->where($dataKey.'.total', 0));
-            $this->actingAs($viewer)->get($url.'?per_page=20&search=NO-SUCH-ORDER-L1-424')
+            // Explicit legacy switch must continue to disable Grid after later
+            // independently approved default-on page migrations.
+            $this->actingAs($viewer)->get($url.'?global_grid=0&per_page=20&search=NO-SUCH-ORDER-L1-424')
                 ->assertOk()->assertInertia(fn (Assert $page) => $page
                     ->where('globalGridPilotEnabled', false)
                     ->where($dataKey.'.per_page', 50));
@@ -647,7 +649,12 @@ final class LogisticsOsV1ClosureTest extends TestCase
             'carrier' => $carrier->name,
             'service' => 'Ground',
         ])->assertRedirect();
-        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        // Re-ship keeps the original approved review ledger; a duplicate
+        // approval correctly returns 409, so only approve a pending review.
+        $reviewStatus = $order->fresh(['shipment.overseaReview'])->shipment?->overseaReview?->status;
+        if ($reviewStatus !== 'approved') {
+            $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        }
         $this->actingAs($user)->post("/logistics/orders/{$order->id}/ship", $payload)->assertRedirect();
     }
 

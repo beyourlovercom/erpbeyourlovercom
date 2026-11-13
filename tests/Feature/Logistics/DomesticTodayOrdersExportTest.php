@@ -370,6 +370,112 @@ final class DomesticTodayOrdersExportTest extends TestCase
         }
     }
 
+    public function test_r4_8_all_nine_views_match_legacy_safely_exclude_archives_and_preserve_cross_view_rows(): void
+    {
+        $review = $this->domesticOrder('007-R48-REVIEW', '4PX', false);
+        $stockout = $this->domesticOrder('007-R48-STOCKOUT', 'Weship', false);
+        $stockout->operationalMarkers()->create(['marker' => 'domestic_stockout', 'marked_at' => now()]);
+        $pending = $this->domesticOrder('007-R48-PENDING', '4PX', true);
+        $today4px = $this->domesticOrder('007-R48-TODAY-4PX', '4PX', true);
+        $todayWeship = $this->domesticOrder('007-R48-TODAY-WESHIP', 'Weship', true);
+        foreach ([$today4px, $todayWeship] as $today) {
+            $today->update(['order_date' => now()->toDateString()]);
+            $today->shipment()->update(['shipment_status' => 'shipped', 'shipped_at' => now()]);
+        }
+        $exception = $this->domesticOrder('007-R48-EXCEPTION', 'Weship', false);
+        $exception->shipment()->update(['shipment_status' => 'exception']);
+        $old4px = $this->domesticOrder('007-R48-HISTORY-4PX', '4PX', false);
+        $oldWeship = $this->domesticOrder('007-R48-HISTORY-WESHIP', 'Weship', false);
+        foreach ([$old4px, $oldWeship] as $old) {
+            $old->update(['order_date' => now()->subDays(60)->toDateString()]);
+            $old->shipment()->update(['shipment_status' => 'shipped', 'shipped_at' => now()->subDays(45)]);
+        }
+        $archived = $this->domesticOrder('007-R48-ARCHIVED-DO-NOT-SHIP', '4PX', true);
+        $archived->update(['operational_archived_at' => now()]);
+        $legacyArchive = $this->domesticOrder('007-R48-OLD-ARCHIVE-DO-NOT-SHIP', 'Weship', true);
+        // archived_at is intentionally NOT mass assignable on Order; forceFill
+        // is required to create a legitimate legacy trash fixture.
+        $legacyArchive->forceFill(['archived_at' => now()])->save();
+        self::assertNotNull($legacyArchive->fresh()->archived_at);
+        $deleted = $this->domesticOrder('007-R48-DELETED-DO-NOT-SHIP', '4PX', true);
+        $deleted->delete();
+        $user = $this->viewer();
+
+        $views = ['review', 'stockout', 'pending', 'today', 'today-4px',
+            'today-weship', 'exceptions', '4px', 'weship'];
+        $referenceCounts = null;
+        $seen = [];
+        foreach ($views as $view) {
+            $globalResponse = $this->actingAs($user)->get('/logistics/china?view='.$view.'&global_grid=1');
+            $globalResponse->assertOk();
+            $legacyResponse = $this->actingAs($user)->get('/logistics/china?view='.$view.'&global_grid=0');
+            $legacyResponse->assertOk();
+            $defaultResponse = $this->actingAs($user)->get('/logistics/china?view='.$view);
+            $defaultResponse->assertOk();
+
+            $globalPage = $globalResponse->viewData('page')['props'];
+            $legacyPage = $legacyResponse->viewData('page')['props'];
+            $defaultPage = $defaultResponse->viewData('page')['props'];
+            self::assertTrue($globalPage['globalGridPilotEnabled'], $view.' forced Grid');
+            self::assertFalse($legacyPage['globalGridPilotEnabled'], $view.' legacy fallback');
+            self::assertTrue($defaultPage['globalGridPilotEnabled'], $view.' default Grid');
+            self::assertSame($view, $globalPage['view']);
+            self::assertSame($globalPage['rows']['total'], $legacyPage['rows']['total'], $view.' total');
+            self::assertSame($globalPage['rows']['total'], $defaultPage['rows']['total'], $view.' default total');
+            $extract = static fn (array $items): array => array_map(
+                static fn (array $row): array => [
+                    'id' => $row['order_id'], 'number' => $row['erp_order_id'],
+                    'carrier' => $row['carrier'], 'tracking' => $row['tracking_number'],
+                    'shipment' => $row['shipment_status'], 'review' => $row['review_status'],
+                    'items' => $row['items'],
+                ], $items);
+            $snapshot = $extract($globalPage['rows']['data']);
+            self::assertSame($snapshot, $extract($legacyPage['rows']['data']), $view.' legacy row diff');
+            self::assertSame($snapshot, $extract($defaultPage['rows']['data']), $view.' default row diff');
+            foreach ($snapshot as $row) {
+                self::assertNotContains($row['number'], [
+                    '007-R48-ARCHIVED-DO-NOT-SHIP',
+                    '007-R48-OLD-ARCHIVE-DO-NOT-SHIP',
+                    '007-R48-DELETED-DO-NOT-SHIP',
+                ], $view.' leaked archived/deleted order');
+                $seen[$view][] = $row['number'];
+            }
+            if ($referenceCounts === null) {
+                $referenceCounts = $globalPage['viewCounts'];
+            } else {
+                self::assertSame($referenceCounts, $globalPage['viewCounts'], $view.' count consistency');
+            }
+            self::assertSame($globalPage['viewCounts'][$view], $globalPage['rows']['total'], $view.' tab count parity');
+        }
+        self::assertContains('007-R48-REVIEW', $seen['review'] ?? []);
+        self::assertContains('007-R48-STOCKOUT', $seen['stockout'] ?? []);
+        self::assertContains('007-R48-PENDING', $seen['pending'] ?? []);
+        self::assertContains('007-R48-EXCEPTION', $seen['exceptions'] ?? []);
+        self::assertContains('007-R48-HISTORY-4PX', $seen['4px'] ?? []);
+        self::assertContains('007-R48-HISTORY-WESHIP', $seen['weship'] ?? []);
+        self::assertNotContains('007-R48-HISTORY-4PX', $seen['weship'] ?? []);
+        self::assertNotContains('007-R48-HISTORY-WESHIP', $seen['4px'] ?? []);
+
+        foreach (['review','stockout','pending','today','today-4px','today-weship','exceptions','4px','weship'] as $view) {
+            foreach ([20,50,100] as $size) {
+                $page = $this->actingAs($user)->get('/logistics/china?view='.$view.'&per_page='.$size);
+                $page->assertOk()->assertInertia(fn ($inertia) => $inertia
+                    ->where('globalGridPilotEnabled', true)
+                    ->where('rows.per_page', $size));
+            }
+        }
+        $this->actingAs($user)->get('/logistics/china?view=weship&search=R48-HISTORY-WESHIP')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.erp_order_id', '007-R48-HISTORY-WESHIP'));
+        $this->actingAs($user)->get('/logistics/china?view=4px&search=R48-HISTORY-WESHIP')
+            ->assertOk()->assertInertia(fn ($page) => $page->where('rows.total', 0));
+
+        foreach ([$review,$stockout,$pending,$today4px,$todayWeship,$exception,$old4px,$oldWeship] as $item) {
+            self::assertNotSame('007-R48-ARCHIVED-DO-NOT-SHIP', $item->fresh()->erp_order_id);
+        }
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

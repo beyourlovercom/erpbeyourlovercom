@@ -1221,3 +1221,66 @@ test('overseas bulk confirm ships only after preview and explicit acknowledgemen
   expect(applyRequests).toBe(0)
   console.log('OVERSEA_BATCH_SHIP_BROWSER_PREVIEW_CONFIRM_NO_APPLY_PASS')
 })
+
+test('R4-8 final nine domestic views switch safely and keep independent Grid layouts + native escape',async({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().logisticsOperator)
+  const nav=page.getByRole('navigation',{name:'国内发货业务视图'})
+  const matrix=[
+    ['review','待审核'],['stockout','缺货单'],['pending','待发货'],
+    ['today','今日订单'],['today-4px','今日速达'],['today-weship','今日纬狮'],
+    ['exceptions','异常订单'],['4px','速达订单'],['weship','纬狮订单'],
+  ] as const
+  const scopedKeys:string[]=[]
+  const viewSnapshots:Record<string,{orders:string[];pin:string;legacy:string[]}>={}
+  await page.goto('/logistics/china?view=review',{waitUntil:'domcontentloaded'})
+  await expect(nav.getByRole('button',{name:/^待审核/})).toBeVisible()
+  for(const [key,label] of matrix){
+    await nav.getByRole('button',{name:new RegExp('^'+label)}).click()
+    await expect(page).toHaveURL(new RegExp('view='+key+'(?:&|$)'))
+    await expect(page).toHaveURL(/global_grid=1/)
+    const grid=page.getByTestId('erp-global-grid-v1')
+    await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:15000})
+    await expect(page.getByTestId('domestic-global-grid-toggle')).toHaveText('返回原表')
+    // Order may be left-pinned and async Vue renderers hydrate AFTER the
+    // AG Grid shell becomes visible. Require non-empty rendered text first.
+    const orderCells=grid.locator('.ag-row .ag-cell[col-id="order"]')
+    await expect.poll(async()=>{
+      const values=await orderCells.allTextContents()
+      return values.every(value=>value.trim().length>0)
+    },{timeout:12000}).toBe(true)
+    const orderNumbers=await orderCells.allTextContents()
+    await grid.getByRole('button',{name:'⚙ 列设置'}).click()
+    const expectedPin=(key==='4px'||key==='weship')?'0':'1'
+    const pin=grid.locator('.oms-pin-row label').filter({hasText:'右侧固定'}).locator('input')
+    // Persisted preferences can override defaults. Explicit reset restores
+    // the Owner-approved per-view baseline; no layout state leaks across tabs.
+    await grid.getByRole('button',{name:'恢复默认'}).click()
+    await expect(pin).toHaveValue(expectedPin)
+    await grid.getByRole('button',{name:'关闭列设置'}).click()
+    const keys=await page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('oms-grid-pref:user:')
+      && k.includes(':grid.logistics.domestic.')&&k.endsWith('.global.v1')))
+    const scopedKey=keys.find(k=>k.endsWith('.'+key+'.global.v1'))
+    expect(scopedKey,key+' has its own layout').toBeTruthy()
+    scopedKeys.push(scopedKey!)
+    await page.getByTestId('domestic-global-grid-toggle').click()
+    await expect(page).toHaveURL(/global_grid=0/)
+    await expect(page.getByTestId('erp-global-grid-v1')).toHaveCount(0)
+    const legacy=page.locator('.table-wrap.orders')
+    await expect(legacy).toBeVisible()
+    const legacyOrders=await legacy.locator('tbody tr td a[href^="/orders/"]').allTextContents()
+    expect(legacyOrders.map(t=>t.trim()),key+' native vs Grid order numbers')
+      .toEqual(orderNumbers.map(t=>t.trim()))
+    viewSnapshots[key]={orders:orderNumbers,pin:expectedPin,legacy:legacyOrders}
+    // Only our explicit, read-only switches; no ship, approve or sync posts.
+    await page.getByTestId('domestic-global-grid-toggle').click()
+    await expect(page).toHaveURL(/global_grid=1/)
+    await expect(page.getByTestId('erp-global-grid-v1')).toBeVisible()
+  }
+  expect(new Set(scopedKeys).size).toBe(9)
+  const anyArchived=Object.values(viewSnapshots).some(v=>v.orders.some(n=>n.includes('ARCHIVE-DO-NOT-SHIP')))
+  expect(anyArchived).toBe(false)
+  console.log('R4_8_CHROME_NINE_VIEWS_LEGACY_PARITY_LAYOUT_ISOLATION_PASS',
+    JSON.stringify(Object.fromEntries(Object.entries(viewSnapshots).map(([key,row])=>
+      [key,{count:row.orders.length,defaultPin:row.pin}]))))
+})
