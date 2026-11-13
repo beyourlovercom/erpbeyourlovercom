@@ -13,6 +13,7 @@ use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateCoupon;
+use App\Modules\Kol\Infrastructure\Models\KolApprovalDecision;
 use App\Modules\Shell\Application\UserUiPreferenceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -202,7 +203,9 @@ final class KolController
 
         return $result['success']
             ? $redirect->with('success', 'KOL 已创建；WordPress / AffiliateWP / Coupon 自动开通完成。')
-            : $redirect->with('warning', 'KOL 已创建，但自动开通未完整完成，系统已发送处理通知。');
+            : $redirect->with('error', '自动开户失败（KOL #'.$result['kol']->getKey().'）：'
+                .($result['failure_summary'] ?? 'WordPress / AffiliateWP / Coupon 未全部验证成功')
+                .'。已通知相关人员；请在本页打开 WordPress 核查，禁止重复创建。');
     }
 
     public function show(Request $request, Kol $kol): Response
@@ -230,16 +233,31 @@ final class KolController
         $kol->load($relations);
 
         $affiliateAccount = $this->affiliateAccountData($kol);
+        $lastApproval = KolApprovalDecision::query()->where('kol_id', $kol->getKey())->orderByDesc('id')->first();
+        $failureReason = $lastApproval?->outcome === 'pending'
+            && preg_match('/^(?:affiliate_|coupon_|provider_provision_failed$)/', (string) $lastApproval->reason_code)
+            ? (string) $lastApproval->reason_code : null;
         $affiliateId = (int) ($affiliateAccount['affiliate_id'] ?? 0);
-        $affiliateAdminUrl = $affiliateId > 0 && ($affiliateAccount['connection_key'] ?? null) === KolAffiliateIdentity::CONNECTION_KEY
-            && ($affiliateAccount['provider_status'] ?? null) === 'active'
+        $correctSite = ($affiliateAccount['connection_key'] ?? null) === KolAffiliateIdentity::CONNECTION_KEY;
+        // A failed/pending Affiliate must remain inspectable; do not conflate the
+        // diagnostic link with permission to create an influencer order.
+        $affiliateReady = $correctSite && $affiliateId > 0
+            && ($affiliateAccount['provider_status'] ?? null) === 'active';
+        $affiliateAdminUrl = $correctSite && $affiliateId > 0
             ? 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&affiliate_id='.$affiliateId.'&action=edit_affiliate'
+            : null;
+        $affiliateListUrl = ($correctSite || ($affiliateAccount === null && $failureReason !== null
+            && trim((string) config('services.andy_core.connection_key')) === KolAffiliateIdentity::CONNECTION_KEY))
+            ? 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates'
             : null;
 
         return Inertia::render('Kol/Show', [
             'kol' => $this->kolDetailData($kol),
             'affiliateAccount' => $affiliateAccount,
             'affiliateAdminUrl' => $affiliateAdminUrl,
+            'affiliateListUrl' => $affiliateListUrl,
+            'affiliateReady' => $affiliateReady,
+            'kolCreateFailureReason' => $failureReason,
             'canOperate' => KolScope::canOperate($request->user()),
             'canCreateOrders' => $request->user()->can('orders.create'),
             'canManageViews' => KolScope::canManageViews($request->user()),
@@ -531,6 +549,7 @@ final class KolController
             'wordpress_user_email' => $account?->wordpress_user_email,
             'provider_status' => $account?->provider_status,
             'provisioning_status' => $account?->provisioning_status,
+            'origin' => $account?->origin,
             'sync_status' => $account?->sync_status,
             'reconciliation_status' => $account?->reconciliation_status,
             'last_successful_sync_at' => $account?->last_successful_sync_at?->toIso8601String(),
@@ -541,6 +560,7 @@ final class KolController
                 'date_expires' => $coupon->date_expires?->toIso8601String(),
                 'provider_status' => $coupon->provider_status,
                 'provisioning_status' => $coupon->provisioning_status,
+                'last_error_code' => $coupon->last_error_code,
                 'sync_status' => $coupon->sync_status,
             ] : null,
         ];

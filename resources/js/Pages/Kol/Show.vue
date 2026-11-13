@@ -42,9 +42,36 @@ const props = defineProps<{
   canOperate: boolean
   canCreateOrders?: boolean
   canManageViews: boolean
-  affiliateAccount?: { affiliate_id: number | null; wordpress_user_id: number | null; connection_key: string } | null
+  affiliateAccount?: {
+    affiliate_id: number | null; wordpress_user_id: number | null; connection_key: string
+    provider_status?: string | null; provisioning_status?: string | null; origin?: string | null
+    last_error_code?: string | null
+    coupon?: { provisioning_status?: string | null; provider_status?: string | null; last_error_code?: string | null } | null
+  } | null
   affiliateAdminUrl?: string | null
+  affiliateListUrl?: string | null
+  affiliateReady?: boolean
+  kolCreateFailureReason?: string | null
 }>()
+
+const affiliateIssue = computed(() => {
+  const account = props.affiliateAccount
+  if (!account && !props.kolCreateFailureReason) return null
+  if (!account) return { affiliateStatus: '未确认', couponStatus: '未创建', errorCode: props.kolCreateFailureReason ?? '待查询' }
+  const providerFailed = account.provider_status !== 'active'
+  const isErpProvision = account.origin === 'erp_provisioned'
+  const affiliateIncomplete = isErpProvision && account.provisioning_status !== 'active'
+  const couponIncomplete = isErpProvision && account.coupon?.provisioning_status !== 'active'
+  if (!providerFailed && !affiliateIncomplete && !couponIncomplete && !props.kolCreateFailureReason) return null
+  const code = providerFailed || affiliateIncomplete
+    ? account.last_error_code
+    : account.coupon?.last_error_code
+  return {
+    affiliateStatus: account.provider_status ?? account.provisioning_status ?? '未确认',
+    couponStatus: account.coupon?.provisioning_status ?? '未完成',
+    errorCode: code ?? props.kolCreateFailureReason ?? '待查询',
+  }
+})
 
 const archive = () => {
   if (confirm(`确认归档 ${props.kol.display_name}？`)) {
@@ -128,9 +155,9 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
         <div class="kol-detail-toolbar__trail">KOL 资料库 / KOL 详情</div>
         <div class="kol-detail-toolbar__actions page-header-actions">
           <Link class="kol-action-button" href="/kol/library">返回列表</Link>
-          <Link v-if="canCreateOrders && !kol.archived_at && affiliateAdminUrl" class="kol-action-button kol-action-button--primary" :href="`/kol/orders/create?kol_id=${kol.id}`" data-testid="kol-create-order">新建网红订单</Link>
-          <span v-if="!kol.archived_at && !affiliateAdminUrl" role="status" data-testid="affiliatewp-unbound-warning">AffiliateWP 未绑定或未激活：请先完成账号绑定，再创建新网红订单。</span>
-          <a v-if="affiliateAdminUrl" class="kol-action-button" :href="affiliateAdminUrl" target="_blank" rel="noopener noreferrer" data-testid="affiliatewp-edit-link">AffiliateWP 账号 ↗</a>
+          <Link v-if="canCreateOrders && !kol.archived_at && affiliateReady" class="kol-action-button kol-action-button--primary" :href="`/kol/orders/create?kol_id=${kol.id}`" data-testid="kol-create-order">新建网红订单</Link>
+          <span v-if="!kol.archived_at && !affiliateReady" role="status" data-testid="affiliatewp-unbound-warning">AffiliateWP 未绑定或未激活：请先完成账号绑定，再创建新网红订单。</span>
+          <a v-if="affiliateAdminUrl" class="kol-action-button" :href="affiliateAdminUrl" target="_blank" rel="noopener noreferrer" data-testid="affiliatewp-edit-link">WordPress 核查账号 ↗</a>
           <button v-if="affiliateAdminUrl" class="kol-action-button" type="button" data-testid="affiliatewp-copy-url" @click="copyAffiliateUrl">复制地址</button>
           <span v-if="affiliateCopyStatus" role="status">{{ affiliateCopyStatus }}</span>
 
@@ -171,6 +198,18 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
       </section>
 
       <div v-if="kol.archived_at" class="archived-banner">此 KOL 已归档（{{ kol.archived_at }}）</div>
+
+      <section v-if="affiliateIssue" class="kol-provision-alert" role="alert" aria-live="assertive" data-testid="kol-provision-alert">
+        <strong>网红账号开户未完成，请前往 WordPress 核查</strong>
+        <p>ERP KOL #{{ kol.id }} · AffiliateWP：{{ affiliateIssue.affiliateStatus }} · Coupon：{{ affiliateIssue.couponStatus }} · 错误码：{{ affiliateIssue.errorCode }}</p>
+        <p>本条记录已保留；请确认 WordPress 联盟账号和优惠券是否已创建，不要重复创建账户或优惠券。</p>
+        <a v-if="affiliateAdminUrl || affiliateListUrl"
+          :href="affiliateAdminUrl || affiliateListUrl || '#'"
+          target="_blank" rel="noopener noreferrer" data-testid="kol-provision-wp-check">
+          前往 WordPress 后台核查 ↗
+        </a>
+        <Link v-if="canOperate" :href="'/kol/library/' + kol.id + '/edit'" data-testid="kol-provision-retry-review">查看账号与安全重试入口</Link>
+      </section>
 
       <!-- Region B + C · 左侧资料列 -->
       <div class="detail-grid kol-primary-grid">
@@ -448,6 +487,10 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
 </template>
 
 <style scoped>
+.kol-provision-alert { border: 1px solid #f59e0b; border-left: 4px solid #d97706; border-radius: 8px; background: #fffbeb; color: #78350f; padding: 12px 14px; margin: 10px 0 16px; font-size: 13px; }
+.kol-provision-alert strong { font-size: 14px; }
+.kol-provision-alert p { margin: 5px 0; overflow-wrap: anywhere; }
+.kol-provision-alert a { color: #92400e; text-decoration: underline; font-weight: 600; margin-right: 18px; }
 .kol-detail-page { width: 100%; max-width: 1440px; margin: 0 auto; padding: 4px 0 28px; }
 .kol-detail-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .kol-detail-toolbar__trail { color: #64748b; font-size: 13px; font-weight: 500; }

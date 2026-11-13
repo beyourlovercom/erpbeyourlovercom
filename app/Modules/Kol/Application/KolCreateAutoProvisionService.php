@@ -187,10 +187,21 @@ final class KolCreateAutoProvisionService
         $this->approvals->markCreateNeedsAttention($kol, $actor, $reasonCode);
         $kol->refresh();
 
+        $affiliate = KolAffiliateAccount::query()->where('kol_id', $kol->getKey())->latest('id')->first();
+        $coupon = KolAffiliateCoupon::query()->where('kol_id', $kol->getKey())->latest('id')->first();
+        $stage = $affiliateStatus !== 'active' ? 'AffiliateWP 账号未确认 Active' : 'WooCommerce Coupon 未确认创建成功';
+        $errorCode = (string) ($affiliateStatus !== 'active' ? $affiliate?->last_error_code : $coupon?->last_error_code);
+        $errorCode = $errorCode !== '' ? $errorCode : $reasonCode;
+        // The notification never contains a password, connector token or raw provider response.
+        $failureSummary = $stage.'；错误码 '.$errorCode;
+        $message = $kol->display_name.'（ERP KOL #'.$kol->getKey().'）自动开户失败：'.$failureSummary
+            .'。Affiliate 状态 '.($affiliateStatus ?? '未完成').'，Coupon 状态 '.($couponStatus ?? '未创建')
+            .'。请打开 ERP 网红详情并进入 WordPress 后台核查；禁止重复创建账号。';
+
         $payload = [
             'category' => 'kol',
-            'title' => 'KOL 自动开通需要处理',
-            'message' => $kol->display_name.' 已建立 KOL 记录，但 WordPress / Affiliate / Coupon 自动开通未完整通过 read-back。',
+            'title' => '网红自动开户失败 · 需核查 WordPress',
+            'message' => $message,
             'action_url' => '/kol/library/'.$kol->getKey(),
             'entity_type' => 'kol',
             'entity_id' => $kol->getKey(),
@@ -212,6 +223,7 @@ final class KolCreateAutoProvisionService
             'success' => false,
             'affiliate_status' => $affiliateStatus,
             'coupon_status' => $couponStatus,
+            'failure_summary' => $failureSummary,
         ];
     }
 

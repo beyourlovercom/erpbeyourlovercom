@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useWorkspaceDraftGuard } from '../../Composables/useWorkspaceDraftGuard'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
@@ -171,6 +171,12 @@ const platformOptions = [
   { value: 'other', label: '其他' },
 ]
 
+const providerValidationError = computed(() =>
+  [form.errors.contact_email, form.errors.affiliate_coupon_code].find(
+    message => message && /WordPress|AffiliateWP|WooCommerce|Connector|Coupon/i.test(message),
+  ) ?? '',
+)
+
 const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人库', href: '/kol/library' }, '新建 KOL']
 </script>
 
@@ -193,6 +199,13 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <button type="submit" form="kol-create-form" class="erp-btn erp-btn-primary" :disabled="form.processing">{{ form.processing ? '创建中…' : '保存 KOL' }}</button>
           </div>
         </div>
+
+        <section v-if="providerValidationError" class="kol-create-provider-blocked" role="alert" aria-live="assertive" data-testid="kol-create-provider-blocked">
+          <strong>自动开户已阻止：未创建新的 WordPress / AffiliateWP 账号</strong>
+          <p>{{ providerValidationError }}。请先检查网站上的现有账号与优惠券，禁止重复开户。</p>
+          <a href="https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates" target="_blank" rel="noopener noreferrer">核查 WordPress 联盟账号 ↗</a>
+          <a href="https://www.beyourlover.com/wp-admin/edit.php?post_type=shop_coupon" target="_blank" rel="noopener noreferrer">核查 WooCommerce 优惠券 ↗</a>
+        </section>
 
         <form id="kol-create-form" @submit.prevent="submit">
 
@@ -318,7 +331,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
           <!-- Card 3: WordPress / Affiliate 账号 -->
           <div class="erp-form-card kol-account-card">
             <h2 class="erp-form-card-title">WordPress / Affiliate 账号</h2>
-            <p class="erp-form-card-helper">创建 KOL 时同步完成自动审批、WordPress Subscriber、AffiliateWP Affiliate 与 Coupon。已有邮箱或 Code 只阻止，不覆盖。</p>
+            <p class="erp-form-card-helper">请统一从 ERP 开户：成功须确认 WordPress、AffiliateWP Active 与 Coupon 全部完成；直接在 WordPress 手工创建可能进入 Pending，需人工审核。已有邮箱或 Code 只阻止，不覆盖。</p>
             <div class="kol-credential-rows">
               <div class="erp-form-field">
                 <label class="erp-form-label">Username <span class="erp-form-required">*</span></label>
@@ -547,6 +560,11 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
 </template>
 
 <style scoped>
+.kol-create-provider-blocked { border: 1px solid #f59e0b; border-left: 4px solid #d97706; border-radius: 8px; background: #fffbeb; padding: 12px 14px; margin: 8px 0 16px; color: #78350f; font-size: 13px; }
+.kol-create-provider-blocked strong { font-size: 14px; }
+.kol-create-provider-blocked p { margin: 5px 0; }
+.kol-create-provider-blocked a { color: #92400e; text-decoration: underline; font-weight: 600; margin-right: 16px; }
+
 .kol-sticky-header {
   position: sticky;
   top: 0;

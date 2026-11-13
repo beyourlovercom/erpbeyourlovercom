@@ -343,12 +343,55 @@ class KolCreateAutoProvisionTest extends TestCase
         $kol = Kol::query()->where('contact_email', 'new-kol@example.test')->firstOrFail();
 
         $response->assertRedirect(route('kol.library.show', $kol));
-        $response->assertSessionHas('warning');
+        $response->assertSessionHas('error', fn ($value) => str_contains($value, '自动开户失败')
+            && str_contains($value, 'AffiliateWP 账号未确认 Active')
+            && str_contains($value, 'READBACK_MISMATCH')
+            && str_contains($value, 'WordPress 核查'));
         self::assertSame('pending', $kol->fresh()->approval_status);
         self::assertSame(['approved', 'pending'], KolApprovalDecision::query()->where('kol_id', $kol->id)->orderBy('id')->pluck('outcome')->all());
         self::assertSame('readback_mismatch', KolAffiliateAccount::query()->where('kol_id', $kol->id)->firstOrFail()->provisioning_status);
         self::assertDatabaseCount('notifications', 1);
+        $this->actingAs($specialist)->get('/kol/library/'.$kol->id)->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('affiliateReady', false)
+                ->where('affiliateAdminUrl', 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&affiliate_id=93001&action=edit_affiliate')
+                ->where('kolCreateFailureReason', 'affiliate_readback_mismatch')
+                ->where('affiliateAccount.last_error_code', 'READBACK_MISMATCH'));
+        $notification = json_decode((string) DB::table('notifications')->firstOrFail()->data, true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame('网红自动开户失败 · 需核查 WordPress', $notification['title']);
+        self::assertStringContainsString('READBACK_MISMATCH', $notification['message']);
+        self::assertStringContainsString('WordPress', $notification['message']);
+        self::assertStringNotContainsString('Abc123', json_encode($notification));
         self::assertSame(0, KolAffiliateCoupon::query()->where('kol_id', $kol->id)->count());
+    }
+
+    public function test_coupon_readback_failure_shows_explicit_failure_without_new_affiliate_or_coupon_retry(): void
+    {
+        $specialist = $this->specialist();
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('checkAffiliateIdentity')->once()
+            ->andReturn($this->response(['available' => true], 'identity-ok'));
+        $mock->shouldReceive('checkCoupon')->twice()
+            ->andReturn($this->response(['available' => true], 'coupon-ok'));
+        $mock->shouldReceive('provisionAffiliate')->once()
+            ->andReturn($this->response(['affiliate_id' => 93088, 'wp_user_id' => 73088, 'affiliate_status' => 'active', 'affiliate_url_slug' => 'creator-login'], 'affiliate-ok'));
+        $mock->shouldReceive('provisionCoupon')->once()
+            ->andReturn($this->response(['coupon_id' => 94088, 'code' => 'WRONGCODE', 'affiliate_id' => 93088], 'coupon-mismatch'));
+
+        $response = $this->actingAs($specialist)->post('/kol/library', $this->payload());
+        $kol = Kol::query()->where('contact_email', 'new-kol@example.test')->firstOrFail();
+        $response->assertRedirect(route('kol.library.show', $kol))
+            ->assertSessionHas('error', fn ($value) => str_contains($value, 'WooCommerce Coupon 未确认创建成功')
+                && str_contains($value, 'READBACK_MISMATCH'));
+        self::assertSame('pending', $kol->fresh()->approval_status);
+        self::assertSame('active', KolAffiliateAccount::where('kol_id', $kol->id)->firstOrFail()->provisioning_status);
+        self::assertSame('readback_mismatch', KolAffiliateCoupon::where('kol_id', $kol->id)->firstOrFail()->provisioning_status);
+        $this->actingAs($specialist)->get('/kol/library/'.$kol->id)->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('affiliateReady', true)
+                ->where('kolCreateFailureReason', 'coupon_readback_mismatch')
+                ->where('affiliateAccount.coupon.last_error_code', 'READBACK_MISMATCH'));
+        self::assertDatabaseCount('notifications', 1);
     }
 
     public function test_missing_coupon_policy_blocks_before_kol_creation(): void
