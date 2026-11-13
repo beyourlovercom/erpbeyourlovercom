@@ -115,7 +115,7 @@ final class OrderController
             ? ($request->user()->can('customers.export') && $request->user()->can('system.permissions.manage'))
             : $request->user()->can('orders.view');
 
-        $orders->getCollection()->loadMissing(['shipment', 'manualSync', 'fulfillmentParent', ...($customerGlobalGridEnabled ? ['customer'] : [])]);
+        $orders->getCollection()->loadMissing(['shipment', 'manualSync', 'fulfillmentParent', 'latestNoteEntry', ...($customerGlobalGridEnabled ? ['customer'] : [])]);
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments(
             $orders->getCollection()->map(fn (Order $order): int => (int) $order->shipment?->id)->all()
         );
@@ -254,6 +254,13 @@ final class OrderController
 
         return Inertia::render('Orders/Show', [
             'order' => $this->orderData($order),
+            'orderNotes' => $order->noteEntries()->get()->map(fn ($entry): array => [
+                'id' => $entry->id, 'author_name' => $entry->author_name,
+                'body' => $entry->body, 'created_at' => $entry->created_at?->toIso8601String(),
+            ])->all(),
+            'canAppendOrderNote' => ! $order->isOperationallyArchived()
+                && $order->archived_at === null && $authority->archived_at === null
+                && ! $authority->isOperationallyArchived(),
             'orderNavigation' => $this->adjacentOrderNavigation($request, $order),
             'wooAdminEditUrl' => $isDerived ? null : $this->wooAdminLink->forOrder($order),
             'inventoryAvailability' => $inventoryAvailability,
@@ -527,6 +534,11 @@ final class OrderController
         $this->authorizeKind($request, $order);
         KolOrderAccessScope::authorize($request->user(), $order);
         abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能编辑。');
+        // Presence is forbidden even for empty/null values: Laravel's `prohibited`
+        // validator alone treats empty values as absent, risking legacy note erasure.
+        if (array_key_exists('order_note', $request->all())) {
+            throw ValidationException::withMessages(['order_note' => '历史备注不可修改，请在内部协作记录中追加备注。']);
+        }
         $data = $request->validate($this->updateRules($order));
         $items = $data['items'] ?? null;
         $reason = trim((string) ($data['amendment_reason'] ?? ''));
@@ -739,6 +751,8 @@ final class OrderController
             'workflow_revision' => (int) ($order->workflow_revision ?? 0),
             'workflow_status_projection' => $workflowProjection,
             'order_note' => $order->order_note,
+            // One latest visible note; collaborative entries win over the legacy/source note.
+            'latest_order_note' => $order->latestNoteEntry?->body ?: $order->order_note,
             'domestic_reject_reason' => $order->domestic_reject_reason,
             'domestic_rejected_at' => $order->domestic_rejected_at?->toIso8601String(),
             'currency' => $order->currency,
@@ -973,7 +987,8 @@ final class OrderController
             'order_kind' => ['sometimes', Rule::in(array_column(OrderKind::cases(), 'value'))],
             'source_type' => ['sometimes', Rule::in(array_column(OrderSourceType::cases(), 'value'))],
             'order_date' => ['sometimes', 'date'],
-            'order_note' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            // Website/legacy note is read-only after creation; collaboration uses append-only entries.
+            'order_note' => ['prohibited'],
             'currency' => ['sometimes', 'required', 'string', 'regex:/^[A-Z]{3}$/'],
             'recipient_name' => ['sometimes', 'nullable', 'string', 'max:255'], 'phone' => ['sometimes', 'nullable', 'string', 'max:64'],
             'country' => ['sometimes', 'nullable', 'string', 'max:128'], 'province_state' => ['sometimes', 'nullable', 'string', 'max:128'],

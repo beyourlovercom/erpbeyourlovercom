@@ -123,6 +123,17 @@ describe('Orders Saved Views', () => {
     modern.unmount()
   })
 
+  it('shows just the latest order remark in red in the legacy list', () => {
+    const row = { id: 8, erp_order_id: '007-0008', external_order_number: 'WEB-8', internal_order_number: 'INT-8',
+      source_label: 'WooCommerce', order_date: '2026-11-13', order_status_label: '待发货',
+      latest_order_note: '最新备注：订单已经发货，请注意签收', address: { recipient_name: 'Tester', country: 'US' }, owner_label: null }
+    const wrapper = mount(Index, { props: { ...props, orders: { ...props.orders, data: [row] } } })
+    const remark = wrapper.get('.orders-latest-note')
+    expect(remark.text()).toBe(row.latest_order_note)
+    expect(remark.attributes('title')).toBe(row.latest_order_note)
+    expect(wrapper.get('thead').text()).toContain('备注')
+  })
+
   it('renders the ERP order identity with the external order as secondary text', () => {
     const wrapper = mount(Index, { props: {
       ...props,

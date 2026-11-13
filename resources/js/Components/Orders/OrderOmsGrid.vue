@@ -55,6 +55,9 @@ const columns = computed<ColDef<Record<string, unknown>>[]>(() => [
   // One AG Grid row per SKU line; server pagination and status remain per original order.
   { ...basic('order_number', 'display_order_number', '订单号', 170, true, true),
     cellRenderer: OrderOmsCell, cellRendererParams: { mode: 'number' } },
+  { ...basic('order_note', 'order_note', '备注', 265, true),
+    cellStyle: params => params.value && params.value !== '—' ? { color: '#c62828', fontWeight: '600' } : null,
+    tooltipField: 'order_note' },
   basic('sku', 'sku_list', 'SKU', 174, true),
   basic('quantity', 'order_quantity', 'SKU数量', 94, true),
   basic('order_total_quantity', 'order_total_quantity', '订单总件数', 110),
@@ -108,7 +111,6 @@ const columns = computed<ColDef<Record<string, unknown>>[]>(() => [
   basic('handled_by', 'handled_by', '发货处理人ID', 130),
   basic('logistics_note', 'logistics_note', '物流备注', 215),
   // Optional: notes, sync and exceptional review.
-  basic('order_note', 'order_note', '订单备注', 230),
   basic('manual_sync_status', 'manual_sync_status', '官网同步状态', 130),
   basic('manual_sync_at', 'manual_sync_at', '官网同步时间', 168),
   basic('domestic_reject_reason', 'domestic_reject_reason', '国内驳回原因', 210),

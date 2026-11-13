@@ -104,6 +104,16 @@ class Order extends Model
         return $this->hasMany(OrderExternalReference::class);
     }
 
+    public function noteEntries(): HasMany
+    {
+        return $this->hasMany(OrderNoteEntry::class)->orderBy('id');
+    }
+
+    public function latestNoteEntry(): HasOne
+    {
+        return $this->hasOne(OrderNoteEntry::class)->latestOfMany();
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);

@@ -11,10 +11,10 @@ import { useAccountGridPreferences, type GridColumnDefinition } from '../../Comp
 import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatusPill.vue'
 const OrderOmsGrid = defineAsyncComponent(() => import('../../Components/Orders/OrderOmsGrid.vue'))
 
-type Order = { id: number; tracking_sync_status?: string | null; tracking_sync_reason?: string | null; tracking_sync_label?: string | null; tracking_sync_verified_at?: string | null; erp_order_id: string | null; external_order_number: string; internal_order_number: string; source_label: string; order_kind?: string; order_date: string; order_status_label: string; workflow_status_projection?: { code:string; en:string; zh:string; color:string; source:string; mutable?:boolean }; workflow_revision?: number; customer_email?: string | null; address?: { recipient_name: string; country: string; city?: string; postal_code?: string }; items?: { sku?: string | null; product_summary?: string | null; quantity?: number }[]; shipment?: { warehouse_name?: string | null; carrier?: string | null; tracking_number?: string | null } | null; owner?: { name: string }; owner_label?: string | null }
+type Order = { id: number; tracking_sync_status?: string | null; tracking_sync_reason?: string | null; tracking_sync_label?: string | null; tracking_sync_verified_at?: string | null; erp_order_id: string | null; external_order_number: string; internal_order_number: string; source_label: string; order_kind?: string; order_date: string; order_status_label: string; workflow_status_projection?: { code:string; en:string; zh:string; color:string; source:string; mutable?:boolean }; workflow_revision?: number; latest_order_note?: string | null; customer_email?: string | null; address?: { recipient_name: string; country: string; city?: string; postal_code?: string }; items?: { sku?: string | null; product_summary?: string | null; quantity?: number }[]; shipment?: { warehouse_name?: string | null; carrier?: string | null; tracking_number?: string | null } | null; owner?: { name: string }; owner_label?: string | null }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 type SavedView = { id: number; name: string; filters_json: Record<string, string>; is_pinned: boolean; created_by: number }
-type ColumnKey = 'order_number' | 'source' | 'date' | 'recipient' | 'country' | 'status' | 'owner'
+type ColumnKey = 'order_number' | 'note' | 'source' | 'date' | 'recipient' | 'country' | 'status' | 'owner'
 
 const props = defineProps<{
   orderKind: string
@@ -163,6 +163,7 @@ const customerRows = computed<GridListRow[]>(() => props.orders.data.map(order =
   id: order.id,
   order_url: orderPath(order),
   order_number: order.erp_order_id ?? '—',
+  note: order.latest_order_note || '—',
   external_number: order.external_order_number ?? '—',
   email: order.customer_email ?? '—',
   source: order.source_label,
@@ -183,6 +184,8 @@ const customerRows = computed<GridListRow[]>(() => props.orders.data.map(order =
 const customerColumns: ColDef<GridListRow>[] = [
   gridColumn({ colId:'order_number', field:'order_number', headerName:'ERP订单号', width:185, sortable:true,
     cellRenderer:GlobalGridCell, cellRendererParams:{ mode:'link', hrefFor:(row:GridListRow)=>String(row.order_url) } }),
+  gridColumn({ colId:'note', field:'note', headerName:'备注', width:265, tooltipField:'note',
+    cellStyle: params => params.value && params.value !== '—' ? { color:'#c62828', fontWeight:'600' } : null }),
   gridColumn({ colId:'external_number', field:'external_number', headerName:'来源单号', width:175 }),
   gridColumn({ colId:'email', field:'email', headerName:'客户邮箱', width:235 }),
   gridColumn({ colId:'source', field:'source', headerName:'来源', width:120, sortable:true }),
@@ -218,6 +221,7 @@ const customerFilterValues = computed(() => Object.fromEntries(
 ))
 const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'order_number', label: 'ERP订单号' },
+  { key: 'note', label: '备注' },
   { key: 'source', label: '来源' }, { key: 'date', label: '订单日期' }, { key: 'recipient', label: '收件人' },
   { key: 'country', label: '国家' }, { key: 'status', label: '订单状态' }, { key: 'owner', label: '负责人' },
 ]
@@ -267,8 +271,9 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         <button class="mvp-button" type="submit">筛选</button>
       </form>
 
-      <div v-if="!modernGridEnabled" class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>官网同步</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.source_label === 'WooCommerce' && order.external_order_number" class="order-source-reference">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ order.address?.country ?? '—' }}</template><template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :options="workflowStatusOptions" /><span v-else>—</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><span v-if="order.tracking_sync_status !== null && order.tracking_sync_status !== undefined" class="orders-sync-pill" :class="order.tracking_sync_status ?? 'pending'" :title="[order.tracking_sync_reason, order.tracking_sync_verified_at ? '最近官网验证：' + new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '尚无官网验证记录'].filter(Boolean).join('；')">{{ order.tracking_sync_label ?? '待同步' }}</span><span v-else>—</span></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 3" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
-      <GlobalGrid v-if="modernCustomerGrid"
+      <div v-if="!modernGridEnabled" class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>官网同步</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.source_label === 'WooCommerce' && order.external_order_number" class="order-source-reference">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'note'"><span class="orders-latest-note" :title="order.latest_order_note || ''">{{ order.latest_order_note || '—' }}</span></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ order.address?.country ?? '—' }}</template><template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :options="workflowStatusOptions" /><span v-else>—</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><span v-if="order.tracking_sync_status !== null && order.tracking_sync_status !== undefined" class="orders-sync-pill" :class="order.tracking_sync_status ?? 'pending'" :title="[order.tracking_sync_reason, order.tracking_sync_verified_at ? '最近官网验证：' + new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '尚无官网验证记录'].filter(Boolean).join('；')">{{ order.tracking_sync_label ?? '待同步' }}</span><span v-else>—</span></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 3" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
+      <Suspense v-if="modernCustomerGrid">
+        <GlobalGrid
         namespace="grid.orders.customer.global.v1"
         title="客户订单"
         :rows="customerRows"
@@ -285,9 +290,13 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         @sort-change="gridSort"
         @search-change="gridSearch"
         @column-search-change="gridColumnSearch"
-      />
-      <OrderOmsGrid
-        v-else-if="omsGridEnabled"
+        />
+        <template #fallback>
+          <div class="orders-grid-loading" role="status">正在加载订单表格… 网络较慢时可 <Link :href="gridToggleUrl(false)">返回原表</Link></div>
+        </template>
+      </Suspense>
+      <Suspense v-else-if="omsGridEnabled">
+        <OrderOmsGrid
         :title="heading"
         :orders="orders"
         :filters="props.filters"
@@ -302,7 +311,9 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         @sort-change="gridSort"
         @search-change="gridSearch"
         @column-search-change="gridColumnSearch"
-      />
+        />
+        <template #fallback><div class="orders-grid-loading" role="status">正在加载 OMS 表格…</div></template>
+      </Suspense>
       <div v-if="!modernGridEnabled && orders.last_page > 1" class="mvp-pagination"><button class="mvp-button" type="button" :disabled="orders.current_page <= 1" @click="goToPage(orders.current_page - 1)">上一页</button><span>第 {{ orders.current_page }} / {{ orders.last_page }} 页 · 共 {{ orders.total }} 条</span><button class="mvp-button" type="button" :disabled="orders.current_page >= orders.last_page" @click="goToPage(orders.current_page + 1)">下一页</button></div>
     </section>
   </AuthenticatedLayout>
@@ -310,6 +321,8 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
 
 <style scoped>
 .order-source-reference{display:block;font-size:11px;color:var(--byl-text-muted);margin-top:2px}
+.orders-latest-note{display:block;color:#c62828;font-weight:600;max-width:265px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.orders-grid-loading{display:flex;align-items:center;justify-content:center;min-height:140px;margin:8px 0;padding:20px;border:1px dashed #ccd5dc;background:white;border-radius:8px;font-size:13px;color:#475569}.orders-grid-loading a{margin-left:4px;color:#116b57;text-decoration:underline}
 .order-views-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0 0 14px}.view-tab{border:1px solid var(--byl-color-border,#d9e1e5);background:var(--byl-color-surface,#fff);border-radius:999px;padding:7px 12px;cursor:pointer;font-size:13px}.view-tab.active{background:var(--byl-status-bg);color:var(--byl-status-ink);font-weight:700}.view-tab.saved{border-radius:999px 0 0 999px}.saved-view-chip{display:inline-flex}.saved-view-delete{border:1px solid var(--byl-color-border,#d9e1e5);border-left:0;background:var(--byl-color-surface,#fff);border-radius:0 999px 999px 0;padding:0 9px;cursor:pointer}.views-divider{width:1px;height:24px;background:var(--byl-color-border,#d9e1e5);margin:0 2px}.add-view{border-style:dashed}.new-view-panel{display:flex;align-items:end;gap:14px;flex-wrap:wrap;padding:12px 14px;margin-bottom:14px;border:1px solid var(--byl-color-border,#d9e1e5);border-radius:10px;background:var(--byl-color-surface,#fff)}.new-view-panel label{display:flex;flex-direction:column;gap:5px;font-size:12px}.new-view-panel input{min-width:240px;padding:8px 10px;border:1px solid var(--byl-color-border,#d9e1e5);border-radius:8px}.new-view-panel>span{font-size:12px;opacity:.7;padding-bottom:9px}
 .orders-sync-pill{display:inline-flex;padding:3px 7px;border-radius:5px;font-size:11px;font-weight:700;background:#fff1d6;color:#92400e;white-space:nowrap}.orders-sync-pill.completed{background:#dcfce7;color:#166534}.orders-sync-pill.failed{background:#fee2e2;color:#991b1b}.orders-sync-pill.retry_wait{background:#fef3c7;color:#92400e}.orders-sync-pill.processing{background:#dbeafe;color:#1d4ed8}.orders-sync-pill.partial{background:#fef3c7;color:#92400e}
 </style>

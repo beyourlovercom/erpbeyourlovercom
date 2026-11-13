@@ -106,12 +106,13 @@ describe('OMS order-column projection', () => {
       shipment: { warehouse_name: 'US-NY', carrier: 'USPS', tracking_number: '9400' },
       manual_sync: { status: 'synced', synced_at: '2026-11-05' },
       order_note: 'Handle with care',
+      latest_order_note: '最新：今天发货',
       operational_markers: ['exception'],
     }))
     expect(row).toMatchObject({
       recipient: 'Emma', country: 'US', city: 'Los Angeles', postal_code: '90001',
       warehouse_name: 'US-NY', carrier: 'USPS', tracking_number: '9400',
-      manual_sync_status: 'synced', order_note: 'Handle with care',
+      manual_sync_status: 'synced', order_note: '最新：今天发货',
       operational_markers_label: 'exception',
     })
   })
