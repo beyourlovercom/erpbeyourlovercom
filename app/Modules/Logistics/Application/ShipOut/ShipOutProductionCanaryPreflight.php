@@ -155,6 +155,9 @@ final class ShipOutProductionCanaryPreflight
         foreach ($order->items as $item) {
             $id = (int) $item->product_id;
             $erpSku = trim((string) $item->sku);
+            if (filled($item->resolved_fulfillment_sku) && strcasecmp($erpSku, trim((string) $item->resolved_fulfillment_sku)) !== 0) {
+                throw new RuntimeException('SHIPOUT_R10_SKU_NOT_MATERIALIZED');
+            }
             $verified = $this->identity->resolve($erpSku);
             if ($id < 1 || ($verified['status'] ?? '') !== 'resolved'
                 || (int) ($verified['product_id'] ?? 0) !== $id) {

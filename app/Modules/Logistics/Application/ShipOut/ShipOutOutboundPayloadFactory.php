@@ -63,6 +63,9 @@ final class ShipOutOutboundPayloadFactory
         $productList = [];
         foreach ($items as $item) {
             $sku = trim((string) $item->sku);
+            if (filled($item->resolved_fulfillment_sku) && strcasecmp($sku, trim((string) $item->resolved_fulfillment_sku)) !== 0) {
+                throw new RuntimeException('SHIPOUT_SKU_NOT_MATERIALIZED');
+            }
             $qty = (int) $item->quantity;
             if ($sku === '' || $qty <= 0 || ! $item->product_id) {
                 throw new RuntimeException('SHIPOUT_ITEM_INVALID');

@@ -116,6 +116,9 @@ final class Wms64OutboundExporter
 
         foreach ($items as $index => $item) {
             $sku = trim((string) $item->sku);
+            abort_if(filled($item->resolved_fulfillment_sku)
+                && strcasecmp($sku, trim((string) $item->resolved_fulfillment_sku)) !== 0,
+                422, "订单 {$order->erp_order_id} 履约 SKU 未实际写入，禁止导出仓库文件");
             abort_if($sku === '', 422, "订单 {$order->erp_order_id} 存在空 SKU。");
             $row[24 + ($index * 2)] = $sku;
             $quantity = (int) $item->quantity;

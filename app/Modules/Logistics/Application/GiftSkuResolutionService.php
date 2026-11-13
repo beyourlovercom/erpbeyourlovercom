@@ -62,11 +62,11 @@ final class GiftSkuResolutionService
     /** @return array<string,mixed>|null */
     public function resolve(OrderItem $item, string $warehouseCode, ?int $mappingId): ?array
     {
-        if (! $this->isGiftSku($item->sku)) return null;
+        if (! $this->isGiftSku($item->source_sku ?: $item->sku)) return null;
         abort_unless($mappingId && $mappingId > 0, 422, 'gift 必须选择实际履约礼品 SKU');
         $mapping = WarehouseClearanceProduct::query()->with(['warehouse', 'product'])->whereKey($mappingId)->where('is_active', true)->first();
         abort_unless($mapping && $mapping->warehouse?->is_active && $mapping->product?->is_active, 422, '所选礼品 SKU 映射无效或已停用');
-        abort_unless(strcasecmp((string) $mapping->source_sku, (string) $item->sku) === 0, 422, '所选礼品 SKU 与订单 gift 行不匹配');
+        abort_unless(strcasecmp((string) $mapping->source_sku, (string) ($item->source_sku ?: $item->sku)) === 0, 422, '所选礼品 SKU 与订单 gift 行不匹配');
         abort_unless(strcasecmp((string) $mapping->warehouse->code, trim($warehouseCode)) === 0, 422, '所选礼品 SKU 不属于当前发货仓');
         abort_unless(filled($mapping->product->sku), 422, '礼品 Product Master 缺少实际 SKU');
 
@@ -79,7 +79,7 @@ final class GiftSkuResolutionService
 
         return [
             'gift_mapping_id' => (int) $mapping->id,
-            'source_sku' => (string) $item->sku,
+            'source_sku' => (string) ($item->source_sku ?: $item->sku),
             'resolved_product_id' => (int) $mapping->fulfillment_product_id,
             'resolved_fulfillment_sku' => (string) $mapping->product->sku,
             'resolved_product_summary' => (string) $mapping->product->name,

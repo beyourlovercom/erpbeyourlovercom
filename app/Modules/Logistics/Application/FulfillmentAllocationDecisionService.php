@@ -15,7 +15,7 @@ final class FulfillmentAllocationDecisionService
         $currencies = $plans->pluck('cost.currency')->filter()->unique()->values();
         $splitPresent = $plans->contains(fn (array $plan): bool => (bool) ($plan['is_split'] ?? false));
         $splitPenalty = config('warehouse_routing.global.split_penalty_cny');
-        $giftNeedsResolution = $order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0);
+        $giftNeedsResolution = $order->items->contains(fn ($item): bool => strcasecmp(trim((string) ($item->source_sku ?: $item->sku)), 'gift') === 0);
         $physicalZone = $preview['constraints']['us_physical_zone'] ?? null;
         $physicalZoneReady = ! is_array($physicalZone) || ($physicalZone['status'] ?? null) === 'matched';
         $canRank = ! $giftNeedsResolution

@@ -12,7 +12,13 @@ final class ProductOrderProjection
     {
         $base = fn () => DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
-            ->where('order_items.product_id', $productId)
+            ->where(function ($query) use ($productId): void {
+                $query->where('order_items.source_product_id', $productId)
+                    ->orWhere(function ($unmapped) use ($productId): void {
+                        $unmapped->whereNull('order_items.source_product_id')
+                            ->where('order_items.product_id', $productId);
+                    });
+            })
             ->where('orders.order_kind', OrderKind::Customer->value);
 
         $summary = $base()
