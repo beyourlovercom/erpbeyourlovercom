@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import Create from './Create.vue'
@@ -229,5 +230,16 @@ describe('Kol/Create VI contract', () => {
     const statusSegmented = segmented[0]
     expect(statusSegmented.text()).toContain('活跃')
     expect(statusSegmented.text()).toContain('停用')
+  })
+})
+
+describe('P0 provider preflight rejection guidance', () => {
+  it('shows a persistent diagnostic path only for WordPress or WooCommerce identity conflicts', () => {
+    const source = readFileSync('resources/js/Pages/Kol/Create.vue', 'utf8')
+    expect(source).toContain('providerValidationError')
+    expect(source).toContain('data-testid="kol-create-provider-blocked"')
+    expect(source).toContain('role="alert" aria-live="assertive"')
+    expect(source).toContain('page=affiliate-wp-affiliates')
+    expect(source).toContain('post_type=shop_coupon')
   })
 })

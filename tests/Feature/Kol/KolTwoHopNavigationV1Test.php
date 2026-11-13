@@ -35,9 +35,10 @@ final class KolTwoHopNavigationV1Test extends TestCase
         ]);
         $this->actingAs($user)->get('/kol/library/'.$kol->id)->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->where('affiliateAdminUrl', 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&affiliate_id=656&action=edit_affiliate')
+                ->where('affiliateAdminUrl', 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&action=edit&affiliate_id=656')
                 ->where('affiliateAccount.affiliate_id', 656)
-                ->where('affiliateAccount.wordpress_user_id', 9000));
+                ->where('affiliateAccount.wordpress_user_id', 9000)
+                ->where('affiliateReady', true));
 
         config()->set('services.andy_core.connection_key', 'other-store');
         $this->actingAs($user)->get('/kol/library/'.$kol->id)->assertOk()
@@ -190,7 +191,9 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $this->bindAffiliate($kol, 'inactive');
         $this->actingAs($staff)->post('/kol/orders', $payload)->assertSessionHasErrors('kol_id');
         $this->actingAs($staff)->get('/kol/library/'.$kol->id)->assertOk()
-            ->assertInertia(fn ($page) => $page->where('affiliateAdminUrl', null));
+            ->assertInertia(fn ($page) => $page
+                ->where('affiliateReady', false)
+                ->where('affiliateAdminUrl', 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&action=edit&affiliate_id='.(20000 + $kol->id)));
         $this->assertDatabaseCount('orders', 0);
 
         KolAffiliateAccount::where('kol_id', $kol->id)->update(['provider_status' => 'active']);
