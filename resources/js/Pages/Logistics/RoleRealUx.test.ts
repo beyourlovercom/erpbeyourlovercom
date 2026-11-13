@@ -59,6 +59,9 @@ describe('Logistics role real UX', () => {
       expect(wrapper.findAllComponents(LogisticsL2Grid)).toHaveLength(1)
       expect(wrapper.find('.mvp-table-wrap').exists()).toBe(false)
       expect(wrapper.get('[data-testid="l2-global-grid-toggle"]').text()).toBe('返回原表')
+      expect(wrapper.find('.mvp-page-heading > .l2-grid-switch').exists()).toBe(true)
+      expect(wrapper.find('.mvp-page-heading > .l2-grid-switch button').exists()).toBe(true)
+      expect(wrapper.findAll('section.mvp-page > .l2-grid-switch')).toHaveLength(0)
       await wrapper.get('[data-testid="l2-global-grid-toggle"]').trigger('click')
       expect(vi.mocked(router.get)).toHaveBeenCalledWith(path,
         {global_grid:'0',page:1},expect.objectContaining({replace:true}))

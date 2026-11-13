@@ -75,10 +75,11 @@ const goToPage = (page: number) => router.get('/logistics/in-transit', { page },
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '运输中']">
     <section class="mvp-page">
       <StatusBar :statuses="props.statusBar ?? []" />
-      <div class="mvp-page-heading"><div><p class="mvp-kicker">Logistics OS V1</p><h2>运输中</h2><p>已有追踪号、正在运输的物流单。<strong v-if="!props.canOperate"> 当前角色为只读模式。</strong></p></div></div>
-      <div v-if="globalGridPilotAvailable" class="l2-grid-switch"><button
+      <div class="mvp-page-heading"><div><p class="mvp-kicker">Logistics OS V1</p><h2>运输中</h2><p>已有追踪号、正在运输的物流单。<strong v-if="!props.canOperate"> 当前角色为只读模式。</strong></p></div>
+        <div v-if="globalGridPilotAvailable" class="l2-grid-switch"><button
         type="button" class="mvp-button" data-testid="l2-global-grid-toggle" @click="toggleGrid">
         {{ globalGridPilotEnabled?'返回原表':'体验新版表格' }}</button></div>
+      </div>
       <LogisticsL2Grid v-if="globalGridPilotEnabled" :mode="'transit'" path="/logistics/in-transit" title="运输中"
         :shipments="shipments" :can-operate="canOperate" :search="gridSearch" :sort="gridSort"
         @open="selectedGridRow=$event" @copy="copyTracking($event)" />
@@ -132,7 +133,8 @@ const goToPage = (page: number) => router.get('/logistics/in-transit', { page },
 </style>
 
 <style scoped>
-.l2-grid-switch{margin:4px 0 8px}
+.l2-grid-switch{margin-left:auto;display:flex;justify-content:flex-end;align-items:center;flex-shrink:0}
+@media(max-width:900px){.l2-grid-switch{align-self:flex-end}}
 .l2-grid-editor{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:8px 0;padding:10px;
   border:1px solid #dbe4ea;border-radius:7px;background:#f8fafc;font-size:12px}
 .l2-grid-editor>label{display:grid;gap:3px}

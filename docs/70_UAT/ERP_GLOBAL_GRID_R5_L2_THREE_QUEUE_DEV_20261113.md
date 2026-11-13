@@ -39,3 +39,14 @@ Owner 授权：执行 R5-0 51 项真实完成总表、R5-L2 三列表改造，�
 
 最终 Dev 取证 UTC：2026-11-13T08:55:34.330595+00:00
 状态：**DEV_TECHNICAL_PASS_OWNER_UAT_PENDING_NOT_MERGED_NOT_DEPLOYED**。
+
+## Owner Dev 视觉验收记录（2026-11-13）
+
+- ① **已发待单号**：Owner 确认视觉 PASS。
+- Owner 追加 UI 要求：三张 L2 页面「返回原表」要像已验收国内物流页面一样放在**标题栏右侧**，不可占用标题下方独立工具行。
+- Dev 分支三张页面已统一将 Grid 切换按钮内聚到 mvp-page-heading 右侧；移动端同样靠右。
+- 单元测试、TypeScript 和 Vite 30-Tab build PASS；Chrome 合成账号的桌面端三页面、手机端右对齐检查 PASS（右边界一致），物流变更 POST 0 次。
+- ② **运输中**：Chrome 第 2 个标签已打开并刷新，Owner 视觉验收 **PENDING**。
+- ③ **异常订单**：Chrome 第 3 个标签已打开，Owner 视觉验收 **PENDING**。
+- Preview 使用美国 Mac mini 的隔离本地 SQLite 临时数据和 127.0.0.1 端口，不触达 Production。
+- PR 仍 Draft，不合并 main，不发布 Production。
