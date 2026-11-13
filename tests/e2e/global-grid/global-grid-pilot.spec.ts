@@ -1307,3 +1307,41 @@ test('R5-L2 all three logistics pilot Grids preserve native workflows, roles and
   expect(pendingMutationRequests).toEqual([])
   console.log('R5_L2_THREE_QUEUES_ZERO_SHIPMENT_WRITES_PASS')
 })
+
+test('Global Grid native text selection double-click copy does not mutate logistics', async ({ context, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await loginThroughUi(page, syntheticUsers().logisticsOperator)
+  const cases = [
+    ['/logistics/awaiting-tracking', 'AWAIT'],
+    ['/logistics/in-transit', 'TRANSIT'],
+    ['/logistics/exceptions', 'EXCEPTION'],
+  ] as const
+  const mutations: string[] = []
+  await page.route('**/logistics/orders/**', async route => {
+    if (route.request().method() !== 'GET') {
+      mutations.push(route.request().url())
+      await route.abort()
+      return
+    }
+    await route.continue()
+  })
+  for (const [path, suffix] of cases) {
+    await page.goto(path + '?global_grid=1', { waitUntil: 'domcontentloaded' })
+    const grid = page.getByTestId('erp-global-grid-v1')
+    await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility', 'visible', { timeout: 18000 })
+    const recipient = grid.locator('.ag-cell[col-id="recipient"]')
+      .filter({ hasText: 'E2E L2 ' + suffix }).first()
+    await expect(recipient).toBeVisible()
+    await recipient.dblclick({ position: { x: 24, y: 14 } })
+    const selected = await page.evaluate(() => window.getSelection()?.toString().trim() ?? '')
+    expect(selected.length).toBeGreaterThan(0)
+    expect(('E2E L2 ' + suffix).includes(selected)).toBe(true)
+    await page.keyboard.press('ControlOrMeta+C')
+    const copied = await page.evaluate(() => navigator.clipboard.readText())
+    expect(copied.trim()).toBe(selected)
+    await expect(page.getByTestId('l2-grid-editor')).toHaveCount(0)
+    console.log('GLOBAL_GRID_TEXT_SELECTION_BROWSER_PASS', path, selected)
+  }
+  expect(mutations).toEqual([])
+})

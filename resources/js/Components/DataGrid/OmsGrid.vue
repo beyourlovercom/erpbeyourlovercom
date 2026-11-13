@@ -50,12 +50,13 @@ const props = withDefaults(defineProps<{
   searchLabel?: string
   searchPlaceholder?: string
   enableSelection?: boolean
+  cellTextSelection?: boolean
   allowAllRows?: boolean
   showClientCsvExport?: boolean
 }>(), {
   title: 'OMS Grid', preferenceScope: 'account', defaultPinnedLeft: 1,
   defaultPinnedRight: 1, requiredColumnIds: () => [], legacyPreferenceNamespaces: () => [],
-  showSearch: true, enableSelection: true, allowAllRows: true, showClientCsvExport: true,
+  showSearch: true, enableSelection: true, cellTextSelection: true, allowAllRows: true, showClientCsvExport: true,
 })
 
 const emit = defineEmits<{
@@ -518,6 +519,8 @@ onBeforeUnmount(() => {
           :dom-layout="autoHeight ? 'autoHeight' : 'normal'"
           :theme="theme"
           :row-data="rows"
+          :enable-cell-text-selection="cellTextSelection"
+          :ensure-dom-order="cellTextSelection"
           :column-defs="leafColumns"
           :default-col-def="effectiveDefaultColDef"
           :row-selection="enableSelection ? rowSelection : undefined"
