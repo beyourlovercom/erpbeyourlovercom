@@ -198,7 +198,7 @@ final class ProductOrderIntegrationTest extends TestCase
         $user = $this->userWith(['orders.view', 'orders.create', 'orders.edit']);
         // Update order without sending items — historical rows must remain
         $this->actingAs($user)->patch("/customers/orders/{$order->id}", [
-            'order_note' => 'Updated note',
+            'currency' => 'EUR',
         ])->assertRedirect();
 
         $order->refresh()->load('items');

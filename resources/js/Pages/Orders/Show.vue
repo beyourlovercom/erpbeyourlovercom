@@ -143,6 +143,8 @@ const props = withDefaults(defineProps<{
   carrierOptions?: CarrierOption[]
   allocationUi?: AllocationUi
   audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
+  orderNotes?: { id: number; author_name: string; body: string; created_at: string | null }[]
+  canAppendOrderNote?: boolean
   canMarkOperational?: boolean
   isDomesticFactory?: boolean
   canMarkDomesticStockout?: boolean
@@ -165,7 +167,7 @@ const props = withDefaults(defineProps<{
   wooAdminEditUrl?: string | null
   kolProfile?: { id: number; display_name: string; url: string } | null
 
-}>(), { canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
+}>(), { canAppendOrderNote: false, canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
 
 
 const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
@@ -223,7 +225,6 @@ type EditItem = {
 
 const makeFormData = () => ({
   order_date: props.order.order_date ?? '',
-  order_note: props.order.order_note ?? '',
   amendment_reason: '',
   currency: props.order.currency ?? 'USD',
   recipient_name: props.order.address?.recipient_name ?? '',
@@ -424,6 +425,22 @@ const previewItemAmendment = async () => {
     amendmentPreviewLoading.value = false
   }
 }
+// Internal collaboration notes are append-only and independent of orders.edit.
+const noteDraft = ref('')
+const noteSubmitting = ref(false)
+const noteError = ref('')
+const submitOrderNote = () => {
+  if (!props.canAppendOrderNote || !noteDraft.value.trim() || noteSubmitting.value) return
+  noteError.value = ''
+  noteSubmitting.value = true
+  router.post(`${basePath.value}/${props.order.id}/notes`, { body: noteDraft.value.trim() }, {
+    preserveScroll: true,
+    onSuccess: () => { noteDraft.value = '' },
+    onError: errors => { noteError.value = errors.body ?? '追加失败，请重试' },
+    onFinish: () => { noteSubmitting.value = false },
+  })
+}
+
 const editMode = ref(false)
 const trashConfirmOpen = ref(false)
 const trashSubmitting = ref(false)
@@ -1731,12 +1748,31 @@ onBeforeUnmount(() => {
           </div>
           </div>
           <div class="erp-form-field">
-            <label v-if="editMode" class="erp-form-label">备注内容</label>
-            <div v-if="!editMode" class="ord-summary-note">{{ order.order_note || '—' }}</div>
-            <template v-else>
-              <textarea v-model="form.order_note" class="erp-textarea" placeholder="可选" />
-              <p v-if="form.errors.order_note" class="erp-field-error">{{ form.errors.order_note }}</p>
-            </template>
+            <label class="erp-form-label">历史／来源备注（只读）</label>
+            <div class="ord-summary-note">{{ order.order_note || '—' }}</div>
+          </div>
+          <div class="erp-form-field" data-testid="order-note-thread">
+            <div class="flex items-center justify-between gap-2">
+              <label class="erp-form-label">内部协作记录</label>
+              <span class="text-xs text-gray-500">仅可追加 · 不可删除或覆盖</span>
+            </div>
+            <div v-if="!orderNotes?.length" class="text-sm text-gray-500 py-2">暂无追加记录</div>
+            <div v-for="note in orderNotes" :key="note.id" class="rounded-lg border border-gray-200 p-3 mb-2" data-testid="order-note-entry">
+              <div class="flex flex-wrap justify-between items-center gap-2 text-xs text-gray-500 mb-1">
+                <strong class="text-gray-700">{{ note.author_name }}</strong>
+                <time :datetime="note.created_at || undefined">{{ note.created_at ? new Date(note.created_at).toLocaleString('zh-CN', { hour12: false }) : '' }}</time>
+              </div>
+              <p class="text-sm whitespace-pre-wrap break-words">{{ note.body }}</p>
+            </div>
+          </div>
+          <div v-if="canAppendOrderNote" class="erp-form-field" data-testid="order-note-compose">
+            <label class="erp-form-label" for="order-note-draft">追加备注</label>
+            <textarea id="order-note-draft" v-model="noteDraft" maxlength="2000" rows="3" class="erp-textarea" placeholder="在末尾添加补充或更正；历史记录永久保留" />
+            <p v-if="noteError" role="alert" class="erp-field-error">{{ noteError }}</p>
+            <div class="flex justify-between items-center gap-2">
+              <span class="text-xs text-gray-500">{{ noteDraft.length }} / 2000</span>
+              <button type="button" class="erp-btn erp-btn-primary" :disabled="noteSubmitting || !noteDraft.trim()" @click="submitOrderNote">{{ noteSubmitting ? '保存中…' : '追加备注' }}</button>
+            </div>
           </div>
         </div>
 

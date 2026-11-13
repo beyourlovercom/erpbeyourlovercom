@@ -252,13 +252,13 @@ final class OrderFulfillmentM1Test extends TestCase
         $this->actingAs($user)->patch('/customers/orders/'.$order->id, [
             'external_order_number' => 'TRIED-TO-CHANGE',
             'owner_id' => $other->id,
-            'order_note' => 'updated note',
+            'currency' => 'EUR',
         ])->assertRedirect();
 
         $order->refresh();
         $this->assertSame('IMMUTABLE-001', $order->external_order_number, 'external_order_number must not be editable via the generic update path');
         $this->assertSame($user->id, $order->owner_id, 'owner_id must not be reassignable via the generic update path');
-        $this->assertSame('updated note', $order->order_note);
+        $this->assertSame('EUR', $order->currency);
     }
 
     public function test_non_critical_snapshot_fields_are_optional_and_stored_as_null_not_a_dash(): void

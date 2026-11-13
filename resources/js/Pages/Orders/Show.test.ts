@@ -592,11 +592,13 @@ describe('Orders/Show V2', () => {
     expect(wrapper.find('input[type="date"]').exists()).toBe(true)
   })
 
-  it('Edit Mode shows textarea for note', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+  it('keeps legacy note read-only while providing independent append for permitted viewers', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true, canAppendOrderNote: true } })
+    expect(wrapper.find('#order-note-draft').exists()).toBe(true)
     const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '✍️编辑')
     await editBtn!.trigger('click')
-    expect(wrapper.find('textarea').exists()).toBe(true)
+    expect(wrapper.find('#order-note-draft').exists()).toBe(true)
+    expect(wrapper.find('textarea[placeholder="可选"]').exists()).toBe(false)
   })
 
   it('Edit Mode shows SKU combobox for items', async () => {
@@ -956,26 +958,26 @@ describe('Orders/Show V2', () => {
   })
 
   it('preserves an unsaved order note while opening and closing a shipment editor', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true, canOperateLogistics: true } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true, canAppendOrderNote: true, canOperateLogistics: true } })
     await flushPromises()
     await wrapper.findAll('.page-header-actions button').find(button => button.text() === '✍️编辑')!.trigger('click')
-    await wrapper.get('#order-section-notes textarea').setValue('本地未保存草稿 - U4 发货弹窗')
+    await wrapper.get('#order-note-draft').setValue('本地未保存草稿 - U4 发货弹窗')
     const before = vi.mocked(router.post).mock.calls.length
     const open = wrapper.findAll('[data-testid="fulfillment-actions"] button').find(button => button.text().includes('履约发货'))
     expect(open).toBeDefined()
     await open!.trigger('click')
     expect(wrapper.find('[role="dialog"][aria-label="填写物流并发货"]').exists()).toBe(true)
-    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 发货弹窗')
+    expect((wrapper.get('#order-note-draft').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 发货弹窗')
     await wrapper.get('[role="dialog"][aria-label="填写物流并发货"] .ord-replacement-close').trigger('click')
     expect(wrapper.find('[role="dialog"][aria-label="填写物流并发货"]').exists()).toBe(false)
-    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 发货弹窗')
+    expect((wrapper.get('#order-note-draft').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 发货弹窗')
     expect(router.post).toHaveBeenCalledTimes(before)
     wrapper.unmount()
   })
 
   it('preserves an unsaved order note while opening and canceling a partial warehouse reallocation', async () => {
     const wrapper = mount(Show, { props: {
-      order: splitOrder, audit, canEditOrder: true, canOperateLogistics: true,
+      order: splitOrder, audit, canEditOrder: true, canAppendOrderNote: true, canOperateLogistics: true,
       allocationUi: {
         status: 'submitted', can_partial_reallocate: true, can_operate: false, can_reallocate: false,
         requires_full_flow: false, selectable_warehouse_ids: [1, 2],
@@ -990,7 +992,7 @@ describe('Orders/Show V2', () => {
     } })
     await flushPromises()
     await wrapper.findAll('.page-header-actions button').find(button => button.text() === '✍️编辑')!.trigger('click')
-    await wrapper.get('#order-section-notes textarea').setValue('本地未保存草稿 - U4 调整分仓')
+    await wrapper.get('#order-note-draft').setValue('本地未保存草稿 - U4 调整分仓')
     const before = vi.mocked(router.post).mock.calls.length
     const open = wrapper.findAll('.ord-fulfillment-row-actions button').find(button => button.text() === '调整分仓')
     expect(open).toBeDefined()
@@ -998,7 +1000,7 @@ describe('Orders/Show V2', () => {
     expect(wrapper.get('[role="dialog"][aria-label="调整未发货履约分仓"]').text()).toContain('调整 B 分仓')
     await wrapper.get('[role="dialog"][aria-label="调整未发货履约分仓"] .ord-replacement-close').trigger('click')
     expect(wrapper.find('[role="dialog"][aria-label="调整未发货履约分仓"]').exists()).toBe(false)
-    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 调整分仓')
+    expect((wrapper.get('#order-note-draft').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 调整分仓')
     expect(router.post).toHaveBeenCalledTimes(before)
     wrapper.unmount()
   })
@@ -1060,20 +1062,20 @@ describe('Orders/Show V2', () => {
   })
 
   it('keeps unsaved edit fields mounted when a business section is collapsed and reordered', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true, canAppendOrderNote: true } })
     await flushPromises()
     await wrapper.findAll('.page-header-actions button').find(button => button.text() === '✍️编辑')!.trigger('click')
-    const textarea = wrapper.get('#order-section-notes textarea')
+    const textarea = wrapper.get('#order-note-draft')
     await textarea.setValue('UAT 还没有保存的内部备注')
     const postCalls = vi.mocked(router.post).mock.calls.length
     await wrapper.get('#order-section-notes .ord-section-toggle').trigger('click')
     await wrapper.get('#order-section-notes .ord-section-drag').trigger('keydown', { altKey:true, key:'ArrowUp' })
     expect(wrapper.get('#order-section-notes').classes()).toContain('ord-section-collapsed')
-    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('UAT 还没有保存的内部备注')
+    expect((wrapper.get('#order-note-draft').element as HTMLTextAreaElement).value).toBe('UAT 还没有保存的内部备注')
     const jump = wrapper.findAll('.ord-detail-nav-item').find(item => item.text() === '内部备注')
     await jump!.trigger('click')
     expect(wrapper.get('#order-section-notes').classes()).not.toContain('ord-section-collapsed')
-    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('UAT 还没有保存的内部备注')
+    expect((wrapper.get('#order-note-draft').element as HTMLTextAreaElement).value).toBe('UAT 还没有保存的内部备注')
     expect(router.post).toHaveBeenCalledTimes(postCalls)
     wrapper.unmount()
   })
@@ -1093,17 +1095,17 @@ describe('Orders/Show V2', () => {
     const scroll = vi.fn()
     Element.prototype.scrollIntoView = scroll
     try {
-      const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+      const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true, canAppendOrderNote: true } })
       await flushPromises()
       await nextTick()
       const edit = wrapper.findAll('.page-header-actions button').find(button => button.text() === '✍️编辑')
       await edit!.trigger('click')
-      await wrapper.get('#order-section-notes textarea').setValue('未保存草稿须保留')
+      await wrapper.get('#order-note-draft').setValue('未保存草稿须保留')
       const postCalls = vi.mocked(router.post).mock.calls.length
       const button = wrapper.findAll('.ord-detail-nav-item').find(item => item.text() === '订单商品')
       await button!.trigger('click')
       expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
-      expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('未保存草稿须保留')
+      expect((wrapper.get('#order-note-draft').element as HTMLTextAreaElement).value).toBe('未保存草稿须保留')
       expect(router.post).toHaveBeenCalledTimes(postCalls)
       await wrapper.get('.ord-detail-nav-top').trigger('click')
       expect(scroll).toHaveBeenCalledTimes(2)
@@ -1223,5 +1225,30 @@ describe('Compact order toolbar V2', () => {
     expect(wrapper.find('[data-testid="order-profit-link"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="woo-admin-order-link"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="order-edit"]').text()).toBe('✍️编辑')
+  })
+})
+
+
+describe('Append-only internal order notes', () => {
+  it('allows a user without full order edit permissions to append after another author', async () => {
+    vi.mocked(router.post).mockClear()
+    const wrapper = mount(Show, { props: {
+      order: baseOrder, audit, canEditOrder: false, canAppendOrderNote: true,
+      orderNotes: [{ id: 1, author_name: 'Liang', body: '原先物流记录', created_at: '2026-11-13T10:00:00Z' }],
+    } })
+    expect(wrapper.find('[data-testid="order-edit"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="order-note-entry"]').text()).toContain('Liang')
+    expect(wrapper.get('[data-testid="order-note-entry"]').text()).toContain('原先物流记录')
+    expect(wrapper.text()).toContain('测试备注')
+    await wrapper.get('#order-note-draft').setValue('Vita 在后面补充')
+    await wrapper.get('[data-testid="order-note-compose"] button').trigger('click')
+    expect(router.post).toHaveBeenCalledWith('/customers/orders/1/notes', { body: 'Vita 在后面补充' }, expect.any(Object))
+  })
+
+  it('keeps the legacy note read-only and hides append for non-authorized views', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true, canAppendOrderNote: false } })
+    expect(wrapper.find('#order-note-draft').exists()).toBe(false)
+    expect(wrapper.find('textarea[placeholder="可选"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="order-note-thread"]').text()).toContain('暂无追加记录')
   })
 })

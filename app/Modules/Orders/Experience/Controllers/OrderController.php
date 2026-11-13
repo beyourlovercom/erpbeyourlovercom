@@ -254,6 +254,13 @@ final class OrderController
 
         return Inertia::render('Orders/Show', [
             'order' => $this->orderData($order),
+            'orderNotes' => $order->noteEntries()->get()->map(fn ($entry): array => [
+                'id' => $entry->id, 'author_name' => $entry->author_name,
+                'body' => $entry->body, 'created_at' => $entry->created_at?->toIso8601String(),
+            ])->all(),
+            'canAppendOrderNote' => ! $order->isOperationallyArchived()
+                && $order->archived_at === null && $authority->archived_at === null
+                && ! $authority->isOperationallyArchived(),
             'orderNavigation' => $this->adjacentOrderNavigation($request, $order),
             'wooAdminEditUrl' => $isDerived ? null : $this->wooAdminLink->forOrder($order),
             'inventoryAvailability' => $inventoryAvailability,
@@ -973,7 +980,8 @@ final class OrderController
             'order_kind' => ['sometimes', Rule::in(array_column(OrderKind::cases(), 'value'))],
             'source_type' => ['sometimes', Rule::in(array_column(OrderSourceType::cases(), 'value'))],
             'order_date' => ['sometimes', 'date'],
-            'order_note' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            // Website/legacy note is read-only after creation; collaboration uses append-only entries.
+            'order_note' => ['prohibited'],
             'currency' => ['sometimes', 'required', 'string', 'regex:/^[A-Z]{3}$/'],
             'recipient_name' => ['sometimes', 'nullable', 'string', 'max:255'], 'phone' => ['sometimes', 'nullable', 'string', 'max:64'],
             'country' => ['sometimes', 'nullable', 'string', 'max:128'], 'province_state' => ['sometimes', 'nullable', 'string', 'max:128'],
