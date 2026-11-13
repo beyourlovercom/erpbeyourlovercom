@@ -169,6 +169,8 @@ final class InventorySyncController extends Controller
     private function formatBatch(InventorySyncBatch $batch): array
     {
         $projection = $this->projection($batch);
+        $validRows = max(0, (int) $batch->preview_total_rows - (int) $batch->preview_error_rows);
+        $hasBlockers = $validRows === 0 || ($batch->sync_mode === 'full' && $batch->preview_error_rows > 0);
 
         return [
             'id'                   => $batch->getKey(),
@@ -188,7 +190,9 @@ final class InventorySyncController extends Controller
             'preview_warning_rows' => $batch->preview_warning_rows,
             'preview_zeroed_skus'  => $batch->preview_zeroed_skus,
             'preview_error_rows'   => $batch->preview_error_rows,
-            'has_blockers'         => $batch->preview_error_rows > 0,
+            'preview_importable_rows' => $validRows,
+            'preview_skipped_rows' => $batch->preview_error_rows,
+            'has_blockers'         => $hasBlockers,
             'confirmed_at'         => $batch->confirmed_at?->toIso8601String(),
             'created_at'           => $batch->created_at?->toIso8601String(),
             'aggregated_rows'      => $projection['aggregated_rows'],

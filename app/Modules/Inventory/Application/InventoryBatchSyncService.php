@@ -125,11 +125,21 @@ final class InventoryBatchSyncService
         return DB::transaction(function () use ($batch, $actor): Model {
             $batch = $this->sync->lockBatch($batch->getKey());
             if ($batch->status === 'confirmed') abort(422, '批次已确认，不可重复确认');
-            if ($batch->preview_error_rows > 0) abort(422, '存在错误行，无法确认');
+            // Full snapshots must remain strict: invalid source lines could otherwise
+            // zero unrelated stock. Partial updates may skip invalid lines safely.
+            if ($batch->sync_mode === 'full' && $batch->preview_error_rows > 0) {
+                abort(422, '全量同步存在错误行，无法确认；请改用部分同步或修正数据');
+            }
             $warehouse = $batch->warehouse;
 
-            // Group valid rows by SKU → collect lots per SKU+status+putaway_date
+            // Existing repository selection excludes validation errors and unresolved products.
+            // Never confirm a batch that would write nothing.
             $rows = $this->sync->confirmedRows($batch);
+            if ($rows->isEmpty()) {
+                abort(422, '没有可导入的有效 SKU；已跳过错误行，库存未修改');
+            }
+
+            // Group valid rows by SKU → collect lots per SKU+status+putaway_date
 
             // Group: [productId => [status => [putawayDate => qty]]]
             $lots = [];
@@ -200,6 +210,8 @@ final class InventoryBatchSyncService
                     'sellable_qty'   => $batch->preview_sellable_qty,
                     'defective_qty'  => $batch->preview_defective_qty,
                     'unique_skus'    => $batch->preview_unique_skus,
+                    'imported_rows'  => $rows->count(),
+                    'skipped_rows'   => (int) $batch->preview_error_rows,
                 ],
                 reason: 'inventory_batch_sync_confirmed',
             );

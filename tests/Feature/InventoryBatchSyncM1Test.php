@@ -138,6 +138,115 @@ final class InventoryBatchSyncM1Test extends TestCase
         $this->assertDatabaseHas('inventory_sync_rows', ['sync_batch_id' => $batch->getKey(), 'validation_status' => 'error']);
     }
 
+    public function test_partial_sync_imports_valid_rows_and_skips_invalid_without_mutating_other_products(): void
+    {
+        [$warehouse, $valid] = $this->seedWarehouseAndProduct('SKU-SKIP-VALID');
+        [, $badQuantity] = $this->seedWarehouseAndProduct('SKU-SKIP-BAD-QTY', $warehouse);
+        WarehouseInventory::updateOrCreate(
+            ['warehouse_id' => $warehouse->getKey(), 'product_id' => $valid->getKey()],
+            ['quantity_on_hand' => 80, 'quantity_reserved' => 3],
+        );
+        WarehouseInventory::updateOrCreate(
+            ['warehouse_id' => $warehouse->getKey(), 'product_id' => $badQuantity->getKey()],
+            ['quantity_on_hand' => 65, 'quantity_reserved' => 2],
+        );
+
+        $user = $this->userWith(['inventory.operate']);
+        $service = app(InventoryBatchSyncService::class);
+        $batch = $service->preview($warehouse, [
+            new NormalizedRow(2, 'SKU-SKIP-VALID', 'sellable', null, null, 24),
+            new NormalizedRow(3, 'SKU-SKIP-UNKNOWN', 'sellable', null, null, 500),
+            new NormalizedRow(4, 'SKU-SKIP-BAD-QTY', 'sellable', null, null, null),
+        ], 'paste', 'partial', null, null, $user);
+
+        $this->assertSame(3, $batch->preview_total_rows);
+        $this->assertSame(2, $batch->preview_error_rows);
+        $this->assertSame(24, $batch->preview_sellable_qty);
+        $service->confirm($batch, $user);
+
+        $this->assertSame(24, WarehouseInventory::where('warehouse_id', $warehouse->getKey())
+            ->where('product_id', $valid->getKey())->value('quantity_on_hand'));
+        $this->assertSame(3, WarehouseInventory::where('warehouse_id', $warehouse->getKey())
+            ->where('product_id', $valid->getKey())->value('quantity_reserved'));
+        $this->assertSame(65, WarehouseInventory::where('warehouse_id', $warehouse->getKey())
+            ->where('product_id', $badQuantity->getKey())->value('quantity_on_hand'));
+        $this->assertSame(1, WarehouseInventoryLot::where('warehouse_id', $warehouse->getKey())
+            ->where('product_id', $valid->getKey())->count());
+        $this->assertDatabaseHas('inventory_sync_batches', [
+            'id' => $batch->getKey(), 'status' => 'confirmed', 'preview_error_rows' => 2,
+        ]);
+    }
+
+    public function test_partial_sync_with_all_invalid_rows_remains_blocked_and_unchanged(): void
+    {
+        [$warehouse, $product] = $this->seedWarehouseAndProduct('SKU-SKIP-KEEP');
+        WarehouseInventory::updateOrCreate(
+            ['warehouse_id' => $warehouse->getKey(), 'product_id' => $product->getKey()],
+            ['quantity_on_hand' => 55, 'quantity_reserved' => 0],
+        );
+        $user = $this->userWith(['inventory.operate']);
+        $service = app(InventoryBatchSyncService::class);
+        $batch = $service->preview($warehouse, [
+            new NormalizedRow(1, 'SKU-SKIP-MISSING', 'sellable', null, null, 500),
+        ], 'paste', 'partial', null, null, $user);
+
+        try {
+            $service->confirm($batch, $user);
+            $this->fail('All-invalid partial batch must not confirm');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            $this->assertSame(422, $e->getStatusCode());
+        }
+        $this->assertSame('preview', $batch->fresh()->status);
+        $this->assertSame(55, WarehouseInventory::where('warehouse_id', $warehouse->getKey())
+            ->where('product_id', $product->getKey())->value('quantity_on_hand'));
+    }
+
+    public function test_full_sync_with_invalid_rows_remains_blocked_to_prevent_zeroing(): void
+    {
+        [$warehouse, $product] = $this->seedWarehouseAndProduct('SKU-FULL-KEEP');
+        WarehouseInventory::updateOrCreate(
+            ['warehouse_id' => $warehouse->getKey(), 'product_id' => $product->getKey()],
+            ['quantity_on_hand' => 123, 'quantity_reserved' => 0],
+        );
+        $user = $this->userWith(['inventory.operate']);
+        $service = app(InventoryBatchSyncService::class);
+        $batch = $service->preview($warehouse, [
+            new NormalizedRow(1, 'SKU-FULL-KEEP', 'sellable', null, null, 5),
+            new NormalizedRow(2, 'SKU-FULL-NO-MASTER', 'sellable', null, null, 300),
+        ], 'paste', 'full', null, null, $user);
+
+        try {
+            $service->confirm($batch, $user);
+            $this->fail('Full batch must remain strict');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            $this->assertSame(422, $e->getStatusCode());
+        }
+        $this->assertSame(123, WarehouseInventory::where('warehouse_id', $warehouse->getKey())
+            ->where('product_id', $product->getKey())->value('quantity_on_hand'));
+    }
+
+    public function test_http_partial_preview_reports_importable_and_skipped_rows_then_confirms(): void
+    {
+        [$warehouse, $product] = $this->seedWarehouseAndProduct('SKU-PARTIAL-HTTP');
+        $user = $this->userWith(['inventory.operate']);
+        $preview = $this->actingAs($user)->postJson('/inventory/sync/preview', [
+            'warehouse_id' => $warehouse->getKey(),
+            'source_type' => 'paste',
+            'sync_mode' => 'partial',
+            'paste_text' => "SKU\tQty/数量\nSKU-PARTIAL-HTTP\t22\nSKU-NOT-FOUND-HTTP\t12",
+        ])->assertOk()
+            ->assertJsonFragment([
+                'preview_importable_rows' => 1,
+                'preview_skipped_rows' => 1,
+                'has_blockers' => false,
+            ])->json();
+
+        $this->actingAs($user)->postJson("/inventory/sync/{$preview['id']}/confirm")
+            ->assertOk()->assertJsonFragment(['status' => 'confirmed']);
+        $this->assertSame(22, WarehouseInventory::where('warehouse_id', $warehouse->getKey())
+            ->where('product_id', $product->getKey())->value('quantity_on_hand'));
+    }
+
     public function test_preview_does_not_auto_create_products(): void
     {
         $warehouse = Warehouse::where('slug', 'de')->firstOrFail();
