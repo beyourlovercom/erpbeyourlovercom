@@ -41,6 +41,10 @@ describe('Order OMS server adapter', () => {
       mode: 'status', canEdit: true,
     })
     expect(columns.find(c => c.colId === 'order_number')).toMatchObject({ field: 'display_order_number' })
+    const noteColumn = columns.find(c => c.colId === 'order_note')
+    expect(noteColumn).toMatchObject({ headerName: '备注', field: 'order_note', hide: false })
+    expect(columns.indexOf(noteColumn)).toBe(1)
+    expect(noteColumn.cellStyle({value:'紧急：请注意'})).toMatchObject({color:'#c62828'})
     expect(columns.find(c => c.colId === 'actions').cellRendererParams.mode).toBe('action')
     expect(grid.props('serverPagination')).toMatchObject({ current_page: 2, total: 580 })
     expect(grid.props('serverSort')).toEqual({ colId: 'date', direction: 'desc' })

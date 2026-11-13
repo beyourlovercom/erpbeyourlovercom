@@ -12,6 +12,15 @@
 6. Archived orders remain read-only. KOL specialist owner-only scope remains enforced server-side. Derived fulfillment segments inherit authorization from the parent, but retain their own note thread.
 7. No update or delete API or UI exists for appended notes. The Eloquent model prevents update/delete attempts. Existing orders and fulfillment statuses are not modified by note submission.
 
+## V1.1 — Compact latest-note column (Owner 2026-11-13)
+
+- In order lists, show **one note only**, not an unread count or message drawer.
+- The newest append-only staff entry wins; where none exists, show the legacy/source note; otherwise show a dash.
+- The **备注** column is visible by default beside the order number, rendered as red text (\`#c62828\`), with a single-line ellipsis and full text on hover.
+- Apply to customer Global Grid, legacy Orders Index, and Orders OMS Grid with existing user grid preferences unchanged. No special unread state, sorting, notifications, row color or logistics state changes.
+- List projections must eagerly load \`latestNoteEntry\`; avoid an N+1 query for every order row. Restrict projection to the existing authorized order collection.
+- Isolated UI handoff is on **007windows**, using the private Tailscale route to the synthetic-data US-hosted UAT runtime; do not deploy Production or restart existing Windows Chrome.
+
 ## API / data contract
 
 - `POST /customers/orders/{order}/notes` — `orders.view` and customer order scope; body: `{body: string}` (1–2000 trimmed characters).

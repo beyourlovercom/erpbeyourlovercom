@@ -115,7 +115,7 @@ final class OrderController
             ? ($request->user()->can('customers.export') && $request->user()->can('system.permissions.manage'))
             : $request->user()->can('orders.view');
 
-        $orders->getCollection()->loadMissing(['shipment', 'manualSync', 'fulfillmentParent', ...($customerGlobalGridEnabled ? ['customer'] : [])]);
+        $orders->getCollection()->loadMissing(['shipment', 'manualSync', 'fulfillmentParent', 'latestNoteEntry', ...($customerGlobalGridEnabled ? ['customer'] : [])]);
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments(
             $orders->getCollection()->map(fn (Order $order): int => (int) $order->shipment?->id)->all()
         );
@@ -751,6 +751,8 @@ final class OrderController
             'workflow_revision' => (int) ($order->workflow_revision ?? 0),
             'workflow_status_projection' => $workflowProjection,
             'order_note' => $order->order_note,
+            // One latest visible note; collaborative entries win over the legacy/source note.
+            'latest_order_note' => $order->latestNoteEntry?->body ?: $order->order_note,
             'domestic_reject_reason' => $order->domestic_reject_reason,
             'domestic_rejected_at' => $order->domestic_rejected_at?->toIso8601String(),
             'currency' => $order->currency,

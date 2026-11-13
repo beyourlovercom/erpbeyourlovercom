@@ -112,6 +112,26 @@ final class OrderNoteAppendOnlyTest extends TestCase
         $this->assertSame('Source B', $order->fresh()->order_note);
     }
 
+    public function test_order_list_projects_only_latest_collaboration_note_with_legacy_fallback(): void
+    {
+        $actor = $this->userWith(['orders.view', 'customers.view']);
+        $legacy = $this->order($actor, 'customer', '最初来源备注');
+        $updated = $this->order($actor, 'customer', '旧版备注');
+        $this->actingAs($actor)->post("/customers/orders/{$updated->id}/notes", ['body' => '第一条新增'])->assertRedirect();
+        $this->actingAs($actor)->post("/customers/orders/{$updated->id}/notes", ['body' => '最新：明天发货'])->assertRedirect();
+
+        foreach (['/customers/orders', '/customers/orders?legacy_grid=1', '/orders'] as $url) {
+            $result = $this->actingAs($actor)->get($url)->assertOk();
+            $result->assertInertia(fn (Assert $page) => $page
+                ->where('orders.data.0.id', $updated->id)
+                ->where('orders.data.0.latest_order_note', '最新：明天发货')
+                ->where('orders.data.0.order_note', '旧版备注')
+                ->where('orders.data.1.id', $legacy->id)
+                ->where('orders.data.1.latest_order_note', '最初来源备注'));
+        }
+        $this->assertSame(2, $updated->noteEntries()->count());
+    }
+
     private function userWith(array $keys): User
     {
         $user = User::factory()->create(['is_active' => true]);
