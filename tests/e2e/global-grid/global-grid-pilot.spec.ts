@@ -1128,3 +1128,49 @@ test('G overseas action column may be unpinned and hidden with account layout pe
   await expect(grid.locator('.oms-column-row').filter({hasText:'操作'}).locator('input[type="checkbox"]')).toBeChecked()
   console.log('G_OVERSEA_ACTION_CAN_UNPIN_HIDE_PERSIST_AND_RESTORE_PASS')
 })
+
+
+test('overseas bulk confirm ships only after preview and explicit acknowledgement, never executes in Chrome UAT',async({page})=>{
+  await page.setViewportSize({width:1440,height:900})
+  await loginThroughUi(page,syntheticUsers().logisticsOperator)
+  let previewRequests=0
+  let applyRequests=0
+  await page.route('**/logistics/oversea/bulk-ship/preview',async(route)=>{
+    previewRequests++
+    const payload=route.request().postDataJSON() as {order_ids:number[]}
+    expect(payload.order_ids).toHaveLength(1)
+    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+      token:'a'.repeat(48),expires_in_seconds:600,total:1,eligible_count:1,blocked_count:0,
+      warning:'真实出库经人工核实才能确认',
+      results:[{order_id:payload.order_ids[0],order_no:'007-E2E-GG-BULK-01',
+        warehouse:'US-NY',tracking_number:'9400111899223856928777',
+        eligible:true,message:'预检通过'}],
+    })})
+  })
+  await page.route('**/logistics/oversea/bulk-ship/apply',async(route)=>{
+    applyRequests++
+    await route.fulfill({status:409,contentType:'application/json',
+      body:JSON.stringify({message:'Browser UAT forbids shipment writes'})})
+  })
+  await page.goto('/logistics/oversea?view=pending',{waitUntil:'domcontentloaded'})
+  const grid=page.locator('[data-testid="oversea-global-grid-workbench"] [data-testid="erp-global-grid-v1"]')
+  await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
+  const row=grid.locator('.ag-row').filter({hasText:'007-E2E-GG-BULK-01'})
+  await expect(row).toBeVisible()
+  await row.locator('input[type="checkbox"]').first().check()
+  const footer=grid.getByTestId('grid-batch-footer')
+  await expect(footer).toContainText('已选 1 条')
+  await footer.getByLabel('批量操作').selectOption('bulk_ship')
+  await footer.getByRole('button',{name:'应用'}).click()
+  await expect(page.getByTestId('oversea-bulk-ship-modal')).toBeVisible()
+  const dialog=page.getByRole('dialog',{name:'海外仓批量确认发货'})
+  await expect(dialog).toContainText('可确认 1 单')
+  await expect(dialog.getByRole('button',{name:'确认发货 1 单'})).toBeDisabled()
+  await dialog.locator('.oversea-bulk-ship-ack input').check()
+  await expect(dialog.getByRole('button',{name:'确认发货 1 单'})).toBeEnabled()
+  await dialog.getByRole('button',{name:'取消'}).click()
+  await expect(page.getByTestId('oversea-bulk-ship-modal')).toHaveCount(0)
+  expect(previewRequests).toBe(1)
+  expect(applyRequests).toBe(0)
+  console.log('OVERSEA_BATCH_SHIP_BROWSER_PREVIEW_CONFIRM_NO_APPLY_PASS')
+})

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
+use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
@@ -70,6 +71,44 @@ DB::transaction(function () use ($product, $warehouse, $owner): void {
         'source_order_item_id'=>$item->id,'product_id'=>$product->id,
         'sku'=>'E2E-SKU-0001','product_summary'=>'E2E Synthetic Product',
         'source_quantity'=>2,'purchase_quantity'=>2,
+    ]);
+    // Overseas batch-shipment *visual* fixture. The Chrome suite never
+    // submits real shipment writes; the only POST is an intercepted preview.
+    $ny = Warehouse::query()->firstOrCreate(['code'=>'US-NY'], [
+        'slug'=>'us-ny', 'name'=>'美东纽约仓', 'type'=>'warehouse',
+        'is_active'=>true, 'priority'=>10,
+    ]);
+    $overseaBulk = Order::query()->create([
+        'internal_order_number'=>'INT-E2E-GG-OVERSEA-BULK-01',
+        'erp_order_id'=>'007-E2E-GG-BULK-01',
+        'source_type'=>OrderSourceType::Manual,
+        'order_kind'=>OrderKind::Customer,
+        'external_order_number'=>'E2E-GG-OVERSEA-BULK-SRC',
+        'order_date'=>now()->toDateString(),
+        'owner_id'=>$owner->id,
+        'order_status'=>OrderStatus::PendingShipment,
+    ]);
+    $overseaBulk->address()->create([
+        'recipient_name'=>'E2E Overseas Preflight','phone'=>'15559998888',
+        'country'=>'US','city'=>'New York','address_line_1'=>'1 Synthetic NY',
+        'postal_code'=>'10001',
+    ]);
+    $overseaBulk->items()->create([
+        'product_id'=>$product->id,'sku'=>'E2E-SKU-0001',
+        'product_summary'=>'E2E Overseas Bulk Preview','quantity'=>1,
+        'unit_price'=>'15.00','line_revenue'=>'15.00',
+    ]);
+    $overseaBulk->shipment()->create([
+        'warehouse_id'=>$ny->id,'shipment_status'=>'pending',
+        'warehouse_selection_source'=>'manual',
+        'carrier'=>'USPS','service'=>'Priority',
+        'tracking_number'=>'9400111899223856928777',
+    ]);
+    OverseaWarehouseReview::query()->create([
+        'order_id'=>$overseaBulk->id,
+        'submitted_warehouse_id'=>$ny->id,'reviewed_warehouse_id'=>$ny->id,
+        'status'=>'approved','progress'=>'sending_pending',
+        'reviewed_by'=>$owner->id,'reviewed_at'=>now(),
     ]);
     // R4-L1 Logistics: isolated synthetic domestic and review fixtures.
     $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();

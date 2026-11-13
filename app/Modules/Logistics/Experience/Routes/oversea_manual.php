@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Logistics\Experience\Controllers\OverseaBulkShipmentController;
 use App\Modules\Logistics\Experience\Controllers\OverseaManualShipmentController;
 use App\Modules\Logistics\Experience\Controllers\OverseaNonOmsManualShipmentController;
 use App\Modules\Logistics\Experience\Controllers\ShipOutMorePlusManualFulfillmentController;
@@ -7,6 +8,12 @@ use App\Modules\Logistics\Experience\Middleware\RequireLogisticsExecution;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->group(function (): void {
+    Route::post('/logistics/oversea/bulk-ship/preview', [OverseaBulkShipmentController::class, 'preview'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:10,1'])
+        ->name('logistics.oversea.bulk-ship.preview');
+    Route::post('/logistics/oversea/bulk-ship/apply', [OverseaBulkShipmentController::class, 'apply'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:5,1'])
+        ->name('logistics.oversea.bulk-ship.apply');
     Route::post('/logistics/oversea/orders/{order}/manual-ship', OverseaNonOmsManualShipmentController::class)
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:10,1'])
         ->whereNumber('order')->name('logistics.oversea.manual-non-oms');
