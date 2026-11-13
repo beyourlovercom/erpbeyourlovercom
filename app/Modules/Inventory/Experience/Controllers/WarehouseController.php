@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Experience\Controllers;
 use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
 use App\Modules\Inventory\Application\InventoryService;
+use App\Modules\Inventory\Application\FactoryDemandForecast;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseClearanceService;
 use App\Modules\Inventory\Application\WarehouseInboundProjection;
@@ -44,6 +45,7 @@ final class WarehouseController
         private readonly WarehouseBillImportService $billImport,
         private readonly WarehouseBillReconciliationService $reconciliation,
         private readonly WarehouseShipmentProjection $shipments,
+        private readonly FactoryDemandForecast $factoryDemand,
     ) {}
     public function create(): Response { return Inertia::render('Inventory/WarehouseCreate'); }
     public function store(Request $request): RedirectResponse
@@ -302,6 +304,18 @@ final class WarehouseController
         return back()->with('success', 'SKU 人工复核已保存；请单独确认激活本批库存。');
     }
 
+    public function saveFactoryDemand(Request $request, string $warehouse, int $inventory): RedirectResponse
+    {
+        $w = $this->inventory->warehouse($warehouse);
+        abort_unless(strtoupper((string) $w->code) === 'FACTORY', 404);
+        $data = $request->validate([
+            'manual_two_month_demand' => ['present', 'nullable', 'integer', 'min:0', 'max:100000000'],
+        ]);
+        $value = $data['manual_two_month_demand'] === null ? null : (int) $data['manual_two_month_demand'];
+        $this->inventory->updateFactoryDemand($w, $inventory, $value, $request->user());
+        return back()->with('success', $value === null ? '已恢复按近90天销量自动计算' : '两个月需求预警值已保存');
+    }
+
     public function advanceInbound(Request $request,string $warehouse,int $batch): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
@@ -462,6 +476,8 @@ final class WarehouseController
             }
         }
 
+        $factoryMetrics = $code === 'FACTORY' ? $this->factoryDemand->forInventories($w->inventories) : [];
+
         $lastConfirmedSync = InventorySyncBatch::query()
             ->where('warehouse_id', $w->id)
             ->where('status', 'confirmed')
@@ -503,6 +519,7 @@ final class WarehouseController
             'inbound_at'=>$i->inbound_at?->format('Y-m-d'),'stay_days'=>$i->stay_days,'location'=>$i->location,'standard_qoh'=>$i->standard_qoh,'expected_restock_qty'=>$i->expected_restock_qty,
                 'updated_at'=>$i->updated_at?->toIso8601String(),'product_updated_at'=>$i->product->updated_at?->toIso8601String(),
                 'replenishment'=>$this->inventory->replenishmentMetrics($i),
+                'factory_demand'=>$factoryMetrics[(int)$i->id] ?? null,
             ])->values()->all(),
         ];
     }

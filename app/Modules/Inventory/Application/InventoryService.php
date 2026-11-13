@@ -274,6 +274,20 @@ final class InventoryService
         });
     }
 
+    public function updateFactoryDemand(Model $warehouse, int $inventoryId, ?int $value, ?Authenticatable $actor): Model
+    {
+        abort_unless(strtoupper((string)$warehouse->code) === 'FACTORY', 404);
+        return DB::transaction(function () use ($warehouse, $inventoryId, $value, $actor): Model {
+            $inventory = $this->inventory->findInventory($warehouse, $inventoryId);
+            $before = ['two_month_demand_override' => $inventory->two_month_demand_override];
+            $inventory->two_month_demand_override = $value;
+            $inventory->save();
+            $this->record($actor, 'inventory.factory_demand_override_updated', $inventory, $before,
+                ['two_month_demand_override' => $value], 'factory_two_month_demand_override');
+            return $inventory->fresh();
+        });
+    }
+
     private function assertFreshTimestamp(?\DateTimeInterface $actual, string $expected, string $message): void
     {
         if ($actual === null || $expected === '' || ! Carbon::parse($expected)->equalTo($actual)) {
