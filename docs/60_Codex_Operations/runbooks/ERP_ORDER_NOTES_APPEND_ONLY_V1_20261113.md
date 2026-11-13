@@ -18,7 +18,7 @@
 - `POST /kol/orders/{order}/notes` — same permission, mandatory KOL visibility and owner scope.
 - Migration: `2026_11_13_170000_create_order_note_entries_table.php`, additive schema; no legacy data rewriting.
 - Inertia `Orders/Show` props: `orderNotes`, `canAppendOrderNote`. `order.order_note` retained for legacy read-only display.
-- Generic order PATCH rejects `order_note` to prevent bypassing append-only rules.
+- Generic order PATCH rejects `order_note` **even when empty or null**, only after existing order visibility/ownership checks, to prevent bypassing append-only rules and preserve established 403/404 behavior.
 
 ## Verification / release gate
 

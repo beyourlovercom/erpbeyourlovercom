@@ -534,6 +534,11 @@ final class OrderController
         $this->authorizeKind($request, $order);
         KolOrderAccessScope::authorize($request->user(), $order);
         abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能编辑。');
+        // Presence is forbidden even for empty/null values: Laravel's `prohibited`
+        // validator alone treats empty values as absent, risking legacy note erasure.
+        if (array_key_exists('order_note', $request->all())) {
+            throw ValidationException::withMessages(['order_note' => '历史备注不可修改，请在内部协作记录中追加备注。']);
+        }
         $data = $request->validate($this->updateRules($order));
         $items = $data['items'] ?? null;
         $reason = trim((string) ($data['amendment_reason'] ?? ''));

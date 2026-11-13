@@ -70,7 +70,10 @@ final class OrderNoteAppendOnlyTest extends TestCase
         $this->actingAs($actor)->post("/customers/orders/{$order->id}/notes", ['body' => 'Protect me'])->assertRedirect();
         $entry = $order->noteEntries()->firstOrFail();
         $this->actingAs($actor)->delete("/customers/orders/{$order->id}/notes/{$entry->id}")->assertNotFound();
-        $this->actingAs($actor)->patch("/customers/orders/{$order->id}", ['order_note' => 'replace'])->assertSessionHasErrors('order_note');
+        foreach (['replace', '', null] as $replacement) {
+            $this->actingAs($actor)->patch("/customers/orders/{$order->id}", ['order_note' => $replacement])
+                ->assertSessionHasErrors('order_note');
+        }
         $this->assertSame('History', $order->fresh()->order_note);
         $this->assertSame('Protect me', $entry->fresh()->body);
     }
