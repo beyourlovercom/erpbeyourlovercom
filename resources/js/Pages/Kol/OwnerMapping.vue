@@ -3,6 +3,7 @@ import { Head, router } from '@inertiajs/vue3'
 import axios from 'axios'
 import { computed, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import KolModuleGrid, { type KolModuleColumn } from './Shared/KolModuleGrid.vue'
 
 type UserOption = { id: number; name: string; email: string }
 type Mapping = { id: number; mapped_user_id: number | null; user: UserOption | null; status: string }
@@ -41,6 +42,46 @@ const resolutionFilter = ref('pending')
 const mappingSelections = ref<Record<string, string>>({})
 const decisionSelections = ref<Record<string, string>>({})
 const decisionReasons = ref<Record<string, string>>({})
+const legacySourceTable = ref(false)
+const legacyCandidateTable = ref(false)
+const activeSourceKey = ref<string|null>(null)
+const activeCandidateKey = ref<string|null>(null)
+const activeSource = computed(() => state.value.source_owners.find(o=>o.key===activeSourceKey.value) ?? null)
+const activeCandidate = computed(() => state.value.multi_candidates.find(c=>c.cluster_key===activeCandidateKey.value) ?? null)
+const sourceGridRows = computed(() => state.value.source_owners.map((o,i)=>({
+  id:i+1, owner_key:o.key, source:o.value, single:o.single_candidate_count,
+  mentions:o.mention_candidate_count, erp_owner:o.mapping?.user?.name ?? '未指定',
+  status:o.mapping?.status === 'mapped' ? '已映射' : o.mapping ? '映射用户失效' : '未映射',
+})))
+const sourceGridColumns:KolModuleColumn[]=[
+  {key:'source',label:'来源 Owner',width:215},
+  {key:'single',label:'单一 Owner 候选',width:145},
+  {key:'mentions',label:'涉及候选',width:135},
+  {key:'erp_owner',label:'ERP Owner',width:165},
+  {key:'status',label:'状态',width:135,kind:'badge'},
+  {key:'actions',label:'操作',width:115,kind:'actions',actionsFor:r=>[
+    {label:'选择/修改映射',onClick:()=>{activeSourceKey.value=String(r.owner_key)}},
+  ]},
+]
+const candidateGridRows = computed(() => filteredCandidates.value.map(c=>({
+  id:c.id, cluster_key:c.cluster_key, kol:c.display_name, email:c.primary_email ?? '—',
+  owner_values:c.source_owner_values.join('、'), mappings:mappingChain(c).join(' / '),
+  status:statusLabel(c.resolution_status), erp_owner:c.effective_owner?.name ?? '未指定',
+  source_rows:c.source_row_count,
+})))
+const candidateGridColumns:KolModuleColumn[]=[
+  {key:'kol',label:'KOL 候选',width:195},
+  {key:'email',label:'邮箱',width:205},
+  {key:'owner_values',label:'来源 Owner',width:210},
+  {key:'mappings',label:'映射结果',width:245},
+  {key:'status',label:'当前状态',width:165,kind:'badge'},
+  {key:'erp_owner',label:'最终 ERP Owner',width:175},
+  {key:'source_rows',label:'来源记录数',width:115},
+  {key:'actions',label:'操作',width:115,kind:'actions',actionsFor:r=>[
+    {label:'选择/修改裁决',onClick:()=>{activeCandidateKey.value=String(r.cluster_key)}},
+  ]},
+]
+
 
 const hydrate = () => {
   const mappings: Record<string, string> = {}
@@ -204,7 +245,22 @@ const completionRate = computed(() => state.value.summary.total_candidates ? Mat
           <div><p class="eyebrow">STEP 1</p><h2>来源 Owner 全局映射</h2><p>7 个来源负责人值只需映射一次；所有单一 Owner 候选会立即重新计算准备度。</p></div>
           <span class="count-pill">{{ state.summary.source_owner_count }} 个来源 Owner</span>
         </div>
-        <div class="table-wrap">
+        <div class="kol-grid-switch"><strong>来源 Owner · {{ state.source_owners.length }} 条</strong>
+          <button type="button" data-testid="kol-owner-source-grid-toggle" @click="legacySourceTable=!legacySourceTable">{{ legacySourceTable?'切回新表':'查看原表' }}</button>
+        </div>
+        <KolModuleGrid v-if="!legacySourceTable" namespace="grid.kol.owner.source.global.v1"
+          title="来源 Owner 全局映射" :rows="sourceGridRows" :columns="sourceGridColumns" />
+        <div v-if="!legacySourceTable && activeSource" class="kol-owner-editor" data-testid="kol-owner-source-editor">
+          <strong>来源 {{ activeSource.value }} · 映射 ERP 用户</strong>
+          <select v-model="mappingSelections[activeSource.key]" class="owner-select">
+            <option value="">请选择 ERP 用户</option>
+            <option v-for="user in state.eligible_users" :key="user.id" :value="String(user.id)">{{ user.name }} · {{ user.email }}</option>
+          </select>
+          <button type="button" class="mini-btn primary" :disabled="!mappingSelections[activeSource.key] || !!busyKey" @click="saveSourceMapping(activeSource)">保存映射</button>
+          <button v-if="activeSource.mapping" type="button" class="mini-btn" :disabled="!!busyKey" @click="resetSourceMapping(activeSource)">重置映射</button>
+          <button type="button" class="mini-btn" @click="activeSourceKey=null">关闭</button>
+        </div>
+        <div v-if="legacySourceTable" class="table-wrap">
           <table class="owner-table">
             <thead><tr><th>来源 Owner</th><th>单一 Owner 候选</th><th>总涉及候选</th><th>ERP Owner</th><th>状态</th><th class="action-col">操作</th></tr></thead>
             <tbody>
@@ -244,7 +300,23 @@ const completionRate = computed(() => state.value.summary.total_candidates ? Mat
           </select>
           <span class="toolbar-count">显示 {{ filteredCandidates.length }} / {{ state.summary.multi_owner_candidates }}</span>
         </div>
-        <div class="table-wrap">
+        <div class="kol-grid-switch"><strong>多 Owner 候选 · 当前 {{ filteredCandidates.length }} 条</strong>
+          <button type="button" data-testid="kol-owner-candidate-grid-toggle" @click="legacyCandidateTable=!legacyCandidateTable">{{ legacyCandidateTable?'切回新表':'查看原表' }}</button>
+        </div>
+        <KolModuleGrid v-if="!legacyCandidateTable" namespace="grid.kol.owner.candidate.global.v1"
+          title="多 Owner 候选裁决" :rows="candidateGridRows" :columns="candidateGridColumns" />
+        <div v-if="!legacyCandidateTable && activeCandidate" class="kol-owner-editor" data-testid="kol-owner-candidate-editor">
+          <strong>{{ activeCandidate.display_name }} · 最终 ERP Owner</strong>
+          <select v-model="decisionSelections[activeCandidate.cluster_key]" class="owner-select">
+            <option value="">选择最终 Owner</option>
+            <option v-for="user in state.eligible_users" :key="user.id" :value="String(user.id)">{{ user.name }}</option>
+          </select>
+          <input v-model="decisionReasons[activeCandidate.cluster_key]" class="reason-input" maxlength="500" placeholder="裁决备注" />
+          <button type="button" class="mini-btn primary" :disabled="!decisionSelections[activeCandidate.cluster_key] || !!busyKey" @click="saveDecision(activeCandidate)">保存裁决</button>
+          <button v-if="activeCandidate.decision" type="button" class="mini-btn" :disabled="!!busyKey" @click="resetDecision(activeCandidate)">清除裁决</button>
+          <button type="button" class="mini-btn" @click="activeCandidateKey=null">关闭</button>
+        </div>
+        <div v-if="legacyCandidateTable" class="table-wrap">
           <table class="candidate-table">
             <thead><tr><th>KOL 候选</th><th>来源 Owner</th><th>映射结果</th><th>当前状态</th><th>最终 ERP Owner</th><th>裁决备注</th><th class="action-col">操作</th></tr></thead>
             <tbody>
@@ -269,5 +341,7 @@ const completionRate = computed(() => state.value.summary.total_candidates ? Mat
 </template>
 
 <style scoped>
+.kol-grid-switch{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0}.kol-grid-switch button{border:1px solid #cbd5e1;border-radius:7px;background:#fff;padding:7px 12px;cursor:pointer}.kol-owner-editor{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0;padding:12px;border:1px solid #d7e2e5;border-radius:8px;background:#f8fafc}.kol-owner-editor select{min-width:220px}
+
 .owner-page{padding:18px 20px 32px;background:#f5f7f7;min-height:calc(100vh - 80px);color:#20313a}.owner-header-card,.workspace-card,.closure-note{background:#fff;border:1px solid #dce5e7;border-radius:14px;box-shadow:0 4px 14px rgba(27,52,61,.04)}.owner-header-card{padding:22px 24px;margin-bottom:14px}.owner-header-main{display:flex;justify-content:space-between;gap:24px;align-items:flex-start}.eyebrow{margin:0 0 6px;font-size:12px;font-weight:800;letter-spacing:.06em;color:#34877f;text-transform:uppercase}.owner-header-main h1,.section-head h2{margin:0;color:#172830}.owner-header-main h1{font-size:24px}.subtitle,.section-head p{margin:7px 0 0;color:#71828b;font-size:13px}.page-actions{display:flex;gap:8px}.safety-banner{margin-top:18px;padding:11px 14px;border-radius:9px;background:#edf8f5;border:1px solid #bee3d8;color:#286b63;font-size:13px}.preview-strip{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:14px;padding-top:14px;border-top:1px solid #edf1f2}.preview-strip>div{display:flex;flex-direction:column;gap:3px}.preview-strip strong{font-size:14px}.preview-strip span{font-size:12px;color:#83939b}.preview-select,.owner-select,.filter-select,.search-input,.reason-input{border:1px solid #ccd9dd;border-radius:8px;background:#fff;color:#30444d;font-size:13px}.preview-select,.owner-select,.filter-select{height:36px;padding:0 10px}.error-banner{margin:0 0 14px;padding:10px 13px;border-radius:9px;background:#fff0f1;border:1px solid #f2c5c9;color:#ad3540;font-size:13px}.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}.kpi-card{background:#fff;border:1px solid #dce5e7;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:4px}.kpi-card span{font-size:12px;color:#70818a;font-weight:700}.kpi-card strong{font-size:30px;line-height:1.1}.kpi-card small{font-size:11px;color:#96a4aa}.kpi-green strong{color:#26845e}.kpi-amber strong{color:#d48615}.workspace-card{margin-bottom:14px;overflow:hidden}.section-head{padding:18px 20px;display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:1px solid #edf1f2}.section-head h2{font-size:18px}.count-pill{background:#eaf7f3;color:#267568;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:800;white-space:nowrap}.count-pill.amber{background:#fff3dd;color:#ad6e0d}.table-wrap{overflow:auto}.owner-table,.candidate-table{width:100%;border-collapse:collapse;min-width:920px}.candidate-table{min-width:1280px}.owner-table th,.candidate-table th{padding:10px 12px;text-align:left;background:#f7f9f9;border-bottom:1px solid #dfe7e9;color:#566a73;font-size:11px;font-weight:800;white-space:nowrap}.owner-table td,.candidate-table td{padding:12px;border-bottom:1px solid #edf1f2;vertical-align:middle;font-size:12px}.owner-table td>small,.candidate-table td>small{display:block;margin-top:3px;color:#98a5aa;font-size:10px}.owner-table td>strong{display:block}.action-col{width:120px}.action-cell{display:flex;gap:6px;align-items:center;white-space:nowrap}.mini-btn{height:30px;padding:0 10px;border-radius:7px;border:1px solid #cad7da;background:#fff;color:#52666f;font-size:11px;cursor:pointer}.mini-btn.primary{background:#34877f;border-color:#34877f;color:#fff}.mini-btn:disabled{opacity:.45;cursor:not-allowed}.owner-select{min-width:220px;max-width:290px}.status-badge{display:inline-flex;align-items:center;min-height:24px;padding:0 8px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap}.tone-green{background:#e8f7ee;color:#247751}.tone-amber{background:#fff2d8;color:#a86709}.tone-gray{background:#eef2f3;color:#61737b}.toolbar{display:flex;gap:8px;align-items:center;padding:12px 20px;border-bottom:1px solid #edf1f2}.search-input{height:36px;padding:0 12px;min-width:280px}.filter-select{min-width:140px}.toolbar-count{margin-left:auto;font-size:11px;color:#819098}.candidate-cell{display:flex;gap:9px;min-width:260px}.candidate-cell>div:last-child{display:flex;flex-direction:column;gap:2px}.candidate-cell strong{font-size:12px}.candidate-cell span{color:#71838c;font-size:11px}.candidate-cell small{color:#97a4aa;font-size:10px}.avatar{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#eef3ff;color:#4772c8;font-weight:800;flex:none}.chip-row{display:flex;gap:5px;flex-wrap:wrap}.owner-chip{padding:3px 7px;border-radius:999px;background:#f1f4f5;color:#50636b;font-size:10px;font-weight:700}.mapping-chain{display:flex;flex-direction:column;gap:3px;min-width:150px}.mapping-chain span{font-size:10px;color:#60737b}.reason-input{height:36px;padding:0 9px;min-width:190px}.empty-cell{text-align:center!important;padding:28px!important;color:#89989f!important}.closure-note{padding:14px 18px;display:flex;gap:12px;align-items:flex-start;border-color:#cde3de;background:#f7fcfa}.closure-note strong{color:#267568;white-space:nowrap}.closure-note span{font-size:12px;color:#667982}.erp-btn{display:inline-flex;align-items:center;justify-content:center;height:38px;padding:0 13px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700}.erp-btn-secondary{background:#fff;border:1px solid #cbd8dc;color:#4b626b}.erp-btn-primary{background:#34877f;border:1px solid #34877f;color:#fff}@media(max-width:900px){.owner-header-main,.preview-strip,.section-head{flex-direction:column}.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.toolbar{flex-wrap:wrap}.toolbar-count{margin-left:0}}@media(max-width:560px){.owner-page{padding:12px}.kpi-grid{grid-template-columns:1fr}.owner-header-card{padding:17px}.search-input{min-width:100%;width:100%}}
 </style>

@@ -64,6 +64,7 @@ describe('AffiliateWP workspace', () => {
   it('renders Influencer mirror rows and exposes the M1.4C Coupon mode', async () => {
     const wrapper = mount(Index, { props: props({ affiliates: [affiliate] }) })
 
+    await wrapper.get('[data-testid="kol-affiliate-grid-toggle"]').trigger('click')
     expect(wrapper.text()).toContain('Alice Creator')
     expect(wrapper.text()).toContain('101')
     expect(wrapper.text()).toContain('5001')
@@ -106,8 +107,9 @@ describe('AffiliateWP workspace', () => {
     expect(postMock).toHaveBeenCalledWith('/kol/affiliatewp/sync', { preserveScroll: true })
   })
 
-  it('keeps binding actions visible but disabled for specialists', () => {
+  it('keeps binding actions visible but disabled for specialists', async () => {
     const wrapper = mount(Index, { props: props({ affiliates: [affiliate] }) })
+    await wrapper.get('[data-testid="kol-affiliate-grid-toggle"]').trigger('click')
     const bindButton = wrapper.findAll('button').find((button) => button.text() === '绑定现有 KOL')
     const convertButton = wrapper.findAll('button').find((button) => button.text() === '转为新 KOL')
     expect(bindButton?.attributes('disabled')).toBeDefined()
@@ -127,6 +129,7 @@ describe('AffiliateWP workspace', () => {
       }),
     })
 
+    await wrapper.get('[data-testid="kol-affiliate-grid-toggle"]').trigger('click')
     await wrapper.findAll('button').find((button) => button.text() === '绑定现有 KOL')!.trigger('click')
     expect(wrapper.find('[data-testid="bind-panel"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Existing KOL')

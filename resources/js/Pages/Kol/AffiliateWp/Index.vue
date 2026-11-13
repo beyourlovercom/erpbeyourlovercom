@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import KolModuleGrid, { type KolModuleColumn } from '../Shared/KolModuleGrid.vue'
 import { Head, Link, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import CouponPanel, { type CouponCandidate, type CouponRow } from './CouponPanel.vue'
@@ -59,6 +60,44 @@ const activeMode = ref<'influencer' | 'coupon'>('influencer')
 const actionAccountId = ref<number | null>(null)
 const actionMode = ref<'bind' | 'convert' | null>(null)
 
+const legacyAffiliateTable = ref(false)
+const affiliateGridRows = computed(() => props.affiliates.map(a => ({
+  id: a.id,
+  influencer: a.display_name || a.email || '未命名 Affiliate',
+  email: a.email || '—',
+  affiliate_id: a.affiliate_id ?? '—',
+  wp_user: a.wordpress_user_id ?? '—',
+  wp_email: a.wordpress_user_email || '—',
+  kol: a.kol?.display_name || '未绑定',
+  kol_id: a.kol?.id ?? null,
+  provider: a.provider_status || '—',
+  provisioning: a.provisioning_status,
+  error: a.last_error_code ? a.last_error_code + ' · ' + (a.last_error_message || '') : '—',
+  sync: a.reconciliation_status + ' / ' + a.sync_status,
+  last_sync: formatSyncTime(a.last_successful_sync_at),
+})))
+const affiliateGridColumns: KolModuleColumn[] = [
+  {key:'influencer',label:'Influencer',width:210},
+  {key:'affiliate_id',label:'Affiliate ID',width:125},
+  {key:'wp_user',label:'WordPress User',width:145},
+  {key:'email',label:'联系邮箱',width:215},
+  {key:'wp_email',label:'WP 邮箱',width:215,hidden:true},
+  {key:'kol',label:'ERP KOL',width:185,kind:'link',
+    hrefFor:r=> r.kol_id ? '/kol/library/' + r.kol_id : ''},
+  {key:'provider',label:'Provider 状态',width:140,kind:'badge'},
+  {key:'provisioning',label:'Provision 状态',width:150,kind:'badge'},
+  {key:'error',label:'错误反馈',width:275},
+  {key:'sync',label:'同步 / 对账',width:155},
+  {key:'last_sync',label:'最近同步',width:190},
+  {key:'actions',label:'操作',width:240,kind:'actions',actionsFor:r => {
+    const original = props.affiliates.find(a=>a.id===Number(r.id))
+    if (!original || original.kol || !props.canManageAffiliates) return []
+    return [
+      {label:'绑定现有 KOL',onClick:()=>openBind(original)},
+      {label:'转为新 KOL',onClick:()=>openConvert(original)},
+    ]
+  }},
+]
 const selectedAffiliate = computed(() => props.affiliates.find((row) => row.id === actionAccountId.value) ?? null)
 
 function syncNow(): void {
@@ -184,7 +223,13 @@ function formatSyncTime(value: string | null): string {
         <p v-else class="affiliatewp-provisioning-empty">当前作用域没有已批准且未归档的 KOL。</p>
       </div>
 
-      <div v-if="affiliates.length" class="mvp-card affiliatewp-table-wrap">
+      <div class="affiliatewp-grid-choice">
+        <strong>Influencer / AffiliateWP 镜像</strong>
+        <button type="button" data-testid="kol-affiliate-grid-toggle" @click="legacyAffiliateTable=!legacyAffiliateTable">{{ legacyAffiliateTable ? '切回新表' : '查看原表' }}</button>
+      </div>
+      <KolModuleGrid v-if="!legacyAffiliateTable && affiliates.length" namespace="grid.kol.affiliatewp.global.v1"
+        title="AffiliateWP Influencer" :rows="affiliateGridRows" :columns="affiliateGridColumns" />
+      <div v-if="legacyAffiliateTable && affiliates.length" class="mvp-card affiliatewp-table-wrap">
         <table class="affiliatewp-table">
           <thead><tr><th>Influencer</th><th>Affiliate ID</th><th>WordPress User</th><th>ERP KOL</th><th>Provider 状态</th><th>Provision 状态</th><th>同步状态</th><th>最近成功同步</th><th>操作</th></tr></thead>
           <tbody>
@@ -232,6 +277,8 @@ function formatSyncTime(value: string | null): string {
 </template>
 
 <style scoped>
+.affiliatewp-grid-choice{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:4px}.affiliatewp-grid-choice button{background:#fff;border:1px solid #cbd5e1;border-radius:7px;padding:7px 12px;cursor:pointer}
+
 .affiliatewp-page { display: flex; flex-direction: column; gap: 16px; }
 .affiliatewp-heading { align-items: flex-start; gap: 16px; }
 .affiliatewp-sync { min-width: 104px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 14px; background: #fff; color: #0f172a; cursor: pointer; }

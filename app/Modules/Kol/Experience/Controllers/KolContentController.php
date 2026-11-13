@@ -42,13 +42,15 @@ final class KolContentController
             });
         }
 
+        $pageSize = (int) $request->input('per_page', 50);
+        if (! in_array($pageSize, [20, 50, 100], true)) $pageSize = 50;
         $contents = $query->orderByDesc('published_at')->orderByDesc('id')
-            ->paginate(50)->withQueryString()
+            ->paginate($pageSize)->withQueryString()
             ->through(fn (KolContent $item) => $this->payload($item));
 
         return Inertia::render('Kol/Content', [
             'contents' => $contents->toArray(),
-            'filters' => $request->only(['search', 'publication_status', 'platform', 'evidence']),
+            'filters' => $request->only(['search', 'publication_status', 'platform', 'evidence', 'per_page']),
             'canOperate' => KolScope::canOperate($request->user()),
         ]);
     }

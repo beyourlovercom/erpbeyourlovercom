@@ -25,8 +25,9 @@ const referrals = [
 
 describe('Referral commission workspace', () => {
   beforeEach(() => postMock.mockReset())
-  it('renders provider referral, canonical KOL/order and payout evidence', () => {
+  it('renders provider referral, canonical KOL/order and payout evidence', async () => {
     const wrapper = mount(Commissions, { props: { canSync: true, canRequestPayouts: true, canManagePayouts: false, connectionKey: 'test.example.com', referrals, summary } })
+    await wrapper.get('[data-testid="kol-commission-grid-toggle"]').trigger('click')
     expect(wrapper.text()).toContain('Referral / Commission')
     expect(wrapper.text()).toContain('Creator A')
     expect(wrapper.text()).toContain('007-0901-c9001')

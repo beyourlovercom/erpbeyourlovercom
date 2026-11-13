@@ -60,8 +60,10 @@ describe('KOL Owner Mapping', () => {
     routerGet.mockReset()
   })
 
-  it('renders the real-source mapping baseline and permanent safety boundary', () => {
+  it('renders the real-source mapping baseline and permanent safety boundary', async () => {
     const wrapper = mount(OwnerMapping, { props: { workspace } })
+    await wrapper.get('[data-testid="kol-owner-source-grid-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="kol-owner-candidate-grid-toggle"]').trigger('click')
     expect(wrapper.text()).toContain('P3A · Owner Mapping Closure')
     expect(wrapper.text()).toContain('仅保存 Owner 映射与候选裁决')
     expect(wrapper.text()).toContain('不创建 KOL、不绑定 Affiliate、不写 Provider')
@@ -84,6 +86,7 @@ describe('KOL Owner Mapping', () => {
     vi.mocked(axios.post).mockResolvedValueOnce({ data: { workspace: nextWorkspace } })
 
     const wrapper = mount(OwnerMapping, { props: { workspace } })
+    await wrapper.get('[data-testid="kol-owner-source-grid-toggle"]').trigger('click')
     const emmaRow = wrapper.findAll('tbody tr').find((row) => row.text().includes('Emma'))!
     await emmaRow.get('select').setValue('3')
     await emmaRow.findAll('button')[0].trigger('click')
@@ -110,6 +113,7 @@ describe('KOL Owner Mapping', () => {
     vi.mocked(axios.post).mockResolvedValueOnce({ data: { workspace: nextWorkspace } })
 
     const wrapper = mount(OwnerMapping, { props: { workspace } })
+    await wrapper.get('[data-testid="kol-owner-candidate-grid-toggle"]').trigger('click')
     const candidateRow = wrapper.find('.candidate-table tbody tr')
     await candidateRow.findAll('select')[0].setValue('3')
     await candidateRow.get('input').setValue('Current owner confirmed')

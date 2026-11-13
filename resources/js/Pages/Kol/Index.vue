@@ -181,7 +181,7 @@ const gridRows = computed<GridListRow[]>(() => props.kols.data.map(kol => ({
     ? 'WordPress: ' + (kol.affiliate_account.wordpress_user_login
       || (kol.affiliate_account.wordpress_user_id ? 'WP User #' + kol.affiliate_account.wordpress_user_id : '—'))
     : '未绑定 Affiliate',
-  affiliate_id: kol.affiliate_account ? '#' + kol.affiliate_account.affiliate_id : '—',
+  affiliate_id: kol.affiliate_account?.affiliate_id ? '#' + kol.affiliate_account.affiliate_id : '—',
   level: kol.level ?? '—', city: kol.shipping_city ?? '—', country: kol.country_code ?? '—',
   categories: tagList(kol.categories), products: tagList(kol.products),
   content_format: kol.content_format ?? '—', product_quantity: kol.product_quantity ?? '—',
