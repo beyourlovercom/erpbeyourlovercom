@@ -67,6 +67,7 @@ Route::middleware(['web','auth','can:inventory.operate'])->group(function (): vo
     Route::post('/inventory/{warehouse}/stock',[WarehouseController::class,'saveInventory'])->name('inventory.stock.store');
     Route::post('/inventory/{warehouse}/stock/add',[WarehouseController::class,'addInventory'])->name('inventory.stock.add');
     Route::patch('/inventory/{warehouse}/stock/{inventory}',[WarehouseController::class,'updateInventory'])->name('inventory.stock.update');
+    Route::patch('/inventory/{warehouse}/stock/{inventory}/factory-demand',[WarehouseController::class,'saveFactoryDemand'])->whereNumber('inventory')->name('inventory.factory-demand.update');
     Route::delete('/inventory/{warehouse}/stock/{inventory}',[WarehouseController::class,'removeInventory'])->whereNumber('inventory')->name('inventory.stock.remove');
     Route::patch('/inventory/{warehouse}/stock/{inventory}/cell',[WarehouseController::class,'updateInventoryCell'])->name('inventory.stock.cell.update');
     Route::patch('/inventory/{warehouse}/inbound/{batch}/advance',[WarehouseController::class,'advanceInbound'])->whereNumber('batch')->name('inventory.inbound.advance');
