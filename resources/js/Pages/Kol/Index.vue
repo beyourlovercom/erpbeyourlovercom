@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
-import { computed, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import { useAccountGridPreferences, type GridColumnDefinition, type GridPreferenceValue } from '../../Composables/useAccountGridPreferences'
+import type { ColDef } from 'ag-grid-community'
+import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
+import { gridColumn, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
+const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 
 type KolRow = {
   id: number
   display_name: string
+  contact_email?: string | null
   country_code: string | null
   shipping_city: string | null
   status: string
@@ -80,6 +85,8 @@ const defaultColumns: GridColumnDefinition<ColumnKey>[] = [
 ]
 
 const columnSettingsOpen = ref(false)
+// Default new Global Grid, with a read-only legacy display fallback for UAT.
+const legacyTable = ref(props.filters.legacy_grid === '1')
 const {
   columns: columnPreferences,
   visibleColumns,
@@ -111,22 +118,129 @@ const filters = reactive({
   view: props.filters.view ?? '',
   sort: props.filters.sort ?? 'display_name',
   direction: props.filters.direction ?? 'asc',
+  per_page: props.filters.per_page ?? '50',
+  grid_name: props.filters.grid_name ?? '',
+  grid_account: props.filters.grid_account ?? '',
+  grid_city: props.filters.grid_city ?? '',
+  grid_country: props.filters.grid_country ?? '',
+  grid_owner: props.filters.grid_owner ?? '',
+  grid_email: props.filters.grid_email ?? '',
 })
 
+const advancedFiltersOpen = ref(false)
 const showNewViewModal = ref(false)
 const newViewName = ref('')
 const newViewVisibility = ref('private')
 const newViewPinned = ref(false)
 
-const submit = () => router.get('/kol/library', filters, { preserveState: true, replace: true })
-const goToPage = (page: number) => router.get('/kol/library', { ...filters, page }, { preserveState: true, replace: true })
+const nav = (overrides: Record<string, string | number> = {}) => router.get('/kol/library',
+  { ...filters, legacy_grid: legacyTable.value ? '1' : '0', ...overrides },
+  { preserveState: true, preserveScroll: true, replace: true })
+const submit = () => nav({ page: 1 })
+const goToPage = (page: number) => nav({ page })
+const toggleGrid = () => {
+  legacyTable.value = !legacyTable.value
+  filters.per_page = legacyTable.value ? '30' : '50'
+  nav({ page: 1 })
+}
+const gridPageSize = (size: number | 'all') => {
+  if (size === 'all') return
+  filters.per_page = String([20, 30, 50, 100].includes(size) ? size : 50)
+  nav({ page: 1 })
+}
+const gridSearch = (search: string) => { filters.search = search; nav({ page: 1 }) }
+const gridColumnFilter = ({ colId, value }: { colId: string; value: string }) => {
+  const keys = ['name', 'account', 'city', 'country', 'owner', 'email']
+  if (!keys.includes(colId)) return
+  const name = ('grid_' + colId) as keyof typeof filters
+  filters[name] = value
+  nav({ page: 1 })
+}
+const sortFields: Record<string,string> = {
+  name: 'display_name', status: 'status', level: 'level', city: 'shipping_city',
+  country: 'country_code', stage: 'relationship_stage', content_format: 'content_format',
+  product_quantity: 'product_quantity', joined_at: 'joined_at',
+}
+const gridSort = ({ colId, direction }: { colId: string; direction: 'asc' | 'desc' | null }) => {
+  filters.sort = direction && sortFields[colId] ? sortFields[colId] : 'display_name'
+  filters.direction = direction ?? 'asc'
+  nav({ page: 1 })
+}
+const gridSortState = computed(() => ({
+  colId: Object.entries(sortFields).find(([, key]) => key === filters.sort)?.[0] ?? 'name',
+  direction: filters.direction === 'desc' ? 'desc' as const : 'asc' as const,
+}))
+const gridFilterValues = computed(() => ({
+  name: filters.grid_name, account: filters.grid_account, city: filters.grid_city,
+  country: filters.grid_country, owner: filters.grid_owner, email: filters.grid_email,
+}))
+const gridRows = computed<GridListRow[]>(() => props.kols.data.map(kol => ({
+  id: kol.id, name: kol.display_name, detail_url: '/kol/library/' + kol.id,
+  email: kol.contact_email ?? '—',
+  account: kol.affiliate_account
+    ? 'WordPress: ' + (kol.affiliate_account.wordpress_user_login
+      || (kol.affiliate_account.wordpress_user_id ? 'WP User #' + kol.affiliate_account.wordpress_user_id : '—'))
+    : '未绑定 Affiliate',
+  affiliate_id: kol.affiliate_account ? '#' + kol.affiliate_account.affiliate_id : '—',
+  level: kol.level ?? '—', city: kol.shipping_city ?? '—', country: kol.country_code ?? '—',
+  categories: tagList(kol.categories), products: tagList(kol.products),
+  content_format: kol.content_format ?? '—', product_quantity: kol.product_quantity ?? '—',
+  stage: stageLabel(kol.relationship_stage), status: kol.status === 'active' ? '活跃' : '停用',
+  mcn_agency: kol.mcn_agency ?? (kol.is_mcn_managed ? '是' : '—'),
+  owner: kol.owner?.name ?? '—',
+  followers: followersLabel(kol.latest_followers) + (kol.primary_platform ? ' (' + platformLabel(kol.primary_platform) + ')' : ''),
+  published: kol.has_published_content ? '已发布' : '未发布',
+  historical_order_count: kol.historical_order_count,
+  joined_at: kol.joined_at ?? '—', internal_contact: kol.internal_contact ?? '—',
+  audience_tier: kol.is_100k_plus ? '100K+' : '—',
+  is_100k_plus: kol.is_100k_plus,
+})))
+const gridColumns: ColDef<GridListRow>[] = [
+  gridColumn({ colId:'name',field:'name',headerName:'红人名称',width:210,sortable:true,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(row:GridListRow)=>String(row.detail_url)} }),
+  gridColumn({ colId:'account',field:'account',headerName:'WordPress 账号',width:220 }),
+  gridColumn({ colId:'affiliate_id',field:'affiliate_id',headerName:'AffiliateWP ID',width:130 }),
+  gridColumn({ colId:'email',field:'email',headerName:'联系邮箱',width:210 }),
+  gridColumn({ colId:'level',field:'level',headerName:'等级',width:100,sortable:true }),
+  gridColumn({ colId:'city',field:'city',headerName:'城市',width:135,sortable:true }),
+  gridColumn({ colId:'country',field:'country',headerName:'国家/地区',width:112,sortable:true,hide:true }),
+  gridColumn({ colId:'categories',field:'categories',headerName:'主营品类',width:150 }),
+  gridColumn({ colId:'products',field:'products',headerName:'主推产品',width:150 }),
+  gridColumn({ colId:'content_format',field:'content_format',headerName:'内容形式',width:120,sortable:true }),
+  gridColumn({ colId:'product_quantity',field:'product_quantity',headerName:'产品数量',width:115,sortable:true }),
+  gridColumn({ colId:'stage',field:'stage',headerName:'合作阶段',width:135,sortable:true }),
+  gridColumn({ colId:'status',field:'status',headerName:'状态',width:105,sortable:true,hide:true,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'} }),
+  gridColumn({ colId:'mcn_agency',field:'mcn_agency',headerName:'MCN机构',width:160 }),
+  gridColumn({ colId:'owner',field:'owner',headerName:'负责人',width:145 }),
+  gridColumn({ colId:'followers',field:'followers',headerName:'粉丝数/平台',width:150 }),
+  gridColumn({ colId:'audience_tier',field:'audience_tier',headerName:'100K+',width:95,hide:true,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'} }),
+  gridColumn({ colId:'published',field:'published',headerName:'是否已发布',width:120,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'} }),
+  gridColumn({ colId:'historical_order_count',field:'historical_order_count',headerName:'历史带货数量',width:145 }),
+  gridColumn({ colId:'joined_at',field:'joined_at',headerName:'加入日期',width:150,sortable:true,hide:true }),
+  gridColumn({ colId:'internal_contact',field:'internal_contact',headerName:'内部对接人',width:140,hide:true }),
+  gridColumn({ colId:'actions',field:'detail_url',headerName:'操作',width:112,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'actions',actionsFor:(row:GridListRow)=>[
+      {label:'查看',href:String(row.detail_url)},
+      ...(props.canOperate ? [{label:'编辑',href:String(row.detail_url)+'/edit'}] : []),
+    ],compactActions:true} }),
+]
+const gridPager = computed(() => ({
+  current_page: props.kols.current_page, last_page: props.kols.last_page,
+  per_page: props.kols.per_page, total: props.kols.total,
+}))
+
 const applyView = (view: SavedView) => {
   Object.assign(filters, view.filters_json)
   filters.view = ''
   submit()
 }
 const applySystemView = (viewKey: string) => {
+  const existingPageSize = filters.per_page
   Object.keys(filters).forEach(k => { (filters as Record<string, string>)[k] = '' })
+  filters.per_page = existingPageSize
   filters.view = viewKey
   filters.sort = 'display_name'
   filters.direction = 'asc'
@@ -177,14 +291,15 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
 <template>
   <Head title="红人库 · BYL ERP" />
   <AuthenticatedLayout title="红人库" :breadcrumbs="breadcrumbs">
-    <section class="mvp-page">
+    <section class="mvp-page kol-library-global-page">
       <div class="mvp-page-heading">
         <div>
           <p class="mvp-kicker">KOL Master / 红人库</p>
           <h2>红人库</h2>
-          <p>KOL 主数据列表，支持 Owner 范围、业务画像筛选和保存视图。</p>
         </div>
         <div class="mvp-actions page-header-actions">
+          <button type="button" class="mvp-button" data-testid="kol-grid-switch"
+            @click="toggleGrid">{{ legacyTable ? '切回新表' : '查看原表' }}</button>
           <Link v-if="canOperate" class="mvp-button mvp-button-primary" href="/kol/library/create">新建 KOL</Link>
         </div>
       </div>
@@ -206,7 +321,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
 
       <!-- Filters -->
       <form class="mvp-toolbar kol-toolbar" @submit.prevent="submit">
-        <input v-model="filters.search" aria-label="搜索 KOL" placeholder="搜索名称…">
+        <input v-if="legacyTable" v-model="filters.search" aria-label="搜索 KOL" placeholder="搜索名称…">
         <select v-if="isAllScope" v-model="filters.owner_id" aria-label="负责人">
           <option value="">全部负责人</option>
           <option v-for="o in ownerOptions" :key="o.value" :value="String(o.value)">{{ o.label }}</option>
@@ -243,7 +358,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
           <option value="尾部">尾部</option>
           <option value="素人">素人</option>
         </select>
-        <select v-model="filters.content_format" aria-label="内容形式">
+        <select v-if="advancedFiltersOpen" v-model="filters.content_format" aria-label="内容形式">
           <option value="">全部形式</option>
           <option value="图文">图文</option>
           <option value="短视频">短视频</option>
@@ -251,30 +366,48 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
           <option value="图文+视频">图文+视频</option>
           <option value="混合">混合</option>
         </select>
-        <select v-model="filters.mcn" aria-label="MCN 状态">
+        <select v-if="advancedFiltersOpen" v-model="filters.mcn" aria-label="MCN 状态">
           <option value="">全部 MCN</option>
           <option value="yes">MCN 管理</option>
           <option value="no">非 MCN</option>
         </select>
-        <select v-model="filters.has_published_content" aria-label="是否已发布">
+        <select v-if="advancedFiltersOpen" v-model="filters.has_published_content" aria-label="是否已发布">
           <option value="">全部发布状态</option>
           <option value="yes">已发布</option>
           <option value="no">未发布</option>
         </select>
-        <select v-model="filters.publication_evidence" aria-label="发布证据">
+        <select v-if="advancedFiltersOpen" v-model="filters.publication_evidence" aria-label="发布证据">
           <option value="">全部发布证据</option>
           <option value="none">无证据</option>
           <option value="url">仅 URL</option>
           <option value="screenshot">仅截图</option>
           <option value="url_and_screenshot">URL + 截图</option>
         </select>
-        <input v-model="filters.followers_min" type="number" min="0" aria-label="粉丝数最小值" placeholder="粉丝≥">
-        <input v-model="filters.followers_max" type="number" min="0" aria-label="粉丝数最大值" placeholder="粉丝≤">
+        <input v-if="advancedFiltersOpen" v-model="filters.followers_min" type="number" min="0" aria-label="粉丝数最小值" placeholder="粉丝≥">
+        <input v-if="advancedFiltersOpen" v-model="filters.followers_max" type="number" min="0" aria-label="粉丝数最大值" placeholder="粉丝≤">
+        <button class="mvp-button" type="button" aria-label="高级筛选"
+          :aria-expanded="advancedFiltersOpen" @click="advancedFiltersOpen = !advancedFiltersOpen">
+          {{ advancedFiltersOpen ? '收起高级筛选' : '高级筛选' }}
+        </button>
         <button class="mvp-button" type="submit">筛选</button>
       </form>
 
-      <!-- Table -->
-      <div class="kol-grid-shell">
+      <!-- Global Grid V1: default, server-paginated; no client-side full-data claims. -->
+      <GlobalGrid v-if="!legacyTable"
+        namespace="grid.kol.library.global.v1" title="网红档案"
+        :rows="gridRows" :columns="gridColumns" :page="gridPager"
+        :required-column-ids="['name','actions']" :default-pinned-right="1"
+        :search="filters.search" :sort="gridSortState"
+        :filter-columns="['name','account','email','city','country','owner']"
+        :filter-values="gridFilterValues"
+        search-placeholder="搜索网红名称 / 邮箱 / WordPress 账号..."
+        :enable-selection="false" :client-csv-export="false"
+        @page-change="goToPage" @page-size-change="gridPageSize"
+        @search-change="gridSearch" @sort-change="gridSort"
+        @column-search-change="gridColumnFilter"
+      />
+      <!-- Original table is available by explicit fallback only. -->
+      <div v-else class="kol-grid-shell">
         <div class="kol-grid-settings-anchor">
           <button
             class="column-settings-trigger"
@@ -363,7 +496,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
       </div>
 
       <!-- Pagination -->
-      <div v-if="kols.last_page > 1" class="mvp-pagination">
+      <div v-if="legacyTable && kols.last_page > 1" class="mvp-pagination">
         <button class="mvp-button" type="button" :disabled="kols.current_page <= 1" @click="goToPage(kols.current_page - 1)">上一页</button>
         <span>第 {{ kols.current_page }} / {{ kols.last_page }} 页 · 共 {{ kols.total }} 条</span>
         <button class="mvp-button" type="button" :disabled="kols.current_page >= kols.last_page" @click="goToPage(kols.current_page + 1)">下一页</button>
@@ -399,6 +532,13 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
 </template>
 
 <style scoped>
+.kol-library-global-page { min-width: 0; }
+.kol-library-global-page .mvp-page-heading { margin-bottom: 8px; }
+.kol-library-global-page .mvp-kicker { font-size: 10px; }
+.kol-library-global-page .mvp-toolbar { margin-bottom: 10px; gap: 6px; padding: 8px; }
+.kol-library-global-page .mvp-page-heading h2 { margin: 0; }
+.kol-library-global-page .top-views-bar { margin-bottom: 6px; }
+
 .top-views-bar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
 .view-tab { padding: 6px 14px; border: 1px solid #e5e7eb; border-radius: 20px; background: transparent; cursor: pointer; font-size: 13px; color: #374151; }
 .view-tab:hover { border-color: #0f766e; color: #0f766e; }

@@ -42,8 +42,11 @@ final class KolController
         $ownerScopeId = KolScope::effectiveOwnerId($user);
         $canManageViews = KolScope::canManageViews($user);
 
-        $filters = $request->only(['search', 'owner_id', 'status', 'relationship_stage', 'country_code', 'platform', 'followers_min', 'followers_max', 'level', 'content_format', 'mcn', 'has_published_content', 'publication_evidence', 'view', 'sort', 'direction']);
-        $kols = $this->kols->list($filters, $ownerScopeId);
+        $filters = $request->only(['search', 'owner_id', 'status', 'relationship_stage', 'country_code', 'platform', 'followers_min', 'followers_max', 'level', 'content_format', 'mcn', 'has_published_content', 'publication_evidence', 'view', 'sort', 'direction', 'per_page', 'grid_name', 'grid_account', 'grid_city', 'grid_country', 'grid_owner', 'grid_email']);
+        $filters['per_page'] = (string) $request->input('per_page', $request->boolean('legacy_grid') ? 30 : 50);
+        $filters['legacy_grid'] = $request->boolean('legacy_grid') ? '1' : '0';
+        $filtersForQuery = [...$filters, 'current_user_id' => (int) $user->getAuthIdentifier()];
+        $kols = $this->kols->list($filtersForQuery, $ownerScopeId);
         $savedViews = $this->views->forUser('kol', (int) $user->getAuthIdentifier(), $canManageViews);
 
         $ownerOptions = [];
@@ -606,6 +609,7 @@ final class KolController
         return [
             'id' => $kol->id,
             'display_name' => $kol->display_name,
+            'contact_email' => $kol->contact_email,
             'avatar_url' => $kol->avatar_path ? Storage::disk('public')->url($kol->avatar_path) : null,
             'avatar_source' => $kol->avatar_source,
             'avatar_updated_at' => $kol->avatar_updated_at?->toIso8601String(),

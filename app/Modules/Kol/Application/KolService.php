@@ -50,9 +50,51 @@ final class KolService
 
         if (isset($filters['search']) && $filters['search'] !== '') {
             $search = '%'.mb_strtolower($filters['search']).'%';
-            $query->where(function (Builder $q) use ($search): void {
+            $query->where(function (Builder $q) use ($search, $filters, $affiliateConnectionKey): void {
                 $q->whereRaw('LOWER(display_name) LIKE ?', [$search])
-                    ->orWhereRaw('LOWER(legal_name) LIKE ?', [$search]);
+                    ->orWhereRaw('LOWER(legal_name) LIKE ?', [$search])
+                    ->orWhereRaw('LOWER(contact_email) LIKE ?', [$search])
+                    ->orWhereHas('affiliateAccounts', function (Builder $accounts) use ($search, $filters, $affiliateConnectionKey): void {
+                        $accounts->where('connection_key', $affiliateConnectionKey)
+                            ->whereRaw('LOWER(wordpress_user_login) LIKE ?', [$search]);
+                        $term = trim((string) ($filters['search'] ?? ''));
+                        if (ctype_digit($term)) {
+                            $accounts->orWhere(function (Builder $numbers) use ($term, $affiliateConnectionKey): void {
+                                $numbers->where('connection_key', $affiliateConnectionKey)
+                                    ->where(fn (Builder $q) => $q->where('affiliate_id', (int) $term)
+                                        ->orWhere('wordpress_user_id', (int) $term));
+                            });
+                        }
+                    });
+            });
+        }
+
+        // Strict server-side column filters: always run inside the caller's KOL owner scope.
+        if ($name = trim((string) ($filters['grid_name'] ?? ''))) {
+            $query->whereRaw('LOWER(display_name) LIKE ?', ['%'.mb_strtolower($name).'%']);
+        }
+        if ($city = trim((string) ($filters['grid_city'] ?? ''))) {
+            $query->whereRaw('LOWER(shipping_city) LIKE ?', ['%'.mb_strtolower($city).'%']);
+        }
+        if ($country = trim((string) ($filters['grid_country'] ?? ''))) {
+            $query->whereRaw('LOWER(country_code) LIKE ?', ['%'.mb_strtolower($country).'%']);
+        }
+        if ($email = trim((string) ($filters['grid_email'] ?? ''))) {
+            $query->whereRaw('LOWER(contact_email) LIKE ?', ['%'.mb_strtolower($email).'%']);
+        }
+        if ($ownerName = trim((string) ($filters['grid_owner'] ?? ''))) {
+            $query->whereHas('owner', fn (Builder $q) => $q->whereRaw('LOWER(name) LIKE ?', ['%'.mb_strtolower($ownerName).'%']));
+        }
+        if ($account = trim((string) ($filters['grid_account'] ?? ''))) {
+            $query->whereHas('affiliateAccounts', function (Builder $q) use ($account, $affiliateConnectionKey): void {
+                $q->where('connection_key', $affiliateConnectionKey)
+                    ->where(function (Builder $sub) use ($account): void {
+                        $sub->whereRaw('LOWER(wordpress_user_login) LIKE ?', ['%'.mb_strtolower($account).'%']);
+                        if (ctype_digit($account)) {
+                            $sub->orWhere('affiliate_id', (int) $account)
+                                ->orWhere('wordpress_user_id', (int) $account);
+                        }
+                    });
             });
         }
 
@@ -127,18 +169,24 @@ final class KolService
         }
 
         if (! empty($filters['view'])) {
-            $query = $this->applySystemView($query, $filters['view'], $ownerScopeId);
+            $query = $this->applySystemView($query, $filters['view'], $ownerScopeId, (int) ($filters['current_user_id'] ?? 0));
         }
 
         $sort = $filters['sort'] ?? 'display_name';
         $direction = ($filters['direction'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
-        $allowedSorts = ['display_name', 'joined_at', 'created_at', 'relationship_stage'];
+        $allowedSorts = ['display_name', 'joined_at', 'created_at', 'relationship_stage',
+            'status', 'level', 'shipping_city', 'country_code', 'content_format', 'product_quantity'];
         if (! in_array($sort, $allowedSorts, true)) {
             $sort = 'display_name';
         }
-        $query->orderBy($sort, $direction);
+        $query->orderBy($sort, $direction)->orderBy('id', 'asc');
+        // AG Grid only requests bounded pages. Never load the unscoped full dataset.
+        $size = (int) ($filters['per_page'] ?? 30);
+        if (! in_array($size, [20, 30, 50, 100], true)) {
+            $size = 50;
+        }
 
-        return $query->paginate(30)->withQueryString();
+        return $query->paginate($size)->withQueryString();
     }
 
     private function applyContentEvidenceFilter(Builder $query, string $evidence): void
@@ -173,11 +221,15 @@ final class KolService
             ->all();
     }
 
-    private function applySystemView(Builder $query, string $view, ?int $ownerScopeId): Builder
+    private function applySystemView(Builder $query, string $view, ?int $ownerScopeId, int $viewerId): Builder
     {
         return match ($view) {
-            'my_kols' => $ownerScopeId !== null ? $query : $query,
+            'my_kols' => $ownerScopeId !== null ? $query : ($viewerId > 0 ? $query->where('owner_id', $viewerId) : $query->whereRaw('1 = 0')),
             'all_kols' => $query,
+            'prospect' => $query->where('relationship_stage', 'prospect'),
+            'negotiating' => $query->whereIn('relationship_stage', ['contacted', 'negotiating']),
+            'cooperating' => $query->where('relationship_stage', 'cooperating'),
+            'long_term' => $query->where('relationship_stage', 'long_term'),
             '100k_plus' => $query->hundredKPlus(),
             default => $query,
         };
