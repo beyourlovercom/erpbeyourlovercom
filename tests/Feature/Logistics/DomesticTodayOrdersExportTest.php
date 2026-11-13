@@ -140,6 +140,8 @@ final class DomesticTodayOrdersExportTest extends TestCase
         $this->actingAs($user)->get('/logistics/china?view=4px')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
         $this->actingAs($user)->get('/logistics/china?view=weship')
+            ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
+        $this->actingAs($user)->get('/logistics/china?view=weship&global_grid=0')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',false));
         self::assertSame('pending', $reviewed->fresh()->shipment->shipment_status);
         self::assertSame('shipped', $shipped->fresh()->shipment->shipment_status);
@@ -241,7 +243,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
         $this->actingAs($viewer)->get('/logistics/china?view=4px')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
         $this->actingAs($viewer)->get('/logistics/china?view=weship')
-            ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',false));
+            ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
 
         self::assertSame('exception',$carrierException->fresh()->shipment->shipment_status);
         self::assertSame('包裹被承运商退回',$carrierException->fresh()->shipment->logistics_note);
@@ -250,6 +252,57 @@ final class DomesticTodayOrdersExportTest extends TestCase
         self::assertSame('pending',$orderShipmentMismatch->fresh()->shipment->shipment_status);
         self::assertSame('shipped',$orderShipmentMismatch->fresh()->order_status->value);
         self::assertSame('pending',$normal->fresh()->shipment->shipment_status);
+    }
+
+    public function test_r4_7b_weship_cumulative_history_grid_has_all_original_states_dates_search_and_old_table_fallback(): void
+    {
+        $pending=$this->domesticOrder('007-R47B-WES-PENDING','Weship',true);
+        $pending->items()->create(['sku'=>'BY489A','product_summary'=>'Weship multi-unit','quantity'=>3,
+            'unit_price'=>'8.00','line_revenue'=>'24.00']);
+        $unreviewed=$this->domesticOrder('007-R47B-WES-UNREVIEWED','Weship',false);
+        $oldShipped=$this->domesticOrder('007-R47B-WES-OLD-SHIPPED','Weship',false);
+        $oldShipped->update(['order_date'=>now()->subDays(60)->toDateString()]);
+        $oldShipped->shipment()->update([
+            'shipment_status'=>'shipped','shipped_at'=>now()->subDays(45),
+            'tracking_number'=>'R47B-WES-OLDER-TRACK',
+        ]);
+        $exception=$this->domesticOrder('007-R47B-WES-EXCEPTION','Weship',true);
+        $exception->shipment()->update(['shipment_status'=>'exception']);
+        $otherCarrier=$this->domesticOrder('007-R47B-4PX-OTHER','4PX',true);
+        $viewer=$this->viewer();
+
+        foreach (['','&global_grid=1','&global_grid=0'] as $suffix) {
+            $this->actingAs($viewer)->get('/logistics/china?view=weship'.$suffix)
+                ->assertOk()->assertInertia(fn ($page) => $page
+                    ->component('Logistics/Domestic/Index')
+                    ->where('view','weship')
+                    ->where('globalGridPilotAvailable',true)
+                    ->where('globalGridPilotEnabled',$suffix!=='&global_grid=0')
+                    ->where('rows.total',4)
+                    ->where('rows.data.0.erp_order_id','007-R47B-WES-OLD-SHIPPED')
+                    ->where('rows.data.1.erp_order_id','007-R47B-WES-PENDING')
+                    ->where('rows.data.1.items.0.quantity',3)
+                    ->where('rows.data.2.erp_order_id','007-R47B-WES-UNREVIEWED')
+                    ->where('rows.data.3.erp_order_id','007-R47B-WES-EXCEPTION'));
+        }
+        $this->actingAs($viewer)->get('/logistics/china?view=weship&search=R47B-WES-OLD-SHIPPED&per_page=20')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('globalGridPilotEnabled',true)
+                ->where('rows.per_page',20)
+                ->where('rows.total',1)
+                ->where('rows.data.0.erp_order_id','007-R47B-WES-OLD-SHIPPED'));
+
+        $this->actingAs($viewer)->get('/logistics/china?view=4px')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('rows.total',1)
+                ->where('rows.data.0.erp_order_id','007-R47B-4PX-OTHER'));
+
+        // R4-7B is presentation-only: no reviewed/ship/tracking business updates.
+        self::assertSame('pending',$pending->fresh()->shipment->shipment_status);
+        self::assertSame('pending',$unreviewed->fresh()->shipment->shipment_status);
+        self::assertSame('shipped',$oldShipped->fresh()->shipment->shipment_status);
+        self::assertSame('exception',$exception->fresh()->shipment->shipment_status);
+        self::assertSame('pending',$otherCarrier->fresh()->shipment->shipment_status);
     }
 
     public function test_r4_7a_speeda_history_grid_keeps_original_all_statuses_unlimited_dates_and_legacy_fallback(): void
@@ -285,7 +338,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
                 ->where('rows.data.0.erp_order_id','007-R47-4PX-OLD-SHIPPED'));
         $this->actingAs($actor)->get('/logistics/china?view=weship')
             ->assertOk()->assertInertia(fn ($page) => $page
-                ->where('globalGridPilotEnabled',false)
+                ->where('globalGridPilotEnabled',true)
                 ->where('rows.total',1)
                 ->where('rows.data.0.erp_order_id','007-R47-WESHIP-OTHER'));
 

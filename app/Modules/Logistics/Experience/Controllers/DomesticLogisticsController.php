@@ -74,11 +74,10 @@ final class DomesticLogisticsController
         ]);
 
         $this->applyView($query, $view);
-        // R4-7A: the cumulative 4PX view has an independent Global Grid gate.
-        // The Weship historical view remains native until R4-7A Owner PASS.
-        // Preserve original provider-only predicate, all shipment states,
-        // existing shipping guards and native fallback.
-        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today', 'today-4px', 'today-weship', 'exceptions', '4px'], true);
+        // R4-7A/B: both cumulative carrier-history views use independently
+        // reversible Global Grid, preserving the original provider-only query,
+        // historical/all-state inclusion and existing shipment safety gates.
+        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today', 'today-4px', 'today-weship', 'exceptions', '4px', 'weship'], true);
         $gridSetting = $request->query('global_grid');
         $gridAvailable = $approvedGridView || GlobalGridPilot::available();
         $gridPilot = $approvedGridView
