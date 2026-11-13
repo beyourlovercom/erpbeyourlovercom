@@ -277,6 +277,37 @@ DB::transaction(function () use ($product, $warehouse, $owner): void {
         'carrier_selection_source'=>'manual',
     ]);
     $weship->operationalMarkers()->create(['marker'=>'domestic_reviewed','marked_at'=>now()]);
+    // R4-7B Weship cumulative historical proof: a shipped order created 60
+    // days ago must still appear in view=weship but never in today's provider.
+    $oldWeship = Order::query()->create([
+        'internal_order_number'=>'INT-E2E-R47B-OLD-WESHIP',
+        'erp_order_id'=>'007-1111-c99981',
+        'source_type'=>OrderSourceType::Manual,
+        'order_kind'=>OrderKind::Customer,
+        'external_order_number'=>'E2E-R47B-OLD-WESHIP',
+        'order_date'=>now()->subDays(60)->toDateString(),
+        'owner_id'=>$owner->id,
+        'order_status'=>OrderStatus::PendingShipment,
+    ]);
+    $oldWeship->address()->create([
+        'recipient_name'=>'E2E Older Weship Order',
+        'phone'=>'15550008181','country'=>'DE','city'=>'Berlin',
+        'address_line_1'=>'Synthetic Weship History 81','postal_code'=>'01000',
+    ]);
+    $oldWeship->items()->create([
+        'product_id'=>$product->id,'sku'=>'E2E-SKU-0001',
+        'product_summary'=>'Old Weship History','quantity'=>1,
+        'unit_price'=>'10.00','line_revenue'=>'10.00',
+    ]);
+    $oldWeship->shipment()->create([
+        'warehouse_id'=>$factory->id,
+        'warehouse_selection_source'=>'manual',
+        'carrier'=>'Weship','service'=>'Standard',
+        'carrier_selection_source'=>'manual',
+        'shipment_status'=>'shipped',
+        'shipped_at'=>now()->subDays(45),
+        'tracking_number'=>'E2E-R47B-WES-TRACK-OLD',
+    ]);
     // R4-7A original cumulative 4PX scope: a shipped order created 60 days
     // ago must remain visible, unlike the "today-4px" date-scoped view.
     $old4px=Order::query()->create([

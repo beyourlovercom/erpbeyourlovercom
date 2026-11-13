@@ -44,7 +44,7 @@ type BulkChoice = {value:string; label:string; reasonRequired?:boolean}
 const selectedBulkOrderIds = ref<number[]>([])
 const bulkBusy = ref(false)
 const isDailyProviderView = (view:string)=>['today','today-4px','today-weship'].includes(view)
-const isHistoryProviderView = (view:string)=>view==='4px' // R4-7A only; Weship remains isolated until R4-7B
+const isHistoryProviderView = (view:string)=>['4px','weship'].includes(view) // R4-7A/B independently approved cumulative provider views
 const isProviderWorkView = (view:string)=>isDailyProviderView(view)||isHistoryProviderView(view)
 const bulkOptions = computed<BulkChoice[]>(()=>{
   const result:BulkChoice[] = []
@@ -402,7 +402,7 @@ const switchView = (view:string) => {
   // just because they switched from the approved review view.
   const mode = view === props.view
     ? (props.globalGridPilotEnabled ? '1' : '0')
-    : (['review','stockout','pending','today','today-4px','today-weship','exceptions','4px'].includes(view) ? '1' : '0')
+    : (['review','stockout','pending','today','today-4px','today-weship','exceptions','4px','weship'].includes(view) ? '1' : '0')
   router.visit('/logistics/china?view=' + encodeURIComponent(view)
     + '&global_grid=' + mode
     + (view === props.view && mode === '1' && domesticGridSearch.value
@@ -657,7 +657,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           :legacy-preference-namespaces="['grid.logistics.domestic.global.v1']"
           :title="'国内发货 · '+(tabs.find(tab=>tab[0]===view)?.[1]??view)"
           :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order']"
-          :default-pinned-right="view==='4px' ? 0 : 1"
+          :default-pinned-right="isHistoryProviderView(view) ? 0 : 1"
           :enable-selection="true" :selected-order-ids="selectedBulkOrderIds"
           :page="domesticPager" :search="gridSearch??''"
           search-placeholder="搜索当前视图全部订单号 / 收件人..."

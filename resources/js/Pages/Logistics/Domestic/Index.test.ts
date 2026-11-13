@@ -380,10 +380,20 @@ describe('Domestic logistics production workbench', () => {
     expect(fallback.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('切换新版表')
 
     const weship=mount(Index,{props:{...baseProps,view:'weship',
-      globalGridPilotAvailable:false,globalGridPilotEnabled:false,
+      globalGridPilotAvailable:true,globalGridPilotEnabled:true,
+      trackingImportProvider:null,trackingImportPreview:null,canTrackingSync:true}})
+    expect(weship.find('.domestic-compact-workspace').exists()).toBe(true)
+    expect(weship.find('.table-wrap.orders table').exists()).toBe(false)
+    expect(weship.find('[data-testid="domestic-native-batch-toggle"]').exists()).toBe(false)
+    expect(weship.find('input[type="file"]').exists()).toBe(false)
+    expect(weship.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('返回原表')
+    expect(weship.findAll('.provider-grid a')).toHaveLength(0)
+
+    const weshipFallback=mount(Index,{props:{...baseProps,view:'weship',
+      globalGridPilotAvailable:true,globalGridPilotEnabled:false,
       trackingImportProvider:null,trackingImportPreview:null}})
-    expect(weship.find('.table-wrap.orders table').exists()).toBe(true)
-    expect(weship.find('[data-testid="domestic-global-grid-toggle"]').exists()).toBe(false)
+    expect(weshipFallback.find('.table-wrap.orders table').exists()).toBe(true)
+    expect(weshipFallback.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('切换新版表')
   })
 
   it('shows a mixed-carrier ERP batch download/upload only on the pending work queue', () => {
@@ -397,6 +407,22 @@ describe('Domestic logistics production workbench', () => {
     const history=mount(Index,{props:{...baseProps,view:'4px',trackingImportPreview:null,trackingImportProvider:null}})
     expect(history.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(false)
     expect(history.text()).not.toContain('⏫上传物流单号')
+  })
+
+  it('R4-7B cumulative Weship has the same direct guarded compact actions and no duplicate toolbars',()=>{
+    const view=mount(Index,{props:{...baseProps,view:'weship',
+      globalGridPilotAvailable:true,globalGridPilotEnabled:true,
+      canReview:true,canOperate:true,canTrackingSync:true,canArchive:true,
+      trackingImportProvider:null,trackingImportPreview:null}})
+    expect(view.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('返回原表')
+    expect(view.find('.table-wrap.orders table').exists()).toBe(false)
+    expect(view.find('[data-testid="domestic-native-batch-toggle"]').exists()).toBe(false)
+    expect(view.find('input[type="file"]').exists()).toBe(false)
+    expect(view.text()).not.toContain('上传纬狮单号表')
+    expect(view.find('.provider-grid').exists()).toBe(false)
+    // The shared DOMESTIC Grid is not reimplemented; the separate provider
+    // namespace stores independent column order, pin=0 and visibility.
+    expect(view.findAll('.domestic-grid-main')).toHaveLength(1)
   })
 
   it('keeps cumulative carrier history query-only and hides provider upload/download controls', () => {
