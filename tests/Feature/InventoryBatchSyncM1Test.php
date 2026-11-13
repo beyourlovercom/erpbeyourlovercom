@@ -263,6 +263,26 @@ final class InventoryBatchSyncM1Test extends TestCase
     // Multi-lot aggregation
     // ──────────────────────────────────────────
 
+    public function test_partial_sync_with_unknown_putaway_date_stores_sql_null(): void
+    {
+        [$warehouse, $product] = $this->seedWarehouseAndProduct('SKU-NO-PUTAWAY');
+        $service = app(InventoryBatchSyncService::class);
+        $user = $this->userWith(['inventory.operate']);
+
+        $batch = $service->preview($warehouse, [
+            new NormalizedRow(1, 'SKU-NO-PUTAWAY', 'sellable', null, null, 17),
+        ], 'paste', 'partial', null, null, $user);
+        $service->confirm($batch, $user);
+
+        $rawDate = \Illuminate\Support\Facades\DB::table('warehouse_inventory_lots')
+            ->where('warehouse_id', $warehouse->getKey())
+            ->where('product_id', $product->getKey())
+            ->value('putaway_date');
+        $this->assertNull($rawDate, 'Unknown putaway date must remain SQL NULL (MySQL strict mode)');
+        $this->assertSame(17, WarehouseInventory::where('warehouse_id', $warehouse->getKey())
+            ->where('product_id', $product->getKey())->value('quantity_on_hand'));
+    }
+
     public function test_multi_lot_same_sku_aggregates_by_putaway_date(): void
     {
         [$warehouse, $product] = $this->seedWarehouseAndProduct('SKU-MULTILOT');

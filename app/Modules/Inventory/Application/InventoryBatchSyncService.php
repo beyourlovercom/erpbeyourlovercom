@@ -168,7 +168,8 @@ final class InventoryBatchSyncService
                             'warehouse_id'  => $warehouse->getKey(),
                             'product_id'    => $pid,
                             'stock_status'  => $status,
-                            'putaway_date'  => $pdate,
+                            // PHP converts null array keys to an empty string; MySQL DATE needs NULL.
+                            'putaway_date'  => $pdate === '' ? null : $pdate,
                             'quantity'      => $qty,
                             'sync_batch_id' => $batch->getKey(),
                         ]);
