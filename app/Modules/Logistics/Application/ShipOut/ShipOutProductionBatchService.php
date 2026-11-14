@@ -82,9 +82,12 @@ final class ShipOutProductionBatchService
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
                 ->where('order_status', 'pending_shipment')
                 ->where(fn ($workflow) => $workflow->whereNull('workflow_status')
-                    ->orWhere('workflow_status', '!=', 'out_of_stock'))
+                    ->orWhereNotIn('workflow_status', ['out_of_stock', 'exception']))
                 ->whereDoesntHave('operationalMarkers', fn ($markers) => $markers
-                    ->whereIn('marker', ['stockout', 'domestic_stockout']))
+                    ->whereIn('marker', ['stockout', 'domestic_stockout', 'exception']))
+                ->whereDoesntHave('fulfillmentParent', fn ($parent) => $parent
+                    ->where('workflow_status', 'exception')
+                    ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'exception')))
                 ->whereDoesntHave('externalReferences', fn ($references) => $references
                     ->where('provider', 'historical_logistics'))
                 ->whereHas('address', fn ($address) => $address->where('country', 'US')))
@@ -138,6 +141,12 @@ final class ShipOutProductionBatchService
                 ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'))
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
                 ->where('order_status', '!=', 'cancelled')
+                ->where(fn ($workflow) => $workflow->whereNull('workflow_status')
+                    ->orWhere('workflow_status', '!=', 'exception'))
+                ->whereDoesntHave('operationalMarkers', fn ($m) => $m->where('marker', 'exception'))
+                ->whereDoesntHave('fulfillmentParent', fn ($parent) => $parent
+                    ->where('workflow_status', 'exception')
+                    ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'exception')))
                 ->whereDoesntHave('externalReferences', fn ($references) => $references
                     ->where('provider', 'historical_logistics')))
             // R12: scan matches the actual pending tab, including ACK rows

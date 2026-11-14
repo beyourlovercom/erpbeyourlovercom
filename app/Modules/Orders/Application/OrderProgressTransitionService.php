@@ -3,6 +3,8 @@
 namespace App\Modules\Orders\Application;
 
 use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
+use App\Modules\Logistics\Application\LogisticsReviewAccess;
+use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -17,11 +19,16 @@ final class OrderProgressTransitionService
         private readonly OrderWorkflowStatusService $annotations,
         private readonly DomesticReviewDecisionService $domestic,
         private readonly OrderAuxiliaryStatusService $auxiliary,
+        private readonly OrderCoreStatusTransitionService $core,
+        private readonly OverseaWarehouseReviewService $oversea,
+        private readonly LogisticsReviewAccess $reviewAccess,
     ) {}
 
-    public function transition(Order $order, string $next, int $revision, Authenticatable $actor): Order
+    public function transition(Order $order, string $next, int $revision, Authenticatable $actor, ?string $reason = null): Order
     {
-        OrderWorkflowStatus::assertMutable($next);
+        if (! in_array($next, ['resolve_exception', 'resolve_stockout'], true)) {
+            OrderWorkflowStatus::assertMutable($next);
+        }
         $order->loadMissing(['shipment.warehouse', 'operationalMarkers']);
         if ((int) $order->workflow_revision !== $revision) {
             throw new HttpException(409, '订单进度已变化，请刷新后重试。');
@@ -31,19 +38,41 @@ final class OrderProgressTransitionService
         }
 
         if (in_array($order->order_kind, [OrderKind::Customer, OrderKind::FulfillmentDerived], true)) {
+            if (in_array($next, ['exception', 'resolve_exception', 'cancelled'], true)) {
+                return $this->core->transition($order, $next, $revision, $actor, $reason);
+            }
             if (OrderAuxiliaryStatusService::isAuxiliary($next)) {
                 return $this->auxiliary->add($order, $next, $revision, $actor);
             }
-            if (! in_array($next, ['sending', 'out_of_stock'], true)) {
+            if (! in_array($next, ['sending', 'out_of_stock', 'resolve_stockout'], true)) {
                 throw new HttpException(409, '此进度必须通过实际业务操作完成，不能直接修改标签。');
             }
             $shipment = $order->shipment;
             $isFactory = strtoupper(trim((string) $shipment?->warehouse?->code)) === 'FACTORY';
+            $isOversea = OverseaWarehouseReviewService::canonicalWarehouseCode($shipment?->warehouse?->code) !== null;
+            if ($next === 'resolve_stockout') {
+                if ($isFactory) {
+                    if (! $actor->can('domestic.review')) throw new HttpException(403, '仅国内商务可解除中国工厂缺货。');
+                    $this->domestic->decide($order, 'restock', null, $actor);
+                    return $order->fresh(['shipment', 'operationalMarkers']);
+                }
+                if ($isOversea) {
+                    if (! $this->reviewAccess->allows($actor)) throw new HttpException(403, '仅海外审核人员可解除海外仓缺货。');
+                    $this->oversea->restock($order, $actor);
+                    return $order->fresh(['shipment', 'operationalMarkers']);
+                }
+                return $this->core->transition($order, 'resolve_stockout_unallocated', $revision, $actor);
+            }
             $stockout = $order->workflow_status === 'out_of_stock'
                 || $order->operationalMarkers->contains('marker', 'domestic_stockout');
             $approved = $order->operationalMarkers->contains('marker', 'domestic_reviewed');
             if ($next === 'out_of_stock' && ! $isFactory) {
-                throw new HttpException(409, '缺货操作需通过已分配的国内商务审核流程。');
+                if ($isOversea) {
+                    if (! $this->reviewAccess->allows($actor)) throw new HttpException(403, '仅海外审核人员可标记海外仓缺货。');
+                    $this->oversea->stockout($order, $actor);
+                    return $order->fresh(['shipment', 'operationalMarkers']);
+                }
+                return $this->core->transition($order, 'out_of_stock_unallocated', $revision, $actor);
             }
             if ($next === 'sending' && ! $shipment?->warehouse_id) {
                 throw new HttpException(409, '订单尚未分仓，不能直接标记待发货。');
@@ -90,8 +119,10 @@ final class OrderProgressTransitionService
             }
         }
 
-        // Non-fulfillment stages and existing KOL business phases remain
-        // staff annotations in R0-R3; R4 migrates auxiliary flags.
+        // Preserve legacy KOL business phases; never write a cosmetic cancelled state.
+        if (in_array($next, ['cancelled', 'resolve_exception', 'resolve_stockout'], true)) {
+            throw new HttpException(409, '该订单类型不能通过下拉框进行此项核心状态变更。');
+        }
         return $this->annotations->set($order, $next, $revision, $actor);
     }
 }

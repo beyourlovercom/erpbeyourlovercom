@@ -118,3 +118,49 @@ it('does not offer manual progress editing for archived and reconciliation statu
     expect(wrapper.find('select').exists()).toBe(false)
   }
 })
+
+it('exposes manual exception resolution as a real core command with the same revision', async () => {
+  const axios = await import('axios')
+  const patch = vi.spyOn(axios.default, 'patch').mockRejectedValueOnce({ response: { status: 409, data: { message: 'stale' } } })
+  const wrapper = mount(OrderWorkflowStatusPill, {
+    props: {
+      orderId: 71, canEdit: true, revision: 4,
+      projection: { code: 'exception', en: 'Exception', zh: '异常', color: 'red', source: 'canonical_projection' },
+      options: [
+        { code: 'exception', en: 'Exception', zh: '异常', color: 'red', mutable: true },
+      ],
+    },
+  })
+  expect(wrapper.findAll('option').map(o => o.text())).toContain('Resolve Exception · 解除异常')
+  await wrapper.find('select').setValue('resolve_exception')
+  await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/71/workflow-status', {
+    workflow_status: 'resolve_exception', expected_workflow_revision: 4,
+  }))
+  patch.mockRestore()
+})
+
+it('requires explicit confirmation and a cancellation reason before sending real ERP cancellation', async () => {
+  const axios = await import('axios')
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const prompt = vi.spyOn(window, 'prompt').mockReturnValue('客户要求取消此订单')
+  const patch = vi.spyOn(axios.default, 'patch').mockRejectedValueOnce({ response: { status: 409, data: { message: 'stale' } } })
+  const wrapper = mount(OrderWorkflowStatusPill, {
+    props: {
+      orderId: 72, canEdit: true, revision: 5,
+      projection: { code: 'pending_allocation', en: 'Pending Allocation', zh: '待分仓', color: 'neutral', source: 'canonical_projection' },
+      options: [
+        { code: 'pending_allocation', en: 'Pending Allocation', zh: '待分仓', color: 'neutral', mutable: false },
+        { code: 'cancelled', en: 'Cancelled', zh: '已取消', color: 'red', mutable: true },
+      ],
+    },
+  })
+  await wrapper.find('select').setValue('cancelled')
+  await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/72/workflow-status', {
+    workflow_status: 'cancelled', expected_workflow_revision: 5, reason: '客户要求取消此订单',
+  }))
+  expect(confirm).toHaveBeenCalled()
+  expect(prompt).toHaveBeenCalled()
+  patch.mockRestore()
+  confirm.mockRestore()
+  prompt.mockRestore()
+})

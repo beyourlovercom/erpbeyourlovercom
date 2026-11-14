@@ -14,7 +14,7 @@ final class OrderProgressQuery
 {
     public function domesticReview(Builder $orders): Builder
     {
-        return $orders
+        return $this->withoutManualException($orders)
             ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
             ->whereDoesntHave('operationalMarkers', fn ($q) => $q->whereIn('marker', ['domestic_reviewed', 'domestic_stockout']))
             ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'));
@@ -22,7 +22,7 @@ final class OrderProgressQuery
 
     public function domesticStockout(Builder $orders): Builder
     {
-        return $orders
+        return $this->withoutManualException($orders)
             ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
             ->where(fn ($q) => $q->where('workflow_status', 'out_of_stock')
                 ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_stockout')));
@@ -30,7 +30,7 @@ final class OrderProgressQuery
 
     public function domesticReady(Builder $orders): Builder
     {
-        return $orders
+        return $this->withoutManualException($orders)
             ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
             ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', 'domestic_reviewed'))
             ->whereDoesntHave('operationalMarkers', fn ($q) => $q->where('marker', 'domestic_stockout'))
@@ -59,7 +59,9 @@ final class OrderProgressQuery
     /** Vita queue; never count a submitted split-allocation root. */
     public function pendingAllocation(Builder $orders): Builder
     {
-        return $orders->where('order_status', 'pending_shipment')
+        return $this->withoutManualException($orders)->where('order_status', 'pending_shipment')
+            ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
+            ->whereDoesntHave('operationalMarkers', fn ($m) => $m->whereIn('marker', ['stockout', 'domestic_stockout']))
             ->whereNull('fulfillment_parent_id')
             ->where(function (Builder $allocationGate): void {
                 // A completed submission usually stays out of Vita's queue.
@@ -87,7 +89,7 @@ final class OrderProgressQuery
     /** Shared operational Sending queue, for customer order listing and segments. */
     public function readyForShipment(Builder $orders): Builder
     {
-        return $orders->where('order_status', 'pending_shipment')
+        return $this->withoutManualException($orders)->where('order_status', 'pending_shipment')
             ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
             ->whereDoesntHave('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_stockout'))
             ->where(function (Builder $channels): void {
@@ -102,7 +104,22 @@ final class OrderProgressQuery
     /** Exact predicates used by operational progress filtering. */
     public function applyPhase(Builder $orders, string $phase): Builder
     {
+        if (! in_array($phase, ['exception', 'cancelled'], true)) {
+            $this->withoutManualException($orders);
+            $orders->where('order_status', '!=', 'cancelled');
+        }
+
         return match ($phase) {
+            'exception' => $orders->where('order_status', '!=', 'cancelled')->where(function (Builder $q): void {
+                $q->where('workflow_status', 'exception')
+                    ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'exception'))
+                    ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'exception'))
+                    ->orWhereHas('originalFulfillmentChildren', fn ($child) => $child
+                        ->where('workflow_status', 'exception')
+                        ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'exception'))
+                        ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'exception')));
+            }),
+            'cancelled' => $orders->where('order_status', 'cancelled'),
             'pending_allocation' => $this->pendingAllocation($orders),
             'sending' => $this->readyForShipment($orders),
             'pending_review' => $orders->where('order_status', 'pending_shipment')
@@ -118,7 +135,9 @@ final class OrderProgressQuery
                 }),
             'out_of_stock' => $orders
                 ->where(fn ($q) => $q->where('workflow_status', 'out_of_stock')
-                    ->orWhereHas('operationalMarkers', fn ($m) => $m->whereIn('marker', ['domestic_stockout', 'stockout'])))
+                    ->orWhereHas('operationalMarkers', fn ($m) => $m->whereIn('marker', ['domestic_stockout', 'stockout']))
+                    ->orWhereHas('shipment', fn ($s) => $s->whereHas('overseaReview', fn ($r) => $r
+                        ->where('status', 'stockout')->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'))))
                 ->where(fn ($q) => $q->whereDoesntHave('shipment')
                     ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending'))),
             'allocated' => $orders->where('order_status', 'pending_shipment')
@@ -154,6 +173,22 @@ final class OrderProgressQuery
         };
     }
 
+    /** Suppress every manual exception override from normal primary queues. */
+    private function withoutManualException(Builder $orders): Builder
+    {
+        return $orders
+            ->where(fn (Builder $q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'exception'))
+            ->whereDoesntHave('operationalMarkers', fn ($m) => $m->where('marker', 'exception'))
+            ->whereDoesntHave('shipment', fn ($s) => $s->where('shipment_status', 'exception'))
+            ->whereDoesntHave('fulfillmentParent', fn ($p) => $p
+                ->where('workflow_status', 'exception')
+                ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'exception')))
+            ->whereDoesntHave('originalFulfillmentChildren', fn ($c) => $c
+                ->where('workflow_status', 'exception')
+                ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'exception'))
+                ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'exception')));
+    }
+
     /** Reusable direct-segment reconciliation predicate, excluding root roll-up. */
     private function directConflict(Builder $orders): Builder
     {
@@ -170,7 +205,9 @@ final class OrderProgressQuery
                     $stale->where('order_status', 'shipped')->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending'));
                 })
                 ->orWhere(function (Builder $stock): void {
-                    $stock->where('workflow_status', 'out_of_stock')->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'shipped'));
+                    $stock->where(fn (Builder $q) => $q->where('workflow_status', 'out_of_stock')
+                        ->orWhereHas('operationalMarkers', fn ($m) => $m->whereIn('marker', ['stockout', 'domestic_stockout'])))
+                        ->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'shipped'));
                 });
         });
     }
@@ -178,7 +215,8 @@ final class OrderProgressQuery
     /** $shipments is a Shipment model query. */
     public function overseasReview(Builder $shipments): Builder
     {
-        return $shipments->where('shipment_status', 'pending')->where(function ($q): void {
+        return $shipments->whereHas('order', fn (Builder $order) => $this->withoutManualException($order))
+            ->where('shipment_status', 'pending')->where(function ($q): void {
             $q->whereDoesntHave('overseaReview')
                 ->orWhereHas('overseaReview', fn ($r) => $r->whereNotIn('status', ['approved', 'stockout']))
                 ->orWhereHas('overseaReview', fn ($r) => $r
@@ -193,7 +231,8 @@ final class OrderProgressQuery
     /** Stockout remains allocated, is excluded from the review queue and cannot ship. */
     public function overseasStockout(Builder $shipments): Builder
     {
-        return $shipments->where('shipment_status', 'pending')
+        return $shipments->whereHas('order', fn (Builder $order) => $this->withoutManualException($order))
+            ->where('shipment_status', 'pending')
             ->whereHas('overseaReview', fn ($review) => $review
                 ->where('status', 'stockout')
                 ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));
@@ -202,7 +241,8 @@ final class OrderProgressQuery
     /** $shipments is a Shipment model query. */
     public function overseasReady(Builder $shipments): Builder
     {
-        return $shipments->where('shipment_status', 'pending')
+        return $shipments->whereHas('order', fn (Builder $order) => $this->withoutManualException($order))
+            ->where('shipment_status', 'pending')
             ->whereHas('overseaReview', fn ($r) => $r
                 ->where('status', 'approved')
                 ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));

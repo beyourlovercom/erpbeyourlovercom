@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import axios from 'axios'
+import { router } from '@inertiajs/vue3'
 import { computed, nextTick, ref, watch } from 'vue'
 
 type Auxiliary = { code: string; en: string; zh: string; color: string }
@@ -23,7 +24,7 @@ const stageNumber: Record<string, string> = {
   shipping: '2.1', shared: '2.2', arrived: '2.3', creating: '2.4', published: '2.5',
   paying: '2.6', paid: '2.7', cancel: '2.8', refunded: '2.9', finished: '3.0',
   returned_follow_up: '3.1', claims: '3.2',
-  freight_product_cost_follow_up: '3.3', out_of_stock: '3.4', renew: '3.5',
+  freight_product_cost_follow_up: '3.3', out_of_stock: '3.4', renew: '3.5', exception: '3.6', cancelled: '2.8',
 }
 const optionCaption = (option: Option) => `${stageNumber[option.code] ? stageNumber[option.code] + ' ' : ''}${option.en} · ${option.zh}`
 watch(() => props.projection, (next) => {
@@ -33,19 +34,39 @@ watch(() => props.projection, (next) => {
 }, { deep: true })
 watch(() => props.revision, (next) => { revision.value = next })
 const current = computed(() => props.options.find(option => option.code === code.value) ?? props.projection)
-const visibleOptions = computed(() => props.options.filter(option => option.code !== 'allocated' || code.value === 'allocated'))
+const visibleOptions = computed<Option[]>(() => [
+  ...props.options.filter(option => (option.code !== 'allocated' || code.value === 'allocated')
+    && (option.code !== 'cancelled' || props.projection.source === 'canonical_projection')),
+  ...(code.value === 'exception' ? [{ code:'resolve_exception', en:'Resolve Exception', zh:'解除异常', color:'amber', mutable:true }] : []),
+  ...(code.value === 'out_of_stock' ? [{ code:'resolve_stockout', en:'Restock', zh:'解除缺货', color:'amber', mutable:true }] : []),
+])
 const update = async (next: string) => {
   if (!props.canEdit || saving.value || next === code.value) return
   const previous = code.value
+  let reason: string | undefined
+  if (next === 'cancelled') {
+    if (!window.confirm('确认在 ERP 中真正取消此订单？不会自动向 WooCommerce 取消，也不会退款。')) {
+      if (select.value) select.value.value = previous
+      return
+    }
+    const supplied = window.prompt('请输入取消原因（至少 3 个字）；不会自动退款或更改网站状态。')
+    if (!supplied || supplied.trim().length < 3) {
+      if (select.value) select.value.value = previous
+      return
+    }
+    reason = supplied.trim()
+  }
   saving.value = true; error.value = ''
   try {
     const response = await axios.patch(`/orders/${props.orderId}/workflow-status`, {
       workflow_status: next,
       expected_workflow_revision: revision.value,
+      ...(reason ? { reason } : {}),
     })
     code.value = response.data.workflow_status.code
     revision.value = response.data.order.workflow_revision
     auxiliary.value = response.data.workflow_status.auxiliary ?? []
+    router.reload()
   } catch (e: any) {
     code.value = previous
     if (select.value) select.value.value = previous

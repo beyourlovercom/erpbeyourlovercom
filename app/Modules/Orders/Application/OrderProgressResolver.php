@@ -25,6 +25,22 @@ final class OrderProgressResolver
             return 'cancelled';
         }
 
+        // A deliberately escalated exception is an actionable core queue, not just a badge.
+        // Real Shipment and source Woo facts remain unchanged underneath the override.
+        $order->loadMissing('operationalMarkers');
+        if ($order->workflow_status === 'exception'
+            || $order->operationalMarkers->contains('marker', 'exception')) {
+            return 'exception';
+        }
+        if ($order->fulfillment_parent_id !== null) {
+            $order->loadMissing('fulfillmentParent.operationalMarkers');
+            $parent = $order->fulfillmentParent;
+            if ($parent && ($parent->workflow_status === 'exception'
+                || $parent->operationalMarkers->contains('marker', 'exception'))) {
+                return 'exception';
+            }
+        }
+
         if ($order->fulfillment_parent_id === null) {
             $order->loadMissing('originalFulfillmentChildren');
             if ($order->originalFulfillmentChildren->isNotEmpty()) {
@@ -53,7 +69,9 @@ final class OrderProgressResolver
         $order->loadMissing(['shipment.warehouse', 'shipment.overseaReview', 'operationalMarkers']);
         $shipment = $order->shipment;
         $notes = $order->operationalMarkers->pluck('marker');
-        $stockout = $order->workflow_status === 'out_of_stock' || $notes->contains('domestic_stockout');
+        // Legacy generic stockout markers remain meaningful until explicitly cleared.
+        $stockout = $order->workflow_status === 'out_of_stock'
+            || $notes->contains('domestic_stockout') || $notes->contains('stockout');
 
         if ($shipment === null || $shipment->warehouse_id === null) {
             return $order->order_status === OrderStatus::Shipped ? 'progress_conflict'
@@ -80,7 +98,7 @@ final class OrderProgressResolver
         }
 
         if ($shipment->shipment_status === 'exception') {
-            return 'renew';
+            return 'exception';
         }
 
         if ($shipment->shipment_status !== 'pending' || $order->order_status === OrderStatus::Shipped) {
@@ -115,6 +133,9 @@ final class OrderProgressResolver
     {
         $phases = $children->map(fn (Order $child): ?string => $this->resolve($child))->values();
 
+        if ($phases->contains('exception')) {
+            return 'exception';
+        }
         if ($phases->contains('progress_conflict')) {
             return 'progress_conflict';
         }

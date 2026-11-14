@@ -99,6 +99,14 @@ final class ShipmentService
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertOperationallyEligible($lockedOrder);
+            // Exception is a real operational hold: preserve facts and block new dispatch.
+            abort_if($lockedOrder->workflow_status === 'exception'
+                || $lockedOrder->operationalMarkers()->where('marker', 'exception')->exists()
+                || $lockedOrder->fulfillmentParent()->where(function ($parent): void {
+                    $parent->where('workflow_status', 'exception')
+                        ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'exception'));
+                })->exists(),
+                409, '该订单正在异常处理，请先解除异常再确认发货。');
             $this->assertNoPendingReview($lockedOrder);
             $this->paymentGate->assertAllowed($lockedOrder);
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);

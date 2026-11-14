@@ -16,8 +16,8 @@ use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
-use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
+use App\Modules\Logistics\Application\LogisticsReviewAccess;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
@@ -297,14 +297,18 @@ final class OrderController
                     'code' => $code, ...$definition,
                     'mutable' => $definition['mutable']
                         && ($order->order_kind === OrderKind::KolFulfillment
-                            || in_array($code, ['sending', 'out_of_stock', ...OrderAuxiliaryStatusService::CODES], true))
+                            ? $code !== 'cancelled'
+                            : (($code !== 'cancelled' || ! $isDerived)
+                                && in_array($code, ['sending', 'out_of_stock', 'exception', 'cancelled', ...OrderAuxiliaryStatusService::CODES], true)))
                         && (($request->user()?->can('orders.edit') ?? false)
-                            || ($request->user()?->can('domestic.review') && in_array($code, ['sending', 'out_of_stock'], true))),
+                            || ($request->user()?->can('domestic.review') && in_array($code, ['sending', 'out_of_stock'], true))
+                            || (app(LogisticsReviewAccess::class)->allows($request->user()) && $code === 'out_of_stock')),
                 ])->values()->all(),
             'canEditOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canEditWorkflowStatus' => ! $order->isOperationallyArchived()
                 && (($request->user()?->can('orders.edit') ?? false)
-                    || ($request->user()?->can('domestic.review') && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY')),
+                    || ($request->user()?->can('domestic.review') && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY')
+                    || app(LogisticsReviewAccess::class)->allows($request->user())),
             'canManageAuxiliary' => ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canTrashOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canArchiveOrder' => ! $order->trashed() && $order->archived_at === null && $order->operational_archived_at === null && ($request->user()?->can('orders.archive') ?? false),
@@ -568,18 +572,25 @@ final class OrderController
     {
         KolOrderAccessScope::authorize($request->user(), $order);
         abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能修改业务标记。');
-        $data = $request->validate(['active' => ['required', 'boolean']]);
+        $data = $request->validate(['active' => ['required', 'boolean'], 'expected_workflow_revision' => ['nullable', 'integer', 'min:0']]);
+        if (in_array($marker, ['exception', 'stockout'], true)) {
+            $order->loadMissing('shipment.warehouse');
+            $factoryStockout = $marker === 'stockout'
+                && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY';
+            // Preserve the legacy factory marker's explicit restock safety gate;
+            // the reviewed workflow dropdown uses its own audited restock action.
+            if ($factoryStockout && ! $data['active']) {
+                abort(409, '请在国内「缺货单」点击「已到货-可发货」恢复。');
+            }
+            $next = $marker === 'exception'
+                ? ($data['active'] ? 'exception' : 'resolve_exception')
+                : ($data['active'] ? 'out_of_stock' : 'resolve_stockout');
+            $this->progressTransitions->transition($order, $next,
+                (int) ($data['expected_workflow_revision'] ?? $order->workflow_revision), $request->user());
 
-        // Factory shortage is a fulfillment gate, never an isolated generic
-        // marker. Reuse the same audited transaction as the domestic review page.
-        $order->loadMissing('shipment.warehouse');
-        if ($marker === 'stockout'
-            && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY') {
-            abort_unless($request->user()?->can('domestic.review'), 403, '仅国内商务审核人员可标记缺货。');
-            abort_unless((bool) $data['active'], 409, '请在国内「缺货单」点击「已到货-可发货」恢复。');
-            app(DomesticReviewDecisionService::class)->decide($order, 'stockout', null, $request->user());
-
-            return back()->with('success', '已标记缺货，订单进入国内「缺货单」。');
+            return back()->with('success', $factoryStockout
+                ? '已标记缺货，订单进入国内「缺货单」。'
+                : '订单核心状态已更新');
         }
 
         $this->orders->setOperationalMarker($order, $marker, (bool) $data['active'], $request->user());
@@ -591,18 +602,27 @@ final class OrderController
     {
         KolOrderAccessScope::authorize($request->user(), $order);
         abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能修改履约状态。');
-        abort_unless($request->user()?->can('orders.edit') || $request->user()?->can('domestic.review'), 403);
+        abort_unless($request->user()?->can('orders.edit') || $request->user()?->can('domestic.review')
+            || app(LogisticsReviewAccess::class)->allows($request->user()), 403);
 
         $data = $request->validate([
-            'workflow_status' => ['required', 'string', Rule::in(array_keys(array_filter(OrderWorkflowStatus::registry(), fn (array $definition): bool => $definition['mutable'])))],
+            'workflow_status' => ['required', 'string', Rule::in([
+                ...array_keys(array_filter(OrderWorkflowStatus::registry(), fn (array $definition): bool => $definition['mutable'])),
+                'resolve_exception', 'resolve_stockout',
+            ])],
             'expected_workflow_revision' => ['required', 'integer', 'min:0'],
+            'reason' => ['nullable', 'string', 'max:2000'],
         ]);
         if (! $request->user()->can('orders.edit')) {
-            abort_unless(in_array($data['workflow_status'], ['sending', 'out_of_stock'], true), 403);
+            abort_unless(in_array($data['workflow_status'], ['sending', 'out_of_stock', 'resolve_stockout'], true), 403);
             $order->loadMissing('shipment.warehouse');
-            abort_unless(strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY', 403);
+            $factory = strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY';
+            $overseas = \App\Modules\Logistics\Application\OverseaWarehouseReviewService::canonicalWarehouseCode($order->shipment?->warehouse?->code) !== null;
+            abort_unless(($factory && $request->user()->can('domestic.review'))
+                || ($overseas && app(LogisticsReviewAccess::class)->allows($request->user())
+                    && in_array($data['workflow_status'], ['out_of_stock', 'resolve_stockout'], true)), 403);
         }
-        $updated = $this->progressTransitions->transition($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user());
+        $updated = $this->progressTransitions->transition($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user(), $data['reason'] ?? null);
 
         return response()->json(['order' => $this->orderData($updated), 'workflow_status' => $this->workflowProjection($updated)]);
     }

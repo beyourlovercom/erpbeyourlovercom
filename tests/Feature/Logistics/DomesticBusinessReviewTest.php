@@ -184,21 +184,28 @@ final class DomesticBusinessReviewTest extends TestCase
         ]);
     }
 
-    public function test_overseas_auxiliary_stockout_remains_annotation_not_domestic_review(): void
+    public function test_overseas_stockout_requires_review_authority_and_never_creates_a_cosmetic_marker(): void
     {
         $order = $this->order();
         $order->shipment()->update(['warehouse_id'=>Warehouse::query()->where('code','US-LA')->firstOrFail()->id]);
-        $actor = $this->userWith(['orders.view','orders.edit']);
-        $this->actingAs($actor)->post('/orders/'.$order->id.'/operational-markers/stockout', [
+        $editor = $this->userWith(['orders.view','orders.edit']);
+        $this->actingAs($editor)->post('/orders/'.$order->id.'/operational-markers/stockout', [
             'active'=>true,
-        ])->assertRedirect();
-        $this->assertDatabaseHas('order_operational_markers', [
+        ])->assertForbidden();
+        $this->assertDatabaseMissing('order_operational_markers', [
             'order_id'=>$order->id,'marker'=>'stockout',
         ]);
-        $this->assertDatabaseMissing('order_operational_markers', [
-            'order_id'=>$order->id,'marker'=>'domestic_stockout',
-        ]);
         self::assertNull($order->fresh()->workflow_status);
+        $reviewer = $this->userWith(['orders.view','orders.edit','logistics.operate']);
+        $this->actingAs($reviewer)->post('/orders/'.$order->id.'/operational-markers/stockout', [
+            'active'=>true,
+        ])->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id'=>$order->id, 'status'=>'stockout',
+        ]);
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id'=>$order->id,'marker'=>'stockout',
+        ]);
     }
 
     public function test_restock_moves_only_out_of_stock_order_into_pending_without_shipping(): void

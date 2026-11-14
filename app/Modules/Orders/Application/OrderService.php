@@ -25,7 +25,8 @@ final class OrderService
         'address_line_1', 'address_line_2', 'postal_code',
     ];
 
-    private const OPERATIONAL_MARKERS = ['exception', 'in_transit', 'return', 'stockout'];
+    // Core exception/stockout can only mutate through OrderProgressTransitionService.
+    private const OPERATIONAL_MARKERS = ['in_transit', 'return'];
 
     public function __construct(
         private readonly AuditRecorder $audit,
@@ -358,7 +359,7 @@ final class OrderService
             ->when($filters['order_status'] ?? null, fn ($query, string $status) => $query->where('order_status', $status));
 
         $query->when($filters['workflow_status'] ?? null, function ($query, string $status): void {
-            if (in_array($status, ['pending_allocation', 'pending_review', 'allocated', 'partially_shipped', 'sending', 'sent', 'shipping', 'out_of_stock', 'progress_conflict', 'completed'], true)) {
+            if (in_array($status, ['pending_allocation', 'pending_review', 'allocated', 'partially_shipped', 'sending', 'sent', 'shipping', 'out_of_stock', 'exception', 'cancelled', 'progress_conflict', 'completed'], true)) {
                 $this->progressQueries->applyPhase($query, $status);
                 return;
             }
@@ -517,13 +518,14 @@ final class OrderService
                         $customer->where('order_kind', '!=', 'kol_fulfillment');
                         $this->progressQueries->readyForShipment($customer);
                     })->orWhere(function (Builder $kol): void {
-                        $kol->where('order_kind', 'kol_fulfillment')->where('order_status', 'pending_shipment');
+                        $kol->where('order_kind', 'kol_fulfillment')->where('order_status', 'pending_shipment')
+                            ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'exception'));
                     });
                 })->where(function (Builder $active): void {
                     $active->whereDoesntHave('originalFulfillmentChildren')
                         ->orWhereDoesntHave('fulfillmentAllocation', fn (Builder $allocation) => $allocation->where('status', 'submitted'));
                 }),
-            'exception' => $this->applyMarkerView($query, 'exception'),
+            'exception' => $this->progressQueries->applyPhase($query, 'exception'),
             'in_transit' => $this->applyMarkerView($query, 'in_transit'),
             'shipped' => $query->where('order_status', OrderStatus::Shipped->value),
             'return' => $this->applyMarkerView($query, 'return'),
@@ -531,7 +533,8 @@ final class OrderService
             'overweight' => $query
                 ->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('is_domestic', true))
                 ->whereHas('shipment.billingEvidence', fn ($billing) => $billing->where('chargeable_weight_kg', '>', 1.5)),
-            'stockout' => $this->applyStockoutView($query),
+            'stockout' => $this->progressQueries->applyPhase($query, 'out_of_stock'),
+            'cancelled' => $this->progressQueries->applyPhase($query, 'cancelled'),
             default => null,
         };
     }
