@@ -2,10 +2,9 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
-use App\Modules\Logistics\Application\WarehouseSkuPresentation;
-
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\CarrierService;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;

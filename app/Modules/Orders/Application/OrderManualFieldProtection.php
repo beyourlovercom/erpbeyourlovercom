@@ -51,7 +51,7 @@ final class OrderManualFieldProtection
     }
 
     /** @param array<string,mixed> $before @param array<string,mixed> $after
-     *  @return list<string>
+     * @return list<string>
      */
     public function changedKeys(array $before, array $after): array
     {
@@ -73,6 +73,7 @@ final class OrderManualFieldProtection
             && $this->businessItems($before['items']) !== $this->businessItems($after['items'])) {
             $keys[] = 'items';
         }
+
         return array_values(array_unique($keys));
     }
 
@@ -89,7 +90,10 @@ final class OrderManualFieldProtection
 
     private function canonical(mixed $value): string
     {
-        if ($value === null) return '';
+        if ($value === null) {
+            return '';
+        }
+
         return is_scalar($value) ? trim((string) $value) : json_encode($value, JSON_UNESCAPED_UNICODE);
     }
 

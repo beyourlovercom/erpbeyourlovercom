@@ -38,9 +38,11 @@ final class RepairAllocatedGiftSkuCommand extends Command
                 $this->line(json_encode(['order_id' => $order->id,
                     'number' => $order->erp_order_id, 'warehouse' => $order->shipment?->warehouse?->code,
                     'from' => 'gift', 'to' => $proposed['sku'],
-                    'target_product_id' => $proposed['product_id'], 'apply' => (bool) $this->option('apply')
+                    'target_product_id' => $proposed['product_id'], 'apply' => (bool) $this->option('apply'),
                 ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
-                if (! $this->option('apply')) continue;
+                if (! $this->option('apply')) {
+                    continue;
+                }
                 DB::transaction(function () use ($order, $gifts, $audit, $proposed): void {
                     $locked = Order::query()->with(['items', 'shipment.warehouse', 'fulfillmentAllocation'])
                         ->whereKey($order->id)->lockForUpdate()->firstOrFail();
@@ -73,6 +75,7 @@ final class RepairAllocatedGiftSkuCommand extends Command
         $this->line(json_encode(['previewed' => $previewed, 'applied' => $applied,
             'blocked' => $blocked, 'sent_to_warehouse' => false, 'woo_written' => false],
             JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+
         return $blocked === [] ? self::SUCCESS : self::FAILURE;
     }
 
@@ -86,21 +89,26 @@ final class RepairAllocatedGiftSkuCommand extends Command
         $allocation = $order->fulfillmentAllocation;
         $plan = $allocation->plan_snapshot;
         $segments = $plan['segments'] ?? [];
-        if (count($segments) !== 1) throw new RuntimeException('SPLIT_ALLOCATION_REMAP_BLOCKED');
+        if (count($segments) !== 1) {
+            throw new RuntimeException('SPLIT_ALLOCATION_REMAP_BLOCKED');
+        }
         $oldToNew = [];
         $used = [];
-        if (! isset($segments[0]['items'])) throw new RuntimeException('ALLOCATION_ITEMS_MISSING');
+        if (! isset($segments[0]['items'])) {
+            throw new RuntimeException('ALLOCATION_ITEMS_MISSING');
+        }
         foreach ($segments[0]['items'] as &$planned) {
             $sku = trim((string) ($planned['source_sku'] ?? $planned['sku'] ?? ''));
             $id = (int) ($planned['source_product_id'] ?? $planned['product_id'] ?? 0);
             $qty = (int) ($planned['quantity'] ?? 0);
-            $matches = $order->items->filter(fn ($current) =>
-                ! isset($used[(int) $current->id])
+            $matches = $order->items->filter(fn ($current) => ! isset($used[(int) $current->id])
                 && strcasecmp(trim((string) ($current->source_sku ?: $current->sku)), $sku) === 0
                 && (int) ($current->source_product_id ?: $current->product_id) === $id
                 && (int) $current->quantity === $qty
             )->values();
-            if ($matches->count() !== 1) throw new RuntimeException('SOURCE_LINE_IDENTITY_AMBIGUOUS');
+            if ($matches->count() !== 1) {
+                throw new RuntimeException('SOURCE_LINE_IDENTITY_AMBIGUOUS');
+            }
             $match = $matches[0];
             $oldToNew[(int) ($planned['order_item_id'] ?? 0)] = (int) $match->id;
             $planned['order_item_id'] = (int) $match->id;
@@ -114,7 +122,9 @@ final class RepairAllocatedGiftSkuCommand extends Command
         if ($assignments !== null) {
             foreach ($assignments as &$row) {
                 $oldId = (int) ($row['order_item_id'] ?? 0);
-                if (! isset($oldToNew[$oldId])) throw new RuntimeException('MANUAL_ASSIGNMENT_SOURCE_MISMATCH');
+                if (! isset($oldToNew[$oldId])) {
+                    throw new RuntimeException('MANUAL_ASSIGNMENT_SOURCE_MISMATCH');
+                }
                 $row['order_item_id'] = $oldToNew[$oldId];
             }
             unset($row);
@@ -134,7 +144,9 @@ final class RepairAllocatedGiftSkuCommand extends Command
             throw new RuntimeException('ORDER_ALREADY_FULFILLED_OR_UNALLOCATED');
         }
         $items = $order->items->filter(fn ($item) => $gifts->isGiftSku($item->sku))->values();
-        if ($items->count() !== 1) throw new RuntimeException('GIFT_ITEM_NOT_UNIQUE');
+        if ($items->count() !== 1) {
+            throw new RuntimeException('GIFT_ITEM_NOT_UNIQUE');
+        }
         $segments = collect($order->fulfillmentAllocation->plan_snapshot['segments'] ?? []);
         if ($segments->count() !== 1
             || strcasecmp((string) ($segments[0]['source_code'] ?? ''), (string) $shipment->warehouse->code) !== 0) {
@@ -142,7 +154,9 @@ final class RepairAllocatedGiftSkuCommand extends Command
         }
         $selected = collect($segments[0]['items'] ?? [])
             ->filter(fn ($line) => $gifts->isGiftSku($line['source_sku'] ?? $line['sku'] ?? null))->values();
-        if ($selected->count() !== 1) throw new RuntimeException('GIFT_SELECTION_NOT_UNIQUE');
+        if ($selected->count() !== 1) {
+            throw new RuntimeException('GIFT_SELECTION_NOT_UNIQUE');
+        }
         $line = $selected[0];
         $item = $items[0];
         if ((int) ($line['quantity'] ?? 0) !== (int) $item->quantity
@@ -155,6 +169,7 @@ final class RepairAllocatedGiftSkuCommand extends Command
             || (int) ($line['resolved_product_id'] ?? 0) !== $resolution['resolved_product_id']) {
             throw new RuntimeException('SELECTED_GIFT_MAPPING_CHANGED');
         }
+
         return ['item_id' => (int) $item->id,
             'sku' => (string) $resolution['resolved_fulfillment_sku'],
             'product_id' => (int) $resolution['resolved_product_id'],

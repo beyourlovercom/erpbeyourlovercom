@@ -9,6 +9,7 @@ use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
 use App\Modules\Logistics\Infrastructure\Models\WarehouseGiftSkuMapping;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Infrastructure\Models\OrderItem;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -41,8 +42,8 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
                 ->where('orders.data.0.carrier_routes.US-SM.automatic', true)
                 ->where('orders.data.0.items.0.id', $giftItem->id)
                 ->where('orders.data.0.items.0.is_gift', true)
-                ->where("orders.data.0.items.0.gift_options_by_warehouse.US-SM.0.mapping_id", $mapping->id)
-                ->where("orders.data.0.items.0.gift_options_by_warehouse.US-SM.0.can_fulfill", true)
+                ->where('orders.data.0.items.0.gift_options_by_warehouse.US-SM.0.mapping_id', $mapping->id)
+                ->where('orders.data.0.items.0.gift_options_by_warehouse.US-SM.0.can_fulfill', true)
         );
     }
 
@@ -166,7 +167,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
         $this->assertDatabaseHas('audit_records', ['action' => 'order_item.selected_gift_sku_restored']);
     }
 
-    /** @return array{User,Order,\App\Modules\Orders\Infrastructure\Models\OrderItem,Product,WarehouseGiftSkuMapping} */
+    /** @return array{User,Order,OrderItem,Product,WarehouseGiftSkuMapping} */
     private function giftScenario(int $giftStock, bool $withRegular = false): array
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
@@ -246,6 +247,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
         }
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
+
         return $user;
     }
 }

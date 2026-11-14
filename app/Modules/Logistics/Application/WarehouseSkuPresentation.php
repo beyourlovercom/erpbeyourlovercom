@@ -16,6 +16,7 @@ final class WarehouseSkuPresentation
         if (strcasecmp($sku, 'gift') === 0) {
             return '实际礼品SKU未登记';
         }
+
         return $sku;
     }
 

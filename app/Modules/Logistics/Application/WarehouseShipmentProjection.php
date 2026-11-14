@@ -2,8 +2,6 @@
 
 namespace App\Modules\Logistics\Application;
 
-use App\Modules\Logistics\Application\WarehouseSkuPresentation;
-
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use Illuminate\Support\Carbon;

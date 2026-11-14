@@ -2,14 +2,10 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
-use App\Modules\Logistics\Application\WarehouseSkuPresentation;
-
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
-use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\AllocationRejectionReadModel;
-use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
-use App\Modules\Shell\Application\GlobalGridPilot;
+use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
@@ -23,20 +19,24 @@ use App\Modules\Logistics\Application\LogisticsStatusSummary;
 use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
 use App\Modules\Logistics\Application\ReplacementFulfillmentService;
 use App\Modules\Logistics\Application\ShipmentService;
+use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
-use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
+use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Shell\Application\GlobalGridPilot;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -166,10 +166,12 @@ final class LogisticsController
             $order = $orders->get($id);
             if (! $order) {
                 $results[] = ['order_id' => $id, 'ok' => false, 'message' => '订单不在待分仓范围，请刷新列表。'];
+
                 continue;
             }
             if ($order->fulfillmentAllocation?->status === 'submitted') {
                 $results[] = ['order_id' => $id, 'ok' => false, 'message' => '该订单已完成分仓，未重复提交。'];
+
                 continue;
             }
 
@@ -413,7 +415,7 @@ final class LogisticsController
      * search / pagination / sorting contract. All queue inclusion predicates
      * are applied BEFORE this read-only adapter and remain unchanged.
      */
-    private function l2GridSettings(Request $request, \Illuminate\Database\Eloquent\Builder $query): array
+    private function l2GridSettings(Request $request, Builder $query): array
     {
         $available = GlobalGridPilot::available();
         $enabled = GlobalGridPilot::enabled($request);
@@ -932,7 +934,7 @@ final class LogisticsController
             );
         } catch (QueryException|PDOException $exception) {
             throw $exception;
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             Log::warning('erp.logistics.recommendation_row_failed', [
                 'order_id' => $order->id,
                 'exception_class' => $exception::class,

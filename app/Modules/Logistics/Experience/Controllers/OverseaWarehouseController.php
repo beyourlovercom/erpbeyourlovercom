@@ -2,8 +2,6 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
-use App\Modules\Logistics\Application\WarehouseSkuPresentation;
-
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
@@ -17,6 +15,7 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutMorePlusVerifiedTrackingCom
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Logistics\Application\WarehouseDispatchStatus;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;

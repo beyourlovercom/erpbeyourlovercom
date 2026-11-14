@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderExternalReference;
 use App\Modules\Products\Application\SkuAliasService;
@@ -13,6 +15,7 @@ use App\Modules\Sync\Infrastructure\Models\SyncRun;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -351,7 +354,7 @@ final class WooCommerceInboundTest extends TestCase
 
     public function test_operations_preset_can_import_today_but_cannot_probe_or_import_historical_orders(): void
     {
-        $role = Role::create(['key' => \App\Modules\Identity\Application\RolePreset::Operations->roleKey(), 'label' => '运营']);
+        $role = Role::create(['key' => RolePreset::Operations->roleKey(), 'label' => '运营']);
         foreach (['sync.view', 'orders.view'] as $key) {
             $role->permissions()->firstOrCreate(['key' => $key], ['label' => $key]);
         }
@@ -374,7 +377,7 @@ final class WooCommerceInboundTest extends TestCase
         $viewer = $this->userWith(['sync.view', 'orders.view']);
         $this->actingAs($viewer)->post('/sync/woocommerce/incremental')->assertForbidden();
         $this->actingAs($viewer)->getJson('/sync/woocommerce/reconcile-today')->assertForbidden();
-        $role = Role::create(['key' => \App\Modules\Identity\Application\RolePreset::Operations->roleKey(), 'label' => '运营']);
+        $role = Role::create(['key' => RolePreset::Operations->roleKey(), 'label' => '运营']);
         foreach (['sync.view', 'orders.view'] as $key) {
             $role->permissions()->firstOrCreate(['key' => $key], ['label' => $key]);
         }
@@ -396,6 +399,7 @@ final class WooCommerceInboundTest extends TestCase
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
             $this->assertSame($start, $query['after']);
             $this->assertArrayNotHasKey('modified_after', $query);
+
             return Http::response($source, 200, ['X-WP-TotalPages' => '1']);
         });
 
@@ -421,11 +425,11 @@ final class WooCommerceInboundTest extends TestCase
         $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 7091])->assertSessionHasNoErrors();
         $order = Order::with(['items', 'address'])->firstOrFail();
         $itemId = $order->items->first()->id;
-        app(\App\Modules\Orders\Application\OrderService::class)->update(
+        app(OrderService::class)->update(
             $order, ['city' => 'ERP Manual City', 'address_line_1' => 'ERP Manual Street'], null, $user
         );
         $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 7091])->assertSessionHasNoErrors();
-        $order->refresh()->load('items','address');
+        $order->refresh()->load('items', 'address');
         self::assertSame('ERP Manual City', $order->address->city);
         self::assertSame('ERP Manual Street', $order->address->address_line_1);
         self::assertSame('HH', $order->address->province_state);
@@ -444,55 +448,56 @@ final class WooCommerceInboundTest extends TestCase
         $later['shipping']['city'] = 'Woo New City';
         Http::fakeSequence('https://shop.test/wp-json/wc/v3/orders/7092')->push($first)->push($later);
         $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 7092])->assertSessionHasNoErrors();
-        $order=Order::firstOrFail();
-        app(\App\Modules\Orders\Application\OrderService::class)->update($order,['city'=>'Legacy ERP City'],null,$user);
-        \Illuminate\Support\Facades\DB::table('order_manual_field_overrides')->where('order_id',$order->id)->delete();
+        $order = Order::firstOrFail();
+        app(OrderService::class)->update($order, ['city' => 'Legacy ERP City'], null, $user);
+        DB::table('order_manual_field_overrides')->where('order_id', $order->id)->delete();
         $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 7092])->assertSessionHasNoErrors();
-        self::assertSame('Legacy ERP City',$order->fresh('address')->address->city);
+        self::assertSame('Legacy ERP City', $order->fresh('address')->address->city);
     }
 
     public function test_manual_erp_item_edit_wins_and_stable_line_id_survives_woo_sync(): void
     {
         $user = $this->userWith(['sync.operate']);
-        Product::create(['woocommerce_product_id'=>7093,'sku'=>'WOO-SOURCE','name'=>'Source','product_type'=>'simple']);
-        $other = Product::create(['sku'=>'ERP-ACTUAL','name'=>'Local Actual','product_type'=>'simple']);
+        Product::create(['woocommerce_product_id' => 7093, 'sku' => 'WOO-SOURCE', 'name' => 'Source', 'product_type' => 'simple']);
+        $other = Product::create(['sku' => 'ERP-ACTUAL', 'name' => 'Local Actual', 'product_type' => 'simple']);
         Http::fakeSequence('https://shop.test/wp-json/wc/v3/orders/7093')
-            ->push($this->wooOrder(7093,'WC-7093','processing','20.00',7093,'WOO-SOURCE'))
-            ->push($this->wooOrder(7093,'WC-7093','processing','30.00',7093,'WOO-SOURCE'));
-        $this->actingAs($user)->post('/sync/woocommerce/single',['woo_order_id'=>7093])->assertSessionHasNoErrors();
+            ->push($this->wooOrder(7093, 'WC-7093', 'processing', '20.00', 7093, 'WOO-SOURCE'))
+            ->push($this->wooOrder(7093, 'WC-7093', 'processing', '30.00', 7093, 'WOO-SOURCE'));
+        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 7093])->assertSessionHasNoErrors();
         $order = Order::firstOrFail();
         $item = $order->items()->firstOrFail();
-        app(\App\Modules\Orders\Application\OrderService::class)->update($order,[],[[
-            'id'=>$item->id,'product_id'=>$other->id,'quantity'=>1,'unit_price'=>'22.00',
-        ]],$user);
-        $this->actingAs($user)->post('/sync/woocommerce/single',['woo_order_id'=>7093])->assertSessionHasNoErrors();
+        app(OrderService::class)->update($order, [], [[
+            'id' => $item->id, 'product_id' => $other->id, 'quantity' => 1, 'unit_price' => '22.00',
+        ]], $user);
+        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 7093])->assertSessionHasNoErrors();
         $item->refresh();
-        self::assertSame('ERP-ACTUAL',$item->sku);
-        self::assertSame($other->id,$item->product_id);
-        self::assertSame('22.00',$item->unit_price);
-        $this->assertDatabaseHas('order_manual_field_overrides',['order_id'=>$order->id,'field_key'=>'items']);
+        self::assertSame('ERP-ACTUAL', $item->sku);
+        self::assertSame($other->id, $item->product_id);
+        self::assertSame('22.00', $item->unit_price);
+        $this->assertDatabaseHas('order_manual_field_overrides', ['order_id' => $order->id, 'field_key' => 'items']);
     }
 
     public function test_allocated_gift_sku_and_line_id_cannot_be_reset_by_woo_sync(): void
     {
         $user = $this->userWith(['sync.operate']);
-        $source = Product::create(['woocommerce_product_id'=>7094,'sku'=>'gift','name'=>'Gift','product_type'=>'simple']);
-        $gift = Product::create(['sku'=>'VX610A','name'=>'Actual factory gift','product_type'=>'simple']);
+        $source = Product::create(['woocommerce_product_id' => 7094, 'sku' => 'gift', 'name' => 'Gift', 'product_type' => 'simple']);
+        $gift = Product::create(['sku' => 'VX610A', 'name' => 'Actual factory gift', 'product_type' => 'simple']);
         Http::fakeSequence('https://shop.test/wp-json/wc/v3/orders/7094')
-            ->push($this->wooOrder(7094,'WC-7094','processing','0.00',7094,'gift'))
-            ->push($this->wooOrder(7094,'WC-7094','processing','0.00',7094,'gift'));
-        $this->actingAs($user)->post('/sync/woocommerce/single',['woo_order_id'=>7094])->assertSessionHasNoErrors();
-        $order=Order::firstOrFail();$item=$order->items()->firstOrFail();
-        $item->forceFill(['source_sku'=>'gift','source_product_id'=>$source->id,
-            'sku'=>'VX610A','product_id'=>$gift->id,'resolved_fulfillment_sku'=>'VX610A'])->save();
-        $order->fulfillmentAllocation()->create(['status'=>'submitted','decision_source'=>'manual','plan_snapshot'=>['segments'=>[]]]);
-        $this->actingAs($user)->post('/sync/woocommerce/single',['woo_order_id'=>7094])->assertSessionHasNoErrors();
-        $saved=$order->items()->firstOrFail();
-        self::assertSame($item->id,$saved->id);
-        self::assertSame('VX610A',$saved->sku);
-        self::assertSame($gift->id,$saved->product_id);
-        self::assertSame('gift',$saved->source_sku);
-        self::assertSame($source->id,$saved->source_product_id);
+            ->push($this->wooOrder(7094, 'WC-7094', 'processing', '0.00', 7094, 'gift'))
+            ->push($this->wooOrder(7094, 'WC-7094', 'processing', '0.00', 7094, 'gift'));
+        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 7094])->assertSessionHasNoErrors();
+        $order = Order::firstOrFail();
+        $item = $order->items()->firstOrFail();
+        $item->forceFill(['source_sku' => 'gift', 'source_product_id' => $source->id,
+            'sku' => 'VX610A', 'product_id' => $gift->id, 'resolved_fulfillment_sku' => 'VX610A'])->save();
+        $order->fulfillmentAllocation()->create(['status' => 'submitted', 'decision_source' => 'manual', 'plan_snapshot' => ['segments' => []]]);
+        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 7094])->assertSessionHasNoErrors();
+        $saved = $order->items()->firstOrFail();
+        self::assertSame($item->id, $saved->id);
+        self::assertSame('VX610A', $saved->sku);
+        self::assertSame($gift->id, $saved->product_id);
+        self::assertSame('gift', $saved->source_sku);
+        self::assertSame($source->id, $saved->source_product_id);
     }
 
     private function userWith(array $permissions): User
