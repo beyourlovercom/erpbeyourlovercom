@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -16,9 +17,14 @@ return new class extends Migration
             $table->timestamps();
             $table->unique(['order_id', 'field_key'], 'manual_order_field_key_unique');
         });
-        Schema::table('audit_records', function (Blueprint $table): void {
-            $table->index(['entity_type', 'entity_id', 'action'], 'audit_order_manual_lookup');
-        });
+        if (DB::getDriverName() === 'mysql') {
+            // MySQL utf8mb4 composite index must stay well below InnoDB's 3072-byte limit.
+            DB::statement('CREATE INDEX audit_order_manual_lookup ON audit_records (entity_type(120), entity_id(64), action(80))');
+        } else {
+            Schema::table('audit_records', function (Blueprint $table): void {
+                $table->index(['entity_type', 'entity_id', 'action'], 'audit_order_manual_lookup');
+            });
+        }
     }
 
     public function down(): void
