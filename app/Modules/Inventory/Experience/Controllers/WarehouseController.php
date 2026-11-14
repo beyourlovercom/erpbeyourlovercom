@@ -226,6 +226,7 @@ final class WarehouseController
     public function saveInventory(Request $request,string $warehouse): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
+        abort_if(strtoupper((string) $w->code) === 'US-LA', 422, 'MorePlus 仓库存只允许从海外仓实时读取同步，不支持 ERP 人工覆盖。');
         $data=$request->validate($this->inventoryRules()); $productId=(int)$data['product_id']; unset($data['product_id']);
         $this->inventory->saveInventory($w,$productId,$data,$request->user());
         return back()->with('success','库存已保存');
@@ -234,6 +235,7 @@ final class WarehouseController
     public function addInventory(Request $request, string $warehouse): RedirectResponse
     {
         $w = $this->inventory->warehouse($warehouse);
+        abort_if(strtoupper((string) $w->code) === 'US-LA', 422, 'MorePlus 仓库存只允许从海外仓实时读取同步，不支持 ERP 人工覆盖。');
         $data = $request->validate([
             'product_id' => ['nullable', 'integer', 'exists:products,id', 'required_without:new_sku'],
             'new_sku' => ['nullable', 'string', 'max:128', 'unique:products,sku', 'required_without:product_id'],
@@ -256,6 +258,7 @@ final class WarehouseController
     public function removeInventory(Request $request, string $warehouse, int $inventory): RedirectResponse
     {
         $w = $this->inventory->warehouse($warehouse);
+        abort_if(strtoupper((string) $w->code) === 'US-LA', 422, 'MorePlus 仓库存只允许从海外仓实时读取同步，不支持 ERP 人工覆盖。');
         $data = $request->validate(['expected_updated_at' => ['required', 'date']]);
         $this->inventory->removeInventory($w, $inventory, (string) $data['expected_updated_at'], $request->user());
         return back()->with('success', '产品已从当前仓库移出');
@@ -263,6 +266,7 @@ final class WarehouseController
     public function updateInventory(Request $request,string $warehouse,int $inventory): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
+        abort_if(strtoupper((string) $w->code) === 'US-LA', 422, 'MorePlus 仓库存只允许从海外仓实时读取同步，不支持 ERP 人工覆盖。');
         $data=$request->validate($this->inventoryRules(false));
         $this->inventory->updateInventory($w,$inventory,$data,$request->user());
         return back()->with('success','库存已更新');
@@ -283,6 +287,9 @@ final class WarehouseController
         elseif ($field==='location') $rules['value']=['nullable','string','max:128'];
         elseif ($field==='inbound_at') $rules['value']=['nullable','date'];
         $data=$request->validate($rules);
+        abort_if(strtoupper((string) $w->code) === 'US-LA'
+            && in_array($data['field'], ['quantity_on_hand', 'quantity_reserved'], true),
+            422, 'MorePlus 实物与可用库存只能由仓库 API 同步。');
         if (in_array($data['field'], ['sku','name'], true)) {
             abort_unless($request->user()?->can(AuthorizationKeys::ProductsOperate->value), 403);
             abort_unless(! empty($data['expected_product_updated_at']), 422, '缺少产品版本信息。');
