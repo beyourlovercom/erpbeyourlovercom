@@ -4,8 +4,8 @@ namespace App\Modules\Logistics\Application;
 
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Validation\ValidationException;
 
 final class FulfillmentAllocationStockGate
 {
@@ -13,7 +13,8 @@ final class FulfillmentAllocationStockGate
 
     /**
      * This is an acknowledgement gate, NOT a stock reservation or shipping gate.
-     * @param list<array<string,mixed>> $assignments
+     *
+     * @param  list<array<string,mixed>>  $assignments
      * @return list<array<string,mixed>>
      */
     public function warnings(Order $order, array $assignments): array
@@ -33,7 +34,7 @@ final class FulfillmentAllocationStockGate
             $code = strtoupper(trim((string) ($assignment['source_code'] ?? '')));
             // Amazon US is intentionally manual-only: explicit Vita selection is
             // authorization to allocate, never a claim about physical stock.
-            if ($code === 'US-AMZ') {
+            if (in_array($code, ['US-AMZ', 'OUTSOURCE'], true)) {
                 continue;
             }
             $productId = (int) ($item->source_product_id ?: $item->product_id);
@@ -71,6 +72,7 @@ final class FulfillmentAllocationStockGate
                 'reason' => $available === null ? 'unknown' : 'insufficient',
             ];
         }
+
         return $warnings;
     }
 
@@ -90,6 +92,7 @@ final class FulfillmentAllocationStockGate
             }
             throw ValidationException::withMessages(['stock_exception_acknowledged' => $message]);
         }
+
         return $warnings;
     }
 }

@@ -2,10 +2,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
 
-const { routerPost, routerVisit, routerReload, feedbackSpy } = vi.hoisted(() => ({ routerPost: vi.fn(), routerVisit: vi.fn(), routerReload: vi.fn(), feedbackSpy: vi.fn() }))
+const { routerPost, routerPatch, routerVisit, routerReload, feedbackSpy } = vi.hoisted(() => ({ routerPost: vi.fn(), routerPatch: vi.fn(), routerVisit: vi.fn(), routerReload: vi.fn(), feedbackSpy: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props:['title'], template:'<title>{{ title }}</title>' },
-  router: { post:routerPost, visit:routerVisit, reload:routerReload },
+  router: { post:routerPost, patch:routerPatch, visit:routerVisit, reload:routerReload },
 }))
 vi.mock('../../../lib/globalFeedback', () => ({ publishGlobalFeedback:feedbackSpy }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default:{ template:'<div><slot /></div>' } }))
@@ -40,15 +40,15 @@ const baseProps = {
 }
 
 describe('Domestic logistics production workbench', () => {
-  beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear(); routerReload.mockClear(); feedbackSpy.mockClear(); vi.unstubAllGlobals() })
+  beforeEach(() => { routerPost.mockClear(); routerPatch.mockClear(); routerVisit.mockClear(); routerReload.mockClear(); feedbackSpy.mockClear(); vi.unstubAllGlobals() })
 
-  it('uses one compact toolbar and bottom help for all nine domestic views', () => {
-    const views=['review','stockout','pending','today','today-4px','today-weship','exceptions','4px','weship']
+  it('uses one compact toolbar and bottom help for all ten domestic views', () => {
+    const views=['review','stockout','outsource','pending','today','today-4px','today-weship','exceptions','4px','weship']
     for (const view of views) {
       const wrapper=mount(Index,{props:{...baseProps,view,trackingImportPreview:null,trackingImportProvider:null}})
       expect(wrapper.find('.domestic-compact-workspace').exists(),view).toBe(true)
       expect(wrapper.find('header.compact-workspace-toolbar').exists(),view).toBe(true)
-      expect(wrapper.findAll('nav.tabs button'),view).toHaveLength(9)
+      expect(wrapper.findAll('nav.tabs button'),view).toHaveLength(10)
       expect(wrapper.find('.domestic-head-actions a[href="/logistics/wait-stock"]').exists(),view).toBe(true)
       expect(wrapper.find('.eyebrow').exists(),view).toBe(false)
       expect(wrapper.find('.continuity').exists(),view).toBe(false)
@@ -56,6 +56,59 @@ describe('Domestic logistics production workbench', () => {
       expect(help.text(),view).toContain('生产连续性')
       expect(help.text(),view).toContain('Tracking 冲突只阻断对应订单')
     }
+  })
+
+  it('Zhang gets only the dedicated real external-purchase queue and can submit procurement progress', async () => {
+    const row={...baseProps.rows.data[0],procurement:{
+      id:11,number:'PO-20261114-0001',status:'pending',carrier:null,tracking_number:null,
+      received_at:null,released_at:null,items:[{
+        id:13,sku:'M1',quantity:1,purchase_quantity:1,purchase_url:null,purchase_size:null,
+        received_quantity:0,received_sku:null,
+      }],
+    }}
+    const wrapper=mount(Index,{props:{...baseProps,view:'outsource',canLogisticsView:false,
+      canProcurementOperate:true,canProcurementRelease:false,rows:{...baseProps.rows,data:[row]}}})
+    expect(wrapper.findAll('nav.tabs button')).toHaveLength(1)
+    expect(wrapper.find('nav.tabs').text()).toContain('外采单')
+    expect(wrapper.find('[data-testid="domestic-external-procurement"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('PO-20261114-0001')
+    expect(wrapper.text()).not.toContain('Vita 确认 → 国内待发货')
+    await wrapper.find('.external-actions button').trigger('click')
+    expect(routerPatch).toHaveBeenCalledWith('/purchase/orders/11',
+      expect.objectContaining({status:'purchasing',items:[expect.objectContaining({id:13})]}),
+      expect.objectContaining({preserveScroll:true,onSuccess:expect.any(Function)}))
+    expect(wrapper.find('.domestic-grid-main').exists()).toBe(false)
+    expect(wrapper.find('.orders').exists()).toBe(false)
+  })
+
+  it('Vita alone sees arrival release while Zhang submits warehouse receipt evidence', async () => {
+    const procurement={
+      id:12,number:'PO-20261114-0002',status:'ordered',carrier:'顺丰',tracking_number:'SF1',
+      received_at:null,released_at:null,items:[{
+        id:14,sku:'MF414A',quantity:1,purchase_quantity:1,purchase_url:null,purchase_size:null,
+        received_quantity:0,received_sku:null,
+      }],
+    }
+    const ordered=mount(Index,{props:{...baseProps,view:'outsource',canProcurementOperate:true,
+      canProcurementRelease:false,rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],procurement}]}}})
+    const buttons=ordered.findAll('.external-actions button')
+    await buttons.find(button=>button.text()==='登记到货')!.trigger('click')
+    expect(ordered.text()).toContain('工厂实际到货核验')
+    await ordered.find('.external-receipt textarea').setValue('2026-11-14 实物核对收货')
+    await ordered.find('.external-receipt button.primary').trigger('click')
+    expect(routerPatch).toHaveBeenCalledWith('/purchase/orders/12',
+      expect.objectContaining({status:'arrived',receipt_note:'2026-11-14 实物核对收货',
+        items:[expect.objectContaining({received_sku:'MF414A',received_quantity:1})]}),
+      expect.any(Object))
+
+    const arrived=mount(Index,{props:{...baseProps,view:'outsource',canProcurementOperate:false,
+      canProcurementRelease:true,rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],
+        procurement:{...procurement,status:'arrived',received_at:'2026-11-14T10:00:00Z'}}]}}})
+    const release=arrived.find('.external-actions button.primary')
+    expect(release.text()).toContain('Vita 确认')
+    await release.trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/purchase/orders/12/release-to-domestic',{},
+      expect.objectContaining({preserveScroll:true}))
   })
 
   it('keeps export blockers visible in the grid instead of hiding actionable errors in help', () => {
@@ -191,8 +244,9 @@ describe('Domestic logistics production workbench', () => {
   it('places 今日订单 immediately after 待发货 and renders three concise one-line modules with no commas', () => {
     const today=mount(Index,{props:{...baseProps,view:'today',trackingImportPreview:null,trackingImportProvider:null}})
     const nav=today.findAll('nav.tabs button').map(b=>b.text())
-    expect(nav[2]).toContain('待发货')
-    expect(nav[3]).toContain('今日订单')
+    expect(nav[2]).toContain('外采单')
+    expect(nav[3]).toContain('待发货')
+    expect(nav[4]).toContain('今日订单')
     const cards=today.findAll('.today-shortcut')
     expect(cards).toHaveLength(3)
     expect(cards[0].text()).toBe('⬇️这批订单')
@@ -469,7 +523,8 @@ describe('Domestic logistics production workbench', () => {
     const nav=wrapper.findAll('nav.tabs button').map(button=>button.text())
     expect(nav[0]).toContain('待审核')
     expect(nav[1]).toContain('缺货单')
-    expect(nav[2]).toContain('待发货')
+    expect(nav[2]).toContain('外采单')
+    expect(nav[3]).toContain('待发货')
     await wrapper.find('button.stockout-btn').trigger('click')
     expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/stockout', {},
       expect.objectContaining({preserveScroll:true,preserveState:true}))

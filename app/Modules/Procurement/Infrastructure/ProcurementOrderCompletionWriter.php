@@ -7,7 +7,7 @@ use App\Modules\Procurement\Infrastructure\Models\ProcurementOrder;
 
 final class ProcurementOrderCompletionWriter
 {
-    private const ACTIVE_STATUSES = ['pending', 'purchasing', 'ordered'];
+    private const ACTIVE_STATUSES = ['pending', 'purchasing', 'ordered', 'arrived', 'released'];
 
     public function completeForSourceOrder(int $sourceOrderId): ?ProcurementOrder
     {
