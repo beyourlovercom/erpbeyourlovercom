@@ -38,22 +38,16 @@ type RestockLabelJob={id:number;reference:string;document_kind:string;status:str
 const props=withDefaults(defineProps<{warehouse:W;clearanceProducts:ClearanceProduct[];clearanceCandidates:ClearanceCandidate[];costCenter?:WarehouseCostCenter;billImportPreview?:BillImportPreview|null;billReconciliationHistory?:BillHistory[];billReconciliationDashboard?:ReconciliationDashboard|null;billReconciliationPreview?:ReconciliationPreview|null;inboundProjection?:InboundProjection|null;restockProjection?:RestockProjection|null;latestRestockPlan?:LatestRestockPlan|null;latestRestockLabelJob?:RestockLabelJob|null;shipmentProjection?:ShipmentProjection|null;moreplusInventoryPreview?:MorePlusStockPreview|null;moreplusFifoPreview?:MorePlusFifoPreview|null;canOperate:boolean;canManage:boolean;canEditProducts?:boolean}>(),{costCenter:()=>({months:[]}),billImportPreview:null,billReconciliationHistory:()=>[],billReconciliationDashboard:null,billReconciliationPreview:null,inboundProjection:null,restockProjection:null,latestRestockPlan:null,latestRestockLabelJob:null,shipmentProjection:null,moreplusInventoryPreview:null,moreplusFifoPreview:null,canEditProducts:false})
 const warehousePath=`/inventory/${props.warehouse.public_slug||props.warehouse.slug}`
 const isMorePlus=computed(()=>props.warehouse.code.toUpperCase()==='US-LA')
+const moreplusSyncForm=useForm({})
 const moreplusPreviewForm=useForm({})
-const moreplusApplyForm=useForm({expected_checksum:''})
-const moreplusError=computed(()=>String((moreplusPreviewForm.errors as Record<string,string>).moreplus_stock||(moreplusApplyForm.errors as Record<string,string>).moreplus_stock||''))
+const syncMorePlusStock=()=>moreplusSyncForm.post(warehousePath+'/provider-stock/sync',{preserveScroll:true})
+const moreplusError=computed(()=>String((moreplusSyncForm.errors as Record<string,string>).moreplus_stock||(moreplusPreviewForm.errors as Record<string,string>).moreplus_stock||''))
 const moreplusPreviewHidden=ref(false)
 const moreplusPreviewExpanded=ref(false)
 const previewMorePlusStock=()=>{
   moreplusPreviewHidden.value=false
   moreplusPreviewExpanded.value=false
   moreplusPreviewForm.post(warehousePath+'/provider-stock/preview',{preserveScroll:true})
-}
-const applyMorePlusStock=()=>{
-  const p=props.moreplusInventoryPreview
-  if(!p||!p.apply_enabled||!p.ready)return
-  if(!window.confirm(`确认将 ${p.ready} 个已通过校验的 SKU 库存写入 ERP？${p.blocked} 个异常 SKU 将保持不变。`))return
-  moreplusApplyForm.expected_checksum=p.checksum
-  moreplusApplyForm.post(warehousePath+'/provider-stock/apply',{preserveScroll:true})
 }
 const moreplusBlockLabel=(reason:string|null)=>({
   SKU_IDENTITY_UNVERIFIED:'SKU 未验证',
@@ -62,7 +56,7 @@ const moreplusBlockLabel=(reason:string|null)=>({
   PROVIDER_PHYSICAL_QUANTITY_UNVERIFIED:'仓库实物数量异常或缺失',
   ERP_RESERVATION_EXCEEDS_PROVIDER_PHYSICAL:'ERP 预留超过仓库实物',
   PROVIDER_AVAILABLE_BELOW_ERP_PROJECTED_AVAILABLE:'仓库占用与 ERP 预留不一致',
-  LOT_OR_AGING_RECONCILIATION_REQUIRED:'需先核对批次/库龄',
+  LOT_OR_AGING_RECONCILIATION_REQUIRED:'历史批次/库龄待单独对账',
 }[reason||'']||'待复核')
 const fifoBlockLabel=(reason:string|null)=>({
   FIFO_HISTORIC_CONSUMPTION_REQUIRES_REVIEW:'历史 FIFO 消耗需对账',
@@ -126,7 +120,7 @@ const saveFactoryDemand=(item:Item,event:Event,reset=false)=>{
 
 type CellField='sku'|'name'|'quantity_on_hand'|'quantity_reserved'|'location'|'inbound_at'|'standard_qoh'|'expected_restock_qty'
 const editingCell=ref<{id:number;field:CellField}|null>(null);const cellDraft=ref<string|number|null>(null);const cellSaving=ref(false);const inspector=ref<{field:string;item:Item}|null>(null)
-const canEditCell=(field:CellField)=>props.canOperate&&(!['sku','name'].includes(field)||props.canEditProducts)
+const canEditCell=(field:CellField)=>props.canOperate&&!(isMorePlus.value&&['quantity_on_hand','quantity_reserved'].includes(field))&&(!['sku','name'].includes(field)||props.canEditProducts)
 const cellValue=(item:Item,field:CellField):string|number|null=>field==='sku'?item.product.sku:field==='name'?item.product.name:(item as unknown as Record<CellField,string|number|null>)[field]
 const startCellEdit=(item:Item,field:CellField)=>{if(!canEditCell(field)||cellSaving.value)return;editingCell.value={id:item.id,field};cellDraft.value=cellValue(item,field);inspector.value=null}
 const cancelCellEdit=()=>{if(!cellSaving.value){editingCell.value=null;cellDraft.value=null}}
@@ -229,7 +223,7 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
 <section class="warehouse-page">
 <header class="warehouse-hero">
   <div><p class="eyebrow">Inventory OS · Warehouse</p><div class="title-line"><h2>{{warehouse.name}}</h2><span class="warehouse-code">{{warehouse.code}}</span><span class="state-pill" :class="warehouse.fulfillment_state">{{warehouse.fulfillment_state_label}}</span></div><p class="subtitle">{{warehouse.name_en||warehouse.code}} · {{warehouse.role_label}} · {{warehouseAddress}}</p></div>
-  <div class="hero-actions page-header-actions"><Link class="button ghost" href="/inventory/list">仓库清单</Link><button v-if="isMorePlus&&canOperate" type="button" class="button primary" :disabled="moreplusPreviewForm.processing||moreplusApplyForm.processing" @click="previewMorePlusStock">{{moreplusPreviewForm.processing?'读取仓库中…':'同步仓库库存'}}</button><Link class="button ghost" href="/inventory/sync">导入库存</Link></div>
+  <div class="hero-actions page-header-actions"><Link class="button ghost" href="/inventory/list">仓库清单</Link><button v-if="isMorePlus&&canOperate" type="button" class="button primary" :disabled="moreplusSyncForm.processing||moreplusPreviewForm.processing" @click="syncMorePlusStock">{{moreplusSyncForm.processing?'正在读取并同步…':'同步仓库库存'}}</button><button v-if="isMorePlus&&canOperate" type="button" class="button ghost" :disabled="moreplusPreviewForm.processing" @click="previewMorePlusStock">仅查看差异</button><Link v-if="!isMorePlus" class="button ghost" href="/inventory/sync">导入库存</Link></div>
 </header>
 <nav class="warehouse-tabs" aria-label="Warehouse 360">
   <button type="button" :class="{active:activeTab==='overview'}" @click="activeTab='overview'">总览</button>
@@ -250,7 +244,7 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
     <button type="button" class="text-button" aria-label="关闭库存预览" @click="moreplusPreviewHidden=true;moreplusPreviewExpanded=false">关闭</button>
   </div>
   <div v-if="moreplusPreviewExpanded" class="primary-panel" style="margin-top:8px">
-    <div class="section-heading"><div><strong>只读库存核对</strong></div><div class="section-actions"><button type="button" class="button primary" :disabled="!moreplusInventoryPreview.apply_enabled||!moreplusInventoryPreview.ready||moreplusApplyForm.processing" @click="applyMorePlusStock">{{moreplusApplyForm.processing?'正在确认…':moreplusInventoryPreview.apply_enabled?'确认同步到 ERP':'正式写入待授权'}}</button></div></div>
+    <div class="section-heading"><div><strong>库存差异只读核对（不影响同步）</strong></div></div>
 <div v-if="moreplusFifoPreview" class="moreplus-fifo-preview">
       <p><strong>FIFO 批次核销 · 只读预检</strong>：可核销 {{moreplusFifoPreview.ready_fifo}} 个 SKU，拟调整 {{moreplusFifoPreview.ready_units}} 件；另有 {{moreplusFifoPreview.blocked}} 个须单独复核。</p>
       <small>只减少确认短缺的旧批次，不覆盖仓库出库占用、ERP 预留或历史库龄费用。批次写入受独立审批开关保护，本页面未提供写入操作。</small>
@@ -366,9 +360,9 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
   </template>
 </section>
 <section v-if="activeTab==='inventory' && inventoryMode==='stock'" class="primary-panel">
-  <div class="section-heading"><div><p class="section-kicker">CURRENT INVENTORY</p><h3>目前仓库产品库存统计</h3><p>日常库存查看放在页面第一优先级；搜索 SKU、产品名称或库位即可快速定位。</p></div><div class="section-actions"><Link class="button ghost" href="/inventory/products">全部产品库存</Link><Link class="button primary" href="/inventory/sync">导入 / 更新库存</Link><button v-if="canOperate" type="button" class="button primary" @click="addVisible=!addVisible">{{addVisible?'收起':'＋新增产品'}}</button></div></div>
+  <div class="section-heading"><div><p class="section-kicker">CURRENT INVENTORY</p><h3>目前仓库产品库存统计</h3><p>日常库存查看放在页面第一优先级；搜索 SKU、产品名称或库位即可快速定位。</p></div><div class="section-actions"><Link class="button ghost" href="/inventory/products">全部产品库存</Link><Link v-if="!isMorePlus" class="button primary" href="/inventory/sync">导入 / 更新库存</Link><button v-if="canOperate&&!isMorePlus" type="button" class="button primary" @click="addVisible=!addVisible">{{addVisible?'收起':'＋新增产品'}}</button></div></div>
   <p v-if="addStockSuccess" class="inventory-add-success" role="status">{{addStockSuccess}}</p>
-  <form v-if="addVisible && canOperate" class="inventory-add-form" novalidate @submit.prevent="submitAddStock">
+  <form v-if="addVisible && canOperate && !isMorePlus" class="inventory-add-form" novalidate @submit.prevent="submitAddStock">
     <div class="add-form-heading"><div><strong>加入当前仓库</strong><small>现有 SKU 会保留现有数量；已移出本仓库的 SKU 会恢复原记录。</small></div><div class="segmented"><button type="button" :class="{active:addMode==='existing'}" @click="addMode='existing'">已有 SKU</button><button v-if="canEditProducts" type="button" :class="{active:addMode==='new'}" @click="addMode='new'">新建 SKU</button></div></div>
     <label v-if="addMode==='existing'">SKU / 产品<InventorySkuCombobox v-model="addInventoryForm.sku" v-model:product-id="addInventoryForm.product_id"/></label>
     <template v-else><label>新 SKU<input v-model="addInventoryForm.new_sku" required maxlength="128" placeholder="唯一 canonical SKU"></label><label>产品名称<input v-model="addInventoryForm.new_name" required maxlength="512"></label></template>
@@ -396,7 +390,7 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
       <td :class="{'computed-cell':!isFactory}" :tabindex="isFactory?-1:0" @click="!isFactory&&openInspector('stock_status',i)" @keydown.enter="!isFactory&&openInspector('stock_status',i)"><span class="stock-badge" :class="isFactory?(i.factory_demand?.status==='warning'?'stock-low_stock':i.factory_demand?.status==='no_sales'?'stock-no-sales':'stock-in_stock'):'stock-'+i.stock_status">{{isFactory?(i.factory_demand?.status_label??'—'):i.stock_status_label}}</span></td>
       <td v-if="!isFactory" class="computed-cell" tabindex="0" role="button" @click="openInspector('shipped_90d_qty',i)" @keydown.enter="openInspector('shipped_90d_qty',i)">{{i.replenishment.shipped_90d_qty}}</td>
       <td v-if="!isFactory" class="computed-cell" tabindex="0" role="button" @click="openInspector('replenishment',i)" @keydown.enter="openInspector('replenishment',i)">{{i.replenishment.recommended_restock_qty===null?i.replenishment.policy_label:`${i.replenishment.policy_label} · ${i.replenishment.recommended_restock_qty}`}}</td>
-      <td v-if="canOperate" class="row-actions"><button v-if="!isClearanceProduct(i.product.id)" class="text-button" :disabled="clearanceAddingProductId===i.product.id" @click="addInventoryItemToClearance(i)">{{clearanceAddingProductId===i.product.id?'加入中…':'加入清仓'}}</button><span v-else class="clearance-row-state">已在清仓</span><button type="button" class="text-button danger" @click="removeInventory(i)">移出本仓</button></td>
+      <td v-if="canOperate" class="row-actions"><button v-if="!isClearanceProduct(i.product.id)" class="text-button" :disabled="clearanceAddingProductId===i.product.id" @click="addInventoryItemToClearance(i)">{{clearanceAddingProductId===i.product.id?'加入中…':'加入清仓'}}</button><span v-else class="clearance-row-state">已在清仓</span><button v-if="!isMorePlus" type="button" class="text-button danger" @click="removeInventory(i)">移出本仓</button></td>
     </tr>
     <tr v-if="!filteredItems.length"><td :colspan="(canOperate?12:11)+(isFactory?2:0)" class="empty">没有符合当前筛选条件的库存商品</td></tr>
   </tbody></table>

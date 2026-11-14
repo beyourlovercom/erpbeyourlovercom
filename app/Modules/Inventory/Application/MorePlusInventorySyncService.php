@@ -32,6 +32,9 @@ final class MorePlusInventorySyncService
         $this->guardWarehouse($warehouse);
         $snapshot = $this->source->snapshot();
         $sourceRows = $snapshot['stock_rows'];
+        if ($sourceRows === []) {
+            throw new RuntimeException('MOREPLUS_PROVIDER_STOCK_EMPTY_REVIEW_REQUIRED');
+        }
         // Two provider SKUs may never silently target the same ERP inventory row.
         $canonicalCounts = array_count_values(array_filter(array_column($sourceRows, 'canonical_sku')));
         $canonical = array_values(array_unique(array_filter(array_column($sourceRows, 'canonical_sku'))));
@@ -43,9 +46,14 @@ final class MorePlusInventorySyncService
             $canonicalSku = $stock['canonical_sku'];
             $product = $canonicalSku ? $products->get($canonicalSku) : null;
             $inventory = $product ? $inventories->get($product->id) : null;
-            $hasRemovedRow = $product && ! $inventory && WarehouseInventory::withTrashed()
-                ->where('warehouse_id', $warehouse->id)->where('product_id', $product->id)
-                ->whereNotNull('deleted_at')->exists();
+            // A verified physical SKU may resurrect its own previously archived
+            // ERP mirror row: do not duplicate the product or invent stock.
+            if ($product && ! $inventory) {
+                $inventory = WarehouseInventory::withTrashed()
+                    ->where('warehouse_id', $warehouse->id)->where('product_id', $product->id)
+                    ->first();
+            }
+            $needsRestore = (bool) ($inventory?->trashed() ?? false);
             $physical = $stock['standard_quantity'] ?? null;
             $available = $stock['available_quantity'];
             $reserved = (int) ($inventory?->quantity_reserved ?? 0);
@@ -55,18 +63,19 @@ final class MorePlusInventorySyncService
                 $reason = 'SKU_IDENTITY_UNVERIFIED';
             } elseif (($canonicalCounts[$canonicalSku] ?? 0) > 1) {
                 $reason = 'SKU_MULTIPLE_PROVIDER_IDENTITIES';
-            } elseif ($hasRemovedRow) {
-                $reason = 'ERP_REMOVED_INVENTORY_REVIEW_REQUIRED';
             } elseif (! is_int($physical) || $physical < 0 || $physical < $available) {
                 $reason = 'PROVIDER_PHYSICAL_QUANTITY_UNVERIFIED';
-            } elseif ($reserved > $physical) {
-                $reason = 'ERP_RESERVATION_EXCEEDS_PROVIDER_PHYSICAL';
-            } elseif ($physical - $reserved > $available) {
-                // Provider OMS holds may not exist in ERP reservation ledger.
-                // Do not let ERP show more available than the actual provider.
-                $reason = 'PROVIDER_AVAILABLE_BELOW_ERP_PROJECTED_AVAILABLE';
-            } elseif ($inventory && $qoh !== $physical && $this->hasProtectedLots($warehouse, (int) $product->id)) {
-                $reason = 'LOT_OR_AGING_RECONCILIATION_REQUIRED';
+            }
+            // Source stock is authoritative. ERP reservations, provider holds,
+            // dated lots and aging accruals are accounting warnings, NOT sync gates.
+            $accountingWarning = null;
+            if ($reason === null && $reserved > $physical) {
+                $accountingWarning = 'ERP_RESERVATION_EXCEEDS_PROVIDER_PHYSICAL';
+            } elseif ($reason === null && $physical - $reserved > $available) {
+                $accountingWarning = 'PROVIDER_AVAILABLE_BELOW_ERP_PROJECTED_AVAILABLE';
+            } elseif ($reason === null && $inventory && $qoh !== $physical
+                && $this->hasProtectedLots($warehouse, (int) $product->id)) {
+                $accountingWarning = 'LOT_OR_AGING_RECONCILIATION_REQUIRED';
             }
             $rows[] = [
                 'provider_sku' => $sku,
@@ -76,11 +85,16 @@ final class MorePlusInventorySyncService
                 'provider_available' => $available,
                 'provider_outbound' => $stock['outbounding_quantity'] ?? null,
                 'local_exists' => $inventory !== null,
+                'local_deleted' => $needsRestore,
                 'local_qoh' => $qoh,
                 'local_reserved' => $reserved,
+                'local_provider_available' => $inventory?->provider_available_quantity,
                 'local_updated_at' => $inventory?->updated_at?->toIso8601String(),
-                'status' => $reason !== null ? 'blocked' : ($inventory && $qoh === $physical ? 'unchanged' : 'ready'),
+                'status' => $reason !== null ? 'blocked' : ($inventory && ! $needsRestore
+                    && $qoh === $physical && $inventory->provider_available_quantity === $available
+                    ? 'unchanged' : 'ready'),
                 'reason' => $reason,
+                'accounting_warning' => $accountingWarning,
             ];
         }
         // Stock/list can omit catalog-only SKUs. Missing rows NEVER mean zero.
@@ -100,6 +114,23 @@ final class MorePlusInventorySyncService
         ];
     }
 
+    /**
+     * One-click, GET-only provider-to-ERP mirror. No provider POST and no FIFO/P9
+     * adjustment: those historical ledgers remain independent accounting facts.
+     * The calling route is permission-checked and US-LA scoped.
+     *
+     * @return array<string,mixed>
+     */
+    public function syncProvider(Warehouse $warehouse, ?Authenticatable $actor): array
+    {
+        $this->guardWarehouse($warehouse);
+        if (! app()->environment('production')) {
+            throw new RuntimeException('MOREPLUS_PROVIDER_SYNC_PRODUCTION_ONLY');
+        }
+
+        return $this->applySnapshot($warehouse, $this->preview($warehouse), $actor);
+    }
+
     /** @return array{updated:int,created:int,unchanged:int,blocked:int,checksum:string} */
     public function apply(Warehouse $warehouse, string $expectedChecksum, ?Authenticatable $actor): array
     {
@@ -116,6 +147,14 @@ final class MorePlusInventorySyncService
             throw new RuntimeException('MOREPLUS_INVENTORY_SNAPSHOT_CHANGED_PREVIEW_AGAIN');
         }
 
+        return $this->applySnapshot($warehouse, $fresh, $actor);
+    }
+
+    /** @param array<string,mixed> $fresh
+     * @return array<string,mixed>
+     */
+    private function applySnapshot(Warehouse $warehouse, array $fresh, ?Authenticatable $actor): array
+    {
         return DB::transaction(function () use ($warehouse, $fresh, $actor): array {
             Warehouse::query()->whereKey($warehouse->id)->lockForUpdate()->firstOrFail();
             $updated = $created = 0;
@@ -124,9 +163,10 @@ final class MorePlusInventorySyncService
                 if ($row['status'] === 'blocked') {
                     continue;
                 }
-                $local = WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
+                $local = WarehouseInventory::withTrashed()->where('warehouse_id', $warehouse->id)
                     ->where('product_id', $row['product_id'])->lockForUpdate()->first();
                 if (($local !== null) !== $row['local_exists']
+                    || (bool) ($local?->trashed() ?? false) !== ($row['local_deleted'] ?? false)
                     || (int) ($local?->quantity_on_hand ?? 0) !== $row['local_qoh']
                     || (int) ($local?->quantity_reserved ?? 0) !== $row['local_reserved']
                     || $local?->updated_at?->toIso8601String() !== $row['local_updated_at']) {
@@ -135,18 +175,26 @@ final class MorePlusInventorySyncService
                 if ($row['status'] === 'unchanged') {
                     continue;
                 }
-                if ($local && $this->hasProtectedLots($warehouse, (int) $row['product_id'])) {
-                    throw new RuntimeException('MOREPLUS_INVENTORY_LOT_CHANGED_PREVIEW_AGAIN');
-                }
+                // Keep lot, FIFO consumption and P9 historical records unchanged.
+                // Any ledger-to-physical mismatch remains an accounting exception.
                 $changes[] = [
                     'sku' => $row['canonical_sku'], 'provider_sku' => $row['provider_sku'],
                     'product_id' => $row['product_id'],
                     'previous_on_hand' => $row['local_exists'] ? $row['local_qoh'] : null,
                     'new_on_hand' => $row['provider_physical'],
                     'preserved_reserved' => $row['local_reserved'],
+                    'provider_available' => $row['provider_available'],
+                    'accounting_warning' => $row['accounting_warning'],
                 ];
                 if ($local) {
-                    $local->update(['quantity_on_hand' => $row['provider_physical']]);
+                    if ($local->trashed()) {
+                        $local->restore();
+                    }
+                    $local->update([
+                        'quantity_on_hand' => $row['provider_physical'],
+                        'provider_available_quantity' => $row['provider_available'],
+                        'provider_stock_synced_at' => now(),
+                    ]);
                     $updated++;
                 } else {
                     WarehouseInventory::query()->create([
@@ -154,6 +202,8 @@ final class MorePlusInventorySyncService
                         'product_id' => $row['product_id'],
                         'quantity_on_hand' => $row['provider_physical'],
                         'quantity_reserved' => 0,
+                        'provider_available_quantity' => $row['provider_available'],
+                        'provider_stock_synced_at' => now(),
                     ]);
                     $created++;
                 }

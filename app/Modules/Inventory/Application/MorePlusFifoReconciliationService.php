@@ -41,10 +41,12 @@ final class MorePlusFifoReconciliationService
         }
         $rows = [];
         foreach ($stock['rows'] as $row) {
-            if ($row['status'] !== 'blocked') {
+            $financialReason = $row['accounting_warning'] ?? $row['reason'] ?? null;
+            if ($financialReason === null) {
                 continue;
             }
-            $rows[] = $this->inspect($warehouse, $row);
+            // Accounting review is separate from the provider-authoritative stock mirror.
+            $rows[] = $this->inspect($warehouse, [...$row, 'reason' => $financialReason]);
         }
         $ready = array_values(array_filter($rows, fn (array $r): bool => $r['status'] === 'ready_fifo'));
         $blocked = array_values(array_filter($rows, fn (array $r): bool => $r['status'] === 'blocked'));
