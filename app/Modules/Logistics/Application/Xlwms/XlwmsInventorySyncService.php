@@ -117,7 +117,7 @@ final class XlwmsInventorySyncService
                 'reason' => $row['reason'] ?? null,
             ];
         }
-        $checksum = hash('sha256', json_encode(['snapshot_schema' => $this->v2Enabled() ? 4 : 2, 'reconciliation_mode' => $this->v2Enabled() ? 'lot_v2' : 'quantity_v1', 'wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline, 'lot_baseline' => $this->v2LotBaseline($warehouse, $rows), 'unknown_age_baseline' => $this->v2UnknownAgeBaseline($warehouse, $rows)], JSON_THROW_ON_ERROR));
+        $checksum = hash('sha256', json_encode(['snapshot_schema' => $this->v2Enabled() ? 5 : 2, 'reconciliation_mode' => $this->v2Enabled() ? 'lot_v2' : 'quantity_v1', 'wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline, 'lot_baseline' => $this->v2LotBaseline($warehouse, $rows), 'p9_consumption_baseline' => $this->v2P9ConsumptionBaseline($warehouse, $rows), 'unknown_age_baseline' => $this->v2UnknownAgeBaseline($warehouse, $rows)], JSON_THROW_ON_ERROR));
         $status = ($unmatched > 0 || $blocked > 0) ? 'blocked' : 'read_only';
         $snapshot = $this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline);
         $this->audit->record(AuditActor::system(AuditSource::InternalSystem), 'inventory.xlwms_snapshot_'.$snapshot->status, $snapshot::class, $snapshot->id, after: $this->result($snapshot), reason: 'xlwms_inventory_sync');
@@ -268,6 +268,48 @@ final class XlwmsInventorySyncService
         if (! $this->v2Enabled() || ! \Illuminate\Support\Facades\Schema::hasTable('warehouse_inventory_lots')) return [];
         $ids = collect($rows)->pluck('product_id')->filter()->map(fn ($id): int => (int) $id)->unique();
         return WarehouseInventoryLot::query()->where('warehouse_id', $warehouse->id)->whereIn('product_id', $ids)->orderBy('product_id')->orderBy('putaway_date')->orderBy('id')->get()->map(fn (WarehouseInventoryLot $lot): array => ['id' => (int) $lot->id, 'product_id' => (int) $lot->product_id, 'status' => $lot->stock_status, 'putaway_date' => $lot->putaway_date?->toDateString(), 'quantity' => (int) $lot->quantity, 'sync_batch_id' => $lot->sync_batch_id])->all();
+    }
+
+    /**
+     * The P9 ledger is an independent part of physical FIFO state.
+     * Source-lot gross quantity does NOT change when P9 records a shipment.
+     * Include historical consumption in the snapshot identity, otherwise
+     * fresh OMS reads incorrectly reuse a blocked/stale v4 snapshot after a
+     * new real fulfillment or a corrected P9 source is recorded.
+     *
+     * @return list<array<string,int|string|null>>
+     */
+    private function v2P9ConsumptionBaseline(Warehouse $warehouse, array $rows): array
+    {
+        if (! $this->v2Enabled()
+            || ! Schema::hasTable('warehouse_inventory_lot_consumptions')) {
+            return [];
+        }
+
+        $productIds = collect($rows)->pluck('product_id')
+            ->filter()->map(fn ($id): int => (int) $id)->unique()->values()->all();
+        if ($productIds === []) {
+            return [];
+        }
+
+        return DB::table('warehouse_inventory_lot_consumptions')
+            ->where('warehouse_id', $warehouse->id)
+            ->whereIn('product_id', $productIds)
+            ->orderBy('product_id')->orderBy('id')
+            ->get(['id', 'product_id', 'source_inventory_lot_id', 'source_sync_batch_id',
+                'stock_status', 'putaway_date', 'quantity', 'consumed_at'])
+            ->map(static fn ($entry): array => [
+                'id' => (int) $entry->id,
+                'product_id' => (int) $entry->product_id,
+                'source_inventory_lot_id' => $entry->source_inventory_lot_id === null
+                    ? null : (int) $entry->source_inventory_lot_id,
+                'source_sync_batch_id' => $entry->source_sync_batch_id === null
+                    ? null : (int) $entry->source_sync_batch_id,
+                'stock_status' => (string) $entry->stock_status,
+                'putaway_date' => (string) $entry->putaway_date,
+                'quantity' => (int) $entry->quantity,
+                'consumed_at' => (string) $entry->consumed_at,
+            ])->all();
     }
 
     /** @return array<int,int> */

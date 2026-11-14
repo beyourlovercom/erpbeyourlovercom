@@ -508,6 +508,44 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         self::assertDatabaseHas('xlwms_inventory_snapshots', ['id' => $result['snapshot_id'], 'status' => 'blocked']);
     }
 
+    public function test_v2_p9_capture_changes_checksum_and_refreshes_previously_cached_snapshot(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        $product = $products[0];
+        WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id,
+            'product_id' => $product->id, 'quantity_on_hand' => 10, 'quantity_reserved' => 0]);
+        $lot = WarehouseInventoryLot::query()->create(['warehouse_id' => $warehouse->id,
+            'product_id' => $product->id, 'stock_status' => 'sellable',
+            'putaway_date' => '2026-10-26', 'quantity' => 10]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        $service = $this->service($products, ['SKU-A'], null, ['SKU-A'], 0, ['SKU-A' => 9]);
+
+        $first = $service->sync(false);
+        self::assertSame('read_only', $first['status']);
+        self::assertSame($first['snapshot_id'], $service->sync(false)['snapshot_id']);
+
+        // Historical P9 shipment: gross lot and remote OMS total remain
+        // unchanged, only its separately captured consumption changes.
+        $this->p9DirectConsumption($warehouse, $product, $lot, 1);
+        $afterConsumption = $service->sync(false);
+        self::assertNotSame($first['snapshot_id'], $afterConsumption['snapshot_id']);
+        self::assertNotSame($first['checksum'], $afterConsumption['checksum']);
+        self::assertSame('read_only', $afterConsumption['status']);
+        self::assertSame(10, (int) $lot->fresh()->quantity);
+        self::assertSame($afterConsumption['snapshot_id'], $service->sync(false)['snapshot_id']);
+
+        // With the same OMS and local lot gross, a later ledger correction
+        // also needs a NEW snapshot, which must fail closed on the mismatch.
+        $consumption = WarehouseInventoryLotConsumption::query()->where('product_id', $product->id)->firstOrFail();
+        $consumption->forceFill(['quantity' => 2])->save();
+        $bad = $service->sync(false);
+        self::assertNotSame($afterConsumption['snapshot_id'], $bad['snapshot_id']);
+        self::assertSame('blocked', $bad['status']);
+        self::assertContains('LOT_NET_PROVIDER_MISMATCH', array_column($bad['mismatches'], 'reason'));
+        self::assertSame(10, (int) $lot->fresh()->quantity);
+        self::assertSame(10, (int) WarehouseInventory::where('product_id', $product->id)->value('quantity_on_hand'));
+    }
+
     public function test_v2_preserves_gross_p9_lot_and_consumption_when_net_matches_oms(): void
     {
         [$warehouse, , $products] = $this->fixture(['SKU-A']);
