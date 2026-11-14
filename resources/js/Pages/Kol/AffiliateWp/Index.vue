@@ -43,7 +43,7 @@ type Option = { value: number; label: string }
 const props = defineProps<{
   canManageApprovals: boolean
   canManageAffiliates: boolean
-  canOpenBindingActivation: boolean
+  canOpenBindingActivation?: boolean
   affiliates: AffiliateRow[]
   coupons: CouponRow[]
   provisioningCandidates: ProvisioningCandidate[]
