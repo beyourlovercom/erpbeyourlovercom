@@ -72,10 +72,7 @@ final class MorePlusFifoReconciliationService
             'ready_units' => array_sum(array_column($ready, 'delta')),
             'blocked' => count($blocked),
             'rows' => $rows,
-            'apply_enabled' => app()->environment('production')
-                && (bool) config('shipout.production_inventory_apply_enabled', false)
-                && (bool) config('shipout.production_fifo_apply_enabled', false)
-                && $inApprovedScope,
+            'apply_enabled' => false, // source-authoritative: accounting ledger only
         ];
     }
 
@@ -183,140 +180,12 @@ final class MorePlusFifoReconciliationService
     }
 
     /**
-     * Not routable. A separate explicit release flag and checksum are mandatory.
-     *
+     * Historical FIFO/aging ledger is read-only for MorePlus.
+     * No flag, approval list, or legacy endpoint can alter the provider's mirror.
      * @return array<string,mixed>
      */
     public function apply(Warehouse $warehouse, string $expectedChecksum, ?Authenticatable $actor): array
     {
-        if (! app()->environment('production')
-            || ! config('shipout.production_inventory_apply_enabled', false)
-            || ! config('shipout.production_fifo_apply_enabled', false)) {
-            throw new RuntimeException('MOREPLUS_FIFO_APPLY_DISABLED');
-        }
-        if (preg_match('/^[a-f0-9]{64}$/D', $expectedChecksum) !== 1) {
-            throw new RuntimeException('MOREPLUS_FIFO_CHECKSUM_INVALID');
-        }
-        $fresh = $this->preview($warehouse);
-        if (! hash_equals($expectedChecksum, $fresh['checksum'])) {
-            throw new RuntimeException('MOREPLUS_FIFO_SNAPSHOT_CHANGED_PREVIEW_AGAIN');
-        }
-        $ready = array_values(array_filter(
-            $fresh['rows'],
-            fn (array $row): bool => $row['status'] === 'ready_fifo',
-        ));
-        if ($ready === []) {
-            throw new RuntimeException('MOREPLUS_FIFO_NO_SAFE_CANDIDATES');
-        }
-        // Approval is for an exact SKU scope and maximum number of units.
-        // Enabling both feature switches never authorizes all future SKUs.
-        $approved = (array) config('shipout.production_fifo_approved_skus', []);
-        $maximum = (int) config('shipout.production_fifo_max_units', 0);
-        if ($approved === [] || $maximum <= 0
-            || count($approved) !== count(array_unique($approved))) {
-            throw new RuntimeException('MOREPLUS_FIFO_OWNER_SCOPE_NOT_APPROVED');
-        }
-        foreach ($ready as $candidate) {
-            if (! in_array($candidate['provider_sku'], $approved, true)) {
-                throw new RuntimeException('MOREPLUS_FIFO_SKU_OUTSIDE_OWNER_SCOPE');
-            }
-        }
-        if (array_sum(array_column($ready, 'delta')) > $maximum) {
-            throw new RuntimeException('MOREPLUS_FIFO_UNITS_EXCEED_OWNER_SCOPE');
-        }
-
-        return DB::transaction(function () use ($warehouse, $ready, $fresh, $actor): array {
-            Warehouse::query()->whereKey($warehouse->id)->lockForUpdate()->firstOrFail();
-            $changes = [];
-            foreach ($ready as $row) {
-                $productId = (int) $row['product_id'];
-                $inventory = WarehouseInventory::query()
-                    ->where('warehouse_id', $warehouse->id)
-                    ->where('product_id', $productId)->lockForUpdate()->firstOrFail();
-                if ((int) $inventory->quantity_on_hand !== $row['qoh']
-                    || (int) $inventory->quantity_reserved !== 0
-                    || $inventory->updated_at?->toIso8601String() !== $row['inventory_updated_at']) {
-                    throw new RuntimeException('MOREPLUS_FIFO_ERP_INVENTORY_CHANGED');
-                }
-                $lots = WarehouseInventoryLot::query()
-                    ->where('warehouse_id', $warehouse->id)
-                    ->where('product_id', $productId)
-                    ->orderBy('putaway_date')->orderBy('id')->lockForUpdate()->get();
-                if ($lots->count() !== $row['lot_count']
-                    || ! hash_equals($row['lots_hash'], $this->snapshotHash($lots->all()))) {
-                    throw new RuntimeException('MOREPLUS_FIFO_LOT_CHANGED');
-                }
-                if (WarehouseInventoryLotConsumption::query()
-                    ->where('warehouse_id', $warehouse->id)
-                    ->where('product_id', $productId)->exists()) {
-                    throw new RuntimeException('MOREPLUS_FIFO_CONSUMPTION_APPEARED');
-                }
-                $aging = WarehouseStorageAgingAccrual::query()
-                    ->where('warehouse_id', $warehouse->id)
-                    ->where('product_id', $productId)
-                    ->orderBy('id')->lockForUpdate()->get();
-                if ($aging->count() !== $row['aging_count']
-                    || ! hash_equals($row['aging_hash'], $this->snapshotHash($aging->all()))) {
-                    throw new RuntimeException('MOREPLUS_FIFO_AGING_CHANGED');
-                }
-                foreach ($row['lot_changes'] as $change) {
-                    $lot = $lots->firstWhere('id', (int) $change['id']);
-                    if (! $lot || (int) $lot->quantity !== $change['before']
-                        || $lot->putaway_date->toDateString() !== $change['date']) {
-                        throw new RuntimeException('MOREPLUS_FIFO_LOT_PREIMAGE_INVALID');
-                    }
-                    $lot->update(['quantity' => $change['after']]);
-                }
-                $inventory->update(['quantity_on_hand' => $row['physical']]);
-                if ((int) WarehouseInventoryLot::query()
-                    ->where('warehouse_id', $warehouse->id)
-                    ->where('product_id', $productId)->sum('quantity') !== $row['physical']) {
-                    throw new RuntimeException('MOREPLUS_FIFO_POST_LOT_SUM_MISMATCH');
-                }
-                $afterAging = WarehouseStorageAgingAccrual::query()
-                    ->where('warehouse_id', $warehouse->id)
-                    ->where('product_id', $productId)->orderBy('id')->get();
-                if (! hash_equals($row['aging_hash'], $this->snapshotHash($afterAging->all()))) {
-                    throw new RuntimeException('MOREPLUS_FIFO_AGING_HISTORY_MUTATED');
-                }
-                $changes[] = [
-                    'provider_sku' => $row['provider_sku'],
-                    'canonical_sku' => $row['canonical_sku'],
-                    'product_id' => $productId,
-                    'old_on_hand' => $row['qoh'],
-                    'new_on_hand' => $row['physical'],
-                    'units_decreased' => $row['delta'],
-                    'lot_changes' => $row['lot_changes'],
-                    'aging_rows_preserved' => $row['aging_count'],
-                    'aging_sha256' => $row['aging_hash'],
-                    'provider_stock_checksum' => $fresh['source_checksum'],
-                    'fifo_plan_checksum' => $fresh['checksum'],
-                    'owner_maximum_units' => (int) config('shipout.production_fifo_max_units', 0),
-                ];
-                $this->audit->record(
-                    $actor ? AuditActor::user($actor, AuditSource::InternalSystem)
-                        : AuditActor::system(AuditSource::InternalSystem),
-                    'inventory.moreplus_fifo_reconciled',
-                    Warehouse::class,
-                    (int) $warehouse->id,
-                    before: [
-                        'provider_sku' => $row['provider_sku'],
-                        'product_id' => $productId,
-                        'quantity_on_hand' => $row['qoh'],
-                        'aging_sha256' => $row['aging_hash'],
-                    ],
-                    after: end($changes),
-                    reason: 'confirmed_moreplus_provider_fifo_physical_reconciliation',
-                );
-            }
-
-            return [
-                'updated' => count($changes),
-                'units_decreased' => array_sum(array_column($changes, 'units_decreased')),
-                'blocked' => $fresh['blocked'],
-                'checksum' => $fresh['checksum'],
-                'changes' => $changes,
-            ];
-        });
+        throw new RuntimeException('MOREPLUS_FIFO_ACCOUNTING_ONLY');
     }
 }

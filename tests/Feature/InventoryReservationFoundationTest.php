@@ -187,10 +187,47 @@ final class InventoryReservationFoundationTest extends TestCase
         app(InventoryReservationService::class)->reserve($order->id, $warehouse->id, 'res-forbidden', null, $user);
     }
 
+    public function test_moreplus_reservation_and_commit_never_decrement_provider_mirror(): void
+    {
+        $user = $this->userWith(['inventory.operate']);
+        $warehouse = Warehouse::query()->where('slug', 'us-la')->firstOrFail();
+        $product = $this->product('RES-MP-PROVIDER');
+        $order = $this->order([[$product, 2]]);
+        $row = WarehouseInventory::create([
+            'warehouse_id' => $warehouse->id, 'product_id' => $product->id,
+            'quantity_on_hand' => 7, 'quantity_reserved' => 0,
+            'provider_available_quantity' => 6, 'provider_stock_synced_at' => now(),
+        ]);
+        $service = app(InventoryReservationService::class);
+        $reservation = $service->reserve($order->id, $warehouse->id, 'res-moreplus-ledger', null, $user);
+        $this->assertSame(2, $row->fresh()->quantity_reserved);
+        $this->assertSame(6, $row->fresh()->quantity_available);
+        $service->commit($reservation['id'], $user);
+        $this->assertSame(7, $row->fresh()->quantity_on_hand);
+        $this->assertSame(6, $row->fresh()->quantity_available);
+        $this->assertSame(0, $row->fresh()->quantity_reserved);
+    }
+
+    public function test_moreplus_requires_real_signed_provider_stock_mirror_not_old_excel(): void
+    {
+        $user = $this->userWith(['inventory.operate']);
+        $warehouse = Warehouse::query()->where('slug', 'us-la')->firstOrFail();
+        $this->confirmFull($warehouse);
+        $product = $this->product('RES-MP-NO-SYNC');
+        $order = $this->order([[$product, 1]]);
+        WarehouseInventory::create([
+            'warehouse_id' => $warehouse->id, 'product_id' => $product->id,
+            'quantity_on_hand' => 70, 'quantity_reserved' => 0,
+        ]);
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('authoritative provider inventory sync');
+        app(InventoryReservationService::class)->reserve($order->id, $warehouse->id, 'res-mp-denied', null, $user);
+    }
+
     /** @return array{0:Order,1:Warehouse,2:Product} */
     private function scenario(int $qoh, array $lineQuantities, bool $authoritative = true): array
     {
-        $warehouse = Warehouse::query()->where('slug', 'us-la')->firstOrFail();
+        $warehouse = Warehouse::query()->where('slug', 'us-ny')->firstOrFail();
         if ($authoritative) {
             $this->confirmFull($warehouse);
         }
@@ -203,7 +240,7 @@ final class InventoryReservationFoundationTest extends TestCase
 
     private function authoritativeWarehouse(): Warehouse
     {
-        $warehouse = Warehouse::query()->where('slug', 'us-la')->firstOrFail();
+        $warehouse = Warehouse::query()->where('slug', 'us-ny')->firstOrFail();
         $this->confirmFull($warehouse);
 
         return $warehouse;

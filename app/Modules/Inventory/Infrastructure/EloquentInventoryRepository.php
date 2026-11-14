@@ -173,6 +173,9 @@ final class EloquentInventoryRepository implements InventoryRepository
 
     public function upsertInventory(Model $warehouse, Model $product, array $attributes): Model
     {
+        if (strtoupper((string) $warehouse->code) === 'US-LA') {
+            throw new \DomainException('MorePlus stock is provider-authoritative; manual ERP inventory writes are disabled.');
+        }
         $item = WarehouseInventory::query()->firstOrNew(['warehouse_id'=>$warehouse->getKey(),'product_id'=>$product->getKey()]);
         $before = $item->exists ? $item->only(['quantity_on_hand','quantity_reserved']) : ['quantity_on_hand'=>0,'quantity_reserved'=>0];
         $item->fill($attributes); $item->save();
@@ -188,6 +191,10 @@ final class EloquentInventoryRepository implements InventoryRepository
     public function findInventory(Model $warehouse, int $inventoryId): Model { return WarehouseInventory::query()->where('warehouse_id',$warehouse->getKey())->findOrFail($inventoryId); }
     public function updateInventory(Model $inventory, array $attributes): Model
     {
+        if (array_intersect(['quantity_on_hand', 'quantity_reserved'], array_keys($attributes))
+            && strtoupper((string) $inventory->warehouse?->code) === 'US-LA') {
+            throw new \DomainException('MorePlus physical inventory and ERP reservation counts are not manually editable.');
+        }
         $before=$inventory->only(['quantity_on_hand','quantity_reserved']); $inventory->fill($attributes); $inventory->save();
         InventoryAdjustment::query()->create([
             'warehouse_id'=>$inventory->warehouse_id,'product_id'=>$inventory->product_id,'warehouse_inventory_id'=>$inventory->id,

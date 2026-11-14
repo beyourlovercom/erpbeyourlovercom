@@ -464,11 +464,11 @@ final class MorePlusInventorySyncTest extends TestCase
         $service = app(MorePlusFifoReconciliationService::class);
         $preview = $service->preview($this->warehouse);
         config()->set('shipout.production_inventory_apply_enabled', true);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_APPLY_DISABLED');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
-    public function test_fifo_apply_updates_lots_and_preserves_immutable_p9_history(): void
+    public function test_fifo_accounting_apply_cannot_rewrite_historical_lots_even_with_flags(): void
     {
         $p = $this->fifoProduct('MP-FIFO-03', 10, 7, 7);
         $aging = WarehouseStorageAgingAccrual::query()->create([
@@ -479,20 +479,24 @@ final class MorePlusInventorySyncTest extends TestCase
             'source_reference' => 'fifo-uat-aging-03', 'accrual_as_of' => '2026-04-07',
             'is_backfill' => true,
         ]);
-        $ageBefore = $aging->fresh()->getAttributes();
-        $service = app(MorePlusFifoReconciliationService::class);
-        $preview = $service->preview($this->warehouse);
+        $before = $aging->fresh()->getAttributes();
         config()->set('shipout.production_inventory_apply_enabled', true);
         config()->set('shipout.production_fifo_apply_enabled', true);
         config()->set('shipout.production_fifo_approved_skus', ['MP-FIFO-03']);
-        config()->set('shipout.production_fifo_max_units', 3);
-        $result = $service->apply($this->warehouse, $preview['checksum'], null);
-        self::assertSame(1, $result['updated']);
-        self::assertSame(3, $result['units_decreased']);
-        self::assertSame(7, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
-        self::assertSame([3, 4], WarehouseInventoryLot::query()->where('product_id', $p->id)->orderBy('putaway_date')->pluck('quantity')->all());
-        self::assertSame($ageBefore, $aging->fresh()->getAttributes());
-        $this->assertDatabaseHas('audit_records', ['action' => 'inventory.moreplus_fifo_reconciled']);
+        config()->set('shipout.production_fifo_max_units', 999);
+        $service = app(MorePlusFifoReconciliationService::class);
+        $preview = $service->preview($this->warehouse);
+        self::assertFalse($preview['apply_enabled']);
+        try {
+            $service->apply($this->warehouse, $preview['checksum'], null);
+            self::fail('Accounting-only FIFO must be a hard stop.');
+        } catch (RuntimeException $error) {
+            self::assertSame('MOREPLUS_FIFO_ACCOUNTING_ONLY', $error->getMessage());
+        }
+        self::assertSame(10, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
+        self::assertSame([6, 4], WarehouseInventoryLot::query()->where('product_id', $p->id)->orderBy('putaway_date')->pluck('quantity')->all());
+        self::assertSame($before, $aging->fresh()->getAttributes());
+        $this->assertDatabaseMissing('audit_records', ['action' => 'inventory.moreplus_fifo_reconciled']);
     }
 
     public function test_fifo_excludes_provider_holds_and_erp_reserved_rows(): void
@@ -515,7 +519,7 @@ final class MorePlusInventorySyncTest extends TestCase
         $this->provider['MP-FIFO-DRIFT'] = [6, 6];
         config()->set('shipout.production_inventory_apply_enabled', true);
         config()->set('shipout.production_fifo_apply_enabled', true);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_SNAPSHOT_CHANGED_PREVIEW_AGAIN');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
@@ -527,26 +531,24 @@ final class MorePlusInventorySyncTest extends TestCase
         WarehouseInventoryLot::query()->where('product_id', $p->id)->orderBy('id')->firstOrFail()->update(['quantity' => 5]);
         config()->set('shipout.production_inventory_apply_enabled', true);
         config()->set('shipout.production_fifo_apply_enabled', true);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_SNAPSHOT_CHANGED_PREVIEW_AGAIN');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
-    public function test_fifo_audit_failure_rolls_back_all_lots_and_qoh(): void
+    public function test_fifo_apply_cannot_call_audit_or_change_inventory(): void
     {
         $p = $this->fifoProduct('MP-FIFO-ROLLBACK', 10, 7, 7);
         $audit = \Mockery::mock(AuditRecorder::class);
-        $audit->shouldReceive('record')->once()->andThrow(new RuntimeException('SYNTHETIC_FIFO_AUDIT_FAILURE'));
+        $audit->shouldReceive('record')->never();
         $service = new MorePlusFifoReconciliationService(app(MorePlusInventorySyncService::class), $audit);
         $preview = $service->preview($this->warehouse);
         config()->set('shipout.production_inventory_apply_enabled', true);
         config()->set('shipout.production_fifo_apply_enabled', true);
-        config()->set('shipout.production_fifo_approved_skus', ['MP-FIFO-ROLLBACK']);
-        config()->set('shipout.production_fifo_max_units', 3);
         try {
             $service->apply($this->warehouse, $preview['checksum'], null);
-            self::fail('Rollback expected');
+            self::fail('FIFO is accounting-only.');
         } catch (RuntimeException $error) {
-            self::assertSame('SYNTHETIC_FIFO_AUDIT_FAILURE', $error->getMessage());
+            self::assertSame('MOREPLUS_FIFO_ACCOUNTING_ONLY', $error->getMessage());
         }
         self::assertSame(10, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
         self::assertSame(10, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
@@ -591,7 +593,7 @@ final class MorePlusInventorySyncTest extends TestCase
         $service = app(MorePlusFifoReconciliationService::class);
         $preview = $service->preview($this->warehouse);
         self::assertFalse($preview['apply_enabled']);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_OWNER_SCOPE_NOT_APPROVED');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
@@ -605,7 +607,7 @@ final class MorePlusInventorySyncTest extends TestCase
         $service = app(MorePlusFifoReconciliationService::class);
         $preview = $service->preview($this->warehouse);
         self::assertFalse($preview['apply_enabled']);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_UNITS_EXCEED_OWNER_SCOPE');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
@@ -619,21 +621,16 @@ final class MorePlusInventorySyncTest extends TestCase
         $service = app(MorePlusFifoReconciliationService::class);
         $preview = $service->preview($this->warehouse);
         self::assertFalse($preview['apply_enabled']);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_SKU_OUTSIDE_OWNER_SCOPE');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
-    public function test_fifo_batch_is_atomic_when_second_sku_audit_fails(): void
+    public function test_fifo_batch_is_readonly_for_multiple_skus_even_when_owner_flags_enabled(): void
     {
         $a = $this->fifoProduct('MP-FIFO-ATOMIC-A', 10, 7, 7);
         $b = $this->fifoProduct('MP-FIFO-ATOMIC-B', 10, 7, 7);
-        $count = 0;
         $audit = \Mockery::mock(AuditRecorder::class);
-        $audit->shouldReceive('record')->twice()->andReturnUsing(function () use (&$count): void {
-            if (++$count === 2) {
-                throw new RuntimeException('SECOND_SKU_AUDIT_FAILS');
-            }
-        });
+        $audit->shouldReceive('record')->never();
         $service = new MorePlusFifoReconciliationService(app(MorePlusInventorySyncService::class), $audit);
         $preview = $service->preview($this->warehouse);
         config()->set('shipout.production_inventory_apply_enabled', true);
@@ -642,13 +639,13 @@ final class MorePlusInventorySyncTest extends TestCase
         config()->set('shipout.production_fifo_max_units', 6);
         try {
             $service->apply($this->warehouse, $preview['checksum'], null);
-            self::fail('Whole transaction must roll back');
+            self::fail('FIFO is accounting-only.');
         } catch (RuntimeException $error) {
-            self::assertSame('SECOND_SKU_AUDIT_FAILS', $error->getMessage());
+            self::assertSame('MOREPLUS_FIFO_ACCOUNTING_ONLY', $error->getMessage());
         }
-        foreach ([$a, $b] as $p) {
-            self::assertSame(10, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
-            self::assertSame(10, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
+        foreach ([$a, $b] as $product) {
+            self::assertSame(10, WarehouseInventory::query()->where('product_id', $product->id)->value('quantity_on_hand'));
+            self::assertSame(10, WarehouseInventoryLot::query()->where('product_id', $product->id)->sum('quantity'));
         }
     }
 
