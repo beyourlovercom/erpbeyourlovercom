@@ -89,6 +89,10 @@ final class LogisticsController
         $rejectionCount = $rejectionSnapshot['count'];
         $query = $this->statusSummary->pendingAllocationQuery()
             ->with(['address', 'items.product', 'owner', 'financials', 'shipment.warehouse',
+                'shipment.overseaReview', 'operationalMarkers', 'fulfillmentParent.operationalMarkers',
+                'originalFulfillmentChildren.operationalMarkers',
+                'originalFulfillmentChildren.shipment.warehouse',
+                'originalFulfillmentChildren.shipment.overseaReview',
                 'fulfillmentAllocation', 'externalReferences:id,order_id,provider',
                 'domesticRejecter:id,name', 'overseaWarehouseReview.reviewer:id,name']);
         if ($rejectionFilter) {
