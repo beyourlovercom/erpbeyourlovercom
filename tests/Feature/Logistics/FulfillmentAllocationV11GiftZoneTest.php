@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
 use App\Modules\Logistics\Infrastructure\Models\WarehouseGiftSkuMapping;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -68,6 +69,24 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
                 ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM'],
             ], null, $user);
         });
+    }
+
+    public function test_blocked_oms_snapshot_rejects_forged_gift_submission_without_mutating_order(): void
+    {
+        [$user, $order, $giftItem, , $mapping] = $this->giftScenario(8);
+        $sm = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        XlwmsInventorySnapshot::query()->create([
+            'warehouse_id' => $sm->id, 'wh_code' => 'OMS-US-SM',
+            'checksum' => hash('sha256', uniqid('blocked-', true)),
+            'status' => 'blocked', 'fetched_at' => now(), 'summary' => ['v2' => true],
+        ]);
+
+        $this->expectGiftError('世迈 OMS 库存快照核验被阻断，暂不能选择该 Gift SKU', function () use ($user, $order, $giftItem, $mapping): void {
+            app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+                ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id],
+            ], null, $user);
+        });
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
     }
 
     public function test_gift_rejects_mapping_from_another_warehouse(): void
