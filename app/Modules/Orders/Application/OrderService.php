@@ -398,6 +398,10 @@ final class OrderService
             ->when($filters['oms_selected_ids'] ?? null, fn ($query, array $ids) => $query->whereKey($ids))
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
+            ->when($filters['partner_warehouse_code'] ?? null, fn ($query, string $code) => $query
+                ->where('order_kind', '!=', 'fulfillment_derived')
+                ->where(fn ($q) => $q->whereHas('shipment.warehouse', fn ($w) => $w->where('code', $code))
+                    ->orWhereHas('originalFulfillmentChildren.shipment.warehouse', fn ($w) => $w->where('code', $code))))
             ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
             ->when($filters['search'] ?? null, function ($query, string $search) use ($filters): void {
                 $search = trim($search);

@@ -5,6 +5,7 @@ return [
     ['key' => 'orders', 'label' => '订单', 'emoji' => '📋', 'path' => '/orders', 'route' => 'orders.index', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false, 'children' => [
         ['key' => 'orders-customers', 'label' => '客户订单', 'path' => '/customers/orders', 'route' => 'customers.orders', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'orders-kol', 'label' => '网红订单', 'path' => '/kol/orders', 'route' => 'kol.orders', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
+        ['key' => 'orders-collaboration', 'label' => '合作订单', 'path' => '/orders/collaboration', 'route' => 'orders.collaboration', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'orders-procurement', 'label' => '外采订单', 'path' => '/orders/procurement', 'route' => 'orders.procurement', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'orders-archive', 'label' => '归档清单', 'path' => '/orders/archive', 'route' => 'orders.archive.index', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
     ]],
@@ -12,6 +13,7 @@ return [
         ['key' => 'logistics-wait-stock', 'label' => '待分仓', 'path' => '/logistics/wait-stock', 'route' => 'logistics.wait-stock', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'logistics-china', 'label' => '国内发货', 'path' => '/logistics/china', 'route' => 'logistics.china', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'logistics-oversea', 'label' => '海外仓发货', 'path' => '/logistics/oversea', 'route' => 'logistics.oversea', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
+        ['key' => 'logistics-tingon', 'label' => 'Tingon发货', 'path' => '/logistics/tingon', 'route' => 'logistics.tingon', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'logistics-awaiting-tracking', 'label' => '已发待单号', 'path' => '/logistics/awaiting-tracking', 'route' => 'logistics.awaiting-tracking', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'logistics-in-transit', 'label' => '运输中', 'path' => '/logistics/in-transit', 'route' => 'logistics.in-transit', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'logistics-exceptions', 'label' => '异常订单', 'path' => '/logistics/exceptions', 'route' => 'logistics.exceptions', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],

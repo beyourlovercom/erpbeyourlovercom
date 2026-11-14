@@ -15,8 +15,7 @@ use Illuminate\Support\Facades\Log;
 
 final class FulfillmentAllocationSubmissionService
 {
-    private const ALLOWED_SOURCE_CODES = ['OUTSOURCE', 'FACTORY', 'US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA'];
-
+    private const ALLOWED_SOURCE_CODES = ['OUTSOURCE', 'FACTORY', 'US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA', 'TINGON'];
     private const MAX_SEGMENTS = 26;
 
     public function __construct(
@@ -115,11 +114,11 @@ final class FulfillmentAllocationSubmissionService
                 // Warehouse allocation must not preselect domestic dispatch logistics.
                 // Overseas allocation retains its existing recommended routing.
                 $isFactory = in_array($row['source_code'], ['FACTORY', ExternalProcurementWorkflow::SOURCE_CODE], true);
-                $route = $isFactory ? [] : $this->carrierRouting->warehouseRoute($locked->address?->country, $row['source_code']);
+                $route = ($isFactory || $row['source_code'] === 'TINGON') ? [] : $this->carrierRouting->warehouseRoute($locked->address?->country, $row['source_code']);
                 $defaultCarrier = trim((string) ($route['carrier'] ?? ''));
                 $providedCarrier = $isFactory ? '' : trim((string) ($row['carrier'] ?? ''));
                 $carrier = $providedCarrier !== '' ? $providedCarrier : $defaultCarrier;
-                abort_if($carrier === '' && ! $isFactory, 422, "发货仓 {$row['source_code']} 无法自动确定物流商，请 Vita 人工选择");
+                abort_if($carrier === '' && ! $isFactory && $row['source_code'] !== 'TINGON', 422, "发货仓 {$row['source_code']} 无法自动确定物流商，请 Vita 人工选择");
                 if ($providedCarrier !== '') {
                     abort_unless(Carrier::query()->where('name', $providedCarrier)->where('is_active', true)->exists(), 422, "物流商 {$providedCarrier} 未启用");
                 }
@@ -132,7 +131,7 @@ final class FulfillmentAllocationSubmissionService
                     ...$row,
                     'carrier' => $carrier !== '' ? $carrier : null,
                     'service' => $isFactory ? null : $service,
-                    'carrier_selection_source' => $isFactory ? null : ($providedCarrier !== '' && ($defaultCarrier === '' || strcasecmp($providedCarrier, $defaultCarrier) !== 0)
+                    'carrier_selection_source' => $isFactory || $carrier === '' ? null : ($providedCarrier !== '' && ($defaultCarrier === '' || strcasecmp($providedCarrier, $defaultCarrier) !== 0)
                         ? 'manual'
                         : 'automatic'),
                     'resolution' => $resolution,

@@ -7,6 +7,8 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\EloquentInventoryAvailabilityReader;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLotConsumption;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryPageParser;
 use App\Modules\Logistics\Application\Xlwms\XlwmsInventorySyncService;
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
@@ -504,6 +506,125 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         self::assertSame(20, WarehouseInventory::query()->where('product_id', $products[0]->id)->value('quantity_on_hand'));
         self::assertSame(20, WarehouseInventory::query()->where('product_id', $products[1]->id)->value('quantity_on_hand'));
         self::assertDatabaseHas('xlwms_inventory_snapshots', ['id' => $result['snapshot_id'], 'status' => 'blocked']);
+    }
+
+    public function test_v2_preserves_gross_p9_lot_and_consumption_when_net_matches_oms(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        $product = $products[0];
+        WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'quantity_on_hand' => 10, 'quantity_reserved' => 0]);
+        $lot = WarehouseInventoryLot::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'stock_status' => 'sellable', 'putaway_date' => '2026-10-26', 'quantity' => 10]);
+        $this->p9DirectConsumption($warehouse, $product, $lot, 1);
+        $service = $this->service($products, ['SKU-A'], null, ['SKU-A'], 0, ['SKU-A' => 9]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        $preview = $service->sync(false);
+        self::assertSame('read_only', $preview['status']);
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $preview['checksum']);
+        $applied = $service->sync(true);
+        self::assertSame('applied', $applied['status']);
+        self::assertSame(9, (int) WarehouseInventory::query()->where('product_id', $product->id)->value('quantity_on_hand'));
+        self::assertSame(10, (int) $lot->fresh()->quantity);
+        self::assertSame(1, (int) WarehouseInventoryLotConsumption::query()->where('product_id', $product->id)->sum('quantity'));
+        self::assertSame(0, (int) DB::table('xlwms_inventory_unverified_ages')->where('product_id', $product->id)->value('unknown_age_quantity'));
+        self::assertSame('applied', $service->sync(true)['status']);
+        self::assertSame(10, (int) $lot->fresh()->quantity);
+        self::assertSame(1, (int) WarehouseInventoryLotConsumption::query()->where('product_id', $product->id)->sum('quantity'));
+    }
+
+    public function test_v2_p9_net_mismatch_remains_blocked_and_preserves_every_ledger(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        $product = $products[0];
+        WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'quantity_on_hand' => 6, 'quantity_reserved' => 0]);
+        $lot = WarehouseInventoryLot::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'stock_status' => 'sellable', 'putaway_date' => '2026-10-26', 'quantity' => 6]);
+        $this->p9DirectConsumption($warehouse, $product, $lot, 2);
+        $service = $this->service($products, ['SKU-A'], null, ['SKU-A'], 0, ['SKU-A' => 3]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        $result = $service->sync(true);
+        self::assertSame('blocked', $result['status']);
+        self::assertContains('LOT_NET_PROVIDER_MISMATCH', array_column($result['mismatches'], 'reason'));
+        self::assertSame(6, (int) WarehouseInventory::query()->where('product_id', $product->id)->value('quantity_on_hand'));
+        self::assertSame(6, (int) $lot->fresh()->quantity);
+        self::assertSame(2, (int) WarehouseInventoryLotConsumption::query()->where('product_id', $product->id)->sum('quantity'));
+        self::assertSame(0, DB::table('xlwms_inventory_lot_reconciliations')->count());
+    }
+
+    public function test_v2_missing_canonical_zero_stock_row_can_be_initialized_to_zero_only(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        $service = $this->service($products, ['SKU-A'], null, ['SKU-A'], 0, ['SKU-A' => 0]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        $preview = $service->sync(false);
+        self::assertSame('read_only', $preview['status']);
+        self::assertSame(0, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $products[0]->id)->count());
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $preview['checksum']);
+        self::assertSame('applied', $service->sync(true)['status']);
+        self::assertSame(0, (int) WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(1, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $products[0]->id)->count());
+        self::assertSame('applied', $service->sync(true)['status']);
+        self::assertSame(1, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $products[0]->id)->count());
+    }
+
+    public function test_v2_unverified_zero_sku_and_missing_positive_row_still_block(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        $service = $this->service($products, ['SKU-A', 'NOT-VERIFIED'], ['SKU-A'], ['SKU-A', 'NOT-VERIFIED'], 0, ['SKU-A' => 0, 'NOT-VERIFIED' => 0]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        self::assertSame('blocked', $service->sync(true)['status']);
+        self::assertSame(0, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $products[0]->id)->count());
+        // Canonical identity is not sufficient for previously absent POSITIVE stock.
+        $missingPositive = $this->service($products, ['SKU-A'], null, ['SKU-A'], 0, ['SKU-A' => 5]);
+        $result = $missingPositive->sync(true);
+        self::assertSame('blocked', $result['status']);
+        self::assertContains('ERP_INVENTORY_ROW_MISSING', array_column($result['mismatches'], 'reason'));
+    }
+
+    public function test_v2_orphan_p9_consumption_source_stays_blocked(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        $product = $products[0];
+        WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'quantity_on_hand' => 10, 'quantity_reserved' => 0]);
+        $lot = WarehouseInventoryLot::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'stock_status' => 'sellable', 'putaway_date' => '2026-10-26', 'quantity' => 10]);
+        $this->p9DirectConsumption($warehouse, $product, $lot, 1, (int) $lot->id + 9999);
+        $service = $this->service($products, ['SKU-A'], null, ['SKU-A'], 0, ['SKU-A' => 9]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        $result = $service->sync(true);
+        self::assertSame('blocked', $result['status']);
+        self::assertContains('LOT_CONSUMPTION_SOURCE_UNVERIFIED', array_column($result['mismatches'], 'reason'));
+        self::assertSame(10, (int) $lot->fresh()->quantity);
+    }
+
+    private function p9DirectConsumption(Warehouse $warehouse, Product $product, WarehouseInventoryLot $lot, int $quantity, ?int $overrideLotId = null): void
+    {
+        $reference = uniqid('P9-NET-', true);
+        $order = Order::query()->create([
+            'internal_order_number' => $reference, 'erp_order_id' => $reference,
+            'source_type' => 'manual_other', 'order_kind' => 'customer',
+            'external_order_number' => $reference, 'order_date' => '2026-11-14',
+            'order_status' => 'pending_shipment',
+        ]);
+        $item = $order->items()->create(['product_id' => $product->id, 'sku' => $product->sku,
+            'product_summary' => $product->sku, 'quantity' => $quantity,
+            'unit_price' => 0, 'line_revenue' => 0]);
+        $shipment = $order->shipment()->create(['warehouse_id' => $warehouse->id,
+            'shipment_status' => 'shipped', 'carrier' => 'USPS', 'shipped_at' => '2026-11-14 12:00:00']);
+        WarehouseInventoryLotConsumption::query()->create([
+            'shipment_id' => $shipment->id, 'order_id' => $order->id,
+            'order_item_id' => $item->id, 'warehouse_id' => $warehouse->id,
+            'product_id' => $product->id, 'stock_status' => 'sellable',
+            'putaway_date' => $lot->putaway_date->toDateString(),
+            'source_sync_batch_id' => null, 'source_inventory_lot_id' => $overrideLotId ?? $lot->id,
+            'quantity' => $quantity, 'aging_months_charged' => 0,
+            'unit_storage_cost_cny' => 0, 'allocated_storage_cost_cny' => 0,
+            'consumed_at' => '2026-11-14 12:00:00',
+            'lot_business_key' => hash('sha256', $reference.':'.$lot->id),
+            'source_reference' => $reference, 'captured_at' => '2026-11-14 12:01:00',
+        ]);
     }
 
     /** @return array{0:Warehouse,1:WarehouseOpenApiConnection,2:list<Product>} */
