@@ -2,12 +2,12 @@
 
 namespace App\Modules\Logistics\Application\ShipOut;
 
+use App\Modules\Inventory\Application\WarehouseLastReadStockService;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionReadOnlyGateway;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Inventory\Application\WarehouseLastReadStockService;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * R14 Tracking edit: complete ERP only with fresh exact OMS+outbound proof.
@@ -64,7 +64,7 @@ final class ShipOutMorePlusVerifiedTrackingCompletion
             // the separate last-read reference; never decrement provider/ERP QOH.
             try {
                 $this->lastReadStock->recordVerifiedMorePlusOutbound(
-                    $order, (string)$attempt->provider_order_id,
+                    $order, (string) $attempt->provider_order_id,
                     $proof['outbound_reference'], $proof['shipped_time_utc']
                 );
             } catch (\Throwable $adjustmentError) {
