@@ -263,7 +263,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
 
 <template>
     <Head title="订单利润 · BYL ERP" />
-    <AuthenticatedLayout title="订单利润" :breadcrumbs="['BYL ERP', '会计', '订单利润']">
+    <AuthenticatedLayout title="订单利润" :breadcrumbs="['BYL ERP', '算账', '订单利润']">
         <section class="mvp-page">
             <div class="mvp-page-heading">
                 <div>
