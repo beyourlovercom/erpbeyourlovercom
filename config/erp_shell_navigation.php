@@ -82,7 +82,7 @@ return [
         ['key' => 'guides-videos', 'label' => '视频教程', 'path' => '/guides/videos', 'route' => 'guides.videos', 'permission' => 'guides.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'guides-manuals', 'label' => '操作手册', 'path' => '/guides/manuals', 'route' => 'guides.manuals', 'permission' => 'guides.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
     ]],
-    ['key' => 'accounting', 'label' => '会计', 'emoji' => '🧾', 'path' => '/accounting', 'route' => 'accounting.index', 'permission' => 'accounting.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false, 'children' => [
+    ['key' => 'accounting', 'label' => '算账', 'emoji' => '🧾', 'path' => '/accounting', 'route' => 'accounting.index', 'permission' => 'accounting.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false, 'children' => [
         ['key' => 'accounting-overview', 'label' => '概览', 'path' => '/accounting', 'route' => 'accounting.index', 'permission' => 'accounting.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'accounting-order-costs', 'label' => '订单利润', 'path' => '/accounting/order-costs', 'route' => 'accounting.order-costs', 'permission' => 'analysis.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'accounting-loss-orders', 'label' => '亏损订单', 'path' => '/accounting/order-costs?profit_status=loss', 'route' => 'accounting.order-costs', 'permission' => 'analysis.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],

@@ -43,6 +43,7 @@ type Option = { value: number; label: string }
 const props = defineProps<{
   canManageApprovals: boolean
   canManageAffiliates: boolean
+  canOpenBindingActivation: boolean
   affiliates: AffiliateRow[]
   coupons: CouponRow[]
   provisioningCandidates: ProvisioningCandidate[]
@@ -172,6 +173,7 @@ function formatSyncTime(value: string | null): string {
         </div>
         <div class="page-header-actions">
         <Link v-if="canManageAffiliates" class="affiliatewp-sync" href="/kol/affiliatewp/reconciliation">真实数据核对</Link>
+        <Link v-if="canOpenBindingActivation" class="affiliatewp-sync" href="/kol/affiliatewp/binding-activation" data-testid="approved-kol-p5-entry">绑定激活 P5（管理员）</Link>
         <button v-if="activeMode === 'influencer'" class="affiliatewp-sync" type="button" :disabled="!canManageAffiliates || syncForm.processing" :title="canManageAffiliates ? '从 WordPress / AffiliateWP 读取完整 Influencer 快照' : '需要 Affiliate 管理权限'" @click="syncNow">
           {{ syncForm.processing ? '同步中…' : '立即同步' }}
         </button>

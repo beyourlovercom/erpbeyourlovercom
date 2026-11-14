@@ -67,6 +67,7 @@ final class AffiliateWpSyncController
         return Inertia::render('Kol/AffiliateWp/Index', [
             'canManageApprovals' => $request->user()->can('kol.approvals.manage'),
             'canManageAffiliates' => $canManageAffiliates,
+            'canOpenBindingActivation' => $request->user()->can('system.permissions.manage') && $request->user()->can('kol.operate') && $canManageAffiliates,
             'affiliates' => $this->syncService->workspaceRows($connectionKey),
             'coupons' => $this->couponSyncService->workspaceRows($connectionKey),
             'provisioningCandidates' => $this->provisioningCandidates($request, $connectionKey, $canManageAffiliates),

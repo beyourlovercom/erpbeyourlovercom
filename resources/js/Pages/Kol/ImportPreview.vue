@@ -42,7 +42,7 @@ type SourceBatch = {
   import_preview: Preview | null
 }
 
-const props = defineProps<{ batches: SourceBatch[]; canManageOwnerMapping?: boolean }>()
+const props = defineProps<{ batches: SourceBatch[]; canManageOwnerMapping?: boolean; canOpenImportActivation?: boolean }>()
 const selected = ref<number | null>(props.batches[0]?.id ?? null)
 const preview = ref<Preview | null>(props.batches.find((batch) => batch.id === selected.value)?.import_preview ?? null)
 const busy = ref(false)
@@ -279,6 +279,7 @@ const exportPreview = () => {
             <div class="source-actions">
               <a class="erp-btn erp-btn-secondary" href="/kol/affiliatewp/reconciliation">← 返回真实数据核对</a>
               <a v-if="preview && props.canManageOwnerMapping" class="erp-btn erp-btn-secondary" :href="`/kol/owner-mapping?preview_batch_id=${preview.id}`">下一步：Owner 映射 →</a>
+              <a v-if="props.canOpenImportActivation" class="erp-btn erp-btn-secondary" :href="preview ? `/kol/import-activation?preview_batch_id=${preview.id}` : '/kol/import-activation'" data-testid="approved-kol-p4-entry">导入激活 P4（管理员）</a>
               <button class="erp-btn erp-btn-primary" type="button" :disabled="busy || !selected" @click="generate">
                 {{ busy ? '生成中…' : '↻ 生成 / 重算预览' }}
               </button>
