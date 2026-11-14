@@ -79,6 +79,40 @@ final class DomesticBusinessReviewTest extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_stockout_return_to_allocation_is_not_a_business_rejection(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $actor = $this->userWith(['logistics.view', 'domestic.review']);
+        $order = $this->order();
+        $warehouse = $order->shipment->warehouse_id;
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/stockout')->assertRedirect();
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/return-allocation')->assertRedirect();
+        $order->refresh();
+        $this->assertNull($order->shipment->warehouse_id);
+        $this->assertNotEquals($warehouse, $order->shipment->warehouse_id);
+        $this->assertSame('sending', $order->workflow_status);
+        $this->assertNull($order->domestic_reject_reason);
+        $this->assertDatabaseMissing('order_operational_markers', ['order_id'=>$order->id, 'marker'=>'domestic_stockout']);
+        $this->actingAs($actor)->get('/logistics/wait-stock')->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Logistics/FulfillmentAllocation')
+                ->where('orders.total', 1));
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/return-allocation')->assertStatus(409);
+    }
+
+    public function test_bulk_stockout_return_to_allocation_isolates_bad_rows(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'domestic.review']);
+        $first = $this->order();
+        $second = $this->order();
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$first->id.'/stockout')->assertRedirect();
+        $this->actingAs($actor)->postJson('/logistics/china/batch-review', [
+            'order_ids'=>[$first->id, $second->id], 'action'=>'return_allocation',
+        ])->assertOk()->assertJsonPath('success_count', 1)->assertJsonPath('failed_count', 1);
+        $this->assertNull($first->fresh()->shipment->warehouse_id);
+        $this->assertNotNull($second->fresh()->shipment->warehouse_id);
+    }
+
     public function test_stockout_goes_to_own_tab_and_approval_returns_to_pending(): void
     {
         $this->withoutVite();

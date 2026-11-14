@@ -50,6 +50,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         ->middleware(['can:domestic.review', 'throttle:15,1'])->name('logistics.china.batch-review');
     Route::post('/logistics/china/orders/{order}/approve', [DomesticLogisticsController::class, 'approve'])->middleware('can:domestic.review')->name('logistics.china.approve');
     Route::post('/logistics/china/orders/{order}/stockout', [DomesticLogisticsController::class, 'stockout'])->middleware('can:domestic.review')->name('logistics.china.stockout');
+    Route::post('/logistics/china/orders/{order}/return-allocation', [DomesticLogisticsController::class, 'returnAllocation'])->middleware('can:domestic.review')->name('logistics.china.return-allocation');
     Route::post('/logistics/china/orders/{order}/restock', [DomesticLogisticsController::class, 'restock'])->middleware('can:domestic.review')->name('logistics.china.restock');
     Route::post('/logistics/china/orders/{order}/reject', [DomesticLogisticsController::class, 'reject'])->middleware('can:domestic.review')->name('logistics.china.reject');
     Route::post('/logistics/china/orders/{order}/reopen-review', [DomesticLogisticsController::class, 'reopenReview'])->middleware('can:domestic.review')->name('logistics.china.reopen-review');

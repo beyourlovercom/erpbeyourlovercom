@@ -55,7 +55,7 @@ const bulkOptions = computed<BulkChoice[]>(()=>{
     result.push({value:'approve',label:'批量通过'},{value:'stockout',label:'批量缺货'},
       {value:'reject',label:'批量驳回',reasonRequired:true})
   }
-  if (props.canReview && props.view==='stockout') result.push({value:'restock',label:'批量已到货-可发货'})
+  if (props.canReview && props.view==='stockout') result.push({value:'restock',label:'批量已到货-可发货'}, {value:'return_allocation',label:'进待分仓'})
   // Reuse the existing single footer; only previously eligible shipped Woo
   // orders may be sent to the existing tracking-sync endpoint.
   if (props.canTrackingSync && isProviderWorkView(props.view) && props.rows.data.some(row=>
@@ -184,9 +184,9 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',
-    width:props.view==='review'?185:props.view==='stockout'?140:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?116:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?242:170):210,
-    minWidth:props.view==='review'?185:props.view==='stockout'?136:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?100:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
-    maxWidth:props.view==='review'?190:props.view==='stockout'?148:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?130:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
+    width:props.view==='review'?185:props.view==='stockout'?248:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?116:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?242:170):210,
+    minWidth:props.view==='review'?185:props.view==='stockout'?240:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?100:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
+    maxWidth:props.view==='review'?190:props.view==='stockout'?260:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?130:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
     pinned:'right',
     cellRenderer:props.view==='exceptions'?GlobalGridCell:(props.view==='pending'||isHistoryProviderView(props.view))?DomesticGridPendingCell:DomesticGridActionCell,
     cellRendererParams:props.view==='exceptions'?{
@@ -237,6 +237,7 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
       approve:(row:GridListRow)=>sourceAction(row,source=>decide(source,'approve')),
       stockout:(row:GridListRow)=>sourceAction(row,source=>decide(source,'stockout')),
       restock:(row:GridListRow)=>sourceAction(row,source=>restock(source)),
+      returnAllocation:(row:GridListRow)=>sourceAction(row,source=>returnAllocation(source)),
       reopen:(row:GridListRow)=>sourceAction(row,source=>reopen(source)),
       reject:(row:GridListRow,reason:string)=>sourceAction(row,source=>rejectInline(source,reason)),
     }}),
@@ -481,6 +482,13 @@ const restock = (row:Row) => {
     onFinish:()=>{ reviewBusy.value=false },
   })
 }
+const returnAllocation = (row:Row) => {
+  if (reviewBusy.value || !props.canReview || row.review_status !== 'stockout' || row.shipment_status !== 'pending') return
+  reviewBusy.value = true
+  router.post('/logistics/china/orders/' + row.order_id + '/return-allocation', {}, {
+    preserveScroll:true, onFinish:()=>{reviewBusy.value=false},
+  })
+}
 const reopen = (row:Row) => router.post('/logistics/china/orders/' + row.order_id + '/reopen-review', {}, { preserveScroll:true, preserveState:true })
 const openReject = (row:Row) => { if (!props.canReview || reviewBusy.value) return; rejectTarget.value=row; rejectReason.value=''; reviewError.value='' }
 const rejectInline = (row:Row, reason:string) => {
@@ -518,6 +526,9 @@ const applyGridBatch = async (payload:{action:string;reason:string}) => {
   const ids=[...selectedBulkOrderIds.value]
   bulkBusy.value=true
   try {
+    if (payload.action==='return_allocation' && ids.some(id=>!props.rows.data.some(row=>row.order_id===id && row.review_status==='stockout' && row.shipment_status==='pending'))) {
+      throw new Error('包含非缺货或已发货订单，请刷新页面重试。')
+    }
     const archive=payload.action==='archive'
     const result=await importPost(archive?'/orders/archive/batch':'/logistics/china/batch-review',
       JSON.stringify({order_ids:ids,...(!archive?{action:payload.action,reason:payload.reason}:{})}),true)
@@ -798,6 +809,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               <td>
                 <div v-if="view==='stockout' && canReview && row.review_status==='stockout' && row.shipment_status==='pending'" class="review-actions">
                   <button class="approve" type="button" :disabled="reviewBusy" @click="restock(row)">已到货-可发货</button>
+                  <button type="button" :disabled="reviewBusy" @click="returnAllocation(row)">进待分仓</button>
                 </div>
                 <div v-else-if="canReview && view==='review' && row.shipment_status==='pending'" class="review-actions">
                   <button class="approve" type="button" :disabled="reviewBusy" @click="decide(row,'approve')">通过</button>

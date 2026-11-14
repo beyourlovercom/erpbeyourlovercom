@@ -221,7 +221,7 @@ describe('Domestic logistics production workbench', () => {
     expect(headers).toContain('操作')
     expect(headers).not.toContain('选择')
     expect(headers.filter(th=>th==='操作')).toHaveLength(1)
-    expect(wrapper.findAll('.orders tbody tr:first-child button').map(button=>button.text())).toEqual(['已到货-可发货'])
+    expect(wrapper.findAll('.orders tbody tr:first-child button').map(button=>button.text())).toEqual(['已到货-可发货','进待分仓'])
     expect(wrapper.find('.tracking-selection-bar').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('重新审核')
     expect(wrapper.find('.review-reject-backdrop').exists()).toBe(false)
@@ -533,7 +533,7 @@ describe('Domestic logistics production workbench', () => {
       rows:{...baseProps.rows,data:[{...unreviewed,review_status:'stockout' as const}]}}})
     expect(stockout.find('button.stockout-btn').exists()).toBe(false)
     await stockout.find('button.approve').trigger('click')
-    expect(stockout.findAll('.orders tbody tr:first-child button').map(button=>button.text())).toEqual(['已到货-可发货'])
+    expect(stockout.findAll('.orders tbody tr:first-child button').map(button=>button.text())).toEqual(['已到货-可发货','进待分仓'])
     expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/restock', {},
       expect.objectContaining({preserveScroll:false,onFinish:expect.any(Function)}))
   })

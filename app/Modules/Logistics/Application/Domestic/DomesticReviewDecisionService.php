@@ -28,7 +28,7 @@ final class DomesticReviewDecisionService
 
     public function decide(Order $order, string $decision, ?string $reason, Authenticatable $actor): void
     {
-        abort_unless(in_array($decision, ['approve', 'restock', 'stockout', 'reject'], true), 422);
+        abort_unless(in_array($decision, ['approve', 'restock', 'stockout', 'reject', 'return_allocation'], true), 422);
         if ($decision === 'reject') {
             abort_unless(mb_strlen(trim((string) $reason)) >= 3, 422, '驳回必须填写原因（至少 3 个字）。');
         }
@@ -55,11 +55,11 @@ final class DomesticReviewDecisionService
                 'service' => $locked->shipment->service,
                 'carrier_selection_source' => $locked->shipment->carrier_selection_source,
             ];
-            if ($decision === 'restock') {
+            if (in_array($decision, ['restock', 'return_allocation'], true)) {
                 abort_unless(
                     $locked->workflow_status === 'out_of_stock'
                     || $locked->operationalMarkers->contains('marker', 'domestic_stockout'),
-                    409, '仅缺货订单可以确认已到货。',
+                    409, '仅缺货订单可以操作。',
                 );
             }
 
@@ -101,11 +101,16 @@ final class DomesticReviewDecisionService
                     (int) $root->getKey(), ...$siblings->pluck('id')->map(fn ($id): int => (int) $id)->all(),
                 ]), $actor);
                 $root->fulfillmentAllocation?->forceFill(['status' => 'rejected'])->save();
-                $root->forceFill([
-                    'domestic_reject_reason' => trim((string) $reason),
-                    'domestic_rejected_by' => $actor->getAuthIdentifier(),
-                    'domestic_rejected_at' => now(),
-                ])->save();
+                if ($decision === 'reject') {
+                    $root->forceFill([
+                        'domestic_reject_reason' => trim((string) $reason),
+                        'domestic_rejected_by' => $actor->getAuthIdentifier(),
+                        'domestic_rejected_at' => now(),
+                    ])->save();
+                } else {
+                    // Voluntary stockout return, not a rejected review.
+                    $this->clearRejection($root);
+                }
                 $locked->operationalMarkers()->whereIn('marker', ['domestic_stockout', 'domestic_reviewed'])->delete();
             }
 
@@ -115,6 +120,7 @@ final class DomesticReviewDecisionService
                 [
                     'decision' => $decision,
                     'review_reason' => $decision === 'reject' ? trim((string) $reason) : null,
+                    'stockout_return_to_allocation' => $decision === 'return_allocation',
                     'carrier' => $locked->shipment->fresh()?->carrier,
                     'service' => $locked->shipment->fresh()?->service,
                     'carrier_selection_source' => $locked->shipment->fresh()?->carrier_selection_source,

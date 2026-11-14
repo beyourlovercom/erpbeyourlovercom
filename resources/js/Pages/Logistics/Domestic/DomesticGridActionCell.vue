@@ -16,6 +16,7 @@ type Params = {
   approve: (row:Row) => void
   stockout: (row:Row) => void
   restock: (row:Row) => void
+  returnAllocation: (row:Row) => void
   reopen: (row:Row) => void
   reject: (row:Row,reason:string) => void
 }
@@ -103,8 +104,10 @@ onBeforeUnmount(removeListeners)
         <button ref="rejectTrigger" type="button" class="reject" :disabled="params.busy"
           :aria-expanded="rejectOpen" @click.stop="rejectOpen ? closeReason() : revealReason()">驳回</button>
       </template>
-      <button v-else-if="stockout" type="button" class="approve" :disabled="params.busy"
-        @click.stop="params.restock(row)">已到货-可发货</button>
+      <template v-else-if="stockout">
+        <button type="button" class="approve" :disabled="params.busy" @click.stop="params.restock(row)">已到货-可发货</button>
+        <button type="button" :disabled="params.busy" @click.stop="params.returnAllocation(row)">进待分仓</button>
+      </template>
       <button v-else-if="reopened" type="button" :disabled="params.busy" @click.stop="params.reopen(row)">重新审核</button>
       <template v-else-if="dailyProvider">
         <button v-if="todayReopen" type="button" :disabled="params.busy"
