@@ -303,7 +303,7 @@ const doDelete = () => {
               <circle cx="10.8" cy="10.8" r="6.8" />
               <path d="m16 16 5 5" />
             </svg>
-            <input v-model="search" aria-label="搜索 SKU 或产品名称" type="search" placeholder="搜索 SKU / 名称 / GTIN" class="product-search-input">
+            <input v-model="search" aria-label="搜索 SKU 或产品名称" type="search" placeholder="搜索 SKU / 别名 / 名称 / GTIN" class="product-search-input">
             <button class="product-search-submit" type="submit">搜索</button>
           </form>
           <div class="mvp-page-actions page-header-actions">
@@ -429,7 +429,7 @@ const doDelete = () => {
               </td>
               <td v-for="col in visibleColumns" :key="col.key" :class="{ 'col-name': col.key === 'name', 'col-picture': col.key === 'image_url' }">
                 <template v-if="col.key === 'status'"><span class="product-status" :class="{ inactive: !p.is_active }">{{ p.is_active ? '启用' : '停用' }}</span></template>
-                <template v-else-if="col.key === 'sku'"><a :href="'/products/' + p.id" class="product-grid-link">{{ fmt(p.sku) }}</a></template>
+                <template v-else-if="col.key === 'sku'"><a :href="'/products/' + p.id" class="product-grid-link">{{ fmt(p.sku) }}</a><small v-if="p.matched_alias" class="product-grid-alias-hit">匹配别名：{{ p.matched_alias }}</small></template>
                 <template v-else-if="col.key === 'name'"><a :href="'/products/' + p.id" class="product-grid-link">{{ p.name }}</a></template>
                 <template v-else-if="col.key === 'image_url'"><img v-if="p.image_url && !failedImageIds.includes(p.id)" :src="p.image_url" :alt="p.name" class="product-thumbnail" loading="lazy" referrerpolicy="no-referrer" @error="markImageFailed(p.id)"><span v-else class="product-image-empty">—</span></template>
                 <template v-else-if="col.key === 'woo_url'"><a v-if="p.woo_url" :href="p.woo_url" target="_blank" rel="noopener noreferrer" class="product-grid-link external-url">{{ p.woo_url }}</a><span v-else>—</span></template>
@@ -548,4 +548,8 @@ const doDelete = () => {
 .end-cap{position:sticky;right:0;z-index:1;width:46px;min-width:46px!important;padding:0!important;background:#fff;box-shadow:-1px 0 0 var(--grid-border)}
 @media(max-width:1100px){.product-header-controls{width:100%;justify-content:space-between;margin-left:0}.product-search{flex:1;max-width:450px}}
 @media(max-width:640px){.product-grid-page{padding-inline:10px}.product-header-controls{align-items:stretch}.product-search{width:100%;max-width:none;flex:1 1 100%}.page-header-actions{width:100%}.grid-topbar{justify-content:flex-end}.grid-hint{display:none}.grid-footer{justify-content:flex-start}.grid-result-count{width:100%}.grid-page-size{margin-left:auto}.product-grid-scroller{max-height:60vh}.product-data-table{font-size:12px}.grid-pages{gap:3px}.grid-pages button{padding:5px 8px}}
+</style>
+
+<style scoped>
+.product-grid-alias-hit { display:block; color:#64748b; font-size:11px; }
 </style>

@@ -108,6 +108,8 @@ final class ProductController
         $perPage = $this->productListPageSize($request);
         $products = $this->products->list($filters, $perPage);
         $this->loadGridRelations($products->getCollection());
+        $searchTerm = trim((string) ($filters['search'] ?? ''));
+        if ($searchTerm !== '') $products->getCollection()->load('skuAliases');
         $stock = $this->inventory->forProductIds($products->getCollection()->pluck('id')->all());
         $parameterRows = [];
         if ($view !== 'standard') {
@@ -157,6 +159,9 @@ final class ProductController
         return Inertia::render('Products/Index', [
             'products' => $products->through(fn (Product $p): array => [
                 ...$this->gridRow($p, $stock[(int) $p->id] ?? []),
+                'matched_alias' => $searchTerm !== ''
+                    ? $p->skuAliases->first(fn ($alias) => mb_stripos((string) $alias->alias_sku, $searchTerm, 0, 'UTF-8') !== false)?->alias_sku
+                    : null,
                 ...($parameterRows[(int) $p->id] ?? []),
             ])->toArray(),
             'filters' => [...$request->only(['search', 'per_page', 'sort', 'direction', 'attention']),

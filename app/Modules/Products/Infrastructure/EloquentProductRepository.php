@@ -67,36 +67,30 @@ final class EloquentProductRepository implements ProductRepository
     public function searchSkus(string $query, int $limit = 20): array
     {
         $query = trim($query);
-        $builder = Product::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '');
-
+        $builder = Product::query()->whereNotNull('sku')->where('sku', '!=', '');
         if ($query === '') {
-            $builder
-                ->orderBy('sku')
-                ->orderBy('name')
-                ->orderBy('id');
+            $builder->orderBy('sku')->orderBy('name')->orderBy('id');
         } else {
-            $builder
-                ->where(function ($q) use ($query): void {
-                    $q->where('sku', 'like', $query.'%')
-                        ->orWhere('sku', 'like', '%'.$query.'%')
-                        ->orWhere('name', 'like', '%'.$query.'%');
+            $normalized = mb_strtolower($query, 'UTF-8');
+            $like = '%'.$normalized.'%';
+            $prefix = $normalized.'%';
+            $builder->with(['skuAliases' => fn ($aliases) => $aliases->whereRaw('LOWER(alias_sku) LIKE ?', [$like])])
+                ->where(function ($q) use ($like): void {
+                    $q->whereRaw('LOWER(sku) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(name) LIKE ?', [$like])
+                        ->orWhereHas('skuAliases', fn ($aliases) => $aliases->whereRaw('LOWER(alias_sku) LIKE ?', [$like]));
                 })
-                ->orderByRaw(
-                    'CASE WHEN sku LIKE ? THEN 0 WHEN sku LIKE ? THEN 1 WHEN name LIKE ? THEN 2 ELSE 3 END',
-                    [$query.'%', '%'.$query.'%', '%'.$query.'%']
-                )
-                ->orderBy('sku')
-                ->orderBy('name')
-                ->orderBy('id');
+                ->orderByRaw('CASE WHEN LOWER(sku) LIKE ? THEN 0 WHEN LOWER(sku) LIKE ? THEN 1 WHEN LOWER(name) LIKE ? THEN 2 ELSE 3 END',
+                    [$prefix, $like, $like])
+                ->orderBy('sku')->orderBy('name')->orderBy('id');
         }
-
-        return $builder
-            ->limit($limit)
-            ->get(['id', 'sku', 'name'])
-            ->map(fn ($p): array => ['id' => $p->id, 'sku' => $p->sku, 'name' => $p->name])
-            ->all();
+        return $builder->limit($limit)->get(['id', 'sku', 'name'])
+            ->map(fn ($p): array => [
+                'id' => $p->id,
+                'sku' => $p->sku,
+                'name' => $p->name,
+                'matched_alias' => $query !== '' ? $p->skuAliases->first()?->alias_sku : null,
+            ])->all();
     }
 
     public function list(array $filters = [], int $perPage = 50): LengthAwarePaginator
@@ -110,12 +104,13 @@ final class EloquentProductRepository implements ProductRepository
             ->when(isset($filters['search']) && $filters['search'] !== '', function ($q) use ($filters): void {
                 $raw = trim((string) $filters['search']);
                 $search = '%'.$raw.'%';
-                $q->where(function ($inner) use ($raw, $search): void {
-                    $inner->where('sku', 'like', $search)
+                $lower = '%'.mb_strtolower($raw, 'UTF-8').'%';
+                $q->where(function ($inner) use ($raw, $search, $lower): void {
+                    $inner->whereRaw('LOWER(sku) LIKE ?', [$lower])
                         ->orWhere('name', 'like', $search)
                         ->orWhere('gtin', 'like', $search)
                         ->orWhere('barcode_69', 'like', $search)
-                        ->orWhereHas('skuAliases', fn ($a) => $a->where('alias_sku', 'like', $search));
+                        ->orWhereHas('skuAliases', fn ($a) => $a->whereRaw('LOWER(alias_sku) LIKE ?', [$lower]));
                     if (ctype_digit($raw)) {
                         $inner->orWhere('woocommerce_product_id', (int) $raw);
                     }
