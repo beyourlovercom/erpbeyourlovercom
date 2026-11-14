@@ -319,6 +319,73 @@ final class OrderCoreStatusV1Test extends TestCase
         self::assertNull($order->fresh()->shipment);
     }
 
+    public function test_dropdown_can_return_unallocated_missing_info_to_pending_allocation(): void
+    {
+        $order = $this->order();
+        $actor = $this->user(['orders.view', 'orders.edit']);
+
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info');
+        self::assertSame(1, $this->inQueue($order, 'exception'));
+
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 1,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_allocation');
+        self::assertSame(1, $this->inQueue($order, 'pending_allocation'));
+        self::assertSame(0, $this->inQueue($order, 'exception'));
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id, 'workflow_status' => null,
+            'order_status' => 'pending_shipment', 'workflow_revision' => 2,
+        ]);
+        $this->assertDatabaseHas('order_workflow_status_histories', [
+            'order_id' => $order->id, 'from_status' => 'missing_info',
+            'to_status' => 'pending_allocation', 'revision' => 2,
+        ]);
+        self::assertNull($order->fresh()->shipment);
+    }
+
+    public function test_dropdown_return_to_allocation_clears_manual_stockout_but_never_warehouse_allocation(): void
+    {
+        $order = $this->order();
+        $actor = $this->user(['orders.view', 'orders.edit']);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'out_of_stock', 'expected_workflow_revision' => 0,
+        ])->assertOk();
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 1,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_allocation');
+        self::assertSame(1, $this->inQueue($order, 'pending_allocation'));
+        self::assertSame(0, $this->inQueue($order, 'out_of_stock'));
+
+        $warehouse = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $order->shipment()->create([
+            'warehouse_id' => $warehouse->id, 'shipment_status' => 'pending',
+            'carrier' => '4PX',
+        ]);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 2,
+        ])->assertStatus(409)->assertJsonPath('message',
+            '订单已有分仓或履约记录，不能直接覆盖。请通过对应仓库的重新分仓/驳回流程退回待分仓。');
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'workflow_revision' => 2]);
+        self::assertSame((int) $warehouse->id, (int) $order->fresh()->shipment->warehouse_id);
+    }
+
+    public function test_unallocated_sending_reports_precise_blocker_and_preserves_revision(): void
+    {
+        $order = $this->order();
+        $actor = $this->user(['orders.view', 'orders.edit']);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
+        ])->assertOk();
+
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 1,
+        ])->assertStatus(409)->assertJsonPath('message', '订单尚未分仓，不能直接标记待发货。');
+        self::assertSame('missing_info', $order->fresh()->workflow_status);
+        self::assertSame(1, (int) $order->fresh()->workflow_revision);
+    }
+
     private function inQueue(Order $order, string $phase): int
     {
         return app(OrderProgressQuery::class)->applyPhase(Order::query(), $phase)->whereKey($order->id)->count();

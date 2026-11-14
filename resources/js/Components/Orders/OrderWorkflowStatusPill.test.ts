@@ -43,13 +43,13 @@ describe('OrderWorkflowStatusPill', () => {
     })
     expect(wrapper.findAll('option').map(option => option.text())).toContain('1.5 Missing Info · 信息缺失')
     const axios = await import('axios')
-    const request = vi.spyOn(axios.default, 'patch').mockRejectedValueOnce({ response: { status: 409, data: { message: 'stale' } } })
+    const request = vi.spyOn(axios.default, 'patch').mockRejectedValueOnce({ response: { status: 409, data: { message: '订单进度已变化，请刷新后重试。' } } })
     const select = wrapper.find('select')
     await select.setValue('missing_info')
     await vi.waitFor(() => expect(request).toHaveBeenCalled())
     expect(request.mock.calls[0][1]).toEqual({ workflow_status: 'missing_info', expected_workflow_revision: 0 })
     expect((select.element as HTMLSelectElement).value).toBe('sending')
-    expect(wrapper.text()).toContain('状态已变化')
+    expect(wrapper.text()).toContain('其他操作更新')
     request.mockRestore()
   })
 })
@@ -182,6 +182,56 @@ it('shows missing info as main status and offers a revision-checked restore opti
   await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/79/workflow-status', {
     workflow_status: 'resolve_manual_hold', expected_workflow_revision: 1,
   }))
+  expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('missing_info')
+  patch.mockRestore()
+})
+
+it('allows selecting 0.0 Pending Allocation to restore an unallocated held order', async () => {
+  const axios = await import('axios')
+  const { router } = await import('@inertiajs/vue3')
+  const patch = vi.spyOn(axios.default, 'patch').mockResolvedValueOnce({
+    data: { order: { workflow_revision: 8 }, workflow_status: { code: 'pending_allocation', auxiliary: [] } },
+  })
+  const reload = vi.spyOn(router, 'reload').mockImplementation(() => undefined)
+  const wrapper = mount(OrderWorkflowStatusPill, {
+    props: {
+      orderId: 111, canEdit: true, revision: 7,
+      projection: { code: 'missing_info', en: 'Missing Info', zh: '信息缺失', color: 'amber', source: 'canonical_projection' },
+      options: [
+        { code: 'pending_allocation', en: 'Pending Allocation', zh: '待分仓', color: 'neutral', mutable: true },
+        { code: 'missing_info', en: 'Missing Info', zh: '信息缺失', color: 'amber', mutable: true },
+      ],
+    },
+  })
+  expect(wrapper.find('option[value="pending_allocation"]').attributes('disabled')).toBeUndefined()
+  await wrapper.find('select').setValue('pending_allocation')
+  await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/111/workflow-status', {
+    workflow_status: 'pending_allocation', expected_workflow_revision: 7,
+  }))
+  expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('pending_allocation')
+  expect(reload).toHaveBeenCalled()
+  patch.mockRestore()
+  reload.mockRestore()
+})
+
+it('shows exact business blocker instead of falsely claiming a revision conflict for Sending', async () => {
+  const axios = await import('axios')
+  const patch = vi.spyOn(axios.default, 'patch').mockRejectedValueOnce({
+    response: { status: 409, data: { message: '订单尚未分仓，不能直接标记待发货。' } },
+  })
+  const wrapper = mount(OrderWorkflowStatusPill, {
+    props: {
+      orderId: 112, canEdit: true, revision: 9,
+      projection: { code: 'missing_info', en: 'Missing Info', zh: '信息缺失', color: 'amber', source: 'canonical_projection' },
+      options: [
+        { code: 'missing_info', en: 'Missing Info', zh: '信息缺失', color: 'amber', mutable: true },
+        { code: 'sending', en: 'Sending', zh: '待发', color: 'neutral', mutable: true },
+      ],
+    },
+  })
+  await wrapper.find('select').setValue('sending')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('订单尚未分仓，不能直接标记待发货。'))
+  expect(wrapper.text()).not.toContain('状态已变化')
   expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('missing_info')
   patch.mockRestore()
 })

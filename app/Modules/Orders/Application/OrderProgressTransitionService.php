@@ -26,7 +26,7 @@ final class OrderProgressTransitionService
 
     public function transition(Order $order, string $next, int $revision, Authenticatable $actor, ?string $reason = null): Order
     {
-        if (! in_array($next, ['resolve_exception', 'resolve_stockout', 'resolve_manual_hold'], true)) {
+        if (! in_array($next, ['resolve_exception', 'resolve_stockout', 'resolve_manual_hold', 'pending_allocation'], true)) {
             OrderWorkflowStatus::assertMutable($next);
         }
         $order->loadMissing(['shipment.warehouse', 'operationalMarkers']);
@@ -38,7 +38,7 @@ final class OrderProgressTransitionService
         }
 
         if (in_array($order->order_kind, [OrderKind::Customer, OrderKind::FulfillmentDerived], true)) {
-            if (in_array($next, [...OrderManualHoldStatus::CODES, 'resolve_exception', 'resolve_manual_hold', 'cancelled'], true)) {
+            if (in_array($next, [...OrderManualHoldStatus::CODES, 'resolve_exception', 'resolve_manual_hold', 'pending_allocation', 'cancelled'], true)) {
                 return $this->core->transition($order, $next, $revision, $actor, $reason);
             }
             // Auxiliary codes in the status dropdown are NOT optional chips.
@@ -120,7 +120,7 @@ final class OrderProgressTransitionService
         }
 
         // Preserve legacy KOL business phases; never write a cosmetic cancelled state.
-        if (in_array($next, ['cancelled', 'resolve_exception', 'resolve_manual_hold', 'resolve_stockout'], true)) {
+        if (in_array($next, ['cancelled', 'pending_allocation', 'resolve_exception', 'resolve_manual_hold', 'resolve_stockout'], true)) {
             throw new HttpException(409, '该订单类型不能通过下拉框进行此项核心状态变更。');
         }
         return $this->annotations->set($order, $next, $revision, $actor);

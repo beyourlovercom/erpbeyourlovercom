@@ -47,6 +47,28 @@ final class OrderCoreStatusTransitionService
                 && ($shipment === null || ($shipment->shipment_status === 'pending'
                     && blank($shipment->tracking_number) && $shipment->shipped_at === null));
             switch ($command) {
+                case 'pending_allocation':
+                    // The dropdown may restore only a genuinely unallocated,
+                    // unshipped customer root. Already-materialized A/B/C and
+                    // warehouse-owned allocations require their own safe rollback.
+                    if ($locked->order_kind !== OrderKind::Customer
+                        || ! $unallocated || ! $unshipped
+                        || $locked->originalFulfillmentChildren->isNotEmpty()
+                        || $locked->fulfillmentAllocation?->status === 'submitted') {
+                        throw new HttpException(409, '订单已有分仓或履约记录，不能直接覆盖。请通过对应仓库的重新分仓/驳回流程退回待分仓。');
+                    }
+                    if ($shipment?->shipment_status === 'exception'
+                        || $locked->operationalMarkers->contains(fn ($m) => in_array($m->marker, ['domestic_stockout', 'stockout'], true))) {
+                        throw new HttpException(409, '请先解除仓库异常或经审核确认库存状态，再退回待分仓。');
+                    }
+                    if ($locked->workflow_status === null && ! $activeException) {
+                        return $locked; // A second click cannot overwrite facts.
+                    }
+                    $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
+                    // Staff annotations and unallocated manual stockout are
+                    // cleared; real shipment, order status and Woo are untouched.
+                    $locked->workflow_status = null;
+                    break;
                 case 'exception':
                 case 'missing_info':
                 case 'renew':

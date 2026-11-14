@@ -73,7 +73,12 @@ const update = async (next: string) => {
   } catch (e: any) {
     code.value = previous
     if (select.value) select.value.value = previous
-    error.value = e?.response?.status === 409 ? '状态已变化，请刷新后重试' : (e?.response?.data?.message ?? '保存失败')
+    const serverMessage = String(e?.response?.data?.message ?? '')
+    const staleRevision = e?.response?.status === 409
+      && /(?:状态|进度).*已变化|revision|版本冲突/i.test(serverMessage)
+    error.value = staleRevision
+      ? '订单状态已被其他操作更新，请刷新后重试'
+      : (serverMessage || '保存失败，请稍后重试')
   } finally {
     saving.value = false
     await nextTick()

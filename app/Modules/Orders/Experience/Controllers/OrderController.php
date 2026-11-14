@@ -136,7 +136,11 @@ final class OrderController
             'canConfirmOmsOrders' => $omsGridEnabled && OrderOmsAvailability::import($request->user()),
             'canImportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::importPreview($request->user())
                 && $request->user()->can('orders.create') && ! KolOrderAccessScope::isKolOnly($request->user()),
-            'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
+            'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => [
+                'code' => $code, ...$definition,
+                'mutable' => ($definition['mutable'] || ($code === 'pending_allocation' && $kind === OrderKind::Customer))
+                    && ($request->user()?->can('orders.edit') ?? false),
+            ])->values()->all(),
             'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
             'canExport' => $canExport,
@@ -295,11 +299,11 @@ final class OrderController
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())
                 ->map(fn (array $definition, string $code): array => [
                     'code' => $code, ...$definition,
-                    'mutable' => $definition['mutable']
+                    'mutable' => ($definition['mutable'] || ($code === 'pending_allocation' && $order->order_kind === OrderKind::Customer))
                         && ($order->order_kind === OrderKind::KolFulfillment
                             ? $code !== 'cancelled'
                             : (($code !== 'cancelled' || ! $isDerived)
-                                && in_array($code, ['sending', 'out_of_stock', 'exception', 'cancelled', ...OrderAuxiliaryStatusService::CODES], true)))
+                                && in_array($code, ['pending_allocation', 'sending', 'out_of_stock', 'exception', 'cancelled', ...OrderAuxiliaryStatusService::CODES], true)))
                         && (($request->user()?->can('orders.edit') ?? false)
                             || ($request->user()?->can('domestic.review') && in_array($code, ['sending', 'out_of_stock'], true))
                             || (app(LogisticsReviewAccess::class)->allows($request->user()) && $code === 'out_of_stock')),
@@ -609,7 +613,7 @@ final class OrderController
         $data = $request->validate([
             'workflow_status' => ['required', 'string', Rule::in([
                 ...array_keys(array_filter(OrderWorkflowStatus::registry(), fn (array $definition): bool => $definition['mutable'])),
-                'resolve_exception', 'resolve_manual_hold', 'resolve_stockout',
+                'pending_allocation', 'resolve_exception', 'resolve_manual_hold', 'resolve_stockout',
             ])],
             'expected_workflow_revision' => ['required', 'integer', 'min:0'],
             'reason' => ['nullable', 'string', 'max:2000'],
