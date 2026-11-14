@@ -2,6 +2,8 @@
 
 namespace App\Modules\Logistics\Application;
 
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
+
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use Illuminate\Support\Carbon;
@@ -91,7 +93,7 @@ final class WarehouseShipmentProjection
                     'shipped_at' => $shipment->shipped_at?->toIso8601String(),
                     'destination_country' => $order?->address?->country,
                     'items' => $order?->items->map(fn ($item): array => [
-                        'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                        'sku' => WarehouseSkuPresentation::sku($item),
                         'name' => $item->product?->name,
                         'quantity' => (int) $item->quantity,
                     ])->values()->all() ?? [],

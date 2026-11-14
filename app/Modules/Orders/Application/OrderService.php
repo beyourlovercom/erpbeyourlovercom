@@ -35,6 +35,7 @@ final class OrderService
         private readonly ProductExternalReferenceRepository $productExternalRefs,
         private readonly ConfirmedLossReader $confirmedLosses,
         private readonly OrderProgressQuery $progressQueries,
+        private readonly OrderManualFieldProtection $manualProtection,
     ) {}
 
     public function create(array $attributes, array $items, ?Authenticatable $actor, bool $allowMissingAddress = false): Model
@@ -105,23 +106,31 @@ final class OrderService
                 ->first();
 
             $created = $reference === null;
+            $protected = [];
             if ($reference) {
                 $order = $orderClass::query()->whereKey($reference->order_id)->lockForUpdate()->firstOrFail();
                 $before = $this->inboundAuditData($order);
+                $protected = $this->manualProtection->forOrder($order);
                 $localStatus = $order->order_status instanceof \BackedEnum ? $order->order_status->value : (string) $order->order_status;
                 $nextStatus = $localStatus;
-                if ($localStatus === OrderStatus::PendingShipment->value && $data->orderStatus === OrderStatus::Cancelled->value) {
+                $allocated = $order->fulfillmentAllocation()->exists() || $order->shipment()->exists();
+                if (! $allocated && ! isset($protected['order.order_status'])
+                    && $localStatus === OrderStatus::PendingShipment->value
+                    && $data->orderStatus === OrderStatus::Cancelled->value) {
                     $nextStatus = OrderStatus::Cancelled->value;
                 }
-                $order->fill([
-                    'source_type' => OrderSourceType::WooCommerce->value,
-                    'order_kind' => OrderKind::Customer->value,
+                $incomingFields = [
                     'external_order_number' => $data->externalOrderNumber,
                     'order_date' => $data->orderDate,
                     'order_note' => $data->orderNote,
                     'currency' => $data->currency,
                     'order_status' => $nextStatus,
-                ])->save();
+                ];
+                $safeFields = array_filter($incomingFields, fn ($value, string $key): bool =>
+                    ! isset($protected['order.'.$key]) && ! ($allocated && $key === 'order_status'),
+                    ARRAY_FILTER_USE_BOTH
+                );
+                $order->fill($safeFields)->save();
             } else {
                 $order = $orderClass::create([
                     'internal_order_number' => $this->nextOrderNumber(OrderKind::Customer->value),
@@ -144,20 +153,25 @@ final class OrderService
                 $before = null;
             }
 
-            $order->address()->updateOrCreate(['order_id' => $order->getKey()], $data->address);
-            $order->items()->delete();
-            $wooReference = $data->provider.':'.$data->reference;
-            foreach ($data->items as $item) {
-                $resolved = $this->resolveInboundProductFields($item, $wooReference, $data->connectionKey);
-                $order->items()->create([
-                    'product_id' => $resolved['product_id'],
-                    'woocommerce_line_item_id' => $item['woocommerce_line_item_id'] ?? null,
-                    'sku' => $resolved['sku'],
-                    'product_summary' => $resolved['product_summary'],
-                    'quantity' => (int) $item['quantity'],
-                    'unit_price' => (string) $item['unit_price'],
-                    'line_revenue' => $this->lineRevenue((string) $item['unit_price'], (int) $item['quantity']),
-                ]);
+            $allocated = ! $created && (
+                $order->fulfillmentAllocation()->exists() || $order->shipment()->exists()
+            );
+            $safeAddress = array_filter(
+                $data->address,
+                fn ($value, string $key): bool => ! isset($protected['address.'.$key]) && ! $allocated,
+                ARRAY_FILTER_USE_BOTH,
+            );
+            if ($safeAddress !== []) {
+                $order->address()->updateOrCreate(['order_id' => $order->getKey()], $safeAddress);
+            }
+            if ($created || (! $allocated && ! isset($protected['items']))) {
+                $this->reconcileInboundItems($order, $data);
+            } elseif ($this->hasInboundItemDrift($order, $data)) {
+                $this->record($actor, 'order.inbound_items_conflict_preserved', $order,
+                    after: ['order_id' => (int) $order->id, 'manual_override' => isset($protected['items']),
+                        'allocation_protected' => $allocated],
+                    reason: 'erp_manual_or_warehouse_sku_authoritative',
+                    source: AuditSource::WooCommerceInbound);
             }
             $reference->forceFill(['provider_modified_at' => $data->providerModifiedAt])->save();
             if ($data->settlementEvidence !== null) {
@@ -237,6 +251,11 @@ final class OrderService
             $after = $this->auditData($lockedOrder);
             $after['address'] = $lockedOrder->address?->fresh()?->toArray();
             $after['items'] = $lockedOrder->items()->get()->toArray();
+            $this->manualProtection->protect(
+                $lockedOrder,
+                $this->manualProtection->changedKeys($before, $after),
+                $actor,
+            );
             if ($reason) {
                 $after['amendment_reason'] = $reason;
             }
@@ -244,6 +263,63 @@ final class OrderService
 
             return $lockedOrder->fresh(['items', 'owner', 'address']);
         });
+    }
+
+    /**
+     * Woo re-import must retain stable ERP order_item IDs. Deleting/recreating
+     * breaks Vita's saved gift selection and silently resurrects 'gift'.
+     */
+    private function reconcileInboundItems(Model $order, NormalizedInboundOrder $data): void
+    {
+        $existing = $order->items()->get()->keyBy('woocommerce_line_item_id');
+        $keepIds = [];
+        $seen = [];
+        $wooReference = $data->provider.':'.$data->reference;
+        foreach ($data->items as $item) {
+            $lineId = isset($item['woocommerce_line_item_id']) ? (int) $item['woocommerce_line_item_id'] : null;
+            if ($lineId && isset($seen[$lineId])) {
+                throw new \RuntimeException('WOO_DUPLICATE_LINE_ITEM_ID');
+            }
+            if ($lineId) $seen[$lineId] = true;
+            $resolved = $this->resolveInboundProductFields($item, $wooReference, $data->connectionKey);
+            $values = [
+                'product_id' => $resolved['product_id'],
+                'woocommerce_line_item_id' => $lineId,
+                'sku' => $resolved['sku'],
+                'product_summary' => $resolved['product_summary'],
+                'quantity' => (int) $item['quantity'],
+                'unit_price' => (string) $item['unit_price'],
+                'line_revenue' => $this->lineRevenue((string) $item['unit_price'], (int) $item['quantity']),
+            ];
+            $existingItem = $lineId ? $existing->get($lineId) : null;
+            if ($existingItem) {
+                $existingItem->fill($values);
+                if ($existingItem->isDirty()) $existingItem->save();
+                $keepIds[] = (int) $existingItem->id;
+            } else {
+                $keepIds[] = (int) $order->items()->create($values)->id;
+            }
+        }
+        $order->items()->whereNotIn('id', $keepIds)->delete();
+    }
+
+    private function hasInboundItemDrift(Model $order, NormalizedInboundOrder $data): bool
+    {
+        $local = $order->items()->get()->keyBy('woocommerce_line_item_id');
+        if ($local->count() !== count($data->items)) return true;
+        foreach ($data->items as $incoming) {
+            $id = (int) ($incoming['woocommerce_line_item_id'] ?? 0);
+            $item = $id ? $local->get($id) : null;
+            if (! $item) return true;
+            // Compare the incoming business line to the saved source identity;
+            // physical warehouse SKU is intentionally allowed to differ.
+            if (trim((string) ($item->source_sku ?: $item->sku)) !== trim((string) ($incoming['sku'] ?? ''))
+                || (int) $item->quantity !== (int) ($incoming['quantity'] ?? 0)
+                || abs((float) $item->unit_price - (float) ($incoming['unit_price'] ?? 0)) > 0.001) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function setOperationalMarker(Model $order, string $marker, bool $active, ?Authenticatable $actor): Model

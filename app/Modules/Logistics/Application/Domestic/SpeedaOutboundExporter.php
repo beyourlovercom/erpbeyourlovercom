@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use DomainException;
@@ -53,6 +54,9 @@ final class SpeedaOutboundExporter
         }
         if ((int) $order->items->sum('quantity') <= 0) {
             $missing[] = '申报品数量1';
+        }
+        if ($order->items->contains(fn ($item): bool => ! WarehouseSkuPresentation::verified($item))) {
+            $missing[] = '实际发货 SKU 未登记或与分仓结果不一致';
         }
 
 

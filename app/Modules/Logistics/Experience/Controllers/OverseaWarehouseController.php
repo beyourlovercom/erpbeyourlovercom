@@ -2,6 +2,8 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
+
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
@@ -730,7 +732,7 @@ final class OverseaWarehouseController
             ] : null,
 
             'items' => $order?->items->map(fn ($item): array => [
-                'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                'sku' => WarehouseSkuPresentation::sku($item),
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'quantity' => (int) $item->quantity,
             ])->values()->all() ?? [],

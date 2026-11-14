@@ -2,6 +2,8 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
+
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
@@ -740,7 +742,7 @@ final class LogisticsController
             'logistics_note' => $shipment->logistics_note,
             'shipment_status' => $shipment->shipment_status,
             'order_url' => $this->orderUrl($order),
-            'items' => $order?->items->map(fn ($item): array => ['sku' => $item->resolved_fulfillment_sku ?: $item->sku, 'source_sku' => $item->source_sku ?: $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null, 'quantity' => $item->quantity])->values()->all() ?? [],
+            'items' => $order?->items->map(fn ($item): array => ['sku' => WarehouseSkuPresentation::sku($item), 'source_sku' => $item->source_sku ?: $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null, 'quantity' => $item->quantity])->values()->all() ?? [],
             'review_pending' => $order?->logisticsReview?->status === 'pending',
             'paused' => $order?->operationalMarkers?->contains('marker', 'logistics_paused') ?? false,
         ];
@@ -767,7 +769,7 @@ final class LogisticsController
             'country' => $order->address?->country,
             'order_url' => $this->orderUrl($order),
             'items' => $order->items->map(fn ($item) => [
-                'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                'sku' => WarehouseSkuPresentation::sku($item),
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'product_summary' => $item->product_summary,
                 'product_id' => $item->product_id,

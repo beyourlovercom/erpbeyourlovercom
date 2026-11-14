@@ -2,6 +2,8 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
+
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
@@ -272,7 +274,7 @@ final class CarrierController
             'service_display_name' => $shipment->carrierService?->displayName() ?: $this->carrierServices->serviceDisplayName((string) $shipment->carrier, $shipment->service),
             'tracking_number' => $shipment->tracking_number,
             'items' => $order?->items->map(fn ($item): array => [
-                'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                'sku' => WarehouseSkuPresentation::sku($item),
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'product_summary' => $item->product_summary,
                 'product_id' => $item->product_id,

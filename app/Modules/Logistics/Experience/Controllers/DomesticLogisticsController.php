@@ -2,6 +2,8 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
+
 use App\Modules\Shell\Application\GlobalGridPilot;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
@@ -461,7 +463,7 @@ final class DomesticLogisticsController
                         ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
                         : ['未选定速达或纬狮物流商'])))),
             'items' => $order->items->map(fn ($item) => [
-                'sku' => $item->sku,
+                'sku' => WarehouseSkuPresentation::sku($item),
                 'quantity' => (int) $item->quantity,
             ])->values()->all(),
         ];

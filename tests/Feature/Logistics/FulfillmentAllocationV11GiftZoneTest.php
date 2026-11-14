@@ -133,6 +133,39 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
         self::assertNull($factoryChild->shipment?->carrier_selection_source);
     }
 
+    public function test_recovery_repairs_woo_rebuilt_pending_gift_without_changing_source_or_shipment(): void
+    {
+        [$user, $order, $giftItem, $realGift, $mapping] = $this->giftScenario(8);
+        app(FulfillmentAllocationSubmissionService::class)->submitManual(
+            $order, [['order_item_id' => $giftItem->id,
+                'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id]],
+            'Vita selected actual gift', $user
+        );
+        $originalId = $giftItem->id;
+        $giftItem->delete();
+        $replacement = $order->items()->create([
+            'product_id' => $giftItem->source_product_id ?: $giftItem->product_id,
+            'sku' => 'gift', 'product_summary' => 'Random Gift',
+            'quantity' => 1, 'unit_price' => '0.00', 'line_revenue' => '0.00',
+        ]);
+        self::assertNotSame($originalId, $replacement->id);
+        $this->artisan('erp:repair-allocated-gift-skus', ['--order' => [$order->id]])->assertSuccessful();
+        self::assertSame('gift', $replacement->fresh()->sku);
+        $this->artisan('erp:repair-allocated-gift-skus', [
+            '--order' => [$order->id], '--apply' => true,
+        ])->assertSuccessful();
+        $actual = $replacement->fresh();
+        self::assertSame($realGift->sku, $actual->sku);
+        self::assertSame($realGift->id, $actual->product_id);
+        self::assertSame('gift', $actual->source_sku);
+        self::assertSame($giftItem->product_id, $actual->source_product_id);
+        $allocation = $order->fresh('fulfillmentAllocation')->fulfillmentAllocation;
+        self::assertSame($replacement->id, $allocation->plan_snapshot['segments'][0]['items'][0]['order_item_id']);
+        self::assertSame($replacement->id, $allocation->manual_assignments[0]['order_item_id']);
+        self::assertSame('pending', $order->fresh('shipment')->shipment->shipment_status);
+        $this->assertDatabaseHas('audit_records', ['action' => 'order_item.selected_gift_sku_restored']);
+    }
+
     /** @return array{User,Order,\App\Modules\Orders\Infrastructure\Models\OrderItem,Product,WarehouseGiftSkuMapping} */
     private function giftScenario(int $giftStock, bool $withRegular = false): array
     {
