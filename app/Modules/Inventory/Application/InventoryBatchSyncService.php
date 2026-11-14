@@ -36,6 +36,10 @@ final class InventoryBatchSyncService
         ?string $stockCountAt,
         ?Authenticatable $actor,
     ): Model {
+        // MorePlus warehouse is provider-authoritative: imported spreadsheets
+        // are not a permitted stock writer for US-LA.
+        abort_if(strtoupper((string) $warehouse->code) === 'US-LA', 422,
+            'MorePlus 库存由海外仓 API 提供，请使用仓库页面的同步仓库库存按钮。');
         $checksum = hash('sha256', serialize(array_map(fn ($r) => [$r->sku, $r->quantity, $r->stockStatus, $r->stockCountAt, $r->putawayDate], $rows)));
 
         return DB::transaction(function () use ($warehouse, $rows, $sourceType, $syncMode, $originalFilename, $stockCountAt, $checksum, $actor): Model {
@@ -131,6 +135,8 @@ final class InventoryBatchSyncService
                 abort(422, '全量同步存在错误行，无法确认；请改用部分同步或修正数据');
             }
             $warehouse = $batch->warehouse;
+            abort_if(strtoupper((string) $warehouse->code) === 'US-LA', 422,
+                'MorePlus 库存不允许通过导入批次覆盖，请读取真实海外仓库存。');
 
             // Existing repository selection excludes validation errors and unresolved products.
             // Never confirm a batch that would write nothing.

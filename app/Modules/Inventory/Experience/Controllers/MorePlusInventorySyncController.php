@@ -17,6 +17,27 @@ final class MorePlusInventorySyncController
         private readonly MorePlusFifoReconciliationService $fifo,
     ) {}
 
+    /**
+     * One click = real MorePlus GET, then ERP-only mirror, with immutable audit.
+     * This endpoint never sends provider inventory mutations or OMS orders.
+     */
+    public function sync(Request $request, string $warehouse): RedirectResponse
+    {
+        $w = $this->inventory->warehouse($warehouse);
+        abort_unless(strtoupper((string) $w->code) === 'US-LA', 404);
+        try {
+            $result = $this->sync->syncProvider($w, $request->user());
+        } catch (\Throwable $error) {
+            return back()->withErrors(['moreplus_stock' => $error instanceof RuntimeException
+                ? $error->getMessage() : 'MOREPLUS_INVENTORY_SYNC_UNAVAILABLE']);
+        }
+
+        return back()->with('success', sprintf(
+            'MorePlus 库存同步完成：更新 %d 个（含未返回清单已归零 %d 个）、新增 %d 个、一致 %d 个，SKU 异常 %d 个。只改 ERP，未改海外仓。',
+            $result['updated'], $result['absent_zeroed'], $result['created'], $result['unchanged'], $result['blocked']
+        ));
+    }
+
     public function preview(Request $request, string $warehouse): RedirectResponse
     {
         $w = $this->inventory->warehouse($warehouse);

@@ -62,6 +62,7 @@ Route::middleware(['web','auth','can:inventory.overdue.manage'])->group(function
 });
 
 Route::middleware(['web','auth','can:inventory.operate'])->group(function (): void {
+    Route::post('/inventory/{warehouse}/provider-stock/sync',[MorePlusInventorySyncController::class,'sync'])->name('inventory.moreplus-stock.sync');
     Route::post('/inventory/{warehouse}/provider-stock/preview',[MorePlusInventorySyncController::class,'preview'])->name('inventory.moreplus-stock.preview');
     Route::post('/inventory/{warehouse}/provider-stock/apply',[MorePlusInventorySyncController::class,'apply'])->name('inventory.moreplus-stock.apply');
     Route::post('/inventory/{warehouse}/stock',[WarehouseController::class,'saveInventory'])->name('inventory.stock.store');

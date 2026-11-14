@@ -42,6 +42,21 @@ final class ProductionUatFulfillmentCorrectionTest extends TestCase
         $this->assertDatabaseCount('audit_records', 0);
     }
 
+    public function test_moreplus_uat_correction_cannot_rewrite_provider_mirror(): void
+    {
+        $scenario = $this->scenario();
+        $moreplus = Warehouse::query()->where('code', 'US-LA')->firstOrFail();
+        $scenario['inventory']->forceFill(['warehouse_id' => $moreplus->id])->save();
+        $scenario['reservation']->forceFill(['warehouse_id' => $moreplus->id])->save();
+        $scenario['shipment']->forceFill(['warehouse_id' => $moreplus->id])->save();
+        $service = app(ProductionUatFulfillmentCorrectionService::class);
+        $preview = $service->preview($scenario['order']->erp_order_id);
+        $this->assertSame('blocked', $preview['decision']);
+        $this->assertSame('moreplus_provider_authoritative_inventory', $preview['reason']);
+        $this->assertSame(47, $scenario['inventory']->fresh()->quantity_on_hand);
+        $this->assertDatabaseCount('shipment_attempts', 0);
+    }
+
     public function test_apply_requires_exact_fingerprint_and_does_not_mutate_on_mismatch(): void
     {
         $scenario = $this->scenario();

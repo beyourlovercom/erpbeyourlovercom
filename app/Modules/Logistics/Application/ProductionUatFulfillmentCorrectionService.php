@@ -76,6 +76,10 @@ final class ProductionUatFulfillmentCorrectionService
         }
 
         $reservation = $reservations->first();
+        if (strtoupper((string) \App\Modules\Inventory\Infrastructure\Models\Warehouse::query()
+            ->whereKey($reservation->warehouse_id)->value('code')) === 'US-LA') {
+            return $this->blocked($erpOrderId, 'moreplus_provider_authoritative_inventory', $order);
+        }
         if ($reservation->items->isEmpty()) {
             return $this->blocked($erpOrderId, 'reservation_items_missing', $order);
         }
