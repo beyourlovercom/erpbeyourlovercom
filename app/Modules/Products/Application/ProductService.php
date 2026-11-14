@@ -16,6 +16,7 @@ final class ProductService
     public function __construct(
         private readonly ProductRepository $products,
         private readonly SkuAliasRepository $skuAliases,
+        private readonly SkuAliasService $aliasService,
         private readonly ProductWeightEvidenceService $weightEvidence,
         private readonly ProductExternalReferenceRepository $externalRefs,
     ) {}
@@ -403,20 +404,24 @@ final class ProductService
         return $this->products->totalCount();
     }
 
-    /**
-     * Throw if the given raw SKU's match key is already registered as an Alias match key.
-     * This prevents a new canonical SKU from silently taking over an existing Alias's identity.
-     * Pass $excludeProductId when updating so the product's own alias list is excluded.
-     */
-    private function assertNoAliasMatchKeyCollision(string $rawSku, ?int $excludeProductId = null): void
+    /** A SKU is one case-insensitive identity across canonical products and aliases. */
+    private function assertCanonicalSkuAvailable(string $sku, ?int $excludeProductId = null): void
+    {
+        $key = SkuMatchKey::compute($sku);
+        $owner = $key === null ? null : $this->products->findBySkuMatchKey($key);
+        if ($owner !== null && (int) $owner->getKey() !== $excludeProductId) {
+            throw new \RuntimeException("SKU '{$sku}' is already used by product #{$owner->getKey()}.");
+        }
+    }
+
+    /** Returns true when the matching alias belongs to this same product. */
+    private function assertNoAliasMatchKeyCollision(string $rawSku, ?int $excludeProductId = null): bool
     {
         $matchKey = SkuMatchKey::compute($rawSku);
-        if ($matchKey === null) {
-            return;
-        }
-        if ($this->skuAliases->existsMatchKey($matchKey)) {
-            throw new \RuntimeException("SKU '{$rawSku}' match key '{$matchKey}' is already registered as a SKU alias. Delete the alias first.");
-        }
+        $alias = $matchKey === null ? null : $this->skuAliases->findByMatchKeyIncludingInactive($matchKey);
+        if ($alias === null) return false;
+        if ($excludeProductId !== null && (int) $alias->getAttribute('product_id') === $excludeProductId) return true;
+        throw new \RuntimeException("SKU '{$rawSku}' is already an alias of product #{$alias->getAttribute('product_id')}.");
     }
 
     public function createManual(array $attributes): Model
@@ -429,6 +434,7 @@ final class ProductService
             ? trim((string) $attributes['label_sku'])
             : null;
         if ($sku !== null && $sku !== '') {
+            $this->assertCanonicalSkuAvailable((string) $sku);
             $this->assertNoAliasMatchKeyCollision((string) $sku);
         }
         $this->assertLabelIdentityAvailable($sku !== null ? (string) $sku : null, $labelSku, null);
@@ -492,8 +498,11 @@ final class ProductService
         $newLabelSku = array_key_exists('label_sku', $attributes)
             ? (trim((string) ($attributes['label_sku'] ?? '')) !== '' ? trim((string) $attributes['label_sku']) : null)
             : $product->getAttribute('label_sku');
-        if ($newSku !== null && $newSku !== $product->getAttribute('sku')) {
-            $this->assertNoAliasMatchKeyCollision((string) $newSku);
+        $oldSku = $product->getAttribute('sku');
+        $promotedOwnAlias = false;
+        if ($newSku !== null && $newSku !== $oldSku) {
+            $this->assertCanonicalSkuAvailable((string) $newSku, (int) $product->getKey());
+            $promotedOwnAlias = $this->assertNoAliasMatchKeyCollision((string) $newSku, (int) $product->getKey());
         }
         $this->assertLabelIdentityAvailable(
             $newSku !== null ? (string) $newSku : null,
@@ -515,6 +524,8 @@ final class ProductService
         $weightKgChanged = array_key_exists('weight_kg', $attributes) && $newWeightKg !== $currentWeightKg;
         $shippingWeightKgChanged = array_key_exists('shipping_weight_kg', $attributes) && $newShippingWeightKg !== $currentShippingWeightKg;
 
+        DB::transaction(function () use ($product, $attributes, $newLabelSku, $pick, $pickFloat,
+            $currentWeightKg, $currentShippingWeightKg, $oldSku, $newSku, $promotedOwnAlias): void {
         $this->products->update($product, [
             'product_type' => $attributes['product_type'] ?? $product->getAttribute('product_type'),
             'sku' => array_key_exists('sku', $attributes) ? ($attributes['sku'] ?: null) : $product->getAttribute('sku'),
@@ -546,6 +557,17 @@ final class ProductService
             'cost_note' => $pick('cost_note', $product->getAttribute('cost_note')),
             'notes' => $pick('notes', $product->getAttribute('notes')),
         ]);
+
+        // Preserve historical SKU resolution when a product adopts its own alias.
+        // The promoted alias record is retained for traceability; no other product can claim it.
+        if ($promotedOwnAlias && $oldSku !== null && SkuMatchKey::compute((string) $oldSku) !== SkuMatchKey::compute((string) $newSku)) {
+            $oldKey = SkuMatchKey::compute((string) $oldSku);
+            if ($oldKey !== null && $this->skuAliases->findByMatchKeyIncludingInactive($oldKey) === null) {
+                $this->aliasService->createAlias((int) $product->getKey(), (string) $oldSku, 'sku_rename',
+                    'previous_canonical', 'Historical SKU retained after own-alias promotion.', Auth::user());
+            }
+        }
+        });
 
         $product->refresh();
         $actorUserId = Auth::id();
