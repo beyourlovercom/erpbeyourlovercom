@@ -1,8 +1,8 @@
 <?php
 
 return [
-    'order' => ['US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA', 'FACTORY', '007'],
-    'fulfillment_codes' => ['US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA', 'FACTORY'],
+    'order' => ['US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA', 'FACTORY', 'TINGON', '007'],
+    'fulfillment_codes' => ['US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA', 'FACTORY', 'TINGON'],
     'inventory_only_codes' => ['007'],
     'warehouses' => [
         'US-NY' => [
@@ -97,6 +97,13 @@ return [
             'public_slug' => 'factory',
             'legacy_slugs' => ['factory'],
             'role_label' => '国内履约仓',
+        ],
+        'TINGON' => [
+            'name_zh' => '合作-Tingon',
+            'name_en' => 'Partner · Tingon',
+            'public_slug' => 'tingon',
+            'legacy_slugs' => ['tingon'],
+            'role_label' => '合作仓人工履约',
         ],
         '007' => [
             'name_zh' => '007 本地仓库',

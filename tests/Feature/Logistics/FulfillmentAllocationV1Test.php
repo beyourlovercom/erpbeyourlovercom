@@ -42,7 +42,7 @@ final class FulfillmentAllocationV1Test extends TestCase
 
                     return ! in_array('007', $codes, true)
                         && in_array('FACTORY', $codes, true)
-                        && collect($codes)->diff(['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA'])->isEmpty();
+                        && collect($codes)->diff(['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA', 'TINGON'])->isEmpty();
                 })
         );
     }

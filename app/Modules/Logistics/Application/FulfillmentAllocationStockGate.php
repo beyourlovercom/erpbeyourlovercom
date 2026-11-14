@@ -33,7 +33,7 @@ final class FulfillmentAllocationStockGate
             $code = strtoupper(trim((string) ($assignment['source_code'] ?? '')));
             // Amazon US is intentionally manual-only: explicit Vita selection is
             // authorization to allocate, never a claim about physical stock.
-            if ($code === 'US-AMZ') {
+            if (in_array($code, ['US-AMZ', 'TINGON'], true)) {
                 continue;
             }
             $productId = (int) ($item->source_product_id ?: $item->product_id);

@@ -280,7 +280,7 @@ final class LogisticsController
             $route = strtoupper(trim((string) $warehouse->code)) === 'FACTORY'
                 ? [] : $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
             $carrier = trim((string) ($route['carrier'] ?? ''));
-            if ($carrier === '' && strtoupper(trim((string) $warehouse->code)) !== 'FACTORY') {
+            if ($carrier === '' && ! in_array(strtoupper(trim((string) $warehouse->code)), ['FACTORY', 'TINGON'], true)) {
                 throw ValidationException::withMessages(['assignments' => "{$warehouse->name} 尚未配置默认物流商，请进入完整待分仓流程。"]);
             }
 

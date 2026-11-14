@@ -35,7 +35,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
                 ->where('orders.data.0.us_fulfillment_zone.zone_label', '美西区')
                 ->where('orders.data.0.us_fulfillment_zone.warehouse_priority.0', 'US-SM')
                 ->where('orders.data.0.us_fulfillment_zone.warehouse_priority.1', 'US-LA')
-                ->has('warehouses', 7) // US-AMZ was added to the shared warehouse catalog
+                ->has('warehouses', 8) // Tingon partner warehouse is a manual-only allocation option
                 ->where('warehouses.2.code', 'US-SM')
                 ->where('warehouses.2.name', '美国3世迈仓')
                 ->where('orders.data.0.carrier_routes.US-SM.carrier', 'USPS')
