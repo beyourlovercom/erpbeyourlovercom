@@ -53,6 +53,8 @@ final class GiftSkuResolutionService
                 'fulfillment_sku' => (string) $mapping->product->sku,
                 'fulfillment_name' => (string) $mapping->product->name,
                 'quantity_available' => $available === null ? null : (int) $available,
+                'erp_quantity_available' => $row['erp_quantity_available'] ?? null,
+                'stock_gate_reason' => $row['stock_gate_reason'] ?? null,
                 'can_fulfill' => $available !== null && (int) $available >= max(1, $quantity),
                 'priority' => (int) $mapping->priority,
             ];
@@ -75,6 +77,12 @@ final class GiftSkuResolutionService
             fn (array $candidate): bool => (int) ($candidate['warehouse_id'] ?? 0) === (int) $mapping->warehouse_id
         );
         $available = $row['quantity_available'] ?? null;
+        if (($row['stock_gate_reason'] ?? null) === 'oms_snapshot_blocked') {
+            abort(422, '世迈 OMS 库存快照核验被阻断，暂不能选择该 Gift SKU');
+        }
+        if (($row['stock_gate_reason'] ?? null) === 'oms_snapshot_not_applied') {
+            abort(422, '世迈 OMS 库存快照尚未通过应用核验，暂不能选择该 Gift SKU');
+        }
         abort_unless($available !== null && (int) $available >= (int) $item->quantity, 422, '所选实际礼品 SKU 在该仓库存不足或库存未知');
 
         return [

@@ -397,7 +397,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     warehouseSelect.dispatchEvent(new Event('change', { bubbles: true }))
     await flushPromises()
 
-    expect(document.body.textContent).toContain('该仓当前没有可用清仓礼品')
+    expect(document.body.textContent).toContain('该仓未配置有效的清仓 Gift SKU')
     const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
     expect(giftSelect.options.length).toBe(1)
   })
@@ -412,11 +412,39 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     warehouseSelect.dispatchEvent(new Event('change', { bubbles: true }))
     await flushPromises()
 
-    expect(document.body.textContent).toContain('礼品库存在，但当前全部缺货')
+    expect(document.body.textContent).toContain('Gift 当前可出库库存不足')
     const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
-    expect(Array.from(giftSelect.options).map(option => option.textContent).join(' ')).not.toContain('GIFT-MP-02')
+    expect(Array.from(giftSelect.options).map(option => option.textContent).join(' ')).toContain('GIFT-MP-02')
+    expect(Array.from(giftSelect.options).find(option => option.textContent?.includes('GIFT-MP-02'))?.disabled).toBe(true)
   })
 
+
+  it('auto-detects blocked US-SM OMS snapshot and renders disabled Gift instead of false out-of-stock', async () => {
+    const blockedGift = {
+      ...giftItem, gift_options_by_warehouse: {
+        ...giftItem.gift_options_by_warehouse,
+        'US-SM': [{ ...giftItem.gift_options_by_warehouse['US-SM'][0],
+          quantity_available: 0, erp_quantity_available: 10,
+          can_fulfill: false, stock_gate_reason: 'oms_snapshot_blocked' }],
+      },
+    }
+    const blockedOrder = { ...giftOrder, id: 440, items: [itemA, blockedGift] }
+    const wrapper = mountPage({ ...props, orders: { ...props.orders, data: [blockedOrder], total: 1 }, pendingTotal: 1 })
+    await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
+    await flushPromises()
+    const giftRow = Array.from(document.body.querySelectorAll('.primary-allocation tbody tr'))
+      .find(row => row.textContent?.includes('gift')) as HTMLTableRowElement
+    const warehouse = giftRow.querySelectorAll('select')[0] as HTMLSelectElement
+    warehouse.value = 'US-SM'
+    warehouse.dispatchEvent(new Event('change', { bubbles: true }))
+    await flushPromises()
+    expect(document.body.textContent).toContain('OMS 快照被阻断')
+    expect(document.body.textContent).toContain('OMS 核验阻断')
+    const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
+    const blocked = Array.from(giftSelect.options).find(option => option.textContent?.includes('GIFT-SM-01'))
+    expect(blocked?.disabled).toBe(true)
+    wrapper.unmount()
+  })
 
   it('replays submitted split as A/B derived logistics orders with fixed warehouses', async () => {
     const processedProps = {
