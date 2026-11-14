@@ -1,40 +1,46 @@
-# BYL ERP SiteOps/Vben — 007windows isolated development pilot
+# BYL ERP SiteOps / Vben — 007windows Dev overlay
 
-This directory versions the BYL-specific frontend overlay inside the existing ERP repository. The ERP Laravel monolith is the sole authority for orders, identity, permissions, inventory, logistics, finance and Woo sync.
+This is a **Dev-only, opt-in read-only** migration experiment tracked inside the existing BYL ERP repository. Laravel remains the only order/business authority.
 
-## Current boundaries
-- 007windows local source: `D:\ai\erp-siteops\frontend`
-- Local browser: `http://127.0.0.1:18786/` (loopback only)
-- Separate local gateway and credentials remain under `D:\ai\erp-siteops`, **not committed here**.
-- Source UI base: Owner-accepted SiteOps Vben V9.1 at `D:\ai\siteops-vben\vue-vben-admin-main` — never edit this original.
-- Pinned upstream archive: `D:\ai\siteops-vben\vben-upstream-main.zip`; SHA-256 `DF1E977A85EB0D55E9A75D19E270180BFF68E8E7FCD15759D69919223E44141B`.
-- This is an **overlay-only** Git checkpoint. The full Vben vendor/base is not committed; full reproducibility via a pinned Git baseline remains an R1 blocker.
-- Existing SiteOps ports 18777/18778, ERP Production, database, jobs, user login and real provider data have not been modified or contacted.
+## Status on 2026-11-14
+- 007windows site: `http://127.0.0.1:18786/#/erp/orders` (loopback only).
+- 007windows browser tests PASS using 10 actual **Mac mini local Dev SQLite** records, not Production orders.
+- Legacy SiteOps remains untouched: 007windows 18777 and 18778.
+- 007windows Laravel full local runtime is **not ready**; the R2 bridge temporarily reads the Mac mini's existing local `erp.b` Dev using its original GET `/orders`.
+- The Mac mini's Dev instance is an **older worktree** with a local SQLite test database. Do not claim latest Production parity.
+- All business writes are forbidden; Mac bridge accepts only GET, strips emails, addresses, customer information and notes. Its order representation is limited to order number, status, warehouse, SKU, tracking and date.
+- The source Mac Dev app may use local UAT Owner auto-auth. **Individual ERP role/session parity is not validated**, and this bridge must never be treated as Production authentication.
 
-## What is versioned
-- ERP Vben menu, compact workspace, nine navigation entries, standalone order grid preview.
-- The real-orders adapter and tests in `overrides/src/api/erp-orders*`.
-- Browser-facing order data mapping for Laravel's existing `GET /orders` Inertia page JSON.
-- Safe build/test scripts and dry-run overlay applicator.
+## Git and source
+- Repository: `beyourlovercom/erpbeyourlovercom`
+- Branch: `feat/erp-siteops-007-r0-orders-readonly-20261114`, PR #766 (Draft).
+- `overrides/`: Vben navigation, Orders AG Grid, adapter, local login copy.
+- `runtime/gateway.cjs`: localhost-only 007 owner login, validated read-only proxy, no business POST.
+- `runtime/r2-smoke.cjs`, `runtime/r2-browser.cjs`: API and Edge UAT evidence.
+- `devbridge/mac-r2-readonly.cjs`: tailnet-only GET transport to `http://erp.b/orders`; no arbitrary URL fetch, remote writes or credentials stored in source.
+- The Vben **full vendor base is not versioned** by this overlay. Source is the approved SiteOps Vben V9.1 on 007windows; a pinned complete base is a later prerequisite for reproducibility.
 
-## Read-only orders authority
-- Existing route: `GET /orders` (web + auth + can:orders.view), `OrderController@index`, Inertia `Orders/Index`.
-- No new business API, no new SQL or direct cloud/WordPress connectors.
-- The adapter requests `X-Inertia: true` on the **same authenticated Laravel Dev origin**. It never uses a separate SPA token for the ERP backend.
-- Preserve source `erp_order_id`, workflow-status projection, shipment details, SKU lines, server-side paging and existing role/archived filters.
-- Do not force `oms_grid=1` or override the existing OMS canary permission.
-- `VITE_ERP_READONLY_ORDERS_ENABLED` defaults to OFF; current UAT shows synthetic `UAT-ORDER-*` rows only. Live Dev Session 200 is not yet verified.
-- Business writes (POST/PATCH/DELETE), order mutations, WooCommerce and OMS remain disabled.
+## Strict local-only configuration
+Secrets are never committed. Existing private files on 007windows:
+- `D:\ai\erp-siteops\private\local-admin-key.txt` — local owner UI login.
+- `D:\ai\erp-siteops\private\dev-bridge-token.txt` — random Mac transport token.
+- `D:\ai\erp-siteops\private\dev-bridge-address.txt` — tailnet-only local Dev bridge URL.
+- `D:\ai\erp-siteops\frontend\apps\web-antd\.env.production.local`: `VITE_ERP_DEV_BRIDGE_ENABLED=1` in **007 UAT only**.
 
-## 007windows restore
-1. Checkout ERP feature branch and verify SiteOps V9.1 approved source locally.
-2. Prepare `D:\ai\erp-siteops\frontend` as an isolated copy of that approved base without node_modules/dist/private files.
-3. In the ERP repository, run `node apps/erp-siteops-vben/scripts/bootstrap.cjs` for a dry run; use `--apply-overlay` to copy the tracked changes into **only** that isolated destination.
-4. Run local `D:\ai\erp-siteops\install-offline.cmd`, `test-orders.cmd` and `build.cmd`.
-5. Existing local gateway remains separate. Do not put its password file or runtime credentials in GitHub.
+Private Mac mini files adjacent to bridge script:
+- `bridge.token` — same random secret, mode 0600.
+- `bridge.config.json` — approved tailnet IP and local UAT SQLite path.
+- Do NOT commit these files, dump the SQLite database, expose Dev bridge to public Internet, or connect to production URLs.
 
-## UAT requirements before any real Dev read
-- Confirm local Laravel Dev application and user session are reachable on the same origin.
-- Test role 403, expired session, 20/50/100 paging, all-record search, status, archived/deleted and KOL scope parity.
-- Browser test on 007windows and Owner PASS before Production cutover discussions.
-- Neither GitHub merge nor Production release is authorized by this draft checkpoint.
+## How to rebuild / run (Dev only)
+1. Keep old SiteOps Vben V9.1 untouched and copy its approved Vben workspace into `D:\ai\erp-siteops\frontend` (excluding node_modules/dist/secrets).
+2. In the ERP git branch, run `node apps/erp-siteops-vben/scripts/bootstrap.cjs` for dry run; then `--apply-overlay` only with the isolated target.
+3. On 007windows install/build using `install-offline.cmd` and `build.cmd` copied into the isolated runtime.
+4. Start `node D:\ai\erp-siteops\gateway.cjs` (localhost:18786); start the Mac Dev bridge with its *local private config* only.
+5. Execute `node D:\ai\erp-siteops\r2-smoke.cjs` and `node D:\ai\erp-siteops\r2-browser.cjs`.
+6. The bridge is a temporary Dev transport. On 007 loss of Mac connection, fail closed with an error and **never silently restore synthetic sample rows**.
+
+## Mandatory R2 hold points
+- Connect a current ERP Laravel **Dev**, with per-user authenticated session and `can:orders.view` permissions, before considering read API parity complete.
+- Independently validate archive/deletion, workflows, KOL row scope, global server search/sort, 20/50/100 pages and workspace tabs.
+- No merge to `main` or Production deployment from this UAT checkpoint without Owner visual acceptance and separate release approval.

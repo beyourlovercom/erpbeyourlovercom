@@ -1,3 +1,5 @@
+import { requestClient } from '#/api/request';
+
 /** Reuses BYL ERP's existing Laravel/Inertia GET /orders controller.
  * No separate order source, no privileged gateway, no client-side credentials.
  * Must run at same origin as authenticated ERP Laravel in Dev/UAT.
@@ -91,4 +93,17 @@ export async function getExistingErpOrders(
   if (!(response.headers.get('content-type') || '').includes('application/json'))
     throw new Error('ERP_INERTIA_JSON_NOT_AVAILABLE');
   return normalizeExistingInertiaOrders(await response.json());
+}
+
+export async function getMacDevReadOnlyOrders(input: {
+  search?:string; page?:number; perPage?:number; view?:string;
+}): Promise<ErpOrderPage> {
+  const result=await requestClient.get<{
+    source:string;scope:string;real_dev_rows:boolean;inertia:unknown;
+  }>('/erp/dev/orders',{params:{
+    search:input.search||'',page:input.page??1,per_page:input.perPage??50,view:input.view??'all',
+  }});
+  if(result.source!=='MAC_LOCAL_DEV_SQLITE'||result.scope!=='DEV_UAT_OWNER_ONLY'||!result.real_dev_rows)
+    throw new Error('ERP_DEV_DATA_SOURCE_REJECTED');
+  return normalizeExistingInertiaOrders(result.inertia);
 }

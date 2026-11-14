@@ -40,7 +40,7 @@ for (const rel of files) {
   fs.mkdirSync(path.dirname(target), {recursive:true});
   fs.copyFileSync(source,target);
 }
-for (const name of ['build.cmd', 'install-offline.cmd', 'test-orders.cmd']) {
+for (const name of ['build.cmd', 'install-offline.cmd', 'test-orders.cmd', 'gateway.cjs', 'r2-smoke.cjs', 'r2-browser.cjs']) {
   const source = path.join(packaged, 'runtime', name);
   const target = path.join(path.dirname(destination), name);
   fs.copyFileSync(source, target);

@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from 'ag-grid-community';
 import { AgGridVue } from 'ag-grid-vue3';
-import { getExistingErpOrders, type ErpOrderPage } from '#/api/erp-orders';
+import { getExistingErpOrders, getMacDevReadOnlyOrders, type ErpOrderPage } from '#/api/erp-orders';
 
 defineOptions({ name: 'ERPWorkspacePreview' });
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -19,7 +19,8 @@ const mode = ref<'synthetic' | 'authenticated-erp'>('synthetic');
 const pager = ref<Pick<ErpOrderPage, 'page' | 'perPage' | 'total' | 'lastPage'>>({
   page: 1, perPage: 50, total: 0, lastPage: 1,
 });
-const enabled = import.meta.env.VITE_ERP_READONLY_ORDERS_ENABLED === '1';
+const bridgeEnabled = import.meta.env.VITE_ERP_DEV_BRIDGE_ENABLED === '1';
+const enabled = bridgeEnabled || import.meta.env.VITE_ERP_READONLY_ORDERS_ENABLED === '1';
 const section = computed(() => String(route.path.split('/').at(-1) ?? 'overview'));
 const titles: Record<string, string> = {
   overview: 'ERP 运营总览', orders: '全部订单',
@@ -50,11 +51,13 @@ const gridTheme = themeQuartz.withParams({
   headerBackgroundColor: '#f8fafc', borderColor: '#e2e8f0', accentColor: '#4f46e5',
 });
 async function loadExisting(page = 1, perPage = pager.value.perPage) {
-  if (!enabled) { error.value = '未启用 ERP 同源只读连接；需要先验证本地 Laravel 登录和权限。'; return; }
+  if (!enabled) { error.value = '未启用 ERP Dev 只读连接。'; return; }
   fetching.value = true;
   error.value = '';
   try {
-    const data = await getExistingErpOrders({ search:search.value, page, perPage });
+    const data = bridgeEnabled
+      ? await getMacDevReadOnlyOrders({ search:search.value, page, perPage })
+      : await getExistingErpOrders({ search:search.value, page, perPage });
     // Never merge, cache, or fallback to synthetic rows after a real API failure.
     rows.value = data.rows.map(row => ({
       order_no: row.order_number, type: row.order_kind, warehouse: row.warehouse || '—',
@@ -64,6 +67,8 @@ async function loadExisting(page = 1, perPage = pager.value.perPage) {
     pager.value = { page:data.page, perPage:data.perPage, total:data.total, lastPage:data.lastPage };
     mode.value = 'authenticated-erp';
   } catch (reason) {
+    rows.value = [];
+    mode.value = 'authenticated-erp';
     error.value = reason instanceof Error ? reason.message : '只读订单查询失败';
   } finally { fetching.value = false; }
 }
@@ -93,9 +98,9 @@ function showSynthetic() {
           :disabled="fetching" @click="loadExisting(1)">查询全部授权记录</button>
         <button type="button" class="rounded border px-2 py-1 text-xs" @click="showSynthetic">合成演示数据</button>
         <button v-if="enabled" type="button" class="rounded border px-2 py-1 text-xs"
-          :disabled="fetching" @click="loadExisting(1)">连接现有 ERP /orders GET（只读）</button>
+          :disabled="fetching" @click="loadExisting(1)">{{ bridgeEnabled ? '读取 Mac mini 的真实 Dev 订单' : '读取 ERP Dev /orders（只读）' }}</button>
         <span class="text-xs text-slate-500">
-          {{ mode === 'synthetic' ? '合成演示，非真实订单' : 'Laravel 原权限订单' }} · {{ mode === 'synthetic' ? rows.length : pager.total }} 条
+          {{ mode === 'synthetic' ? '合成演示，非真实订单' : bridgeEnabled ? 'Mac mini 本地 Dev SQLite · 非正式订单' : 'Laravel Dev 已授权订单' }} · {{ mode === 'synthetic' ? rows.length : pager.total }} 条
         </span>
       </div>
       <p v-if="error" role="alert" class="rounded bg-amber-50 p-2 text-sm text-amber-700">{{ error }}</p>
@@ -114,7 +119,7 @@ function showSynthetic() {
         </select>
       </div>
       <p class="text-xs text-slate-400">
-        真实连接只调用原 Laravel /orders 的同源授权 GET；归档、审核、分仓、发货和 Woo 同步操作均未开放。
+        {{ bridgeEnabled ? 'R2 临时通道：仅 Owner 本地 Dev 数据读取，尚未验证逐用户 Session/RBAC；生产写入关闭。' : '真实连接调用 Laravel 原有授权 GET /orders；业务写入关闭。' }}
       </p>
     </template>
     <div v-else class="flex min-h-[360px] flex-1 items-center justify-center rounded border border-dashed border-slate-300 bg-white">
