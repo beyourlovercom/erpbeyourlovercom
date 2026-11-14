@@ -71,15 +71,17 @@ class AppShellNavigationTest extends TestCase
         $this->assertLessThanOrEqual(4, $queryCount, 'Shell navigation must not query once per permission check.');
     }
 
-    public function test_archive_menu_is_fourth_orders_child_for_readers_only(): void
+    public function test_archive_menu_is_fifth_orders_child_for_readers_only(): void
     {
         $reader = $this->userWith(['dashboard.view', 'orders.view'], 'archive-menu-reader');
         $this->actingAs($reader)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
             ->where('shellNavigation.1.key', 'orders')
-            ->has('shellNavigation.1.children', 4)
-            ->where('shellNavigation.1.children.3.key', 'orders-archive')
-            ->where('shellNavigation.1.children.3.label', '归档清单')
-            ->where('shellNavigation.1.children.3.path', '/orders/archive'));
+            ->has('shellNavigation.1.children', 5)
+            ->where('shellNavigation.1.children.2.key', 'orders-collaboration')
+            ->where('shellNavigation.1.children.2.path', '/orders/collaboration')
+            ->where('shellNavigation.1.children.4.key', 'orders-archive')
+            ->where('shellNavigation.1.children.4.label', '归档清单')
+            ->where('shellNavigation.1.children.4.path', '/orders/archive'));
         $this->actingAs($reader)->get('/orders/archive')
             ->assertInertia(fn (Assert $page) => $page->component('Orders/Archive'));
 
@@ -120,26 +122,29 @@ class AppShellNavigationTest extends TestCase
     {
         $user = $this->userWith(['dashboard.view', 'logistics.view'], 'operator-without-prototype');
         $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
-            ->has('shellNavigation.1.children', 7)
+            ->has('shellNavigation.1.children', 8)
             ->where('shellNavigation.1.children.0.label', '待分仓')
             ->where('shellNavigation.1.children.1.label', '国内发货')
             ->where('shellNavigation.1.children.1.path', '/logistics/china')
             ->where('shellNavigation.1.children.2.label', '海外仓发货')
-            ->where('shellNavigation.1.children.3.label', '已发待单号')
-            ->where('shellNavigation.1.children.4.label', '运输中')
-            ->where('shellNavigation.1.children.5.label', '异常订单')
-            ->where('shellNavigation.1.children.6.label', '物流商'));
+            ->where('shellNavigation.1.children.3.label', 'Tingon发货')
+            ->where('shellNavigation.1.children.3.path', '/logistics/tingon')
+            ->where('shellNavigation.1.children.4.label', '已发待单号')
+            ->where('shellNavigation.1.children.5.label', '运输中')
+            ->where('shellNavigation.1.children.6.label', '异常订单')
+            ->where('shellNavigation.1.children.7.label', '物流商'));
 
         $withPrototype = $this->userWith(['dashboard.view', 'logistics.view', 'prototype.view'], 'operator-with-prototype');
         $this->actingAs($withPrototype)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
-            ->has('shellNavigation.1.children', 7)
+            ->has('shellNavigation.1.children', 8)
             ->where('shellNavigation.1.children.0.label', '待分仓')
             ->where('shellNavigation.1.children.1.label', '国内发货')
             ->where('shellNavigation.1.children.2.label', '海外仓发货')
-            ->where('shellNavigation.1.children.3.label', '已发待单号')
-            ->where('shellNavigation.1.children.4.label', '运输中')
-            ->where('shellNavigation.1.children.5.label', '异常订单')
-            ->where('shellNavigation.1.children.6.label', '物流商'));
+            ->where('shellNavigation.1.children.3.label', 'Tingon发货')
+            ->where('shellNavigation.1.children.4.label', '已发待单号')
+            ->where('shellNavigation.1.children.5.label', '运输中')
+            ->where('shellNavigation.1.children.6.label', '异常订单')
+            ->where('shellNavigation.1.children.7.label', '物流商'));
     }
 
     public function test_owner_approved_kol_logistics_entry_is_visible_only_with_kol_permission(): void
