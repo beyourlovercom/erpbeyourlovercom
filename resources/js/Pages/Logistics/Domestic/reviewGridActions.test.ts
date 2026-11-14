@@ -3,7 +3,7 @@ import { domesticReviewGridActions, type DomesticReviewRow } from './reviewGridA
 
 const handlers = () => ({
   approve: vi.fn(), stockout: vi.fn(), reject: vi.fn(),
-  restock: vi.fn(), reopen: vi.fn(),
+  restock: vi.fn(), returnAllocation: vi.fn(), reopen: vi.fn(),
 })
 const row: DomesticReviewRow = { order_id: 7, review_status: 'pending', shipment_status: 'pending' }
 
@@ -24,9 +24,11 @@ describe('R4 domestic review Grid preserves native operational actions', () => {
     const h = handlers()
     const actions = domesticReviewGridActions('stockout', true, false,
       {...row, review_status: 'stockout'}, h)
-    expect(actions.map(a => a.label)).toEqual(['已到货-可发货'])
+    expect(actions.map(a => a.label)).toEqual(['已到货-可发货', '进待分仓'])
     actions[0].onClick?.()
     expect(h.restock).toHaveBeenCalledOnce()
+    actions[1].onClick?.()
+    expect(h.returnAllocation).toHaveBeenCalledOnce()
   })
   it('only exposes reopen for an approved pending order outside review', () => {
     const actions = domesticReviewGridActions('pending', true, false,

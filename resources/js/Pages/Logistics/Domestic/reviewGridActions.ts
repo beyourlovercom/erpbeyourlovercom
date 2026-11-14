@@ -14,6 +14,7 @@ export type DomesticReviewActionHandlers = {
   stockout: () => void
   reject: () => void
   restock: () => void
+  returnAllocation: () => void
   reopen: () => void
 }
 export function domesticReviewGridActions(
@@ -27,7 +28,7 @@ export function domesticReviewGridActions(
   const options = { disabled: busy }
   if (view === 'stockout') {
     return row.review_status === 'stockout'
-      ? [{ label: '已到货-可发货', onClick: handlers.restock, ...options }] : []
+      ? [{ label: '已到货-可发货', onClick: handlers.restock, ...options }, { label: '进待分仓', onClick: handlers.returnAllocation, ...options }] : []
   }
   if (view === 'review') {
     return [

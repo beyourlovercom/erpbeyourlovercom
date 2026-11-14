@@ -169,7 +169,7 @@ final class DomesticLogisticsController
         $data = $request->validate([
             'order_ids' => ['required', 'array', 'min:1', 'max:50'],
             'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
-            'action' => ['required', 'in:approve,stockout,reject,restock'],
+            'action' => ['required', 'in:approve,stockout,reject,restock,return_allocation'],
             'reason' => ['required_if:action,reject', 'nullable', 'string', 'min:3', 'max:500'],
         ]);
         $results = [];
@@ -209,6 +209,15 @@ final class DomesticLogisticsController
 
         return redirect('/logistics/china?view=pending')
             ->with('success', '已确认到货，订单已进入待发货。');
+    }
+
+    public function returnAllocation(Request $request, Order $order): RedirectResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $this->decisions->decide($order, 'return_allocation', null, $request->user());
+
+        return redirect('/logistics/china?view=stockout&global_grid=1')
+            ->with('success', '缺货订单已退回 Vita 待分仓，可重新选择其他仓库。');
     }
 
     public function stockout(Request $request, Order $order): RedirectResponse
