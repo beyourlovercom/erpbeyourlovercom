@@ -271,6 +271,68 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingBatchIn
         return ['written' => true, 'verified' => true, 'package_count' => count($afterState['items'])];
     }
 
+    /**
+     * Explicit order-detail Tracking correction. Never modifies Woo order status,
+     * line items, address, SKU, notes or customer notifications.
+     * Multi-parcel replacement is deliberately rejected when the target is ambiguous.
+     *
+     * @return array{written:bool,verified:bool}
+     */
+    public function forceSyncSingleTracking(int $providerOrderId, string $slug, string $number, string $shipDate): array
+    {
+        if (! $this->configured()) {
+            throw new RuntimeException('WooCommerce connection is not configured.');
+        }
+        if (trim($number) === '') {
+            throw new RuntimeException('Missing ERP tracking number.');
+        }
+
+        $before = $this->readOrder($providerOrderId);
+        $state = $this->trackingState($before);
+        $items = $state['items'];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                throw new WooCommerceTrackingConflictException('Invalid WooCommerce tracking record.');
+            }
+            if (trim((string) ($item['tracking_number'] ?? '')) === $number) {
+                return ['written' => false, 'verified' => true];
+            }
+        }
+        if (count($items) > 1) {
+            throw new WooCommerceTrackingConflictException('官网有多个 A/B/C 包裹，无法确定应替换哪一个 Tracking；请先人工定位包裹。');
+        }
+
+        if (count($items) === 1) {
+            $old = $items[0];
+            // Preserve the old parcel's line bindings and date; only correct carrier/number.
+            $shipDate = trim((string) data_get($old, 'additional_fields.ship_date', '')) ?: $shipDate;
+            $replacement = $this->trackingItem($slug, $number, $shipDate, $this->lineBindings($old));
+            $replacement['additional_fields'] = array_replace(
+                $replacement['additional_fields'],
+                (array) ($old['additional_fields'] ?? [])
+            );
+            if (isset($old['metrics']['created_at'])) {
+                $replacement['metrics']['created_at'] = $old['metrics']['created_at'];
+            }
+            $items = [$replacement];
+        } else {
+            $legacy = $state['legacy_number'];
+            if ($legacy === $number) {
+                return ['written' => false, 'verified' => true];
+            }
+            $items = [$this->trackingItem($slug, $number, $shipDate, [])];
+        }
+
+        $this->writeTrackingMeta($providerOrderId, $before, $items);
+        $after = $this->trackingState($this->readOrder($providerOrderId));
+        if (count($after['items']) !== 1
+            || (string) ($after['items'][0]['tracking_number'] ?? '') !== $number
+            || (string) ($after['items'][0]['slug'] ?? '') !== $slug) {
+            throw new RuntimeException('WooCommerce Tracking 写入后回读不一致。');
+        }
+        return ['written' => true, 'verified' => true];
+    }
+
     public function syncOrderStatus(int $providerOrderId, string $status): array
     {
         if (! $this->configured()) {

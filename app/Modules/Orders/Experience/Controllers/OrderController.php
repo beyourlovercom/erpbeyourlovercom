@@ -315,6 +315,7 @@ final class OrderController
             'canCreateReplacement' => ! $isDerived && $this->logisticsExecutionAccess->allows($request->user()) && $this->originalLogisticsStarted($order),
             'canCreateProcurement' => ! $isDerived && ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
             'canManageProductPackaging' => ! $isDerived && ($request->user()?->can('products.operate') ?? false),
+            'canForceTrackingSync' => ($request->user()?->can('sync.operate') ?? false),
             'canOperateLogistics' => $this->logisticsExecutionAccess->allows($request->user()),
             'canReopenFulfillment' => $this->fulfillmentAllocationAccess->allows($request->user()),
             'canViewPackagingEvidence' => ($request->user()?->can('inventory.view') ?? false) || ($request->user()?->can('inventory.packaging.review') ?? false),
