@@ -16,6 +16,7 @@ final class OrderProgressQuery
     {
         return $orders
             ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
+            ->whereDoesntHave('procurementOrder', fn ($q) => $q->where('origin', 'external')->whereNull('released_at'))
             ->whereDoesntHave('operationalMarkers', fn ($q) => $q->whereIn('marker', ['domestic_reviewed', 'domestic_stockout']))
             ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'));
     }
@@ -32,6 +33,7 @@ final class OrderProgressQuery
     {
         return $orders
             ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
+            ->whereDoesntHave('procurementOrder', fn ($q) => $q->where('origin', 'external')->whereNull('released_at'))
             ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', 'domestic_reviewed'))
             ->whereDoesntHave('operationalMarkers', fn ($q) => $q->where('marker', 'domestic_stockout'))
             ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'));

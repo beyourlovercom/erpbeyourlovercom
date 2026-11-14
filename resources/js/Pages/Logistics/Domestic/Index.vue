@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
-import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, reactive, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
 import DomesticGridActionCell from './DomesticGridActionCell.vue'
@@ -18,11 +18,14 @@ import CompactWorkspaceToolbar from '../../../Components/UI/CompactWorkspaceTool
 import CompactWorkspaceHelp from '../../../Components/UI/CompactWorkspaceHelp.vue'
 
 type Item = { sku:string|null; quantity:number }
+type PurchaseLine = { id:number; sku:string; quantity:number; purchase_quantity:number; purchase_url:string|null; purchase_size:string|null; received_quantity:number; received_sku:string|null }
+type PurchaseInfo = { id:number; number:string; status:string; carrier:string|null; tracking_number:string|null; received_at:string|null; released_at:string|null; items:PurchaseLine[] }
 type Row = {
   line:number; order_id:number; paid_date:string|null; paid_date_source?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
   workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; carrier_selection_source?:string|null; carrier_ready?:boolean; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
+  procurement?:PurchaseInfo|null
   review_status:'approved'|'pending'|'stockout'|'conflict'; exception_type?:string; exception_reason?:string; export_blockers:string[]; items:Item[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page?:number; total:number }
@@ -31,14 +34,14 @@ type Preview = { token:string; rows:PreviewRow[]; apply_count:number; noop_count
 type ProviderStatus = Record<'4px'|'weship',{export_ready:boolean;return_ready:boolean;label:string;note?:string;reason?:string}>
 type CarrierOption = {value:string;label:string;default_service_value?:string|null;services:{value:string;label:string;name_zh?:string|null}[]}
 
-const props = defineProps<{
-  view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; canReview:boolean; canArchive?:boolean; canTrackingSync?:boolean
+const props = withDefaults(defineProps<{
+  view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; canReview:boolean; canLogisticsView?:boolean; canProcurementOperate?:boolean; canProcurementRelease?:boolean; canArchive?:boolean; canTrackingSync?:boolean
   trackingImportProvider:'4px'|'weship'|'generic'|null; trackingImportPreview:Preview|null; providerStatus:ProviderStatus
   carrierOptions:CarrierOption[]
   globalGridPilotAvailable?:boolean
   globalGridPilotEnabled?:boolean
   gridSearch?:string
-}>()
+}>(),{canLogisticsView:true})
 
 type BulkChoice = {value:string; label:string; reasonRequired?:boolean}
 const selectedBulkOrderIds = ref<number[]>([])
@@ -78,11 +81,11 @@ const searchDomesticGrid = (value:string) => { domesticGridSearch.value=value; g
 const activeOperationId = ref<number|null>(null)
 const showBatchLegacyOperations = ref(false)
 const gridNavigation = useGlobalGridListAdapter({
-  path:'/logistics/china',
+  path:props.view==='outsource' ? '/purchase/external' : '/logistics/china',
   enabled:()=>!!props.globalGridPilotEnabled,
   search:()=>domesticGridSearch.value,
   pageSize:()=>props.rows.per_page??50,
-  context:()=>({view:props.view}),
+  context:()=>props.view==='outsource' ? {} : {view:props.view},
 })
 const displayCarrier = (carrier:string|null|undefined) => props.carrierOptions.find(item=>item.value.toLowerCase()===(carrier??'').toLowerCase())?.label ?? carrier ?? '—'
 const nativeOperationRows = computed(()=>!props.globalGridPilotEnabled || showBatchLegacyOperations.value
@@ -369,10 +372,59 @@ const uploadInput = ref<HTMLInputElement|null>(null)
 const uploadBusy = ref(false)
 const applyBusy = ref(false)
 const tabs = [
-  ['review','待审核'], ['stockout','缺货单'], ['pending','待发货'], ['today','今日订单'],
+  ['review','待审核'], ['stockout','缺货单'], ['outsource','外采单'], ['pending','待发货'], ['today','今日订单'],
   ['today-4px','今日速达'], ['today-weship','今日纬狮'], ['exceptions','异常订单'],
   ['4px','速达订单'], ['weship','纬狮订单'],
 ] as const
+const visibleTabs = computed(() => props.canLogisticsView!==false ? tabs : tabs.filter(tab => tab[0]==='outsource'))
+type ExternalDraft = { carrier:string; tracking_number:string; receipt_note:string; items:Record<number,{ id:number;received_sku:string;received_quantity:number;purchase_url:string;purchase_size:string;purchase_quantity:number }> }
+const externalDrafts = reactive<Record<number,ExternalDraft>>({})
+const externalBusy = ref<number|null>(null)
+const externalReceiptOpen = ref<number|null>(null)
+const externalError = ref<Record<number,string>>({})
+function purchaseDraft(p:PurchaseInfo):ExternalDraft {
+  return externalDrafts[p.id] ||= {
+    carrier:p.carrier??'', tracking_number:p.tracking_number??'', receipt_note:'',
+    items:Object.fromEntries(p.items.map(item=>[item.id,{
+      id:item.id, received_sku:item.received_sku??item.sku,
+      received_quantity:item.received_quantity || item.quantity,
+      purchase_url:item.purchase_url??'', purchase_size:item.purchase_size??'',
+      purchase_quantity:item.purchase_quantity,
+    }])),
+  }
+}
+function setPurchaseProgress(row:Row, status:string) {
+  const p=row.procurement
+  if(!p || externalBusy.value!==null)return
+  const draft=purchaseDraft(p)
+  if(status==='arrived' && draft.receipt_note.trim().length<4){
+    externalError.value[p.id]='请填写工厂真实收货依据（至少4个字）'
+    return
+  }
+  externalBusy.value=p.id
+  externalError.value[p.id]=''
+  router.patch('/purchase/orders/'+p.id, {
+    status, carrier:draft.carrier, tracking_number:draft.tracking_number,
+    ...(status==='arrived'?{receipt_note:draft.receipt_note}:{}),
+    items:Object.values(draft.items),
+  }, {
+    preserveScroll:true,
+    onSuccess:()=>{ externalReceiptOpen.value=null;router.reload({only:['rows','viewCounts']}) },
+    onError:errors=>{ externalError.value[p.id]=Object.values(errors).join('；') || '保存采购信息失败' },
+    onFinish:()=>{ externalBusy.value=null },
+  })
+}
+function releasePurchase(row:Row){
+  const p=row.procurement
+  if(!p || !props.canProcurementRelease || externalBusy.value!==null)return
+  externalBusy.value=p.id
+  externalError.value[p.id]=''
+  router.post('/purchase/orders/'+p.id+'/release-to-domestic',{},{
+    preserveScroll:true,
+    onError:errors=>{ externalError.value[p.id]=Object.values(errors).join('；') || '到货核验失败，请刷新' },
+    onFinish:()=>{externalBusy.value=null},
+  })
+}
 const previewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 30) ?? [])
 const itemText = (row:Row) => row.items.map(item => (item.sku ?? '无SKU') + ' × ' + item.quantity).join(' / ') || '—'
 const europeanCountries = new Set(['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','GB','UK','NO','CH','IS','LI','AD','MC','SM','VA','AL','BA','ME','MK','RS','MD','UA','TR'])
@@ -571,7 +623,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
       <CompactWorkspaceToolbar>
         <template #navigation>
           <nav class="tabs" aria-label="国内发货业务视图">
-            <button v-for="([key,label]) in tabs" :key="key" type="button" :class="{active:view===key}" @click="switchView(key)">
+            <button v-for="([key,label]) in visibleTabs" :key="key" type="button" :class="{active:view===key}" @click="switchView(key)">
               {{ label }} <span>{{ viewCounts[key] ?? 0 }}</span>
             </button>
           </nav>
@@ -651,7 +703,62 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         <button type="button" class="primary" :disabled="trackingBusy" @click="pushTracking(trackingSelection)">批量同步官网物流</button>
         <button type="button" class="secondary" @click="trackingSelection=[]">清除选择</button>
       </div>
-      <div v-if="globalGridPilotEnabled" class="domestic-grid-main">
+      <section v-if="view==='outsource'" class="external-procurement-panel" data-testid="domestic-external-procurement">
+        <div class="external-head"><strong>外采单 · Zhang 采购跟进</strong><small>仅展示真实外采且客户尚未发货的订单；Vita 确认到货后进入国内待发货，Kaven 无需二次审核。</small></div>
+        <div class="table-wrap">
+          <table class="external-table">
+            <thead><tr><th>ERP订单</th><th>实际 SKU / 数量</th><th>采购单</th><th>采购进度</th><th>采购物流</th><th>操作</th></tr></thead>
+            <tbody>
+              <template v-for="row in rows.data" :key="row.order_id">
+                <tr v-if="row.procurement">
+                  <td><a :href="row.order_url">{{ row.erp_order_id }}</a></td>
+                  <td>{{ itemText(row) }}</td>
+                  <td><a :href="'/purchase/orders/'+row.procurement.id">{{ row.procurement.number }}</a></td>
+                  <td><strong>{{ ({pending:'待采购',purchasing:'采购中',ordered:'已下单 / 运输中',arrived:'已到货 · 待Vita确认',released:'已放行 · 国内待发货'})[row.procurement.status as 'pending'|'purchasing'|'ordered'|'arrived'|'released']??row.procurement.status }}</strong></td>
+                  <td>
+                    <div v-if="canProcurementOperate && !row.procurement.released_at" class="external-fields">
+                      <input v-model="purchaseDraft(row.procurement).carrier" aria-label="采购物流公司" placeholder="采购物流商" />
+                      <input v-model="purchaseDraft(row.procurement).tracking_number" aria-label="采购物流单号" placeholder="采购物流单号" />
+                    </div>
+                    <span v-else>{{ row.procurement.carrier??'—' }} / {{ row.procurement.tracking_number??'—' }}</span>
+                  </td>
+                  <td class="external-actions">
+                    <button v-if="canProcurementOperate && row.procurement.status==='pending'" type="button" :disabled="externalBusy!==null" @click="setPurchaseProgress(row,'purchasing')">开始采购</button>
+                    <button v-if="canProcurementOperate && row.procurement.status==='purchasing'" type="button" :disabled="externalBusy!==null" @click="setPurchaseProgress(row,'ordered')">已下单</button>
+                    <button v-if="canProcurementOperate && ['purchasing','ordered'].includes(row.procurement.status)" type="button" :disabled="externalBusy!==null" @click="setPurchaseProgress(row,row.procurement.status)">保存物流</button>
+                    <button v-if="canProcurementOperate && row.procurement.status==='ordered'" type="button" :disabled="externalBusy!==null" @click="externalReceiptOpen = externalReceiptOpen===row.procurement?.id?null:row.procurement?.id??null">登记到货</button>
+                    <button v-if="canProcurementRelease && row.procurement.status==='arrived'" type="button" class="primary" :disabled="externalBusy!==null" @click="releasePurchase(row)">Vita 确认 → 国内待发货</button>
+                    <a :href="'/purchase/orders/'+row.procurement.id">采购详情</a>
+                    <small v-if="externalError[row.procurement.id]" class="danger">{{ externalError[row.procurement.id] }}</small>
+                  </td>
+                </tr>
+                <tr v-if="row.procurement && externalReceiptOpen===row.procurement.id && canProcurementOperate">
+                  <td colspan="6" class="external-receipt">
+                    <strong>工厂实际到货核验</strong>
+                    <p>请核对已收到的真实 SKU 和数量，不允许仅凭采购物流单号自动确认到货。</p>
+                    <div class="external-receipt-items">
+                      <label v-for="item in row.procurement.items" :key="item.id">
+                        {{ item.sku }} · 需求 {{ item.quantity }}
+                        <input v-model="purchaseDraft(row.procurement).items[item.id].received_sku" :aria-label="'实际到货SKU '+item.sku" />
+                        <input v-model.number="purchaseDraft(row.procurement).items[item.id].received_quantity" type="number" min="0" :aria-label="'实际到货数量 '+item.sku" />
+                      </label>
+                    </div>
+                    <textarea v-model="purchaseDraft(row.procurement).receipt_note" rows="2" placeholder="工厂收货证据、确认人和日期（必填）" />
+                    <button type="button" class="primary" :disabled="externalBusy!==null" @click="setPurchaseProgress(row,'arrived')">确认已到货</button>
+                  </td>
+                </tr>
+              </template>
+              <tr v-if="!rows.data.length"><td colspan="6" class="mvp-empty">暂无未完成发货的真实外采订单</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-if="rows.last_page>1" class="external-paging">
+          <button type="button" :disabled="rows.current_page<=1" @click="gridNavigation.page(rows.current_page-1)">上一页</button>
+          <span>{{ rows.current_page }} / {{ rows.last_page }} · {{ rows.total }} 单</span>
+          <button type="button" :disabled="rows.current_page>=rows.last_page" @click="gridNavigation.page(rows.current_page+1)">下一页</button>
+        </div>
+      </section>
+      <div v-if="globalGridPilotEnabled && view!=='outsource'" class="domestic-grid-main">
         <GlobalGrid :key="'domestic-grid-'+view"
           :namespace="'grid.logistics.domestic.'+view+'.global.v1'"
           :legacy-preference-namespaces="['grid.logistics.domestic.global.v1']"
@@ -679,7 +786,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
             @click="activeOperationId=null">收起单笔操作</button>
         </div>
       </div>
-      <div v-if="!globalGridPilotEnabled || (view!=='review' && view!=='stockout' && !isProviderWorkView(view) && (activeOperationId!==null || showBatchLegacyOperations))" class="table-wrap orders">
+      <div v-if="view!=='outsource' && (!globalGridPilotEnabled || (view!=='review' && view!=='stockout' && !isProviderWorkView(view) && (activeOperationId!==null || showBatchLegacyOperations)))" class="table-wrap orders">
         <table>
           <thead><tr><th v-if="canTrackingSync && view!=='stockout'">选择</th><th>#</th><th>{{ view==='stockout' ? '操作' : '审核' }}</th><th>ERP 订单</th><th>订单状态</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>物流商单号</th><th>物流商</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view==='pending'">SKU</th><th v-if="view==='pending'">数量</th><th v-if="view==='pending'">金额</th><th v-if="view!=='review' && view!=='pending'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync && view!=='stockout'">操作</th></tr></thead>
           <tbody>
@@ -815,4 +922,22 @@ button:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:800px){.domestic-page.domestic-compact-workspace{padding:8px;min-height:calc(100dvh - 150px)}.pending-batch-card{flex-direction:column;align-items:stretch}.provider-grid{grid-template-columns:1fr}.provider-card{flex-direction:column}.preview-head{flex-direction:column}}
 
 .review-actions{display:flex;align-items:center;gap:5px}.stockout-btn,.reject-btn{border:1px solid #e3ac78;background:#fff9f1;color:#9a3412;border-radius:6px;min-height:30px;padding:0 8px;font-size:12px;font-weight:800}.reject-btn{border-color:#efb2b2;background:#fff;color:#b42318}.review-reject-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(16,24,40,.5);display:flex;align-items:center;justify-content:center;padding:16px}.review-reject-dialog{background:#fff;width:min(480px,100%);border-radius:12px;padding:20px;box-shadow:0 24px 80px rgba(16,24,40,.2);display:grid;gap:12px}.review-reject-dialog h2{margin:0;font-size:19px}.review-reject-dialog p{margin:0;font-size:13px;color:#64748b}.review-reject-dialog label{font-size:12px;font-weight:700}.review-reject-dialog textarea{width:100%;padding:10px;border:1px solid #d4dae1;border-radius:7px;font-size:13px}.review-reject-dialog .actions{justify-content:flex-end}.reason-shortcuts{display:flex;flex-wrap:wrap;gap:6px}
+</style>
+
+<style scoped>
+.external-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid #dce5e8}
+.external-head small{color:#687987}
+.external-procurement-panel{border:1px solid #dde5e8;border-radius:8px;background:#fff;overflow:hidden}
+.external-table{width:100%;border-collapse:collapse;font-size:13px}
+.external-table th,.external-table td{padding:10px;border-bottom:1px solid #e8edf0;text-align:left;vertical-align:middle}
+.external-fields{display:flex;flex-direction:column;gap:4px}
+.external-fields input,.external-receipt input,.external-receipt textarea{border:1px solid #ccd6dc;border-radius:4px;padding:5px 8px;max-width:200px}
+.external-actions{min-width:210px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.external-actions button,.external-paging button,.external-receipt button{border:1px solid #91aaa9;border-radius:5px;padding:6px 9px;cursor:pointer}
+.external-actions .primary,.external-receipt .primary{background:#088a7e;color:white;border-color:#088a7e}
+.external-receipt{background:#f5faf9}
+.external-receipt-items{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0}
+.external-receipt-items label{display:flex;flex-direction:column;gap:5px}
+.external-receipt textarea{display:block;min-width:340px;max-width:100%;margin:10px 0}
+.external-paging{display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:10px}
 </style>

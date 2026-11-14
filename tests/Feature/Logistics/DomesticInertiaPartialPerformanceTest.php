@@ -28,7 +28,7 @@ final class DomesticInertiaPartialPerformanceTest extends TestCase
         $this->actingAs($user)->get('/logistics/china?view=review')->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Logistics/Domestic/Index')
-                ->has('viewCounts', 9)
+                ->has('viewCounts', 10)
                 ->has('carrierOptions'));
     }
 

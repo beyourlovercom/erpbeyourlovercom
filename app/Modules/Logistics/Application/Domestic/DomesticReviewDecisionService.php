@@ -5,12 +5,12 @@ namespace App\Modules\Logistics\Application\Domestic;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
-use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
-use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Identity\Infrastructure\Models\User;
-use App\Modules\NotificationCenter\Application\NotificationPublisher;
+use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\NotificationCenter\Application\NotificationPublisher;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -37,6 +37,8 @@ final class DomesticReviewDecisionService
             $locked = Order::query()->with([
                 'shipment', 'operationalMarkers', 'externalReferences', 'fulfillmentParent',
             ])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            abort_if($locked->procurementOrder()->where('origin', 'external')->whereNull('released_at')->exists(),
+                409, '外采订单未由 Vita 验收到货放行，不能通过普通国内审核');
             $factory = Warehouse::query()->whereRaw('UPPER(code) = ?', ['FACTORY'])->firstOrFail();
             abort_if($locked->archived_at !== null || $locked->isOperationallyArchived() || $locked->trashed(), 409, '归档订单不可审核。');
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '订单状态不允许进行国内商务审核。');
@@ -86,8 +88,7 @@ final class DomesticReviewDecisionService
                 $root = $locked->fulfillmentParent ?? $locked;
                 $siblings = $root->originalFulfillmentChildren()->with('shipment')->get();
                 if ($siblings->isNotEmpty()) {
-                    abort_if($siblings->contains(fn (Order $sibling): bool =>
-                        ! $sibling->shipment || $sibling->shipment->shipment_status !== 'pending'
+                    abort_if($siblings->contains(fn (Order $sibling): bool => ! $sibling->shipment || $sibling->shipment->shipment_status !== 'pending'
                         || filled($sibling->shipment->tracking_number) || $sibling->shipment->shipped_at !== null
                     ), 409, '拆单已有发货或异常段，不能整单驳回；请联系运营单独处理。');
                     foreach ($siblings as $sibling) {
@@ -128,7 +129,7 @@ final class DomesticReviewDecisionService
                     ->each(fn (User $user) => $this->notifications->publishToUser($user, [
                         'category' => 'logistics',
                         'title' => '国内商务分仓被驳回',
-                        'message' => "订单 {$returnedOrder->erp_order_id} 被驳回：" . trim((string) $reason),
+                        'message' => "订单 {$returnedOrder->erp_order_id} 被驳回：".trim((string) $reason),
                         'action_url' => '/logistics/wait-stock?rejected=1',
                         'entity_type' => 'order',
                         'entity_id' => (string) $returnedOrder->getKey(),
