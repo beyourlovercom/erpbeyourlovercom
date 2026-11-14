@@ -14,7 +14,7 @@ import { allocationStockWarnings } from '../../lib/allocationStockWarning'
 import { allocationGuidance } from '../../lib/allocationGuidance'
 
 type Availability = { warehouse_id:number; warehouse_slug:string; warehouse_name:string; inventory_state:string; can_auto_allocate:boolean; quantity_on_hand:number|null; quantity_reserved:number|null; quantity_available:number|null }
-type GiftOption = { mapping_id:number; warehouse_id:number; warehouse_code:string; warehouse_name:string; fulfillment_product_id:number; fulfillment_sku:string; fulfillment_name:string; quantity_available:number|null; can_fulfill:boolean; priority:number }
+type GiftOption = { mapping_id:number; warehouse_id:number; warehouse_code:string; warehouse_name:string; fulfillment_product_id:number; fulfillment_sku:string; fulfillment_name:string; quantity_available:number|null; erp_quantity_available?:number|null; stock_gate_reason?:string|null; can_fulfill:boolean; priority:number }
 type Item = { id:number; product_id:number|null; product_url:string|null; sku:string|null; source_sku:string|null; resolved_fulfillment_sku:string|null; product_summary:string|null; quantity:number; availability:Availability[]; is_gift:boolean; gift_options_by_warehouse:Record<string,GiftOption[]> }
 type PlanItem = { product_id:number|null; quantity:number; sku?:string|null; source_sku?:string|null; resolved_fulfillment_sku?:string|null; product_summary?:string|null }
 type Segment = { source_type:'factory'|'warehouse'; source_code:string; warehouse_id:number|null; warehouse_name:string; carrier?:string|null; service?:string|null; carrier_selection_source?:string|null; items:PlanItem[] }
@@ -360,8 +360,8 @@ function ensureManual(order:Order){
 function openPlan(order:Order){ selectedOrderId.value=order.id; decisionNote.value=order.fulfillment_allocation?.decision_note??''; submitError.value=''; ensureManual(order) }
 function closePlan(){ selectedOrderId.value=null; submitError.value=''; stockConfirmOpen.value=false }
 function availabilityFor(item:Item,w:Warehouse){ return item.availability.find(r=>r.warehouse_id===w.id) }
-function availabilityLabel(item:Item,w:Warehouse){ if(w.code==='OUTSOURCE')return '待采购到货'; if(w.code==='FACTORY')return '国内工厂'; const r=availabilityFor(item,w); if(w.code==='TINGON')return '人工可分仓 · 不管理合作仓库存'; if(w.code==='US-AMZ')return r?.quantity_available==null?'人工可分仓 · 未登记库存':`人工可分仓 · 库存 ${r.quantity_available}`; if(!r||r.quantity_available==null)return '库存未知'; return r.quantity_available>=item.quantity?`有货 ${r.quantity_available}`:`不足 ${r.quantity_available}` }
-function availabilityClass(item:Item,w:Warehouse){ if(['OUTSOURCE','FACTORY','US-AMZ','TINGON'].includes(w.code))return 'stock-neutral'; const r=availabilityFor(item,w); if(!r||r.quantity_available==null)return 'stock-unknown'; return r.quantity_available>=item.quantity?'stock-ok':'stock-short' }
+function availabilityLabel(item:Item,w:Warehouse){ if(w.code==='OUTSOURCE')return '待采购到货'; if(w.code==='FACTORY')return '国内工厂'; const r=availabilityFor(item,w); if(w.code==='TINGON')return '人工可分仓 · 不管理合作仓库存'; if(w.code==='US-AMZ')return r?.quantity_available==null?'人工可分仓 · 未登记库存':`人工可分仓 · 库存 ${r.quantity_available}`; if(!r||r.quantity_available==null)return '库存未知'; if(canonicalWarehouseCode(w.code)==='US-LA')return 'ERP参考 '+r.quantity_available+' · OMS待核验'; return r.quantity_available>=item.quantity?`有货 ${r.quantity_available}`:`不足 ${r.quantity_available}` }
+function availabilityClass(item:Item,w:Warehouse){ if(canonicalWarehouseCode(w.code)==='US-LA')return 'stock-neutral'; if(['OUTSOURCE','FACTORY','US-AMZ','TINGON'].includes(w.code))return 'stock-neutral'; const r=availabilityFor(item,w); if(!r||r.quantity_available==null)return 'stock-unknown'; return r.quantity_available>=item.quantity?'stock-ok':'stock-short' }
 
 type WarehouseAdvice = { kind:'recommended'|'manual'|'none'; label:string; detail:string }
 // Display advisory warehouse inventory independently of automatic-routing eligibility.
@@ -405,10 +405,31 @@ function warehouseAdvice(order:Order,item:Item):WarehouseAdvice {
 
 function giftOptions(item:Item,source:string){ return item.gift_options_by_warehouse?.[canonicalWarehouseCode(source)] ?? [] }
 function availableGiftOptions(item:Item,source:string){ return giftOptions(item,source).filter(o=>o.can_fulfill).sort((a,b)=>a.priority-b.priority) }
-function giftEmptyLabel(item:Item,source:string){ const opts=giftOptions(item,source); if(!opts.length)return '该仓当前没有可用清仓礼品'; if(!opts.some(o=>o.can_fulfill))return '礼品库存在，但当前全部缺货'; return '' }
+function giftBlockReason(option:GiftOption){
+  switch(option.stock_gate_reason){
+    case 'oms_snapshot_blocked': return '世迈 OMS 库存快照核验被阻断'
+    case 'oms_snapshot_not_applied': return 'OMS 快照尚未通过应用核验'
+    case 'oms_sku_not_confirmed': return 'OMS 未验证此 SKU'
+    case 'oms_no_available_stock': return 'OMS 可出库库存为 0'
+    case 'stock_age_or_reservation_gate': return '库龄或预留库存限制'
+    default: return option.quantity_available===null ? '库存未知' : '库存不足'
+  }
+}
+function giftEmptyLabel(item:Item,source:string){
+  const opts=giftOptions(item,source)
+  if(!opts.length)return '该仓未配置有效的清仓 Gift SKU'
+  if(opts.some(o=>o.can_fulfill))return ''
+  const blocked=opts.find(o=>o.stock_gate_reason==='oms_snapshot_blocked')
+  if(blocked)return '世迈 OMS 库存待核验：ERP 清仓有货，但 OMS 快照被阻断；禁止分仓，请先修复库存同步'
+  if(opts.some(o=>o.stock_gate_reason==='oms_snapshot_not_applied'))return 'OMS 库存快照尚未完成应用核验，暂不能分仓'
+  const unverified=opts.find(o=>o.stock_gate_reason==='oms_sku_not_confirmed')
+  if(unverified)return 'OMS 未验证该 SKU，暂不能分仓'
+  if(opts.some(o=>o.quantity_available===null))return 'Gift 库存未知，请核实库存'
+  return 'Gift 当前可出库库存不足'
+}
 function chosenGift(item:Item,order:Order){ const id=Number(manualGiftMappings[order.id]?.[item.id]||0); return Object.values(item.gift_options_by_warehouse||{}).flat().find(o=>o.mapping_id===id) }
-function giftStockLabel(item:Item,w:Warehouse){ const opts=giftOptions(item,w.code); if(!opts.length)return '无清仓礼品'; const available=availableGiftOptions(item,w.code); if(available.length)return `有货 ${available[0].quantity_available ?? '未知'}`; return '礼品库全部缺货' }
-function giftStockClass(item:Item,w:Warehouse){ const opts=giftOptions(item,w.code); if(!opts.length)return 'stock-unknown'; return opts.some(o=>o.can_fulfill)?'stock-ok':(opts.some(o=>o.quantity_available!=null)?'stock-short':'stock-unknown') }
+function giftStockLabel(item:Item,w:Warehouse){ if(canonicalWarehouseCode(w.code)==='US-LA')return 'ERP礼品库存 · OMS待核验'; const opts=giftOptions(item,w.code); if(!opts.length)return '无清仓礼品'; const available=availableGiftOptions(item,w.code); if(available.length)return `有货 ${available[0].quantity_available ?? '未知'}`; return opts.some(o=>o.stock_gate_reason==='oms_snapshot_blocked')?'OMS 核验阻断':opts.some(o=>o.stock_gate_reason==='oms_sku_not_confirmed')?'OMS 未确认 SKU':'Gift 可出库不足' }
+function giftStockClass(item:Item,w:Warehouse){ if(canonicalWarehouseCode(w.code)==='US-LA')return 'stock-neutral'; const opts=giftOptions(item,w.code); if(!opts.length)return 'stock-unknown'; return opts.some(o=>o.can_fulfill)?'stock-ok':(opts.some(o=>o.quantity_available!=null)?'stock-short':'stock-unknown') }
 function carrierForItem(order:Order,item:Item){ const source=manualAssignments[order.id]?.[item.id]??''; return ['FACTORY','OUTSOURCE'].includes(source) ? '' : (source ? (manualCarriers[order.id]?.[source] ?? defaultCarrier(order,source)) : '') }
 function carrierIsDefault(order:Order,item:Item){ const source=manualAssignments[order.id]?.[item.id]??''; const selected=carrierForItem(order,item); return !!source && !!selected && selected===defaultCarrier(order,source) }
 function onWarehouseChanged(order:Order,item:Item){
@@ -451,6 +472,35 @@ function splitConstraintError(order:Order){
   }
   return null
 }
+type SubmissionStatus = { status: string; decision_source?: string|null; submitted_at?: string|null; selected_plan_key?: string|null; assignments?: Array<{order_item_id:number;source_code:string;gift_mapping_id?:number|null}> }
+type AllocationAssignment = { order_item_id:number; source_code:string; gift_mapping_id:number|null; carrier:string|null; service:string|null }
+function submissionMessage(body:{message?:string;errors?:Record<string,string[]>},httpStatus:number,requestId:string|null){
+  const specific=Object.values(body.errors??{}).flat().filter(Boolean)[0]
+  const reason=specific||body.message||(httpStatus===500?'服务器处理异常':'提交失败（HTTP '+httpStatus+'）')
+  return reason+(requestId?' · 请求编号 '+requestId:'')
+}
+async function readBackAllocation(orderId:number):Promise<SubmissionStatus|null>{
+  try {
+    const response=await fetch('/logistics/orders/'+orderId+'/fulfillment-allocation/status',{
+      credentials:'same-origin',headers:{Accept:'application/json'},
+    })
+    return response.ok ? await response.json() as SubmissionStatus : null
+  }catch{ return null }
+}
+function matchingManualAllocation(status:SubmissionStatus,assignments:AllocationAssignment[]){
+  if(status.status!=='submitted'||status.decision_source!=='manual')return false
+  const actual=status.assignments??[]
+  return actual.length===assignments.length && assignments.every(expected=>{
+    const row=actual.find(a=>a.order_item_id===expected.order_item_id)
+    return !!row && canonicalWarehouseCode(row.source_code)===canonicalWarehouseCode(expected.source_code)
+      && Number(row.gift_mapping_id||0)===Number(expected.gift_mapping_id||0)
+  })
+}
+function submittedResult(order:Order,source:'manual'|'system_recommendation',submittedAt?:string|null){
+  localSubmitted[order.id]={source,submittedAt:submittedAt??new Date().toISOString()}
+  closePlan()
+  router.reload({only:['orders','pendingTotal','rejectionCount']})
+}
 function matchesRecommendation(order:Order){
   const plan=order.allocation_decision.recommended_plan
   if(!plan || !order.allocation_decision.can_use_recommendation || hasGift(order))return false
@@ -462,10 +512,32 @@ function matchesRecommendation(order:Order){
     return canonicalWarehouseCode(source)===canonicalWarehouseCode(segment.source_code) && (source==='FACTORY' || carrier===(recommendedCarrier??''))
   })
 }
-async function submitRecommended(){ const order=selectedOrder.value,decision=order?.allocation_decision; if(!order||!decision?.recommended_plan_key||!decision.can_use_recommendation||!props.canOperate)return; submitting.value=true; submitError.value=''; try{ const r=await fetch(`/logistics/orders/${order.id}/fulfillment-allocation/recommended`,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},body:JSON.stringify({plan_key:decision.recommended_plan_key,decision_note:decisionNote.value})}); const b=await r.json().catch(()=>({})) as {message?:string;submitted_at?:string}; if(!r.ok)throw new Error(b.message??`提交失败（${r.status}）`); localSubmitted[order.id]={source:'system_recommendation',submittedAt:b.submitted_at??new Date().toISOString()}; closePlan(); router.reload({only:['orders','pendingTotal','rejectionCount']}) }catch(e){ submitError.value=e instanceof Error?e.message:'提交失败，请重试' }finally{submitting.value=false} }
+async function submitRecommended(){
+  const order=selectedOrder.value,decision=order?.allocation_decision
+  if(!order||!decision?.recommended_plan_key||!decision.can_use_recommendation||!props.canOperate||submitting.value)return
+  submitting.value=true;submitError.value=''
+  try{
+    const response=await fetch('/logistics/orders/'+order.id+'/fulfillment-allocation/recommended',{
+      method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},
+      body:JSON.stringify({plan_key:decision.recommended_plan_key,decision_note:decisionNote.value}),
+    })
+    const body=await response.json().catch(()=>({})) as {message?:string;submitted_at?:string;errors?:Record<string,string[]>}
+    if(!response.ok)throw new Error(submissionMessage(body,response.status,response.headers.get('X-Request-ID')))
+    submittedResult(order,'system_recommendation',body.submitted_at)
+  }catch(error){
+    const status=await readBackAllocation(order.id)
+    if(status?.status==='submitted' && status.decision_source==='system_recommendation'
+      && status.selected_plan_key===decision.recommended_plan_key){
+      submittedResult(order,'system_recommendation',status.submitted_at)
+    }else{
+      submitError.value=(error instanceof Error?error.message:'提交失败')+
+        (status===null?'；状态暂无法确认，请先刷新订单，勿重复点击。':status.status==='submitted'?'；订单已由其他操作提交，请刷新核对。':'；已回读订单：尚未完成分仓。')
+    }
+  }finally{submitting.value=false}
+}
 async function submitManual(stockExceptionAcknowledged = false) {
   const order = selectedOrder.value
-  if (!order || !props.canOperate) return
+  if (!order || !props.canOperate || submitting.value) return
   const validation = splitConstraintError(order)
   if (validation) { submitError.value = validation; return }
   if (selectedStockWarnings.value.length && !stockExceptionAcknowledged) {
@@ -473,7 +545,7 @@ async function submitManual(stockExceptionAcknowledged = false) {
     stockConfirmOpen.value = true
     return
   }
-  const assignments = order.items.map(item => {
+  const assignments:AllocationAssignment[] = order.items.map(item => {
     const source = manualAssignments[order.id][item.id]
     const carrier = ['FACTORY','OUTSOURCE'].includes(source) ? null : (manualCarriers[order.id]?.[source] || defaultCarrier(order, source))
     const route = order.carrier_routes?.[source]
@@ -485,7 +557,24 @@ async function submitManual(stockExceptionAcknowledged = false) {
   })
   submitting.value = true
   submitError.value = ''
+  let submittedRequest = false
   try {
+    // Preflight uses the exact physical SKU/OMS resolver as submission, but makes no writes.
+    const preflight = await fetch('/logistics/orders/'+order.id+'/fulfillment-allocation/preflight', {
+      method:'POST', credentials:'same-origin',
+      headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},
+      body:JSON.stringify({assignments}),
+    })
+    const preBody=await preflight.json().catch(()=>({})) as {
+      can_submit?:boolean; issues?:Array<{sku:string;warehouse:string;reason:string}>;
+      message?:string;errors?:Record<string,string[]>;
+    }
+    if(!preflight.ok)throw new Error(submissionMessage(preBody,preflight.status,preflight.headers.get('X-Request-ID')))
+    if(!preBody.can_submit){
+      const detail=(preBody.issues??[]).map(issue=>issue.sku+' ('+(issue.warehouse||'订单')+')：'+issue.reason).join('；')
+      throw new Error(detail||'实际 SKU 未验证，无法分仓。')
+    }
+    submittedRequest=true
     const response = await fetch('/logistics/orders/' + order.id + '/fulfillment-allocation/manual', {
       method: 'POST', credentials: 'same-origin',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...csrfHeaders() },
@@ -500,13 +589,23 @@ async function submitManual(stockExceptionAcknowledged = false) {
         stockServerWarning.value = body.errors.stock_exception_acknowledged[0] ?? ''
         stockConfirmOpen.value = true
       }
-      throw new Error(body.errors?.stock_exception_acknowledged?.[0] ?? body.message ?? '提交失败（' + response.status + '）')
+      throw new Error(submissionMessage(body,response.status,response.headers.get('X-Request-ID')))
     }
-    localSubmitted[order.id] = { source: 'manual', submittedAt: body.submitted_at ?? new Date().toISOString() }
-    closePlan()
-    router.reload({only:['orders','pendingTotal','rejectionCount']})
+    submittedResult(order, 'manual', body.submitted_at)
   } catch (error) {
-    submitError.value = error instanceof Error ? error.message : '提交失败，请重试'
+    const detail=error instanceof Error ? error.message : '提交失败，请重试'
+    if(!submittedRequest){submitError.value=detail;return}
+    // A 500 or broken connection can arrive AFTER a successful commit. Never resend blindly.
+    const status=await readBackAllocation(order.id)
+    if(status && matchingManualAllocation(status,assignments)){
+      submittedResult(order,'manual',status.submitted_at)
+    }else{
+      submitError.value=detail+(status===null
+        ?'；分仓状态无法确认，请先刷新订单，禁止重复提交。'
+        :status.status==='submitted'
+          ?'；发现已有不同的分仓结果，请刷新后核对。'
+          :'；已回读订单：本次分仓未成功保存。')
+    }
   } finally {
     submitting.value = false
   }
@@ -612,9 +711,9 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
             <td>{{ item.quantity }}</td>
             <td><div class="stock-list"><span v-for="warehouse in warehouseOptions" :key="warehouse.code" :class="item.is_gift?giftStockClass(item,warehouse):availabilityClass(item,warehouse)">{{ warehouse.name }}：{{ item.is_gift?giftStockLabel(item,warehouse):availabilityLabel(item,warehouse) }}</span></div></td>
             <td><div class="warehouse-advice" :class="warehouseAdvice(selectedOrder,item).kind"><strong>{{ warehouseAdvice(selectedOrder,item).label }}</strong><small>{{ warehouseAdvice(selectedOrder,item).detail }}</small></div></td>
-            <td><select v-model="manualAssignments[selectedOrder.id][item.id]" @change="onWarehouseChanged(selectedOrder,item)"><option value="">请选择</option><option v-for="warehouse in warehouseOptions" :key="warehouse.code" :value="canonicalWarehouseCode(warehouse.code)">{{ warehouse.name }}</option></select></td>
+            <td><select v-model="manualAssignments[selectedOrder.id][item.id]" @change="onWarehouseChanged(selectedOrder,item)"><option value="">请选择</option><option v-for="warehouse in warehouseOptions" :key="warehouse.code" :value="canonicalWarehouseCode(warehouse.code)">{{ warehouse.name }}</option></select><small v-if="canonicalWarehouseCode(manualAssignments[selectedOrder.id][item.id])==='US-LA'" class="mapping-missing">提交前核验 MorePlus 实际 SKU；ERP 库存仅供参考</small></td>
             <td><div class="carrier-cell"><span v-if="['FACTORY','OUTSOURCE'].includes(manualAssignments[selectedOrder.id][item.id])" class="manual-route">{{ manualAssignments[selectedOrder.id][item.id]==='OUTSOURCE' ? '待采购到货 · Vita 放行后选物流商' : '待发货阶段人工确认' }}</span><select v-else :value="carrierForItem(selectedOrder,item)" :disabled="!manualAssignments[selectedOrder.id][item.id]" @change="onCarrierChanged(selectedOrder,item,$event)"><option value="">请选择物流商</option><option v-for="carrier in props.carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="manualAssignments[selectedOrder.id][item.id] && carrierForItem(selectedOrder,item)" :class="carrierIsDefault(selectedOrder,item)?'auto-route':'manual-route'">{{ carrierIsDefault(selectedOrder,item)?'系统默认':'人工覆盖' }}</small></div></td>
-            <td><template v-if="item.is_gift"><select v-model="manualGiftMappings[selectedOrder.id][item.id]" :disabled="!manualAssignments[selectedOrder.id][item.id]"><option value="">请选择实际礼品</option><option v-for="option in availableGiftOptions(item,manualAssignments[selectedOrder.id][item.id])" :key="option.mapping_id" :value="String(option.mapping_id)">{{ option.fulfillment_sku }} · {{ option.fulfillment_name }} · 有货 {{option.quantity_available}}</option></select><small v-if="chosenGift(item,selectedOrder)" class="resolved-note">{{ chosenGift(item,selectedOrder)?.fulfillment_sku }} · {{ sourceLabel(manualAssignments[selectedOrder.id][item.id]) }}</small><small v-else-if="manualAssignments[selectedOrder.id][item.id]&&giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])" class="mapping-missing">{{giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])}}</small></template><span v-else>—</span></td>
+            <td><template v-if="item.is_gift"><select v-model="manualGiftMappings[selectedOrder.id][item.id]" :disabled="!manualAssignments[selectedOrder.id][item.id]"><option value="">请选择实际礼品</option><option v-for="option in giftOptions(item,manualAssignments[selectedOrder.id][item.id])" :key="option.mapping_id" :value="String(option.mapping_id)" :disabled="!option.can_fulfill">{{ option.fulfillment_sku }} · {{ option.fulfillment_name }} · {{option.can_fulfill ? '可出库 '+option.quantity_available : giftBlockReason(option)}}</option></select><small v-if="chosenGift(item,selectedOrder)" class="resolved-note">{{ chosenGift(item,selectedOrder)?.fulfillment_sku }} · {{ sourceLabel(manualAssignments[selectedOrder.id][item.id]) }}</small><small v-else-if="manualAssignments[selectedOrder.id][item.id]&&giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])" class="mapping-missing">{{giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])}}</small></template><span v-else>—</span></td>
           </tr>
         </tbody></table></div>
         <div v-if="fulfillmentGroups(selectedOrder).length" class="group-preview"><div class="group-heading"><strong>当前将生成 {{ fulfillmentGroups(selectedOrder).length }} 个履约订单</strong><span>系统按发货仓自动归组，不需要 Vita 手工创建 A/B。</span></div><div class="group-grid"><article v-for="group in fulfillmentGroups(selectedOrder)" :key="group.source" class="group-card"><header><div><small>{{ group.suffix?`履约组 ${group.suffix}`:'单仓履约' }}</small><strong>{{ group.erpOrderId }}</strong></div><div class="group-route"><b>{{ group.warehouse }}</b><span>{{ carrierLabel(group.carrier) }}</span></div></header><div class="group-items"><span v-for="item in group.items" :key="item.id">{{ resolvedSkuLabel(selectedOrder,item) }} × {{ item.quantity }}</span></div></article></div></div>
@@ -636,8 +735,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         <small>来源：{{ selectedOrder.allocation_rejection.source }} · 驳回人：{{ selectedOrder.allocation_rejection.by ?? '—' }} · 时间：{{ selectedOrder.allocation_rejection.at ? new Date(selectedOrder.allocation_rejection.at).toLocaleString('zh-CN') : '—' }}</small>
       </div>
       <label v-if="!processed(selectedOrder)" class="note-field">运营备注（选填）<textarea v-model="decisionNote" rows="2" placeholder="客户特殊要求、临时仓库情况、人工调整原因…" maxlength="500"/><small>{{ decisionNote.length }}/500</small></label><div v-else-if="selectedOrder.fulfillment_allocation?.decision_note" class="record-note"><strong>运营备注</strong><span>{{ selectedOrder.fulfillment_allocation.decision_note }}</span></div>
-      <p v-if="submitError" class="submit-error">{{ submitError }}</p>
-      <footer class="modal-actions"><button class="secondary" :disabled="submitting" @click="closePlan">关闭</button><button v-if="!processed(selectedOrder)&&props.canOperate" class="primary green" :disabled="submitting" @click="submitPrimary">{{ submitting?'提交中…':(matchesRecommendation(selectedOrder)?'采用推荐并提交分仓':'确认人工分配并提交') }}</button><span v-else-if="processed(selectedOrder)" class="submitted-note">该订单分仓决策已提交</span></footer>
+      <footer class="modal-actions"><p v-if="submitError" class="submit-error" role="alert" aria-live="assertive">{{ submitError }}</p><button class="secondary" :disabled="submitting" @click="closePlan">关闭</button><button v-if="!processed(selectedOrder)&&props.canOperate" class="primary green" :disabled="submitting" @click="submitPrimary">{{ submitting?'提交中…':(matchesRecommendation(selectedOrder)?'采用推荐并提交分仓':'确认人工分配并提交') }}</button><span v-else-if="processed(selectedOrder)" class="submitted-note">该订单分仓决策已提交</span></footer>
     </section></div></Teleport>
     <StockExceptionConfirmDialog v-if="stockConfirmOpen && selectedOrder"
       :order-number="selectedOrder.erp_order_id ?? String(selectedOrder.id)"
@@ -657,7 +755,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
 .top-grid{display:grid;grid-template-columns:1.15fr .9fr 1.2fr;gap:10px;margin:14px 18px}.info-card,.map-card{border:1px solid #dfe6ee;border-radius:9px;background:#fff;overflow:hidden}.info-card header,.map-card header{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e8edf3}.info-card header small,.map-card header small{color:#64748b}.mini-good,.mini-warn{padding:2px 7px;border-radius:5px;font-size:10px;font-weight:750}.mini-good{background:#e7f8ef;color:#0d7f4b}.mini-warn{background:#fff0dc;color:#ad5c00}.info-card dl{display:grid;grid-template-columns:86px 1fr;gap:7px 9px;padding:11px 12px;margin:0}.info-card dt{color:#64748b}.info-card dd{margin:0;color:#111827;font-weight:650;line-height:1.45}.order-item-chip{display:inline-flex;margin:0 4px 4px 0;padding:2px 6px;border-radius:5px;background:#f1f5f9;font-size:11px}.map-card svg{display:block;width:100%;height:185px;padding:7px 8px 0}.map-west{fill:#ffd8b4}.map-east{fill:#dbeafe}.map-outline{fill:none;stroke:#64748b;stroke-width:2}.map-divider{stroke:#ef4444;stroke-width:3}.map-label{font-size:17px;font-weight:800;fill:#334155}.map-pin circle{fill:#0f766e}.map-pin text{font-size:12px;fill:#fff}.map-unknown circle{fill:#f59e0b}.map-unknown text{font-size:14px;font-weight:900;fill:#fff}.map-result{display:flex;justify-content:center;gap:10px;padding:7px 10px 11px;color:#334155}.map-result span{font-weight:750}
 .system-explanation{margin:12px 18px;padding:0;border:1px solid #e4e8ed;border-radius:8px;background:#f4f6f8;color:#475569;overflow:hidden}.system-explanation>header{display:flex;justify-content:space-between;padding:10px 13px;border-bottom:1px solid #e2e6ea}.system-explanation>header strong{color:#334155}.system-explanation>header span{font-size:11px;color:#7b8794}.explanation-grid{display:grid;grid-template-columns:1fr 1fr}.explanation-grid>div{padding:10px 14px}.explanation-grid>div+div{border-left:1px solid #dde2e7}.explanation-grid h4{margin:0 0 5px;color:#475569;font-size:12px}.explanation-grid ul{margin:0;padding-left:18px;line-height:1.65}.explanation-grid li{color:#667281}
 .record-banner{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:11px 13px;border-bottom:1px solid #dce7df;background:#eefaf3}.record-banner>div{display:grid;gap:4px}.segment-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;padding:12px}.segment-card{border:1px solid #dfe6ee;border-radius:8px;overflow:hidden}.segment-card>header{display:flex;justify-content:space-between;padding:10px 12px;background:#f8fafc}.segment-card h3{margin:2px 0 0;color:#175ebf;font-size:14px}.segment-card table{width:100%;border-collapse:collapse}.segment-card th,.segment-card td{padding:8px 10px;border-top:1px solid #e5e7eb;text-align:left}.record-route{display:grid;text-align:right;gap:3px}.record-route span{color:#334155}.record-route strong{color:#087f5b;font-size:11px}
-.note-field{position:relative;display:grid;gap:6px;margin:13px 18px;color:#374151;font-weight:650}.note-field textarea{padding:9px 10px 22px;border:1px solid #b8c4d1;border-radius:7px;color:#111827;resize:vertical}.note-field>small{position:absolute;right:9px;bottom:6px;color:#64748b;font-weight:500}.record-note{display:grid;gap:5px;margin:13px 18px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc}.submit-error{margin:0 18px;padding:8px 10px;border-radius:6px;background:#fff0f0;color:#b42318}.modal-actions{position:sticky;bottom:0;z-index:8;display:flex;justify-content:flex-end;gap:9px;align-items:center;padding:13px 18px;border-top:1px solid #e7ebf1;background:#fff}.submitted-note{color:#16814f;font-weight:750}
+.note-field{position:relative;display:grid;gap:6px;margin:13px 18px;color:#374151;font-weight:650}.note-field textarea{padding:9px 10px 22px;border:1px solid #b8c4d1;border-radius:7px;color:#111827;resize:vertical}.note-field>small{position:absolute;right:9px;bottom:6px;color:#64748b;font-weight:500}.record-note{display:grid;gap:5px;margin:13px 18px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc}.submit-error{margin:0 auto 0 0;max-width:70%;padding:8px 10px;border-radius:6px;background:#fff0f0;color:#b42318}.modal-actions{position:sticky;bottom:0;z-index:8;display:flex;justify-content:flex-end;gap:9px;align-items:center;padding:13px 18px;border-top:1px solid #e7ebf1;background:#fff}.submitted-note{color:#16814f;font-weight:750}
 @media(max-width:980px){.top-grid{grid-template-columns:1fr}.explanation-grid{grid-template-columns:1fr}.explanation-grid>div+div{border-left:0;border-top:1px solid #dde2e7}.map-card svg{height:150px}.plan-modal{width:100%}.modal-backdrop{padding:5px}.group-heading{display:grid}}
 
 /* V1.2: evidence-aware allocation guidance, visually separate from executable recommendation. */

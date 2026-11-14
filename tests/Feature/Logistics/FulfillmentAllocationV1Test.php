@@ -4,14 +4,15 @@ namespace Tests\Feature\Logistics;
 
 use App\Models\Role;
 use App\Models\User;
-use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
-use App\Modules\Logistics\Application\LogisticsStatusSummary;
-use App\Modules\Logistics\Application\ShipmentService;
-use App\Modules\Orders\Application\OrderService;
-use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
-use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
+use App\Modules\Logistics\Application\LogisticsStatusSummary;
+use App\Modules\Logistics\Application\MorePlusPhysicalStockReader;
+use App\Modules\Logistics\Application\ShipmentService;
+use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
+use App\Modules\Orders\Application\OrderService;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -52,14 +53,14 @@ final class FulfillmentAllocationV1Test extends TestCase
         [$user, $order] = $this->scenario(1);
         $this->actingAs($user)->get('/logistics/wait-stock?global_grid=0')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-                ->component('Logistics/FulfillmentAllocation')
-                ->where('globalGridPilotEnabled', false)
-                ->where('orders.data.0.id', $order->id));
+            ->component('Logistics/FulfillmentAllocation')
+            ->where('globalGridPilotEnabled', false)
+            ->where('orders.data.0.id', $order->id));
 
         $this->actingAs($user)->get('/logistics/wait-stock?global_grid=1')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-                ->component('Logistics/FulfillmentAllocation')
-                ->where('globalGridPilotEnabled', true));
+            ->component('Logistics/FulfillmentAllocation')
+            ->where('globalGridPilotEnabled', true));
     }
 
     public function test_wait_stock_archive_only_operator_uses_existing_audited_batch_and_suppresses_archived_order(): void
@@ -339,6 +340,61 @@ final class FulfillmentAllocationV1Test extends TestCase
             self::assertSame(422, $exception->getStatusCode());
             self::assertSame('必须为订单中的每个 SKU 完成分仓', $exception->getMessage());
         }
+    }
+
+    public function test_physical_sku_preflight_rejects_unverified_moreplus_sku_without_mutating_order(): void
+    {
+        [$user, $order] = $this->scenario(1);
+        $item = $order->items()->firstOrFail();
+        config()->set('shipout.production_read_enabled', true);
+        config()->set('shipout.production_warehouse_id', '1265864414750314497');
+        $this->mock(MorePlusPhysicalStockReader::class)->shouldReceive('snapshot')->once()->andReturn([
+            'warehouse_id' => '1265864414750314497',
+            'stock_rows' => [],
+        ]);
+
+        $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/preflight', [
+            'assignments' => [['order_item_id' => $item->id, 'source_code' => 'US-LA']],
+        ])->assertOk()->assertJsonPath('can_submit', false)
+            ->assertJsonPath('issues.0.sku', $item->sku)
+            ->assertJsonPath('issues.0.warehouse', 'US-LA');
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
+        self::assertNull($order->fresh()->shipment);
+    }
+
+    public function test_preflight_and_status_readback_do_not_submit_and_report_matching_saved_assignments(): void
+    {
+        [$user, $order] = $this->scenario(1);
+        $item = $order->items()->firstOrFail();
+        $url = '/logistics/orders/'.$order->id.'/fulfillment-allocation';
+        $this->actingAs($user)->getJson($url.'/status')
+            ->assertOk()->assertJsonPath('status', 'none');
+        $this->actingAs($user)->postJson($url.'/preflight', [
+            'assignments' => [['order_item_id' => $item->id, 'source_code' => 'FACTORY']],
+        ])->assertOk()->assertJsonPath('can_submit', true)->assertJsonCount(0, 'issues');
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
+
+        $this->actingAs($user)->postJson($url.'/manual', [
+            'assignments' => [['order_item_id' => $item->id, 'source_code' => 'FACTORY']],
+            'stock_exception_acknowledged' => true,
+        ])->assertOk();
+        $this->actingAs($user)->getJson($url.'/status')->assertOk()
+            ->assertJsonPath('status', 'submitted')
+            ->assertJsonPath('decision_source', 'manual')
+            ->assertJsonPath('assignments.0.order_item_id', $item->id)
+            ->assertJsonPath('assignments.0.source_code', 'FACTORY');
+    }
+
+    public function test_read_only_allocation_endpoints_require_operator_access(): void
+    {
+        [, $order] = $this->scenario(1);
+        $viewer = $this->userWith(['logistics.view']);
+        $item = $order->items()->firstOrFail();
+        $url = '/logistics/orders/'.$order->id.'/fulfillment-allocation';
+        $this->actingAs($viewer)->postJson($url.'/preflight', [
+            'assignments' => [['order_item_id' => $item->id, 'source_code' => 'FACTORY']],
+        ])->assertForbidden();
+        $this->actingAs($viewer)->getJson($url.'/status')->assertForbidden();
     }
 
     public function test_view_only_user_cannot_submit_allocation(): void
