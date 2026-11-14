@@ -30,6 +30,8 @@ use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
+use App\Modules\Orders\Application\OrderWorkflowGridOptions;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Shell\Application\GlobalGridPilot;
 use Illuminate\Database\Eloquent\Builder;
@@ -87,6 +89,10 @@ final class LogisticsController
         $rejectionCount = $rejectionSnapshot['count'];
         $query = $this->statusSummary->pendingAllocationQuery()
             ->with(['address', 'items.product', 'owner', 'financials', 'shipment.warehouse',
+                'shipment.overseaReview', 'operationalMarkers', 'fulfillmentParent.operationalMarkers',
+                'originalFulfillmentChildren.operationalMarkers',
+                'originalFulfillmentChildren.shipment.warehouse',
+                'originalFulfillmentChildren.shipment.overseaReview',
                 'fulfillmentAllocation', 'externalReferences:id,order_id,provider',
                 'domesticRejecter:id,name', 'overseaWarehouseReview.reviewer:id,name']);
         if ($rejectionFilter) {
@@ -130,6 +136,8 @@ final class LogisticsController
             'rejectionFilter' => $rejectionFilter,
             'canOperate' => $this->allocationAccess->allows($request->user()),
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
+            'canEditWorkflowStatus' => (bool) $request->user()?->can('orders.edit'),
+            'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
             'globalGridPilotAvailable' => true,
             'globalGridPilotEnabled' => $gridPilot,
             'gridSearch' => $search,
@@ -944,6 +952,9 @@ final class LogisticsController
 
         return [
             'id' => $order->id,
+            'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
+            'workflow_revision' => (int) $order->workflow_revision,
+            'can_edit_workflow_status' => $order->order_kind === OrderKind::Customer && ! $order->isOperationallyArchived(),
             'external_order_number' => $order->external_order_number,
             'order_date' => $order->order_date?->toDateString(),
             'amount' => $amount['amount'],

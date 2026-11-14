@@ -13,7 +13,8 @@ vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
 vi.mock('../../Components/DataGrid/GlobalGrid.vue', () => ({
   __esModule: true,
   default: {
-    props: ['rows','enableSelection'],
+    name:'MockGlobalGrid',
+    props: ['rows','columns','enableSelection'],
     emits: ['selection-change'],
     template: '<div data-testid="mock-global-grid"><button type="button" data-testid="mock-select-rows" @click="$emit(\'selection-change\', rows.slice(0,2))">选择两单</button><slot name="footer-left" /></div>',
   },
@@ -695,4 +696,33 @@ describe('V1.2 evidence-aware allocation list', () => {
     await tab!.trigger('click')
     expect(wrapper.findAll('.allocation-table tbody tr')).toHaveLength(1)
   })
+})
+
+it('keeps allocation advice but adds an editable canonical status column to the Global Grid', async () => {
+  const order = {
+    ...systemOrder, order_kind:'customer',
+    workflow_revision: 7, can_edit_workflow_status: true,
+    workflow_status_projection:{ code:'pending_allocation', en:'Pending Allocation', zh:'待分仓', color:'neutral', source:'canonical_projection' },
+  }
+  const wrapper = mount(FulfillmentAllocation, { props: {
+    ...props, rejectionCount:0, rejectionNoticeVersion:'grid-test', rejectionFilter:false,
+    orders:{...props.orders, data:[order], total:1},
+    globalGridPilotEnabled:true, canEditWorkflowStatus:true,
+    workflowStatusOptions:[
+      { code:'pending_allocation', en:'Pending Allocation', zh:'待分仓', color:'neutral', mutable:true },
+      { code:'missing_info', en:'Missing Info', zh:'信息缺失', color:'amber', mutable:true },
+    ],
+  } })
+  await flushPromises()
+  const grid = wrapper.find('[data-testid="mock-global-grid"]')
+  expect(grid.exists()).toBe(true)
+  const component = wrapper.findComponent({ name:'MockGlobalGrid' })
+  const columns = component.props('columns') as Array<{colId:string;cellRenderer?:{name?:string}}>
+  const status = columns.find(column=>column.colId==='workflow_status')
+  expect(status?.cellRenderer).toBeTruthy()
+  expect(columns.some(column=>column.colId==='status')).toBe(true)
+  const entry = (component.props('rows') as Array<Record<string,unknown>>)[0]
+  expect(entry.workflow_revision).toBe(7)
+  expect(entry.workflow_status).toBe('待分仓')
+  expect(entry.can_edit_workflow_status).toBe(true)
 })

@@ -14,8 +14,9 @@ final class OrderWorkflowStatusProjection
         // Customer orders display the authority-derived progress. Old staff
         // follow-up codes become secondary markers; KOL business phases stay as before.
         $customer = $phase !== null;
+        $selected = $customer ? OrderManualHoldStatus::selected($order) : null;
         $code = $customer
-            ? $phase
+            ? (($selected && OrderManualHoldStatus::bucket($selected) === $phase) ? $selected : $phase)
             : OrderWorkflowStatus::effectiveCode($order->workflow_status, $order->order_status->value);
         $definition = OrderWorkflowStatus::definition($code) ?? OrderWorkflowStatus::registry()['sending'];
 
@@ -27,7 +28,9 @@ final class OrderWorkflowStatusProjection
             'source' => $code === 'progress_conflict' ? 'reconciliation_required'
                 : ($customer ? 'canonical_projection' : 'staff_workflow'),
             'mutable' => $definition['mutable'] && ! $customer,
-            'auxiliary' => $customer ? $this->auxiliary->for($order) : [],
+            // Customer dropdown values are mutually exclusive primary states,
+            // never a row of persisted badges. Legacy tags remain auditable.
+            'auxiliary' => [],
         ];
     }
 }

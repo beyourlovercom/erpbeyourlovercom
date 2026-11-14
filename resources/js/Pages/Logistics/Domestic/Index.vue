@@ -14,6 +14,7 @@ import { publishGlobalFeedback } from '../../../lib/globalFeedback'
 import { currentCsrfHeaders } from '../../../lib/csrfHeaders'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowStatusPill.vue'
+import OrderWorkflowGridCell from '../../../Components/Orders/OrderWorkflowGridCell.vue'
 import CompactWorkspaceToolbar from '../../../Components/UI/CompactWorkspaceToolbar.vue'
 import CompactWorkspaceHelp from '../../../Components/UI/CompactWorkspaceHelp.vue'
 
@@ -22,7 +23,7 @@ type PurchaseLine = { id:number; sku:string; quantity:number; purchase_quantity:
 type PurchaseInfo = { id:number; number:string; status:string; carrier:string|null; tracking_number:string|null; received_at:string|null; released_at:string|null; items:PurchaseLine[] }
 type Row = {
   line:number; order_id:number; paid_date:string|null; paid_date_source?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
-  workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }
+  workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }; workflow_revision?:number; can_edit_workflow_status?:boolean; order_kind?:string
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; carrier_selection_source?:string|null; carrier_ready?:boolean; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
   procurement?:PurchaseInfo|null
@@ -41,6 +42,8 @@ const props = withDefaults(defineProps<{
   globalGridPilotAvailable?:boolean
   globalGridPilotEnabled?:boolean
   gridSearch?:string
+  canEditWorkflowStatus?:boolean
+  workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[]
 }>(),{canLogisticsView:true})
 
 type BulkChoice = {value:string; label:string; reasonRequired?:boolean}
@@ -96,6 +99,10 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   order_number:row.erp_order_id??'—',
   order_url:row.order_url,
   workflow_status:row.workflow_status_projection?.zh ?? '—',
+  workflow_status_projection:row.workflow_status_projection,
+  workflow_revision:row.workflow_revision??0,
+  can_edit_workflow_status:Boolean(row.can_edit_workflow_status),
+  order_kind:row.order_kind,
   exception_type:row.exception_type??'—',
   exception_reason:row.exception_reason??'—',
   review_status:row.review_status==='approved'?'已通过':row.review_status==='stockout'?'缺货':row.review_status==='conflict'?'状态待对账':'待审核',
@@ -125,7 +132,9 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'line',field:'line',headerName:'#',width:74}),
   gridColumn({colId:'order',field:'order_number',headerName:'ERP 订单',width:186,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
-  gridColumn({colId:'status',field:'workflow_status',headerName:'订单状态',width:143}),
+  gridColumn({colId:'status',field:'workflow_status',headerName:'订单状态',width:182,
+    cellRenderer:OrderWorkflowGridCell,
+    cellRendererParams:{workflowStatusOptions:props.workflowStatusOptions??[],canEditWorkflowStatus:props.canEditWorkflowStatus??false}}),
   ...(props.view==='exceptions'?[
     gridColumn({colId:'exception_type',field:'exception_type',headerName:'异常类型',width:126}),
     gridColumn({colId:'exception_reason',field:'exception_reason',headerName:'异常原因',width:295,
@@ -718,11 +727,15 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         <div class="external-head"><strong>外采单 · Zhang 采购跟进</strong><small>仅展示真实外采且客户尚未发货的订单；Vita 确认到货后进入国内待发货，Kaven 无需二次审核。</small></div>
         <div class="table-wrap">
           <table class="external-table">
-            <thead><tr><th>ERP订单</th><th>实际 SKU / 数量</th><th>采购单</th><th>采购进度</th><th>采购物流</th><th>操作</th></tr></thead>
+            <thead><tr><th>ERP订单</th><th>订单状态</th><th>实际 SKU / 数量</th><th>采购单</th><th>采购进度</th><th>采购物流</th><th>操作</th></tr></thead>
             <tbody>
               <template v-for="row in rows.data" :key="row.order_id">
                 <tr v-if="row.procurement">
                   <td><a :href="row.order_url">{{ row.erp_order_id }}</a></td>
+                  <td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id"
+                    :projection="row.workflow_status_projection" :revision="row.workflow_revision"
+                    :can-edit="Boolean(canEditWorkflowStatus && row.can_edit_workflow_status)"
+                    :options="workflowStatusOptions??[]" /><span v-else>—</span></td>
                   <td>{{ itemText(row) }}</td>
                   <td><a :href="'/purchase/orders/'+row.procurement.id">{{ row.procurement.number }}</a></td>
                   <td><strong>{{ ({pending:'待采购',purchasing:'采购中',ordered:'已下单 / 运输中',arrived:'已到货 · 待Vita确认',released:'已放行 · 国内待发货'})[row.procurement.status as 'pending'|'purchasing'|'ordered'|'arrived'|'released']??row.procurement.status }}</strong></td>
@@ -744,7 +757,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                   </td>
                 </tr>
                 <tr v-if="row.procurement && externalReceiptOpen===row.procurement.id && canProcurementOperate">
-                  <td colspan="6" class="external-receipt">
+                  <td colspan="7" class="external-receipt">
                     <strong>工厂实际到货核验</strong>
                     <p>请核对已收到的真实 SKU 和数量，不允许仅凭采购物流单号自动确认到货。</p>
                     <div class="external-receipt-items">
@@ -759,7 +772,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                   </td>
                 </tr>
               </template>
-              <tr v-if="!rows.data.length"><td colspan="6" class="mvp-empty">暂无未完成发货的真实外采订单</td></tr>
+              <tr v-if="!rows.data.length"><td colspan="7" class="mvp-empty">暂无未完成发货的真实外采订单</td></tr>
             </tbody>
           </table>
         </div>
@@ -774,7 +787,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           :namespace="'grid.logistics.domestic.'+view+'.global.v1'"
           :legacy-preference-namespaces="['grid.logistics.domestic.global.v1']"
           :title="'国内发货 · '+(tabs.find(tab=>tab[0]===view)?.[1]??view)"
-          :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order']"
+          :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order','status']"
           :default-pinned-right="isHistoryProviderView(view) ? 0 : 1"
           :enable-selection="true" :selected-order-ids="selectedBulkOrderIds"
           :page="domesticPager" :search="gridSearch??''"
@@ -819,7 +832,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                 <div v-else-if="row.review_status==='approved'" class="approved">已通过 <button v-if="canReview && row.shipment_status==='pending'" type="button" @click="reopen(row)">重新审核</button></div>
                 <span v-else :class="row.review_status==='conflict' ? 'danger' : ''">{{ row.review_status==='conflict' ? '状态待对账' : row.review_status==='stockout' ? '缺货' : '待审核' }}</span>
               </td>
-              <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a></td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :can-edit="false" /><span v-else>—</span></td>
+              <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a></td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(canEditWorkflowStatus && row.can_edit_workflow_status)" :options="workflowStatusOptions??[]" /><span v-else>—</span></td>
               <td v-if="view==='review'" :title="row.paid_date_source ?? ''">{{ row.paid_date ?? '—' }}</td><td v-if="view==='review'"><div v-for="(item,index) in row.items" :key="item.sku+'-'+index">{{ item.sku ?? '无SKU' }}</div><button v-if="europeanCountries.has((row.country ?? '').toUpperCase())" type="button" class="secondary" :disabled="barcodeLoading" @click="showBarcode(row)">69条码</button><div v-if="barcodePreview?.orderId===row.order_id" class="barcode-preview"><div v-for="item in barcodePreview.items" :key="item.sku">{{ item.sku }} × {{ item.quantity }}：{{ item.barcode_69 }}</div></div><small v-if="barcodeError && barcodeErrorOrderId===row.order_id && !barcodeLoading" class="danger">{{ barcodeError }}</small></td><td v-if="view==='review'"><div v-for="(item,index) in row.items" :key="item.sku+'-'+index">{{ item.quantity }}</div></td><td v-if="view==='review'" :title="row.amount_source ?? ''">{{ row.amount !== null && row.amount !== undefined ? `${row.amount} ${row.amount_currency ?? 'USD'}` : '—' }}</td>
               <td><span v-if="row.export_blockers.length" class="danger">{{ row.export_blockers.join(' / ') }}</span><span v-else class="ready">可导出</span></td>
               <td>{{ row.provider_reference ?? '—' }}</td>

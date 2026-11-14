@@ -6,7 +6,6 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
-use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
@@ -36,7 +35,7 @@ final class OrderProgressV3CoreTest extends TestCase
         $this->actingAs($kaven)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'sending', 'expected_workflow_revision' => 0,
         ])->assertOk()->assertJsonPath('workflow_status.code', 'sending');
-        $this->assertDatabaseHas('order_operational_markers', [
+        $this->assertDatabaseMissing('order_operational_markers', [
             'order_id' => $order->id, 'marker' => 'domestic_reviewed',
         ]);
         self::assertSame('sending', $this->phase($order));
@@ -44,13 +43,13 @@ final class OrderProgressV3CoreTest extends TestCase
         self::assertSame(1, app(OrderProgressQuery::class)->readyForShipment(Order::query())->whereKey($order->id)->count());
 
         $this->actingAs($kaven)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'out_of_stock', 'expected_workflow_revision' => 0,
+            'workflow_status' => 'out_of_stock', 'expected_workflow_revision' => 1,
         ])->assertOk()->assertJsonPath('workflow_status.code', 'out_of_stock');
         self::assertSame(0, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
         self::assertSame(1, app(OrderProgressQuery::class)->domesticStockout(Order::query())->whereKey($order->id)->count());
 
         $this->actingAs($kaven)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'sending', 'expected_workflow_revision' => 1,
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 2,
         ])->assertOk()->assertJsonPath('workflow_status.code', 'sending');
         self::assertSame(1, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
     }
@@ -62,9 +61,9 @@ final class OrderProgressV3CoreTest extends TestCase
 
         $this->actingAs($user)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'sending', 'expected_workflow_revision' => 0,
-        ])->assertForbidden();
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'sending');
         $response = $this->actingAs($user)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'sent', 'expected_workflow_revision' => 0,
+            'workflow_status' => 'sent', 'expected_workflow_revision' => 1,
         ]);
         self::assertNotSame(200, $response->getStatusCode());
         self::assertSame('pending', $order->fresh()->shipment->shipment_status);

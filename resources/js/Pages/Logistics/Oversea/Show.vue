@@ -7,6 +7,7 @@ import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowSta
 import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
 import type { NewValueParams, ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
+import OrderWorkflowGridCell from '../../../Components/Orders/OrderWorkflowGridCell.vue'
 import DomesticGridActionCell from '../Domestic/DomesticGridActionCell.vue'
 import DomesticGridPendingCell from '../Domestic/DomesticGridPendingCell.vue'
 import DomesticGridPendingRouteCell from '../Domestic/DomesticGridPendingRouteCell.vue'
@@ -51,7 +52,7 @@ type ShipOutStatus = {
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; order_date?:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_code?:string|null; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
-  progress:string; note:string|null; reviewer_name?:string|null; reviewed_at?:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'|'stockout'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
+  progress:string; note:string|null; reviewer_name?:string|null; reviewed_at?:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'|'stockout'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; order_kind?:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
   web_draft?:WebDraft|null
   shipout_production?:ShipOutDispatchState|null
 }
@@ -1326,6 +1327,10 @@ const saveGridTracking = async (event:NewValueParams<GridListRow>) => {
 const overseaGridRows = computed<GridListRow[]>(()=>visibleRows.value.map(row=>({
   id:row.order_id,line:row.line,order_number:row.erp_order_id??'—',order_url:row.order_url,order_date:row.order_date??'—',
   workflow_status:row.workflow_status_projection?.zh??'—',
+  workflow_status_projection:row.workflow_status_projection,
+  workflow_revision:row.workflow_revision??0,
+  can_edit_workflow_status:Boolean(row.can_edit_workflow_status),
+  order_kind:row.order_kind,
   review_status:row.review_status==='approved'?'已通过':row.review_status==='stockout'?'缺货':'待审核',
   reviewer_name:row.reviewer_name??'—',reviewed_at:row.reviewed_at??'—',
   shipment_status:row.shipment_status==='shipped'?'已发货':row.shipment_status==='pending'?'待发货':row.shipment_status,
@@ -1345,7 +1350,8 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>String(r.order_url??'')}}),
   gridColumn({colId:'line',field:'line',headerName:'#',width:70,sortable:true}),
   gridColumn({colId:'order_date',field:'order_date',headerName:'订单日期',width:128,minWidth:108}),
-  gridColumn({colId:'status',field:'workflow_status',headerName:'统一状态',width:132}),
+  gridColumn({colId:'status',field:'workflow_status',headerName:'统一状态',width:182,
+    cellRenderer:OrderWorkflowGridCell,cellRendererParams:{workflowStatusOptions:props.workflowStatusOptions??[]}}),
   gridColumn({colId:'review',field:'review_status',headerName:'审核状态',width:110}),
   gridColumn({colId:'reviewer',field:'reviewer_name',headerName:'审核人',width:100}),
   gridColumn({colId:'reviewed_at',field:'reviewed_at',headerName:'审核时间（北京时间）',width:162}),
@@ -1565,7 +1571,7 @@ const compactPages = computed<(number|string)[]>(() => {
         <GlobalGrid :key="'oversea-grid-'+warehouseKey+'-'+view"
           :namespace="'grid.logistics.oversea.'+view+'.global.v1'"
           :title="pageTitle" :columns="overseaGridColumns" :rows="overseaGridRows"
-          :required-column-ids="['order']" :page="rows" row-identity-key="id"
+          :required-column-ids="['order','status']" :page="rows" row-identity-key="id"
           :search="gridSearch??''" :sort="gridSort??undefined"
           :filter-columns="[]" :filter-values="gridFilters??{}"
           :enable-selection="Boolean((canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || bulkShipPreviewScope || canTrackingSync || showShipoutSelection)"

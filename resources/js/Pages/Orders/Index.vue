@@ -76,6 +76,7 @@ const systemViews = [
   { key: 'loss', label: '亏本单' },
   { key: 'overweight', label: '超重单' },
   { key: 'stockout', label: '缺货单' },
+  { key: 'cancelled', label: '已取消' },
 ]
 
 const modernCustomerGrid = computed(() => !!props.customerGlobalGridEnabled && (props.orderKind === 'customer' || props.orderScope === 'tingon_partner'))
