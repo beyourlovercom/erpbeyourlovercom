@@ -10,6 +10,7 @@ use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionInventoryAudit;
 use App\Modules\Products\Infrastructure\Models\Product;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -24,13 +25,14 @@ final class MorePlusInventorySyncService
     public function __construct(
         private readonly ShipOutProductionInventoryAudit $source,
         private readonly AuditRecorder $audit,
+        private readonly WarehouseLastReadStockService $lastRead,
     ) {}
 
     /** @return array<string,mixed> */
-    public function preview(Warehouse $warehouse): array
+    public function preview(Warehouse $warehouse, ?array $sourceSnapshot = null): array
     {
         $this->guardWarehouse($warehouse);
-        $snapshot = $this->source->snapshot();
+        $snapshot = $sourceSnapshot ?? $this->source->snapshot();
         $sourceRows = $snapshot['stock_rows'];
         if ($sourceRows === []) {
             throw new RuntimeException('MOREPLUS_PROVIDER_STOCK_EMPTY_REVIEW_REQUIRED');
@@ -135,6 +137,34 @@ final class MorePlusInventorySyncService
     }
 
     /**
+     * An explicit API read independently persists last-known stock, even if
+     * constructing or applying the ERP main-stock transaction later fails.
+     * Existing preview() stays pure for prior read-only callers and tests.
+     *
+     * @return array<string,mixed>
+     */
+    public function previewWithLastRead(Warehouse $warehouse, string $readSource = 'api_read'): array
+    {
+        $this->guardWarehouse($warehouse);
+        try {
+            $snapshot = $this->source->snapshot();
+            $readAt = CarbonImmutable::now('UTC');
+            $this->lastRead->captureMorePlus($warehouse, $snapshot, $readAt, $readSource);
+        } catch (\Throwable $error) {
+            $this->lastRead->markReadFailure($warehouse, 'MOREPLUS_API_READ_FAILED');
+            throw $error;
+        }
+        try {
+            return $this->preview($warehouse, $snapshot) + [
+                'last_read_captured_at' => $readAt->toIso8601String(),
+            ];
+        } catch (\Throwable $error) {
+            $this->lastRead->markApplyResult($warehouse, $readAt, false);
+            throw $error;
+        }
+    }
+
+    /**
      * One-click, GET-only provider-to-ERP mirror. No provider POST and no FIFO/P9
      * adjustment: those historical ledgers remain independent accounting facts.
      * The calling route is permission-checked and US-LA scoped.
@@ -148,7 +178,17 @@ final class MorePlusInventorySyncService
             throw new RuntimeException('MOREPLUS_PROVIDER_SYNC_PRODUCTION_ONLY');
         }
 
-        return $this->applySnapshot($warehouse, $this->preview($warehouse), $actor);
+        $fresh = $this->previewWithLastRead($warehouse, 'sync');
+        $readAt = CarbonImmutable::parse($fresh['last_read_captured_at']);
+        try {
+            $result = $this->applySnapshot($warehouse, $fresh, $actor);
+        } catch (\Throwable $error) {
+            $this->lastRead->markApplyResult($warehouse, $readAt, false);
+            throw $error;
+        }
+        $this->lastRead->markApplyResult($warehouse, $readAt, true);
+
+        return $result;
     }
 
     /** @return array{updated:int,created:int,unchanged:int,blocked:int,checksum:string} */
@@ -161,13 +201,23 @@ final class MorePlusInventorySyncService
         if (preg_match('/^[a-f0-9]{64}$/D', $expectedChecksum) !== 1) {
             throw new RuntimeException('MOREPLUS_INVENTORY_CHECKSUM_INVALID');
         }
-        // Fresh signed provider GET; never apply an old client/session snapshot.
-        $fresh = $this->preview($warehouse);
+        // The legacy confirmation path is also an explicit signed stock read.
+        // Save its independent reference before attempting ERP main-stock write.
+        $fresh = $this->previewWithLastRead($warehouse, 'sync');
+        $readAt = CarbonImmutable::parse($fresh['last_read_captured_at']);
         if (! hash_equals($expectedChecksum, $fresh['checksum'])) {
+            $this->lastRead->markApplyResult($warehouse, $readAt, false);
             throw new RuntimeException('MOREPLUS_INVENTORY_SNAPSHOT_CHANGED_PREVIEW_AGAIN');
         }
+        try {
+            $result = $this->applySnapshot($warehouse, $fresh, $actor);
+        } catch (\Throwable $error) {
+            $this->lastRead->markApplyResult($warehouse, $readAt, false);
+            throw $error;
+        }
+        $this->lastRead->markApplyResult($warehouse, $readAt, true);
 
-        return $this->applySnapshot($warehouse, $fresh, $actor);
+        return $result;
     }
 
     /** @param array<string,mixed> $fresh

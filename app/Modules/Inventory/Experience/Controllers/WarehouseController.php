@@ -6,6 +6,7 @@ use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\FactoryDemandForecast;
+use App\Modules\Inventory\Application\WarehouseLastReadStockService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseClearanceService;
 use App\Modules\Inventory\Application\WarehouseInboundProjection;
@@ -46,6 +47,7 @@ final class WarehouseController
         private readonly WarehouseBillReconciliationService $reconciliation,
         private readonly WarehouseShipmentProjection $shipments,
         private readonly FactoryDemandForecast $factoryDemand,
+        private readonly WarehouseLastReadStockService $lastReadStock,
     ) {}
     public function create(): Response { return Inertia::render('Inventory/WarehouseCreate'); }
     public function store(Request $request): RedirectResponse
@@ -484,6 +486,7 @@ final class WarehouseController
         }
 
         $factoryMetrics = $code === 'FACTORY' ? $this->factoryDemand->forInventories($w->inventories) : [];
+        $lastReadByProduct = $code === 'US-LA' ? $this->lastReadStock->forWarehouse($w) : [];
 
         $lastConfirmedSync = InventorySyncBatch::query()
             ->where('warehouse_id', $w->id)
@@ -524,6 +527,17 @@ final class WarehouseController
                 'quantity_on_hand'=>$i->quantity_on_hand,'quantity_reserved'=>$i->quantity_reserved,'quantity_available'=>$i->quantity_available,
                 'stock_status'=>InventoryStockStatus::classify((int)$i->quantity_available),'stock_status_label'=>InventoryStockStatus::label(InventoryStockStatus::classify((int)$i->quantity_available)),
             'inbound_at'=>$i->inbound_at?->format('Y-m-d'),'stay_days'=>$i->stay_days,'location'=>$i->location,'standard_qoh'=>$i->standard_qoh,'expected_restock_qty'=>$i->expected_restock_qty,
+                'last_read'=>isset($lastReadByProduct[(int)$i->product_id])
+                    ? [
+                        'quantity'=>$lastReadByProduct[(int)$i->product_id]->last_read_stock_qty,
+                        'raw_quantity'=>$lastReadByProduct[(int)$i->product_id]->last_read_raw_qty,
+                        'adjustment_qty'=>$lastReadByProduct[(int)$i->product_id]->post_read_adjustment_qty,
+                        'read_at'=>$lastReadByProduct[(int)$i->product_id]->last_read_stock_at,
+                        'source'=>$lastReadByProduct[(int)$i->product_id]->last_read_stock_source,
+                        'status'=>$lastReadByProduct[(int)$i->product_id]->last_read_stock_status,
+                        'error_code'=>$lastReadByProduct[(int)$i->product_id]->last_read_error_code,
+                        'review_count'=>(int)$lastReadByProduct[(int)$i->product_id]->review_count,
+                    ] : null,
                 'updated_at'=>$i->updated_at?->toIso8601String(),'product_updated_at'=>$i->product->updated_at?->toIso8601String(),
                 'replenishment'=>$this->inventory->replenishmentMetrics($i),
                 'factory_demand'=>$factoryMetrics[(int)$i->id] ?? null,
