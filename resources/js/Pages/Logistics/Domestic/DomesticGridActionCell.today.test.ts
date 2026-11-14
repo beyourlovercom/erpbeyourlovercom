@@ -6,7 +6,7 @@ const base={
   data:{id:42,review_status:'已通过',shipment_status:'shipped',tracking_sync_code:'failed'},
   view:'today', canReview:false,canOperate:false,busy:false,canTrackingSync:true,
   syncEligible:vi.fn(()=>true),syncBusy:vi.fn(()=>false),syncTracking:vi.fn(),
-  native:vi.fn(),approve:vi.fn(),stockout:vi.fn(),restock:vi.fn(),reopen:vi.fn(),reject:vi.fn(),
+  native:vi.fn(),approve:vi.fn(),stockout:vi.fn(),restock:vi.fn(),returnAllocation:vi.fn(),reopen:vi.fn(),reject:vi.fn(),
 }
 describe('R4-4 today fixed-right original operations parity',()=>{
   it('shows and calls existing retry for authorized sync-eligible shipment only',async()=>{
