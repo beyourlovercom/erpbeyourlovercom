@@ -4,15 +4,15 @@ namespace Tests\Feature\Logistics;
 
 use App\Models\Role;
 use App\Models\User;
-use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Application\WarehouseLastReadStockService;
-use Carbon\CarbonImmutable;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\CarrierService;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -339,11 +339,11 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
         $this->assertSame('shipped', $order->fresh()->order_status->value);
         $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
         $this->assertSame($time, $order->fresh()->shipment->shipped_at->utc()->format('Y-m-d H:i:s'));
-        $ref=DB::table('warehouse_stock_read_references')->where('provider_sku','MOREPLUS-MANUAL-TEST')->firstOrFail();
-        $this->assertSame(80,(int)$ref->last_read_raw_qty);
-        $this->assertSame(79,(int)$ref->last_read_stock_qty);
-        $this->assertSame(1,(int)$ref->post_read_adjustment_qty);
-        $this->assertDatabaseHas('warehouse_stock_read_adjustments',[
+        $ref = DB::table('warehouse_stock_read_references')->where('provider_sku', 'MOREPLUS-MANUAL-TEST')->firstOrFail();
+        $this->assertSame(80, (int) $ref->last_read_raw_qty);
+        $this->assertSame(79, (int) $ref->last_read_stock_qty);
+        $this->assertSame(1, (int) $ref->post_read_adjustment_qty);
+        $this->assertDatabaseHas('warehouse_stock_read_adjustments', [
             'product_id' => $order->items->first()->product_id,
             'quantity' => 1, 'outcome' => 'applied',
         ]);
@@ -402,8 +402,8 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
         ]);
         $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
         $this->assertDatabaseCount('warehouse_stock_read_adjustments', 0);
-        $this->assertSame(80, (int)DB::table('warehouse_stock_read_references')
-            ->where('provider_sku','MOREPLUS-MANUAL-TEST')->value('last_read_stock_qty'));
+        $this->assertSame(80, (int) DB::table('warehouse_stock_read_references')
+            ->where('provider_sku', 'MOREPLUS-MANUAL-TEST')->value('last_read_stock_qty'));
         Http::assertNotSent(fn ($request) => $request->method() === 'POST');
     }
 
