@@ -31,6 +31,19 @@
 - Dev hosting site: NOT DEPLOYED; isolated branch and local tests only.
 - Production: NOT MODIFIED.
 
+## R4 007windows real Chrome Dev UAT — 2026-11-14
+
+- Host: 007windows, BYL self-hosted DC, isolated headful Chrome profile; **no user Chrome restart or Tailscale toggle**.
+- Dev host: US Mac mini worktree checked at PR #774 commit `441b591a`, then patched in the same Draft branch. Only isolated SQLite `database/tingon-uat.sqlite`, no real API/partner shipment or Woo write. Local test site `http://100.94.52.109:18874` served directly from worktree.
+- Browser evidence kept on 007windows in `E:\ai\erp-tingon-r4-uat-20261114`: `r4-result.json`, `r4b-results.json`, screenshots for pending, brand, cooperation, allocation, draft, shipping, tracking correction, and split.
+- PASS: real AG Grid mounted with four tabs, correct 2 pending orders 102/104, fully expanded actions, no archived 106.
+- PASS: brand Tingon tab returns 103 (Factory, no Tingon ship control) and 104 (Tingon partner); BYL-only 102 excluded from brand tab. Confirmed after waiting for Inertia URL transition; first 1.2-second script assertion was a timing race, not a backend bug.
+- PASS: partner all, partner sent, and original-order cooperation list distinguish brand from partner warehouse assignment and exclude archived orders.
+- PASS: test order 102 save draft remains pending; explicit ship changes shipped and moves to sent list; Tracking correction persisted as `TG-UAT-20261114-CORRECTED`; duplicate ship action is unavailable.
+- PASS: manual warehouse selector displays `合作-Tingon`; order 105 splits to Factory A and Tingon B, with parent represented once; database readback confirms `007-TG-R4-105A FACTORY` and `007-TG-R4-105B TINGON`.
+- **R4 fix**: frontend `allocationStockWarnings` was still warning about unknown partner stock and adding a redundant confirmation even though `FulfillmentAllocationStockGate` excludes TINGON. Added precise skip for TINGON only + unit test. Rebuild/typecheck + 30-tab verification + targeted Vitest 3/3 PASS. Retest order 101 passed: from pending allocation UI into `/orders/collaboration` and `/logistics/tingon?view=pending`; DB readback warehouse TINGON, shipment still pending, no fake tracking.
+- R4 automated browser business-path UAT: PASS. **Owner visual/manual acceptance: NOT YET SIGNED OFF.** General CI: NOT GREEN (unrelated baseline menu mismatches and seven Inventory Vitest failures remain unresolved). No merge, no Production deployment.
+
 ## Merge and Dev gates
 
 - Draft PR only; no merge or release without explicit Owner PASS and CI checks.
@@ -39,18 +52,18 @@
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture → MVP1 operations → Inquiry → Woo Integration → Products/Media → Content → Orders → Logistics → KOL → Inventory/Procurement → Accounting → Integrations → Hardening
-CURRENT_TRACK_PHASE_MAP: Tingon R0 audit COMPLETE → R1 partner warehouse COMPLETE → R2 cooperation view COMPLETE → R3 fulfillment view DEV CODE COMPLETE → R4 role/UAT PENDING → R5 separately gated release WAITING
-COMPLETED_PHASES: R0 R1 R2 R3 local implementation and targeted tests
-CURRENT_PHASE: Tingon Dev PR preparation, Owner UAT pending
+CURRENT_TRACK_PHASE_MAP: Tingon R0 audit COMPLETE → R1 partner warehouse COMPLETE → R2 cooperation view COMPLETE → R3 fulfillment view COMPLETE → R4 007windows automated UAT PASS / Owner visual PENDING → R5 separately gated release WAITING
+COMPLETED_PHASES: R0 R1 R2 R3 local implementation and targeted tests; R4 automated 007windows Chrome workflow passed
+CURRENT_PHASE: R4 automated Dev Chrome UAT complete, Owner visual signoff pending
 CURRENT_WORK_PACKAGE: ERP-TINGON-COOP-R0-R3-20261114
-PACKAGE_STATUS: DEV_CODE_COMPLETE / OWNER_UAT_PENDING / FULL_BASELINE_CHECKS_RED
+PACKAGE_STATUS: DEV_BROWSER_AUTOMATED_PASS / OWNER_VISUAL_PENDING / FULL_BASELINE_CHECKS_RED
 WAITING_PHASES: Owner UAT → baseline CI closure → approved merge → Production separately gated
 BASELINE: origin/main 3ef751a8
 GITHUB_STATE: isolated feature branch, Draft PR only (number assigned after push)
 SOURCE_CONFLICTS: APPROVED_MENU baseline already mismatched runtime on unrelated existing menu entries; full Vitest Inventory tests 7 failures; both recorded above
 GLOBAL_GATE: Dev code checks pass; full CI and Owner browser UAT not passed; merging prohibited
 PRODUCTION_DEPLOYMENT_STATUS: NO; repository branch only; no live ERP mutation
-NEXT_DEPENDENCY: Create Draft PR, surface Owner UAT checklist, resolve red baseline before merge
+NEXT_DEPENDENCY: Owner inspect 007windows Dev pages and explicitly sign off; resolve red baseline before merge
 EVIDENCE_AS_OF: 2026-11-14
 
 ROADMAP HOURS
