@@ -161,6 +161,7 @@ const props = withDefaults(defineProps<{
   canViewPackagingEvidence?: boolean
   canCreateProcurement?: boolean
   canCreateReplacement?: boolean
+  canForceTrackingSync?: boolean
   canOperateLogistics?: boolean
   canReopenFulfillment?: boolean
   canViewProfit?: boolean
@@ -168,7 +169,7 @@ const props = withDefaults(defineProps<{
   wooAdminEditUrl?: string | null
   kolProfile?: { id: number; display_name: string; url: string } | null
 
-}>(), { canAppendOrderNote: false, canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
+}>(), { canAppendOrderNote: false, canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canForceTrackingSync: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
 
 
 const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
@@ -209,6 +210,24 @@ const goToAdjacentOrder = (url: string | null | undefined) => {
   })
 }
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
+const trackingSyncPending = ref(false)
+const trackingSyncFeedback = ref('')
+const forceTrackingSync = async () => {
+  if (trackingSyncPending.value || !props.order.shipment?.tracking_number) return
+  trackingSyncPending.value = true
+  trackingSyncFeedback.value = ''
+  try {
+    const response = await axios.post('/sync/orders/' + props.order.id + '/force-tracking')
+    trackingSyncFeedback.value = response.data?.message ?? '同步成功'
+  } catch (error) {
+    trackingSyncFeedback.value = axios.isAxiosError(error)
+      ? (error.response?.data?.message ?? '同步失败，请检查网络或权限')
+      : '同步失败，请重试'
+  } finally {
+    trackingSyncPending.value = false
+  }
+}
+
 
 const breadcrumbs = computed(() => isKol.value
   ? [{ label: 'BYL ERP', href: '/dashboard' }, { label: '网红', href: '/kol' }, { label: '订单', href: '/kol/orders' }, props.order.erp_order_id ?? '—']
@@ -1333,7 +1352,11 @@ onBeforeUnmount(() => {
               </div>
               <div class="ord-fulfillment-item">
                 <small class="ord-fulfillment-label">网站同步</small>
-                <strong class="ord-fulfillment-value">{{ order.manual_sync?.status ?? '未进入队列' }}</strong>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <strong class="ord-fulfillment-value">{{ order.manual_sync?.status ?? '未进入队列' }}</strong>
+                  <button v-if="canForceTrackingSync" type="button" class="erp-btn erp-btn-secondary" style="padding:3px 8px;min-height:26px;font-size:12px" :disabled="trackingSyncPending || !order.shipment?.tracking_number" @click="forceTrackingSync">{{ trackingSyncPending ? '同步中' : '同步' }}</button>
+                </div>
+                <small v-if="trackingSyncFeedback" role="status">{{ trackingSyncFeedback }}</small>
               </div>
             </div>
 

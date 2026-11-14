@@ -7,12 +7,15 @@ use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Procurement\Application\ExternalProcurementWorkflow;
+use App\Modules\Procurement\Infrastructure\Models\ProcurementOrder;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 
 final class FulfillmentAllocationSubmissionService
 {
-    private const ALLOWED_SOURCE_CODES = ['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA'];
+    private const ALLOWED_SOURCE_CODES = ['OUTSOURCE', 'FACTORY', 'US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA'];
+
     private const MAX_SEGMENTS = 26;
 
     public function __construct(
@@ -28,6 +31,7 @@ final class FulfillmentAllocationSubmissionService
         private readonly FulfillmentPaymentGate $paymentGate,
         private readonly PendingAllocationEntryPolicy $entryPolicy,
         private readonly FulfillmentAllocationStockGate $stockGate,
+        private readonly ExternalProcurementWorkflow $externalProcurement,
     ) {}
 
     public function submitRecommended(Order $order, string $planKey, ?string $note, Authenticatable $actor): FulfillmentAllocation
@@ -63,10 +67,13 @@ final class FulfillmentAllocationSubmissionService
             $this->paymentGate->assertAllowed($locked);
             $this->entryPolicy->assertAllowed($locked);
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以提交分仓');
+            $this->assertExternalProcurementMayReallocate($locked);
 
             $normalized = collect($assignments)->map(fn (array $row): array => [
                 'order_item_id' => (int) ($row['order_item_id'] ?? 0),
-                'source_code' => $this->warehouseRouting->canonicalWarehouseCode((string) ($row['source_code'] ?? '')) ?? '',
+                'source_code' => strtoupper(trim((string) ($row['source_code'] ?? ''))) === ExternalProcurementWorkflow::SOURCE_CODE
+                    ? ExternalProcurementWorkflow::SOURCE_CODE
+                    : ($this->warehouseRouting->canonicalWarehouseCode((string) ($row['source_code'] ?? '')) ?? ''),
                 'gift_mapping_id' => isset($row['gift_mapping_id']) && $row['gift_mapping_id'] !== '' ? (int) $row['gift_mapping_id'] : null,
                 'carrier' => trim((string) ($row['carrier'] ?? '')),
                 'service' => isset($row['service']) && trim((string) $row['service']) !== '' ? trim((string) $row['service']) : null,
@@ -83,11 +90,14 @@ final class FulfillmentAllocationSubmissionService
             $resolvedAssignments = $normalized->map(function (array $row) use ($locked): array {
                 $item = $locked->items->firstWhere('id', $row['order_item_id']);
                 abort_unless($item, 422, '分仓方案包含不属于原订单的 SKU');
-                $resolution = $this->physicalSkus->resolve($item, $row['source_code'], $row['gift_mapping_id']);
+                $outsource = $row['source_code'] === ExternalProcurementWorkflow::SOURCE_CODE;
+                abort_if($outsource && strcasecmp(trim((string) ($item->source_sku ?: $item->sku)), 'gift') === 0,
+                    422, '外采礼品需先指定实际商品 SKU；不可采购未确认的 gift 占位符');
+                $resolution = $this->physicalSkus->resolve($item, $outsource ? 'FACTORY' : $row['source_code'], $row['gift_mapping_id']);
 
                 // Warehouse allocation must not preselect domestic dispatch logistics.
                 // Overseas allocation retains its existing recommended routing.
-                $isFactory = $row['source_code'] === 'FACTORY';
+                $isFactory = in_array($row['source_code'], ['FACTORY', ExternalProcurementWorkflow::SOURCE_CODE], true);
                 $route = $isFactory ? [] : $this->carrierRouting->warehouseRoute($locked->address?->country, $row['source_code']);
                 $defaultCarrier = trim((string) ($route['carrier'] ?? ''));
                 $providedCarrier = $isFactory ? '' : trim((string) ($row['carrier'] ?? ''));
@@ -123,16 +133,19 @@ final class FulfillmentAllocationSubmissionService
                 ->whereIn(DB::raw('UPPER(code)'), self::ALLOWED_SOURCE_CODES)
                 ->get()->keyBy(fn (Warehouse $warehouse): string => strtoupper(trim((string) $warehouse->code)));
             foreach ($sources as $sourceCode) {
-                abort_unless($warehouseByCode->has($sourceCode), 422, "发货仓 {$sourceCode} 尚未启用");
+                $actualCode = $sourceCode === ExternalProcurementWorkflow::SOURCE_CODE ? 'FACTORY' : $sourceCode;
+                abort_unless($warehouseByCode->has($actualCode), 422, "发货仓 {$actualCode} 尚未启用");
             }
 
             $segments = $sources->map(function (string $sourceCode) use ($resolvedAssignments, $locked, $warehouseByCode): array {
-                $warehouse = $warehouseByCode->get($sourceCode);
+                $isExternal = $sourceCode === ExternalProcurementWorkflow::SOURCE_CODE;
+                $warehouse = $warehouseByCode->get($isExternal ? 'FACTORY' : $sourceCode);
                 $sourceAssignments = $resolvedAssignments->where('source_code', $sourceCode)->values();
                 $routeAssignment = $sourceAssignments->first();
                 $items = $sourceAssignments->map(function (array $assignment) use ($locked): array {
                     $item = $locked->items->firstWhere('id', $assignment['order_item_id']);
                     $resolution = $assignment['resolution'] ?? null;
+
                     return [
                         'order_item_id' => (int) $item->id,
                         'product_id' => $resolution['source_product_id'],
@@ -148,11 +161,13 @@ final class FulfillmentAllocationSubmissionService
                         'resolved_product_summary' => $resolution['resolved_product_summary'] ?? $resolution['source_product_summary'],
                     ];
                 })->values()->all();
+
                 return [
-                    'source_type' => $sourceCode === 'FACTORY' ? 'factory' : 'warehouse',
+                    'source_type' => in_array($sourceCode, ['FACTORY', ExternalProcurementWorkflow::SOURCE_CODE], true) ? 'factory' : 'warehouse',
                     'source_code' => $sourceCode,
+                    'procurement_required' => $isExternal,
                     'warehouse_id' => (int) $warehouse->id,
-                    'warehouse_name' => (string) $warehouse->name,
+                    'warehouse_name' => $isExternal ? '外采 → 中国工厂发货' : (string) $warehouse->name,
                     'carrier' => $routeAssignment['carrier'],
                     'service' => $routeAssignment['service'],
                     'carrier_selection_source' => $routeAssignment['carrier_selection_source'],
@@ -232,6 +247,16 @@ final class FulfillmentAllocationSubmissionService
         return $this->decisions->present($order, $preview);
     }
 
+    private function assertExternalProcurementMayReallocate(Order $order): void
+    {
+        $ids = [$order->id, ...Order::withTrashed()->where('fulfillment_parent_id', $order->id)
+            ->where('fulfillment_role', 'original')->pluck('id')->all()];
+        abort_if(ProcurementOrder::query()
+            ->whereIn('source_order_id', $ids)->where('origin', 'external')
+            ->whereNotIn('status', ['pending', 'cancelled'])->exists(),
+            409, '已有外采任务开始采购或确认到货，禁止覆盖分仓；请先人工处理采购单');
+    }
+
     private function persistAndMaterialize(Order $order, array $attributes, Authenticatable $actor): FulfillmentAllocation
     {
         if (($attributes['decision_source'] ?? null) === 'system_recommendation') {
@@ -253,6 +278,26 @@ final class FulfillmentAllocationSubmissionService
             $actor,
         );
         $plan['derived_orders'] = $resultOrders;
+        // Create procurement tasks against the actual outbound order, not the
+        // Woo source parent. A/B/C child lines therefore remain independent.
+        $activeExternalIds = [];
+        foreach (($plan['segments'] ?? []) as $index => $segment) {
+            if (($segment['procurement_required'] ?? false) !== true) {
+                continue;
+            }
+            $fulfillment = Order::query()->findOrFail((int) ($resultOrders[$index]['order_id'] ?? 0));
+            $this->externalProcurement->createForAllocatedOrder($fulfillment, $actor);
+            $activeExternalIds[] = (int) $fulfillment->id;
+        }
+        $familyIds = [$order->id, ...Order::withTrashed()->where('fulfillment_parent_id', $order->id)
+            ->where('fulfillment_role', 'original')->pluck('id')->all()];
+        // Pending procurement lines superseded by Vita's reallocation must
+        // never remain active after their virtual source has been removed.
+        ProcurementOrder::query()
+            ->where('origin', 'external')->whereIn('source_order_id', $familyIds)
+            ->whereNotIn('source_order_id', $activeExternalIds)
+            ->where('status', 'pending')
+            ->update(['status' => 'cancelled', 'status_updated_at' => now()]);
         $plan['execution_status'] = count($resultOrders) > 1 ? 'derived_orders_materialized' : 'single_order_assigned';
         $allocation->forceFill(['plan_snapshot' => $plan])->save();
 
@@ -288,12 +333,12 @@ final class FulfillmentAllocationSubmissionService
         $segments = collect($plan['segments'] ?? [])->map(function (array $segment) use ($order): array {
             $code = (string) ($segment['source_code'] ?? '');
             $items = collect($segment['items'] ?? [])->map(function (array $row) use ($order, $code): array {
-                $matches = $order->items->filter(fn ($item): bool =>
-                    (int) ($item->source_product_id ?: $item->product_id) === (int) ($row['product_id'] ?? 0)
+                $matches = $order->items->filter(fn ($item): bool => (int) ($item->source_product_id ?: $item->product_id) === (int) ($row['product_id'] ?? 0)
                 );
                 abort_unless($matches->count() === 1, 422, '推荐分仓商品不能唯一对应订单行，必须手工分仓');
                 $item = $matches->first();
                 $resolved = $this->physicalSkus->resolve($item, $code, null);
+
                 return [
                     ...$row,
                     'order_item_id' => (int) $item->id,
@@ -306,8 +351,10 @@ final class FulfillmentAllocationSubmissionService
                     'resolved_product_summary' => $resolved['resolved_product_summary'] ?? $resolved['source_product_summary'],
                 ];
             })->values()->all();
+
             return [...$segment, 'items' => $items];
         })->values()->all();
+
         return [...$plan, 'segments' => $segments];
     }
 
@@ -324,6 +371,7 @@ final class FulfillmentAllocationSubmissionService
     private function nullableNote(?string $note): ?string
     {
         $value = trim((string) $note);
+
         return $value === '' ? null : $value;
     }
 }

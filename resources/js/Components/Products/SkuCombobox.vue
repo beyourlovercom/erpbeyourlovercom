@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue'
 
-type SkuOption = { id: number; sku: string; name: string }
+type SkuOption = { id: number; sku: string; name: string; matched_alias?: string | null }
 
 const props = defineProps<{ modelValue: string; productId?: number | null }>()
 const emit = defineEmits<{ 'update:modelValue': [string]; 'update:productId': [number | null] }>()
@@ -154,6 +154,7 @@ const onKeydown = (event: KeyboardEvent) => {
         >
           <strong>{{ option.sku }}</strong>
           <span>{{ option.name }}</span>
+          <small v-if="option.matched_alias" class="sku-alias-hit">匹配别名：{{ option.matched_alias }}</small>
         </li>
       </template>
     </ul>
@@ -231,4 +232,8 @@ const onKeydown = (event: KeyboardEvent) => {
 .sku-combobox-state {
   padding: 13px 11px;
 }
+</style>
+
+<style scoped>
+.sku-alias-hit { font-size: 11px; color: #64748b; }
 </style>
