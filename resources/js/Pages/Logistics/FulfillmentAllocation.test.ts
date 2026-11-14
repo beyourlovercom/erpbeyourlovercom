@@ -398,7 +398,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     warehouseSelect.dispatchEvent(new Event('change', { bubbles: true }))
     await flushPromises()
 
-    expect(document.body.textContent).toContain('该仓当前没有可用清仓礼品')
+    expect(document.body.textContent).toContain('该仓未配置有效的清仓 Gift SKU')
     const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
     expect(giftSelect.options.length).toBe(1)
   })
@@ -413,11 +413,39 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     warehouseSelect.dispatchEvent(new Event('change', { bubbles: true }))
     await flushPromises()
 
-    expect(document.body.textContent).toContain('礼品库存在，但当前全部缺货')
+    expect(document.body.textContent).toContain('Gift 当前可出库库存不足')
     const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
-    expect(Array.from(giftSelect.options).map(option => option.textContent).join(' ')).not.toContain('GIFT-MP-02')
+    expect(Array.from(giftSelect.options).map(option => option.textContent).join(' ')).toContain('GIFT-MP-02')
+    expect(Array.from(giftSelect.options).find(option => option.textContent?.includes('GIFT-MP-02'))?.disabled).toBe(true)
   })
 
+
+  it('auto-detects blocked US-SM OMS snapshot and renders disabled Gift instead of false out-of-stock', async () => {
+    const blockedGift = {
+      ...giftItem, gift_options_by_warehouse: {
+        ...giftItem.gift_options_by_warehouse,
+        'US-SM': [{ ...giftItem.gift_options_by_warehouse['US-SM'][0],
+          quantity_available: 0, erp_quantity_available: 10,
+          can_fulfill: false, stock_gate_reason: 'oms_snapshot_blocked' }],
+      },
+    }
+    const blockedOrder = { ...giftOrder, id: 440, items: [itemA, blockedGift] }
+    const wrapper = mountPage({ ...props, orders: { ...props.orders, data: [blockedOrder], total: 1 }, pendingTotal: 1 })
+    await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
+    await flushPromises()
+    const giftRow = Array.from(document.body.querySelectorAll('.primary-allocation tbody tr'))
+      .find(row => row.textContent?.includes('gift')) as HTMLTableRowElement
+    const warehouse = giftRow.querySelectorAll('select')[0] as HTMLSelectElement
+    warehouse.value = 'US-SM'
+    warehouse.dispatchEvent(new Event('change', { bubbles: true }))
+    await flushPromises()
+    expect(document.body.textContent).toContain('OMS 快照被阻断')
+    expect(document.body.textContent).toContain('OMS 核验阻断')
+    const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
+    const blocked = Array.from(giftSelect.options).find(option => option.textContent?.includes('GIFT-SM-01'))
+    expect(blocked?.disabled).toBe(true)
+    wrapper.unmount()
+  })
 
   it('replays submitted split as A/B derived logistics orders with fixed warehouses', async () => {
     const processedProps = {
@@ -440,9 +468,11 @@ describe('Vita Fulfillment Allocation V1.1', () => {
   })
 
   it('requires a visible acknowledgement before manual allocation to an out-of-stock warehouse', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true, json: async () => ({ decision_source: 'manual', submitted_at: '2026-09-11T09:00:00+08:00' }),
-    })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ can_submit: true, issues: [] }) })
+      .mockResolvedValueOnce({
+        ok: true, json: async () => ({ decision_source: 'manual', submitted_at: '2026-09-11T09:00:00+08:00' }),
+      })
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mountPage()
     const viewButtons = wrapper.findAll('button').filter(button => button.text() === '查看方案')
@@ -465,10 +495,76 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     const confirm = document.body.querySelector('.stock-exception-confirm') as HTMLButtonElement
     confirm.click()
     await flushPromises()
-    expect(fetchMock).toHaveBeenCalledOnce()
-    const payload = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[0][0]).toContain('/fulfillment-allocation/preflight')
+    const payload = JSON.parse(fetchMock.mock.calls[1][1].body)
     expect(payload.stock_exception_acknowledged).toBe(true)
     expect(payload.assignments).toHaveLength(2)
+    wrapper.unmount()
+  })
+
+  it('preflight reports the exact failed SKU beside submit and never sends allocation POST', async () => {
+    const fetchMock=vi.fn().mockResolvedValue({
+      ok:true,
+      json:async()=>({can_submit:false,issues:[{sku:'MF414A',warehouse:'US-LA',reason:'MorePlus 商品 MF414A 没有已验证的实际 SKU 映射'}]}),
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    const wrapper=mountPage()
+    const buttons=wrapper.findAll('button').filter(button=>button.text()==='查看方案')
+    await buttons[1].trigger('click')
+    await flushPromises()
+    const selects=Array.from(document.body.querySelectorAll('.manual-table-wrap tbody tr select')) as HTMLSelectElement[]
+    for(const select of selects.filter((_,i)=>i%2===0)){
+      select.value='US-LA';select.dispatchEvent(new Event('change',{bubbles:true}))
+    }
+    await flushPromises()
+    const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认人工分配并提交') as HTMLButtonElement
+    submit.click()
+    await flushPromises()
+    const confirm=document.body.querySelector('.stock-exception-confirm') as HTMLButtonElement|null
+    if(confirm){confirm.click();await flushPromises()}
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toContain('/fulfillment-allocation/preflight')
+    expect(document.body.querySelector('.modal-actions .submit-error')?.textContent).toContain('MF414A')
+    wrapper.unmount()
+  })
+
+  it('reads back a committed allocation after HTTP 500 and never retries the POST', async () => {
+    const fetchMock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({can_submit:true,issues:[]})})
+      .mockResolvedValueOnce({
+        ok:false,status:500,headers:{get:()=> 'test-error-500'},
+        json:async()=>({message:'Server Error'}),
+      })
+      .mockImplementationOnce(async()=>({
+        ok:true,json:async()=>({
+          status:'submitted',decision_source:'manual',submitted_at:'2026-11-14T09:17:24Z',
+          assignments:JSON.parse(fetchMock.mock.calls[1][1].body).assignments,
+        }),
+      }))
+    vi.stubGlobal('fetch',fetchMock)
+    const wrapper=mountPage()
+    const viewButtons=wrapper.findAll('button').filter(button=>button.text()==='查看方案')
+    await viewButtons[1].trigger('click')
+    await flushPromises()
+    const rows=Array.from(document.body.querySelectorAll('.manual-table-wrap tbody tr'))
+    for(const row of rows){
+      const select=row.querySelector('select') as HTMLSelectElement
+      select.value='US-LA';select.dispatchEvent(new Event('change',{bubbles:true}))
+    }
+    await flushPromises()
+    const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认人工分配并提交') as HTMLButtonElement
+    submit.click()
+    await flushPromises()
+    const confirm=document.body.querySelector('.stock-exception-confirm') as HTMLButtonElement
+    expect(confirm).toBeTruthy()
+    confirm.click()
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls[0][0]).toContain('/fulfillment-allocation/preflight')
+    expect(fetchMock.mock.calls[1][0]).toContain('/fulfillment-allocation/manual')
+    expect(fetchMock.mock.calls[2][0]).toContain('/fulfillment-allocation/status')
+    expect(document.body.querySelector('.modal-backdrop')).toBeNull()
     wrapper.unmount()
   })
 
