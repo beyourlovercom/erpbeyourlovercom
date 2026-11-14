@@ -97,10 +97,26 @@ final class MorePlusInventorySyncService
                 'accounting_warning' => $accountingWarning,
             ];
         }
-        // Stock/list can omit catalog-only SKUs. Missing rows NEVER mean zero.
+        // A complete, signed warehouse stock/list is authoritative: once all
+        // returned provider SKUs are verified, ERP-only rows absent from the
+        // full stock result are no longer physically stocked at MorePlus.
+        // Preserve their historical lot and accounting ledgers separately.
+        $returnedProductIds = array_values(array_unique(array_filter(array_column($rows, 'product_id'))));
+        $absent = $inventories->filter(fn (WarehouseInventory $i): bool =>
+            ! in_array((int) $i->product_id, $returnedProductIds, true))
+            ->sortBy('product_id')->map(fn (WarehouseInventory $i): array => [
+                'id' => (int) $i->id,
+                'product_id' => (int) $i->product_id,
+                'sku' => (string) $i->product?->sku,
+                'local_qoh' => (int) $i->quantity_on_hand,
+                'local_reserved' => (int) $i->quantity_reserved,
+                'local_provider_available' => $i->provider_available_quantity,
+                'local_updated_at' => $i->updated_at?->toIso8601String(),
+            ])->values()->all();
         $checksum = hash('sha256', json_encode([
-            'version' => 1, 'erp_warehouse_id' => (int) $warehouse->id,
+            'version' => 2, 'erp_warehouse_id' => (int) $warehouse->id,
             'provider_warehouse_id' => $snapshot['warehouse_id'], 'rows' => $rows,
+            'absent_rows' => $absent,
         ], JSON_THROW_ON_ERROR));
 
         return [
@@ -110,6 +126,10 @@ final class MorePlusInventorySyncService
             'unchanged' => count(array_filter($rows, fn ($r) => $r['status'] === 'unchanged')),
             'blocked' => count(array_filter($rows, fn ($r) => $r['status'] === 'blocked')),
             'checksum' => $checksum, 'rows' => $rows,
+            'absent_rows' => $absent, 'absent_count' => count($absent),
+            'absent_qoh' => array_sum(array_column($absent, 'local_qoh')),
+            // An unresolved provider identity prevents zeros of locally-absent rows.
+            'absent_zero_eligible' => count(array_filter($rows, fn ($r) => $r['status'] === 'blocked')) === 0,
             'apply_enabled' => (bool) config('shipout.production_inventory_apply_enabled', false),
         ];
     }
@@ -208,8 +228,37 @@ final class MorePlusInventorySyncService
                     $created++;
                 }
             }
+            $absentZeroed = 0;
+            if ($fresh['absent_zero_eligible']) {
+                foreach ($fresh['absent_rows'] as $stale) {
+                    $local = WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
+                        ->whereKey($stale['id'])->lockForUpdate()->firstOrFail();
+                    if ((int) $local->product_id !== $stale['product_id']
+                        || (int) $local->quantity_on_hand !== $stale['local_qoh']
+                        || (int) $local->quantity_reserved !== $stale['local_reserved']
+                        || $local->provider_available_quantity !== $stale['local_provider_available']
+                        || $local->updated_at?->toIso8601String() !== $stale['local_updated_at']) {
+                        throw new RuntimeException('MOREPLUS_INVENTORY_LOCAL_CHANGED_PREVIEW_AGAIN');
+                    }
+                    $changes[] = [
+                        'sku' => $stale['sku'], 'product_id' => $stale['product_id'],
+                        'previous_on_hand' => $stale['local_qoh'], 'new_on_hand' => 0,
+                        'provider_available' => 0, 'preserved_reserved' => $stale['local_reserved'],
+                        'reason' => 'NOT_RETURNED_IN_COMPLETE_PROVIDER_STOCK_LIST',
+                    ];
+                    $local->update([
+                        'quantity_on_hand' => 0,
+                        'provider_available_quantity' => 0,
+                        'provider_stock_synced_at' => now(),
+                    ]);
+                    $updated++;
+                    $absentZeroed++;
+                }
+            }
             $result = [
                 'updated' => $updated, 'created' => $created,
+                'absent_zeroed' => $absentZeroed,
+                'absent_waiting_identity' => $fresh['absent_zero_eligible'] ? 0 : count($fresh['absent_rows']),
                 'unchanged' => $fresh['unchanged'], 'blocked' => $fresh['blocked'],
                 'checksum' => $fresh['checksum'],
                 'source_sku_count' => $fresh['source_sku_count'],

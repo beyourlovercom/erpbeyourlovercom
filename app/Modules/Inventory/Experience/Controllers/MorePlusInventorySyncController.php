@@ -33,8 +33,8 @@ final class MorePlusInventorySyncController
         }
 
         return back()->with('success', sprintf(
-            'MorePlus 实时库存已单向同步至 ERP：更新 %d 个、新增 %d 个、一致 %d 个，SKU 异常 %d 个（跳过）。海外仓数据未修改。',
-            $result['updated'], $result['created'], $result['unchanged'], $result['blocked']
+            'MorePlus 库存同步完成：更新 %d 个（含未返回清单已归零 %d 个）、新增 %d 个、一致 %d 个，SKU 异常 %d 个。只改 ERP，未改海外仓。',
+            $result['updated'], $result['absent_zeroed'], $result['created'], $result['unchanged'], $result['blocked']
         ));
     }
 

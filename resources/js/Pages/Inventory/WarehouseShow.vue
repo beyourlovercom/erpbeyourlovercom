@@ -8,7 +8,7 @@ import { useAccountGridPreferences } from '../../Composables/useAccountGridPrefe
 
 type FactoryDemand={sales_90d:number;monthly_average:number;automatic_two_month_demand:number;two_month_demand:number;manual_two_month_demand:number|null;is_manual:boolean;shortage_quantity:number;coverage_ratio:number|null;status:'warning'|'normal'|'no_sales';status_label:string}
 type Item={factory_demand?:FactoryDemand|null;id:number;product:{id:number;sku:string;provider_sku?:string|null;name:string;updated_at?:string|null};quantity_on_hand:number;quantity_reserved:number;quantity_available:number;stock_status:'out_of_stock'|'low_stock'|'in_stock';stock_status_label:string;inbound_at:string|null;stay_days:number|null;location:string|null;standard_qoh:number|null;expected_restock_qty:number;updated_at?:string;product_updated_at?:string;replenishment:{policy_status:'unconfigured'|'no_demand'|'reorder'|'healthy';policy_label:string;shipped_90d_qty:number;days_of_cover:number|null;recommended_restock_qty:number|null}}
-type MorePlusStockPreview={checksum:string;source_sku_count:number;ready:number;unchanged:number;blocked:number;apply_enabled:boolean;rows:Array<{provider_sku:string;canonical_sku:string|null;provider_physical:number|null;provider_available:number;local_qoh:number;local_reserved:number;status:'ready'|'unchanged'|'blocked';reason:string|null}>}
+type MorePlusStockPreview={checksum:string;source_sku_count:number;ready:number;unchanged:number;blocked:number;absent_count?:number;absent_qoh?:number;absent_zero_eligible?:boolean;absent_rows?:Array<{sku:string;local_qoh:number;local_reserved:number}>;apply_enabled:boolean;rows:Array<{provider_sku:string;canonical_sku:string|null;provider_physical:number|null;provider_available:number;local_qoh:number;local_reserved:number;status:'ready'|'unchanged'|'blocked';reason:string|null}>}
 type MorePlusFifoPreview={checksum:string;ready_fifo:number;ready_units:number;blocked:number;apply_enabled:boolean;rows:Array<{provider_sku:string;canonical_sku:string|null;status:'ready_fifo'|'blocked';reason:string|null;qoh:number;physical:number;delta:number;aging_count:number;lot_changes:Array<{date:string;before:number;after:number}>}>}
 type BillImportCapability={provider:string;label:string;extension:string;format_label:string;accept:string;max_kb:number}
 type W={id:number;slug:string;public_slug?:string;code:string;name:string;name_en?:string|null;role_label?:string;bill_import?:BillImportCapability|null;bill_import_onboarding?:{status:string;label:string;provider:string|null;format_label:string;note:string}|null;is_fulfillment_warehouse?:boolean;is_inventory_only_warehouse?:boolean;country_code:string|null;address_line1:string|null;address_line2:string|null;city:string|null;state_region:string|null;postal_code:string|null;timezone:string|null;type:string;ownership_type:'owned'|'external';is_domestic:boolean;is_active:boolean;priority:number;fulfillment_available_on:string|null;fulfillment_state:'preparing'|'awaiting_inventory'|'ready';fulfillment_state_label:string;replenishment_lead_time_days:number|null;replenishment_safety_stock_days:number|null;replenishment_target_cover_days:number|null;billing_markdown:string|null;service_regions?:string[];last_inventory_sync_at:string|null;last_provider_inventory_sync_at?:string|null;last_provider_inventory_sync_summary?:{updated:number;created:number;unchanged:number;blocked:number}|null;inventories:Item[]}
@@ -238,7 +238,7 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
 <section v-if="isMorePlus&&canOperate&&moreplusInventoryPreview&&!moreplusPreviewHidden" aria-label="MorePlus 库存同步" class="moreplus-compact-preview">
   <div class="moreplus-compact-bar" role="status" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 14px;border:1px solid #dce4ea;border-radius:10px">
     <strong>仓库库存差异预览</strong>
-    <span>SKU {{moreplusInventoryPreview.source_sku_count}} · 一致 {{moreplusInventoryPreview.unchanged}} · 待复核 {{moreplusInventoryPreview.blocked}}</span>
+    <span>SKU {{moreplusInventoryPreview.source_sku_count}} · 一致 {{moreplusInventoryPreview.unchanged}} · 待复核 {{moreplusInventoryPreview.blocked}} · 缺席库存 SKU {{moreplusInventoryPreview.absent_count||0}}</span>
     <span v-if="moreplusFifoPreview">FIFO 候选 {{moreplusFifoPreview.ready_fifo}} 款 / {{moreplusFifoPreview.ready_units}} 件</span>
     <button type="button" class="text-button" @click="moreplusPreviewExpanded=!moreplusPreviewExpanded">{{moreplusPreviewExpanded?'收起明细':'查看明细'}}</button>
     <button type="button" class="text-button" aria-label="关闭库存预览" @click="moreplusPreviewHidden=true;moreplusPreviewExpanded=false">关闭</button>
@@ -246,12 +246,24 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
   <div v-if="moreplusPreviewExpanded" class="primary-panel" style="margin-top:8px">
     <div class="section-heading"><div><strong>库存差异只读核对（不影响同步）</strong></div></div>
 <div v-if="moreplusFifoPreview" class="moreplus-fifo-preview">
-      <p><strong>FIFO 批次核销 · 只读预检</strong>：可核销 {{moreplusFifoPreview.ready_fifo}} 个 SKU，拟调整 {{moreplusFifoPreview.ready_units}} 件；另有 {{moreplusFifoPreview.blocked}} 个须单独复核。</p>
-      <small>只减少确认短缺的旧批次，不覆盖仓库出库占用、ERP 预留或历史库龄费用。批次写入受独立审批开关保护，本页面未提供写入操作。</small>
+      <p><strong>FIFO / 库龄账务差异 · 只读</strong>：供历史分析 {{moreplusFifoPreview.ready_fifo}} 个 SKU / {{moreplusFifoPreview.ready_units}} 件；另有 {{moreplusFifoPreview.blocked}} 个须单独复核。</p>
+      <small>此处仅供会计核对，严禁修改海外仓实物库存、批次或历史库龄费用。</small>
       <details v-if="moreplusFifoPreview.rows.length"><summary>查看拟调整的批次及受阻明细</summary>
-        <div class="table-shell" style="max-height:240px;overflow:auto"><table><thead><tr><th>MorePlus SKU</th><th>ERP 当前</th><th>仓库实物</th><th>拟减少</th><th>原入库日期 / 批次变更</th><th>库龄历史</th><th>结论</th></tr></thead>
-        <tbody><tr v-for="r in moreplusFifoPreview.rows" :key="r.provider_sku"><td>{{r.provider_sku}}</td><td>{{r.qoh}}</td><td>{{r.physical}}</td><td>{{r.delta}}</td><td>{{r.lot_changes.length?r.lot_changes.map(l=>l.date+'：'+l.before+' → '+l.after).join('；'):'—'}}</td><td>{{r.aging_count}} 条保留</td><td>{{r.status==='ready_fifo'?'可进入受控 FIFO 核销':fifoBlockLabel(r.reason)}}</td></tr></tbody></table></div>
+        <div class="table-shell" style="max-height:240px;overflow:auto"><table><thead><tr><th>MorePlus SKU</th><th>ERP 当前</th><th>仓库实物</th><th>历史差异</th><th>历史日期 / 账务模拟</th><th>库龄历史</th><th>结论</th></tr></thead>
+        <tbody><tr v-for="r in moreplusFifoPreview.rows" :key="r.provider_sku"><td>{{r.provider_sku}}</td><td>{{r.qoh}}</td><td>{{r.physical}}</td><td>{{r.delta}}</td><td>{{r.lot_changes.length?r.lot_changes.map(l=>l.date+'：'+l.before+' → '+l.after).join('；'):'—'}}</td><td>{{r.aging_count}} 条保留</td><td>{{r.status==='ready_fifo'?'仅记录差异':fifoBlockLabel(r.reason)}}</td></tr></tbody></table></div>
       </details>
+    </div>
+    <p v-if="moreplusInventoryPreview.absent_count" class="inventory-warning">
+      MorePlus 完整实物库存列表未返回 {{moreplusInventoryPreview.absent_count}} 个 ERP SKU，
+      共 {{moreplusInventoryPreview.absent_qoh||0}} 件旧账。
+      {{moreplusInventoryPreview.absent_zero_eligible?'下一次单向同步将这些 SKU 的 ERP 实物及可用数归零，保留财务历史。':'本次存在 SKU 身份异常，缺席 SKU 暂不归零。'}}
+    </p>
+    <div v-if="moreplusInventoryPreview.absent_rows?.length" class="table-shell" style="max-height:190px;overflow:auto">
+      <table><thead><tr><th>完整海外仓列表缺席 SKU</th><th>ERP 原实物</th><th>ERP 预留（历史）</th><th>ERP 同步动作</th></tr></thead>
+      <tbody><tr v-for="row in moreplusInventoryPreview.absent_rows" :key="row.sku">
+        <td>{{row.sku}}</td><td>{{row.local_qoh}}</td><td>{{row.local_reserved}}</td>
+        <td>{{moreplusInventoryPreview.absent_zero_eligible?'ERP 实物/可用归零，保留历史':'等待 SKU 核验'}}</td>
+      </tr></tbody></table>
     </div>
     <div v-if="moreplusInventoryPreview.rows.length" class="table-shell" style="max-height:300px;overflow:auto">
       <table><thead><tr><th>MorePlus SKU</th><th>ERP SKU</th><th>仓库实物</th><th>仓库可用</th><th>ERP 当前</th><th>ERP 预留</th><th>结论</th></tr></thead>
@@ -262,14 +274,14 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
 <div v-if="activeTab==='overview'" class="kpi-grid">
   <article><span>库存 SKU</span><strong>{{kpis.skus}}</strong><small>当前仓库商品</small></article>
   <article><span>当前库存</span><strong>{{kpis.onHand}}</strong><small>仓库实物数量</small></article>
-  <article><span>可用库存</span><strong>{{kpis.available}}</strong><small>扣除预留后</small></article>
+  <article><span>可用库存</span><strong>{{kpis.available}}</strong><small>{{isMorePlus?'MorePlus 实时可用数量':'扣除预留后'}}</small></article>
   <article><span>{{isFactory?'库存告急':'库存预警'}}</span><strong>{{kpis.low+kpis.out}}</strong><small>{{isFactory?'低于两个月需求 · '+kpis.noSales+' SKU 暂无销量':kpis.low+' 紧张 · '+kpis.out+' 无货'}}</small></article>
   <article><span>最后同步</span><strong class="sync-time">{{lastSync}}</strong><small>{{isMorePlus&&warehouse.last_provider_inventory_sync_at?'包含 MorePlus API 受控同步':'最近确认库存快照'}}</small></article>
 </div>
 <section v-if="activeTab==='overview'" class="overview-grid">
   <article class="overview-card"><div class="overview-card-head"><div><p class="section-kicker">INVENTORY STATUS</p><h3>库存状态</h3></div><button type="button" class="text-button" @click="activeTab='inventory'">查看库存 →</button></div><div class="overview-stat-list"><div><span>正常库存</span><strong>{{Math.max(kpis.skus-kpis.low-kpis.out-(isFactory?kpis.noSales:0),0)}}</strong></div><div><span>{{isFactory?'库存告急':'库存紧张'}}</span><strong>{{kpis.low}}</strong></div><div><span>{{isFactory?'暂无销量':'无货'}}</span><strong>{{isFactory?kpis.noSales:kpis.out}}</strong></div><div><span>清仓商品</span><strong>{{clearanceProducts.length}}</strong></div></div></article>
   <article class="overview-card"><div class="overview-card-head"><div><p class="section-kicker">LATEST COST</p><h3>最近成本</h3></div><button type="button" class="text-button" @click="activeTab='costs'">查看成本 →</button></div><template v-if="latestCostSummary.length"><div v-for="summary in latestCostSummary" :key="summary.currency" class="overview-cost-row"><strong>{{summary.currency}} {{money(summary.total)}}</strong><span>运费 {{money(summary.shipping)}} · 出库 {{money(summary.parcel_outbound)}} · 仓储 {{money(summary.storage)}}</span></div></template><div v-else class="overview-empty">暂无月度成本记录</div></article>
-  <article class="overview-card overview-wide"><div class="overview-card-head"><div><p class="section-kicker">QUICK ACTIONS</p><h3>常用操作</h3></div></div><div class="quick-actions"><Link class="button ghost" href="/inventory/sync">导入 / 更新库存</Link><button type="button" class="button ghost" @click="activeTab='costs'">导入成本表</button><button type="button" class="button ghost" @click="activeTab='exceptions'">查看异常</button><button type="button" class="button ghost" @click="activeTab='config'">仓库配置</button></div></article>
+  <article class="overview-card overview-wide"><div class="overview-card-head"><div><p class="section-kicker">QUICK ACTIONS</p><h3>常用操作</h3></div></div><div class="quick-actions"><Link v-if="!isMorePlus" class="button ghost" href="/inventory/sync">导入 / 更新库存</Link><button type="button" class="button ghost" @click="activeTab='costs'">导入成本表</button><button type="button" class="button ghost" @click="activeTab='exceptions'">查看异常</button><button type="button" class="button ghost" @click="activeTab='config'">仓库配置</button></div></article>
 </section>
 <section v-if="activeTab==='inbound'" class="primary-panel inbound-panel">
   <div class="section-heading"><div><p class="section-kicker">INBOUND</p><h3>在途 / 入仓运输</h3><p>批次按“准备中 → 工厂打包 → 运输中 → 港口已到货 → 仓库已入库 → 正常发货”推进；只有最后一步“正常发货”才激活可用库存。</p></div></div>

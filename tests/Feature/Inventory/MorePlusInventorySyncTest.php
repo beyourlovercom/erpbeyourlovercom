@@ -178,7 +178,7 @@ final class MorePlusInventorySyncTest extends TestCase
         self::assertSame(3, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
     }
 
-    public function test_absent_provider_sku_is_not_zeroed_on_full_stock_scan(): void
+    public function test_erp_skus_not_in_complete_signed_provider_stock_are_zeroed_without_touching_lots(): void
     {
         $missing = $this->product('MP-NOT-RETURNED', 11);
         $this->product('MP-RETURNED', 1);
@@ -187,7 +187,58 @@ final class MorePlusInventorySyncTest extends TestCase
         $preview = $service->preview($this->warehouse);
         config()->set('shipout.production_inventory_apply_enabled', true);
         $service->apply($this->warehouse, $preview['checksum'], null);
-        self::assertSame(11, WarehouseInventory::query()->where('product_id', $missing->id)->value('quantity_on_hand'));
+        $actual = WarehouseInventory::query()->where('product_id', $missing->id)->firstOrFail();
+        self::assertSame(0, $actual->quantity_on_hand);
+        self::assertSame(0, $actual->provider_available_quantity);
+    }
+
+    public function test_absent_provider_stock_zeroes_erp_mirror_without_erasing_reservations_or_lots(): void
+    {
+        $old = $this->product('MP-OLD-MISSING', 153, 2);
+        WarehouseInventoryLot::query()->create([
+            'warehouse_id' => $this->warehouse->id,
+            'product_id' => $old->id,
+            'stock_status' => 'sellable',
+            'putaway_date' => '2026-02-01',
+            'quantity' => 153,
+        ]);
+        $this->product('MP-SIGNED-PRESENT', 1);
+        $this->provider = ['MP-SIGNED-PRESENT' => [3, 3]];
+        $service = app(MorePlusInventorySyncService::class);
+        $preview = $service->preview($this->warehouse);
+        self::assertSame(1, $preview['absent_count']);
+        self::assertSame(153, $preview['absent_qoh']);
+        self::assertTrue($preview['absent_zero_eligible']);
+        $service->syncProvider($this->warehouse, null);
+        $row = WarehouseInventory::where('product_id', $old->id)->firstOrFail();
+        self::assertSame(0, $row->quantity_on_hand);
+        self::assertSame(0, $row->provider_available_quantity);
+        self::assertSame(2, $row->quantity_reserved);
+        self::assertSame(153, WarehouseInventoryLot::query()->where('product_id', $old->id)->sum('quantity'));
+    }
+
+    public function test_unverified_provider_identity_prevents_absent_erp_zero(): void
+    {
+        $old = $this->product('MP-MUST-NOT-ZERO', 11);
+        $this->provider = ['UNVERIFIED-PROVIDER-SKU' => [2, 2]];
+        $preview = app(MorePlusInventorySyncService::class)->preview($this->warehouse);
+        self::assertSame(1, $preview['blocked']);
+        self::assertFalse($preview['absent_zero_eligible']);
+        app(MorePlusInventorySyncService::class)->syncProvider($this->warehouse, null);
+        self::assertSame(11, WarehouseInventory::where('product_id', $old->id)->value('quantity_on_hand'));
+    }
+
+    public function test_empty_provider_stock_snapshot_fails_closed_without_zeroing_erp(): void
+    {
+        $old = $this->product('MP-PRESERVE-IF-EMPTY', 22);
+        $this->provider = [];
+        try {
+            app(MorePlusInventorySyncService::class)->syncProvider($this->warehouse, null);
+            self::fail('Empty provider results should not bulk zero the ERP.');
+        } catch (RuntimeException $error) {
+            self::assertSame('MOREPLUS_PROVIDER_STOCK_EMPTY_REVIEW_REQUIRED', $error->getMessage());
+        }
+        self::assertSame(22, WarehouseInventory::where('product_id', $old->id)->value('quantity_on_hand'));
     }
 
     public function test_one_click_sync_ignores_old_apply_flag_and_uses_only_provider_get(): void
