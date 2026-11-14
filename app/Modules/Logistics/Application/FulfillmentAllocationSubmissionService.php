@@ -11,6 +11,7 @@ use App\Modules\Procurement\Application\ExternalProcurementWorkflow;
 use App\Modules\Procurement\Infrastructure\Models\ProcurementOrder;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 final class FulfillmentAllocationSubmissionService
 {
@@ -61,13 +62,28 @@ final class FulfillmentAllocationSubmissionService
     /** @param list<array{order_item_id:int,source_code:string,gift_mapping_id?:int|null,carrier?:string|null,service?:string|null}> $assignments */
     public function submitManual(Order $order, array $assignments, ?string $note, Authenticatable $actor, bool $stockExceptionAcknowledged = false): FulfillmentAllocation
     {
-        return DB::transaction(function () use ($order, $assignments, $note, $actor, $stockExceptionAcknowledged): FulfillmentAllocation {
+        $started = hrtime(true);
+        $previous = $started;
+        $measure = static function (string $stage) use ($order, $started, &$previous): void {
+            $now = hrtime(true);
+            Log::info('allocation.manual.stage', [
+                'order_id' => $order->getKey(),
+                'stage' => $stage,
+                'stage_ms' => (int) round(($now - $previous) / 1_000_000),
+                'elapsed_ms' => (int) round(($now - $started) / 1_000_000),
+                'request_id' => request()->attributes->get('erp_request_id'),
+            ]);
+            $previous = $now;
+        };
+
+        return DB::transaction(function () use ($order, $assignments, $note, $actor, $stockExceptionAcknowledged, $measure): FulfillmentAllocation {
             $locked = Order::query()->with(['address', 'items.product', 'fulfillmentAllocation'])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             abort_if($locked->isOperationallyArchived(), 409, '运营归档订单不可分仓。');
             $this->paymentGate->assertAllowed($locked);
             $this->entryPolicy->assertAllowed($locked);
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以提交分仓');
             $this->assertExternalProcurementMayReallocate($locked);
+            $measure('order_eligibility');
 
             $normalized = collect($assignments)->map(fn (array $row): array => [
                 'order_item_id' => (int) ($row['order_item_id'] ?? 0),
@@ -86,6 +102,7 @@ final class FulfillmentAllocationSubmissionService
             abort_unless($normalized->pluck('order_item_id')->sort()->values()->all() === $orderItemIds->all(), 422, '必须为订单中的每个 SKU 完成分仓');
 
             $stockWarnings = $this->stockGate->assertAcknowledged($locked, $normalized->all(), $stockExceptionAcknowledged);
+            $measure('stock_eligibility');
 
             $resolvedAssignments = $normalized->map(function (array $row) use ($locked): array {
                 $item = $locked->items->firstWhere('id', $row['order_item_id']);
@@ -121,6 +138,7 @@ final class FulfillmentAllocationSubmissionService
                     'resolution' => $resolution,
                 ];
             })->values();
+            $measure('physical_sku_and_carrier');
 
             $sources = $resolvedAssignments->pluck('source_code')->unique()->values();
             abort_if($sources->count() > self::MAX_SEGMENTS, 422, '单订单最多允许 26 个履约来源');
@@ -199,11 +217,12 @@ final class FulfillmentAllocationSubmissionService
                     ])
                     : null,
             ];
-            $presented = $this->decisionFor($locked);
 
-            return $this->persistAndMaterialize($locked, [
+            $measure('plan_ready');
+            // Manual decisions do not need a fresh expensive recommendation under the row lock.
+            $submitted = $this->persistAndMaterialize($locked, [
                 'decision_source' => 'manual',
-                'recommended_plan_key' => $presented['recommended_plan_key'] ?? null,
+                'recommended_plan_key' => $locked->fulfillmentAllocation?->recommended_plan_key,
                 'selected_plan_key' => $plan['plan_key'],
                 'plan_snapshot' => $plan,
                 'manual_assignments' => $resolvedAssignments->map(fn (array $row): array => [
@@ -218,6 +237,9 @@ final class FulfillmentAllocationSubmissionService
                 ])->all(),
                 'decision_note' => $this->nullableNote($note),
             ], $actor);
+            $measure('persist_and_materialize');
+
+            return $submitted;
         });
     }
 
