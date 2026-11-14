@@ -243,22 +243,22 @@ final class OrderProgressQuery
     {
         return $shipments->whereHas('order', fn (Builder $order) => $this->withoutManualException($order))
             ->where('shipment_status', 'pending')->where(function ($q): void {
-            $q->whereDoesntHave('overseaReview')
-                ->orWhereHas('overseaReview', fn ($r) => $r->whereNotIn('status', ['approved', 'stockout']))
-                ->orWhereHas('overseaReview', fn ($r) => $r
-                    ->whereIn('status', ['approved', 'stockout'])
-                    ->where(function ($mismatch): void {
-                        $mismatch->whereNull('reviewed_warehouse_id')
-                            ->orWhereColumn('reviewed_warehouse_id', '!=', 'shipments.warehouse_id');
-                    }));
-        });
+                $q->whereDoesntHave('overseaReview')
+                    ->orWhereHas('overseaReview', fn ($r) => $r->whereNotIn('status', ['approved', 'stockout']))
+                    ->orWhereHas('overseaReview', fn ($r) => $r
+                        ->whereIn('status', ['approved', 'stockout'])
+                        ->where(function ($mismatch): void {
+                            $mismatch->whereNull('reviewed_warehouse_id')
+                                ->orWhereColumn('reviewed_warehouse_id', '!=', 'shipments.warehouse_id');
+                        }));
+            });
     }
 
-    /** Stockout remains allocated, is excluded from the review queue and cannot ship. */
+    /** Physical warehouse stockout remains visible for Dede even when a separate
+     * staff exception hold is also active; the shipping gate is unchanged. */
     public function overseasStockout(Builder $shipments): Builder
     {
-        return $shipments->whereHas('order', fn (Builder $order) => $this->withoutManualException($order))
-            ->where('shipment_status', 'pending')
+        return $shipments->where('shipment_status', 'pending')
             ->whereHas('overseaReview', fn ($review) => $review
                 ->where('status', 'stockout')
                 ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));

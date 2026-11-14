@@ -122,6 +122,102 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 2));
     }
 
+    public function test_staff_exception_and_real_overseas_stockout_are_both_discoverable_without_shipping_or_duplicate_orders(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate', 'orders.view', 'orders.edit']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-SM'], 'UAT-CORE-GRID-OVERSEA-BOTH');
+
+        // Staff selecting "异常" must move the existing order into the
+        // overseas exception queue, not merely change its visible pill.
+        $this->actingAs($actor)->patchJson("/orders/{$order->id}/workflow-status", [
+            'workflow_status' => 'exception',
+            'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'exception');
+
+        $this->get('/logistics/oversea/us-3sm?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $order->id)
+            ->where('rows.data.0.workflow_status_projection.code', 'exception')
+            ->where('viewCounts.exceptions', 1)
+            ->where('viewCounts.stockout', 0)
+            ->where('viewCounts.review', 0)
+            ->where('viewCounts.pending', 0));
+
+        // Dede's real warehouse shortage is independent, retained in its
+        // physical review ledger, and must remain actionable in stockout even
+        // while the order also has an unresolved staff exception.
+        $this->post("/logistics/oversea/orders/{$order->id}/stockout")->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id,
+            'status' => 'stockout',
+            'reviewed_warehouse_id' => $warehouses['US-SM']->id,
+        ]);
+        $this->get('/logistics/oversea/us-3sm?view=stockout')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $order->id)
+            ->where('rows.data.0.review_status', 'stockout')
+            ->where('rows.data.0.workflow_status_projection.code', 'exception')
+            ->where('viewCounts.stockout', 1)
+            ->where('viewCounts.exceptions', 1));
+        $this->get('/logistics/oversea/us-3sm?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $order->id));
+        $this->get('/logistics/oversea/us-3sm?view=all')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('viewCounts.all', 1)
+            ->where('viewCounts.stockout', 1)
+            ->where('viewCounts.exceptions', 1));
+        $this->get('/logistics/oversea/us-3sm?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'shipment_status' => 'pending',
+            'tracking_number' => null,
+        ]);
+
+        // Restocking only resolves the physical stockout. The separate
+        // manual exception cannot silently disappear or unblock dispatch.
+        $this->post("/logistics/oversea/orders/{$order->id}/restock")->assertRedirect();
+        $this->get('/logistics/oversea/us-3sm?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('viewCounts.stockout', 0)
+            ->where('viewCounts.exceptions', 1)
+            ->where('viewCounts.pending', 0));
+    }
+
+    public function test_missing_info_manual_hold_enters_overseas_exception_queue_and_preserves_warehouse_filter(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'orders.view', 'orders.edit']);
+        $warehouses = $this->warehouses();
+        $sm = $this->orderAt($warehouses['US-SM'], 'UAT-CORE-GRID-OVERSEA-MISSING');
+        $this->orderAt($warehouses['US-NY'], 'UAT-CORE-GRID-OVERSEA-OTHER-WAREHOUSE');
+
+        $this->actingAs($actor)->patchJson("/orders/{$sm->id}/workflow-status", [
+            'workflow_status' => 'missing_info',
+            'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info');
+
+        $this->get('/logistics/oversea/us-3sm?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $sm->id)
+            ->where('rows.data.0.workflow_status_projection.zh', '信息缺失')
+            ->where('viewCounts.exceptions', 1)
+            ->where('viewCounts.review', 0));
+        $this->get('/logistics/oversea/us-ny?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->get('/logistics/oversea?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('viewCounts.exceptions', 1));
+    }
+
     public function test_overseas_review_stockout_holds_shipping_and_restock_reuses_approval_gate(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);

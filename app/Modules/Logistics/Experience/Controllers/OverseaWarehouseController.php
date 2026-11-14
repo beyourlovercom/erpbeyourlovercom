@@ -607,7 +607,11 @@ final class OverseaWarehouseController
         }
         if ($view === 'exceptions') {
             $query->where(function ($exceptions): void {
-                $exceptions->where('shipment_status', 'exception')
+                // The same canonical exception projection used by Orders must
+                // also own the overseas exception work queue. Preserve OMS /
+                // actual Shipment exception predicates below unchanged.
+                $exceptions->whereHas('order', fn (\Illuminate\Database\Eloquent\Builder $orders) => $this->progressQueries->applyPhase($orders, 'exception'))
+                    ->orWhere('shipment_status', 'exception')
                     ->orWhere(function ($sm): void {
                         $sm->where('shipment_status', 'pending')
                             ->whereHas('warehouse', fn ($w) => $w->where('code', 'US-SM'))
