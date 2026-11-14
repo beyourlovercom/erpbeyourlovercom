@@ -2,32 +2,37 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
-use App\Modules\Shell\Application\GlobalGridPilot;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
-use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticCarrierDefaults;
+use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewAccess;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
 use App\Modules\Logistics\Application\Domestic\DomesticTodayOrdersExporter;
-use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnReader;
+use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
+use App\Modules\Orders\Application\DomesticReviewAmountResolver;
+use App\Modules\Orders\Application\OrderBusinessDateResolver;
 use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Shell\Application\GlobalGridPilot;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Http\RedirectResponse;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
-use InvalidArgumentException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Inertia\Inertia;
 use Inertia\Response;
+use InvalidArgumentException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 final class DomesticLogisticsController
 {
@@ -143,7 +148,7 @@ final class DomesticLogisticsController
     }
 
     /** Run the existing authorized per-order review service, without bulk bypass. */
-    public function batchReview(Request $request): \Illuminate\Http\JsonResponse
+    public function batchReview(Request $request): JsonResponse
     {
         abort_unless($this->reviewAccess->allows($request->user()), 403);
         $data = $request->validate([
@@ -159,13 +164,14 @@ final class DomesticLogisticsController
                 $order = Order::query()->findOrFail($id);
                 $this->decisions->decide($order, $data['action'], $data['reason'] ?? null, $request->user());
                 $results[] = ['order_id' => $id, 'ok' => true, 'message' => '已处理'];
-            } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
+            } catch (HttpExceptionInterface $exception) {
                 $results[] = ['order_id' => $id, 'ok' => false,
                     'message' => $exception->getStatusCode() === 403 ? '无操作权限' : ($exception->getMessage() ?: '状态已变化，无法执行')];
-            } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            } catch (ModelNotFoundException) {
                 $results[] = ['order_id' => $id, 'ok' => false, 'message' => '订单不存在'];
             }
         }
+
         return response()->json([
             'results' => $results,
             'success_count' => count(array_filter($results, fn (array $row): bool => $row['ok'])),
@@ -411,8 +417,8 @@ final class DomesticLogisticsController
         } catch (\DomainException) {
         }
 
-        $businessDate = app(\App\Modules\Orders\Application\OrderBusinessDateResolver::class)->domesticReview($order);
-        $amount = app(\App\Modules\Orders\Application\DomesticReviewAmountResolver::class)->resolve($order);
+        $businessDate = app(OrderBusinessDateResolver::class)->domesticReview($order);
+        $amount = app(DomesticReviewAmountResolver::class)->resolve($order);
 
         $exception = $includeException
             ? $this->exceptionSummary($order, $conflict, $stockout, $approved)
@@ -461,7 +467,7 @@ final class DomesticLogisticsController
                         ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
                         : ['未选定速达或纬狮物流商'])))),
             'items' => $order->items->map(fn ($item) => [
-                'sku' => $item->sku,
+                'sku' => WarehouseSkuPresentation::sku($item),
                 'quantity' => (int) $item->quantity,
             ])->values()->all(),
         ];
@@ -470,6 +476,7 @@ final class DomesticLogisticsController
     /**
      * Read-only reason based exclusively on existing shipment/order facts.
      * Do not create new exception codes or imply a resolution was performed.
+     *
      * @return array{exception_type: string, exception_reason: string}
      */
     private function exceptionSummary(Order $order, bool $conflict, bool $stockout, bool $approved): array
@@ -485,14 +492,10 @@ final class DomesticLogisticsController
         }
 
         $reason = match (true) {
-            $stockout && in_array($shipment?->shipment_status, ['shipped', 'completed'], true)
-                => '订单标记缺货，但物流已发货',
-            $shipment?->shipment_status === 'shipped' && $shipment->shipped_at === null
-                => '物流已发货，但缺少发货时间',
-            $shipment?->shipment_status === 'shipped' && ! $approved && blank($shipment->tracking_number)
-                => '物流已发货，但缺少商务审核和追踪单号',
-            $order->order_status?->value === 'shipped' && $shipment?->shipment_status === 'pending'
-                => '订单已标记发货，但物流仍为待发货',
+            $stockout && in_array($shipment?->shipment_status, ['shipped', 'completed'], true) => '订单标记缺货，但物流已发货',
+            $shipment?->shipment_status === 'shipped' && $shipment->shipped_at === null => '物流已发货，但缺少发货时间',
+            $shipment?->shipment_status === 'shipped' && ! $approved && blank($shipment->tracking_number) => '物流已发货，但缺少商务审核和追踪单号',
+            $order->order_status?->value === 'shipped' && $shipment?->shipment_status === 'pending' => '订单已标记发货，但物流仍为待发货',
             default => '履约状态不一致，请打开订单详情核对',
         };
 

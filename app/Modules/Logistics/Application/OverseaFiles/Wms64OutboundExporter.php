@@ -57,15 +57,17 @@ final class Wms64OutboundExporter
         $row = $this->row('us-3sm', $shipment, $providerReference);
         $row[4] = $providerReference; // prevent OMS duplicate platform IDs
         $row[23] = 'MANUAL DRAFT ONLY - Check OMS current drafts for this ERP order BEFORE import. Upload a genuine USPS label and verify Tracking BEFORE manual submit. DO NOT SHIP using a test placeholder.';
+
         return $this->xlsx->write('小包出库单', self::HEADERS, [$row]);
     }
 
     /** Always traceable to the ERP original, but unique on each download. */
     public function uniqueUsSmReference(string $base): string
     {
-        $base=trim($base);
-        abort_if($base==='',422,'缺少世迈订单参考号。');
-        return substr($base,0,84).'-R'.strtoupper(bin2hex(random_bytes(6)));
+        $base = trim($base);
+        abort_if($base === '', 422, '缺少世迈订单参考号。');
+
+        return substr($base, 0, 84).'-R'.strtoupper(bin2hex(random_bytes(6)));
     }
 
     /** A single already-approved Reship exports a NEW uniquely traceable
@@ -74,15 +76,16 @@ final class Wms64OutboundExporter
     {
         abort_unless(preg_match('/^BYL-RESHIP-[0-9a-f]{32}$/D', $thirdOrderNo), 422,
             '独立重发参考编号无效。');
-        $row=$this->row('us-3sm',$shipment,$thirdOrderNo);
-        $row[3]=$thirdOrderNo;
-        $row[4]=$thirdOrderNo;
-        $row[23]='RESEND DRAFT / VOID LABEL PLACEHOLDER - DO NOT SHIP. Replace with genuine USPS label + verify tracking BEFORE manual submission.';
+        $row = $this->row('us-3sm', $shipment, $thirdOrderNo);
+        $row[3] = $thirdOrderNo;
+        $row[4] = $thirdOrderNo;
+        $row[23] = 'RESEND DRAFT / VOID LABEL PLACEHOLDER - DO NOT SHIP. Replace with genuine USPS label + verify tracking BEFORE manual submission.';
+
         return $this->xlsx->write('小包出库单', self::HEADERS, [$row]);
     }
 
     /** @return list<mixed> */
-    private function row(string $warehouseKey, Shipment $shipment, ?string $referenceOverride=null): array
+    private function row(string $warehouseKey, Shipment $shipment, ?string $referenceOverride = null): array
     {
         $order = $shipment->order;
         abort_unless($order && $order->address, 422, '海外仓订单缺少收件地址。');
@@ -116,6 +119,7 @@ final class Wms64OutboundExporter
 
         foreach ($items as $index => $item) {
             $sku = trim((string) $item->sku);
+            abort_if(strcasecmp($sku, 'gift') === 0, 422, '该订单礼品实际 SKU 未登记，禁止生成仓库发货文件');
             abort_if(filled($item->resolved_fulfillment_sku)
                 && strcasecmp($sku, trim((string) $item->resolved_fulfillment_sku)) !== 0,
                 422, "订单 {$order->erp_order_id} 履约 SKU 未实际写入，禁止导出仓库文件");

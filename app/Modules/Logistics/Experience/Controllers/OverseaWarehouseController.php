@@ -15,6 +15,7 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutMorePlusVerifiedTrackingCom
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Logistics\Application\WarehouseDispatchStatus;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
@@ -730,7 +731,7 @@ final class OverseaWarehouseController
             ] : null,
 
             'items' => $order?->items->map(fn ($item): array => [
-                'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                'sku' => WarehouseSkuPresentation::sku($item),
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'quantity' => (int) $item->quantity,
             ])->values()->all() ?? [],
