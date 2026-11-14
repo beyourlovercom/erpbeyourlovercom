@@ -39,39 +39,60 @@ final class OrderCoreStatusTransitionService
             }
 
             $shipment = $locked->shipment;
-            $before = $this->progress->resolve($locked) ?? 'sending';
-            $activeException = $locked->workflow_status === 'exception'
-                || $locked->operationalMarkers->contains('marker', 'exception');
+            $before = OrderManualHoldStatus::selected($locked)
+                ?? $this->progress->resolve($locked) ?? 'sending';
+            $activeException = OrderManualHoldStatus::selected($locked) !== null;
             $unallocated = ! $shipment?->warehouse_id;
             $unshipped = $locked->order_status === OrderStatus::PendingShipment
                 && ($shipment === null || ($shipment->shipment_status === 'pending'
                     && blank($shipment->tracking_number) && $shipment->shipped_at === null));
             switch ($command) {
                 case 'exception':
+                case 'missing_info':
+                case 'renew':
+                case 'claims':
+                case 'returned_follow_up':
+                case 'freight_product_cost_follow_up':
                     if ($locked->order_status === OrderStatus::Cancelled) {
-                        throw new HttpException(409, '已取消订单不允许重新标记异常。');
+                        throw new HttpException(409, '已取消订单不允许重新标记其他状态。');
                     }
-                    if ($activeException) return $locked;
-                    $locked->operationalMarkers()->firstOrCreate(
-                        ['marker' => 'exception'],
-                        ['marked_by' => $actor->getAuthIdentifier(), 'marked_at' => now()],
-                    );
+                    if ($shipment?->shipment_status === 'exception' && $command !== 'exception') {
+                        throw new HttpException(409, '物流存在真实异常，请先完成物流复核。');
+                    }
+                    if ($locked->workflow_status === 'out_of_stock') {
+                        throw new HttpException(409, '请先通过库存审核解除缺货，才能更改为其他状态。');
+                    }
+                    if ($locked->workflow_status === $command
+                        && ! $locked->operationalMarkers->contains(fn ($m) => in_array($m->marker, OrderManualHoldStatus::HOLD_MARKERS, true))) {
+                        return $locked;
+                    }
+                    // One selected status, no append-only status chips.
+                    $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
+                    $locked->workflow_status = $command;
                     break;
                 case 'resolve_exception':
+                case 'resolve_manual_hold':
                     if ($shipment?->shipment_status === 'exception') {
                         throw new HttpException(409, '物流仍处于真实异常状态，请先通过物流异常处理解除。');
                     }
                     if (! $activeException) {
-                        throw new HttpException(409, '订单目前没有待解除的人工异常。');
+                        throw new HttpException(409, '订单目前没有待解除的人工状态。');
                     }
-                    $locked->operationalMarkers()->where('marker', 'exception')->delete();
-                    if ($locked->workflow_status === 'exception') $locked->workflow_status = null;
+                    $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
+                    if (in_array((string) $locked->workflow_status, OrderManualHoldStatus::CODES, true)) {
+                        $locked->workflow_status = null;
+                    }
                     break;
                 case 'out_of_stock_unallocated':
                     if (! $unallocated || ! $unshipped || $locked->originalFulfillmentChildren->isNotEmpty()) {
                         throw new HttpException(409, '未分仓且未发货的主订单才允许直接挂起缺货。');
                     }
-                    if ($activeException) throw new HttpException(409, '请先解除异常再设置缺货。');
+                    if ($shipment?->shipment_status === 'exception') {
+                        throw new HttpException(409, '物流真实异常未解除，不能改为缺货。');
+                    }
+                    // Staff is explicitly replacing the current hold with
+                    // physical stockout. Do not leave stale status chips.
+                    $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
                     if ($locked->workflow_status === 'out_of_stock') return $locked;
                     $locked->workflow_status = 'out_of_stock';
                     break;
@@ -92,6 +113,10 @@ final class OrderCoreStatusTransitionService
                         throw new HttpException(422, '取消订单必须填写至少 3 个字的原因。');
                     }
                     $locked->order_status = OrderStatus::Cancelled;
+                    $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
+                    if (in_array((string) $locked->workflow_status, OrderManualHoldStatus::CODES, true)) {
+                        $locked->workflow_status = null;
+                    }
                     break;
                 default:
                     throw new HttpException(422, '不支持的核心状态操作。');
@@ -100,7 +125,8 @@ final class OrderCoreStatusTransitionService
             $locked->workflow_revision = (int) $locked->workflow_revision + 1;
             $locked->save();
             $updated = $locked->fresh(['shipment.warehouse', 'operationalMarkers', 'originalFulfillmentChildren']);
-            $after = $this->progress->resolve($updated) ?? 'sending';
+            $after = OrderManualHoldStatus::selected($updated)
+                ?? $this->progress->resolve($updated) ?? 'sending';
             OrderWorkflowStatusHistory::query()->create([
                 'order_id' => $locked->id,
                 'actor_id' => $actor->getAuthIdentifier(),

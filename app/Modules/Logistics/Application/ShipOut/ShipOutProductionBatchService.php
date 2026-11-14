@@ -82,13 +82,13 @@ final class ShipOutProductionBatchService
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
                 ->where('order_status', 'pending_shipment')
                 ->where(fn ($workflow) => $workflow->whereNull('workflow_status')
-                    ->orWhereNotIn('workflow_status', ['out_of_stock', 'exception', 'missing_info']))
+                    ->orWhereNotIn('workflow_status', ['out_of_stock', ...\App\Modules\Orders\Application\OrderManualHoldStatus::CODES]))
                 ->whereDoesntHave('operationalMarkers', fn ($markers) => $markers
-                    ->whereIn('marker', ['stockout', 'domestic_stockout', 'exception', 'workflow_aux_missing_info']))
+                    ->whereIn('marker', ['stockout', 'domestic_stockout', ...\App\Modules\Orders\Application\OrderManualHoldStatus::HOLD_MARKERS]))
                 ->whereDoesntHave('fulfillmentParent', fn ($parent) => $parent
-                    ->whereIn('workflow_status', ['exception', 'missing_info'])
+                    ->whereIn('workflow_status', \App\Modules\Orders\Application\OrderManualHoldStatus::CODES)
                     ->orWhereHas('operationalMarkers', fn ($m) => $m
-                        ->whereIn('marker', ['exception', 'workflow_aux_missing_info'])))
+                        ->whereIn('marker', \App\Modules\Orders\Application\OrderManualHoldStatus::HOLD_MARKERS)))
                 ->whereDoesntHave('externalReferences', fn ($references) => $references
                     ->where('provider', 'historical_logistics'))
                 ->whereHas('address', fn ($address) => $address->where('country', 'US')))
@@ -143,13 +143,13 @@ final class ShipOutProductionBatchService
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
                 ->where('order_status', '!=', 'cancelled')
                 ->where(fn ($workflow) => $workflow->whereNull('workflow_status')
-                    ->orWhereNotIn('workflow_status', ['exception', 'missing_info']))
+                    ->orWhereNotIn('workflow_status', \App\Modules\Orders\Application\OrderManualHoldStatus::CODES))
                 ->whereDoesntHave('operationalMarkers', fn ($m) => $m
-                    ->whereIn('marker', ['exception', 'workflow_aux_missing_info']))
+                    ->whereIn('marker', \App\Modules\Orders\Application\OrderManualHoldStatus::HOLD_MARKERS))
                 ->whereDoesntHave('fulfillmentParent', fn ($parent) => $parent
-                    ->whereIn('workflow_status', ['exception', 'missing_info'])
+                    ->whereIn('workflow_status', \App\Modules\Orders\Application\OrderManualHoldStatus::CODES)
                     ->orWhereHas('operationalMarkers', fn ($m) => $m
-                        ->whereIn('marker', ['exception', 'workflow_aux_missing_info'])))
+                        ->whereIn('marker', \App\Modules\Orders\Application\OrderManualHoldStatus::HOLD_MARKERS)))
                 ->whereDoesntHave('externalReferences', fn ($references) => $references
                     ->where('provider', 'historical_logistics')))
             // R12: scan matches the actual pending tab, including ACK rows

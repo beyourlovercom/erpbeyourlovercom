@@ -26,7 +26,7 @@ final class OrderProgressTransitionService
 
     public function transition(Order $order, string $next, int $revision, Authenticatable $actor, ?string $reason = null): Order
     {
-        if (! in_array($next, ['resolve_exception', 'resolve_stockout'], true)) {
+        if (! in_array($next, ['resolve_exception', 'resolve_stockout', 'resolve_manual_hold'], true)) {
             OrderWorkflowStatus::assertMutable($next);
         }
         $order->loadMissing(['shipment.warehouse', 'operationalMarkers']);
@@ -38,12 +38,12 @@ final class OrderProgressTransitionService
         }
 
         if (in_array($order->order_kind, [OrderKind::Customer, OrderKind::FulfillmentDerived], true)) {
-            if (in_array($next, ['exception', 'resolve_exception', 'cancelled'], true)) {
+            if (in_array($next, [...OrderManualHoldStatus::CODES, 'resolve_exception', 'resolve_manual_hold', 'cancelled'], true)) {
                 return $this->core->transition($order, $next, $revision, $actor, $reason);
             }
-            if (OrderAuxiliaryStatusService::isAuxiliary($next)) {
-                return $this->auxiliary->add($order, $next, $revision, $actor);
-            }
+            // Auxiliary codes in the status dropdown are NOT optional chips.
+            // They now select one core operational hold and one work queue.
+
             if (! in_array($next, ['sending', 'out_of_stock', 'resolve_stockout'], true)) {
                 throw new HttpException(409, '此进度必须通过实际业务操作完成，不能直接修改标签。');
             }
@@ -120,7 +120,7 @@ final class OrderProgressTransitionService
         }
 
         // Preserve legacy KOL business phases; never write a cosmetic cancelled state.
-        if (in_array($next, ['cancelled', 'resolve_exception', 'resolve_stockout'], true)) {
+        if (in_array($next, ['cancelled', 'resolve_exception', 'resolve_manual_hold', 'resolve_stockout'], true)) {
             throw new HttpException(409, '该订单类型不能通过下拉框进行此项核心状态变更。');
         }
         return $this->annotations->set($order, $next, $revision, $actor);

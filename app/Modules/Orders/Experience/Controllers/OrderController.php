@@ -608,7 +608,7 @@ final class OrderController
         $data = $request->validate([
             'workflow_status' => ['required', 'string', Rule::in([
                 ...array_keys(array_filter(OrderWorkflowStatus::registry(), fn (array $definition): bool => $definition['mutable'])),
-                'resolve_exception', 'resolve_stockout',
+                'resolve_exception', 'resolve_manual_hold', 'resolve_stockout',
             ])],
             'expected_workflow_revision' => ['required', 'integer', 'min:0'],
             'reason' => ['nullable', 'string', 'max:2000'],

@@ -100,12 +100,12 @@ final class ShipmentService
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertOperationallyEligible($lockedOrder);
             // Exception is a real operational hold: preserve facts and block new dispatch.
-            abort_if(in_array($lockedOrder->workflow_status, ['exception', 'missing_info'], true)
-                || $lockedOrder->operationalMarkers()->whereIn('marker', ['exception', 'workflow_aux_missing_info'])->exists()
+            abort_if(in_array($lockedOrder->workflow_status, \App\Modules\Orders\Application\OrderManualHoldStatus::CODES, true)
+                || $lockedOrder->operationalMarkers()->whereIn('marker', \App\Modules\Orders\Application\OrderManualHoldStatus::HOLD_MARKERS)->exists()
                 || $lockedOrder->fulfillmentParent()->where(function ($parent): void {
-                    $parent->whereIn('workflow_status', ['exception', 'missing_info'])
+                    $parent->whereIn('workflow_status', \App\Modules\Orders\Application\OrderManualHoldStatus::CODES)
                         ->orWhereHas('operationalMarkers', fn ($m) => $m
-                            ->whereIn('marker', ['exception', 'workflow_aux_missing_info']));
+                            ->whereIn('marker', \App\Modules\Orders\Application\OrderManualHoldStatus::HOLD_MARKERS));
                 })->exists(),
                 409, '该订单正在异常处理，请先解除异常再确认发货。');
             $this->assertNoPendingReview($lockedOrder);

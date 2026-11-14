@@ -104,27 +104,41 @@ final class OrderProgressQuery
     /** Exact predicates used by operational progress filtering. */
     public function applyPhase(Builder $orders, string $phase): Builder
     {
-        if (! in_array($phase, ['exception', 'cancelled'], true)) {
+        if (! in_array($phase, ['exception', 'cancelled', 'returned_follow_up'], true)) {
             $this->withoutManualException($orders);
             $orders->where('order_status', '!=', 'cancelled');
         }
 
         return match ($phase) {
             'exception' => $orders->where('order_status', '!=', 'cancelled')->where(function (Builder $q): void {
-                $q->whereIn('workflow_status', ['exception', 'missing_info'])
-                    ->orWhereHas('operationalMarkers', fn ($m) => $m
-                        ->whereIn('marker', ['exception', 'workflow_aux_missing_info']))
+                $q->whereIn('workflow_status', OrderManualHoldStatus::EXCEPTION_CODES)
+                    ->orWhere(function (Builder $legacy): void {
+                        $legacy->where(fn ($w) => $w->whereNull('workflow_status')
+                            ->orWhereNotIn('workflow_status', OrderManualHoldStatus::CODES))
+                            ->whereHas('operationalMarkers', fn ($m) => $m
+                                ->whereIn('marker', OrderManualHoldStatus::EXCEPTION_MARKERS));
+                    })
                     ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'exception'))
                     ->orWhereHas('fulfillmentParent', fn ($parent) => $parent
-                        ->whereIn('workflow_status', ['exception', 'missing_info'])
+                        ->whereIn('workflow_status', OrderManualHoldStatus::EXCEPTION_CODES)
                         ->orWhereHas('operationalMarkers', fn ($m) => $m
-                            ->whereIn('marker', ['exception', 'workflow_aux_missing_info'])))
+                            ->whereIn('marker', OrderManualHoldStatus::EXCEPTION_MARKERS)))
                     ->orWhereHas('originalFulfillmentChildren', fn ($child) => $child
-                        ->whereIn('workflow_status', ['exception', 'missing_info'])
+                        ->whereIn('workflow_status', OrderManualHoldStatus::EXCEPTION_CODES)
                         ->orWhereHas('operationalMarkers', fn ($m) => $m
-                            ->whereIn('marker', ['exception', 'workflow_aux_missing_info']))
+                            ->whereIn('marker', OrderManualHoldStatus::EXCEPTION_MARKERS))
                         ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'exception')));
             }),
+            // Return follow-ups are a real primary state, not generic exceptions.
+            'returned_follow_up' => $orders->where('order_status', '!=', 'cancelled')
+                ->whereDoesntHave('shipment', fn ($s) => $s->where('shipment_status', 'exception'))
+                ->where(fn (Builder $q) => $q->where('workflow_status', 'returned_follow_up')
+                    ->orWhere(function (Builder $legacy): void {
+                        $legacy->where(fn ($w) => $w->whereNull('workflow_status')
+                            ->orWhereNotIn('workflow_status', OrderManualHoldStatus::CODES))
+                            ->whereHas('operationalMarkers', fn ($m) => $m->where('marker', 'workflow_aux_returned_follow_up'))
+                            ->whereDoesntHave('operationalMarkers', fn ($m) => $m->whereIn('marker', OrderManualHoldStatus::EXCEPTION_MARKERS));
+                    })),
             'cancelled' => $orders->where('order_status', 'cancelled'),
             'pending_allocation' => $this->pendingAllocation($orders),
             'sending' => $this->readyForShipment($orders),
@@ -184,18 +198,18 @@ final class OrderProgressQuery
     {
         return $orders
             ->where(fn (Builder $q) => $q->whereNull('workflow_status')
-                ->orWhereNotIn('workflow_status', ['exception', 'missing_info']))
+                ->orWhereNotIn('workflow_status', OrderManualHoldStatus::CODES))
             ->whereDoesntHave('operationalMarkers', fn ($m) => $m
-                ->whereIn('marker', ['exception', 'workflow_aux_missing_info']))
+                ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS))
             ->whereDoesntHave('shipment', fn ($s) => $s->where('shipment_status', 'exception'))
             ->whereDoesntHave('fulfillmentParent', fn ($p) => $p
-                ->whereIn('workflow_status', ['exception', 'missing_info'])
+                ->whereIn('workflow_status', OrderManualHoldStatus::CODES)
                 ->orWhereHas('operationalMarkers', fn ($m) => $m
-                    ->whereIn('marker', ['exception', 'workflow_aux_missing_info'])))
+                    ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)))
             ->whereDoesntHave('originalFulfillmentChildren', fn ($c) => $c
-                ->whereIn('workflow_status', ['exception', 'missing_info'])
+                ->whereIn('workflow_status', OrderManualHoldStatus::CODES)
                 ->orWhereHas('operationalMarkers', fn ($m) => $m
-                    ->whereIn('marker', ['exception', 'workflow_aux_missing_info']))
+                    ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS))
                 ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'exception')));
     }
 

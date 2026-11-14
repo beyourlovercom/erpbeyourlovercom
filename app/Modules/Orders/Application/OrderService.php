@@ -449,8 +449,12 @@ final class OrderService
                 return;
             }
             if (OrderAuxiliaryStatusService::isAuxiliary($status)) {
-                $query->where(fn (Builder $q) => $q->where('workflow_status', $status)
-                    ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'workflow_aux_'.$status)));
+                $query->where('workflow_status', $status)
+                    ->orWhere(function (Builder $old) use ($status): void {
+                        $old->where(fn ($w) => $w->whereNull('workflow_status')
+                            ->orWhereNotIn('workflow_status', OrderManualHoldStatus::CODES))
+                            ->whereHas('operationalMarkers', fn ($m) => $m->where('marker', 'workflow_aux_'.$status));
+                    });
 
                 return;
             }
@@ -622,7 +626,14 @@ final class OrderService
             'exception' => $this->progressQueries->applyPhase($query, 'exception'),
             'in_transit' => $this->applyMarkerView($query, 'in_transit'),
             'shipped' => $query->where('order_status', OrderStatus::Shipped->value),
-            'return' => $this->applyMarkerView($query, 'return'),
+            'return' => $query->where(function (Builder $returns): void {
+                $this->progressQueries->applyPhase($returns, 'returned_follow_up')
+                    ->orWhere(function (Builder $aux): void {
+                        // Existing explicit return-attention marker stays a read-only
+                        // auxiliary view, not a fabricated returned Shipment.
+                        $aux->whereHas('operationalMarkers', fn ($m) => $m->where('marker', 'return'));
+                    });
+            }),
             'loss' => $this->applyLossView($query),
             'overweight' => $query
                 ->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('is_domestic', true))

@@ -25,23 +25,19 @@ final class OrderProgressResolver
             return 'cancelled';
         }
 
-        // A deliberately escalated exception is an actionable core queue, not just a badge.
-        // Real Shipment and source Woo facts remain unchanged underneath the override.
+        // A selected customer status owns the work queue without falsifying
+        // source, shipment, refund, or warehouse facts.
         $order->loadMissing('operationalMarkers');
-        // Missing customer contact details are a real operational hold, not a
-        // non-blocking follow-up. Keep the "信息缺失" subtype as an auxiliary tag.
-        if (in_array($order->workflow_status, ['exception', 'missing_info'], true)
-            || $order->operationalMarkers->contains('marker', 'exception')
-            || $order->operationalMarkers->contains('marker', 'workflow_aux_missing_info')) {
-            return 'exception';
+        $selected = OrderManualHoldStatus::selected($order);
+        if ($selected !== null) {
+            return OrderManualHoldStatus::bucket($selected);
         }
         if ($order->fulfillment_parent_id !== null) {
             $order->loadMissing('fulfillmentParent.operationalMarkers');
             $parent = $order->fulfillmentParent;
-            if ($parent && (in_array($parent->workflow_status, ['exception', 'missing_info'], true)
-                || $parent->operationalMarkers->contains('marker', 'exception')
-                || $parent->operationalMarkers->contains('marker', 'workflow_aux_missing_info'))) {
-                return 'exception';
+            $parentSelected = $parent ? OrderManualHoldStatus::selected($parent) : null;
+            if ($parentSelected !== null) {
+                return OrderManualHoldStatus::bucket($parentSelected);
             }
         }
 
@@ -139,6 +135,9 @@ final class OrderProgressResolver
 
         if ($phases->contains('exception')) {
             return 'exception';
+        }
+        if ($phases->contains('returned_follow_up')) {
+            return 'returned_follow_up';
         }
         if ($phases->contains('progress_conflict')) {
             return 'progress_conflict';

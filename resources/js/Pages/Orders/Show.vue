@@ -538,8 +538,8 @@ const operationalMarkerOptions = [
 // A missing-info hold projects to exception but is removed via its own subtype
 // tag; never make the generic exception button attempt to clear that hold.
 const markerActive = (key: string) => key === 'exception'
-  ? ((props.order.operational_markers?.includes('exception') ?? false)
-    || props.order.workflow_status === 'exception')
+  ? (['exception', 'missing_info', 'renew', 'claims', 'freight_product_cost_follow_up']
+      .includes(props.order.workflow_status_projection?.code ?? ''))
   : key === 'stockout' && props.isDomesticFactory
     ? ((props.order.operational_markers?.includes('domestic_stockout') ?? false)
       || props.order.workflow_status_projection?.code === 'out_of_stock')

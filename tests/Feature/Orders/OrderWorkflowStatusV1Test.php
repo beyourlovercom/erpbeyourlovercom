@@ -44,7 +44,7 @@ final class OrderWorkflowStatusV1Test extends TestCase
 
         $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'exception')->assertJsonPath('workflow_status.auxiliary.0.code', 'missing_info');
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info')->assertJsonPath('workflow_status.auxiliary', []);
         self::assertSame(1, $order->fresh()->workflow_revision);
     }
 
@@ -55,12 +55,12 @@ final class OrderWorkflowStatusV1Test extends TestCase
 
         $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'exception')->assertJsonPath('workflow_status.auxiliary.0.code', 'missing_info');
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info')->assertJsonPath('workflow_status.auxiliary', []);
 
-        $this->assertDatabaseHas('orders', ['id' => $order->id, 'order_status' => 'pending_shipment', 'workflow_status' => null, 'workflow_revision' => 1]);
-        $this->assertDatabaseHas('order_operational_markers', ['order_id' => $order->id, 'marker' => 'workflow_aux_missing_info']);
-        $this->assertDatabaseCount('order_workflow_status_histories', 0);
-        $this->assertDatabaseHas('audit_records', ['entity_id' => (string) $order->id, 'action' => 'order.auxiliary_status_added']);
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'order_status' => 'pending_shipment', 'workflow_status' => 'missing_info', 'workflow_revision' => 1]);
+        $this->assertDatabaseMissing('order_operational_markers', ['order_id' => $order->id, 'marker' => 'workflow_aux_missing_info']);
+        $this->assertDatabaseCount('order_workflow_status_histories', 1);
+        $this->assertDatabaseHas('audit_records', ['entity_id' => (string) $order->id, 'action' => 'order.core_status_changed']);
     }
 
     public function test_same_status_is_idempotent_and_stale_revision_is_conflict(): void
