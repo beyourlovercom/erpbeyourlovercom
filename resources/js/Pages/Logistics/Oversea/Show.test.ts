@@ -101,7 +101,7 @@ describe('oversea domestic-style Global Grid review operation contract', () => {
     const grid=wrapper.findComponent({name:'MockGlobalGrid'})
     const columns=grid.props('columns') as {colId:string;pinned?:string;lockPinned?:boolean;lockVisible?:boolean;suppressMovable?:boolean;minWidth?:number;maxWidth?:number;cellRendererParams?:Record<string,any>}[]
     const actions=columns.find(col=>col.colId==='actions')!
-    expect(grid.props('requiredColumnIds')).toEqual(['order'])
+    expect(grid.props('requiredColumnIds')).toEqual(['order','status'])
     expect(actions.pinned).toBe('right') // keep familiar default; user may choose 0
     expect(actions.lockPinned).not.toBe(true)
     expect(actions.lockVisible).not.toBe(true)
@@ -118,7 +118,7 @@ describe('oversea domestic-style Global Grid review operation contract', () => {
     await flushPromises()
     const grid=wrapper.findComponent({name:'MockGlobalGrid'})
     const actions=(grid.props('columns') as {colId:string;pinned?:string;lockPinned?:boolean;lockVisible?:boolean;minWidth?:number;maxWidth?:number;cellRendererParams?:Record<string,any>}[]).find(c=>c.colId==='actions')!
-    expect(grid.props('requiredColumnIds')).toEqual(['order'])
+    expect(grid.props('requiredColumnIds')).toEqual(['order','status'])
     expect(actions.pinned).toBe('right')
     expect(actions.lockPinned).not.toBe(true)
     expect(actions.lockVisible).not.toBe(true)
@@ -1563,4 +1563,31 @@ describe('MorePlus Dev-only one-click batch workbench', () => {
       document.head.querySelector('meta[name="csrf-token"]')?.remove()
     }
   })
+})
+
+it('uses the same editable status cell for all overseas warehouse Global Grid views', async () => {
+  const mutable = {
+    ...usSmPendingRows.data[0], workflow_revision:11, can_edit_workflow_status:true,order_kind:'customer',
+    workflow_status_projection:{code:'sending',en:'Sending',zh:'待发',color:'neutral',source:'canonical_projection',mutable:true},
+  }
+  const options=[
+    {code:'sending',en:'Sending',zh:'待发',color:'neutral',mutable:true},
+    {code:'missing_info',en:'Missing Info',zh:'信息缺失',color:'amber',mutable:true},
+  ]
+  for (const view of ['review','pending','shipped','exceptions','all']) {
+    const page=mountPage({
+      view,globalGridEnabled:true,rows:{...usSmPendingRows,data:[mutable]},
+      workflowStatusOptions:options,
+    })
+    await flushPromises()
+    const grid=page.findComponent({name:'MockGlobalGrid'})
+    const cols=grid.props('columns') as Array<{colId:string;cellRenderer?:{name?:string}}>
+    const status=cols.find(col=>col.colId==='status')
+    expect(status?.cellRenderer,view).toBeTruthy()
+    const data=(grid.props('rows') as Array<Record<string,unknown>>)[0]
+    expect(data.workflow_revision,view).toBe(11)
+    expect(data.can_edit_workflow_status,view).toBe(true)
+    expect(data.workflow_status,view).toBe('待发')
+    page.unmount()
+  }
 })

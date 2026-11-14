@@ -19,7 +19,9 @@ use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use App\Modules\Orders\Application\OrderBusinessDateResolver;
+use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderProgressQuery;
+use App\Modules\Orders\Application\OrderWorkflowGridOptions;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Shell\Application\GlobalGridPilot;
@@ -146,6 +148,8 @@ final class DomesticLogisticsController
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canArchive' => (bool) $request->user()?->can('orders.archive'),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
+            'canEditWorkflowStatus' => (bool) $request->user()?->can('orders.edit'),
+            'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
             'carrierOptions' => fn () => app(CarrierServiceCatalog::class)->options(),
             'trackingImportProvider' => $previewProvider,
             'trackingImportPreview' => $preview ? [
@@ -474,6 +478,10 @@ final class DomesticLogisticsController
             'tracking_sync_verified_at' => $trackingState['verified_at'] ?? null,
             'erp_order_id' => $order->erp_order_id,
             'workflow_status_projection' => $projection,
+            'workflow_revision' => (int) $order->workflow_revision,
+            'order_kind' => $order->order_kind?->value,
+            'can_edit_workflow_status' => in_array($order->order_kind, [OrderKind::Customer, OrderKind::FulfillmentDerived], true)
+                && ! $order->isOperationallyArchived(),
             'provider_reference' => $reference,
             // Generic details route redirects by order kind (customer, KOL, derived).
             'order_url' => '/orders/'.$order->id,
