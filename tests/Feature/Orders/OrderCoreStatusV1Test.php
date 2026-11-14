@@ -297,6 +297,28 @@ final class OrderCoreStatusV1Test extends TestCase
             ->list(['view' => 'exception', 'order_kind' => 'customer'])->total());
     }
 
+    public function test_unallocated_manual_stockout_can_be_replaced_by_one_new_primary_status(): void
+    {
+        $order = $this->order();
+        $actor = $this->user(['orders.view', 'orders.edit']);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'out_of_stock', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'out_of_stock');
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 1,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info');
+        self::assertSame(1, $this->inQueue($order, 'exception'));
+        self::assertSame(0, $this->inQueue($order, 'out_of_stock'));
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id, 'workflow_status' => 'missing_info',
+        ]);
+        $this->assertDatabaseHas('order_workflow_status_histories', [
+            'order_id' => $order->id, 'from_status' => 'out_of_stock',
+            'to_status' => 'missing_info', 'revision' => 2,
+        ]);
+        self::assertNull($order->fresh()->shipment);
+    }
+
     private function inQueue(Order $order, string $phase): int
     {
         return app(OrderProgressQuery::class)->applyPhase(Order::query(), $phase)->whereKey($order->id)->count();

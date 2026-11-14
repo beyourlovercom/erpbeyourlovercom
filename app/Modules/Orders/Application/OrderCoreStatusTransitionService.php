@@ -59,8 +59,13 @@ final class OrderCoreStatusTransitionService
                     if ($shipment?->shipment_status === 'exception' && $command !== 'exception') {
                         throw new HttpException(409, '物流存在真实异常，请先完成物流复核。');
                     }
-                    if ($locked->workflow_status === 'out_of_stock') {
-                        throw new HttpException(409, '请先通过库存审核解除缺货，才能更改为其他状态。');
+                    // An unallocated manual stockout is another staff-selected
+                    // primary state: it may be explicitly replaced. A factory
+                    // or overseas warehouse stockout is real review evidence
+                    // and cannot be overridden through this dropdown.
+                    if ($locked->workflow_status === 'out_of_stock'
+                        && (! $unallocated || ! $unshipped || $locked->originalFulfillmentChildren->isNotEmpty())) {
+                        throw new HttpException(409, '已分仓缺货必须先经过对应仓库复核，不能直接覆盖。');
                     }
                     if ($locked->workflow_status === $command
                         && ! $locked->operationalMarkers->contains(fn ($m) => in_array($m->marker, OrderManualHoldStatus::HOLD_MARKERS, true))) {
