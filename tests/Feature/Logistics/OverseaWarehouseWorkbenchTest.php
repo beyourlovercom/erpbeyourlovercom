@@ -13,6 +13,7 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
+use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
@@ -122,7 +123,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 2));
     }
 
-    public function test_staff_exception_and_real_overseas_stockout_are_both_discoverable_without_shipping_or_duplicate_orders(): void
+    public function test_manual_exception_is_only_main_queue_even_with_unresolved_warehouse_stockout(): void
     {
         $actor = $this->userWith(['logistics.view', 'logistics.operate', 'orders.view', 'orders.edit']);
         $warehouses = $this->warehouses();
@@ -145,9 +146,8 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->where('viewCounts.review', 0)
             ->where('viewCounts.pending', 0));
 
-        // Dede's real warehouse shortage is independent, retained in its
-        // physical review ledger, and must remain actionable in stockout even
-        // while the order also has an unresolved staff exception.
+        // Dede's physical stockout remains in its audit ledger, but staff
+        // explicitly selected Exception as the ONLY main classification.
         $this->post("/logistics/oversea/orders/{$order->id}/stockout")->assertRedirect();
         $this->assertDatabaseHas('oversea_warehouse_reviews', [
             'order_id' => $order->id,
@@ -156,11 +156,8 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ]);
         $this->get('/logistics/oversea/us-3sm?view=stockout')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->where('rows.total', 1)
-            ->where('rows.data.0.order_id', $order->id)
-            ->where('rows.data.0.review_status', 'stockout')
-            ->where('rows.data.0.workflow_status_projection.code', 'exception')
-            ->where('viewCounts.stockout', 1)
+            ->where('rows.total', 0)
+            ->where('viewCounts.stockout', 0)
             ->where('viewCounts.exceptions', 1));
         $this->get('/logistics/oversea/us-3sm?view=exceptions')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
@@ -170,7 +167,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('rows.total', 1)
             ->where('viewCounts.all', 1)
-            ->where('viewCounts.stockout', 1)
+            ->where('viewCounts.stockout', 0)
             ->where('viewCounts.exceptions', 1));
         $this->get('/logistics/oversea/us-3sm?view=pending')
             ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
@@ -180,8 +177,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             'tracking_number' => null,
         ]);
 
-        // Restocking only resolves the physical stockout. The separate
-        // manual exception cannot silently disappear or unblock dispatch.
+        // Restocking leaves the staff-selected Exception unchanged.
         $this->post("/logistics/oversea/orders/{$order->id}/restock")->assertRedirect();
         $this->get('/logistics/oversea/us-3sm?view=exceptions')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
@@ -189,6 +185,47 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->where('viewCounts.stockout', 0)
             ->where('viewCounts.exceptions', 1)
             ->where('viewCounts.pending', 0));
+    }
+
+    public function test_manual_primary_status_alone_selects_exactly_one_overseas_queue_and_never_rewrites_warehouse_review(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate', 'orders.view', 'orders.edit']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-SM'], 'UAT-MANUAL-PRIMARY-ONE-QUEUE');
+
+        $this->actingAs($actor)->post("/logistics/oversea/orders/{$order->id}/stockout")->assertRedirect();
+        $this->get('/logistics/oversea/us-3sm?view=stockout')->assertInertia(fn (Assert $p) => $p
+            ->where('rows.total', 1)->where('viewCounts.exceptions', 0));
+
+        foreach ([
+            ['exception', 'exceptions', 1],
+            ['out_of_stock', 'stockout', 2],
+            ['sending', 'pending', 3],
+            ['pending_allocation', null, 4],
+        ] as [$chosen, $expectedView, $revision]) {
+            $this->actingAs($actor)->patchJson("/orders/{$order->id}/workflow-status", [
+                'workflow_status' => $chosen, 'expected_workflow_revision' => $revision - 1,
+            ])->assertOk()->assertJsonPath('workflow_status.code', $chosen);
+            $counts = [];
+            foreach (['review', 'stockout', 'pending', 'issued', 'shipped', 'exceptions', 'all'] as $view) {
+                $response = $this->get('/logistics/oversea/us-3sm?view='.$view)->assertOk();
+                $response->assertInertia(function (Assert $page) use ($view, $expectedView): Assert {
+                    return $page->where('rows.total', ($view === 'all' || $view === $expectedView) ? 1 : 0);
+                });
+            }
+            $this->assertDatabaseHas('oversea_warehouse_reviews', [
+                'order_id' => $order->id, 'status' => 'stockout',
+                'reviewed_warehouse_id' => $warehouses['US-SM']->id,
+            ]);
+            $this->assertDatabaseHas('shipments', [
+                'order_id' => $order->id, 'shipment_status' => 'pending',
+                'tracking_number' => null, 'warehouse_id' => $warehouses['US-SM']->id,
+            ]);
+        }
+        self::assertSame(1, app(OrderProgressQuery::class)
+            ->applyPhase(Order::query(), 'pending_allocation')->whereKey($order->id)->count());
+        // The operator's label remains distinct from actual dispatch proof.
+        self::assertSame(1, Order::query()->whereKey($order->id)->count());
     }
 
     public function test_missing_info_manual_hold_enters_overseas_exception_queue_and_preserves_warehouse_filter(): void

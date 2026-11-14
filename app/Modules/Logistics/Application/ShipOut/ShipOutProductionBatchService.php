@@ -83,11 +83,11 @@ final class ShipOutProductionBatchService
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
                 ->where('order_status', 'pending_shipment')
                 ->where(fn ($workflow) => $workflow->whereNull('workflow_status')
-                    ->orWhereNotIn('workflow_status', ['out_of_stock', ...OrderManualHoldStatus::CODES]))
+                    ->orWhereNotIn('workflow_status', ['out_of_stock', 'pending_allocation', ...OrderManualHoldStatus::CODES]))
                 ->whereDoesntHave('operationalMarkers', fn ($markers) => $markers
                     ->whereIn('marker', ['stockout', 'domestic_stockout', ...OrderManualHoldStatus::HOLD_MARKERS]))
                 ->whereDoesntHave('fulfillmentParent', fn ($parent) => $parent
-                    ->whereIn('workflow_status', OrderManualHoldStatus::CODES)
+                    ->whereIn('workflow_status', ['pending_allocation', 'out_of_stock', ...OrderManualHoldStatus::CODES])
                     ->orWhereHas('operationalMarkers', fn ($m) => $m
                         ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)))
                 ->whereDoesntHave('externalReferences', fn ($references) => $references
@@ -144,11 +144,11 @@ final class ShipOutProductionBatchService
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
                 ->where('order_status', '!=', 'cancelled')
                 ->where(fn ($workflow) => $workflow->whereNull('workflow_status')
-                    ->orWhereNotIn('workflow_status', OrderManualHoldStatus::CODES))
+                    ->orWhereNotIn('workflow_status', ['pending_allocation', ...OrderManualHoldStatus::CODES]))
                 ->whereDoesntHave('operationalMarkers', fn ($m) => $m
                     ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS))
                 ->whereDoesntHave('fulfillmentParent', fn ($parent) => $parent
-                    ->whereIn('workflow_status', OrderManualHoldStatus::CODES)
+                    ->whereIn('workflow_status', ['pending_allocation', 'out_of_stock', ...OrderManualHoldStatus::CODES])
                     ->orWhereHas('operationalMarkers', fn ($m) => $m
                         ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)))
                 ->whereDoesntHave('externalReferences', fn ($references) => $references

@@ -5,13 +5,14 @@ namespace App\Modules\Logistics\Application;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
-use App\Modules\Inventory\Application\ProductPackagingStandardReader;
 use App\Modules\Inventory\Application\Contracts\WarehouseLotConsumptionCapture;
+use App\Modules\Inventory\Application\ProductPackagingStandardReader;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReviewHistory;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentItemPackagingSnapshot;
+use App\Modules\Orders\Application\OrderManualHoldStatus;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Sync\Application\ManualSyncService;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -100,12 +101,12 @@ final class ShipmentService
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertOperationallyEligible($lockedOrder);
             // Exception is a real operational hold: preserve facts and block new dispatch.
-            abort_if(in_array($lockedOrder->workflow_status, \App\Modules\Orders\Application\OrderManualHoldStatus::CODES, true)
-                || $lockedOrder->operationalMarkers()->whereIn('marker', \App\Modules\Orders\Application\OrderManualHoldStatus::HOLD_MARKERS)->exists()
+            abort_if(in_array($lockedOrder->workflow_status, [...OrderManualHoldStatus::CODES, 'out_of_stock', 'pending_allocation'], true)
+                || $lockedOrder->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->exists()
                 || $lockedOrder->fulfillmentParent()->where(function ($parent): void {
-                    $parent->whereIn('workflow_status', \App\Modules\Orders\Application\OrderManualHoldStatus::CODES)
+                    $parent->whereIn('workflow_status', [...OrderManualHoldStatus::CODES, 'out_of_stock', 'pending_allocation'])
                         ->orWhereHas('operationalMarkers', fn ($m) => $m
-                            ->whereIn('marker', \App\Modules\Orders\Application\OrderManualHoldStatus::HOLD_MARKERS));
+                            ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS));
                 })->exists(),
                 409, '该订单正在异常处理，请先解除异常再确认发货。');
             $this->assertNoPendingReview($lockedOrder);
@@ -493,12 +494,19 @@ final class ShipmentService
     private function automaticRoute(Model $order, mixed $warehouseId): array
     {
         $warehouseId = (int) $warehouseId;
-        if ($warehouseId <= 0) return [];
+        if ($warehouseId <= 0) {
+            return [];
+        }
         $warehouse = Warehouse::query()->find($warehouseId);
-        if (! $warehouse) return [];
+        if (! $warehouse) {
+            return [];
+        }
         // Chinese factory carrier/service are an explicit dispatch decision,
         // never a warehouse-routing fallback (including after table upgrades).
-        if (strtoupper(trim((string) $warehouse->code)) === 'FACTORY') return [];
+        if (strtoupper(trim((string) $warehouse->code)) === 'FACTORY') {
+            return [];
+        }
+
         return $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
     }
 
@@ -507,8 +515,13 @@ final class ShipmentService
     {
         $routeCarrier = trim((string) ($route['carrier'] ?? ''));
         $routeService = trim((string) ($route['service'] ?? ''));
-        if ($routeCarrier === '' || strcasecmp(trim($carrier), $routeCarrier) !== 0) return false;
-        if ($routeService === '') return true;
+        if ($routeCarrier === '' || strcasecmp(trim($carrier), $routeCarrier) !== 0) {
+            return false;
+        }
+        if ($routeService === '') {
+            return true;
+        }
+
         return strcasecmp(trim((string) $service), $routeService) === 0;
     }
 
@@ -516,7 +529,9 @@ final class ShipmentService
     private function normalizeCarrierService(Model $order, string $carrier, mixed $service, mixed $existingServiceId = null): array
     {
         $carrier = trim($carrier);
-        if ($carrier === '') return ['service' => null, 'carrier_service_id' => null];
+        if ($carrier === '') {
+            return ['service' => null, 'carrier_service_id' => null];
+        }
         $serviceText = trim((string) $service);
         $destination = $order->address?->country;
         $catalog = $this->carrierServices->activeServices($carrier);
@@ -525,6 +540,7 @@ final class ShipmentService
         }
         $resolved = $this->carrierServices->resolve($carrier, $serviceText !== '' ? $serviceText : null, $destination);
         abort_unless($resolved, 422, '请选择该物流商已启用的运输 / 服务类型');
+
         return [
             'service' => $serviceText !== '' ? $serviceText : $resolved->service_value,
             'carrier_service_id' => (int) $resolved->id,

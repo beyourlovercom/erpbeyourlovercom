@@ -12,12 +12,13 @@ use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
+use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
 use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
-use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\LogisticsReviewAccess;
+use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
@@ -590,11 +591,25 @@ final class OrderController
             if ($factoryStockout && ! $data['active']) {
                 abort(409, '请在国内「缺货单」点击「已到货-可发货」恢复。');
             }
-            $next = $marker === 'exception'
-                ? ($data['active'] ? 'exception' : 'resolve_exception')
-                : ($data['active'] ? 'out_of_stock' : 'resolve_stockout');
-            $this->progressTransitions->transition($order, $next,
-                (int) ($data['expected_workflow_revision'] ?? $order->workflow_revision), $request->user());
+            if ($marker === 'stockout' && $data['active'] && $factoryStockout) {
+                abort_unless($request->user()->can('domestic.review'), 403);
+                app(DomesticReviewDecisionService::class)
+                    ->decide($order, 'stockout', null, $request->user());
+            } elseif ($marker === 'stockout' && $order->shipment?->warehouse
+                && OverseaWarehouseReviewService::canonicalWarehouseCode($order->shipment->warehouse->code) !== null) {
+                abort_unless(app(LogisticsReviewAccess::class)->allows($request->user()), 403);
+                $reviews = app(OverseaWarehouseReviewService::class);
+                $data['active'] ? $reviews->stockout($order, $request->user())
+                    : $reviews->restock($order, $request->user());
+            } else {
+                // A warehouse-review shortcut is a PHYSICAL action above.
+                // An order-status dropdown changes only the manual main state.
+                $next = $marker === 'exception'
+                    ? ($data['active'] ? 'exception' : 'resolve_exception')
+                    : ($data['active'] ? 'out_of_stock' : 'resolve_stockout');
+                $this->progressTransitions->transition($order, $next,
+                    (int) ($data['expected_workflow_revision'] ?? $order->workflow_revision), $request->user());
+            }
 
             return back()->with('success', $factoryStockout
                 ? '已标记缺货，订单进入国内「缺货单」。'
@@ -625,7 +640,7 @@ final class OrderController
             abort_unless(in_array($data['workflow_status'], ['sending', 'out_of_stock', 'resolve_stockout'], true), 403);
             $order->loadMissing('shipment.warehouse');
             $factory = strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY';
-            $overseas = \App\Modules\Logistics\Application\OverseaWarehouseReviewService::canonicalWarehouseCode($order->shipment?->warehouse?->code) !== null;
+            $overseas = OverseaWarehouseReviewService::canonicalWarehouseCode($order->shipment?->warehouse?->code) !== null;
             abort_unless(($factory && $request->user()->can('domestic.review'))
                 || ($overseas && app(LogisticsReviewAccess::class)->allows($request->user())
                     && in_array($data['workflow_status'], ['out_of_stock', 'resolve_stockout'], true)), 403);

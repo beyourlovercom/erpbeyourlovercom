@@ -110,6 +110,14 @@ final class DomesticReviewDecisionService
                 } else {
                     // Voluntary stockout return, not a rejected review.
                     $this->clearRejection($root);
+                    // Physical unassignment must not leave the old manual
+                    // "sending" label masking Vita's allocation queue.
+                    if ($decision === 'return_allocation') {
+                        $locked->forceFill([
+                            'workflow_status' => null,
+                            'workflow_revision' => (int) $locked->workflow_revision + 1,
+                        ])->save();
+                    }
                 }
                 $locked->operationalMarkers()->whereIn('marker', ['domestic_stockout', 'domestic_reviewed'])->delete();
             }

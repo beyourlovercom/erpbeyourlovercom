@@ -11,8 +11,14 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 final class OrderManualHoldStatus
 {
     public const EXCEPTION_CODES = ['exception', 'missing_info', 'renew', 'claims', 'freight_product_cost_follow_up'];
+
     public const RETURN_CODES = ['returned_follow_up'];
+
     public const CODES = [...self::EXCEPTION_CODES, ...self::RETURN_CODES];
+
+    /** Explicit staff classification takes precedence over warehouse/OMS facts.
+     * It never claims that a physical dispatch has actually occurred. */
+    public const PRIMARY_CODES = [...self::CODES, 'out_of_stock', 'sending', 'pending_allocation'];
 
     public const LEGACY_MARKERS = [
         'workflow_aux_missing_info',
@@ -37,6 +43,9 @@ final class OrderManualHoldStatus
         if (in_array($code, self::RETURN_CODES, true)) {
             return 'returned_follow_up';
         }
+        if (in_array($code, ['pending_allocation', 'sending', 'out_of_stock'], true)) {
+            return $code;
+        }
 
         return null;
     }
@@ -48,8 +57,13 @@ final class OrderManualHoldStatus
      */
     public static function selected(Order $order): ?string
     {
-        if (in_array((string) $order->workflow_status, self::CODES, true)) {
+        if (in_array((string) $order->workflow_status, self::PRIMARY_CODES, true)) {
             return (string) $order->workflow_status;
+        }
+        // Any explicitly selected canonical code supersedes stale historical
+        // follow-up markers; only legacy rows with no staff selection fall back.
+        if ($order->workflow_status !== null) {
+            return null;
         }
         $order->loadMissing('operationalMarkers');
         $legacy = $order->operationalMarkers

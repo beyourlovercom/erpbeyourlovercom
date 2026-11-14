@@ -69,12 +69,18 @@ final class OrderWorkflowStatusV1Test extends TestCase
         $order = $this->order($editor);
         $payload = ['workflow_status' => 'sending', 'expected_workflow_revision' => 0];
 
-        // V3: unallocated orders cannot be moved to real Sending by the old
-        // annotation-only dropdown. It must stay in Vita's allocation queue.
-        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', $payload)->assertStatus(409);
-        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', $payload)->assertStatus(409);
-        self::assertSame(0, $order->fresh()->workflow_revision);
-        $this->assertDatabaseCount('order_workflow_status_histories', 0);
+        // A manual "sending" status is classification, NOT physical shipping.
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', $payload)
+            ->assertOk()->assertJsonPath('workflow_status.code', 'sending');
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 1,
+        ])->assertOk();
+        self::assertSame(1, $order->fresh()->workflow_revision);
+        $this->assertDatabaseCount('order_workflow_status_histories', 1);
+        self::assertNull($order->fresh()->shipment);
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'out_of_stock', 'expected_workflow_revision' => 0,
+        ])->assertStatus(409);
 
         $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', ['workflow_status' => 'resent', 'expected_workflow_revision' => 9])->assertStatus(409);
     }
@@ -128,6 +134,7 @@ final class OrderWorkflowStatusV1Test extends TestCase
             $role->permissions()->attach(Permission::firstOrCreate(['key' => $permission], ['label' => $permission]));
         }
         $user->roles()->attach($role);
+
         return $user;
     }
 

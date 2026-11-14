@@ -9,11 +9,12 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderProgressQuery;
+use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Tests\TestCase;
 
 final class OrderCoreStatusV1Test extends TestCase
 {
@@ -52,6 +53,7 @@ final class OrderCoreStatusV1Test extends TestCase
         ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_allocation');
         $this->assertSame(1, $this->inQueue($order, 'pending_allocation'));
     }
+
     public function test_local_cancel_requires_reason_and_is_not_cosmetic_or_a_refund(): void
     {
         $order = $this->order();
@@ -85,6 +87,7 @@ final class OrderCoreStatusV1Test extends TestCase
         $this->assertSame(0, (int) $order->fresh()->workflow_revision);
         $this->assertSame(0, $this->inQueue($order, 'exception'));
     }
+
     public function test_shipped_order_exception_preserves_tracking_and_cancel_is_blocked(): void
     {
         $order = $this->order();
@@ -291,9 +294,9 @@ final class OrderCoreStatusV1Test extends TestCase
         ]);
         self::assertSame(1, $this->inQueue($order, 'returned_follow_up'));
         self::assertSame(0, $this->inQueue($order, 'exception'));
-        self::assertSame(1, app(\App\Modules\Orders\Application\OrderService::class)
+        self::assertSame(1, app(OrderService::class)
             ->list(['view' => 'return', 'order_kind' => 'customer'])->total());
-        self::assertSame(0, app(\App\Modules\Orders\Application\OrderService::class)
+        self::assertSame(0, app(OrderService::class)
             ->list(['view' => 'exception', 'order_kind' => 'customer'])->total());
     }
 
@@ -335,7 +338,7 @@ final class OrderCoreStatusV1Test extends TestCase
         self::assertSame(1, $this->inQueue($order, 'pending_allocation'));
         self::assertSame(0, $this->inQueue($order, 'exception'));
         $this->assertDatabaseHas('orders', [
-            'id' => $order->id, 'workflow_status' => null,
+            'id' => $order->id, 'workflow_status' => 'pending_allocation',
             'order_status' => 'pending_shipment', 'workflow_revision' => 2,
         ]);
         $this->assertDatabaseHas('order_workflow_status_histories', [
@@ -345,7 +348,7 @@ final class OrderCoreStatusV1Test extends TestCase
         self::assertNull($order->fresh()->shipment);
     }
 
-    public function test_dropdown_return_to_allocation_clears_manual_stockout_but_never_warehouse_allocation(): void
+    public function test_manual_reclassification_keeps_warehouse_evidence_and_blocks_real_dispatch(): void
     {
         $order = $this->order();
         $actor = $this->user(['orders.view', 'orders.edit']);
@@ -364,14 +367,25 @@ final class OrderCoreStatusV1Test extends TestCase
             'carrier' => '4PX',
         ]);
         $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 2,
-        ])->assertStatus(409)->assertJsonPath('message',
-            '订单已有分仓或履约记录，不能直接覆盖。请通过对应仓库的重新分仓/驳回流程退回待分仓。');
-        $this->assertDatabaseHas('orders', ['id' => $order->id, 'workflow_revision' => 2]);
+            'workflow_status' => 'exception', 'expected_workflow_revision' => 2,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'exception');
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 3,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_allocation');
+        self::assertSame(1, $this->inQueue($order, 'pending_allocation'));
+        self::assertSame(0, $this->inQueue($order, 'exception'));
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'workflow_revision' => 4, 'workflow_status' => 'pending_allocation']);
         self::assertSame((int) $warehouse->id, (int) $order->fresh()->shipment->warehouse_id);
+        // A manual classification is never a real release authorization.
+        try {
+            app(ShipmentService::class)->markShipped($order->fresh(), ['tracking_number' => 'NOT_REAL'], $actor);
+            self::fail('Manual pending allocation must not bypass actual dispatch safeguards.');
+        } catch (HttpException $exception) {
+            self::assertSame(409, $exception->getStatusCode());
+        }
     }
 
-    public function test_unallocated_sending_reports_precise_blocker_and_preserves_revision(): void
+    public function test_unallocated_sending_is_an_authoritative_manual_queue_only_not_a_dispatch(): void
     {
         $order = $this->order();
         $actor = $this->user(['orders.view', 'orders.edit']);
@@ -381,9 +395,13 @@ final class OrderCoreStatusV1Test extends TestCase
 
         $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'sending', 'expected_workflow_revision' => 1,
-        ])->assertStatus(409)->assertJsonPath('message', '订单尚未分仓，不能直接标记待发货。');
-        self::assertSame('missing_info', $order->fresh()->workflow_status);
-        self::assertSame(1, (int) $order->fresh()->workflow_revision);
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'sending');
+        self::assertSame('sending', $order->fresh()->workflow_status);
+        self::assertSame(2, (int) $order->fresh()->workflow_revision);
+        self::assertSame(1, $this->inQueue($order, 'sending'));
+        self::assertSame(0, $this->inQueue($order, 'exception'));
+        self::assertSame(0, $this->inQueue($order, 'pending_allocation'));
+        self::assertNull($order->fresh()->shipment);
     }
 
     private function inQueue(Order $order, string $phase): int
@@ -401,6 +419,7 @@ final class OrderCoreStatusV1Test extends TestCase
         }
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
+
         return $user;
     }
 

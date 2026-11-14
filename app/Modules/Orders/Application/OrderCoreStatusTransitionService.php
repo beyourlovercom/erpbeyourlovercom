@@ -5,6 +5,7 @@ namespace App\Modules\Orders\Application;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Logistics\Application\LogisticsReviewAccess;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderWorkflowStatusHistory;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -24,7 +25,15 @@ final class OrderCoreStatusTransitionService
 
     public function transition(Order $order, string $command, int $expectedRevision, Authenticatable $actor, ?string $reason = null): Order
     {
-        abort_unless($actor->can('orders.edit'), 403, '没有更改订单核心状态的权限。');
+        // Keep the pre-existing Kaven/Dede dropdown access limited to their
+        // respective classification choices; physical warehouse actions have
+        // separate review permissions and endpoints.
+        $canEdit = $actor->can('orders.edit')
+            || ($actor->can('domestic.review') && in_array($command, ['sending', 'out_of_stock'], true))
+            || (app(LogisticsReviewAccess::class)->allows($actor)
+                && $command === 'out_of_stock');
+        abort_unless($canEdit, 403, '没有更改订单核心状态的权限。');
+
         return DB::transaction(function () use ($order, $command, $expectedRevision, $actor, $reason): Order {
             $locked = Order::withTrashed()->with(['shipment', 'operationalMarkers', 'originalFulfillmentChildren', 'fulfillmentAllocation'])
                 ->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
@@ -41,59 +50,32 @@ final class OrderCoreStatusTransitionService
             $shipment = $locked->shipment;
             $before = OrderManualHoldStatus::selected($locked)
                 ?? $this->progress->resolve($locked) ?? 'sending';
-            $activeException = OrderManualHoldStatus::selected($locked) !== null;
+            $activeException = in_array(OrderManualHoldStatus::selected($locked), OrderManualHoldStatus::CODES, true);
             $unallocated = ! $shipment?->warehouse_id;
             $unshipped = $locked->order_status === OrderStatus::PendingShipment
                 && ($shipment === null || ($shipment->shipment_status === 'pending'
                     && blank($shipment->tracking_number) && $shipment->shipped_at === null));
             switch ($command) {
                 case 'pending_allocation':
-                    // The dropdown may restore only a genuinely unallocated,
-                    // unshipped customer root. Already-materialized A/B/C and
-                    // warehouse-owned allocations require their own safe rollback.
-                    if ($locked->order_kind !== OrderKind::Customer
-                        || ! $unallocated || ! $unshipped
-                        || $locked->originalFulfillmentChildren->isNotEmpty()
-                        || $locked->fulfillmentAllocation?->status === 'submitted') {
-                        throw new HttpException(409, '订单已有分仓或履约记录，不能直接覆盖。请通过对应仓库的重新分仓/驳回流程退回待分仓。');
-                    }
-                    if ($shipment?->shipment_status === 'exception'
-                        || $locked->operationalMarkers->contains(fn ($m) => in_array($m->marker, ['domestic_stockout', 'stockout'], true))) {
-                        throw new HttpException(409, '请先解除仓库异常或经审核确认库存状态，再退回待分仓。');
-                    }
-                    if ($locked->workflow_status === null && ! $activeException) {
-                        return $locked; // A second click cannot overwrite facts.
-                    }
-                    $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
-                    // Staff annotations and unallocated manual stockout are
-                    // cleared; real shipment, order status and Woo are untouched.
-                    $locked->workflow_status = null;
-                    break;
+                case 'sending':
+                case 'out_of_stock':
                 case 'exception':
                 case 'missing_info':
                 case 'renew':
                 case 'claims':
                 case 'returned_follow_up':
                 case 'freight_product_cost_follow_up':
+                    // Manual status is the only authority for classification.
+                    // Warehouse review / allocation / tracking facts are NEVER
+                    // changed by choosing a label. Real physical actions use
+                    // their own audited endpoints and safety checks.
                     if ($locked->order_status === OrderStatus::Cancelled) {
-                        throw new HttpException(409, '已取消订单不允许重新标记其他状态。');
-                    }
-                    if ($shipment?->shipment_status === 'exception' && $command !== 'exception') {
-                        throw new HttpException(409, '物流存在真实异常，请先完成物流复核。');
-                    }
-                    // An unallocated manual stockout is another staff-selected
-                    // primary state: it may be explicitly replaced. A factory
-                    // or overseas warehouse stockout is real review evidence
-                    // and cannot be overridden through this dropdown.
-                    if ($locked->workflow_status === 'out_of_stock'
-                        && (! $unallocated || ! $unshipped || $locked->originalFulfillmentChildren->isNotEmpty())) {
-                        throw new HttpException(409, '已分仓缺货必须先经过对应仓库复核，不能直接覆盖。');
+                        throw new HttpException(409, '已取消订单不可直接改为其他主状态，请先走取消复核流程。');
                     }
                     if ($locked->workflow_status === $command
                         && ! $locked->operationalMarkers->contains(fn ($m) => in_array($m->marker, OrderManualHoldStatus::HOLD_MARKERS, true))) {
                         return $locked;
                     }
-                    // One selected status, no append-only status chips.
                     $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
                     $locked->workflow_status = $command;
                     break;
@@ -120,7 +102,9 @@ final class OrderCoreStatusTransitionService
                     // Staff is explicitly replacing the current hold with
                     // physical stockout. Do not leave stale status chips.
                     $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
-                    if ($locked->workflow_status === 'out_of_stock') return $locked;
+                    if ($locked->workflow_status === 'out_of_stock') {
+                        return $locked;
+                    }
                     $locked->workflow_status = 'out_of_stock';
                     break;
                 case 'resolve_stockout_unallocated':
@@ -130,7 +114,9 @@ final class OrderCoreStatusTransitionService
                     $locked->workflow_status = null;
                     break;
                 case 'cancelled':
-                    if ($locked->order_status === OrderStatus::Cancelled) return $locked;
+                    if ($locked->order_status === OrderStatus::Cancelled) {
+                        return $locked;
+                    }
                     if ($locked->order_kind !== OrderKind::Customer
                         || ! $unallocated || ! $unshipped || $locked->originalFulfillmentChildren->isNotEmpty()
                         || $locked->fulfillmentAllocation?->status === 'submitted') {
