@@ -74,6 +74,9 @@ final class OrderController
         $kind = $this->kindOrNull($request);
         $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']);
         $scope = (string) $request->route('order_scope');
+        if ($scope === 'tingon_partner') {
+            $filters['partner_warehouse_code'] = 'TINGON';
+        }
         if ($scope === 'external_warehouse') {
             $filters['warehouse_ownership'] = 'external';
         }
@@ -86,10 +89,10 @@ final class OrderController
         $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
         // A Production canary must be explicitly enabled and individually allowlisted;
         // all other users retain the existing Orders list unconditionally.
-        $omsGridAvailable = $kind === null && $scope !== 'external_warehouse'
+        $omsGridAvailable = $kind === null && $scope !== 'external_warehouse' && $scope !== 'tingon_partner'
             && OrderOmsAvailability::grid($request->user());
         $omsGridEnabled = $omsGridAvailable && $request->boolean('oms_grid');
-        $customerGlobalGridEnabled = $kind === OrderKind::Customer && $request->query('legacy_grid') !== '1';
+        $customerGlobalGridEnabled = ($kind === OrderKind::Customer || $scope === 'tingon_partner') && $request->query('legacy_grid') !== '1';
         $serverGridEnabled = $omsGridEnabled || $customerGlobalGridEnabled;
         $requestedPageSize = $serverGridEnabled ? (string) $request->query('per_page', '50') : '50';
         $perPage = in_array($requestedPageSize, ['20', '50', '100'], true) ? (int) $requestedPageSize : 50;
@@ -122,7 +125,7 @@ final class OrderController
 
         return Inertia::render('Orders/Index', [
             'orderKind' => $kind?->value ?? 'all',
-            'orderScope' => $scope === 'external_warehouse' ? 'external_warehouse' : 'all',
+            'orderScope' => in_array($scope, ['external_warehouse', 'tingon_partner'], true) ? $scope : 'all',
             'carrierLabels' => collect($this->carrierServices->options())->mapWithKeys(fn (array $row): array => [$row['value'] => $row['label']])->all(),
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order, $trackingStatuses[(int) $order->shipment?->id] ?? null, $customerGlobalGridEnabled))->toArray(),
             'filters' => [
@@ -624,6 +627,9 @@ final class OrderController
         $kind = $this->kindOrNull($request);
         $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']);
         $scope = (string) $request->route('order_scope');
+        if ($scope === 'tingon_partner') {
+            $filters['partner_warehouse_code'] = 'TINGON';
+        }
         if ($scope === 'external_warehouse') {
             $filters['warehouse_ownership'] = 'external';
         }

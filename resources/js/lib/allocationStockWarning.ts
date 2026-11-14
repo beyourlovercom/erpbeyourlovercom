@@ -20,6 +20,9 @@ export function allocationStockWarnings(lines: AllocationStockSelection[]): Allo
   for (const line of lines) {
     if (line.isGift || !line.warehouseCode) continue
     const code = line.warehouseCode.toUpperCase()
+    // Tingon is an external partner with no ERP-managed inventory.
+    // Keep this warning gate aligned with FulfillmentAllocationStockGate.
+    if (code === 'TINGON') continue
     const key = code + ':' + (line.productId ? String(line.productId) : 'sku:' + line.sku)
     const existing = grouped.get(key)
     if (existing) existing.quantity += line.quantity

@@ -64,8 +64,8 @@ const filters = reactive({
 const showNewView = ref(false)
 const newViewName = ref('')
 
-const basePath = computed(() => props.orderScope === 'external_warehouse' ? '/orders/procurement' : (props.orderKind === 'all' ? '/orders' : (props.orderKind === 'kol_fulfillment' ? '/kol/orders' : '/customers/orders')))
-const heading = computed(() => props.orderScope === 'external_warehouse' ? '外采订单' : (props.orderKind === 'all' ? '全部订单' : (props.orderKind === 'kol_fulfillment' ? '网红履约订单' : '客户订单')))
+const basePath = computed(() => props.orderScope === 'tingon_partner' ? '/orders/collaboration' : (props.orderScope === 'external_warehouse' ? '/orders/procurement' : (props.orderKind === 'all' ? '/orders' : (props.orderKind === 'kol_fulfillment' ? '/kol/orders' : '/customers/orders'))))
+const heading = computed(() => props.orderScope === 'tingon_partner' ? '合作订单' : (props.orderScope === 'external_warehouse' ? '外采订单' : (props.orderKind === 'all' ? '全部订单' : (props.orderKind === 'kol_fulfillment' ? '网红履约订单' : '客户订单'))))
 const systemViews = [
   { key: 'all', label: '全部订单' },
   { key: 'pending', label: '待发订单' },
@@ -78,7 +78,7 @@ const systemViews = [
   { key: 'stockout', label: '缺货单' },
 ]
 
-const modernCustomerGrid = computed(() => props.orderKind === 'customer' && !!props.customerGlobalGridEnabled)
+const modernCustomerGrid = computed(() => !!props.customerGlobalGridEnabled && (props.orderKind === 'customer' || props.orderScope === 'tingon_partner'))
 const modernGridEnabled = computed(() => !!props.omsGridEnabled || modernCustomerGrid.value)
 const gridParams = () => modernGridEnabled.value ? {
   ...(props.omsGridEnabled ? { oms_grid: '1' } : {}),
@@ -174,7 +174,7 @@ const customerRows = computed<GridListRow[]>(() => props.orders.data.map(order =
   sku: order.items?.map(item => item.sku).filter(Boolean).join(' / ') || '—',
   quantity: order.items?.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0) ?? 0,
   product_names: order.items?.map(item => item.product_summary).filter(Boolean).join(' / ') || '—',
-  warehouse: order.shipment?.warehouse_name ?? '—',
+  warehouse: props.orderScope === 'tingon_partner' ? (order.shipment?.warehouse_name ?? '合作-Tingon（拆单）') : (order.shipment?.warehouse_name ?? '—'),
   carrier: order.shipment?.carrier ? (props.carrierLabels?.[order.shipment.carrier] ?? order.shipment.carrier) : '—',
   tracking: order.shipment?.tracking_number ?? '—',
   status: order.workflow_status_projection?.zh ?? order.order_status_label,
