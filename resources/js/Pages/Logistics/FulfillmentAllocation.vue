@@ -185,7 +185,7 @@ const selectedOrder = computed(() => props.orders.data.find(order => order.id ==
 const selectedStockWarnings = computed(() => {
   const order = selectedOrder.value
   if (!order) return []
-  return allocationStockWarnings(order.items.map(item => {
+  return allocationStockWarnings(order.items.filter(item => manualAssignments[order.id]?.[item.id] !== 'OUTSOURCE').map(item => {
     const code = canonicalWarehouseCode(manualAssignments[order.id]?.[item.id] ?? '')
     const warehouse = props.warehouses.find(w => w.code.toUpperCase() === code.toUpperCase())
     const availability = item.availability.find(stock => stock.warehouse_id === warehouse?.id)
@@ -333,9 +333,12 @@ async function confirmGridBatch(){
   } finally {bulkBusy.value=false}
 }
 
-const warehouseOptions = computed(() => props.warehouses.filter(w => ['FACTORY','US-NY','US-LA','US-SM','US-AMZ','DE','CA','TINGON'].includes(w.code.toUpperCase())))
+const warehouseOptions = computed(() => [
+  ...props.warehouses.filter(w => ['FACTORY','US-NY','US-LA','US-SM','US-AMZ','DE','CA','TINGON'].includes(w.code.toUpperCase())),
+  { id:-1, slug:'outsource', code:'OUTSOURCE', name:'外采 → 中国工厂发货', country_code:'CN', can_auto_allocate:false },
+])
 const canonicalWarehouseCode = (code:string) => { const upper = code.trim().toUpperCase(); return upper === 'US-SJ' ? 'US-SM' : upper }
-const sourceLabel = (code:string) => { const canonical=canonicalWarehouseCode(code); return props.warehouses.find(w => canonicalWarehouseCode(w.code) === canonical)?.name ?? canonical }
+const sourceLabel = (code:string) => { const canonical=canonicalWarehouseCode(code); return canonical==='OUTSOURCE' ? '外采 → 中国工厂发货' : props.warehouses.find(w => canonicalWarehouseCode(w.code) === canonical)?.name ?? canonical }
 const carrierLabel = (carrier:string|null|undefined) => props.carrierOptions.find(row => row.value === carrier)?.label ?? carrier ?? '—'
 const zonePriorityLabel = (zone:Zone|null) => !zone?.warehouse_priority?.length ? '—' : zone.warehouse_priority.map(sourceLabel).join(' → ')
 const zoneShort = (order:Order) => order.us_fulfillment_zone?.status === 'matched' ? order.us_fulfillment_zone.zone_label ?? '已识别' : (order.country === 'US' ? '需人工确认' : '—')
@@ -357,8 +360,8 @@ function ensureManual(order:Order){
 function openPlan(order:Order){ selectedOrderId.value=order.id; decisionNote.value=order.fulfillment_allocation?.decision_note??''; submitError.value=''; ensureManual(order) }
 function closePlan(){ selectedOrderId.value=null; submitError.value=''; stockConfirmOpen.value=false }
 function availabilityFor(item:Item,w:Warehouse){ return item.availability.find(r=>r.warehouse_id===w.id) }
-function availabilityLabel(item:Item,w:Warehouse){ if(w.code==='FACTORY') return '国内工厂'; const r=availabilityFor(item,w); if(w.code==='TINGON')return '人工可分仓 · 不管理合作仓库存'; if(w.code==='US-AMZ')return r?.quantity_available==null?'人工可分仓 · 未登记库存':`人工可分仓 · 库存 ${r.quantity_available}`; if(!r||r.quantity_available==null)return '库存未知'; return r.quantity_available>=item.quantity?`有货 ${r.quantity_available}`:`不足 ${r.quantity_available}` }
-function availabilityClass(item:Item,w:Warehouse){ if(w.code==='FACTORY'||w.code==='US-AMZ'||w.code==='TINGON')return 'stock-neutral'; const r=availabilityFor(item,w); if(!r||r.quantity_available==null)return 'stock-unknown'; return r.quantity_available>=item.quantity?'stock-ok':'stock-short' }
+function availabilityLabel(item:Item,w:Warehouse){ if(w.code==='OUTSOURCE')return '待采购到货'; if(w.code==='FACTORY')return '国内工厂'; const r=availabilityFor(item,w); if(w.code==='TINGON')return '人工可分仓 · 不管理合作仓库存'; if(w.code==='US-AMZ')return r?.quantity_available==null?'人工可分仓 · 未登记库存':`人工可分仓 · 库存 ${r.quantity_available}`; if(!r||r.quantity_available==null)return '库存未知'; return r.quantity_available>=item.quantity?`有货 ${r.quantity_available}`:`不足 ${r.quantity_available}` }
+function availabilityClass(item:Item,w:Warehouse){ if(['OUTSOURCE','FACTORY','US-AMZ','TINGON'].includes(w.code))return 'stock-neutral'; const r=availabilityFor(item,w); if(!r||r.quantity_available==null)return 'stock-unknown'; return r.quantity_available>=item.quantity?'stock-ok':'stock-short' }
 
 type WarehouseAdvice = { kind:'recommended'|'manual'|'none'; label:string; detail:string }
 // Display advisory warehouse inventory independently of automatic-routing eligibility.
@@ -406,11 +409,11 @@ function giftEmptyLabel(item:Item,source:string){ const opts=giftOptions(item,so
 function chosenGift(item:Item,order:Order){ const id=Number(manualGiftMappings[order.id]?.[item.id]||0); return Object.values(item.gift_options_by_warehouse||{}).flat().find(o=>o.mapping_id===id) }
 function giftStockLabel(item:Item,w:Warehouse){ const opts=giftOptions(item,w.code); if(!opts.length)return '无清仓礼品'; const available=availableGiftOptions(item,w.code); if(available.length)return `有货 ${available[0].quantity_available ?? '未知'}`; return '礼品库全部缺货' }
 function giftStockClass(item:Item,w:Warehouse){ const opts=giftOptions(item,w.code); if(!opts.length)return 'stock-unknown'; return opts.some(o=>o.can_fulfill)?'stock-ok':(opts.some(o=>o.quantity_available!=null)?'stock-short':'stock-unknown') }
-function carrierForItem(order:Order,item:Item){ const source=manualAssignments[order.id]?.[item.id]??''; return source==='FACTORY' ? '' : (source ? (manualCarriers[order.id]?.[source] ?? defaultCarrier(order,source)) : '') }
+function carrierForItem(order:Order,item:Item){ const source=manualAssignments[order.id]?.[item.id]??''; return ['FACTORY','OUTSOURCE'].includes(source) ? '' : (source ? (manualCarriers[order.id]?.[source] ?? defaultCarrier(order,source)) : '') }
 function carrierIsDefault(order:Order,item:Item){ const source=manualAssignments[order.id]?.[item.id]??''; const selected=carrierForItem(order,item); return !!source && !!selected && selected===defaultCarrier(order,source) }
 function onWarehouseChanged(order:Order,item:Item){
   const source=manualAssignments[order.id][item.id]
-  if(source && source!=='FACTORY' && !manualCarriers[order.id][source]) manualCarriers[order.id][source]=defaultCarrier(order,source)
+  if(source && !['FACTORY','OUTSOURCE'].includes(source) && !manualCarriers[order.id][source]) manualCarriers[order.id][source]=defaultCarrier(order,source)
   if(!item.is_gift)return
   const selected=manualGiftMappings[order.id][item.id]
   if(selected && !giftOptions(item,source).some(o=>String(o.mapping_id)===selected)) manualGiftMappings[order.id][item.id]=''
@@ -425,7 +428,7 @@ function fulfillmentGroups(order:Order){
     suffix:sources.length>1?String.fromCharCode(65+index):'',
     erpOrderId:order.erp_order_id ? `${order.erp_order_id}${sources.length>1?String.fromCharCode(65+index):''}` : '—',
     warehouse:sourceLabel(source),
-    carrier:source==='FACTORY' ? '' : (manualCarriers[order.id]?.[source] ?? defaultCarrier(order,source)),
+    carrier:['FACTORY','OUTSOURCE'].includes(source) ? '' : (manualCarriers[order.id]?.[source] ?? defaultCarrier(order,source)),
     items:order.items.filter(item=>manualAssignments[order.id]?.[item.id]===source),
   }))
 }
@@ -435,10 +438,11 @@ function splitConstraintError(order:Order){
   const sources=[...new Set(values)]
   const maxSources=order.allocation_decision.policy.max_sources || 26
   if(sources.length>maxSources)return `最多允许 ${maxSources} 个履约来源`
-  for(const source of sources){ if(source!=='FACTORY' && source!=='TINGON' && !(manualCarriers[order.id]?.[source] || defaultCarrier(order,source))) return `发货仓 ${sourceLabel(source)} 需要选择物流商` }
+  for(const source of sources){ if(!['FACTORY','OUTSOURCE','TINGON'].includes(source) && !(manualCarriers[order.id]?.[source] || defaultCarrier(order,source))) return `发货仓 ${sourceLabel(source)} 需要选择物流商` }
   for(const item of order.items){
     if(!item.is_gift)continue
     const source=manualAssignments[order.id][item.id]
+    if(source==='OUTSOURCE')return '请先把礼品转换成指定的真实商品 SKU，再选择外采'
     const selected=manualGiftMappings[order.id][item.id]
     if(!selected)return 'gift 必须选择实际履约礼品 SKU'
     const option=giftOptions(item,source).find(o=>String(o.mapping_id)===selected)
@@ -471,7 +475,7 @@ async function submitManual(stockExceptionAcknowledged = false) {
   }
   const assignments = order.items.map(item => {
     const source = manualAssignments[order.id][item.id]
-    const carrier = source==='FACTORY' ? null : (manualCarriers[order.id]?.[source] || defaultCarrier(order, source))
+    const carrier = ['FACTORY','OUTSOURCE'].includes(source) ? null : (manualCarriers[order.id]?.[source] || defaultCarrier(order, source))
     const route = order.carrier_routes?.[source]
     return {
       order_item_id: item.id, source_code: source,
@@ -609,7 +613,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
             <td><div class="stock-list"><span v-for="warehouse in warehouseOptions" :key="warehouse.code" :class="item.is_gift?giftStockClass(item,warehouse):availabilityClass(item,warehouse)">{{ warehouse.name }}：{{ item.is_gift?giftStockLabel(item,warehouse):availabilityLabel(item,warehouse) }}</span></div></td>
             <td><div class="warehouse-advice" :class="warehouseAdvice(selectedOrder,item).kind"><strong>{{ warehouseAdvice(selectedOrder,item).label }}</strong><small>{{ warehouseAdvice(selectedOrder,item).detail }}</small></div></td>
             <td><select v-model="manualAssignments[selectedOrder.id][item.id]" @change="onWarehouseChanged(selectedOrder,item)"><option value="">请选择</option><option v-for="warehouse in warehouseOptions" :key="warehouse.code" :value="canonicalWarehouseCode(warehouse.code)">{{ warehouse.name }}</option></select></td>
-            <td><div class="carrier-cell"><span v-if="manualAssignments[selectedOrder.id][item.id]==='FACTORY'" class="manual-route">待发货阶段人工确认</span><select v-else :value="carrierForItem(selectedOrder,item)" :disabled="!manualAssignments[selectedOrder.id][item.id]" @change="onCarrierChanged(selectedOrder,item,$event)"><option value="">请选择物流商</option><option v-for="carrier in props.carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="manualAssignments[selectedOrder.id][item.id] && carrierForItem(selectedOrder,item)" :class="carrierIsDefault(selectedOrder,item)?'auto-route':'manual-route'">{{ carrierIsDefault(selectedOrder,item)?'系统默认':'人工覆盖' }}</small></div></td>
+            <td><div class="carrier-cell"><span v-if="['FACTORY','OUTSOURCE'].includes(manualAssignments[selectedOrder.id][item.id])" class="manual-route">{{ manualAssignments[selectedOrder.id][item.id]==='OUTSOURCE' ? '待采购到货 · Vita 放行后选物流商' : '待发货阶段人工确认' }}</span><select v-else :value="carrierForItem(selectedOrder,item)" :disabled="!manualAssignments[selectedOrder.id][item.id]" @change="onCarrierChanged(selectedOrder,item,$event)"><option value="">请选择物流商</option><option v-for="carrier in props.carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="manualAssignments[selectedOrder.id][item.id] && carrierForItem(selectedOrder,item)" :class="carrierIsDefault(selectedOrder,item)?'auto-route':'manual-route'">{{ carrierIsDefault(selectedOrder,item)?'系统默认':'人工覆盖' }}</small></div></td>
             <td><template v-if="item.is_gift"><select v-model="manualGiftMappings[selectedOrder.id][item.id]" :disabled="!manualAssignments[selectedOrder.id][item.id]"><option value="">请选择实际礼品</option><option v-for="option in availableGiftOptions(item,manualAssignments[selectedOrder.id][item.id])" :key="option.mapping_id" :value="String(option.mapping_id)">{{ option.fulfillment_sku }} · {{ option.fulfillment_name }} · 有货 {{option.quantity_available}}</option></select><small v-if="chosenGift(item,selectedOrder)" class="resolved-note">{{ chosenGift(item,selectedOrder)?.fulfillment_sku }} · {{ sourceLabel(manualAssignments[selectedOrder.id][item.id]) }}</small><small v-else-if="manualAssignments[selectedOrder.id][item.id]&&giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])" class="mapping-missing">{{giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])}}</small></template><span v-else>—</span></td>
           </tr>
         </tbody></table></div>

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Sync\Application;
 
+use App\Models\SyncOutbox;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
@@ -29,15 +30,15 @@ final class SyncOutboxService
     /**
      * @param  array<string, mixed>  $intent
      */
-    public function enqueue(array $intent): Model
+    public function enqueue(array $intent, bool $allowLegacyTrackingContract = false): Model
     {
         $normalized = $this->normalizeIntent($intent);
 
-        return DB::transaction(function () use ($normalized): Model {
+        return DB::transaction(function () use ($normalized, $allowLegacyTrackingContract): Model {
             $existing = $this->outbox->findByIdempotencyKeyForUpdate($normalized['idempotency_key']);
 
             if ($existing) {
-                $this->assertSameIntent($existing, $normalized);
+                $this->assertSameIntent($existing, $normalized, $allowLegacyTrackingContract);
 
                 return $existing;
             }
@@ -70,7 +71,7 @@ final class SyncOutboxService
                 ?? throw new \LogicException('Sync outbox record was not created.');
 
             if ($inserted === 0) {
-                $this->assertSameIntent($record, $normalized);
+                $this->assertSameIntent($record, $normalized, $allowLegacyTrackingContract);
 
                 return $record;
             }
@@ -331,20 +332,43 @@ final class SyncOutboxService
     }
 
     /** @param array<string, mixed> $intent */
-    private function assertSameIntent(Model $record, array $intent): void
+    private function assertSameIntent(Model $record, array $intent, bool $allowLegacyTrackingContract = false): void
     {
         $matches = $record->operation === $intent['operation']
             && $record->aggregate_type === $intent['aggregate_type']
             && $record->aggregate_id === $intent['aggregate_id']
             && $record->provider_key === $intent['provider_key']
             && $record->connection_key === $intent['connection_key']
-            && $this->payloadsMatch($record->payload, $intent['payload'])
+            && ($this->payloadsMatch($record->payload, $intent['payload'])
+                || ($allowLegacyTrackingContract && $this->isLegacyTrackingContractOnly($record, $intent)))
             && $record->max_attempts === $intent['max_attempts']
             && (! $intent['compare_available_at'] || $record->available_at->equalTo($intent['available_at']));
 
         if (! $matches) {
             throw SyncOutboxWriteException::idempotencyConflict();
         }
+    }
+
+    /**
+     * Operator-only compatibility for an older Tracking intent that differs
+     * solely by an additive UTC contract marker. Do not mutate the historical
+     * payload and NEVER use this from the 30-minute automatic retry runner.
+     */
+    private function isLegacyTrackingContractOnly(Model $record, array $intent): bool
+    {
+        if ($record->operation !== 'woocommerce.tracking_outbound'
+            || $intent['operation'] !== 'woocommerce.tracking_outbound'
+            || ! is_array($record->payload)
+            || ! is_array($intent['payload'])
+            || array_key_exists('shipped_at_contract', $record->payload)
+            || ($intent['payload']['shipped_at_contract'] ?? null) !== ShipmentUtcTimestamp::CONTRACT) {
+            return false;
+        }
+
+        $candidate = $intent['payload'];
+        unset($candidate['shipped_at_contract']);
+
+        return $this->canonicalizePayload($record->payload) === $this->canonicalizePayload($candidate);
     }
 
     private function payloadsMatch(?array $stored, ?array $requested): bool
@@ -399,7 +423,7 @@ final class SyncOutboxService
         $this->audit->record(
             AuditActor::system(AuditSource::SyncOutbox),
             $action,
-            \App\Models\SyncOutbox::class,
+            SyncOutbox::class,
             $record->id,
             before: $before,
             after: $this->auditMetadata($record),

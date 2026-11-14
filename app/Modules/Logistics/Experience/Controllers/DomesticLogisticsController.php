@@ -38,7 +38,7 @@ final class DomesticLogisticsController
 {
     private const REVIEW_MARKER = 'domestic_reviewed';
 
-    private const VIEWS = ['review', 'stockout', 'pending', 'today-4px', 'today-weship', 'exceptions', 'today', '4px', 'weship'];
+    private const VIEWS = ['review', 'stockout', 'outsource', 'pending', 'today-4px', 'today-weship', 'exceptions', 'today', '4px', 'weship'];
 
     public function __construct(
         private readonly SpeedaOutboundExporter $speeda,
@@ -52,6 +52,14 @@ final class DomesticLogisticsController
         private readonly DomesticCarrierDefaults $carrierDefaults,
     ) {}
 
+    /** Procurement-owned entrypoint keeps Zhang's left navigation on 采购 → 外采单. */
+    public function externalIndex(Request $request): Response
+    {
+        $request->query->set('view', 'outsource');
+
+        return $this->index($request);
+    }
+
     public function index(Request $request): Response
     {
         $factory = $this->factory();
@@ -59,7 +67,11 @@ final class DomesticLogisticsController
             ? (string) $request->query('view', 'review')
             : 'review';
 
+        $canLogisticsView = $request->user()?->can('logistics.view') ?? false;
+        abort_unless($canLogisticsView || ($view === 'outsource' && $request->user()?->can('procurement.view')), 403);
+
         $query = $this->baseQuery((int) $factory->id)->with([
+            'procurementOrder.items',
             'address',
             'items.product',
             'shipment.warehouse',
@@ -82,7 +94,7 @@ final class DomesticLogisticsController
         // R4-7A/B: both cumulative carrier-history views use independently
         // reversible Global Grid, preserving the original provider-only query,
         // historical/all-state inclusion and existing shipment safety gates.
-        $approvedGridView = in_array($view, ['review', 'stockout', 'pending', 'today', 'today-4px', 'today-weship', 'exceptions', '4px', 'weship'], true);
+        $approvedGridView = in_array($view, ['review', 'stockout', 'outsource', 'pending', 'today', 'today-4px', 'today-weship', 'exceptions', '4px', 'weship'], true);
         $gridSetting = $request->query('global_grid');
         $gridAvailable = $approvedGridView || GlobalGridPilot::available();
         $gridPilot = $approvedGridView
@@ -106,9 +118,9 @@ final class DomesticLogisticsController
 
         // Inertia partial row reloads do not need nine independent view counts.
         // Keep every count identical on full loads and when viewCounts is requested.
-        $loadViewCounts = function () use ($factory): array {
+        $loadViewCounts = function () use ($factory, $canLogisticsView): array {
             $counts = [];
-            foreach (self::VIEWS as $key) {
+            foreach ($canLogisticsView ? self::VIEWS : ['outsource'] as $key) {
                 $countQuery = $this->baseQuery((int) $factory->id);
                 $this->applyView($countQuery, $key);
                 $counts[$key] = $countQuery->count();
@@ -128,6 +140,9 @@ final class DomesticLogisticsController
             'gridSearch' => $search,
             'viewCounts' => $loadViewCounts,
             'canOperate' => app(LogisticsExecutionAccess::class)->allows($request->user()),
+            'canLogisticsView' => $canLogisticsView,
+            'canProcurementOperate' => (bool) $request->user()?->can('procurement.operate'),
+            'canProcurementRelease' => (bool) ($request->user()?->can('orders.edit') && $request->user()?->can('domestic.review')),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canArchive' => (bool) $request->user()?->can('orders.archive'),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
@@ -154,7 +169,7 @@ final class DomesticLogisticsController
         $data = $request->validate([
             'order_ids' => ['required', 'array', 'min:1', 'max:50'],
             'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
-            'action' => ['required', 'in:approve,stockout,reject,restock'],
+            'action' => ['required', 'in:approve,stockout,reject,restock,return_allocation'],
             'reason' => ['required_if:action,reject', 'nullable', 'string', 'min:3', 'max:500'],
         ]);
         $results = [];
@@ -194,6 +209,15 @@ final class DomesticLogisticsController
 
         return redirect('/logistics/china?view=pending')
             ->with('success', '已确认到货，订单已进入待发货。');
+    }
+
+    public function returnAllocation(Request $request, Order $order): RedirectResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $this->decisions->decide($order, 'return_allocation', null, $request->user());
+
+        return redirect('/logistics/china?view=stockout&global_grid=1')
+            ->with('success', '缺货订单已退回 Vita 待分仓，可重新选择其他仓库。');
     }
 
     public function stockout(Request $request, Order $order): RedirectResponse
@@ -386,7 +410,16 @@ final class DomesticLogisticsController
 
     private function applyView(Builder $query, string $view): void
     {
+        // Purchasing is NOT stock on hand. No other domestic queue may use
+        // a pre-release procurement fulfillment even if a marker is stale.
+        if ($view !== 'outsource') {
+            $query->whereDoesntHave('procurementOrder', fn ($q) => $q->where('origin', 'external')->whereNull('released_at'));
+        }
         match ($view) {
+            'outsource' => $query->where('order_status', 'pending_shipment')
+                ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
+                ->whereHas('procurementOrder', fn ($q) => $q->where('origin', 'external')
+                    ->whereNotIn('status', ['cancelled', 'completed'])),
             'review' => $this->progressQueries->domesticReview($query),
             'stockout' => $this->progressQueries->domesticStockout($query),
             'pending' => $this->progressQueries->domesticReady($query),
@@ -458,6 +491,25 @@ final class DomesticLogisticsController
             'shipment_status' => $shipment?->shipment_status,
             'shipped_at' => $shipment?->shipped_at?->toIso8601String(),
             'review_status' => $conflict ? 'conflict' : ($stockout ? 'stockout' : ($approved ? 'approved' : 'pending')),
+            'procurement' => $order->procurementOrder ? [
+                'id' => (int) $order->procurementOrder->id,
+                'number' => $order->procurementOrder->procurement_number,
+                'status' => $order->procurementOrder->status,
+                'carrier' => $order->procurementOrder->carrier,
+                'tracking_number' => $order->procurementOrder->tracking_number,
+                'received_at' => $order->procurementOrder->received_at?->toIso8601String(),
+                'released_at' => $order->procurementOrder->released_at?->toIso8601String(),
+                'items' => $order->procurementOrder->items->map(fn ($line): array => [
+                    'id' => (int) $line->id,
+                    'sku' => $line->sku,
+                    'quantity' => (int) $line->source_quantity,
+                    'purchase_quantity' => (int) $line->purchase_quantity,
+                    'purchase_url' => $line->purchase_url,
+                    'purchase_size' => $line->purchase_size,
+                    'received_sku' => $line->received_sku,
+                    'received_quantity' => (int) $line->received_quantity,
+                ])->values()->all(),
+            ] : null,
             'export_blockers' => $shipment?->shipment_status !== 'pending'
                 ? ['该单已离开待发货队列，禁止重复导出']
                 : ($stockout ? ['缺货，禁止导出'] : (! $approved ? ['商务尚未审核，禁止导出']

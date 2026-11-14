@@ -67,6 +67,7 @@ return [
     ]],
     ['key' => 'procurement', 'label' => '采购', 'emoji' => '🛒', 'path' => '/purchase', 'route' => 'procurement.index', 'permission' => 'procurement.view', 'status' => 'in_progress', 'progress' => 33, 'placeholder' => false, 'children' => [
         ['key' => 'procurement-overview', 'label' => '采购总览', 'path' => '/purchase', 'route' => 'procurement.index', 'permission' => 'procurement.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
+        ['key' => 'procurement-external', 'label' => '外采单', 'path' => '/purchase/external', 'route' => 'procurement.external', 'permission' => 'procurement.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'procurement-files', 'label' => '采购文件', 'path' => '/purchase/files', 'route' => 'procurement.files', 'permission' => 'prototype.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],
         ['key' => 'procurement-records', 'label' => '记录', 'path' => '/purchase/records', 'route' => 'procurement.records', 'permission' => 'prototype.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],
     ]],
