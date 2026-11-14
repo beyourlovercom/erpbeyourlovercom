@@ -5,6 +5,8 @@ namespace Tests\Feature\Logistics;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Inventory\Application\WarehouseLastReadStockService;
+use Carbon\CarbonImmutable;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\CarrierService;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
@@ -282,6 +284,18 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
     {
         [$user, $order] = $this->prepare();
         $this->setupVerifiedAutoShip($order);
+        // Independent reference from a signed source read four hours earlier:
+        // provider's later exact Shipped proof should decrement this cache.
+        app(WarehouseLastReadStockService::class)->captureMorePlus(
+            $order->shipment->warehouse,
+            ['stock_rows' => [[
+                'provider_sku' => 'MOREPLUS-MANUAL-TEST',
+                'canonical_sku' => 'MOREPLUS-MANUAL-TEST',
+                'sku_alias_status' => 'verified',
+                'standard_quantity' => 80, 'available_quantity' => 80,
+            ]]],
+            CarbonImmutable::now('UTC')->subHours(4),
+        );
         $tracking = '9434650105794040132223';
         $time = now('UTC')->subHours(2)->format('Y-m-d H:i:s');
         Http::preventStrayRequests();
@@ -325,6 +339,14 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
         $this->assertSame('shipped', $order->fresh()->order_status->value);
         $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
         $this->assertSame($time, $order->fresh()->shipment->shipped_at->utc()->format('Y-m-d H:i:s'));
+        $ref=DB::table('warehouse_stock_read_references')->where('provider_sku','MOREPLUS-MANUAL-TEST')->firstOrFail();
+        $this->assertSame(80,(int)$ref->last_read_raw_qty);
+        $this->assertSame(79,(int)$ref->last_read_stock_qty);
+        $this->assertSame(1,(int)$ref->post_read_adjustment_qty);
+        $this->assertDatabaseHas('warehouse_stock_read_adjustments',[
+            'product_id' => $order->items->first()->product_id,
+            'quantity' => 1, 'outcome' => 'applied',
+        ]);
         Http::assertSentCount(1);
         Http::assertNotSent(fn ($request) => $request->method() === 'POST');
     }
@@ -333,6 +355,16 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
     {
         [$user, $order] = $this->prepare();
         $this->setupVerifiedAutoShip($order);
+        app(WarehouseLastReadStockService::class)->captureMorePlus(
+            $order->shipment->warehouse,
+            ['stock_rows' => [[
+                'provider_sku' => 'MOREPLUS-MANUAL-TEST',
+                'canonical_sku' => 'MOREPLUS-MANUAL-TEST',
+                'sku_alias_status' => 'verified',
+                'standard_quantity' => 80, 'available_quantity' => 80,
+            ]]],
+            CarbonImmutable::now('UTC')->subHours(4),
+        );
         $tracking = '9434650105794040132223';
         Http::preventStrayRequests();
         Http::fake(['https://open.shipout.com/api/*' => Http::response([
@@ -369,6 +401,9 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
             'tracking_number' => $tracking,
         ]);
         $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        $this->assertDatabaseCount('warehouse_stock_read_adjustments', 0);
+        $this->assertSame(80, (int)DB::table('warehouse_stock_read_references')
+            ->where('provider_sku','MOREPLUS-MANUAL-TEST')->value('last_read_stock_qty'));
         Http::assertNotSent(fn ($request) => $request->method() === 'POST');
     }
 

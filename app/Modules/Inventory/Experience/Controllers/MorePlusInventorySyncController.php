@@ -43,7 +43,7 @@ final class MorePlusInventorySyncController
         $w = $this->inventory->warehouse($warehouse);
         abort_unless(strtoupper((string) $w->code) === 'US-LA', 404);
         try {
-            $preview = $this->sync->preview($w);
+            $preview = $this->sync->previewWithLastRead($w);
             $fifo = $this->fifo->previewFromStock($w, $preview);
         } catch (\Throwable $error) {
             return back()->withErrors(['moreplus_stock' => $error instanceof RuntimeException
