@@ -13,6 +13,12 @@ final class ApprovedMenuEntryV3Test extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withoutVite();
+    }
+
     public function test_accounting_is_renamed_without_losing_children_or_route(): void
     {
         $accounting = collect(config('erp_shell_navigation'))->firstWhere('key', 'accounting');
