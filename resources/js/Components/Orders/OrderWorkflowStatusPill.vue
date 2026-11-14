@@ -37,7 +37,10 @@ const current = computed(() => props.options.find(option => option.code === code
 const visibleOptions = computed<Option[]>(() => [
   ...props.options.filter(option => (option.code !== 'allocated' || code.value === 'allocated')
     && (option.code !== 'cancelled' || props.projection.source === 'canonical_projection')),
-  ...(code.value === 'exception' ? [{ code:'resolve_exception', en:'Resolve Exception', zh:'解除异常', color:'amber', mutable:true }] : []),
+  // Missing-info exceptions clear via their own "信息缺失" tag once the user
+  // supplies details. Generic exception resolution must not bypass that hold.
+  ...(code.value === 'exception' && !auxiliary.value.some(aux => aux.code === 'missing_info')
+    ? [{ code:'resolve_exception', en:'Resolve Exception', zh:'解除异常', color:'amber', mutable:true }] : []),
   ...(code.value === 'out_of_stock' ? [{ code:'resolve_stockout', en:'Restock', zh:'解除缺货', color:'amber', mutable:true }] : []),
 ])
 const update = async (next: string) => {
@@ -88,6 +91,9 @@ const removeAuxiliary = async (aux: Auxiliary) => {
     code.value = response.data.workflow_status.code
     revision.value = response.data.order.workflow_revision
     auxiliary.value = response.data.workflow_status.auxiliary ?? []
+    // Removing an information-deficiency hold must also refresh order actions
+    // and the primary queue projection; not just erase the auxiliary chip.
+    router.reload()
   } catch (e: any) {
     error.value = e?.response?.status === 409 ? '状态已变化，请刷新后重试' : (e?.response?.data?.message ?? '移除失败')
   } finally {

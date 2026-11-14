@@ -161,6 +161,70 @@ final class OrderCoreStatusV1Test extends TestCase
         self::assertSame('pending', $child->fresh()->shipment->shipment_status);
     }
 
+    public function test_missing_customer_info_is_an_exception_queue_hold_until_staff_resolves_it(): void
+    {
+        $order = $this->order();
+        $actor = $this->user(['orders.view', 'orders.edit']);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
+        ])->assertOk()
+            ->assertJsonPath('workflow_status.code', 'exception')
+            ->assertJsonPath('workflow_status.auxiliary.0.code', 'missing_info');
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id' => $order->id, 'marker' => 'workflow_aux_missing_info',
+        ]);
+        self::assertSame(1, $this->inQueue($order, 'exception'));
+        self::assertSame(0, $this->inQueue($order, 'pending_allocation'));
+        self::assertSame('pending_shipment', $order->fresh()->order_status->value);
+        $this->actingAs($actor)->deleteJson('/orders/'.$order->id.'/auxiliary-status/missing_info', [
+            'expected_workflow_revision' => 1,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_allocation');
+        self::assertSame(0, $this->inQueue($order, 'exception'));
+        self::assertSame(1, $this->inQueue($order, 'pending_allocation'));
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id' => $order->id, 'marker' => 'workflow_aux_missing_info',
+        ]);
+    }
+
+    public function test_missing_info_blocks_real_dispatch_and_keeps_split_child_out_of_ready_queue(): void
+    {
+        $root = $this->order();
+        $child = $this->order();
+        $child->forceFill([
+            'order_kind' => OrderKind::FulfillmentDerived,
+            'fulfillment_parent_id' => $root->id,
+            'fulfillment_role' => 'original',
+            'fulfillment_suffix' => 'A',
+        ])->save();
+        $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $child->shipment()->create(['warehouse_id' => $factory->id, 'shipment_status' => 'pending']);
+        $child->operationalMarkers()->create(['marker' => 'domestic_reviewed', 'marked_at' => now()]);
+        $actor = $this->user(['orders.view', 'orders.edit']);
+        $this->actingAs($actor)->patchJson('/orders/'.$root->id.'/workflow-status', [
+            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'exception');
+        self::assertSame('exception', app(OrderWorkflowStatusProjection::class)->for($child->fresh())['code']);
+        self::assertSame(1, $this->inQueue($child, 'exception'));
+        self::assertSame(0, app(OrderProgressQuery::class)->readyForShipment(Order::query())->whereKey($child->id)->count());
+        try {
+            app(ShipmentService::class)->markShipped($child->fresh(), ['tracking_number' => 'NOT_DISPATCHED'], $actor);
+            self::fail('Missing customer info must prevent new dispatch for all child parcels');
+        } catch (HttpException $e) {
+            self::assertSame(409, $e->getStatusCode());
+        }
+        self::assertSame('pending', $child->fresh()->shipment->shipment_status);
+        self::assertNull($child->fresh()->shipment->tracking_number);
+    }
+
+    public function test_legacy_missing_info_annotation_also_projects_to_exception(): void
+    {
+        $order = $this->order();
+        $order->forceFill(['workflow_status' => 'missing_info'])->save();
+        self::assertSame('exception', app(OrderWorkflowStatusProjection::class)->for($order->fresh())['code']);
+        self::assertSame(1, $this->inQueue($order, 'exception'));
+        self::assertSame(0, $this->inQueue($order, 'pending_allocation'));
+    }
+
     private function inQueue(Order $order, string $phase): int
     {
         return app(OrderProgressQuery::class)->applyPhase(Order::query(), $phase)->whereKey($order->id)->count();

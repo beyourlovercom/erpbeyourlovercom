@@ -28,15 +28,19 @@ final class OrderProgressResolver
         // A deliberately escalated exception is an actionable core queue, not just a badge.
         // Real Shipment and source Woo facts remain unchanged underneath the override.
         $order->loadMissing('operationalMarkers');
-        if ($order->workflow_status === 'exception'
-            || $order->operationalMarkers->contains('marker', 'exception')) {
+        // Missing customer contact details are a real operational hold, not a
+        // non-blocking follow-up. Keep the "信息缺失" subtype as an auxiliary tag.
+        if (in_array($order->workflow_status, ['exception', 'missing_info'], true)
+            || $order->operationalMarkers->contains('marker', 'exception')
+            || $order->operationalMarkers->contains('marker', 'workflow_aux_missing_info')) {
             return 'exception';
         }
         if ($order->fulfillment_parent_id !== null) {
             $order->loadMissing('fulfillmentParent.operationalMarkers');
             $parent = $order->fulfillmentParent;
-            if ($parent && ($parent->workflow_status === 'exception'
-                || $parent->operationalMarkers->contains('marker', 'exception'))) {
+            if ($parent && (in_array($parent->workflow_status, ['exception', 'missing_info'], true)
+                || $parent->operationalMarkers->contains('marker', 'exception')
+                || $parent->operationalMarkers->contains('marker', 'workflow_aux_missing_info'))) {
                 return 'exception';
             }
         }

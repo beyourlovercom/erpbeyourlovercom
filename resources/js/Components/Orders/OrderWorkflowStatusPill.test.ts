@@ -164,3 +164,34 @@ it('requires explicit confirmation and a cancellation reason before sending real
   confirm.mockRestore()
   prompt.mockRestore()
 })
+
+it('treats missing info as exception subtype and clears it through the real auxiliary endpoint', async () => {
+  const axios = await import('axios')
+  const { router } = await import('@inertiajs/vue3')
+  const remove = vi.spyOn(axios.default, 'delete').mockResolvedValueOnce({
+    data: { order: { workflow_revision: 2 }, workflow_status: { code: 'pending_allocation', auxiliary: [] } },
+  })
+  const reload = vi.spyOn(router, 'reload').mockImplementation(() => undefined)
+  const wrapper = mount(OrderWorkflowStatusPill, {
+    props: {
+      orderId: 79, canEdit: true, canManageAuxiliary: true, revision: 1,
+      projection: {
+        code: 'exception', en: 'Exception', zh: '异常', color: 'red', source: 'canonical_projection',
+        auxiliary: [{ code: 'missing_info', en: 'Missing Info', zh: '信息缺失', color: 'amber' }],
+      },
+      options: [
+        { code: 'exception', en: 'Exception', zh: '异常', color: 'red', mutable: true },
+        { code: 'missing_info', en: 'Missing Info', zh: '信息缺失', color: 'amber', mutable: true },
+      ],
+    },
+  })
+  expect(wrapper.text()).toContain('信息缺失')
+  expect(wrapper.findAll('option').some(x => x.attributes('value') === 'resolve_exception')).toBe(false)
+  await wrapper.find('[aria-label="移除信息缺失"]').trigger('click')
+  await vi.waitFor(() => expect(remove).toHaveBeenCalledWith('/orders/79/auxiliary-status/missing_info', {
+    data: { expected_workflow_revision: 1 },
+  }))
+  expect(reload).toHaveBeenCalled()
+  remove.mockRestore()
+  reload.mockRestore()
+})

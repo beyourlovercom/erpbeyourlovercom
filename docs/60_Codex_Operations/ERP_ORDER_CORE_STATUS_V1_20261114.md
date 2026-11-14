@@ -92,3 +92,11 @@ DEPLOYMENT: EXCLUDED.
 - **Owner visual gate**: 007windows authenticated separate Chrome /customers/orders/8 /9 /10 opened; Owner manual verification PASS still required before merge/closure. Only local sqlite UAT database, no Production or real-order mutations.
 - **Rollback**: branch not merged, Production untouched; local UAT isolated to 100.94.52.109:8765 and /tmp/byl-erp-core-status-uat-20261114.sqlite.
 - **Known residual**: full-suite unrelated baseline failures remain; additional CI statuses and cross-module Owner UAT must be reviewed. No automatic merge or deployment.
+
+
+## Owner in-scope addition: 信息缺失 joins exception queue (2026-11-14)
+- Existing customer-order dropdown code `missing_info` is authoritative for **exception queue ownership** as an operational hold. The existing subtype `信息缺失` remains visible as an auxiliary chip for specific follow-up; it is not silently rewritten to shipment exception.
+- Current `workflow_aux_missing_info` marker **and** historical `orders.workflow_status=missing_info` both project to `exception`, count in the same Orders exception queue, and are excluded from pending allocation / domestic or overseas ready / ShipOut automatic dispatch candidates. Root A/B/C inheritance is respected.
+- Staff clears the subtype using existing `DELETE /orders/{order}/auxiliary-status/missing_info` after information is verified; optimistic revision/audit remain enforced, and the page reloads into the fact-derived original queue. Do not clear a separate generic exception or real Shipment exception inadvertently.
+- No automatic historical backfill or blanket assumption that empty phone is always an error. Phone/address details can be corrected using existing order/address edit and note fields; hold removal is a deliberate staff decision.
+- This is the existing Owner-approved dropdown and chip, **no new UI layout**. Final Owner live 007windows UAT for the updated PR head remains pending.

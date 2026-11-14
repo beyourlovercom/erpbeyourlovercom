@@ -44,7 +44,7 @@ final class OrderWorkflowStatusV1Test extends TestCase
 
         $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_allocation')->assertJsonPath('workflow_status.auxiliary.0.code', 'missing_info');
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'exception')->assertJsonPath('workflow_status.auxiliary.0.code', 'missing_info');
         self::assertSame(1, $order->fresh()->workflow_revision);
     }
 
@@ -55,7 +55,7 @@ final class OrderWorkflowStatusV1Test extends TestCase
 
         $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_allocation')->assertJsonPath('workflow_status.auxiliary.0.code', 'missing_info');
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'exception')->assertJsonPath('workflow_status.auxiliary.0.code', 'missing_info');
 
         $this->assertDatabaseHas('orders', ['id' => $order->id, 'order_status' => 'pending_shipment', 'workflow_status' => null, 'workflow_revision' => 1]);
         $this->assertDatabaseHas('order_operational_markers', ['order_id' => $order->id, 'marker' => 'workflow_aux_missing_info']);

@@ -105,6 +105,7 @@ type Order = {
   order_date: string
   order_status: string
   order_status_label: string
+  workflow_status?: string | null
   workflow_status_projection?: { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean }
   workflow_revision?: number
   order_note: string | null
@@ -534,8 +535,11 @@ const operationalMarkerOptions = [
   { key: 'return', label: '退货关注（辅助）' },
   { key: 'stockout', label: '缺货' },
 ]
+// A missing-info hold projects to exception but is removed via its own subtype
+// tag; never make the generic exception button attempt to clear that hold.
 const markerActive = (key: string) => key === 'exception'
-  ? props.order.workflow_status_projection?.code === 'exception'
+  ? ((props.order.operational_markers?.includes('exception') ?? false)
+    || props.order.workflow_status === 'exception')
   : key === 'stockout' && props.isDomesticFactory
     ? ((props.order.operational_markers?.includes('domestic_stockout') ?? false)
       || props.order.workflow_status_projection?.code === 'out_of_stock')
