@@ -16,7 +16,7 @@ const base='http://127.0.0.1:18786';
   const response=await fetch(base+'/api/erp/current/orders?role='+role,{headers:auth,signal:AbortSignal.timeout(25000)});
   assert.equal(response.status,200,role+' status '+response.status);
   const {data}=await response.json();
-  assert.equal(data.source,'CURRENT_LARAVEL_MAIN_DEV_0508A126');
+  assert.equal(data.source,'CURRENT_LARAVEL_MAIN_DEV_B07885E3');
   assert.equal(data.authenticatedByLaravel,true);
   assert.equal(data.inertia.props.orders.total,count,role+' scope');
   const rows=data.inertia.props.orders.data;

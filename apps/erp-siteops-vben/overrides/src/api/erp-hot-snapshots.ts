@@ -4,7 +4,7 @@ import type { ErpCurrentDevPage } from './erp-orders';
 export const HOT_LIMIT = 3;
 export const HOT_TTL_MS = 60_000;
 export const HOT_BYTES_LIMIT = 1_500_000;
-const VERSION = '0508a1263e51cfeae8b2f3036bc4f3d83df52386';
+const VERSION = 'b07885e36c491a997f88ae3c7a6ef0b14d17ad31';
 export interface HotOrderKey {
   role: string; scope: string; page: number; perPage: number; search: string;
 }

@@ -2,8 +2,8 @@
 // Owner-only 007 Dev UAT adapter: role-authenticated, GET-only, never a production connector.
 const fs=require('node:fs'),path=require('node:path');
 const crypto=require('node:crypto');
-const DEV_URL='http://100.94.52.109:18810';
-const SOURCE='CURRENT_LARAVEL_MAIN_DEV_0508A126';
+const DEV_URL='http://100.94.52.109:18811';
+const SOURCE='CURRENT_LARAVEL_MAIN_DEV_B07885E3';
 const FILE=path.join(__dirname,'private/r2b-current-dev-roles.json');
 const roles=new Set(['owner','staff','kol','manager']);
 const sessions=new Map();

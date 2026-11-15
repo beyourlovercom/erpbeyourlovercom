@@ -126,7 +126,7 @@ export async function getCurrentDevReadOnlyOrders(input: {
     search: input.search ?? '', page: input.page ?? 1, per_page: input.perPage ?? 50,
     role: input.role ?? 'owner', scope: input.scope ?? 'all',
   }, timeout: 45_000 });
-  if (result.source !== 'CURRENT_LARAVEL_MAIN_DEV_0508A126' ||
+  if (result.source !== 'CURRENT_LARAVEL_MAIN_DEV_B07885E3' ||
       result.authenticatedByLaravel !== true || result.rowsAreIsolatedUat !== true) {
     throw new Error('ERP_CURRENT_DEV_AUTH_SOURCE_REJECTED');
   }
