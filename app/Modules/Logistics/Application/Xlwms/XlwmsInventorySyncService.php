@@ -117,7 +117,7 @@ final class XlwmsInventorySyncService
                 'reason' => $row['reason'] ?? null,
             ];
         }
-        $checksum = hash('sha256', json_encode(['snapshot_schema' => $this->v2Enabled() ? ($this->skuIsolationEnabled() ? 6 : 5) : 2,
+        $checksum = hash('sha256', json_encode(['snapshot_schema' => $this->v2Enabled() ? ($this->skuIsolationEnabled() ? 7 : 5) : 2,
             'sku_isolation' => $this->skuIsolationEnabled(), 'reconciliation_mode' => $this->v2Enabled() ? 'lot_v2' : 'quantity_v1', 'wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline, 'lot_baseline' => $this->v2LotBaseline($warehouse, $rows), 'p9_consumption_baseline' => $this->v2P9ConsumptionBaseline($warehouse, $rows), 'unknown_age_baseline' => $this->v2UnknownAgeBaseline($warehouse, $rows)], JSON_THROW_ON_ERROR));
         $status = ($unmatched > 0 || $blocked > 0) ? 'blocked' : 'read_only';
         $snapshot = $this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline);
@@ -291,6 +291,14 @@ final class XlwmsInventorySyncService
             ->where('warehouse_id', $warehouse->id)
             ->whereIn('status', ['applied', 'partial_applied'])
             ->orderByDesc('id')->first();
+        // Never inherit an old V1/V2 approval or an untrusted status written
+        // by a read-only observation. Only a real guarded SKU-level apply
+        // provides an acceptable provenance for subsequent SKU reconciliation.
+        if ($last !== null && (($last->summary['sku_isolation_write_proof'] ?? false) !== true
+            || ($last->summary['sku_isolation'] ?? false) !== true
+            || ($last->summary['v2_applied'] ?? false) !== true)) {
+            $last = null;
+        }
         if ($last !== null) {
             $priorIds = $last->status === 'partial_applied'
                 ? array_map('intval', (array) ($last->summary['applied_product_ids'] ?? []))
@@ -312,45 +320,14 @@ final class XlwmsInventorySyncService
             }
         }
 
-        // The first successful guarded apply changes local ERP QOH (and may
-        // change dated lots) without changing OMS stock. A subsequent signed
-        // full read therefore has a NEW checksum. Carry over ONLY individual
-        // SKU proofs that were previously applied, still exactly match the
-        // provider SKU/stock/locks, and now have zero outstanding local
-        // reconciliation mutations. Never carry an unverified new SKU.
-        $carriedIds = [];
-        if ($last !== null && ! $apply) {
-            $previouslyApplied = $last->status === 'partial_applied'
-                ? array_map('intval', (array) ($last->summary['applied_product_ids'] ?? []))
-                : $last->rows()->where('resolution_status', 'matched')
-                    ->whereNotNull('product_id')->pluck('product_id')->map(fn ($id): int => (int) $id)->all();
-            $previousRows = $last->rows()->where('resolution_status', 'matched')
-                ->whereNotNull('product_id')->get()
-                ->keyBy('product_id');
-            foreach ($eligible as $id => $product) {
-                $prior = $previousRows->get((int) $id);
-                $source = collect($rows)->first(fn (array $row): bool =>
-                    ($row['status'] ?? null) === 'matched'
-                    && (int) ($row['product_id'] ?? 0) === (int) $id);
-                if (! in_array((int) $id, $previouslyApplied, true)
-                    || ! $prior || ! $source
-                    || $prior->provider_sku !== $source['sku']
-                    || (int) $prior->oms_total !== (int) $source['stock']['total']
-                    || (int) $prior->oms_available !== (int) $source['stock']['available']
-                    || (int) $prior->oms_locked !== (int) $source['stock']['locked']
-                    || (int) $product['qoh_before'] !== (int) $product['qoh_after']
-                    || (int) $product['unknown_before'] !== (int) $product['unknown_after']
-                    || collect($product['lot_adjustments'])->contains(
-                        fn (array $lot): bool => (int) ($lot['reduction'] ?? 0) > 0)) {
-                    continue;
-                }
-                $carriedIds[] = (int) $id;
-            }
-        }
+        // A read-only sync may record evidence, but MUST NOT certify stock
+        // or carry forward prior write authorization as a new applied status.
+        // Fresh snapshots require an actual guarded sync(true) transaction.
         $snapshot = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouse->id)
             ->where('checksum', $checksum)->lockForUpdate()->first();
         if ($snapshot !== null
-            && in_array($snapshot->status, ['applied', 'partial_applied'], true)) {
+            && in_array($snapshot->status, ['applied', 'partial_applied'], true)
+            && ($snapshot->summary['sku_isolation_write_proof'] ?? false) === true) {
             // Same signed full provider read + immutable local checksum:
             // update observation freshness without repeating the write.
             $snapshot->forceFill(['fetched_at' => now()])->save();
@@ -363,22 +340,7 @@ final class XlwmsInventorySyncService
                 [...$plan['summary'], 'sku_isolation' => true,
                     'eligible_product_ids' => array_map('intval', array_keys($eligible))]);
         }
-        if (! $apply) {
-            if ($carriedIds !== []) {
-                $snapshot->forceFill([
-                    'status' => $issues === [] && count($carriedIds) === count($plan['products'])
-                        ? 'applied' : 'partial_applied',
-                    'applied_at' => $last->applied_at,
-                    'blocked_sku_count' => count($issues),
-                    'mismatches' => $issues,
-                    'summary' => [...(array) $snapshot->summary,
-                        'v2' => true, 'v2_applied' => true,
-                        'sku_isolation' => true, 'applied_product_ids' => $carriedIds,
-                        'carried_from_snapshot_id' => (int) $last->id],
-                ])->save();
-            }
-            return $snapshot->fresh();
-        }
+        if (! $apply) return $snapshot->fresh();
 
         // The first V2 apply still requires the exact full OMS checksum and
         // Owner-approved config. Never use a prior V1 snapshot as approval.
@@ -408,6 +370,9 @@ final class XlwmsInventorySyncService
             'mismatches' => $issues,
             'summary' => [...(array) $snapshot->summary,
                 'v2' => true, 'v2_applied' => true, 'sku_isolation' => true,
+                // Only set AFTER lotReconciliation->apply() succeeded inside
+                // this locked transaction. Read-only operations can never set it.
+                'sku_isolation_write_proof' => true,
                 'applied_product_ids' => $appliedIds,
                 'quarantined_sku_count' => count($issues)],
         ])->save();
