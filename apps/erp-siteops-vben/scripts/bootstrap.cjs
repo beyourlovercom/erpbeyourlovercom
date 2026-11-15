@@ -42,6 +42,9 @@ for (const rel of files) {
   fs.mkdirSync(path.dirname(target), {recursive:true});
   fs.copyFileSync(source,target);
 }
+const { patchPinnedAgGrid } = require('./patch-pinned-ag-grid.cjs');
+const pinnedDeps = patchPinnedAgGrid(destination);
+console.log('Pinned isolated Vben dependency state: ' + pinnedDeps.state);
 for (const name of [
   'build.cmd', 'install-offline.cmd', 'test-orders.cmd', 'gateway.cjs',
   'r2-smoke.cjs', 'r2-browser.cjs', 'nav-r6-uat.cjs',
