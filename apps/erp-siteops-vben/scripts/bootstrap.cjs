@@ -46,7 +46,7 @@ for (const name of [
   'build.cmd', 'install-offline.cmd', 'test-orders.cmd', 'gateway.cjs',
   'r2-smoke.cjs', 'r2-browser.cjs', 'nav-r6-uat.cjs',
   'r2b-current-gateway.cjs', 'r2b-current-smoke.cjs', 'r2b-current-vben-uat.cjs',
-  'r2b-bootstrap-uat.cjs',
+  'r2b-bootstrap-uat.cjs', 'r6t-browser-uat.cjs',
 ]) {
   const source = path.join(packaged, 'runtime', name);
   const target = path.join(path.dirname(destination), name);
