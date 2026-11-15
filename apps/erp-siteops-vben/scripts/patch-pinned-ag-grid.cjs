@@ -38,10 +38,18 @@ function patchPinnedAgGrid(vbenRoot) {
   const parsed = JSON.parse(pkg);
   const hasPackage = parsed.dependencies?.['ag-grid-community'] === '36.3.0'
     && parsed.dependencies?.['ag-grid-vue3'] === '36.3.0';
-  const hasLock = lock.includes('  ag-grid-community@36.3.0:')
-    && lock.includes('  ag-grid-vue3@36.3.0:');
+  const requiredLockMarkers = [
+    '      ag-grid-community:\n        specifier: 36.3.0\n        version: 36.3.0',
+    '      ag-grid-vue3:\n        specifier: 36.3.0\n        version: 36.3.0(vue@3.5.41(typescript@6.0.3))',
+    '  ag-charts-types@14.3.0:',
+    '  ag-stack@36.3.0:',
+    '  ag-grid-community@36.3.0:\n    dependencies:',
+    '  ag-grid-vue3@36.3.0(vue@3.5.41(typescript@6.0.3)):\n    dependencies:',
+    INTEGRITY.charts, INTEGRITY.community, INTEGRITY.vue3, INTEGRITY.stack,
+  ];
+  const hasLock = requiredLockMarkers.every((marker) => lock.includes(marker));
   if (hasPackage && hasLock) return {state:'ALREADY_PINNED', packageSha:sha(originalPackage), lockSha:sha(originalLock)};
-  if (hasPackage || hasLock || parsed.dependencies?.['ag-grid-community'] || parsed.dependencies?.['ag-grid-vue3']) {
+  if (hasPackage || lock.includes('ag-grid-community@36.3.0') || parsed.dependencies?.['ag-grid-community'] || parsed.dependencies?.['ag-grid-vue3']) {
     throw new Error('Partial or conflicting AG Grid dependency state; fail closed');
   }
   if (!lock.includes('      version: 8.3.0') || !lock.includes('version: 15.0.0(vue@3.5.41(typescript@6.0.3))')) {
