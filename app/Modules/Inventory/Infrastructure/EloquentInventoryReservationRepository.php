@@ -89,8 +89,24 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
             ->where('status', 'confirmed')
             ->where('sync_mode', 'full')
             ->exists();
+        if (! $authoritative && config('inventory_sku_gate.enabled', false)) {
+            // Never mistake a different SKU's full-import failure for failure
+            // of the exact SKU(s) in this order. A provider-owned warehouse
+            // still requires its own provider proof below.
+            if (strtoupper((string) $warehouse->code) === 'US-SM') {
+                $authoritative = app(XlwmsInventoryCoverage::class)
+                    ->providerAvailableByProductId((int) $warehouseId) !== null;
+            } else {
+                $authoritative = WarehouseInventory::query()
+                    ->where('warehouse_id', $warehouseId)
+                    ->whereIn('product_id', $required->keys()->all())
+                    ->count() === $required->count();
+            }
+        }
         if (! $authoritative) {
-            throw new DomainException('Warehouse has no confirmed full inventory authority.');
+            throw new DomainException(config('inventory_sku_gate.enabled', false)
+                ? 'Warehouse has no confirmed inventory authority for the requested SKUs.'
+                : 'Warehouse has no confirmed full inventory authority.');
         }
 
         $lockedInventory = WarehouseInventory::query()
@@ -193,8 +209,10 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
         }
 
         $inventories = $this->lockedInventories($reservation);
-        $providerAuthoritative = strtoupper((string) Warehouse::query()
-            ->whereKey($reservation->warehouse_id)->value('code')) === 'US-LA';
+        $code = strtoupper((string) Warehouse::query()
+            ->whereKey($reservation->warehouse_id)->value('code'));
+        $providerAuthoritative = $code === 'US-LA'
+            || (config('inventory_sku_gate.enabled', false) && $code === 'US-SM');
         foreach ($reservation->items as $item) {
             /** @var WarehouseInventory $inventory */
             $inventory = $inventories->get($item->warehouse_inventory_id);

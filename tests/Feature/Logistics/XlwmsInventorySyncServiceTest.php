@@ -665,6 +665,139 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         ]);
     }
 
+    public function test_global_sku_gate_allows_healthy_sku_when_unreceived_oms_zero_sku_is_unverified(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['READY-GIFT']);
+        $ready = $products[0];
+        WarehouseInventory::query()->create([
+            'warehouse_id' => $warehouse->id, 'product_id' => $ready->id,
+            'quantity_on_hand' => 10, 'quantity_reserved' => 0,
+        ]);
+        WarehouseInventoryLot::query()->create(['warehouse_id'=>$warehouse->id,
+            'product_id'=>$ready->id,'stock_status'=>'sellable',
+            'putaway_date'=>'2026-10-01','quantity'=>10]);
+        // The zero-stock OMS SKU is a future inbound, not a verified product.
+        config()->set('inventory_sku_gate.enabled', true);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        $service = $this->service($products, ['READY-GIFT', 'UNRECEIVED-FUTURE'],
+            ['READY-GIFT'], ['READY-GIFT', 'UNRECEIVED-FUTURE'], 0,
+            ['READY-GIFT' => 9, 'UNRECEIVED-FUTURE' => 0]);
+
+        $preflight = $service->sync(false);
+        self::assertSame('blocked', $preflight['status']);
+        self::assertSame(1, $preflight['unmatched_sku_count']);
+        self::assertContains('OMS_UNMATCHED_STOCK_SKUS', array_column($preflight['mismatches'], 'reason'));
+        self::assertSame(10, (int) WarehouseInventory::where('product_id', $ready->id)->value('quantity_on_hand'));
+        // No first-apply approval means NOTHING may write, even a healthy SKU.
+        self::assertSame('blocked', $service->sync(true)['status']);
+        self::assertSame(10, (int) WarehouseInventory::where('product_id', $ready->id)->value('quantity_on_hand'));
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $preflight['checksum']);
+        $applied = $service->sync(true);
+        self::assertSame('partial_applied', $applied['status']);
+        self::assertSame(1, $applied['unmatched_sku_count']);
+        self::assertSame(9, (int) WarehouseInventory::where('product_id', $ready->id)->value('quantity_on_hand'));
+        $snapshot = XlwmsInventorySnapshot::findOrFail($applied['snapshot_id']);
+        self::assertSame([$ready->id], $snapshot->summary['applied_product_ids']);
+        self::assertSame('unmatched', $snapshot->rows()->where('provider_sku', 'UNRECEIVED-FUTURE')
+            ->value('resolution_status'));
+        self::assertSame(0, $snapshot->rows()->where('provider_sku', 'UNRECEIVED-FUTURE')
+            ->value('oms_total'));
+        $coverage = app(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage::class)
+            ->providerAvailableByProductId($warehouse->id);
+        self::assertSame(9, $coverage[$ready->id]);
+        self::assertCount(1, $coverage);
+        $row = collect(app(EloquentInventoryAvailabilityReader::class)->forProductIds([$ready->id])[$ready->id])
+            ->firstWhere('warehouse_id', $warehouse->id);
+        self::assertSame(9, $row['quantity_available']);
+        self::assertNull($row['stock_gate_reason']);
+        $reobserved = $service->sync(false);
+        self::assertNotSame($applied['snapshot_id'], $reobserved['snapshot_id']);
+        self::assertSame('partial_applied', $reobserved['status']);
+        self::assertSame([$ready->id], XlwmsInventorySnapshot::findOrFail($reobserved['snapshot_id'])->summary['applied_product_ids']);
+        self::assertSame(9, app(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage::class)
+            ->providerAvailableByProductId($warehouse->id)[$ready->id]);
+    }
+
+    public function test_global_sku_gate_quarantines_positive_unknown_without_blocking_verified_sku(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['READY-GIFT']);
+        WarehouseInventory::query()->create([
+            'warehouse_id' => $warehouse->id, 'product_id' => $products[0]->id,
+            'quantity_on_hand' => 8, 'quantity_reserved' => 0,
+        ]);
+        config()->set('inventory_sku_gate.enabled', true);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        $svc = $this->service($products, ['READY-GIFT', 'UNKNOWN-POSITIVE'],
+            ['READY-GIFT'], ['READY-GIFT', 'UNKNOWN-POSITIVE'], 0,
+            ['READY-GIFT' => 8, 'UNKNOWN-POSITIVE' => 10]);
+        $first=$svc->sync(false);
+        config()->set('xlwms.inventory_first_apply_approved_checksum',$first['checksum']);
+        $result=$svc->sync(true);
+        self::assertSame('partial_applied', $result['status']);
+        self::assertSame(1, $result['unmatched_sku_count']);
+        self::assertSame(8, (int) WarehouseInventory::where('product_id',$products[0]->id)->value('quantity_on_hand'));
+        self::assertCount(1, app(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage::class)
+            ->providerAvailableByProductId($warehouse->id));
+        self::assertSame(0, WarehouseInventory::query()->where('warehouse_id',$warehouse->id)
+            ->whereNotIn('product_id',[$products[0]->id])->count());
+    }
+
+    public function test_global_sku_gate_isolates_unreconciled_product_lot_from_clean_sibling_sku(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['CLEAN', 'BROKEN']);
+        foreach($products as $p) {
+            WarehouseInventory::query()->create(['warehouse_id'=>$warehouse->id,
+                'product_id'=>$p->id,'quantity_on_hand'=>10,'quantity_reserved'=>0]);
+        }
+        // A historical unidentified lot is not a reason to block CLEAN.
+        WarehouseInventoryLot::query()->create(['warehouse_id'=>$warehouse->id,
+            'product_id'=>$products[1]->id,'stock_status'=>'sellable',
+            'putaway_date'=>null,'quantity'=>10]);
+        config()->set('inventory_sku_gate.enabled',true);
+        config()->set('xlwms.lot_reconciliation_v2_enabled',true);
+        config()->set('xlwms.inventory_apply_enabled',true);
+        $svc=$this->service($products,['CLEAN','BROKEN'],null,['CLEAN','BROKEN'],
+            0,['CLEAN'=>9,'BROKEN'=>10]);
+        $pre=$svc->sync(false);
+        self::assertSame('blocked',$pre['status']);
+        config()->set('xlwms.inventory_first_apply_approved_checksum',$pre['checksum']);
+        $applied=$svc->sync(true);
+        self::assertSame('partial_applied',$applied['status']);
+        self::assertSame(9,(int)WarehouseInventory::query()->where('product_id',$products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(10,(int)WarehouseInventory::query()->where('product_id',$products[1]->id)->value('quantity_on_hand'));
+        $coverage=app(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage::class)
+            ->providerAvailableByProductId($warehouse->id);
+        self::assertSame(9,$coverage[$products[0]->id]);
+        self::assertArrayNotHasKey($products[1]->id,$coverage);
+        self::assertContains('LEGACY_SELLABLE_LOT_DATE_MISSING',array_column($applied['mismatches'],'reason'));
+    }
+
+    public function test_global_sku_gate_does_not_allow_large_delta_of_one_sku_to_block_another(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SAFE', 'LARGE-DELTA']);
+        foreach($products as $p) WarehouseInventory::query()->create([
+            'warehouse_id'=>$warehouse->id,'product_id'=>$p->id,
+            'quantity_on_hand'=>10,'quantity_reserved'=>0]);
+        config()->set('inventory_sku_gate.enabled',true);
+        config()->set('xlwms.lot_reconciliation_v2_enabled',true);
+        config()->set('xlwms.inventory_apply_enabled',true);
+        $svc=$this->service($products,['SAFE','LARGE-DELTA'],null,
+            ['SAFE','LARGE-DELTA'],0,['SAFE'=>9,'LARGE-DELTA'=>1]);
+        $first=$svc->sync(false);
+        config()->set('xlwms.inventory_first_apply_approved_checksum',$first['checksum']);
+        $res=$svc->sync(true);
+        self::assertSame('partial_applied',$res['status']);
+        self::assertSame(9,(int)WarehouseInventory::where('product_id',$products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(10,(int)WarehouseInventory::where('product_id',$products[1]->id)->value('quantity_on_hand'));
+        self::assertContains('OMS_SKU_DELTA_EXCEEDS_AUTO_LIMIT',array_column($res['mismatches'],'reason'));
+        $map=app(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage::class)
+            ->providerAvailableByProductId($warehouse->id);
+        self::assertArrayHasKey($products[0]->id,$map);
+        self::assertArrayNotHasKey($products[1]->id,$map);
+    }
+
     /** @return array{0:Warehouse,1:WarehouseOpenApiConnection,2:list<Product>} */
     private function fixture(array $skus): array
     {
