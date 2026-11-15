@@ -10,6 +10,8 @@ import { useAuthStore } from '#/store';
 
 import { generateAccess } from './access';
 import { bootstrapAuthorizedDevNavigation, setApprovedMenuSource } from './erp-live-navigation';
+import { installDevPinLimit } from './erp-workspace-tab-policy';
+import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
 
 /**
  * 通用守卫配置
@@ -50,6 +52,8 @@ function setupAccessGuard(router: Router) {
     const accessStore = useAccessStore();
     const userStore = useUserStore();
     const authStore = useAuthStore();
+    installDevPinLimit();
+    if (!accessStore.accessToken) clearHotOrderSnapshots();
 
     // 基本路由，这些路由不需要进入权限拦截
     if (coreRouteNames.includes(to.name)) {
