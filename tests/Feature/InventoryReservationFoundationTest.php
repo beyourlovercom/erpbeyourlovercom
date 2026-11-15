@@ -262,6 +262,7 @@ final class InventoryReservationFoundationTest extends TestCase
             'fetched_at'=>now(),'applied_at'=>now(),
             'provider_sku_count'=>2,'mapped_sku_count'=>1,'unmatched_sku_count'=>1,'blocked_sku_count'=>1,
             'summary'=>['v2'=>true,'v2_applied'=>true,'sku_isolation'=>true,
+                'sku_isolation_write_proof'=>true,
                 'applied_product_ids'=>[$good->id]],
         ]);
         $snapshot->rows()->create([

@@ -46,7 +46,9 @@ final class XlwmsInventoryCoverage
             $appliedIds = $latest->status === 'partial_applied'
                 ? array_map('intval', (array) ($latest->summary['applied_product_ids'] ?? []))
                 : null;
-            if ($latest->status === 'partial_applied' && $appliedIds === []) return [];
+            if ($latest->status === 'partial_applied'
+                && ($appliedIds === []
+                    || ($latest->summary['sku_isolation_write_proof'] ?? false) !== true)) return [];
             $rows = $latest->rows()->where('resolution_status', 'matched')
                 ->whereNotNull('product_id')->get(['product_id', 'oms_total', 'oms_available', 'oms_locked']);
             $available = [];

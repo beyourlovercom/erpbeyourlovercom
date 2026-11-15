@@ -1034,6 +1034,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             'status'=>'partial_applied','provider_sku_count'=>2,
             'unmatched_sku_count'=>1,'blocked_sku_count'=>1,
             'summary'=>['v2'=>true,'v2_applied'=>true,'sku_isolation'=>true,
+                'sku_isolation_write_proof'=>true,
                 'applied_product_ids'=>[$real->product_id]],
             'fetched_at'=>now(),
         ])->save();

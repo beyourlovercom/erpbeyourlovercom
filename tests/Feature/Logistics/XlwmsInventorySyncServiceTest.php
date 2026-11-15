@@ -665,6 +665,92 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         ]);
     }
 
+    public function test_readonly_new_sku_gate_cannot_inherit_preexisting_legacy_v2_approval(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['READY-GIFT']);
+        $product = $products[0];
+        WarehouseInventory::query()->create([
+            'warehouse_id'=>$warehouse->id,'product_id'=>$product->id,
+            'quantity_on_hand'=>10,'quantity_reserved'=>0,
+        ]);
+        WarehouseInventoryLot::query()->create([
+            'warehouse_id'=>$warehouse->id,'product_id'=>$product->id,
+            'stock_status'=>'sellable','putaway_date'=>'2026-09-01','quantity'=>10,
+        ]);
+        // Legacy V2 reconciliation was applied before SKU-level isolation
+        // existed. It is not a valid first approval for the new isolated mode.
+        $legacy=XlwmsInventorySnapshot::query()->create([
+            'warehouse_id'=>$warehouse->id,'wh_code'=>'US-SM',
+            'checksum'=>hash('sha256','LEGACY_V2_APPLIED_NO_PER_SKU_WRITE_PROOF'),
+            'status'=>'applied','fetched_at'=>now(),'applied_at'=>now(),
+            'provider_sku_count'=>1,'mapped_sku_count'=>1,'blocked_sku_count'=>0,
+            'summary'=>['v2'=>true,'v2_applied'=>true],
+        ]);
+        $legacy->rows()->create([
+            'provider_sku'=>'READY-GIFT','product_id'=>$product->id,
+            'resolution_status'=>'matched','oms_total'=>9,'oms_available'=>9,'oms_locked'=>0,
+        ]);
+        config()->set('inventory_sku_gate.enabled',true);
+        config()->set('xlwms.lot_reconciliation_v2_enabled',true);
+        config()->set('xlwms.inventory_apply_enabled',true);
+        $service=$this->service($products,['READY-GIFT','UNRECEIVED-FUTURE'],
+            ['READY-GIFT'],['READY-GIFT','UNRECEIVED-FUTURE'],0,
+            ['READY-GIFT'=>9,'UNRECEIVED-FUTURE'=>0]);
+
+        $observed=$service->sync(false);
+        self::assertSame('blocked',$observed['status']);
+        self::assertNotSame($legacy->id,$observed['snapshot_id']);
+        $row=XlwmsInventorySnapshot::findOrFail($observed['snapshot_id']);
+        self::assertNull($row->applied_at);
+        self::assertFalse((bool)($row->summary['sku_isolation_write_proof']??false));
+        self::assertSame([],app(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage::class)
+            ->providerAvailableByProductId($warehouse->id));
+        self::assertSame(10,(int)WarehouseInventory::where('product_id',$product->id)->value('quantity_on_hand'));
+
+        $unapproved=$service->sync(true);
+        self::assertSame('blocked',$unapproved['status']);
+        self::assertSame(10,(int)WarehouseInventory::where('product_id',$product->id)->value('quantity_on_hand'));
+        config()->set('xlwms.inventory_first_apply_approved_checksum',$observed['checksum']);
+        $authorized=$service->sync(true);
+        self::assertSame('partial_applied',$authorized['status']);
+        self::assertTrue(XlwmsInventorySnapshot::findOrFail($authorized['snapshot_id'])
+            ->summary['sku_isolation_write_proof']);
+        self::assertSame(9,(int)WarehouseInventory::where('product_id',$product->id)->value('quantity_on_hand'));
+        self::assertSame(9,app(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage::class)
+            ->providerAvailableByProductId($warehouse->id)[$product->id]);
+    }
+
+    public function test_fake_partial_applied_snapshot_without_write_proof_can_never_unlock_stock(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['READY-GIFT']);
+        $product=$products[0];
+        WarehouseInventory::query()->create([
+            'warehouse_id'=>$warehouse->id,'product_id'=>$product->id,
+            'quantity_on_hand'=>10,'quantity_reserved'=>0,
+        ]);
+        config()->set('inventory_sku_gate.enabled',true);
+        $fake=XlwmsInventorySnapshot::query()->create([
+            'warehouse_id'=>$warehouse->id,'wh_code'=>'US-SM',
+            'checksum'=>hash('sha256','READ_ONLY_INCORRECTLY_FLAGGED_AS_APPLIED'),
+            'status'=>'partial_applied','fetched_at'=>now(),'applied_at'=>now(),
+            'provider_sku_count'=>2,'mapped_sku_count'=>1,
+            'unmatched_sku_count'=>1,'blocked_sku_count'=>1,
+            'summary'=>['v2'=>true,'v2_applied'=>true,'sku_isolation'=>true,
+                'applied_product_ids'=>[$product->id]],
+        ]);
+        $fake->rows()->create([
+            'provider_sku'=>'READY-GIFT','product_id'=>$product->id,
+            'resolution_status'=>'matched','oms_total'=>10,'oms_available'=>9,'oms_locked'=>1,
+        ]);
+        $fake->rows()->create([
+            'provider_sku'=>'UNKNOWN-UNRECEIVED','product_id'=>null,
+            'resolution_status'=>'unmatched','oms_total'=>0,'oms_available'=>0,'oms_locked'=>0,
+        ]);
+        self::assertSame([],app(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage::class)
+            ->providerAvailableByProductId($warehouse->id));
+        self::assertSame(10,(int)WarehouseInventory::where('product_id',$product->id)->value('quantity_on_hand'));
+    }
+
     public function test_global_sku_gate_allows_healthy_sku_when_unreceived_oms_zero_sku_is_unverified(): void
     {
         [$warehouse, , $products] = $this->fixture(['READY-GIFT']);
@@ -713,8 +799,16 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         self::assertNull($row['stock_gate_reason']);
         $reobserved = $service->sync(false);
         self::assertNotSame($applied['snapshot_id'], $reobserved['snapshot_id']);
-        self::assertSame('partial_applied', $reobserved['status']);
-        self::assertSame([$ready->id], XlwmsInventorySnapshot::findOrFail($reobserved['snapshot_id'])->summary['applied_product_ids']);
+        self::assertSame('blocked', $reobserved['status']);
+        self::assertNull(XlwmsInventorySnapshot::findOrFail($reobserved['snapshot_id'])->applied_at);
+        // A read-only observation cannot silently become a new provider
+        // fulfillment authorization, even if the OMS values did not change.
+        self::assertSame([], app(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage::class)
+            ->providerAvailableByProductId($warehouse->id));
+        $reapplied = $service->sync(true);
+        self::assertSame('partial_applied', $reapplied['status']);
+        self::assertTrue(XlwmsInventorySnapshot::findOrFail($reapplied['snapshot_id'])
+            ->summary['sku_isolation_write_proof']);
         self::assertSame(9, app(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage::class)
             ->providerAvailableByProductId($warehouse->id)[$ready->id]);
     }
