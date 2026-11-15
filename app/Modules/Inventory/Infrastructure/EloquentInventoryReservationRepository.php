@@ -82,13 +82,31 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
             throw new DomainException('Warehouse is unavailable for reservation.');
         }
 
-        $authoritative = InventorySyncBatch::query()
+        $providerAuthoritative = strtoupper((string) $warehouse->code) === 'US-LA';
+        // MorePlus signed-stock mirror, not an old CSV full import, owns US-LA quantity.
+        $authoritative = $providerAuthoritative || InventorySyncBatch::query()
             ->where('warehouse_id', $warehouseId)
             ->where('status', 'confirmed')
             ->where('sync_mode', 'full')
             ->exists();
+        if (! $authoritative && config('inventory_sku_gate.enabled', false)) {
+            // Never mistake a different SKU's full-import failure for failure
+            // of the exact SKU(s) in this order. A provider-owned warehouse
+            // still requires its own provider proof below.
+            if (strtoupper((string) $warehouse->code) === 'US-SM') {
+                $authoritative = app(XlwmsInventoryCoverage::class)
+                    ->providerAvailableByProductId((int) $warehouseId) !== null;
+            } else {
+                $authoritative = WarehouseInventory::query()
+                    ->where('warehouse_id', $warehouseId)
+                    ->whereIn('product_id', $required->keys()->all())
+                    ->count() === $required->count();
+            }
+        }
         if (! $authoritative) {
-            throw new DomainException('Warehouse has no confirmed full inventory authority.');
+            throw new DomainException(config('inventory_sku_gate.enabled', false)
+                ? 'Warehouse has no confirmed inventory authority for the requested SKUs.'
+                : 'Warehouse has no confirmed full inventory authority.');
         }
 
         $lockedInventory = WarehouseInventory::query()
@@ -110,6 +128,14 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
                 throw new DomainException("Inventory row is missing for product {$productId}.");
             }
             $effectiveAvailable = (int) $inventory->quantity_available;
+            if ($providerAuthoritative) {
+                if ($inventory->provider_stock_synced_at === null || $inventory->provider_available_quantity === null) {
+                    throw new DomainException('MorePlus SKU requires an authoritative provider inventory sync before ERP reservation.');
+                }
+                // ERP reservations are an internal order ledger; they must never
+                // rewrite the provider's reported physical or available quantities.
+                $effectiveAvailable = max(0, $effectiveAvailable - (int) $inventory->quantity_reserved);
+            }
             if ($xlwmsProviderAvailable !== null) {
                 // Lock shown by OMS may belong to an OMS-only outgoing order.
                 // Do not invent an ERP reservation, and never re-offer it here.
@@ -183,6 +209,10 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
         }
 
         $inventories = $this->lockedInventories($reservation);
+        $code = strtoupper((string) Warehouse::query()
+            ->whereKey($reservation->warehouse_id)->value('code'));
+        $providerAuthoritative = $code === 'US-LA'
+            || (config('inventory_sku_gate.enabled', false) && $code === 'US-SM');
         foreach ($reservation->items as $item) {
             /** @var WarehouseInventory $inventory */
             $inventory = $inventories->get($item->warehouse_inventory_id);
@@ -192,8 +222,11 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
             if ($reserved < $quantity || $qoh < $quantity) {
                 throw new DomainException('Inventory drift blocks reservation commit.');
             }
-            $inventory->forceFill(['quantity_on_hand' => $qoh - $quantity, 'quantity_reserved' => $reserved - $quantity])->save();
-            $this->adjustment($inventory, $actorUserId, $qoh, $qoh - $quantity, $reserved, $reserved - $quantity, 'reservation_committed');
+            $afterQoh = $providerAuthoritative ? $qoh : $qoh - $quantity;
+            // Shipping evidence is not a warehouse physical-count update.
+            // For MorePlus, only release the ERP reservation ledger.
+            $inventory->forceFill(['quantity_on_hand' => $afterQoh, 'quantity_reserved' => $reserved - $quantity])->save();
+            $this->adjustment($inventory, $actorUserId, $qoh, $afterQoh, $reserved, $reserved - $quantity, 'reservation_committed');
         }
 
         $reservation->forceFill(['status' => 'committed', 'committed_at' => now()])->save();

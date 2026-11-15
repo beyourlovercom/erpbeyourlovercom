@@ -91,7 +91,7 @@ final class WarehouseShipmentProjection
                     'shipped_at' => $shipment->shipped_at?->toIso8601String(),
                     'destination_country' => $order?->address?->country,
                     'items' => $order?->items->map(fn ($item): array => [
-                        'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                        'sku' => WarehouseSkuPresentation::sku($item),
                         'name' => $item->product?->name,
                         'quantity' => (int) $item->quantity,
                     ])->values()->all() ?? [],

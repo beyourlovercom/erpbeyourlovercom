@@ -23,6 +23,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/sync/orders/{order}/complete', [ManualSyncController::class, 'complete'])->middleware('can:sync.operate')->name('sync.complete');
     Route::post('/sync/orders/{order}/reopen', [ManualSyncController::class, 'reopen'])->middleware('can:sync.operate')->name('sync.reopen');
     Route::post('/sync/orders/{order}/return', [ManualSyncController::class, 'return'])->middleware('can:sync.operate')->name('sync.return');
+    Route::post('/sync/orders/{order}/force-tracking', [\App\Modules\Sync\Experience\Controllers\OrderDetailTrackingSyncController::class, 'push'])->middleware('can:sync.operate')->name('sync.order-detail.force-tracking');
     Route::post('/sync/orders/{order}/tracking-outbound', [WooCommerceTrackingOutboundController::class, 'push'])->middleware('can:sync.operate')->name('sync.tracking-outbound');
     Route::post('/sync/orchestration/tracking/selected', [SyncOrchestrationController::class, 'trackingSelected'])->middleware('can:sync.operate')->name('sync.orchestration.tracking-selected');
     Route::post('/sync/orchestration/tracking/all-pending', [SyncOrchestrationController::class, 'trackingAllPending'])->middleware('can:sync.operate')->name('sync.orchestration.tracking-all-pending');

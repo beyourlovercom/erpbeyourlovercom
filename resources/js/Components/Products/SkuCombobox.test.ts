@@ -45,6 +45,20 @@ describe('SkuCombobox', () => {
     expect(mockFetch).toHaveBeenCalledWith('/products/sku-search?q=AB', expect.any(Object))
   })
 
+  it('shows matched alias but still selects the canonical sku and product id', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => [{ id: 1346, sku: 'BY489A-Lubes', name: 'Lubricant', matched_alias: 'BY489A' }],
+    })
+    const wrapper = mount(SkuCombobox, { props: { modelValue: 'by489a', productId: null } })
+    await wrapper.get('input').trigger('focus')
+    await flushPromises()
+    expect(wrapper.text()).toContain('匹配别名：BY489A')
+    await wrapper.get('.sku-combobox-option').trigger('mousedown')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['BY489A-Lubes'])
+    expect(wrapper.emitted('update:productId')?.at(-1)).toEqual([1346])
+  })
+
   it('selects an option and emits canonical sku and product id', async () => {
     mockFetch.mockResolvedValue({
       ok: true,

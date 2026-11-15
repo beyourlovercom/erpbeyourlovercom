@@ -7,6 +7,7 @@ use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsTrackingPushController;
+use App\Modules\Logistics\Experience\Controllers\TingonFulfillmentController;
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
 use App\Modules\Logistics\Experience\Controllers\ShipOutMorePlusController;
 use App\Modules\Logistics\Experience\Controllers\ShipOutProductionBatchController;
@@ -29,7 +30,11 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/pending', fn () => redirect()->route('logistics.wait-stock'))->middleware('can:logistics.view')->name('logistics.pending');
     Route::get('/logistics/wait-stock', [LogisticsController::class, 'waitStock'])->middleware('can:logistics.view')->name('logistics.wait-stock');
     Route::get('/logistics/china/orders/{order}/barcode-69', ChinaSmallPacketBarcode69Controller::class)->middleware('can:logistics.view')->whereNumber('order')->name('logistics.china.barcode-69');
-    Route::get('/logistics/china', [DomesticLogisticsController::class, 'index'])->middleware('can:logistics.view')->name('logistics.china');
+    Route::get('/logistics/tingon', [TingonFulfillmentController::class, 'index'])->middleware('can:logistics.view')->name('logistics.tingon');
+    Route::post('/logistics/tingon/orders/{order}/save', [TingonFulfillmentController::class, 'save'])->middleware($execution)->whereNumber('order')->name('logistics.tingon.save');
+    Route::post('/logistics/tingon/orders/{order}/ship', [TingonFulfillmentController::class, 'ship'])->middleware($execution)->whereNumber('order')->name('logistics.tingon.ship');
+    Route::post('/logistics/tingon/orders/{order}/tracking', [TingonFulfillmentController::class, 'tracking'])->middleware($execution)->whereNumber('order')->name('logistics.tingon.tracking');
+    Route::get('/logistics/china', [DomesticLogisticsController::class, 'index'])->name('logistics.china');
     Route::post('/logistics/china/orders/{order}/carrier-service', [DomesticInlineTrackingController::class, 'selectCarrierService'])
         ->middleware($execution)->whereNumber('order')->name('logistics.china.carrier-service');
     Route::post('/logistics/china/orders/{order}/tracking-draft', [DomesticInlineTrackingController::class, 'save'])
@@ -50,6 +55,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         ->middleware(['can:domestic.review', 'throttle:15,1'])->name('logistics.china.batch-review');
     Route::post('/logistics/china/orders/{order}/approve', [DomesticLogisticsController::class, 'approve'])->middleware('can:domestic.review')->name('logistics.china.approve');
     Route::post('/logistics/china/orders/{order}/stockout', [DomesticLogisticsController::class, 'stockout'])->middleware('can:domestic.review')->name('logistics.china.stockout');
+    Route::post('/logistics/china/orders/{order}/return-allocation', [DomesticLogisticsController::class, 'returnAllocation'])->middleware('can:domestic.review')->name('logistics.china.return-allocation');
     Route::post('/logistics/china/orders/{order}/restock', [DomesticLogisticsController::class, 'restock'])->middleware('can:domestic.review')->name('logistics.china.restock');
     Route::post('/logistics/china/orders/{order}/reject', [DomesticLogisticsController::class, 'reject'])->middleware('can:domestic.review')->name('logistics.china.reject');
     Route::post('/logistics/china/orders/{order}/reopen-review', [DomesticLogisticsController::class, 'reopenReview'])->middleware('can:domestic.review')->name('logistics.china.reopen-review');
@@ -199,6 +205,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/wait-stock/batch-allocation', [LogisticsController::class, 'batchAllocate'])
         ->middleware([...$allocation, 'throttle:6,1'])->name('logistics.fulfillment-allocation.batch');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/recommended', [LogisticsController::class, 'submitRecommendedAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.recommended');
+    Route::post('/logistics/orders/{order}/fulfillment-allocation/preflight', [LogisticsController::class, 'preflightManualAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.preflight');
+    Route::get('/logistics/orders/{order}/fulfillment-allocation/status', [LogisticsController::class, 'allocationSubmissionStatus'])->middleware($allocation)->name('logistics.fulfillment-allocation.status');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/manual', [LogisticsController::class, 'submitManualAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.manual');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/quick', [LogisticsController::class, 'submitQuickAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.quick');
     Route::post('/logistics/orders/{order}/reallocate-pending-fulfillment', [LogisticsController::class, 'reallocatePendingFulfillment'])->middleware($allocation)->name('logistics.fulfillment.reallocate-pending');

@@ -22,7 +22,7 @@ class Order extends Model
         'customer_id', 'fulfillment_parent_id', 'fulfillment_suffix', 'fulfillment_role', 'fulfillment_origin_id', 'fulfillment_reason', 'fulfillment_note',
         'internal_order_number', 'erp_order_id', 'source_type', 'order_kind', 'external_order_number', 'order_date',
         'order_note', 'owner_id', 'kol_id', 'order_status', 'currency',
-        'workflow_status', 'workflow_revision',
+        'workflow_status', 'workflow_revision', 'routing_warehouse_code', 'routing_revision',
         'domestic_reject_reason', 'domestic_rejected_at', 'domestic_rejected_by',
         'operational_archived_at', 'operational_archived_by',
     ];
@@ -35,6 +35,7 @@ class Order extends Model
             'order_kind' => OrderKind::class,
             'order_status' => OrderStatus::class,
             'workflow_revision' => 'integer',
+            'routing_revision' => 'integer',
             'domestic_rejected_at' => 'datetime',
             'deleted_at' => 'datetime',
             'archived_at' => 'datetime',

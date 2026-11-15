@@ -8,6 +8,7 @@ use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseClearanceProduct;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,10 @@ use Illuminate\Validation\ValidationException;
 
 final class WarehouseClearanceService
 {
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(
+        private readonly AuditRecorder $audit,
+        private readonly InventoryAvailabilityReader $availability,
+    ) {}
 
     /** @return array<int,array<string,mixed>> */
     public function listForWarehouse(Warehouse $warehouse): array
@@ -31,8 +35,18 @@ final class WarehouseClearanceService
             ->whereIn('product_id', $rows->pluck('fulfillment_product_id'))
             ->get()->keyBy('product_id');
 
-        return $rows->map(function (WarehouseClearanceProduct $row) use ($inventory): array {
+        $fulfillment = $this->availability->forProductIds(
+            $rows->pluck('fulfillment_product_id')->map(fn ($id): int => (int) $id)->all()
+        );
+        return $rows->map(function (WarehouseClearanceProduct $row) use ($inventory, $fulfillment, $warehouse): array {
             $stock = $inventory->get($row->fulfillment_product_id);
+            $fulfillmentStock = collect($fulfillment[(int) $row->fulfillment_product_id] ?? [])
+                ->firstWhere('warehouse_id', $warehouse->id);
+            $gate = $fulfillmentStock['stock_gate_reason'] ?? null;
+            $giftAvailable = $fulfillmentStock['quantity_available'] ?? null;
+            $availablePhysical = $stock?->quantity_available;
+            $mismatch = $availablePhysical !== null && $availablePhysical > 0
+                && ($giftAvailable === null || $giftAvailable < $availablePhysical);
             $available = $stock?->quantity_available;
             return [
                 'id' => (int) $row->id,
@@ -45,6 +59,9 @@ final class WarehouseClearanceService
                 'quantity_on_hand' => $stock ? (int) $stock->quantity_on_hand : null,
                 'quantity_reserved' => $stock ? (int) $stock->quantity_reserved : null,
                 'quantity_available' => $available === null ? null : (int) $available,
+                'gift_quantity_available' => $giftAvailable === null ? null : (int) $giftAvailable,
+                'gift_stock_gate_reason' => $gate,
+                'gift_stock_mismatch' => $mismatch,
                 'status' => $available === null ? 'unknown' : ((int) $available > 0 ? 'available' : 'out_of_stock'),
                 'status_label' => $available === null ? '库存未知' : ((int) $available > 0 ? '可用' : '缺货'),
             ];

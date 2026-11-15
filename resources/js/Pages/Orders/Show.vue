@@ -20,6 +20,7 @@ import StockExceptionConfirmDialog from '../../Components/Logistics/StockExcepti
 import { allocationStockWarnings } from '../../lib/allocationStockWarning'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatusPill.vue'
+import OrderWarehouseRouteSelect from '../../Components/Orders/OrderWarehouseRouteSelect.vue'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; can_auto_allocate?: boolean }
@@ -105,7 +106,9 @@ type Order = {
   order_date: string
   order_status: string
   order_status_label: string
+  workflow_status?: string | null
   workflow_status_projection?: { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean }
+  routing_warehouse?: {code:string;name:string;source:string;revision:number}
   workflow_revision?: number
   order_note: string | null
   domestic_reject_reason?: string | null
@@ -139,6 +142,8 @@ const props = withDefaults(defineProps<{
   inventoryAvailability?: Record<number, Availability[]>
   packagingReferences?: Record<number, PackagingReference>
   warehouses?: Warehouse[]
+  warehouseRouteOptions?: {code:string;name:string}[]
+  canEditWarehouseRoute?: boolean
   warehouseRouting?: Record<number,{ carrier:string|null; service:string|null; carrier_service_id:number|null; automatic:boolean }>
   carrierOptions?: CarrierOption[]
   allocationUi?: AllocationUi
@@ -160,6 +165,7 @@ const props = withDefaults(defineProps<{
   canViewPackagingEvidence?: boolean
   canCreateProcurement?: boolean
   canCreateReplacement?: boolean
+  canForceTrackingSync?: boolean
   canOperateLogistics?: boolean
   canReopenFulfillment?: boolean
   canViewProfit?: boolean
@@ -167,7 +173,7 @@ const props = withDefaults(defineProps<{
   wooAdminEditUrl?: string | null
   kolProfile?: { id: number; display_name: string; url: string } | null
 
-}>(), { canAppendOrderNote: false, canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
+}>(), { canAppendOrderNote: false, canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canForceTrackingSync: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
 
 
 const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
@@ -208,6 +214,24 @@ const goToAdjacentOrder = (url: string | null | undefined) => {
   })
 }
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
+const trackingSyncPending = ref(false)
+const trackingSyncFeedback = ref('')
+const forceTrackingSync = async () => {
+  if (trackingSyncPending.value || !props.order.shipment?.tracking_number) return
+  trackingSyncPending.value = true
+  trackingSyncFeedback.value = ''
+  try {
+    const response = await axios.post('/sync/orders/' + props.order.id + '/force-tracking')
+    trackingSyncFeedback.value = response.data?.message ?? '同步成功'
+  } catch (error) {
+    trackingSyncFeedback.value = axios.isAxiosError(error)
+      ? (error.response?.data?.message ?? '同步失败，请检查网络或权限')
+      : '同步失败，请重试'
+  } finally {
+    trackingSyncPending.value = false
+  }
+}
+
 
 const breadcrumbs = computed(() => isKol.value
   ? [{ label: 'BYL ERP', href: '/dashboard' }, { label: '网红', href: '/kol' }, { label: '订单', href: '/kol/orders' }, props.order.erp_order_id ?? '—']
@@ -530,21 +554,55 @@ const submit = () => {
 
 const operationalMarkerOptions = [
   { key: 'exception', label: '异常' },
-  { key: 'in_transit', label: '运输中' },
-  { key: 'return', label: '退货' },
+  { key: 'in_transit', label: '运输关注（辅助）' },
+  { key: 'return', label: '退货关注（辅助）' },
   { key: 'stockout', label: '缺货' },
 ]
-const markerActive = (key: string) => key === 'stockout' && props.isDomesticFactory
-  ? ((props.order.operational_markers?.includes('domestic_stockout') ?? false)
-    || props.order.workflow_status_projection?.code === 'out_of_stock')
-  : (props.order.operational_markers?.includes(key) ?? false)
+// A missing-info hold projects to exception but is removed via its own subtype
+// tag; never make the generic exception button attempt to clear that hold.
+const markerActive = (key: string) => key === 'exception'
+  ? (['exception', 'missing_info', 'renew', 'claims', 'freight_product_cost_follow_up']
+      .includes(props.order.workflow_status_projection?.code ?? ''))
+  : key === 'stockout' && props.isDomesticFactory
+    ? ((props.order.operational_markers?.includes('domestic_stockout') ?? false)
+      || props.order.workflow_status_projection?.code === 'out_of_stock')
+    : (props.order.operational_markers?.includes(key) ?? false)
 const markerDisabled = (key:string) => key === 'stockout' && props.isDomesticFactory
   ? (!props.canMarkDomesticStockout || markerActive(key))
   : !props.canMarkOperational
+const coreStatusSaving = ref(false)
+const changeCoreStatus = async (next: string) => {
+  if (coreStatusSaving.value) return
+  let reason: string | undefined
+  if (next === 'cancelled') {
+    if (!window.confirm('在 ERP 中真正取消订单？不会自动退款或修改 WooCommerce 状态。')) return
+    const input = window.prompt('请填写至少 3 个字的取消原因。')
+    if (!input || input.trim().length < 3) return
+    reason = input.trim()
+  }
+  coreStatusSaving.value = true
+  try {
+    await axios.patch(`/orders/${props.order.id}/workflow-status`, {
+      workflow_status: next,
+      expected_workflow_revision: props.order.workflow_revision ?? 0,
+      ...(reason ? { reason } : {}),
+    })
+    publishGlobalFeedback({state:'SUCCESS',title:'核心状态已更新',message:'状态和订单列表将读取同一份真实数据。'})
+    router.reload()
+  } catch (error: any) {
+    publishGlobalFeedback({state:'ERROR',title:'核心状态未更改',message:error?.response?.data?.message ?? '保存失败，请刷新状态后重试。'})
+  } finally {
+    coreStatusSaving.value = false
+  }
+}
 const toggleMarker = (key: string) => {
-  if (key === 'stockout' && props.isDomesticFactory) {
+  if (key === 'exception') {
+    void changeCoreStatus(markerActive(key) ? 'resolve_exception' : 'exception')
+    return
+  }
+  if (key === 'stockout') {
     if (markerDisabled(key)) return
-    router.post('/logistics/china/orders/' + props.order.id + '/stockout', {}, { preserveScroll:true })
+    void changeCoreStatus(markerActive(key) ? 'resolve_stockout' : 'out_of_stock')
     return
   }
   router.post('/orders/' + props.order.id + '/operational-markers/' + key, { active: !markerActive(key) }, { preserveScroll: true })
@@ -1183,6 +1241,14 @@ onBeforeUnmount(() => {
 
         </div>
 
+        <div class="erp-form-card ord-route-panel" data-testid="order-warehouse-route-panel">
+          <strong>订单所属分仓</strong>
+          <OrderWarehouseRouteSelect v-if="order.routing_warehouse"
+            :order-id="order.id" :projection="order.routing_warehouse"
+            :options="warehouseRouteOptions ?? []" :can-edit="Boolean(canEditWarehouseRoute)" />
+          <small>决定订单出现在哪个仓库工作台；实际发货仍由履约模块确认</small>
+        </div>
+
         <!-- Card 1: 履约状态 (always read-only) -->
         <div id="order-section-fulfillment" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-fulfillment') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-fulfillment'), 'ord-panel-dragging': draggingSection === 'order-section-fulfillment' }" @dragover.prevent @drop.prevent="dropPanel('order-section-fulfillment')">
 
@@ -1298,7 +1364,11 @@ onBeforeUnmount(() => {
               </div>
               <div class="ord-fulfillment-item">
                 <small class="ord-fulfillment-label">网站同步</small>
-                <strong class="ord-fulfillment-value">{{ order.manual_sync?.status ?? '未进入队列' }}</strong>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <strong class="ord-fulfillment-value">{{ order.manual_sync?.status ?? '未进入队列' }}</strong>
+                  <button v-if="canForceTrackingSync" type="button" class="erp-btn erp-btn-secondary" style="padding:3px 8px;min-height:26px;font-size:12px" :disabled="trackingSyncPending || !order.shipment?.tracking_number" @click="forceTrackingSync">{{ trackingSyncPending ? '同步中' : '同步' }}</button>
+                </div>
+                <small v-if="trackingSyncFeedback" role="status">{{ trackingSyncFeedback }}</small>
               </div>
             </div>
 
@@ -1318,9 +1388,10 @@ onBeforeUnmount(() => {
               :aria-expanded="!isSectionCollapsed('order-section-flags')" @click="toggleSection('order-section-flags')">{{ isSectionCollapsed('order-section-flags') ? '▸' : '▾' }}</button>
           </div>
           </div>
-          <p class="ord-inventory-help">异常、运输中、退货为辅助标记；中国工厂订单点击「缺货」将进入国内缺货审核队列，恢复请在「缺货单」点击「已到货-可发货」。发货、重发、补发仍在上方“履约状态”处理。“归档订单”是独立操作，主订单与子订单都可独立归档；归档后进入归档清单并退出分仓和发货队列，不会永久删除。</p>
+          <p class="ord-inventory-help">异常和缺货为真实核心状态，操作后进入对应主队列；运输关注、退货关注仅为辅助备注，不等于真实发货或退货完成。中国工厂缺货需商务审核，海外仓需 Dede 审核。取消订单不会自动退款或更改网站状态。实际发货仍由上方履约操作确认。</p>
           <div class="ord-marker-row">
             <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="markerDisabled(marker.key)" :title="marker.key==='stockout' && isDomesticFactory && markerActive(marker.key) ? '已在国内缺货单；请在缺货列表确认已到货' : undefined" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
+            <button v-if="canEditWorkflowStatus && order.order_kind === 'customer'" type="button" class="erp-btn erp-btn-secondary ord-marker" :disabled="coreStatusSaving || order.workflow_status_projection?.code === 'cancelled'" @click="changeCoreStatus('cancelled')">取消订单</button>
             <button type="button" class="erp-btn erp-btn-secondary ord-marker" :disabled="!canArchiveOrder" :aria-label="directlyArchived ? '订单已归档' : '归档订单'" @click="archiveOrder">{{ directlyArchived ? '已归档' : '归档订单' }}</button>
           </div>
           <p v-if="operationallyArchived" class="ord-operational-archive-warning" role="status">运营归档：已退出分配、发货和仓库操作序列。财务、物流、同步和历史记录仍予保留。</p>
@@ -2435,6 +2506,8 @@ onBeforeUnmount(() => {
     align-items: flex-start;
   }
 }
+ .ord-route-panel { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:10px 16px; }
+ .ord-route-panel small { color:#84939e; font-size:11px; }
 </style>
 
 <style scoped>

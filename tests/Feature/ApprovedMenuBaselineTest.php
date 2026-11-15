@@ -79,7 +79,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $levelTwo = collect($items)->where('level', 2)->values();
 
         $this->assertCount(13, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(66, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
+        $this->assertCount(68, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
         $this->assertSame(['settings-backup'], $levelTwo->where('code', 'settings-backup')->pluck('code')->all(), self::MISMATCH.': backup child approval');
         $this->assertSame(['settings-fx'], $levelTwo->where('code', 'settings-fx')->pluck('code')->all(), self::MISMATCH.': FX child approval');
         $this->assertSame(
@@ -100,10 +100,10 @@ class ApprovedMenuBaselineTest extends TestCase
     }
 
     /** @throws JsonException */
-    public function test_orders_archive_appears_under_orders_in_fourth_position(): void
+    public function test_orders_archive_appears_under_orders_in_fifth_position(): void
     {
         $items = collect($this->baseline()['items'])->where('parent_code', 'orders')->sortBy('sort')->values();
-        $this->assertSame(['orders-customers', 'orders-kol', 'orders-procurement', 'orders-archive'], $items->pluck('code')->all());
+        $this->assertSame(['orders-customers', 'orders-kol', 'orders-collaboration', 'orders-procurement', 'orders-archive'], $items->pluck('code')->all());
         $this->assertSame('/orders/archive', $items->last()['url']);
         $this->assertSame('orders.view', $items->last()['permission']);
     }

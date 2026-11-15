@@ -9,6 +9,7 @@ use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
 use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventoryUnverifiedAge;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use Illuminate\Support\Facades\Schema;
 
 final class EloquentInventoryAvailabilityReader implements InventoryAvailabilityReader
@@ -54,7 +55,14 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     'code' => $warehouse->code, 'country_code' => $warehouse->country_code,
                     'priority' => (int) $warehouse->priority, 'inventory_state' => $state,
                     'fulfillment_available_on' => $warehouse->fulfillment_available_on?->toDateString(),
-                    'can_auto_allocate' => strtoupper((string) $warehouse->code) !== 'US-AMZ' && $state === 'confirmed' && ($warehouse->fulfillment_available_on === null || $warehouse->fulfillment_available_on->isToday() || $warehouse->fulfillment_available_on->isPast()),
+                    // A missing full-warehouse import must not suppress an
+                    // independently known SKU in another product row.
+                    'can_auto_allocate' => strtoupper((string) $warehouse->code) !== 'US-AMZ'
+                        && ($state === 'confirmed' || (config('inventory_sku_gate.enabled', false)
+                            && $state === 'manual' && (int) $warehouse->inventories_count > 0))
+                        && ($warehouse->fulfillment_available_on === null
+                            || $warehouse->fulfillment_available_on->isToday()
+                            || $warehouse->fulfillment_available_on->isPast()),
                     'service_regions' => $warehouse->serviceRegions->map(fn ($region): array => [
                         'country_code' => strtoupper((string) $region->country_code), 'priority' => (int) $region->priority,
                     ])->values()->all(),
@@ -73,11 +81,19 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
         $rows = WarehouseInventory::query()
             ->whereIn('product_id', $ids->all())
             ->whereIn('warehouse_id', $warehouses->pluck('id')->all())
-            ->get(['product_id', 'warehouse_id', 'quantity_on_hand', 'quantity_reserved', 'expected_restock_qty'])
+            ->get(['product_id', 'warehouse_id', 'quantity_on_hand', 'quantity_reserved', 'expected_restock_qty',
+                'provider_stock_synced_at', 'provider_available_quantity'])
             ->keyBy(fn (WarehouseInventory $row): string => $row->product_id.':'.$row->warehouse_id);
         $usSm = $warehouses->firstWhere('code', 'US-SM');
         $providerAvailable = $usSm !== null
             ? app(XlwmsInventoryCoverage::class)->providerAvailableByProductId((int) $usSm['id']) : null;
+        // Read-only diagnostics. Never use a blocked OMS snapshot to authorize a shipment.
+        $latestUsSmSnapshot = $usSm !== null && Schema::hasTable('xlwms_inventory_snapshots')
+            ? XlwmsInventorySnapshot::query()->where('warehouse_id', $usSm['id'])->orderByDesc('id')->first()
+            : null;
+        $omsSnapshotUnapplied = $latestUsSmSnapshot !== null
+            && (bool) ($latestUsSmSnapshot->summary['v2'] ?? false)
+            && ! in_array($latestUsSmSnapshot->status, ['applied', 'partial_applied'], true);
         $unknown = collect();
         $dated = collect();
         if ($usSm !== null && Schema::hasTable('xlwms_inventory_unverified_ages')) {
@@ -87,7 +103,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
 
         $result = [];
         foreach ($ids as $productId) {
-            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId, $usSm, $unknown, $dated, $providerAvailable): array {
+            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId, $usSm, $unknown, $dated, $providerAvailable, $omsSnapshotUnapplied, $latestUsSmSnapshot): array {
                 /** @var WarehouseInventory|null $row */
                 $row = $rows->get($productId.':'.$warehouse['id']);
                 $state = (string) $warehouse['inventory_state'];
@@ -95,6 +111,31 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                 $onHand = $knownForProduct ? (int) ($row?->quantity_on_hand ?? 0) : null;
                 $reserved = $knownForProduct ? (int) ($row?->quantity_reserved ?? 0) : null;
                 $available = $knownForProduct ? max($onHand - $reserved, 0) : null;
+                $erpAvailable = $available;
+                $isMorePlus = strtoupper((string) $warehouse['code']) === 'US-LA';
+                // MorePlus' signed provider stock is the authority for this
+                // SKU; a different SKU's failed sync must not poison it.
+                if (config('inventory_sku_gate.enabled', false)
+                    && $isMorePlus && ($row?->provider_stock_synced_at === null
+                    || $row?->provider_available_quantity === null)) {
+                    $available = 0;
+                } elseif (config('inventory_sku_gate.enabled', false)
+                    && $isMorePlus && $available !== null) {
+                    $available = min($available, max(0, (int) $row->provider_available_quantity - (int) $reserved));
+                }
+                $isUsSm = $usSm !== null && (int) $warehouse['id'] === (int) $usSm['id'];
+                $stockGateReason = config('inventory_sku_gate.enabled', false)
+                    && $isMorePlus
+                    && ($row?->provider_stock_synced_at === null || $row?->provider_available_quantity === null)
+                    ? 'provider_sku_not_synced' : null;
+                if ($isUsSm && $erpAvailable !== null && $erpAvailable > 0 && $providerAvailable !== null) {
+                    if ($omsSnapshotUnapplied) {
+                        $stockGateReason = $latestUsSmSnapshot->status === 'blocked'
+                            ? 'oms_snapshot_blocked' : 'oms_snapshot_not_applied';
+                    } elseif (! array_key_exists((int) $productId, $providerAvailable)) {
+                        $stockGateReason = 'oms_sku_not_confirmed';
+                    }
+                }
                 if ($available !== null && $usSm !== null && (int) $warehouse['id'] === (int) $usSm['id']
                     && $providerAvailable !== null) {
                     // Count OMS locked physical stock in QOH, NOT in automatic
@@ -109,6 +150,14 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     if ($unverified > 0) $available = min($available, max($onHand - $unverified - $reserved, 0));
                 }
 
+                if (($isUsSm || $isMorePlus) && $stockGateReason === null
+                    && $erpAvailable !== null && $erpAvailable > 0
+                    && $available !== null && $available === 0) {
+                    $stockGateReason = $providerAvailable !== null
+                        && (int) ($providerAvailable[(int) $productId] ?? 0) === 0
+                        ? 'oms_no_available_stock' : 'stock_age_or_reservation_gate';
+                }
+
                 return [
                     'warehouse_id' => $warehouse['id'],
                     'warehouse_slug' => $warehouse['slug'],
@@ -118,6 +167,8 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     'quantity_on_hand' => $onHand,
                     'quantity_reserved' => $reserved,
                     'quantity_available' => $available,
+                    'erp_quantity_available' => $erpAvailable,
+                    'stock_gate_reason' => $stockGateReason,
                     // A missing product row does not prove that expected restock is zero.
                     'expected_restock_qty' => $row !== null && $row->expected_restock_qty !== null ? (int) $row->expected_restock_qty : null,
                 ];

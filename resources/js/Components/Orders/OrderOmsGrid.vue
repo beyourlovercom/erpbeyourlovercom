@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import OmsGrid from '../../Components/DataGrid/OmsGrid.vue'
 import OrderOmsCell from './OrderOmsCell.vue'
+import OrderWarehouseRouteGridCell from './OrderWarehouseRouteGridCell.vue'
 import OrderOmsTransfer from './OrderOmsTransfer.vue'
 import { toOrderOmsItemRows, type OrderGridOrder } from './orderOmsRows'
 
@@ -20,6 +21,8 @@ const props = defineProps<{
   filters: Record<string, string>
   canEditWorkflowStatus?: boolean
   workflowStatusOptions?: Option[]
+  canEditWarehouseRoute?:boolean
+  warehouseRouteOptions?:{code:string;name:string}[]
   exportUrl: string
   canImport: boolean
   canConfirmImport?: boolean
@@ -65,7 +68,10 @@ const columns = computed<ColDef<Record<string, unknown>>[]>(() => [
   basic('date', 'order_date', '订单日期', 126, true, true),
   basic('recipient', 'recipient', '收件人', 135, true),
   basic('country', 'country', '国家', 92, true),
-  basic('warehouse', 'warehouse_name', '仓库', 132, true),
+  { ...basic('warehouse', 'warehouse_name', '所属分仓', 192, true),
+    cellRenderer:OrderWarehouseRouteGridCell,
+    cellRendererParams:{warehouseRouteOptions:props.warehouseRouteOptions??[],
+      canEditWarehouseRoute:props.canEditWarehouseRoute??false} },
   { ...basic('status', 'status_label', '工作状态', 172, true),
     cellRenderer: OrderOmsCell, cellRendererParams: {
       mode: 'status', canEdit: props.canEditWorkflowStatus === true,
@@ -155,7 +161,7 @@ const columnFilterValues = computed(() =>
     preference-scope="account"
     :default-pinned-left="1"
     :default-pinned-right="1"
-    :required-column-ids="['order_number']"
+    :required-column-ids="['order_number','warehouse']"
     row-identity-key="_oms_line_key"
     selection-order-key="id"
     :selected-order-ids="selectedOrderIds"

@@ -9,6 +9,7 @@ use App\Modules\Inventory\Application\InventoryReservationService;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use DomainException;
@@ -187,10 +188,111 @@ final class InventoryReservationFoundationTest extends TestCase
         app(InventoryReservationService::class)->reserve($order->id, $warehouse->id, 'res-forbidden', null, $user);
     }
 
+    public function test_moreplus_reservation_and_commit_never_decrement_provider_mirror(): void
+    {
+        $user = $this->userWith(['inventory.operate']);
+        $warehouse = Warehouse::query()->where('slug', 'us-la')->firstOrFail();
+        $product = $this->product('RES-MP-PROVIDER');
+        $order = $this->order([[$product, 2]]);
+        $row = WarehouseInventory::create([
+            'warehouse_id' => $warehouse->id, 'product_id' => $product->id,
+            'quantity_on_hand' => 7, 'quantity_reserved' => 0,
+            'provider_available_quantity' => 6, 'provider_stock_synced_at' => now(),
+        ]);
+        $service = app(InventoryReservationService::class);
+        $reservation = $service->reserve($order->id, $warehouse->id, 'res-moreplus-ledger', null, $user);
+        $this->assertSame(2, $row->fresh()->quantity_reserved);
+        $this->assertSame(6, $row->fresh()->quantity_available);
+        $service->commit($reservation['id'], $user);
+        $this->assertSame(7, $row->fresh()->quantity_on_hand);
+        $this->assertSame(6, $row->fresh()->quantity_available);
+        $this->assertSame(0, $row->fresh()->quantity_reserved);
+    }
+
+    public function test_moreplus_requires_real_signed_provider_stock_mirror_not_old_excel(): void
+    {
+        $user = $this->userWith(['inventory.operate']);
+        $warehouse = Warehouse::query()->where('slug', 'us-la')->firstOrFail();
+        $this->confirmFull($warehouse);
+        $product = $this->product('RES-MP-NO-SYNC');
+        $order = $this->order([[$product, 1]]);
+        WarehouseInventory::create([
+            'warehouse_id' => $warehouse->id, 'product_id' => $product->id,
+            'quantity_on_hand' => 70, 'quantity_reserved' => 0,
+        ]);
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('authoritative provider inventory sync');
+        app(InventoryReservationService::class)->reserve($order->id, $warehouse->id, 'res-mp-denied', null, $user);
+    }
+
+    public function test_sku_isolation_allows_single_manual_sku_reservation_without_full_warehouse_import(): void
+    {
+        config()->set('inventory_sku_gate.enabled',true);
+        $user=$this->userWith(['inventory.operate']);
+        [$order,$warehouse,$product]=$this->scenario(10,[2],false);
+        $service=app(InventoryReservationService::class);
+        $reserved=$service->reserve($order->id,$warehouse->id,'res-sku-isolated-ny',null,$user);
+        self::assertSame('reserved',$reserved['status']);
+        self::assertSame(2,(int)WarehouseInventory::where('product_id',$product->id)->value('quantity_reserved'));
+        $service->commit($reserved['id'],$user);
+        self::assertSame(8,(int)WarehouseInventory::where('product_id',$product->id)->value('quantity_on_hand'));
+        self::assertSame(0,(int)WarehouseInventory::where('product_id',$product->id)->value('quantity_reserved'));
+    }
+
+    public function test_us_sm_partial_provider_coverage_only_reserves_verified_sku_and_never_decrements_provider_mirror(): void
+    {
+        config()->set('inventory_sku_gate.enabled',true);
+        $user=$this->userWith(['inventory.operate']);
+        $warehouse=Warehouse::query()->where('code','US-SM')->firstOrFail();
+        $good=$this->product('GLOBAL-SM-VERIFIED');
+        $unknown=$this->product('GLOBAL-SM-UNKNOWN');
+        $order=$this->order([[$good,2]]);
+        $badOrder=$this->order([[$unknown,1]]);
+        $inventory=WarehouseInventory::create([
+            'warehouse_id'=>$warehouse->id,'product_id'=>$good->id,
+            'quantity_on_hand'=>9,'quantity_reserved'=>0,
+        ]);
+        WarehouseInventory::create([
+            'warehouse_id'=>$warehouse->id,'product_id'=>$unknown->id,
+            'quantity_on_hand'=>30,'quantity_reserved'=>0,
+        ]);
+        $snapshot=XlwmsInventorySnapshot::query()->create([
+            'warehouse_id'=>$warehouse->id,'wh_code'=>'OMS-US-SM',
+            'checksum'=>hash('sha256','GLOBAL-SM-PARTIAL'),'status'=>'partial_applied',
+            'fetched_at'=>now(),'applied_at'=>now(),
+            'provider_sku_count'=>2,'mapped_sku_count'=>1,'unmatched_sku_count'=>1,'blocked_sku_count'=>1,
+            'summary'=>['v2'=>true,'v2_applied'=>true,'sku_isolation'=>true,
+                'sku_isolation_write_proof'=>true,
+                'applied_product_ids'=>[$good->id]],
+        ]);
+        $snapshot->rows()->create([
+            'provider_sku'=>'GLOBAL-SM-VERIFIED','product_id'=>$good->id,
+            'resolution_status'=>'matched','oms_total'=>9,'oms_available'=>9,'oms_locked'=>0,
+        ]);
+        $snapshot->rows()->create([
+            'provider_sku'=>'GLOBAL-SM-UNKNOWN','product_id'=>null,
+            'resolution_status'=>'unmatched','oms_total'=>0,'oms_available'=>0,'oms_locked'=>0,
+        ]);
+        $service=app(InventoryReservationService::class);
+        $reserved=$service->reserve($order->id,$warehouse->id,'res-sku-isolated-sm',null,$user);
+        self::assertSame('reserved',$reserved['status']);
+        self::assertSame(2,(int)$inventory->fresh()->quantity_reserved);
+        $service->commit($reserved['id'],$user);
+        self::assertSame(9,(int)$inventory->fresh()->quantity_on_hand);
+        self::assertSame(0,(int)$inventory->fresh()->quantity_reserved);
+        try {
+            $service->reserve($badOrder->id,$warehouse->id,'res-sku-unknown-sm',null,$user);
+            self::fail('Unverified OMS SKU must not reserve any inventory.');
+        } catch (DomainException $e) {
+            self::assertStringContainsString('OMS inventory SKU not confirmed',$e->getMessage());
+        }
+        self::assertSame(30,(int)WarehouseInventory::where('product_id',$unknown->id)->value('quantity_on_hand'));
+    }
+
     /** @return array{0:Order,1:Warehouse,2:Product} */
     private function scenario(int $qoh, array $lineQuantities, bool $authoritative = true): array
     {
-        $warehouse = Warehouse::query()->where('slug', 'us-la')->firstOrFail();
+        $warehouse = Warehouse::query()->where('slug', 'us-ny')->firstOrFail();
         if ($authoritative) {
             $this->confirmFull($warehouse);
         }
@@ -203,7 +305,7 @@ final class InventoryReservationFoundationTest extends TestCase
 
     private function authoritativeWarehouse(): Warehouse
     {
-        $warehouse = Warehouse::query()->where('slug', 'us-la')->firstOrFail();
+        $warehouse = Warehouse::query()->where('slug', 'us-ny')->firstOrFail();
         $this->confirmFull($warehouse);
 
         return $warehouse;

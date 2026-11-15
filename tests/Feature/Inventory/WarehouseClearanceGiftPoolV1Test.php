@@ -8,6 +8,8 @@ use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Application\GiftSkuResolutionService;
+use App\Modules\Inventory\Application\WarehouseClearanceService;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -155,6 +157,57 @@ final class WarehouseClearanceGiftPoolV1Test extends TestCase
         $this->assertDatabaseHas('warehouse_gift_sku_mappings', ['id' => $mappingId, 'is_active' => 0]);
         $this->assertDatabaseHas('audit_records', ['action' => 'warehouse.clearance_removed']);
         $this->assertArrayNotHasKey(strtoupper((string) $warehouse->code), app(GiftSkuResolutionService::class)->options('gift', 1));
+    }
+
+    public function test_us_sm_gift_oms_snapshot_blocked_is_diagnosed_and_recovers_only_after_applied_snapshot(): void
+    {
+        $user = $this->userWith(['inventory.view', 'inventory.operate']);
+        $warehouse = Warehouse::where('code', 'US-SM')->firstOrFail();
+        $product = $this->stockedProduct($warehouse->slug, 'CLR-OMS-BLOCKED', 10, 0);
+        $this->actingAs($user)->post("/inventory/{$warehouse->slug}/clearance", [
+            'product_ids' => [$product->id],
+        ])->assertRedirect();
+
+        $blocked = XlwmsInventorySnapshot::query()->create([
+            'warehouse_id' => $warehouse->id, 'wh_code' => 'OMS-US-SM',
+            'checksum' => hash('sha256', 'blocked-'.uniqid()), 'status' => 'blocked',
+            'fetched_at' => now(), 'summary' => ['v2' => true],
+        ]);
+        $resolver = app(GiftSkuResolutionService::class);
+        $blockedOption = $resolver->options('gift', 1)['US-SM'][0];
+        self::assertFalse($blockedOption['can_fulfill']);
+        self::assertSame(0, $blockedOption['quantity_available']);
+        self::assertSame(10, $blockedOption['erp_quantity_available']);
+        self::assertSame('oms_snapshot_blocked', $blockedOption['stock_gate_reason']);
+
+        $clearance = app(WarehouseClearanceService::class)->listForWarehouse($warehouse);
+        self::assertSame(10, $clearance[0]['quantity_available']);
+        self::assertSame(0, $clearance[0]['gift_quantity_available']);
+        self::assertTrue($clearance[0]['gift_stock_mismatch']);
+        self::assertSame('oms_snapshot_blocked', $clearance[0]['gift_stock_gate_reason']);
+
+        $this->actingAs($user)->get("/inventory/{$warehouse->slug}")->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Inventory/WarehouseShow')
+                ->where('clearanceProducts.0.gift_stock_gate_reason', 'oms_snapshot_blocked')
+                ->where('clearanceProducts.0.gift_stock_mismatch', true));
+
+        $applied = XlwmsInventorySnapshot::query()->create([
+            'warehouse_id' => $warehouse->id, 'wh_code' => 'OMS-US-SM',
+            'checksum' => hash('sha256', 'applied-'.uniqid()), 'status' => 'applied',
+            'fetched_at' => now(), 'applied_at' => now(), 'summary' => ['v2' => true],
+        ]);
+        $applied->rows()->create([
+            'provider_sku' => 'CLR-OMS-BLOCKED', 'product_id' => $product->id,
+            'resolution_status' => 'matched', 'oms_total' => 10,
+            'oms_available' => 7, 'oms_locked' => 3, 'oms_in_transit' => 0,
+        ]);
+        $ready = $resolver->options('gift', 1)['US-SM'][0];
+        self::assertTrue($ready['can_fulfill']);
+        self::assertSame(7, $ready['quantity_available']);
+        self::assertNull($ready['stock_gate_reason']);
+        self::assertSame(10, $ready['erp_quantity_available']);
+        self::assertSame($blocked->id + 1, $applied->id);
     }
 
     private function stockedProduct(string $warehouseSlug, string $sku, int $onHand, int $reserved): Product

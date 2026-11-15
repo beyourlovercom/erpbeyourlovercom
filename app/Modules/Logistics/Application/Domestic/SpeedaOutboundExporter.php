@@ -3,10 +3,12 @@
 namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use DomainException;
 use Illuminate\Support\Collection;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -54,7 +56,9 @@ final class SpeedaOutboundExporter
         if ((int) $order->items->sum('quantity') <= 0) {
             $missing[] = '申报品数量1';
         }
-
+        if ($order->items->contains(fn ($item): bool => ! WarehouseSkuPresentation::verified($item))) {
+            $missing[] = '实际发货 SKU 未登记或与分仓结果不一致';
+        }
 
         return $missing;
     }
@@ -137,7 +141,7 @@ final class SpeedaOutboundExporter
                 $sheet->insertNewRowBefore($row, 1);
                 $sheet->duplicateStyle($sheet->getStyle('A2:'.$lastColumn.'2'), "A{$row}:{$lastColumn}{$row}");
                 for ($colIndex = 1; $colIndex <= ($speeda ? 27 : 24); $colIndex++) {
-                    $column = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIndex);
+                    $column = Coordinate::stringFromColumnIndex($colIndex);
                     $sheet->setCellValue("{$column}{$row}", $sheet->getCell("{$column}2")->getValue());
                 }
             }
@@ -253,6 +257,7 @@ final class SpeedaOutboundExporter
         }
 
         $barcode = trim((string) $product->barcode_69);
+
         return [$sku, preg_match('/^[0-9]{8,14}$/D', $barcode) === 1 ? $barcode : ''];
     }
 

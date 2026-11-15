@@ -15,6 +15,11 @@ final class EloquentSkuAliasRepository implements SkuAliasRepository
         return ProductSkuAlias::where('match_key', $matchKey)->where('is_active', true)->first();
     }
 
+    public function findByMatchKeyIncludingInactive(string $matchKey): ?Model
+    {
+        return ProductSkuAlias::where('match_key', $matchKey)->first();
+    }
+
     public function createAlias(array $attributes): Model
     {
         return ProductSkuAlias::create($attributes);

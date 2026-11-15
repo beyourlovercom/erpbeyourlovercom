@@ -5,6 +5,7 @@ namespace App\Modules\Procurement\Experience\Controllers;
 use App\Modules\Identity\Application\AuthorizationKeys;
 use App\Modules\NotificationCenter\Application\NotificationPublisher;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Procurement\Application\ExternalProcurementWorkflow;
 use App\Modules\Procurement\Application\ProcurementOrderService;
 use App\Modules\Procurement\Application\ProcurementOrderStatus;
 use App\Modules\Procurement\Infrastructure\Models\ProcurementOrder;
@@ -19,6 +20,7 @@ final class ProcurementOrderController
 {
     public function __construct(
         private readonly ProcurementOrderService $service,
+        private readonly ExternalProcurementWorkflow $external,
         private readonly NotificationPublisher $notifications,
     ) {}
 
@@ -30,7 +32,9 @@ final class ProcurementOrderController
         $search = trim((string) $request->query('search', ''));
 
         $query = ProcurementOrder::query()->with(['sourceOrder:id,erp_order_id,external_order_number', 'items']);
-        if ($status) $query->where('status', $status->value);
+        if ($status) {
+            $query->where('status', $status->value);
+        }
         if ($search !== '') {
             $query->where(function ($q) use ($search): void {
                 $like = '%'.$search.'%';
@@ -42,6 +46,7 @@ final class ProcurementOrderController
 
         $toRow = function (ProcurementOrder $order): array {
             $status = ProcurementOrderStatus::tryFrom($order->status);
+
             return [
                 'id' => $order->id,
                 'procurement_number' => $order->procurement_number,
@@ -84,6 +89,7 @@ final class ProcurementOrderController
         $order->load('items');
         abort_unless($order->operationalMarkers()->where('marker', 'stockout')->exists(), 404);
         abort_if(ProcurementOrder::query()->where('source_order_id', $order->id)->exists(), 409);
+
         return Inertia::render('Procurement/Orders/Create', ['order' => $this->orderData($order)]);
     }
 
@@ -138,20 +144,25 @@ final class ProcurementOrderController
         abort_unless($request->user()->can(AuthorizationKeys::ProcurementView->value), 403);
         $procurementOrder->load(['items', 'sourceOrder', 'creator:id,name', 'updater:id,name']);
         $status = ProcurementOrderStatus::tryFrom($procurementOrder->status);
+
         return Inertia::render('Procurement/Orders/Show', [
             'procurementOrder' => $procurementOrder->only([
                 'id', 'procurement_number', 'status', 'carrier', 'tracking_number', 'completion_reason', 'completed_at',
                 'source_order_id', 'created_at', 'updated_at', 'status_updated_at',
+                'origin', 'received_at', 'received_by', 'receipt_note', 'released_at', 'released_by',
             ]) + [
                 'status_label' => $status?->label() ?? $procurementOrder->status,
-                'source_order_number' => $procurementOrder->sourceOrder->external_order_number,
+                'source_order_number' => $procurementOrder->sourceOrder?->external_order_number ?? $procurementOrder->sourceOrder?->erp_order_id,
                 'created_by_name' => $procurementOrder->creator?->name,
                 'updated_by_name' => $procurementOrder->updater?->name,
                 'items' => $procurementOrder->items->map(fn ($item) => $item->only([
                     'id', 'sku', 'product_summary', 'source_quantity', 'purchase_url', 'purchase_size', 'purchase_quantity',
+                    'received_quantity', 'received_sku',
                 ]))->all(),
             ],
-            'statusOptions' => ProcurementOrderStatus::options(),
+            'statusOptions' => $procurementOrder->origin === 'external'
+                ? array_values(array_filter(ProcurementOrderStatus::options(), fn (array $row) => in_array($row['value'], ['pending', 'purchasing', 'ordered', 'arrived'], true)))
+                : array_values(array_filter(ProcurementOrderStatus::options(), fn (array $row) => ! in_array($row['value'], ['arrived', 'released'], true))),
             'canOperate' => $request->user()->can(AuthorizationKeys::ProcurementOperate->value),
         ]);
     }
@@ -159,8 +170,26 @@ final class ProcurementOrderController
     public function update(Request $request, ProcurementOrder $procurementOrder): RedirectResponse
     {
         abort_unless($request->user()->can(AuthorizationKeys::ProcurementOperate->value), 403);
+        if ($procurementOrder->origin === 'external') {
+            $data = $request->validate([
+                'status' => ['required', Rule::in(['pending', 'purchasing', 'ordered', 'arrived'])],
+                'carrier' => ['nullable', 'string', 'max:128'],
+                'tracking_number' => ['nullable', 'string', 'max:128'],
+                'receipt_note' => ['required_if:status,arrived', 'nullable', 'string', 'max:500'],
+                'items' => ['sometimes', 'array'],
+                'items.*.id' => ['required_with:items', 'integer', 'min:1'],
+                'items.*.purchase_url' => ['nullable', 'url', 'max:2048'],
+                'items.*.purchase_size' => ['nullable', 'string', 'max:255'],
+                'items.*.purchase_quantity' => ['nullable', 'integer', 'min:1'],
+                'items.*.received_sku' => ['nullable', 'string', 'max:128'],
+                'items.*.received_quantity' => ['nullable', 'integer', 'min:0'],
+            ]);
+            $this->external->updateProgress($procurementOrder, $data['status'], $data, $request->user());
+
+            return back()->with('success', '外采进度已更新');
+        }
         $data = $request->validate([
-            'status' => ['required', Rule::in(array_column(ProcurementOrderStatus::options(), 'value'))],
+            'status' => ['required', Rule::in(['pending', 'purchasing', 'ordered', 'completed', 'cancelled'])],
             'carrier' => ['nullable', 'string', 'max:128'],
             'tracking_number' => ['nullable', 'string', 'max:128'],
         ]);
@@ -179,6 +208,16 @@ final class ProcurementOrderController
         return back()->with('success', '采购订单已更新');
     }
 
+    public function releaseToDomestic(Request $request, ProcurementOrder $procurementOrder): RedirectResponse
+    {
+        abort_unless($request->user()->can('orders.edit') && $request->user()->can('domestic.review'),
+            403, '仅 Vita 可确认外采到货并放行');
+        $this->external->release($procurementOrder, $request->user());
+
+        return redirect('/logistics/china?view=pending')
+            ->with('success', '外采到货已确认，已跳过 Kaven 二次审核并进入国内待发货');
+    }
+
     public function legacyShow(ProcurementOrder $procurementOrder): RedirectResponse
     {
         return redirect()->route('procurement.orders.show', $procurementOrder);
@@ -187,6 +226,7 @@ final class ProcurementOrderController
     private function nullableTrim(?string $value): ?string
     {
         $value = trim((string) $value);
+
         return $value === '' ? null : $value;
     }
 

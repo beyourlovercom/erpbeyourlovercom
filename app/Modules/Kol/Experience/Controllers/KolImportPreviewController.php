@@ -17,6 +17,7 @@ final class KolImportPreviewController
         return Inertia::render('Kol/ImportPreview', [
             'batches' => $this->service->workspace(),
             'canManageOwnerMapping' => $request->user()->can('kol.approvals.manage') && $request->user()->can('kol.affiliates.manage'),
+            'canOpenImportActivation' => $request->user()->can('system.permissions.manage') && $request->user()->can('kol.operate') && $request->user()->can('kol.affiliates.manage'),
         ]);
     }
 

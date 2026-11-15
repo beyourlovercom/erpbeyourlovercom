@@ -8,6 +8,9 @@ use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Application\MorePlusFifoReconciliationService;
 use App\Modules\Inventory\Application\MorePlusInventorySyncService;
+use App\Modules\Inventory\Application\WarehouseLastReadStockService;
+use Illuminate\Support\Facades\DB;
+use Carbon\CarbonImmutable;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
@@ -126,18 +129,22 @@ final class MorePlusInventorySyncTest extends TestCase
         self::assertSame(1, $row->quantity_reserved);
     }
 
-    public function test_supplier_hold_not_in_erp_reservations_blocks_available_overstatement(): void
+    public function test_supplier_hold_is_mirrored_without_blocking_and_available_tracks_provider(): void
     {
         $p = $this->product('MP-SKU-C', 3);
         $this->provider = ['MP-SKU-C' => [15, 10]];
         $service = app(MorePlusInventorySyncService::class);
         $preview = $service->preview($this->warehouse);
-        self::assertSame(1, $preview['blocked']);
-        self::assertSame('PROVIDER_AVAILABLE_BELOW_ERP_PROJECTED_AVAILABLE', $preview['rows'][0]['reason']);
+        self::assertSame(0, $preview['blocked']);
+        self::assertSame(1, $preview['ready']);
+        self::assertSame('PROVIDER_AVAILABLE_BELOW_ERP_PROJECTED_AVAILABLE', $preview['rows'][0]['accounting_warning']);
         config()->set('shipout.production_inventory_apply_enabled', true);
         $result = $service->apply($this->warehouse, $preview['checksum'], null);
-        self::assertSame(0, $result['updated']);
-        self::assertSame(3, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
+        self::assertSame(1, $result['updated']);
+        $inventory = WarehouseInventory::query()->where('product_id', $p->id)->firstOrFail();
+        self::assertSame(15, $inventory->quantity_on_hand);
+        self::assertSame(10, $inventory->quantity_available);
+        self::assertSame(10, $inventory->provider_available_quantity);
     }
 
     public function test_provider_change_invalidates_signed_preview_checksum(): void
@@ -157,7 +164,7 @@ final class MorePlusInventorySyncTest extends TestCase
         self::assertSame(2, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
     }
 
-    public function test_existing_warehouse_lot_blocks_physical_stock_overwrite(): void
+    public function test_existing_warehouse_lot_warns_accounting_but_never_blocks_stock_mirror(): void
     {
         $p = $this->product('MP-SKU-E', 3);
         WarehouseInventoryLot::query()->create([
@@ -166,10 +173,15 @@ final class MorePlusInventorySyncTest extends TestCase
         ]);
         $this->provider = ['MP-SKU-E' => [5, 5]];
         $preview = app(MorePlusInventorySyncService::class)->preview($this->warehouse);
-        self::assertSame('LOT_OR_AGING_RECONCILIATION_REQUIRED', $preview['rows'][0]['reason']);
+        self::assertSame('ready', $preview['rows'][0]['status']);
+        self::assertSame('LOT_OR_AGING_RECONCILIATION_REQUIRED', $preview['rows'][0]['accounting_warning']);
+        $result = app(MorePlusInventorySyncService::class)->syncProvider($this->warehouse, null);
+        self::assertSame(1, $result['updated']);
+        self::assertSame(5, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
+        self::assertSame(3, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
     }
 
-    public function test_absent_provider_sku_is_not_zeroed_on_full_stock_scan(): void
+    public function test_erp_skus_not_in_complete_signed_provider_stock_are_zeroed_without_touching_lots(): void
     {
         $missing = $this->product('MP-NOT-RETURNED', 11);
         $this->product('MP-RETURNED', 1);
@@ -178,7 +190,262 @@ final class MorePlusInventorySyncTest extends TestCase
         $preview = $service->preview($this->warehouse);
         config()->set('shipout.production_inventory_apply_enabled', true);
         $service->apply($this->warehouse, $preview['checksum'], null);
-        self::assertSame(11, WarehouseInventory::query()->where('product_id', $missing->id)->value('quantity_on_hand'));
+        $actual = WarehouseInventory::query()->where('product_id', $missing->id)->firstOrFail();
+        self::assertSame(0, $actual->quantity_on_hand);
+        self::assertSame(0, $actual->provider_available_quantity);
+    }
+
+    public function test_absent_provider_stock_zeroes_erp_mirror_without_erasing_reservations_or_lots(): void
+    {
+        $old = $this->product('MP-OLD-MISSING', 153, 2);
+        WarehouseInventoryLot::query()->create([
+            'warehouse_id' => $this->warehouse->id,
+            'product_id' => $old->id,
+            'stock_status' => 'sellable',
+            'putaway_date' => '2026-02-01',
+            'quantity' => 153,
+        ]);
+        $this->product('MP-SIGNED-PRESENT', 1);
+        $this->provider = ['MP-SIGNED-PRESENT' => [3, 3]];
+        $service = app(MorePlusInventorySyncService::class);
+        $preview = $service->preview($this->warehouse);
+        self::assertSame(1, $preview['absent_count']);
+        self::assertSame(153, $preview['absent_qoh']);
+        self::assertTrue($preview['absent_zero_eligible']);
+        $service->syncProvider($this->warehouse, null);
+        $row = WarehouseInventory::where('product_id', $old->id)->firstOrFail();
+        self::assertSame(0, $row->quantity_on_hand);
+        self::assertSame(0, $row->provider_available_quantity);
+        self::assertSame(2, $row->quantity_reserved);
+        self::assertSame(153, WarehouseInventoryLot::query()->where('product_id', $old->id)->sum('quantity'));
+    }
+
+    public function test_unverified_provider_identity_prevents_absent_erp_zero(): void
+    {
+        $old = $this->product('MP-MUST-NOT-ZERO', 11);
+        $this->provider = ['UNVERIFIED-PROVIDER-SKU' => [2, 2]];
+        $preview = app(MorePlusInventorySyncService::class)->preview($this->warehouse);
+        self::assertSame(1, $preview['blocked']);
+        self::assertFalse($preview['absent_zero_eligible']);
+        app(MorePlusInventorySyncService::class)->syncProvider($this->warehouse, null);
+        self::assertSame(11, WarehouseInventory::where('product_id', $old->id)->value('quantity_on_hand'));
+    }
+
+    public function test_empty_provider_stock_snapshot_fails_closed_without_zeroing_erp(): void
+    {
+        $old = $this->product('MP-PRESERVE-IF-EMPTY', 22);
+        $this->provider = [];
+        try {
+            app(MorePlusInventorySyncService::class)->syncProvider($this->warehouse, null);
+            self::fail('Empty provider results should not bulk zero the ERP.');
+        } catch (RuntimeException $error) {
+            self::assertSame('MOREPLUS_PROVIDER_STOCK_EMPTY_REVIEW_REQUIRED', $error->getMessage());
+        }
+        self::assertSame(22, WarehouseInventory::where('product_id', $old->id)->value('quantity_on_hand'));
+    }
+
+    public function test_one_click_sync_ignores_old_apply_flag_and_uses_only_provider_get(): void
+    {
+        $p = $this->product('MP-LIVE-SYNC', 100, 0);
+        WarehouseInventoryLot::query()->create([
+            'warehouse_id' => $this->warehouse->id, 'product_id' => $p->id,
+            'stock_status' => 'sellable', 'putaway_date' => '2026-10-01', 'quantity' => 100,
+        ]);
+        $this->provider = ['MP-LIVE-SYNC' => [7, 6]];
+        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        config()->set('shipout.production_inventory_apply_enabled', false);
+        $this->actingAs($operator)->withHeaders(['Sec-Fetch-Site' => 'same-origin'])->post('/inventory/us-la/provider-stock/sync')
+            ->assertRedirect()->assertSessionHas('success');
+        $local = WarehouseInventory::query()->where('product_id', $p->id)->firstOrFail();
+        self::assertSame(7, $local->quantity_on_hand);
+        self::assertSame(6, $local->quantity_available);
+        self::assertSame(100, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
+        Http::assertSentCount(3);
+        Http::assertSent(fn ($request) => $request->method() === 'GET');
+    }
+
+    public function test_manual_stock_write_is_rejected_for_external_moreplus_warehouse(): void
+    {
+        $p = $this->product('MP-NO-MANUAL', 7);
+        $item = WarehouseInventory::query()->where('product_id', $p->id)->firstOrFail();
+        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        $this->actingAs($operator)->withHeaders(['Sec-Fetch-Site' => 'same-origin'])->patch('/inventory/us-la/stock/'.$item->id.'/cell', [
+            'field' => 'quantity_on_hand', 'value' => 88,
+            'expected_updated_at' => $item->updated_at->toIso8601String(),
+        ])->assertStatus(422);
+        self::assertSame(7, $item->fresh()->quantity_on_hand);
+    }
+
+    public function test_source_explicit_zero_overwrites_positive_erp_stock(): void
+    {
+        $p = $this->product('MP-PROVIDER-ZERO', 40);
+        $this->provider = ['MP-PROVIDER-ZERO' => [0, 0]];
+        app(MorePlusInventorySyncService::class)->syncProvider($this->warehouse, null);
+        $row = WarehouseInventory::query()->where('product_id', $p->id)->firstOrFail();
+        self::assertSame(0, $row->quantity_on_hand);
+        self::assertSame(0, $row->quantity_available);
+    }
+
+    public function test_provider_available_change_without_physical_change_is_mirrored(): void
+    {
+        $p = $this->product('MP-PROVIDER-HOLD-CHANGE', 10);
+        $service = app(MorePlusInventorySyncService::class);
+        $this->provider = ['MP-PROVIDER-HOLD-CHANGE' => [10, 9]];
+        $service->syncProvider($this->warehouse, null);
+        $this->provider = ['MP-PROVIDER-HOLD-CHANGE' => [10, 4]];
+        $result = $service->syncProvider($this->warehouse, null);
+        self::assertSame(1, $result['updated']);
+        $row = WarehouseInventory::query()->where('product_id', $p->id)->firstOrFail();
+        self::assertSame(10, $row->quantity_on_hand);
+        self::assertSame(4, $row->quantity_available);
+    }
+
+    public function test_generic_import_cannot_replace_provider_authoritative_moreplus(): void
+    {
+        $this->product('MP-CANNOT-MANUAL', 7);
+        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        $this->actingAs($operator)->withHeaders(['Sec-Fetch-Site' => 'same-origin'])
+            ->postJson('/inventory/sync/preview', [
+                'warehouse_id' => $this->warehouse->id,
+                'source_type' => 'paste',
+                'sync_mode' => 'partial',
+                'paste_text' => "SKU\tQty\nMP-CANNOT-MANUAL\t99",
+            ])->assertStatus(422);
+        self::assertSame(7, WarehouseInventory::query()->where('product_id', Product::where('sku', 'MP-CANNOT-MANUAL')->value('id'))->value('quantity_on_hand'));
+    }
+
+    public function test_last_read_cache_records_successful_get_without_changing_main_inventory(): void
+    {
+        $p = $this->product('MP-REFERENCE-GET', 35);
+        $this->provider = ['MP-REFERENCE-GET' => [80, 78]];
+        $result = app(MorePlusInventorySyncService::class)->previewWithLastRead($this->warehouse);
+        self::assertSame(1, $result['ready']);
+        $ref = DB::table('warehouse_stock_read_references')->where('warehouse_id', $this->warehouse->id)
+            ->where('product_id', $p->id)->first();
+        self::assertSame(80, (int)$ref->last_read_raw_qty);
+        self::assertSame(80, (int)$ref->last_read_stock_qty);
+        self::assertSame('api_read', $ref->last_read_stock_source);
+        self::assertSame('read_success', $ref->last_read_stock_status);
+        self::assertSame(35, WarehouseInventory::query()->where('product_id',$p->id)->value('quantity_on_hand'));
+        Http::assertSentCount(3);
+        Http::assertSent(fn ($request)=>$request->method()==='GET');
+    }
+
+    public function test_read_is_persisted_when_main_erp_transaction_fails_and_next_read_error_preserves_it(): void
+    {
+        $p = $this->product('MP-REFERENCE-FAIL', 35);
+        $this->provider = ['MP-REFERENCE-FAIL' => [80, 79]];
+        $audit = \Mockery::mock(AuditRecorder::class);
+        $audit->shouldReceive('record')->andThrow(new RuntimeException('SYNTHETIC_ERP_TRANSACTION_ERROR'));
+        $service = new MorePlusInventorySyncService(
+            app(ShipOutProductionInventoryAudit::class), $audit,
+            app(WarehouseLastReadStockService::class)
+        );
+        try {
+            $service->syncProvider($this->warehouse, null);
+            self::fail('ERP mirror must fail in this synthetic test');
+        } catch (RuntimeException $e) {
+            self::assertSame('SYNTHETIC_ERP_TRANSACTION_ERROR', $e->getMessage());
+        }
+        $ref = DB::table('warehouse_stock_read_references')->where('product_id', $p->id)->first();
+        self::assertSame(80, (int)$ref->last_read_stock_qty);
+        self::assertSame('read_success_apply_failed', $ref->last_read_stock_status);
+        self::assertSame(35, WarehouseInventory::query()->where('product_id',$p->id)->value('quantity_on_hand'));
+        $this->provider = [];
+        try {
+            app(MorePlusInventorySyncService::class)->syncProvider($this->warehouse, null);
+            self::fail('Empty GET should not zero last-read cache');
+        } catch (RuntimeException $e) {
+            self::assertSame('MOREPLUS_PROVIDER_STOCK_EMPTY_REVIEW_REQUIRED', $e->getMessage());
+        }
+        $last = DB::table('warehouse_stock_read_references')->where('product_id', $p->id)->first();
+        self::assertSame(80, (int)$last->last_read_raw_qty);
+        self::assertSame(80, (int)$last->last_read_stock_qty);
+        self::assertNotNull($last->last_read_stock_at);
+        self::assertSame('read_failed_last_known', $last->last_read_stock_status);
+        self::assertSame(['source_read', 'erp_mirror_result', 'source_read_failed'],
+            DB::table('warehouse_stock_read_events')->orderBy('id')->pluck('event_type')->all());
+    }
+
+    public function test_signed_read_success_followed_by_real_outbound_is_idempotent_then_rebases(): void
+    {
+        $p = $this->product('MP-REFERENCE-SHIP', 15);
+        $lastRead = app(WarehouseLastReadStockService::class);
+        $originalTime = CarbonImmutable::getTestNow();
+        try {
+            CarbonImmutable::setTestNow('2026-11-14 10:00:00');
+            $this->provider = ['MP-REFERENCE-SHIP' => [80,80]];
+            app(MorePlusInventorySyncService::class)->previewWithLastRead($this->warehouse);
+            $proofAt = CarbonImmutable::parse('2026-11-14 10:01:00','UTC');
+            $lines = [$p->id=>['product_id'=>$p->id,'provider_sku'=>'MP-REFERENCE-SHIP','quantity'=>3]];
+            $first = $lastRead->recordVerifiedLines($this->warehouse,$lines,'OMS-123','OUT-123',$proofAt);
+            self::assertSame(1,$first['applied']);
+            self::assertSame(77, (int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('last_read_stock_qty'));
+            $again = $lastRead->recordVerifiedLines($this->warehouse,$lines,'OMS-123','OUT-123',$proofAt);
+            self::assertSame(1,$again['skipped']);
+            self::assertSame(77, (int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('last_read_stock_qty'));
+            CarbonImmutable::setTestNow('2026-11-14 10:05:00');
+            $this->provider = ['MP-REFERENCE-SHIP' => [75,75]];
+            app(MorePlusInventorySyncService::class)->previewWithLastRead($this->warehouse);
+            self::assertSame(75,(int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('last_read_stock_qty'));
+            self::assertSame(0,(int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('post_read_adjustment_qty'));
+            self::assertSame(15,WarehouseInventory::where('product_id',$p->id)->value('quantity_on_hand'));
+            $late = $lastRead->recordVerifiedLines($this->warehouse,
+                [$p->id=>['product_id'=>$p->id,'provider_sku'=>'MP-REFERENCE-SHIP','quantity'=>2]],
+                'OMS-OLDER','OUT-OLDER',CarbonImmutable::parse('2026-11-14 10:03:00','UTC'));
+            self::assertSame(1,$late['review']);
+            self::assertSame(75,(int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('last_read_stock_qty'));
+            self::assertSame(2,DB::table('warehouse_stock_read_adjustments')->count());
+        } finally {
+            CarbonImmutable::setTestNow($originalTime);
+        }
+    }
+
+    public function test_reference_overdraw_is_held_for_review_never_negative(): void
+    {
+        $p = $this->product('MP-REFERENCE-LOW', 10);
+        $this->provider = ['MP-REFERENCE-LOW' => [2, 2]];
+        app(MorePlusInventorySyncService::class)->previewWithLastRead($this->warehouse);
+        $ref = DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->first();
+        $proofAt = CarbonImmutable::parse($ref->last_read_stock_at,'UTC')->addMinute();
+        $result = app(WarehouseLastReadStockService::class)->recordVerifiedLines($this->warehouse,
+            [$p->id=>['product_id'=>$p->id,'provider_sku'=>'MP-REFERENCE-LOW','quantity'=>3]],
+            'OMS-OVER','OUT-OVER',$proofAt);
+        self::assertSame(1,$result['review']);
+        self::assertSame(2,(int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('last_read_stock_qty'));
+        self::assertSame('needs_review',DB::table('warehouse_stock_read_adjustments')->value('outcome'));
+    }
+
+    public function test_last_read_column_payload_stays_separate_from_standard_qoh(): void
+    {
+        $p = $this->product('MP-REFERENCE-DISPLAY', 12);
+        $this->provider = ['MP-REFERENCE-DISPLAY' => [28, 26]];
+        app(MorePlusInventorySyncService::class)->previewWithLastRead($this->warehouse);
+        $operator=$this->userWith(['inventory.view']);
+        $this->actingAs($operator)->get('/inventory/us-la')
+            ->assertOk()->assertInertia(fn(Assert $page)=>$page
+                ->component('Inventory/WarehouseShow')
+                ->where('warehouse.inventories.0.last_read.quantity', 28)
+                ->where('warehouse.inventories.0.quantity_on_hand',12)
+                ->etc());
+    }
+
+    public function test_ambiguous_provider_aliases_keep_raw_read_evidence_without_associating_wrong_product(): void
+    {
+        $p = $this->product('MP-DUPLICATE-CANONICAL', 17);
+        app(WarehouseLastReadStockService::class)->captureMorePlus($this->warehouse, [
+            'stock_rows' => [
+                ['provider_sku'=>'MP-ALIAS-A', 'canonical_sku'=>'MP-DUPLICATE-CANONICAL',
+                    'sku_alias_status'=>'verified', 'standard_quantity'=>22,'available_quantity'=>22],
+                ['provider_sku'=>'MP-ALIAS-B', 'canonical_sku'=>'MP-DUPLICATE-CANONICAL',
+                    'sku_alias_status'=>'verified', 'standard_quantity'=>12,'available_quantity'=>12],
+            ],
+        ], CarbonImmutable::now('UTC'));
+        self::assertSame(2, DB::table('warehouse_stock_read_references')->count());
+        self::assertSame(0, DB::table('warehouse_stock_read_references')->whereNotNull('product_id')->count());
+        self::assertSame(34, (int)DB::table('warehouse_stock_read_references')->sum('last_read_raw_qty'));
+        self::assertSame(17, WarehouseInventory::where('product_id',$p->id)->value('quantity_on_hand'));
+        self::assertSame(2, DB::table('warehouse_stock_read_events')->where('status','sku_unverified')->count());
     }
 
     private function userWith(array $permissions): User
@@ -242,15 +509,20 @@ final class MorePlusInventorySyncTest extends TestCase
         );
     }
 
-    public function test_soft_deleted_warehouse_inventory_is_never_silently_recreated(): void
+    public function test_verified_provider_stock_restores_archived_erp_mirror_without_duplicate(): void
     {
         $product = $this->product('MP-REMOVED', 3);
         WarehouseInventory::query()->where('warehouse_id', $this->warehouse->id)
             ->where('product_id', $product->id)->firstOrFail()->delete();
         $this->provider = ['MP-REMOVED' => [5, 5]];
         $preview = app(MorePlusInventorySyncService::class)->preview($this->warehouse);
-        self::assertSame(1, $preview['blocked']);
-        self::assertSame('ERP_REMOVED_INVENTORY_REVIEW_REQUIRED', $preview['rows'][0]['reason']);
+        self::assertSame(0, $preview['blocked']);
+        self::assertSame(1, $preview['ready']);
+        $result = app(MorePlusInventorySyncService::class)->syncProvider($this->warehouse, null);
+        self::assertSame(1, $result['updated']);
+        $inventory = WarehouseInventory::query()->where('product_id', $product->id)->firstOrFail();
+        self::assertSame(5, $inventory->quantity_on_hand);
+        self::assertSame(1, WarehouseInventory::withTrashed()->where('product_id', $product->id)->count());
     }
 
     public function test_warehouse_shows_verified_provider_sku_without_changing_woo_master_sku(): void
@@ -297,7 +569,8 @@ final class MorePlusInventorySyncTest extends TestCase
         $audit->shouldReceive('record')->once()->andThrow(new RuntimeException('SYNTHETIC_AUDIT_FAILURE'));
         $service = new MorePlusInventorySyncService(
             app(ShipOutProductionInventoryAudit::class),
-            $audit
+            $audit,
+            app(WarehouseLastReadStockService::class)
         );
         $preview = $service->preview($this->warehouse);
         try {
@@ -380,11 +653,11 @@ final class MorePlusInventorySyncTest extends TestCase
         $service = app(MorePlusFifoReconciliationService::class);
         $preview = $service->preview($this->warehouse);
         config()->set('shipout.production_inventory_apply_enabled', true);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_APPLY_DISABLED');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
-    public function test_fifo_apply_updates_lots_and_preserves_immutable_p9_history(): void
+    public function test_fifo_accounting_apply_cannot_rewrite_historical_lots_even_with_flags(): void
     {
         $p = $this->fifoProduct('MP-FIFO-03', 10, 7, 7);
         $aging = WarehouseStorageAgingAccrual::query()->create([
@@ -395,20 +668,24 @@ final class MorePlusInventorySyncTest extends TestCase
             'source_reference' => 'fifo-uat-aging-03', 'accrual_as_of' => '2026-04-07',
             'is_backfill' => true,
         ]);
-        $ageBefore = $aging->fresh()->getAttributes();
-        $service = app(MorePlusFifoReconciliationService::class);
-        $preview = $service->preview($this->warehouse);
+        $before = $aging->fresh()->getAttributes();
         config()->set('shipout.production_inventory_apply_enabled', true);
         config()->set('shipout.production_fifo_apply_enabled', true);
         config()->set('shipout.production_fifo_approved_skus', ['MP-FIFO-03']);
-        config()->set('shipout.production_fifo_max_units', 3);
-        $result = $service->apply($this->warehouse, $preview['checksum'], null);
-        self::assertSame(1, $result['updated']);
-        self::assertSame(3, $result['units_decreased']);
-        self::assertSame(7, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
-        self::assertSame([3, 4], WarehouseInventoryLot::query()->where('product_id', $p->id)->orderBy('putaway_date')->pluck('quantity')->all());
-        self::assertSame($ageBefore, $aging->fresh()->getAttributes());
-        $this->assertDatabaseHas('audit_records', ['action' => 'inventory.moreplus_fifo_reconciled']);
+        config()->set('shipout.production_fifo_max_units', 999);
+        $service = app(MorePlusFifoReconciliationService::class);
+        $preview = $service->preview($this->warehouse);
+        self::assertFalse($preview['apply_enabled']);
+        try {
+            $service->apply($this->warehouse, $preview['checksum'], null);
+            self::fail('Accounting-only FIFO must be a hard stop.');
+        } catch (RuntimeException $error) {
+            self::assertSame('MOREPLUS_FIFO_ACCOUNTING_ONLY', $error->getMessage());
+        }
+        self::assertSame(10, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
+        self::assertSame([6, 4], WarehouseInventoryLot::query()->where('product_id', $p->id)->orderBy('putaway_date')->pluck('quantity')->all());
+        self::assertSame($before, $aging->fresh()->getAttributes());
+        $this->assertDatabaseMissing('audit_records', ['action' => 'inventory.moreplus_fifo_reconciled']);
     }
 
     public function test_fifo_excludes_provider_holds_and_erp_reserved_rows(): void
@@ -431,7 +708,7 @@ final class MorePlusInventorySyncTest extends TestCase
         $this->provider['MP-FIFO-DRIFT'] = [6, 6];
         config()->set('shipout.production_inventory_apply_enabled', true);
         config()->set('shipout.production_fifo_apply_enabled', true);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_SNAPSHOT_CHANGED_PREVIEW_AGAIN');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
@@ -443,26 +720,24 @@ final class MorePlusInventorySyncTest extends TestCase
         WarehouseInventoryLot::query()->where('product_id', $p->id)->orderBy('id')->firstOrFail()->update(['quantity' => 5]);
         config()->set('shipout.production_inventory_apply_enabled', true);
         config()->set('shipout.production_fifo_apply_enabled', true);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_SNAPSHOT_CHANGED_PREVIEW_AGAIN');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
-    public function test_fifo_audit_failure_rolls_back_all_lots_and_qoh(): void
+    public function test_fifo_apply_cannot_call_audit_or_change_inventory(): void
     {
         $p = $this->fifoProduct('MP-FIFO-ROLLBACK', 10, 7, 7);
         $audit = \Mockery::mock(AuditRecorder::class);
-        $audit->shouldReceive('record')->once()->andThrow(new RuntimeException('SYNTHETIC_FIFO_AUDIT_FAILURE'));
+        $audit->shouldReceive('record')->never();
         $service = new MorePlusFifoReconciliationService(app(MorePlusInventorySyncService::class), $audit);
         $preview = $service->preview($this->warehouse);
         config()->set('shipout.production_inventory_apply_enabled', true);
         config()->set('shipout.production_fifo_apply_enabled', true);
-        config()->set('shipout.production_fifo_approved_skus', ['MP-FIFO-ROLLBACK']);
-        config()->set('shipout.production_fifo_max_units', 3);
         try {
             $service->apply($this->warehouse, $preview['checksum'], null);
-            self::fail('Rollback expected');
+            self::fail('FIFO is accounting-only.');
         } catch (RuntimeException $error) {
-            self::assertSame('SYNTHETIC_FIFO_AUDIT_FAILURE', $error->getMessage());
+            self::assertSame('MOREPLUS_FIFO_ACCOUNTING_ONLY', $error->getMessage());
         }
         self::assertSame(10, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
         self::assertSame(10, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
@@ -476,7 +751,8 @@ final class MorePlusInventorySyncTest extends TestCase
             ->post('/inventory/us-la/provider-stock/preview')->assertRedirect();
         $stock = session('inventory.moreplus_provider_preview.'.$this->warehouse->id);
         $fifo = session('inventory.moreplus_fifo_preview.'.$this->warehouse->id);
-        self::assertSame(1, $stock['blocked']);
+        self::assertSame(0, $stock['blocked']);
+        self::assertSame(1, $stock['ready']);
         self::assertSame(1, $fifo['ready_fifo']);
         self::assertSame(3, $fifo['ready_units']);
         Http::assertSentCount(3);
@@ -506,7 +782,7 @@ final class MorePlusInventorySyncTest extends TestCase
         $service = app(MorePlusFifoReconciliationService::class);
         $preview = $service->preview($this->warehouse);
         self::assertFalse($preview['apply_enabled']);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_OWNER_SCOPE_NOT_APPROVED');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
@@ -520,7 +796,7 @@ final class MorePlusInventorySyncTest extends TestCase
         $service = app(MorePlusFifoReconciliationService::class);
         $preview = $service->preview($this->warehouse);
         self::assertFalse($preview['apply_enabled']);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_UNITS_EXCEED_OWNER_SCOPE');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
@@ -534,21 +810,16 @@ final class MorePlusInventorySyncTest extends TestCase
         $service = app(MorePlusFifoReconciliationService::class);
         $preview = $service->preview($this->warehouse);
         self::assertFalse($preview['apply_enabled']);
-        $this->expectExceptionMessage('MOREPLUS_FIFO_SKU_OUTSIDE_OWNER_SCOPE');
+        $this->expectExceptionMessage('MOREPLUS_FIFO_ACCOUNTING_ONLY');
         $service->apply($this->warehouse, $preview['checksum'], null);
     }
 
-    public function test_fifo_batch_is_atomic_when_second_sku_audit_fails(): void
+    public function test_fifo_batch_is_readonly_for_multiple_skus_even_when_owner_flags_enabled(): void
     {
         $a = $this->fifoProduct('MP-FIFO-ATOMIC-A', 10, 7, 7);
         $b = $this->fifoProduct('MP-FIFO-ATOMIC-B', 10, 7, 7);
-        $count = 0;
         $audit = \Mockery::mock(AuditRecorder::class);
-        $audit->shouldReceive('record')->twice()->andReturnUsing(function () use (&$count): void {
-            if (++$count === 2) {
-                throw new RuntimeException('SECOND_SKU_AUDIT_FAILS');
-            }
-        });
+        $audit->shouldReceive('record')->never();
         $service = new MorePlusFifoReconciliationService(app(MorePlusInventorySyncService::class), $audit);
         $preview = $service->preview($this->warehouse);
         config()->set('shipout.production_inventory_apply_enabled', true);
@@ -557,13 +828,13 @@ final class MorePlusInventorySyncTest extends TestCase
         config()->set('shipout.production_fifo_max_units', 6);
         try {
             $service->apply($this->warehouse, $preview['checksum'], null);
-            self::fail('Whole transaction must roll back');
+            self::fail('FIFO is accounting-only.');
         } catch (RuntimeException $error) {
-            self::assertSame('SECOND_SKU_AUDIT_FAILS', $error->getMessage());
+            self::assertSame('MOREPLUS_FIFO_ACCOUNTING_ONLY', $error->getMessage());
         }
-        foreach ([$a, $b] as $p) {
-            self::assertSame(10, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
-            self::assertSame(10, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
+        foreach ([$a, $b] as $product) {
+            self::assertSame(10, WarehouseInventory::query()->where('product_id', $product->id)->value('quantity_on_hand'));
+            self::assertSame(10, WarehouseInventoryLot::query()->where('product_id', $product->id)->sum('quantity'));
         }
     }
 

@@ -124,6 +124,7 @@ const logistics = (order: ProcurementRow) => {
         <div>
           <p class="mvp-kicker">Purchase OS</p>
           <h2>采购订单</h2>
+          <a class="erp-btn erp-btn-secondary" href="/purchase/external">国内发货 · 外采单</a>
           <p>跟进真实缺货订单的采购状态与采购物流。</p>
           <button v-if="globalGridPilotAvailable" type="button" class="erp-btn erp-btn-secondary"
             data-testid="procurement-global-toggle" @click="toggleGlobalPilot">{{globalGridPilotEnabled?'返回原列表':'Dev · Global Grid'}}</button>

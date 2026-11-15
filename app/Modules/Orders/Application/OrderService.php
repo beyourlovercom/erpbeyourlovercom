@@ -25,7 +25,8 @@ final class OrderService
         'address_line_1', 'address_line_2', 'postal_code',
     ];
 
-    private const OPERATIONAL_MARKERS = ['exception', 'in_transit', 'return', 'stockout'];
+    // Core exception/stockout can only mutate through OrderProgressTransitionService.
+    private const OPERATIONAL_MARKERS = ['in_transit', 'return'];
 
     public function __construct(
         private readonly AuditRecorder $audit,
@@ -35,6 +36,7 @@ final class OrderService
         private readonly ProductExternalReferenceRepository $productExternalRefs,
         private readonly ConfirmedLossReader $confirmedLosses,
         private readonly OrderProgressQuery $progressQueries,
+        private readonly OrderManualFieldProtection $manualProtection,
     ) {}
 
     public function create(array $attributes, array $items, ?Authenticatable $actor, bool $allowMissingAddress = false): Model
@@ -105,23 +107,30 @@ final class OrderService
                 ->first();
 
             $created = $reference === null;
+            $protected = [];
             if ($reference) {
                 $order = $orderClass::query()->whereKey($reference->order_id)->lockForUpdate()->firstOrFail();
                 $before = $this->inboundAuditData($order);
+                $protected = $this->manualProtection->forOrder($order);
                 $localStatus = $order->order_status instanceof \BackedEnum ? $order->order_status->value : (string) $order->order_status;
                 $nextStatus = $localStatus;
-                if ($localStatus === OrderStatus::PendingShipment->value && $data->orderStatus === OrderStatus::Cancelled->value) {
+                $allocated = $order->fulfillmentAllocation()->exists() || $order->shipment()->exists();
+                if (! $allocated && ! isset($protected['order.order_status'])
+                    && $localStatus === OrderStatus::PendingShipment->value
+                    && $data->orderStatus === OrderStatus::Cancelled->value) {
                     $nextStatus = OrderStatus::Cancelled->value;
                 }
-                $order->fill([
-                    'source_type' => OrderSourceType::WooCommerce->value,
-                    'order_kind' => OrderKind::Customer->value,
+                $incomingFields = [
                     'external_order_number' => $data->externalOrderNumber,
                     'order_date' => $data->orderDate,
                     'order_note' => $data->orderNote,
                     'currency' => $data->currency,
                     'order_status' => $nextStatus,
-                ])->save();
+                ];
+                $safeFields = array_filter($incomingFields, fn ($value, string $key): bool => ! isset($protected['order.'.$key]) && ! ($allocated && $key === 'order_status'),
+                    ARRAY_FILTER_USE_BOTH
+                );
+                $order->fill($safeFields)->save();
             } else {
                 $order = $orderClass::create([
                     'internal_order_number' => $this->nextOrderNumber(OrderKind::Customer->value),
@@ -144,20 +153,25 @@ final class OrderService
                 $before = null;
             }
 
-            $order->address()->updateOrCreate(['order_id' => $order->getKey()], $data->address);
-            $order->items()->delete();
-            $wooReference = $data->provider.':'.$data->reference;
-            foreach ($data->items as $item) {
-                $resolved = $this->resolveInboundProductFields($item, $wooReference, $data->connectionKey);
-                $order->items()->create([
-                    'product_id' => $resolved['product_id'],
-                    'woocommerce_line_item_id' => $item['woocommerce_line_item_id'] ?? null,
-                    'sku' => $resolved['sku'],
-                    'product_summary' => $resolved['product_summary'],
-                    'quantity' => (int) $item['quantity'],
-                    'unit_price' => (string) $item['unit_price'],
-                    'line_revenue' => $this->lineRevenue((string) $item['unit_price'], (int) $item['quantity']),
-                ]);
+            $allocated = ! $created && (
+                $order->fulfillmentAllocation()->exists() || $order->shipment()->exists()
+            );
+            $safeAddress = array_filter(
+                $data->address,
+                fn ($value, string $key): bool => ! isset($protected['address.'.$key]) && ! $allocated,
+                ARRAY_FILTER_USE_BOTH,
+            );
+            if ($safeAddress !== []) {
+                $order->address()->updateOrCreate(['order_id' => $order->getKey()], $safeAddress);
+            }
+            if ($created || (! $allocated && ! isset($protected['items']))) {
+                $this->reconcileInboundItems($order, $data);
+            } elseif ($this->hasInboundItemDrift($order, $data)) {
+                $this->record($actor, 'order.inbound_items_conflict_preserved', $order,
+                    after: ['order_id' => (int) $order->id, 'manual_override' => isset($protected['items']),
+                        'allocation_protected' => $allocated],
+                    reason: 'erp_manual_or_warehouse_sku_authoritative',
+                    source: AuditSource::WooCommerceInbound);
             }
             $reference->forceFill(['provider_modified_at' => $data->providerModifiedAt])->save();
             if ($data->settlementEvidence !== null) {
@@ -237,6 +251,11 @@ final class OrderService
             $after = $this->auditData($lockedOrder);
             $after['address'] = $lockedOrder->address?->fresh()?->toArray();
             $after['items'] = $lockedOrder->items()->get()->toArray();
+            $this->manualProtection->protect(
+                $lockedOrder,
+                $this->manualProtection->changedKeys($before, $after),
+                $actor,
+            );
             if ($reason) {
                 $after['amendment_reason'] = $reason;
             }
@@ -244,6 +263,72 @@ final class OrderService
 
             return $lockedOrder->fresh(['items', 'owner', 'address']);
         });
+    }
+
+    /**
+     * Woo re-import must retain stable ERP order_item IDs. Deleting/recreating
+     * breaks Vita's saved gift selection and silently resurrects 'gift'.
+     */
+    private function reconcileInboundItems(Model $order, NormalizedInboundOrder $data): void
+    {
+        $existing = $order->items()->get()->keyBy('woocommerce_line_item_id');
+        $keepIds = [];
+        $seen = [];
+        $wooReference = $data->provider.':'.$data->reference;
+        foreach ($data->items as $item) {
+            $lineId = isset($item['woocommerce_line_item_id']) ? (int) $item['woocommerce_line_item_id'] : null;
+            if ($lineId && isset($seen[$lineId])) {
+                throw new \RuntimeException('WOO_DUPLICATE_LINE_ITEM_ID');
+            }
+            if ($lineId) {
+                $seen[$lineId] = true;
+            }
+            $resolved = $this->resolveInboundProductFields($item, $wooReference, $data->connectionKey);
+            $values = [
+                'product_id' => $resolved['product_id'],
+                'woocommerce_line_item_id' => $lineId,
+                'sku' => $resolved['sku'],
+                'product_summary' => $resolved['product_summary'],
+                'quantity' => (int) $item['quantity'],
+                'unit_price' => (string) $item['unit_price'],
+                'line_revenue' => $this->lineRevenue((string) $item['unit_price'], (int) $item['quantity']),
+            ];
+            $existingItem = $lineId ? $existing->get($lineId) : null;
+            if ($existingItem) {
+                $existingItem->fill($values);
+                if ($existingItem->isDirty()) {
+                    $existingItem->save();
+                }
+                $keepIds[] = (int) $existingItem->id;
+            } else {
+                $keepIds[] = (int) $order->items()->create($values)->id;
+            }
+        }
+        $order->items()->whereNotIn('id', $keepIds)->delete();
+    }
+
+    private function hasInboundItemDrift(Model $order, NormalizedInboundOrder $data): bool
+    {
+        $local = $order->items()->get()->keyBy('woocommerce_line_item_id');
+        if ($local->count() !== count($data->items)) {
+            return true;
+        }
+        foreach ($data->items as $incoming) {
+            $id = (int) ($incoming['woocommerce_line_item_id'] ?? 0);
+            $item = $id ? $local->get($id) : null;
+            if (! $item) {
+                return true;
+            }
+            // Compare the incoming business line to the saved source identity;
+            // physical warehouse SKU is intentionally allowed to differ.
+            if (trim((string) ($item->source_sku ?: $item->sku)) !== trim((string) ($incoming['sku'] ?? ''))
+                || (int) $item->quantity !== (int) ($incoming['quantity'] ?? 0)
+                || abs((float) $item->unit_price - (float) ($incoming['unit_price'] ?? 0)) > 0.001) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function setOperationalMarker(Model $order, string $marker, bool $active, ?Authenticatable $actor): Model
@@ -313,7 +398,41 @@ final class OrderService
             ->when($filters['oms_selected_ids'] ?? null, fn ($query, array $ids) => $query->whereKey($ids))
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
-            ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
+            ->when($filters['warehouse_route_code'] ?? null, function ($query, string $code): void {
+                $allowed = [...(array) config('warehouse_master.fulfillment_codes', []), 'OUTSOURCE', 'UNASSIGNED'];
+                if (! in_array($code, $allowed, true)) {
+                    $query->whereRaw('1=0');
+
+                    return;
+                }
+                if ($code === 'UNASSIGNED') {
+                    $query->where(fn ($unassigned) => $unassigned
+                        ->where('routing_warehouse_code', $code)
+                        ->orWhere(fn ($legacy) => $legacy->whereNull('routing_warehouse_code')
+                            ->whereDoesntHave('shipment', fn ($shipment) => $shipment->whereNotNull('warehouse_id'))));
+
+                    return;
+                }
+                $query->where(fn ($route) => $route
+                    ->where('routing_warehouse_code', $code)
+                    ->orWhere(fn ($fallback) => $fallback
+                        ->whereNull('routing_warehouse_code')
+                        ->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('code', $code))));
+            })
+            ->when($filters['partner_warehouse_code'] ?? null, fn ($query, string $code) => $query
+                ->where('order_kind', '!=', 'fulfillment_derived')
+                ->where(fn ($q) => $q->where('routing_warehouse_code', $code)
+                    ->orWhere(fn ($fallback) => $fallback->whereNull('routing_warehouse_code')
+                        ->where(fn ($physical) => $physical
+                            ->whereHas('shipment.warehouse', fn ($w) => $w->where('code', $code))
+                            ->orWhereHas('originalFulfillmentChildren.shipment.warehouse',
+                                fn ($w) => $w->where('code', $code))))))
+            ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query
+                ->where(fn ($scope) => $scope
+                    ->where('routing_warehouse_code', $ownership === 'external' ? 'OUTSOURCE' : '__NONE__')
+                    ->orWhere(fn ($fallback) => $fallback
+                        ->whereNull('routing_warehouse_code')
+                        ->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))))
             ->when($filters['search'] ?? null, function ($query, string $search) use ($filters): void {
                 $search = trim($search);
 
@@ -358,13 +477,19 @@ final class OrderService
             ->when($filters['order_status'] ?? null, fn ($query, string $status) => $query->where('order_status', $status));
 
         $query->when($filters['workflow_status'] ?? null, function ($query, string $status): void {
-            if (in_array($status, ['pending_allocation', 'pending_review', 'allocated', 'partially_shipped', 'sending', 'sent', 'shipping', 'out_of_stock', 'progress_conflict', 'completed'], true)) {
+            if (in_array($status, ['pending_allocation', 'pending_review', 'allocated', 'partially_shipped', 'sending', 'sent', 'shipping', 'out_of_stock', 'exception', 'cancelled', 'progress_conflict', 'completed'], true)) {
                 $this->progressQueries->applyPhase($query, $status);
+
                 return;
             }
             if (OrderAuxiliaryStatusService::isAuxiliary($status)) {
-                $query->where(fn (Builder $q) => $q->where('workflow_status', $status)
-                    ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'workflow_aux_'.$status)));
+                $query->where('workflow_status', $status)
+                    ->orWhere(function (Builder $old) use ($status): void {
+                        $old->where(fn ($w) => $w->whereNull('workflow_status')
+                            ->orWhereNotIn('workflow_status', OrderManualHoldStatus::CODES))
+                            ->whereHas('operationalMarkers', fn ($m) => $m->where('marker', 'workflow_aux_'.$status));
+                    });
+
                 return;
             }
             $canonicalFallbacks = ['sending' => ['pending_shipment'], 'sent' => ['shipped'], 'finished' => ['completed', 'completed_delivered'], 'cancel' => ['cancelled']][$status] ?? [];
@@ -384,7 +509,6 @@ final class OrderService
             // These queries are evaluated against the full filtered orders dataset,
             // not the currently loaded AG Grid page. Only allowlisted relations/fields.
             foreach ([
-                'grid_warehouse' => ['shipment.warehouse', 'name'],
                 'grid_tracking' => ['shipment', 'tracking_number'],
                 'grid_city' => ['address', 'city'],
                 'grid_postal_code' => ['address', 'postal_code'],
@@ -394,6 +518,21 @@ final class OrderService
                     $value = $grid[$key];
                     $query->whereHas($relation, fn ($related) => $related->where($column, 'like', "%{$value}%"));
                 }
+            }
+            if (! empty($grid['grid_warehouse'])) {
+                $needle = mb_strtolower((string) $grid['grid_warehouse']);
+                $codes = collect(app(OrderWarehouseRouting::class)->options())
+                    ->filter(fn (array $row) => str_contains(mb_strtolower($row['name']), $needle)
+                        || str_contains(mb_strtolower($row['code']), $needle))
+                    ->pluck('code')->all();
+                $query->where(function (Builder $warehouses) use ($codes, $needle): void {
+                    $warehouses->whereIn('routing_warehouse_code', $codes)
+                        ->orWhere(function (Builder $physical) use ($needle): void {
+                            $physical->whereNull('routing_warehouse_code')
+                                ->whereHas('shipment.warehouse', fn ($w) => $w
+                                    ->where('name', 'like', '%'.$needle.'%'));
+                        });
+                });
             }
             // A single SKU item must satisfy *all* item-column filters.
             // Separate whereHas clauses could falsely match different lines
@@ -409,9 +548,15 @@ final class OrderService
                     $query->whereRaw('1 = 0');
                 } else {
                     $query->whereHas('items', function ($items) use ($sku, $name, $quantity): void {
-                        if ($sku !== '') $items->where('sku', 'like', "%{$sku}%");
-                        if ($name !== '') $items->where('product_summary', 'like', "%{$name}%");
-                        if ($quantity !== null) $items->where('quantity', $quantity);
+                        if ($sku !== '') {
+                            $items->where('sku', 'like', "%{$sku}%");
+                        }
+                        if ($name !== '') {
+                            $items->where('product_summary', 'like', "%{$name}%");
+                        }
+                        if ($quantity !== null) {
+                            $items->where('quantity', $quantity);
+                        }
                     });
                 }
             }
@@ -476,7 +621,9 @@ final class OrderService
                             });
                         }
                         foreach (['shipped' => ['shipped'], 'completed' => ['completed', 'completed_delivered']] as $code => $statuses) {
-                            if (! in_array($code, $codes, true)) continue;
+                            if (! in_array($code, $codes, true)) {
+                                continue;
+                            }
                             $statusQuery->orWhere(function ($fallback) use ($statuses): void {
                                 $fallback->whereIn('order_status', $statuses)
                                     ->where(function ($annotation): void {
@@ -513,25 +660,34 @@ final class OrderService
             '', 'all' => null,
             // The split source is not an executable pending-shipment row.
             'pending' => $query->where(function (Builder $progress): void {
-                    $progress->where(function (Builder $customer): void {
-                        $customer->where('order_kind', '!=', 'kol_fulfillment');
-                        $this->progressQueries->readyForShipment($customer);
-                    })->orWhere(function (Builder $kol): void {
-                        $kol->where('order_kind', 'kol_fulfillment')->where('order_status', 'pending_shipment');
-                    });
-                })->where(function (Builder $active): void {
-                    $active->whereDoesntHave('originalFulfillmentChildren')
-                        ->orWhereDoesntHave('fulfillmentAllocation', fn (Builder $allocation) => $allocation->where('status', 'submitted'));
-                }),
-            'exception' => $this->applyMarkerView($query, 'exception'),
+                $progress->where(function (Builder $customer): void {
+                    $customer->where('order_kind', '!=', 'kol_fulfillment');
+                    $this->progressQueries->readyForShipment($customer);
+                })->orWhere(function (Builder $kol): void {
+                    $kol->where('order_kind', 'kol_fulfillment')->where('order_status', 'pending_shipment')
+                        ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'exception'));
+                });
+            })->where(function (Builder $active): void {
+                $active->whereDoesntHave('originalFulfillmentChildren')
+                    ->orWhereDoesntHave('fulfillmentAllocation', fn (Builder $allocation) => $allocation->where('status', 'submitted'));
+            }),
+            'exception' => $this->progressQueries->applyPhase($query, 'exception'),
             'in_transit' => $this->applyMarkerView($query, 'in_transit'),
             'shipped' => $query->where('order_status', OrderStatus::Shipped->value),
-            'return' => $this->applyMarkerView($query, 'return'),
+            'return' => $query->where(function (Builder $returns): void {
+                $this->progressQueries->applyPhase($returns, 'returned_follow_up')
+                    ->orWhere(function (Builder $aux): void {
+                        // Existing explicit return-attention marker stays a read-only
+                        // auxiliary view, not a fabricated returned Shipment.
+                        $aux->whereHas('operationalMarkers', fn ($m) => $m->where('marker', 'return'));
+                    });
+            }),
             'loss' => $this->applyLossView($query),
             'overweight' => $query
                 ->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('is_domestic', true))
                 ->whereHas('shipment.billingEvidence', fn ($billing) => $billing->where('chargeable_weight_kg', '>', 1.5)),
-            'stockout' => $this->applyStockoutView($query),
+            'stockout' => $this->progressQueries->applyPhase($query, 'out_of_stock'),
+            'cancelled' => $this->progressQueries->applyPhase($query, 'cancelled'),
             default => null,
         };
     }

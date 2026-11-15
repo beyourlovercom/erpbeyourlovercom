@@ -3,7 +3,6 @@
 namespace App\Modules\Sync\Application;
 
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
-use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
@@ -36,10 +35,21 @@ final class WooCommerceTrackingOutboundService
     }
 
     /** @return array<string,mixed> */
-    public function pushOne(Model $order, ?Authenticatable $actor, bool $verifyRemote = false, bool $syncOrderStatus = true): array
+    public function pushOne(Model $order, ?Authenticatable $actor, bool $verifyRemote = false, bool $syncOrderStatus = true, bool $allowLegacyTrackingContract = false): array
     {
         $prepared = $this->prepare($order);
-        $record = $this->outbox->enqueue($prepared['intent']);
+        if ($allowLegacyTrackingContract) {
+            // Manual operator action: verify remote status before any Woo write.
+            // The scheduler never opts into this legacy reconciliation.
+            if (! $verifyRemote) {
+                throw new DomainException('历史同步任务只能人工执行并验证官网回执。');
+            }
+            $remoteStatus = $this->gateway->inspectOrderStatus($prepared['provider_order_id']);
+            if ($remoteStatus === '' || in_array($remoteStatus, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
+                return ['status' => 'conflict'];
+            }
+        }
+        $record = $this->outbox->enqueue($prepared['intent'], $allowLegacyTrackingContract);
 
         if ($record->status === SyncOutboxStatus::Completed) {
             if ($verifyRemote) {

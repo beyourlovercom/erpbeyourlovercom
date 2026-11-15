@@ -310,7 +310,7 @@ describe('Orders/Show V2', () => {
     await button!.trigger('click')
     expect(wrapper.text()).toContain('填写物流并发货')
     expect(wrapper.find('.ord-shipment-form').exists()).toBe(true)
-    expect(wrapper.text()).toContain('发货、重发、补发仍在上方“履约状态”处理')
+    expect(wrapper.text()).toContain('异常和缺货为真实核心状态')
   })
 
   it('offers fulfillment execution per pending split segment without changing shipped siblings', async () => {
@@ -621,15 +621,17 @@ describe('Orders/Show V2', () => {
   })
 
   it('renders explicit operational markers without replacing order status', async () => {
-    const marked = { ...baseOrder, operational_markers: ['exception'] }
+    const marked = { ...baseOrder, operational_markers: ['exception'],
+      workflow_status_projection: { code: 'exception', en: 'Exception', zh: '异常', color: 'red', source: 'canonical_projection' } }
     const wrapper = mount(Show, { props: { order: marked, audit, canMarkOperational: true } })
     expect(wrapper.text()).toContain('辅助标记')
     expect(wrapper.text()).toContain('✓ 异常')
     expect(wrapper.text()).toContain('待发货')
   })
 
-  it('lets authorized factory derived orders mark stockout through business review route, not isolated marker', async () => {
+  it('routes factory stockout shortcut through the same audited core-status HTTP action', async () => {
     vi.mocked(router.post).mockClear()
+    const patch = vi.spyOn(axios, 'patch').mockResolvedValueOnce({ data: { workflow_status: { code:'out_of_stock' } } })
     const derived={...baseOrder, order_kind:'fulfillment_derived', operational_markers:[]}
     const wrapper=mount(Show,{props:{order:derived,audit,canMarkOperational:false,
       isDomesticFactory:true,canMarkDomesticStockout:true}})
@@ -638,12 +640,16 @@ describe('Orders/Show V2', () => {
     expect(stock.attributes('disabled')).toBeUndefined()
     expect(wrapper.findAll('.ord-marker-row button').find(b=>b.text()==='异常')?.attributes('disabled')).toBeDefined()
     await stock.trigger('click')
-    expect(router.post).toHaveBeenCalledWith('/logistics/china/orders/1/stockout',{},expect.objectContaining({preserveScroll:true}))
-    expect(router.post).not.toHaveBeenCalledWith('/orders/1/operational-markers/stockout',expect.anything(),expect.anything())
+    await flushPromises()
+    expect(patch).toHaveBeenCalledWith('/orders/1/workflow-status', {
+      workflow_status: 'out_of_stock', expected_workflow_revision: 0,
+    })
+    expect(router.post).not.toHaveBeenCalled()
 
     const blocked=mount(Show,{props:{order:derived,audit,canMarkOperational:false,
       isDomesticFactory:true,canMarkDomesticStockout:false}})
     expect(blocked.findAll('.ord-marker-row button').find(b=>b.text()==='缺货')?.attributes('disabled')).toBeDefined()
+    patch.mockRestore()
   })
 
   it('shows canonical domestic stockout as active and requires restock from stockout workbench', async () => {
@@ -657,11 +663,15 @@ describe('Orders/Show V2', () => {
     await btn.trigger('click')
     expect(router.post).not.toHaveBeenCalled()
 
+    const patch = vi.spyOn(axios, 'patch').mockResolvedValueOnce({ data: { workflow_status: { code:'out_of_stock' } } })
     const overseas=mount(Show,{props:{order:baseOrder,audit,canMarkOperational:true,isDomesticFactory:false}})
-    const legacy=overseas.findAll('.ord-marker-row button').find(b=>b.text()==='缺货')!
-    await legacy.trigger('click')
-    expect(router.post).toHaveBeenCalledWith('/orders/1/operational-markers/stockout',
-      {active:true},expect.objectContaining({preserveScroll:true}))
+    const stock=overseas.findAll('.ord-marker-row button').find(b=>b.text()==='缺货')!
+    await stock.trigger('click')
+    await flushPromises()
+    expect(patch).toHaveBeenCalledWith('/orders/1/workflow-status', {
+      workflow_status: 'out_of_stock', expected_workflow_revision: 0,
+    })
+    patch.mockRestore()
   })
 
   // Immutable identity always read-only
