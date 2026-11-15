@@ -2,6 +2,15 @@
 
 This is a **Dev-only, opt-in read-only** migration experiment tracked inside the existing BYL ERP repository. Laravel remains the only order/business authority.
 
+## Updated 2026-11-15 — current main + reproducible Dev dependencies
+
+- Reference for isolated latest Laravel UAT: `docs/10_Planning_Roadmap/ERP_SITEOPS_007_R2C_R6T_LATEST_MAIN_20261115.md`. R2-C actual employee sessions are still OPEN; only isolated test accounts/data are in scope.
+- R6-T 30 tabs / 3 pins / 3 in-memory Orders snapshots passed Chrome and targeted 12/12 tests. Other ERP modules are not yet migrated into functional Vben pages.
+- A cold extract of the SHA-256-pinned Vben ZIP initially failed TypeScript because the vendor source omits `ag-grid-community` and `ag-grid-vue3` (each `36.3.0`). The versioned `scripts/patch-pinned-ag-grid.cjs` adds exactly those dependencies and frozen-lock transitive metadata, preserving original Vite lock values.
+- The normal `scripts/bootstrap.cjs --apply-overlay` now applies this pin to the isolated 007 Dev frontend, and refuses unknown or partially-patched lock state. A dry run never mutates.
+- For independent offline verification: extract the ZIP named in `vendor-lock.json` into a fresh `D:/ai/erp-siteops/<isolated-name>/vue-vben-admin-main`; copy `overrides/` into its `apps/web-antd/`; run `node apps/erp-siteops-vben/scripts/patch-pinned-ag-grid.cjs <isolated-vben-root>`; then run `pnpm install --offline --frozen-lockfile`, `pnpm --filter @vben/web-antd typecheck`, targeted Vitest, and `pnpm --filter @vben/web-antd build`. This sequence passed on 007windows. It is not yet a vendor artifact distributable to any clean machine.
+- Proof and remaining launch gates: `docs/10_Planning_Roadmap/ERP_SITEOPS_007_R6T_REPRODUCIBLE_BASE_20261115.md`.
+
 ## Status on 2026-11-14
 - 007windows site: `http://127.0.0.1:18786/#/erp/orders` (loopback only).
 - 007windows browser tests PASS using 10 actual **Mac mini local Dev SQLite** records, not Production orders.
