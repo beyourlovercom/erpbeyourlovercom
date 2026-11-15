@@ -446,6 +446,7 @@ final class DomesticLogisticsController
             'today-weship' => $this->progressQueries->domesticTodayProvider($query, 'weship'),
             'exceptions' => $query->where(function (Builder $issues): void {
                 $issues->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'exception'))
+                    ->orWhere(fn (Builder $manual) => $this->progressQueries->applyPhase($manual, 'exception'))
                     ->orWhere(fn (Builder $conflicts) => $this->progressQueries->applyPhase($conflicts, 'progress_conflict'));
             }),
             'today' => $this->progressQueries->domesticToday($query),

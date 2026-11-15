@@ -31,6 +31,26 @@ it('edits exactly one route with optimistic revision and refreshes all list clas
   patch.mockRestore();reload.mockRestore()
 })
 
+it('moves from the old warehouse into the new real warehouse + phase workbench immediately',async()=>{
+  const patch = vi.spyOn(axios,'patch').mockResolvedValueOnce({
+    data:{routing_warehouse:{code:'US-NY',name:'美东纽约仓',source:'manual',revision:3},
+      target_url:'/logistics/oversea/us-ny?view=pending&global_grid=1'},
+  })
+  const visit = vi.spyOn(router,'visit').mockImplementation(()=>undefined)
+  const reload = vi.spyOn(router,'reload').mockImplementation(()=>undefined)
+  const wrapper = mount(OrderWarehouseRouteSelect,{props:{
+    orderId:35,projection:{...projection,code:'US-SM',name:'美国3世迈仓'},
+    options:[...options,{code:'US-NY',name:'美东纽约仓'}],canEdit:true,
+  }})
+  await wrapper.find('select').setValue('US-NY')
+  await vi.waitFor(()=>expect(visit).toHaveBeenCalledWith(
+    '/logistics/oversea/us-ny?view=pending&global_grid=1',
+    {replace:true,preserveState:false,preserveScroll:false},
+  ))
+  expect(reload).not.toHaveBeenCalled()
+  patch.mockRestore();visit.mockRestore();reload.mockRestore()
+})
+
 it('does not mutate for read-only rows or consume grid row clicks',async()=>{
   const wrapper = mount(OrderWarehouseRouteGridCell,{props:{params:{
     data:{order_id:45,routing_warehouse:projection,can_edit_warehouse_route:false},

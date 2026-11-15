@@ -66,6 +66,92 @@ final class OrderWarehouseRouting
         ];
     }
 
+    /**
+     * Exact post-save destination: a warehouse AND the order's effective
+     * phase, never a stale list from which the change was initiated.
+     * Route-only drafts remain non-dispatchable until actual fulfillment review.
+     */
+    public function destination(Order $order, ?Authenticatable $actor = null): string
+    {
+        $route = $this->project($order)['code'];
+        $phase = app(OrderProgressResolver::class)->resolve($order)
+            ?? ($order->workflow_status ?: 'sending');
+
+        $view = match ($phase) {
+            'pending_allocation', 'allocated' => 'pending_allocation',
+            'out_of_stock' => 'stockout',
+            'exception', 'missing_info', 'progress_conflict',
+            'claims', 'returned_follow_up', 'renew',
+            'freight_product_cost_follow_up' => 'exceptions',
+            'pending_review' => 'review',
+            'sending' => 'pending',
+            'sent', 'shipping', 'partially_shipped', 'completed' => 'shipped',
+            'cancelled', 'archived' => 'cancelled',
+            default => 'pending',
+        };
+        if ($view === 'pending_allocation') {
+            return '/logistics/wait-stock?global_grid=1';
+        }
+        if ($view === 'cancelled') {
+            return '/orders?view=cancelled';
+        }
+        if ($route === self::UNASSIGNED) {
+            return '/orders?view='.($view === 'exceptions' ? 'exception' : $phase);
+        }
+
+        // Staff-only permissions are still enforced by destination controllers.
+        // A restricted actor uses the common Orders list they may already read.
+        if ($actor && ! $actor->can('logistics.view')) {
+            return '/orders?view='.($view === 'exceptions' ? 'exception' : $phase);
+        }
+
+        $overseas = [
+            'US-NY' => 'us-ny',
+            'US-LA' => 'us-moreplus',
+            'US-SM' => 'us-3sm',
+            'DE' => 'de-tianyun',
+            'CA' => 'ca',
+        ];
+        if (isset($overseas[$route])) {
+            $queue = in_array($view, ['pending', 'review', 'stockout', 'exceptions', 'shipped'], true)
+                ? $view : 'all';
+
+            return '/logistics/oversea/'.$overseas[$route].'?view='.$queue.'&global_grid=1';
+        }
+        if ($route === 'FACTORY') {
+            if ($view === 'shipped') {
+                return '/orders?view=shipped&warehouse_route_code=FACTORY';
+            }
+            $queue = match ($view) {
+                'stockout', 'exceptions', 'review' => $view,
+                default => 'pending',
+            };
+
+            return '/logistics/china?view='.$queue.'&global_grid=1';
+        }
+        if ($route === self::OUTSOURCE) {
+            if (in_array($view, ['exceptions', 'stockout', 'shipped'], true)) {
+                return '/orders?view='.($view === 'exceptions' ? 'exception' : $view)
+                    .'&warehouse_route_code=OUTSOURCE';
+            }
+
+            return '/purchase/external?global_grid=1';
+        }
+        if ($route === 'TINGON') {
+            return '/logistics/tingon?view='.match ($view) {
+                'stockout', 'exceptions' => $view,
+                'shipped' => 'sent',
+                'review' => 'all',
+                default => 'pending',
+            };
+        }
+
+        // A valid but not-yet-exposed specialty warehouse still receives an
+        // exact, filterable order list; never land on the wrong provider.
+        return '/orders?warehouse_route_code='.rawurlencode($route)
+            .'&view='.($view === 'exceptions' ? 'exception' : $phase);
+    }
+
     public function select(Order $order, string $code, int $revision, Authenticatable $actor): array
     {
         abort_unless($actor->can('orders.edit'), 403, '没有修改所属分仓的权限。');

@@ -235,3 +235,28 @@ it('shows exact business blocker instead of falsely claiming a revision conflict
   expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('missing_info')
   patch.mockRestore()
 })
+
+it('changes the real status workbench instead of leaving a stale row in the old tab', async () => {
+  const axios = await import('axios')
+  const { router } = await import('@inertiajs/vue3')
+  const patch = vi.spyOn(axios.default, 'patch').mockResolvedValueOnce({data:{
+    order:{workflow_revision:5},
+    workflow_status:{code:'out_of_stock',auxiliary:[]},
+    target_url:'/logistics/oversea/us-ny?view=stockout&global_grid=1',
+  }})
+  const visit = vi.spyOn(router,'visit').mockImplementation(()=>undefined)
+  const reload = vi.spyOn(router,'reload').mockImplementation(()=>undefined)
+  const wrapper = mount(OrderWorkflowStatusPill,{props:{
+    orderId:35,canEdit:true,revision:4,
+    projection:{code:'sending',en:'Sending',zh:'待发',color:'neutral',source:'canonical_projection'},
+    options:[{code:'sending',en:'Sending',zh:'待发',color:'neutral',mutable:true},
+      {code:'out_of_stock',en:'Out of stock',zh:'缺货',color:'red',mutable:true}],
+  }})
+  await wrapper.find('select').setValue('out_of_stock')
+  await vi.waitFor(()=>expect(visit).toHaveBeenCalledWith(
+    '/logistics/oversea/us-ny?view=stockout&global_grid=1',
+    {replace:true,preserveState:false,preserveScroll:false},
+  ))
+  expect(reload).not.toHaveBeenCalled()
+  patch.mockRestore();visit.mockRestore();reload.mockRestore()
+})

@@ -69,7 +69,14 @@ const update = async (next: string) => {
     code.value = response.data.workflow_status.code
     revision.value = response.data.order.workflow_revision
     auxiliary.value = response.data.workflow_status.auxiliary ?? []
-    router.reload()
+    // The same authoritative destination contract applies when a staff member
+    // changes phase inside a specific warehouse's workbench.
+    const target = String(response.data.target_url ?? '').trim()
+    if (target.startsWith('/') && !target.startsWith('//')) {
+      router.visit(target, { replace:true, preserveState:false, preserveScroll:false })
+    } else {
+      router.reload()
+    }
   } catch (e: any) {
     code.value = previous
     if (select.value) select.value.value = previous

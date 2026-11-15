@@ -25,6 +25,8 @@ const tabs=[
   {key:'brand',label:'Tingon 品牌订单'},
   {key:'all',label:'合作代发全部'},
   {key:'sent',label:'已发货 / 待回填'},
+  {key:'stockout',label:'缺货单'},
+  {key:'exceptions',label:'异常订单'},
 ]
 const term=ref(props.search)
 watch(()=>props.search,v=>term.value=v)

@@ -7,6 +7,7 @@ use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowGridOptions;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
@@ -24,7 +25,7 @@ final class TingonFulfillmentController
     public function index(Request $request, CarrierServiceCatalog $carrierCatalog): Response
     {
         $view = (string) $request->query('view', 'pending');
-        if (! in_array($view, ['pending', 'all', 'brand', 'sent'], true)) {
+        if (! in_array($view, ['pending', 'all', 'brand', 'sent', 'stockout', 'exceptions'], true)) {
             $view = 'pending';
         }
         $search = mb_substr(trim((string) $request->query('search', '')), 0, 120);
@@ -56,6 +57,8 @@ final class TingonFulfillmentController
                     ->where('shipment_status', 'pending')
                     ->whereHas('order', fn ($o) => $o->where(fn ($w) => $w
                         ->where('workflow_status', 'sending')->orWhereNull('workflow_status'))))
+                ->when($view === 'stockout', fn ($q) => $q->whereHas('order', fn ($o) => app(OrderProgressQuery::class)->applyPhase($o, 'out_of_stock')))
+                ->when($view === 'exceptions', fn ($q) => $q->whereHas('order', fn ($o) => app(OrderProgressQuery::class)->applyPhase($o, 'exception')))
                 ->when($view === 'sent', fn ($q) => $q->whereIn('shipment_status', ['shipped', 'completed']))
                 ->when($search !== '', function ($q) use ($search): void {
                     $q->where(function ($nested) use ($search): void {

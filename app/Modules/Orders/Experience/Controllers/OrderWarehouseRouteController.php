@@ -24,6 +24,9 @@ final class OrderWarehouseRouteController
             $order, $data['warehouse_code'], (int) $data['expected_routing_revision'], $request->user()
         );
 
-        return response()->json(['routing_warehouse' => $projection]);
+        return response()->json([
+            'routing_warehouse' => $projection,
+            'target_url' => $routing->destination($order->fresh(['shipment.warehouse']), $request->user()),
+        ]);
     }
 }

@@ -294,6 +294,9 @@ final class OverseaWarehouseController
             ->with(['order.address', 'order.items', 'warehouse', 'overseaReview'])
             ->where('order_id', $order)->where('warehouse_id', $warehouseId)
             ->firstOrFail();
+        abort_if($shipment->order?->routing_warehouse_code !== null
+            && $shipment->order->routing_warehouse_code !== 'US-SM',
+            409, '订单已转移至另一所属分仓，禁止原世迈仓重复导出。');
         $approved = $shipment->overseaReview?->status === 'approved'
             && (int) $shipment->overseaReview->reviewed_warehouse_id === (int) $shipment->warehouse_id;
         abort_unless($approved, 422, '订单尚未通过海外仓审核，请先审核。');
@@ -321,6 +324,8 @@ final class OverseaWarehouseController
             ->with(['order.address', 'order.items.product', 'order.shipment.warehouse', 'order.manualSync', 'order.fulfillmentParent', 'order.fulfillmentAllocation', 'order.operationalMarkers', 'order.originalFulfillmentChildren.shipment.warehouse', 'order.originalFulfillmentChildren.shipment.overseaReview', 'order.originalFulfillmentChildren.operationalMarkers', 'warehouse', 'overseaReview'])
             ->where('warehouse_id', $selectedWarehouse['id'])
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
+                ->where(fn ($routing) => $routing->whereNull('routing_warehouse_code')
+                    ->orWhere('routing_warehouse_code', $selectedWarehouse['code']))
                 ->where('order_status', '!=', 'cancelled')
                 ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
         $this->applyView($shipments, 'pending');
@@ -574,6 +579,10 @@ final class OverseaWarehouseController
             return;
         }
         if ($view === 'pending') {
+            // Even a manually selected Sending status cannot place an already
+            // shipped/issued shipment back in a pending workbench.
+            $query->where('shipment_status', 'pending')
+                ->whereNull('shipped_at');
             $query->where(function ($phase): void {
                 $phase->whereHas('order', fn (\Illuminate\Database\Eloquent\Builder $o) => $o->where('workflow_status', 'sending'))
                     ->orWhere(function ($auto): void {

@@ -398,6 +398,27 @@ final class OrderService
             ->when($filters['oms_selected_ids'] ?? null, fn ($query, array $ids) => $query->whereKey($ids))
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
+            ->when($filters['warehouse_route_code'] ?? null, function ($query, string $code): void {
+                $allowed = [...(array) config('warehouse_master.fulfillment_codes', []), 'OUTSOURCE', 'UNASSIGNED'];
+                if (! in_array($code, $allowed, true)) {
+                    $query->whereRaw('1=0');
+
+                    return;
+                }
+                if ($code === 'UNASSIGNED') {
+                    $query->where(fn ($unassigned) => $unassigned
+                        ->where('routing_warehouse_code', $code)
+                        ->orWhere(fn ($legacy) => $legacy->whereNull('routing_warehouse_code')
+                            ->whereDoesntHave('shipment', fn ($shipment) => $shipment->whereNotNull('warehouse_id'))));
+
+                    return;
+                }
+                $query->where(fn ($route) => $route
+                    ->where('routing_warehouse_code', $code)
+                    ->orWhere(fn ($fallback) => $fallback
+                        ->whereNull('routing_warehouse_code')
+                        ->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('code', $code))));
+            })
             ->when($filters['partner_warehouse_code'] ?? null, fn ($query, string $code) => $query
                 ->where('order_kind', '!=', 'fulfillment_derived')
                 ->where(fn ($q) => $q->where('routing_warehouse_code', $code)

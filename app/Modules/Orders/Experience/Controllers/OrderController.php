@@ -74,7 +74,7 @@ final class OrderController
     public function index(Request $request): Response
     {
         $kind = $this->kindOrNull($request);
-        $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']);
+        $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view', 'warehouse_route_code']);
         $scope = (string) $request->route('order_scope');
         if ($scope === 'tingon_partner') {
             $filters['partner_warehouse_code'] = 'TINGON';
@@ -131,7 +131,7 @@ final class OrderController
             'carrierLabels' => collect($this->carrierServices->options())->mapWithKeys(fn (array $row): array => [$row['value'] => $row['label']])->all(),
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order, $trackingStatuses[(int) $order->shipment?->id] ?? null, $customerGlobalGridEnabled))->toArray(),
             'filters' => [
-                ...$request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']),
+                ...$request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view', 'warehouse_route_code']),
                 ...($serverGridEnabled ? ['sort' => $sort, 'direction' => $direction, 'per_page' => $allRowsAllowed ? 'all' : (string) $orders->perPage(), ...($omsGridEnabled ? ['oms_grid' => '1'] : []), ...$gridColumnFilters] : []),
             ],
             'omsGridAvailable' => $omsGridAvailable,
@@ -653,7 +653,8 @@ final class OrderController
         }
         $updated = $this->progressTransitions->transition($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user(), $data['reason'] ?? null);
 
-        return response()->json(['order' => $this->orderData($updated), 'workflow_status' => $this->workflowProjection($updated)]);
+        return response()->json(['order' => $this->orderData($updated), 'workflow_status' => $this->workflowProjection($updated),
+            'target_url' => app(OrderWarehouseRouting::class)->destination($updated, $request->user())]);
     }
 
     public function removeAuxiliaryStatus(Request $request, Order $order, string $code): JsonResponse
@@ -664,13 +665,14 @@ final class OrderController
         $data = $request->validate(['expected_workflow_revision' => ['required', 'integer', 'min:0']]);
         $updated = $this->auxiliaryStatuses->remove($order, $code, (int) $data['expected_workflow_revision'], $request->user());
 
-        return response()->json(['order' => $this->orderData($updated), 'workflow_status' => $this->workflowProjection($updated)]);
+        return response()->json(['order' => $this->orderData($updated), 'workflow_status' => $this->workflowProjection($updated),
+            'target_url' => app(OrderWarehouseRouting::class)->destination($updated, $request->user())]);
     }
 
     public function export(Request $request): StreamedResponse
     {
         $kind = $this->kindOrNull($request);
-        $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']);
+        $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view', 'warehouse_route_code']);
         $scope = (string) $request->route('order_scope');
         if ($scope === 'tingon_partner') {
             $filters['partner_warehouse_code'] = 'TINGON';

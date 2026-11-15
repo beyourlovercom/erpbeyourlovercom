@@ -23,7 +23,14 @@ const save = async (code:string) => {
       warehouse_code: code, expected_routing_revision: props.projection.revision,
     })
     selected.value = response.data.routing_warehouse.code
-    router.reload()
+    // A successful assignment must leave the old workbench, not only repaint
+    // the dropdown in a stale AG Grid row. Navigate to its true status + route.
+    const target = String(response.data.target_url ?? '').trim()
+    if (target.startsWith('/') && !target.startsWith('//')) {
+      router.visit(target, { replace: true, preserveState: false, preserveScroll: false })
+    } else {
+      router.reload()
+    }
   } catch (e:any) {
     selected.value = props.projection.code
     error.value = e?.response?.data?.message ?? '所属分仓保存失败'

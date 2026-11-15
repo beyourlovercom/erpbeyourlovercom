@@ -12,7 +12,7 @@ use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Inertia\Testing\AssertableInertia;
+use Inertia\Testing\AssertableInertia as Assert;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
@@ -24,8 +24,10 @@ final class OrderWarehouseRoutingV1Test extends TestCase
     {
         $warehouses = [];
         foreach ([
+            'US-NY' => ['us-ny', '美东纽约仓'],
             'US-SM' => ['us-3sm', '美国3世迈仓'],
             'US-LA' => ['us-la', '美西 MorePlus 仓'],
+            'US-AMZ' => ['us-amz', '亚马逊仓·美'],
             'FACTORY' => ['factory', '中国工厂'],
             'TINGON' => ['tingon', '合作-Tingon'],
             '007' => ['007', '007 本地仓库'],
@@ -158,12 +160,12 @@ final class OrderWarehouseRoutingV1Test extends TestCase
             'warehouse_code' => 'TINGON', 'expected_routing_revision' => 0,
         ])->assertOk();
         $this->get('/logistics/tingon?view=pending')->assertOk()
-            ->assertInertia(fn (AssertableInertia $page) => $page
+            ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.routing_warehouse.code', 'TINGON')
                 ->where('orders.data.0.can_edit', false));
         $this->get('/orders/collaboration')->assertOk()
-            ->assertInertia(fn (AssertableInertia $page) => $page
+            ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.routing_warehouse.code', 'TINGON'));
 
@@ -171,17 +173,17 @@ final class OrderWarehouseRoutingV1Test extends TestCase
             'warehouse_code' => 'OUTSOURCE', 'expected_routing_revision' => 1,
         ])->assertOk();
         $this->get('/logistics/tingon?view=pending')->assertOk()
-            ->assertInertia(fn (AssertableInertia $page) => $page
+            ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 0));
         $this->get('/orders/collaboration')->assertOk()
-            ->assertInertia(fn (AssertableInertia $page) => $page
+            ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 0));
         $this->get('/orders/procurement')->assertOk()
-            ->assertInertia(fn (AssertableInertia $page) => $page
+            ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.routing_warehouse.code', 'OUTSOURCE'));
         $this->get('/purchase/external')->assertOk()
-            ->assertInertia(fn (AssertableInertia $page) => $page
+            ->assertInertia(fn (Assert $page) => $page
                 ->where('rows.total', 1)
                 ->where('rows.data.0.routing_warehouse.code', 'OUTSOURCE'));
         $this->assertDatabaseHas('shipments', ['order_id' => $order->id,
@@ -201,6 +203,123 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         $service = app(OrderService::class);
         self::assertSame(1, $service->list(['oms_grid_columns' => ['grid_warehouse' => 'MorePlus']])->total());
         self::assertSame(0, $service->list(['oms_grid_columns' => ['grid_warehouse' => '世迈']])->total());
+        self::assertSame(1, $service->list(['warehouse_route_code' => 'US-LA'])->total());
+        self::assertSame(0, $service->list(['warehouse_route_code' => 'US-SM'])->total());
+        $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'US-AMZ', 'expected_routing_revision' => 1,
+        ])->assertOk()->assertJsonPath('target_url',
+            '/orders?warehouse_route_code=US-AMZ&view=pending_review');
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id, 'routing_warehouse_code' => 'US-AMZ',
+        ]);
+        self::assertSame(1, $service->list(['warehouse_route_code' => 'US-AMZ'])->total());
+        self::assertSame(0, $service->list(['warehouse_route_code' => 'US-LA'])->total());
+    }
+
+    public function test_old_real_warehouse_cannot_write_logistics_after_staff_moves_order_elsewhere(): void
+    {
+        [$order, $actor, $warehouses] = $this->fixture();
+        $order->shipment()->create([
+            'warehouse_id' => $warehouses['US-SM']->id,
+            'shipment_status' => 'pending', 'warehouse_selection_source' => 'manual',
+        ]);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'US-NY', 'expected_routing_revision' => 0,
+        ])->assertOk();
+
+        try {
+            app(ShipmentService::class)->saveDraft($order->fresh(), [
+                'logistics_note' => 'Should be blocked at the old warehouse',
+            ], $actor);
+            self::fail('Stale source warehouse must never save logistics after re-route.');
+        } catch (HttpException $exception) {
+            self::assertSame(409, $exception->getStatusCode());
+            self::assertStringContainsString('所属分仓与实际发货仓不一致', $exception->getMessage());
+        }
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'warehouse_id' => $warehouses['US-SM']->id,
+            'logistics_note' => null,
+        ]);
+    }
+
+    public function test_warehouse_dropdown_targets_exact_new_warehouse_and_status_workbench(): void
+    {
+        [$order, $actor, $warehouses] = $this->fixture();
+        $order->shipment()->create(['warehouse_id' => $warehouses['US-SM']->id,
+            'shipment_status' => 'pending', 'warehouse_selection_source' => 'manual']);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 0,
+        ])->assertOk();
+        $route = $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'US-NY', 'expected_routing_revision' => 0,
+        ])->assertOk()->assertJsonPath('routing_warehouse.code', 'US-NY')
+            ->assertJsonPath('target_url', '/logistics/oversea/us-ny?view=pending&global_grid=1');
+        self::assertSame('US-NY', $route->json('routing_warehouse.code'));
+        $this->get('/logistics/oversea/us-3sm?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 0)->where('viewCounts.pending', 0));
+        $this->get('/logistics/oversea/us-ny?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)->where('viewCounts.pending', 1)
+            ->where('rows.data.0.routing_warehouse.code', 'US-NY'));
+
+        foreach ([
+            ['out_of_stock', 'stockout', 1],
+            ['exception', 'exceptions', 2],
+            ['missing_info', 'exceptions', 3],
+            ['sending', 'pending', 4],
+        ] as [$status, $bucket, $revision]) {
+            $this->patchJson('/orders/'.$order->id.'/workflow-status', [
+                'workflow_status' => $status, 'expected_workflow_revision' => $revision,
+            ])->assertOk()
+                ->assertJsonPath('target_url', '/logistics/oversea/us-ny?view='.$bucket.'&global_grid=1');
+            $this->get('/logistics/oversea/us-ny?view='.$bucket)
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('rows.total', 1));
+            if ($bucket !== 'pending') {
+                $this->get('/logistics/oversea/us-ny?view=pending')
+                    ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->where('rows.total', 0));
+            }
+        }
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'warehouse_id' => $warehouses['US-SM']->id,
+            'shipment_status' => 'pending',
+        ]);
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id, 'routing_warehouse_code' => 'US-NY',
+            'workflow_status' => 'sending',
+        ]);
+    }
+
+    public function test_warehouse_and_exception_state_route_to_real_domestic_and_tingon_buckets(): void
+    {
+        [$order, $actor] = $this->fixture();
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'exception', 'expected_workflow_revision' => 0,
+        ])->assertOk();
+        $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'FACTORY', 'expected_routing_revision' => 0,
+        ])->assertOk()->assertJsonPath('target_url', '/logistics/china?view=exceptions&global_grid=1');
+        $this->get('/logistics/china?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 1));
+        $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'TINGON', 'expected_routing_revision' => 1,
+        ])->assertOk()->assertJsonPath('target_url', '/logistics/tingon?view=exceptions');
+        $this->get('/logistics/tingon?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('orders.total', 1));
+        $this->get('/logistics/china?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'out_of_stock', 'expected_workflow_revision' => 1,
+        ])->assertOk()->assertJsonPath('target_url', '/logistics/tingon?view=stockout');
+        $this->get('/logistics/tingon?view=stockout')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('orders.total', 1));
+        $this->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 2,
+        ])->assertOk()->assertJsonPath('target_url', '/logistics/wait-stock?global_grid=1');
+        $this->get('/logistics/tingon?view=stockout')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
     }
 
     public function test_version_permissions_bad_options_and_archived_routes_are_rejected_without_mutation(): void

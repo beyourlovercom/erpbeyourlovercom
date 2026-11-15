@@ -155,3 +155,13 @@ DEPLOYMENT: EXCLUDED.
 - Route OUTSOURCE does not fabricate procurement. A route-only externally purchased order renders a pending-create procurement entry rather than any misleading purchase-confirmed state.
 - Isolated Dev SQLite /tmp/byl-erp-core-status-uat-20261114.sqlite was migrated with a pre-migration backup, and only synthetic UAT orders 15–20 were created. Production remains untouched.
 - New routing functionality is NOT Owner-accepted yet. PR #767 stays Draft; no main merge, no Production deploy without explicit further authorization.
+
+## Owner P0 correction — 实际进入“所属分仓 × 订单状态” (2026-11-15)
+
+Previous Dev code saved the route but used Inertia reload() after the change, leaving a stale row visible in the original AG Grid workbench. Owner's screenshot (US-SM -> US-NY) requires **save + authoritative target destination + cross-workbench query**.
+- PATCH /orders/{id}/warehouse-route now returns a server-computed target_url. The Vue select uses router.visit(target_url, replace=true, preserveState=false), rather than repainting the source workbench. PATCH workflow-status returns the same target_url, making status shifts navigate to the correct tab too.
+- US-SM -> US-NY + sending goes to /logistics/oversea/us-ny?view=pending&global_grid=1, disappears from original US-SM pending and appears in US-NY pending. From NY, statuses out_of_stock, exception and missing_info move between stockout and exceptions; sending returns to pending. All status and location tests verify mutually exclusive row counts.
+- FACTORY maps domestic pending/stockout/exceptions; TINGON adds real stockout and exceptions tabs; OUTSOURCE uses purchase queue or exact Orders status filter. US-AMZ and other specialty warehouses use filter warehouse_route_code to avoid nonexistent standalone warehouse pages.
+- Queue routing is authoritative while real physical warehouse allocation still requires its original approval gates. A route-only draft keeps NULL warehouse_id. After an order has been rerouted from an old physical warehouse, the old warehouse cannot save logistics, export or confirm shipment; safety guards cover ShipmentService draft/ship, overseas export, US-SM manual export, MorePlus batch candidate, XLWMS single-order preflight. No OMS submit, automatic inventory reservation, SKU rewrite, Woo state rewrite or Tracking overwrite.
+- Tests cover exact new warehouse and status destination, old/new workbench count migration, missing_info => exceptions, version and permissions, and old physical warehouse 409 guard.
+- Draft PR #767 only; isolated Dev data and UAT. No main merge or Production change until separate Owner authorization.
