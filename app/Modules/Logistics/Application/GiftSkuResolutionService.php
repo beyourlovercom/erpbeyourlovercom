@@ -83,6 +83,9 @@ final class GiftSkuResolutionService
         if (($row['stock_gate_reason'] ?? null) === 'oms_snapshot_not_applied') {
             abort(422, '世迈 OMS 库存快照尚未通过应用核验，暂不能选择该 Gift SKU');
         }
+        if (($row['stock_gate_reason'] ?? null) === 'provider_sku_not_synced') {
+            abort(422, '该商品的海外仓库存尚未同步成功，请同步此 SKU 后重试');
+        }
         abort_unless($available !== null && (int) $available >= (int) $item->quantity, 422, '所选实际礼品 SKU 在该仓库存不足或库存未知');
 
         return [

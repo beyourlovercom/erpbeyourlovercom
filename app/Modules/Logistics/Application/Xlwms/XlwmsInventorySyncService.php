@@ -117,7 +117,8 @@ final class XlwmsInventorySyncService
                 'reason' => $row['reason'] ?? null,
             ];
         }
-        $checksum = hash('sha256', json_encode(['snapshot_schema' => $this->v2Enabled() ? 5 : 2, 'reconciliation_mode' => $this->v2Enabled() ? 'lot_v2' : 'quantity_v1', 'wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline, 'lot_baseline' => $this->v2LotBaseline($warehouse, $rows), 'p9_consumption_baseline' => $this->v2P9ConsumptionBaseline($warehouse, $rows), 'unknown_age_baseline' => $this->v2UnknownAgeBaseline($warehouse, $rows)], JSON_THROW_ON_ERROR));
+        $checksum = hash('sha256', json_encode(['snapshot_schema' => $this->v2Enabled() ? ($this->skuIsolationEnabled() ? 6 : 5) : 2,
+            'sku_isolation' => $this->skuIsolationEnabled(), 'reconciliation_mode' => $this->v2Enabled() ? 'lot_v2' : 'quantity_v1', 'wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline, 'lot_baseline' => $this->v2LotBaseline($warehouse, $rows), 'p9_consumption_baseline' => $this->v2P9ConsumptionBaseline($warehouse, $rows), 'unknown_age_baseline' => $this->v2UnknownAgeBaseline($warehouse, $rows)], JSON_THROW_ON_ERROR));
         $status = ($unmatched > 0 || $blocked > 0) ? 'blocked' : 'read_only';
         $snapshot = $this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline);
         $this->audit->record(AuditActor::system(AuditSource::InternalSystem), 'inventory.xlwms_snapshot_'.$snapshot->status, $snapshot::class, $snapshot->id, after: $this->result($snapshot), reason: 'xlwms_inventory_sync');
@@ -151,6 +152,11 @@ final class XlwmsInventorySyncService
     {
         return DB::transaction(function () use ($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline): XlwmsInventorySnapshot {
             if ($this->v2Enabled()) {
+                if ($this->skuIsolationEnabled()) {
+                    return $this->persistSkuIsolatedV2($warehouse, $whCode, $checksum,
+                        $providerSkus, $normalized, $rows, $mismatches, $mapped,
+                        $unmatched, $blocked, $apply, $localBaseline);
+                }
                 $plan = $this->lotReconciliation->plan($warehouse, $rows, $localBaseline);
                 $allMismatches = [...$mismatches, ...$plan['blocked']];
                 if ($unmatched > 0) {
@@ -224,6 +230,190 @@ final class XlwmsInventorySyncService
         });
     }
 
+    /**
+     * A full provider read is mandatory; ONLY product-local errors are
+     * isolated. Unknown identity, FIFO conflict or an unverified SKU never
+     * authorizes that SKU. No partial OMS writes or partial order dispatch.
+     *
+     * Runs under the outer database transaction in persistAndMaybeApply().
+     */
+    private function persistSkuIsolatedV2(
+        Warehouse $warehouse, string $whCode, string $checksum,
+        array $providerSkus, array $normalized, array $rows, array $mismatches,
+        int $mapped, int $unmatched, int $blocked, bool $apply, array $localBaseline
+    ): XlwmsInventorySnapshot {
+        $plan = $this->lotReconciliation->plan($warehouse, $rows, $localBaseline);
+        $issues = [...$mismatches, ...$plan['blocked']];
+        if ($unmatched > 0) {
+            $issues[] = ['reason' => 'OMS_UNMATCHED_STOCK_SKUS', 'count' => $unmatched];
+        }
+
+        $blockedIds = [];
+        foreach ($issues as $issue) {
+            if (isset($issue['product_id'])) $blockedIds[(int) $issue['product_id']] = true;
+        }
+        $byProduct = collect($rows)
+            ->filter(fn (array $row): bool => ($row['status'] ?? null) === 'matched'
+                && isset($row['product_id'], $row['stock']['total']))
+            ->groupBy('product_id');
+        foreach ($byProduct as $id => $matches) {
+            if ($matches->count() < 2) continue;
+            $blockedIds[(int) $id] = true;
+            $issues[] = ['reason' => 'OMS_MULTIPLE_SKUS_ONE_ERP_PRODUCT',
+                'product_id' => (int) $id,
+                'skus' => $matches->pluck('sku')->values()->all()];
+        }
+        $eligible = array_filter($plan['products'],
+            static fn (array $product): bool => ! isset($blockedIds[(int) $product['product_id']]));
+        ksort($eligible, SORT_NUMERIC);
+
+        // Automatic changes are bounded per SKU. An excessive delta blocks
+        // only that SKU, not the other independently verified stock.
+        $skuLimit = max(0, (int) config('xlwms.inventory_auto_max_sku_delta_units', 5));
+        $totalLimit = max(0, (int) config('xlwms.inventory_auto_max_total_absolute_delta_units', 15));
+        $totalUsed = 0;
+        foreach ($eligible as $id => $product) {
+            $delta = abs((int) $product['qoh_after'] - (int) $product['qoh_before']);
+            if ($delta > $skuLimit || $totalUsed + $delta > $totalLimit) {
+                unset($eligible[$id]);
+                $issues[] = ['reason' => $delta > $skuLimit
+                    ? 'OMS_SKU_DELTA_EXCEEDS_AUTO_LIMIT' : 'OMS_SKU_DEFERRED_BY_APPLY_BUDGET',
+                    'product_id' => (int) $id, 'sku' => $product['sku'],
+                    'absolute_delta' => $delta];
+            } else {
+                $totalUsed += $delta;
+            }
+        }
+
+        // Every new identity must already be verified by Product OS. If a
+        // previously applied SKU changes its canonical identity, isolate it.
+        $last = XlwmsInventorySnapshot::query()
+            ->where('warehouse_id', $warehouse->id)
+            ->whereIn('status', ['applied', 'partial_applied'])
+            ->orderByDesc('id')->first();
+        if ($last !== null) {
+            $priorIds = $last->status === 'partial_applied'
+                ? array_map('intval', (array) ($last->summary['applied_product_ids'] ?? []))
+                : null;
+            $priorRows = $last->rows()->where('resolution_status', 'matched')
+                ->whereNotNull('product_id')->get(['provider_sku', 'product_id'])
+                ->filter(fn ($r): bool => $priorIds === null
+                    || in_array((int) $r->product_id, $priorIds, true));
+            foreach ($eligible as $id => $product) {
+                $sku = (string) $product['sku'];
+                $changed = $priorRows->contains(fn ($r): bool =>
+                    ($r->provider_sku === $sku && (int) $r->product_id !== (int) $id)
+                    || ((int) $r->product_id === (int) $id && $r->provider_sku !== $sku));
+                if ($changed) {
+                    unset($eligible[$id]);
+                    $issues[] = ['reason' => 'OMS_SKU_IDENTITY_CHANGED',
+                        'product_id' => (int) $id, 'sku' => $sku];
+                }
+            }
+        }
+
+        // The first successful guarded apply changes local ERP QOH (and may
+        // change dated lots) without changing OMS stock. A subsequent signed
+        // full read therefore has a NEW checksum. Carry over ONLY individual
+        // SKU proofs that were previously applied, still exactly match the
+        // provider SKU/stock/locks, and now have zero outstanding local
+        // reconciliation mutations. Never carry an unverified new SKU.
+        $carriedIds = [];
+        if ($last !== null && ! $apply) {
+            $previouslyApplied = $last->status === 'partial_applied'
+                ? array_map('intval', (array) ($last->summary['applied_product_ids'] ?? []))
+                : $last->rows()->where('resolution_status', 'matched')
+                    ->whereNotNull('product_id')->pluck('product_id')->map(fn ($id): int => (int) $id)->all();
+            $previousRows = $last->rows()->where('resolution_status', 'matched')
+                ->whereNotNull('product_id')->get()
+                ->keyBy('product_id');
+            foreach ($eligible as $id => $product) {
+                $prior = $previousRows->get((int) $id);
+                $source = collect($rows)->first(fn (array $row): bool =>
+                    ($row['status'] ?? null) === 'matched'
+                    && (int) ($row['product_id'] ?? 0) === (int) $id);
+                if (! in_array((int) $id, $previouslyApplied, true)
+                    || ! $prior || ! $source
+                    || $prior->provider_sku !== $source['sku']
+                    || (int) $prior->oms_total !== (int) $source['stock']['total']
+                    || (int) $prior->oms_available !== (int) $source['stock']['available']
+                    || (int) $prior->oms_locked !== (int) $source['stock']['locked']
+                    || (int) $product['qoh_before'] !== (int) $product['qoh_after']
+                    || (int) $product['unknown_before'] !== (int) $product['unknown_after']
+                    || collect($product['lot_adjustments'])->contains(
+                        fn (array $lot): bool => (int) ($lot['reduction'] ?? 0) > 0)) {
+                    continue;
+                }
+                $carriedIds[] = (int) $id;
+            }
+        }
+        $snapshot = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouse->id)
+            ->where('checksum', $checksum)->lockForUpdate()->first();
+        if ($snapshot !== null
+            && in_array($snapshot->status, ['applied', 'partial_applied'], true)) {
+            // Same signed full provider read + immutable local checksum:
+            // update observation freshness without repeating the write.
+            $snapshot->forceFill(['fetched_at' => now()])->save();
+            return $snapshot->fresh();
+        }
+        if ($snapshot === null) {
+            $snapshot = $this->storeSnapshot($warehouse, $whCode, $checksum, $providerSkus,
+                $normalized, $rows, $issues, $mapped, $unmatched, count($issues),
+                $issues === [] ? 'read_only' : 'blocked', false, [],
+                [...$plan['summary'], 'sku_isolation' => true,
+                    'eligible_product_ids' => array_map('intval', array_keys($eligible))]);
+        }
+        if (! $apply) {
+            if ($carriedIds !== []) {
+                $snapshot->forceFill([
+                    'status' => $issues === [] && count($carriedIds) === count($plan['products'])
+                        ? 'applied' : 'partial_applied',
+                    'applied_at' => $last->applied_at,
+                    'blocked_sku_count' => count($issues),
+                    'mismatches' => $issues,
+                    'summary' => [...(array) $snapshot->summary,
+                        'v2' => true, 'v2_applied' => true,
+                        'sku_isolation' => true, 'applied_product_ids' => $carriedIds,
+                        'carried_from_snapshot_id' => (int) $last->id],
+                ])->save();
+            }
+            return $snapshot->fresh();
+        }
+
+        // The first V2 apply still requires the exact full OMS checksum and
+        // Owner-approved config. Never use a prior V1 snapshot as approval.
+        if ($last === null || ! (bool) ($last->summary['v2'] ?? false)) {
+            $approved = trim((string) config('xlwms.inventory_first_apply_approved_checksum', ''));
+            if (strlen($approved) !== 64 || ! ctype_xdigit($approved)
+                || ! hash_equals(strtolower($approved), strtolower($checksum))) {
+                $issues[] = ['reason' => 'FIRST_V2_APPLY_EXACT_SNAPSHOT_APPROVAL_REQUIRED'];
+                $eligible = [];
+            }
+        }
+        if ($eligible === []) {
+            $snapshot->forceFill(['status' => 'blocked',
+                'blocked_sku_count' => count($issues), 'mismatches' => $issues])->save();
+            return $snapshot->fresh();
+        }
+
+        $partialPlan = ['blocked' => [], 'products' => $eligible];
+        $this->lotReconciliation->apply($warehouse, $partialPlan, (int) $snapshot->id, $checksum);
+
+        $appliedIds = array_map('intval', array_keys($eligible));
+        $allMatchedIds = array_map('intval', array_keys($plan['products']));
+        $fullyApplied = $issues === [] && count($appliedIds) === count($allMatchedIds);
+        $snapshot->forceFill([
+            'status' => $fullyApplied ? 'applied' : 'partial_applied',
+            'applied_at' => now(), 'blocked_sku_count' => count($issues),
+            'mismatches' => $issues,
+            'summary' => [...(array) $snapshot->summary,
+                'v2' => true, 'v2_applied' => true, 'sku_isolation' => true,
+                'applied_product_ids' => $appliedIds,
+                'quarantined_sku_count' => count($issues)],
+        ])->save();
+        return $snapshot->fresh();
+    }
+
     private function storeSnapshot(Warehouse $warehouse, string $whCode, string $checksum, array $providerSkus, array $normalized, array $rows, array $mismatches, int $mapped, int $unmatched, int $blocked, string $status, bool $applied, array $errors, array $extraSummary = []): XlwmsInventorySnapshot
     {
         $changes = [];
@@ -260,6 +450,12 @@ final class XlwmsInventorySyncService
     private function v2Enabled(): bool
     {
         return (bool) config('xlwms.lot_reconciliation_v2_enabled', false);
+    }
+
+    private function skuIsolationEnabled(): bool
+    {
+        return $this->v2Enabled()
+            && (bool) config('inventory_sku_gate.enabled', false);
     }
 
     /** @return array<int,array<string,mixed>> */

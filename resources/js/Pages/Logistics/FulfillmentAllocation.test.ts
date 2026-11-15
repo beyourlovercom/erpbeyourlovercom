@@ -419,6 +419,33 @@ describe('Vita Fulfillment Allocation V1.1', () => {
   })
 
 
+  it('keeps a verified MorePlus Gift selectable when its sibling SKU inventory sync failed', async () => {
+    const healthy = { ...giftItem.gift_options_by_warehouse['US-LA'][0],
+      quantity_available: 7, can_fulfill: true, stock_gate_reason: null }
+    const failed = { ...healthy, mapping_id: 503, fulfillment_sku: 'UNSYNCED-GIFT',
+      quantity_available: 0, can_fulfill: false, stock_gate_reason: 'provider_sku_not_synced' }
+    const independentGift = { ...giftItem, gift_options_by_warehouse: {
+      ...giftItem.gift_options_by_warehouse, 'US-LA': [healthy, failed],
+    } }
+    const independentOrder = { ...giftOrder, id: 442, items: [itemA, independentGift] }
+    const wrapper = mountPage({ ...props,
+      orders: { ...props.orders, data: [independentOrder], total: 1 }, pendingTotal: 1 })
+    await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
+    await flushPromises()
+    const row = Array.from(document.body.querySelectorAll('.primary-allocation tbody tr'))
+      .find(row => row.textContent?.includes('gift')) as HTMLTableRowElement
+    const warehouse = row.querySelectorAll('select')[0] as HTMLSelectElement
+    warehouse.value = 'US-LA'
+    warehouse.dispatchEvent(new Event('change', { bubbles: true }))
+    await flushPromises()
+    const gift = row.querySelectorAll('select')[2] as HTMLSelectElement
+    const choices = Array.from(gift.options)
+    expect(choices.find(option => option.textContent?.includes('GIFT-MP-02'))?.disabled).toBe(false)
+    expect(choices.find(option => option.textContent?.includes('UNSYNCED-GIFT'))?.disabled).toBe(true)
+    expect(document.body.textContent).toContain('有货 7')
+    wrapper.unmount()
+  })
+
   it('auto-detects blocked US-SM OMS snapshot and renders disabled Gift instead of false out-of-stock', async () => {
     const blockedGift = {
       ...giftItem, gift_options_by_warehouse: {
