@@ -49,7 +49,9 @@ const routes: RouteRecordRaw[] = erpMenuSource.map((group, order) => {
       component: workspace,
       meta: {
         title: child.label,
-        keepAlive: true,
+        // Original ERP keeps 30 lightweight navigation entries, not 30 mounted Grids.
+        // A bounded read-only 3-entry response snapshot handles Dev Orders previews.
+        keepAlive: false,
         erpMenuKey: child.key,
         erpModule: group.key,
         erpOriginalPath: child.originalPath,
