@@ -1,22 +1,61 @@
 import type { RouteRecordRaw } from 'vue-router';
 
-const page = () => import('#/views/erp/workspace.vue');
-const routes: RouteRecordRaw[] = [
-  {
-    name: 'ERP',
-    path: '/erp',
-    meta: { icon: 'lucide:boxes', order: -100, title: 'BYL ERP', keepAlive: true },
-    children: [
-      { name: 'ERPOverview', path: 'overview', component: page, meta: { title: '运营总览', icon: 'lucide:layout-dashboard', affixTab: true } },
-      { name: 'ERPOrders', path: 'orders', component: page, meta: { title: '订单管理', icon: 'lucide:shopping-cart', keepAlive: true } },
-      { name: 'ERPLogistics', path: 'logistics', component: page, meta: { title: '物流履约', icon: 'lucide:truck', keepAlive: true } },
-      { name: 'ERPInventory', path: 'inventory', component: page, meta: { title: '库存仓库', icon: 'lucide:warehouse', keepAlive: true } },
-      { name: 'ERPProducts', path: 'products', component: page, meta: { title: '产品与 SKU', icon: 'lucide:package', keepAlive: true } },
-      { name: 'ERPKol', path: 'kol', component: page, meta: { title: '网红管理', icon: 'lucide:users', keepAlive: true } },
-      { name: 'ERPFinance', path: 'finance', component: page, meta: { title: '财务核算', icon: 'lucide:calculator', keepAlive: true } },
-      { name: 'ERPSync', path: 'sync', component: page, meta: { title: '同步中心', icon: 'lucide:refresh-cw', keepAlive: true } },
-      { name: 'ERPSettings', path: 'settings', component: page, meta: { title: '员工与设置', icon: 'lucide:settings', keepAlive: true } },
-    ],
-  },
-];
+import { erpMenuSource } from '../../erp-menu-source';
+
+const workspace = () => import('#/views/erp/workspace.vue');
+const icons: Record<string, string> = {
+  dashboard: 'lucide:layout-dashboard',
+  orders: 'lucide:shopping-cart',
+  logistics: 'lucide:truck',
+  sync: 'lucide:refresh-cw',
+  customers: 'lucide:users',
+  marketing: 'lucide:megaphone',
+  kol: 'lucide:star',
+  inventory: 'lucide:warehouse',
+  procurement: 'lucide:shopping-bag',
+  products: 'lucide:package',
+  guides: 'lucide:book-open',
+  accounting: 'lucide:calculator',
+  settings: 'lucide:settings',
+};
+
+// Owner-only Dev shell: menu taxonomy mirrors latest ERP main, NOT staff RBAC.
+// Per-staff navigation must be returned by Laravel ErpShellNavigation::for(user).
+const routes: RouteRecordRaw[] = erpMenuSource.map((group, order) => {
+  const path = group.key === 'dashboard' ? '/erp/overview' : `/erp/${group.key}`;
+  const meta = {
+    title: group.label,
+    icon: icons[group.key] ?? 'lucide:folder',
+    order: -100 + order,
+    erpMenuKey: group.key,
+    erpOriginalPath: group.originalPath,
+  };
+  if (!group.children?.length) {
+    return { name: 'ERPOverview', path, component: workspace,
+      meta: { ...meta, affixTab: true, keepAlive: true } };
+  }
+  const children = group.key === 'orders'
+    ? [{ key: 'orders-master', label: '订单总表', originalPath: '/orders',
+      permission: 'orders.view', status: 'implemented' }, ...group.children]
+    : group.children;
+  return {
+    name: `ERPSection-${group.key}`,
+    path,
+    redirect: `${path}/${children[0]!.key}`,
+    meta,
+    children: children.map((child) => ({
+      name: `ERPMenu-${child.key}`,
+      path: child.key,
+      component: workspace,
+      meta: {
+        title: child.label,
+        keepAlive: true,
+        erpMenuKey: child.key,
+        erpModule: group.key,
+        erpOriginalPath: child.originalPath,
+        erpSourceStatus: child.status,
+      },
+    })),
+  };
+});
 export default routes;

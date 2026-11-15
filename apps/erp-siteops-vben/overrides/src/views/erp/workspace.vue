@@ -21,15 +21,10 @@ const pager = ref<Pick<ErpOrderPage, 'page' | 'perPage' | 'total' | 'lastPage'>>
 });
 const bridgeEnabled = import.meta.env.VITE_ERP_DEV_BRIDGE_ENABLED === '1';
 const enabled = bridgeEnabled || import.meta.env.VITE_ERP_READONLY_ORDERS_ENABLED === '1';
-const section = computed(() => String(route.path.split('/').at(-1) ?? 'overview'));
-const titles: Record<string, string> = {
-  overview: 'ERP 运营总览', orders: '全部订单',
-  logistics: '物流履约', inventory: '库存仓库', products: '产品与 SKU',
-  kol: '网红管理', finance: '财务核算', sync: '同步中心',
-  settings: '员工与设置',
-};
-const title = computed(() => titles[section.value] || 'ERP 工作台');
-const isOrders = computed(() => section.value === 'orders');
+const title = computed(() => String(route.meta.title ?? 'ERP 工作台'));
+const originalPath = computed(() => String(route.meta.erpOriginalPath ?? ''));
+const sourceStatus = computed(() => String(route.meta.erpSourceStatus ?? ''));
+const isOrders = computed(() => route.meta.erpMenuKey === 'orders-master');
 const sampleRows: Row[] = [
   { order_no: 'UAT-ORDER-001', type: '客户订单', warehouse: '中国工厂', sku: 'DEMO-SKU-A', status: '待分仓', tracking: '—', updated_at: '合成记录' },
   { order_no: 'UAT-ORDER-002', type: '客户订单', warehouse: 'us-ny', sku: 'DEMO-SKU-B', status: '待审核', tracking: '—', updated_at: '合成记录' },
@@ -124,8 +119,12 @@ function showSynthetic() {
     </template>
     <div v-else class="flex min-h-[360px] flex-1 items-center justify-center rounded border border-dashed border-slate-300 bg-white">
       <div class="max-w-md p-6 text-center">
-        <h2 class="text-base font-medium text-slate-700">{{ title }} · 页面容器就绪</h2>
-        <p class="mt-2 text-sm text-slate-500">业务页面按原 ERP 路由逐模块映射；正式写入始终由 ERP 后端负责。</p>
+        <h2 class="text-base font-medium text-slate-700">{{ title }} · 导航已恢复</h2>
+        <p class="mt-2 text-sm text-slate-500">原 ERP 路径：<code>{{ originalPath }}</code></p>
+        <p class="mt-2 text-sm text-slate-500">
+          {{ sourceStatus === 'planned' ? '原 ERP 标记为规划中。' : '原 ERP 已有业务入口。' }}
+          本 Vben 页面尚未迁移该业务模块；不得将当前页面当作可操作的正式页面。
+        </p>
       </div>
     </div>
   </div>
