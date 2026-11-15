@@ -1020,6 +1020,48 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertNotSent(fn ($request) => str_contains($request->url(), 'outboundOrder/create'));
     }
 
+    public function test_global_sku_isolation_allows_verified_order_with_unrelated_zero_stock_unknown_sku(): void
+    {
+        config()->set('inventory_sku_gate.enabled', true);
+        $order = $this->orderFixture();
+        $snapshot = XlwmsInventorySnapshot::where('warehouse_id', $order->shipment->warehouse_id)->sole();
+        $real = $order->items()->firstOrFail();
+        $snapshot->rows()->create([
+            'provider_sku'=>'UNRECEIVED-UNVERIFIED','product_id'=>null,
+            'resolution_status'=>'unmatched','oms_total'=>0,'oms_available'=>0,'oms_locked'=>0,
+        ]);
+        $snapshot->forceFill([
+            'status'=>'partial_applied','provider_sku_count'=>2,
+            'unmatched_sku_count'=>1,'blocked_sku_count'=>1,
+            'summary'=>['v2'=>true,'v2_applied'=>true,'sku_isolation'=>true,
+                'applied_product_ids'=>[$real->product_id]],
+            'fetched_at'=>now(),
+        ])->save();
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\SingleOrderPreview::class);
+        $healthy=$svc->forOrder($order->fresh(),true);
+        self::assertNotContains('OMS_SNAPSHOT_NOT_RECONCILED',$healthy['blockers']);
+        self::assertNotContains('OMS_SNAPSHOT_STOCK_INVALID',$healthy['blockers']);
+        self::assertNotContains('OMS_SNAPSHOT_STOCK_INSUFFICIENT',$healthy['blockers']);
+
+        // A second order with a *different* unapproved product must still
+        // fail even though its warehouse has verified SKU(s).
+        $unknown=Product::query()->firstOrCreate(['sku'=>'UNRECEIVED-UNVERIFIED'],[
+            'name'=>'Unknown','is_active'=>true,
+        ]);
+        WarehouseInventory::query()->create([
+            'warehouse_id'=>$order->shipment->warehouse_id,'product_id'=>$unknown->id,
+            'quantity_on_hand'=>20,'quantity_reserved'=>0,
+        ]);
+        $real->forceFill(['product_id'=>$unknown->id,'sku'=>'UNRECEIVED-UNVERIFIED'])->save();
+        $blocked=$svc->forOrder($order->fresh(),true);
+        self::assertContains('OMS_SNAPSHOT_STOCK_INSUFFICIENT',$blocked['blockers']);
+
+        // Live OMS freshness is not a per-SKU exception.
+        $snapshot->forceFill(['fetched_at'=>now()->subMinutes(10)])->save();
+        $stale=$svc->forOrder($order->fresh(),true);
+        self::assertContains('OMS_SNAPSHOT_NOT_FRESH',$stale['blockers']);
+    }
+
     public function test_preflight_uses_latest_observation_time_not_highest_snapshot_id(): void
     {
         $o = $this->orderFixture();

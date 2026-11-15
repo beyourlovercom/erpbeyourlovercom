@@ -410,6 +410,7 @@ function giftBlockReason(option:GiftOption){
     case 'oms_snapshot_blocked': return '世迈 OMS 库存快照核验被阻断'
     case 'oms_snapshot_not_applied': return 'OMS 快照尚未通过应用核验'
     case 'oms_sku_not_confirmed': return 'OMS 未验证此 SKU'
+    case 'provider_sku_not_synced': return '海外仓未成功同步此 SKU 的库存'
     case 'oms_no_available_stock': return 'OMS 可出库库存为 0'
     case 'stock_age_or_reservation_gate': return '库龄或预留库存限制'
     default: return option.quantity_available===null ? '库存未知' : '库存不足'
@@ -422,14 +423,15 @@ function giftEmptyLabel(item:Item,source:string){
   const blocked=opts.find(o=>o.stock_gate_reason==='oms_snapshot_blocked')
   if(blocked)return '世迈 OMS 库存待核验：ERP 清仓有货，但 OMS 快照被阻断；禁止分仓，请先修复库存同步'
   if(opts.some(o=>o.stock_gate_reason==='oms_snapshot_not_applied'))return 'OMS 库存快照尚未完成应用核验，暂不能分仓'
+  if(opts.some(o=>o.stock_gate_reason==='provider_sku_not_synced'))return '该礼品的海外仓库存尚未成功读取，其他 SKU 不受影响'
   const unverified=opts.find(o=>o.stock_gate_reason==='oms_sku_not_confirmed')
   if(unverified)return 'OMS 未验证该 SKU，暂不能分仓'
   if(opts.some(o=>o.quantity_available===null))return 'Gift 库存未知，请核实库存'
   return 'Gift 当前可出库库存不足'
 }
 function chosenGift(item:Item,order:Order){ const id=Number(manualGiftMappings[order.id]?.[item.id]||0); return Object.values(item.gift_options_by_warehouse||{}).flat().find(o=>o.mapping_id===id) }
-function giftStockLabel(item:Item,w:Warehouse){ if(canonicalWarehouseCode(w.code)==='US-LA')return 'ERP礼品库存 · OMS待核验'; const opts=giftOptions(item,w.code); if(!opts.length)return '无清仓礼品'; const available=availableGiftOptions(item,w.code); if(available.length)return `有货 ${available[0].quantity_available ?? '未知'}`; return opts.some(o=>o.stock_gate_reason==='oms_snapshot_blocked')?'OMS 核验阻断':opts.some(o=>o.stock_gate_reason==='oms_sku_not_confirmed')?'OMS 未确认 SKU':'Gift 可出库不足' }
-function giftStockClass(item:Item,w:Warehouse){ if(canonicalWarehouseCode(w.code)==='US-LA')return 'stock-neutral'; const opts=giftOptions(item,w.code); if(!opts.length)return 'stock-unknown'; return opts.some(o=>o.can_fulfill)?'stock-ok':(opts.some(o=>o.quantity_available!=null)?'stock-short':'stock-unknown') }
+function giftStockLabel(item:Item,w:Warehouse){ const opts=giftOptions(item,w.code); if(!opts.length)return '无清仓礼品'; const available=availableGiftOptions(item,w.code); if(available.length)return `有货 ${available[0].quantity_available ?? '未知'}`; return opts.some(o=>o.stock_gate_reason==='oms_snapshot_blocked')?'OMS 核验阻断':opts.some(o=>o.stock_gate_reason==='provider_sku_not_synced')?'此 SKU 待同步':opts.some(o=>o.stock_gate_reason==='oms_sku_not_confirmed')?'此 SKU 未验证':'Gift 可出库不足' }
+function giftStockClass(item:Item,w:Warehouse){ const opts=giftOptions(item,w.code); if(!opts.length)return 'stock-unknown'; return opts.some(o=>o.can_fulfill)?'stock-ok':(opts.some(o=>o.quantity_available!=null)?'stock-short':'stock-unknown') }
 function carrierForItem(order:Order,item:Item){ const source=manualAssignments[order.id]?.[item.id]??''; return ['FACTORY','OUTSOURCE'].includes(source) ? '' : (source ? (manualCarriers[order.id]?.[source] ?? defaultCarrier(order,source)) : '') }
 function carrierIsDefault(order:Order,item:Item){ const source=manualAssignments[order.id]?.[item.id]??''; const selected=carrierForItem(order,item); return !!source && !!selected && selected===defaultCarrier(order,source) }
 function onWarehouseChanged(order:Order,item:Item){
