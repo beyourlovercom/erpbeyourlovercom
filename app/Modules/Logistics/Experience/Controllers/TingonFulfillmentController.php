@@ -7,6 +7,9 @@ use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Orders\Application\OrderWarehouseRouting;
+use App\Modules\Orders\Application\OrderWorkflowGridOptions;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,7 +24,9 @@ final class TingonFulfillmentController
     public function index(Request $request, CarrierServiceCatalog $carrierCatalog): Response
     {
         $view = (string) $request->query('view', 'pending');
-        if (! in_array($view, ['pending', 'all', 'brand', 'sent'], true)) $view = 'pending';
+        if (! in_array($view, ['pending', 'all', 'brand', 'sent'], true)) {
+            $view = 'pending';
+        }
         $search = mb_substr(trim((string) $request->query('search', '')), 0, 120);
         $perPage = in_array((int) $request->query('per_page', 50), [20, 50, 100], true)
             ? (int) $request->query('per_page', 50) : 50;
@@ -39,10 +44,18 @@ final class TingonFulfillmentController
             $rows = $orders->through(fn (Order $order): array => $this->orderRow($order))->toArray();
         } else {
             $query = Shipment::query()
-                ->whereHas('warehouse', fn ($warehouse) => $warehouse->where('code', self::WAREHOUSE))
+                ->where(function ($route): void {
+                    $route->whereHas('order', fn ($o) => $o->where('routing_warehouse_code', self::WAREHOUSE))
+                        ->orWhere(fn ($physical) => $physical
+                            ->whereHas('warehouse', fn ($w) => $w->where('code', self::WAREHOUSE))
+                            ->whereHas('order', fn ($o) => $o->whereNull('routing_warehouse_code')));
+                })
                 ->whereHas('order', fn ($order) => $order->eligibleForOperations()->where('order_status', '!=', 'cancelled'))
-                ->with(['warehouse', 'order.address', 'order.items.product', 'order.fulfillmentParent'])
-                ->when($view === 'pending', fn ($q) => $q->where('shipment_status', 'pending'))
+                ->with(['warehouse', 'order.shipment.warehouse', 'order.address', 'order.items.product', 'order.fulfillmentParent'])
+                ->when($view === 'pending', fn ($q) => $q
+                    ->where('shipment_status', 'pending')
+                    ->whereHas('order', fn ($o) => $o->where(fn ($w) => $w
+                        ->where('workflow_status', 'sending')->orWhereNull('workflow_status'))))
                 ->when($view === 'sent', fn ($q) => $q->whereIn('shipment_status', ['shipped', 'completed']))
                 ->when($search !== '', function ($q) use ($search): void {
                     $q->where(function ($nested) use ($search): void {
@@ -60,6 +73,10 @@ final class TingonFulfillmentController
             'view' => $view,
             'search' => $search,
             'canOperate' => $request->user()?->can('logistics.operate') ?? false,
+            'canEditWarehouseRoute' => $request->user()?->can('orders.edit') ?? false,
+            'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
+            'canEditWorkflowStatus' => $request->user()?->can('orders.edit') ?? false,
+            'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
             'carrierOptions' => $carrierCatalog->options(),
         ]);
     }
@@ -75,6 +92,7 @@ final class TingonFulfillmentController
         ]);
         abort_unless($shipment->shipment_status === 'pending', 409, '只有待发货的合作仓订单可以保存草稿');
         $shipments->saveDraft($order, $data, $request->user());
+
         return back()->with('success', 'Tingon 发货信息已保存为 ERP 草稿，尚未确认实际发货');
     }
 
@@ -94,6 +112,7 @@ final class TingonFulfillmentController
             'shipped_at' => $shipment->shipped_at ?? now(),
         ], $request->user());
         $handoff->afterShipmentSaved($updated);
+
         return back()->with('success', 'Tingon 发货已确认，Tracking 已保存；网站交给同步模块处理');
     }
 
@@ -104,6 +123,7 @@ final class TingonFulfillmentController
         $data = $request->validate(['tracking_number' => ['required', 'string', 'max:128']]);
         $updated = $shipments->updateTracking($order, $data['tracking_number'], $request->user());
         $handoff->afterShipmentSaved($updated);
+
         return back()->with('success', 'Tingon Tracking 更正已保存，网站由同步模块核对');
     }
 
@@ -112,6 +132,7 @@ final class TingonFulfillmentController
         $order->loadMissing('shipment.warehouse');
         abort_unless(! $order->isOperationallyArchived()
             && $order->shipment?->warehouse?->code === self::WAREHOUSE, 409, '该订单没有分配 Tingon 合作仓');
+
         return $order->shipment;
     }
 
@@ -128,6 +149,7 @@ final class TingonFulfillmentController
     private function orderRow(Order $order): array
     {
         $shipment = $order->shipment;
+
         return [
             'id' => (int) $order->id,
             'order_id' => (int) $order->id,
@@ -143,12 +165,19 @@ final class TingonFulfillmentController
             'logistics_note' => $shipment?->logistics_note,
             'shipment_status' => $shipment?->shipment_status ?? 'pending_allocation',
             'can_edit' => false,
+            'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
+            'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
+            'workflow_revision' => (int) $order->workflow_revision,
+            'order_kind' => $order->order_kind?->value,
+            'can_edit_workflow_status' => ! $order->isOperationallyArchived(),
+            'can_edit_warehouse_route' => ! $order->isOperationallyArchived(),
         ];
     }
 
     private function shipmentRow(Shipment $shipment): array
     {
         $order = $shipment->order;
+
         return [
             'id' => (int) $shipment->id,
             'order_id' => (int) $order->id,
@@ -157,13 +186,19 @@ final class TingonFulfillmentController
             'recipient_name' => $order->address?->recipient_name,
             'country' => $order->address?->country,
             'sku' => $order->items->map(fn ($item) => ($item->source_sku ?: $item->sku).' × '.(int) $item->quantity)->implode('、'),
-            'warehouse' => $shipment->warehouse?->name,
+            'warehouse' => $order ? app(OrderWarehouseRouting::class)->project($order)['name'] : null,
             'carrier' => $shipment->carrier,
             'service' => $shipment->service,
             'tracking_number' => $shipment->tracking_number,
             'logistics_note' => $shipment->logistics_note,
             'shipment_status' => $shipment->shipment_status,
-            'can_edit' => true,
+            'can_edit' => $shipment->warehouse?->code === self::WAREHOUSE,
+            'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
+            'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
+            'workflow_revision' => (int) $order->workflow_revision,
+            'order_kind' => $order->order_kind?->value,
+            'can_edit_workflow_status' => ! $order->isOperationallyArchived(),
+            'can_edit_warehouse_route' => ! $order->isOperationallyArchived(),
         ];
     }
 }

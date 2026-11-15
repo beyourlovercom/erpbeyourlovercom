@@ -8,6 +8,8 @@ import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHea
 import type { NewValueParams, ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
 import OrderWorkflowGridCell from '../../../Components/Orders/OrderWorkflowGridCell.vue'
+import OrderWarehouseRouteSelect from '../../../Components/Orders/OrderWarehouseRouteSelect.vue'
+import OrderWarehouseRouteGridCell from '../../../Components/Orders/OrderWarehouseRouteGridCell.vue'
 import DomesticGridActionCell from '../Domestic/DomesticGridActionCell.vue'
 import DomesticGridPendingCell from '../Domestic/DomesticGridPendingCell.vue'
 import DomesticGridPendingRouteCell from '../Domestic/DomesticGridPendingRouteCell.vue'
@@ -52,17 +54,18 @@ type ShipOutStatus = {
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; order_date?:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_code?:string|null; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
-  progress:string; note:string|null; reviewer_name?:string|null; reviewed_at?:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'|'stockout'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; order_kind?:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
+  progress:string; note:string|null; reviewer_name?:string|null; reviewed_at?:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'|'stockout'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; order_kind?:string; routing_warehouse?:{code:string;name:string;source:string;revision:number}; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
   web_draft?:WebDraft|null
   shipout_production?:ShipOutDispatchState|null
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page:number; total:number; from:number|null; to:number|null; links?:{url:string|null;label:string;active:boolean}[] }
-type ColumnKey = 'line'|'order'|'order_date'|'status'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'
+type ColumnKey = 'line'|'order'|'order_date'|'status'|'route'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'
 const columnDefinitions: GridColumnDefinition<ColumnKey>[] = [
   { key:'line', label:'#', defaultVisible:true },
   { key:'order', label:'订单号', defaultVisible:true },
   { key:'order_date', label:'订单日期', defaultVisible:true },
   { key:'status', label:'统一状态', defaultVisible:true },
+  { key:'route', label:'所属分仓', defaultVisible:true },
   { key:'warehouse', label:'Stock 仓库', defaultVisible:true },
   { key:'carrier', label:'物流商', defaultVisible:true },
   { key:'service', label:'运输 / 服务类型', defaultVisible:true },
@@ -81,6 +84,8 @@ const props = defineProps<{
   shipoutProductionLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
   shipoutProductionUi?:boolean; shipoutProductionReadEnabled?:boolean; shipoutProductionDispatchEnabled?:boolean; shipoutProductionMinOrderId?:number; shipoutProductionOperatorAllowed?:boolean
   workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[];
+  warehouseRouteOptions?:{code:string;name:string}[];
+  canEditWarehouseRoute?:boolean;
   rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canArchive?:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean; xlwmsOmsWebEnabled?:boolean
 
 }>()
@@ -1329,6 +1334,9 @@ const overseaGridRows = computed<GridListRow[]>(()=>visibleRows.value.map(row=>(
   workflow_status:row.workflow_status_projection?.zh??'—',
   workflow_status_projection:row.workflow_status_projection,
   workflow_revision:row.workflow_revision??0,
+  routing_warehouse:row.routing_warehouse,
+  routing_warehouse_name:row.routing_warehouse?.name??'未分仓',
+  can_edit_warehouse_route:Boolean(props.canEditWarehouseRoute),
   can_edit_workflow_status:Boolean(row.can_edit_workflow_status),
   order_kind:row.order_kind,
   review_status:row.review_status==='approved'?'已通过':row.review_status==='stockout'?'缺货':'待审核',
@@ -1352,6 +1360,10 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'order_date',field:'order_date',headerName:'订单日期',width:128,minWidth:108}),
   gridColumn({colId:'status',field:'workflow_status',headerName:'统一状态',width:182,
     cellRenderer:OrderWorkflowGridCell,cellRendererParams:{workflowStatusOptions:props.workflowStatusOptions??[]}}),
+  gridColumn({colId:'route',field:'routing_warehouse_name',headerName:'所属分仓',width:192,
+    cellRenderer:OrderWarehouseRouteGridCell,
+    cellRendererParams:{warehouseRouteOptions:props.warehouseRouteOptions??[],
+      canEditWarehouseRoute:props.canEditWarehouseRoute??false}}),
   gridColumn({colId:'review',field:'review_status',headerName:'审核状态',width:110}),
   gridColumn({colId:'reviewer',field:'reviewer_name',headerName:'审核人',width:100}),
   gridColumn({colId:'reviewed_at',field:'reviewed_at',headerName:'审核时间（北京时间）',width:162}),
@@ -1571,7 +1583,7 @@ const compactPages = computed<(number|string)[]>(() => {
         <GlobalGrid :key="'oversea-grid-'+warehouseKey+'-'+view"
           :namespace="'grid.logistics.oversea.'+view+'.global.v1'"
           :title="pageTitle" :columns="overseaGridColumns" :rows="overseaGridRows"
-          :required-column-ids="['order','status']" :page="rows" row-identity-key="id"
+          :required-column-ids="['order','status','route']" :page="rows" row-identity-key="id"
           :search="gridSearch??''" :sort="gridSort??undefined"
           :filter-columns="[]" :filter-values="gridFilters??{}"
           :enable-selection="Boolean((canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || bulkShipPreviewScope || canTrackingSync || showShipoutSelection)"
@@ -1829,6 +1841,9 @@ const compactPages = computed<(number|string)[]>(() => {
                 <template v-else-if="column.key === 'order'"><a class="order-link" :href="row.order_url ?? `/orders/${row.order_id}`">{{ row.erp_order_id ?? '—' }}</a></template>
                 <template v-else-if="column.key === 'order_date'">{{row.order_date??'—'}}</template>
                 <template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(row.can_edit_workflow_status)" :options="workflowStatusOptions ?? []" /><span v-else>—</span></template>
+                <template v-else-if="column.key === 'route'"><OrderWarehouseRouteSelect v-if="row.routing_warehouse"
+                  :order-id="row.order_id" :projection="row.routing_warehouse"
+                  :can-edit="Boolean(canEditWarehouseRoute)" :options="warehouseRouteOptions??[]" /></template>
                 <template v-else-if="column.key === 'warehouse'"><select :value="row.warehouse_id" :disabled="!canReview || view !== 'review'" class="cell-select warehouse" @change="changeWarehouseFromEvent(row, $event)"><option v-for="option in warehouseOptions" :key="option.id" :value="option.id">{{ option.label }}</option></select></template>
                 <template v-else-if="column.key === 'carrier'"><select v-model="draft(row).carrier" :disabled="!canOperate || row.shipment_status === 'shipped' || inlineSaveBusy[row.order_id]" class="cell-select carrier" @change="saveCarrier(row)"><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></template>
                 <template v-else-if="column.key === 'service'"><select v-model="draft(row).service" :disabled="!canOperate || row.shipment_status === 'shipped' || !draft(row).carrier || inlineSaveBusy[row.order_id]" class="cell-select service" @change="saveService(row)"><option value="">请选择服务类型</option><option v-for="service in serviceOptionsFor(draft(row).carrier)" :key="service.id" :value="service.value">{{ service.label }}</option></select></template>

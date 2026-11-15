@@ -20,6 +20,7 @@ import StockExceptionConfirmDialog from '../../Components/Logistics/StockExcepti
 import { allocationStockWarnings } from '../../lib/allocationStockWarning'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatusPill.vue'
+import OrderWarehouseRouteSelect from '../../Components/Orders/OrderWarehouseRouteSelect.vue'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; can_auto_allocate?: boolean }
@@ -107,6 +108,7 @@ type Order = {
   order_status_label: string
   workflow_status?: string | null
   workflow_status_projection?: { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean }
+  routing_warehouse?: {code:string;name:string;source:string;revision:number}
   workflow_revision?: number
   order_note: string | null
   domestic_reject_reason?: string | null
@@ -140,6 +142,8 @@ const props = withDefaults(defineProps<{
   inventoryAvailability?: Record<number, Availability[]>
   packagingReferences?: Record<number, PackagingReference>
   warehouses?: Warehouse[]
+  warehouseRouteOptions?: {code:string;name:string}[]
+  canEditWarehouseRoute?: boolean
   warehouseRouting?: Record<number,{ carrier:string|null; service:string|null; carrier_service_id:number|null; automatic:boolean }>
   carrierOptions?: CarrierOption[]
   allocationUi?: AllocationUi
@@ -1235,6 +1239,14 @@ onBeforeUnmount(() => {
             <span class="ord-identity-owner">负责人：{{ order.owner?.name ?? '—' }}</span>
           </div>
 
+        </div>
+
+        <div class="erp-form-card ord-route-panel" data-testid="order-warehouse-route-panel">
+          <strong>订单所属分仓</strong>
+          <OrderWarehouseRouteSelect v-if="order.routing_warehouse"
+            :order-id="order.id" :projection="order.routing_warehouse"
+            :options="warehouseRouteOptions ?? []" :can-edit="Boolean(canEditWarehouseRoute)" />
+          <small>决定订单出现在哪个仓库工作台；实际发货仍由履约模块确认</small>
         </div>
 
         <!-- Card 1: 履约状态 (always read-only) -->
@@ -2494,6 +2506,8 @@ onBeforeUnmount(() => {
     align-items: flex-start;
   }
 }
+ .ord-route-panel { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:10px 16px; }
+ .ord-route-panel small { color:#84939e; font-size:11px; }
 </style>
 
 <style scoped>

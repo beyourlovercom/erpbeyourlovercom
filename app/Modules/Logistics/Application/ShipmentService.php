@@ -116,6 +116,10 @@ final class ShipmentService
             $before = $this->snapshot($shipment);
             $trackingNumber = $this->canonicalTrackingNumber($attributes['tracking_number'] ?? null);
             $selectedWarehouseId = $attributes['warehouse_id'] ?? $shipment->warehouse_id;
+            if (! $alreadyShipped && $shipment->warehouse_selection_source === 'manual_route_only'
+                && ! $selectedWarehouseId) {
+                abort(409, '所属分仓仅用于定位队列，真实发货前必须完成实际仓库分配及审核。');
+            }
             if (! $alreadyShipped) {
                 $this->assertWarehouseShippingApproval($lockedOrder, $shipment, $selectedWarehouseId);
             }

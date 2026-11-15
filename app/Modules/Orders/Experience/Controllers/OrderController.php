@@ -31,6 +31,7 @@ use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderProgressTransitionService;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
+use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowStatus;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
@@ -119,7 +120,7 @@ final class OrderController
             ? ($request->user()->can('customers.export') && $request->user()->can('system.permissions.manage'))
             : $request->user()->can('orders.view');
 
-        $orders->getCollection()->loadMissing(['shipment', 'manualSync', 'fulfillmentParent', 'latestNoteEntry', ...($customerGlobalGridEnabled ? ['customer'] : [])]);
+        $orders->getCollection()->loadMissing(['shipment.warehouse', 'manualSync', 'fulfillmentParent', 'latestNoteEntry', ...($customerGlobalGridEnabled ? ['customer'] : [])]);
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments(
             $orders->getCollection()->map(fn (Order $order): int => (int) $order->shipment?->id)->all()
         );
@@ -149,6 +150,8 @@ final class OrderController
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
             'canExport' => $canExport,
             'canEditWorkflowStatus' => $request->user()->can('orders.edit'),
+            'canEditWarehouseRoute' => $request->user()->can('orders.edit'),
+            'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'canPreviewKolLinks' => $kind === OrderKind::KolFulfillment && $request->user()->can('kol.views.manage'),
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
         ]);
@@ -262,6 +265,9 @@ final class OrderController
 
         return Inertia::render('Orders/Show', [
             'order' => $this->orderData($order),
+            'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
+            'canEditWarehouseRoute' => ! $order->isOperationallyArchived() && $order->archived_at === null
+                && ($request->user()?->can('orders.edit') ?? false),
             'orderNotes' => $order->noteEntries()->get()->map(fn ($entry): array => [
                 'id' => $entry->id, 'author_name' => $entry->author_name,
                 'body' => $entry->body, 'created_at' => $entry->created_at?->toIso8601String(),
@@ -796,6 +802,7 @@ final class OrderController
             'workflow_status' => $order->workflow_status,
             'workflow_revision' => (int) ($order->workflow_revision ?? 0),
             'workflow_status_projection' => $workflowProjection,
+            'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
             'order_note' => $order->order_note,
             // One latest visible note; collaborative entries win over the legacy/source note.
             'latest_order_note' => $order->latestNoteEntry?->body ?: $order->order_note,

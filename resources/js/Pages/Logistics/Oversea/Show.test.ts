@@ -101,7 +101,7 @@ describe('oversea domestic-style Global Grid review operation contract', () => {
     const grid=wrapper.findComponent({name:'MockGlobalGrid'})
     const columns=grid.props('columns') as {colId:string;pinned?:string;lockPinned?:boolean;lockVisible?:boolean;suppressMovable?:boolean;minWidth?:number;maxWidth?:number;cellRendererParams?:Record<string,any>}[]
     const actions=columns.find(col=>col.colId==='actions')!
-    expect(grid.props('requiredColumnIds')).toEqual(['order','status'])
+    expect(grid.props('requiredColumnIds')).toEqual(['order','status','route'])
     expect(actions.pinned).toBe('right') // keep familiar default; user may choose 0
     expect(actions.lockPinned).not.toBe(true)
     expect(actions.lockVisible).not.toBe(true)
@@ -118,7 +118,7 @@ describe('oversea domestic-style Global Grid review operation contract', () => {
     await flushPromises()
     const grid=wrapper.findComponent({name:'MockGlobalGrid'})
     const actions=(grid.props('columns') as {colId:string;pinned?:string;lockPinned?:boolean;lockVisible?:boolean;minWidth?:number;maxWidth?:number;cellRendererParams?:Record<string,any>}[]).find(c=>c.colId==='actions')!
-    expect(grid.props('requiredColumnIds')).toEqual(['order','status'])
+    expect(grid.props('requiredColumnIds')).toEqual(['order','status','route'])
     expect(actions.pinned).toBe('right')
     expect(actions.lockPinned).not.toBe(true)
     expect(actions.lockVisible).not.toBe(true)

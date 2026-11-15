@@ -15,7 +15,7 @@ final class OrderProgressQuery
     public function domesticReview(Builder $orders): Builder
     {
         return $this->withoutManualPrimary($orders)
-            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
+            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereNotNull('warehouse_id'))
             ->whereDoesntHave('procurementOrder', fn ($q) => $q->where('origin', 'external')->whereNull('released_at'))
             ->whereDoesntHave('operationalMarkers', fn ($q) => $q->whereIn('marker', ['domestic_reviewed', 'domestic_stockout']));
     }
@@ -284,7 +284,8 @@ final class OrderProgressQuery
     public function overseasReview(Builder $shipments): Builder
     {
         return $shipments->whereHas('order', fn (Builder $order) => $this->withoutManualPrimary($order))
-            ->where('shipment_status', 'pending')->where(function ($q): void {
+            ->where('shipment_status', 'pending')->whereNotNull('warehouse_id')
+            ->where(function ($q): void {
                 $q->whereDoesntHave('overseaReview')
                     ->orWhereHas('overseaReview', fn ($r) => $r->whereNotIn('status', ['approved', 'stockout']))
                     ->orWhereHas('overseaReview', fn ($r) => $r

@@ -31,6 +31,7 @@ use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderWorkflowGridOptions;
+use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Shell\Application\GlobalGridPilot;
@@ -138,6 +139,8 @@ final class LogisticsController
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
             'canEditWorkflowStatus' => (bool) $request->user()?->can('orders.edit'),
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
+            'canEditWarehouseRoute' => (bool) $request->user()?->can('orders.edit'),
+            'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'globalGridPilotAvailable' => true,
             'globalGridPilotEnabled' => $gridPilot,
             'gridSearch' => $search,
@@ -953,6 +956,7 @@ final class LogisticsController
         return [
             'id' => $order->id,
             'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
+            'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
             'workflow_revision' => (int) $order->workflow_revision,
             'can_edit_workflow_status' => $order->order_kind === OrderKind::Customer && ! $order->isOperationallyArchived(),
             'external_order_number' => $order->external_order_number,

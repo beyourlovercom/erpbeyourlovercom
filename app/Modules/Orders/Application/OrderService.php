@@ -400,9 +400,18 @@ final class OrderService
             ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
             ->when($filters['partner_warehouse_code'] ?? null, fn ($query, string $code) => $query
                 ->where('order_kind', '!=', 'fulfillment_derived')
-                ->where(fn ($q) => $q->whereHas('shipment.warehouse', fn ($w) => $w->where('code', $code))
-                    ->orWhereHas('originalFulfillmentChildren.shipment.warehouse', fn ($w) => $w->where('code', $code))))
-            ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
+                ->where(fn ($q) => $q->where('routing_warehouse_code', $code)
+                    ->orWhere(fn ($fallback) => $fallback->whereNull('routing_warehouse_code')
+                        ->where(fn ($physical) => $physical
+                            ->whereHas('shipment.warehouse', fn ($w) => $w->where('code', $code))
+                            ->orWhereHas('originalFulfillmentChildren.shipment.warehouse',
+                                fn ($w) => $w->where('code', $code))))))
+            ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query
+                ->where(fn ($scope) => $scope
+                    ->where('routing_warehouse_code', $ownership === 'external' ? 'OUTSOURCE' : '__NONE__')
+                    ->orWhere(fn ($fallback) => $fallback
+                        ->whereNull('routing_warehouse_code')
+                        ->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))))
             ->when($filters['search'] ?? null, function ($query, string $search) use ($filters): void {
                 $search = trim($search);
 
@@ -479,7 +488,6 @@ final class OrderService
             // These queries are evaluated against the full filtered orders dataset,
             // not the currently loaded AG Grid page. Only allowlisted relations/fields.
             foreach ([
-                'grid_warehouse' => ['shipment.warehouse', 'name'],
                 'grid_tracking' => ['shipment', 'tracking_number'],
                 'grid_city' => ['address', 'city'],
                 'grid_postal_code' => ['address', 'postal_code'],
@@ -489,6 +497,21 @@ final class OrderService
                     $value = $grid[$key];
                     $query->whereHas($relation, fn ($related) => $related->where($column, 'like', "%{$value}%"));
                 }
+            }
+            if (! empty($grid['grid_warehouse'])) {
+                $needle = mb_strtolower((string) $grid['grid_warehouse']);
+                $codes = collect(app(OrderWarehouseRouting::class)->options())
+                    ->filter(fn (array $row) => str_contains(mb_strtolower($row['name']), $needle)
+                        || str_contains(mb_strtolower($row['code']), $needle))
+                    ->pluck('code')->all();
+                $query->where(function (Builder $warehouses) use ($codes, $needle): void {
+                    $warehouses->whereIn('routing_warehouse_code', $codes)
+                        ->orWhere(function (Builder $physical) use ($needle): void {
+                            $physical->whereNull('routing_warehouse_code')
+                                ->whereHas('shipment.warehouse', fn ($w) => $w
+                                    ->where('name', 'like', '%'.$needle.'%'));
+                        });
+                });
             }
             // A single SKU item must satisfy *all* item-column filters.
             // Separate whereHas clauses could falsely match different lines

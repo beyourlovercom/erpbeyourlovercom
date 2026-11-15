@@ -17,6 +17,7 @@ export type OrderGridOrder = Record<string, unknown> & {
   order_status_label?: string
   order_kind_label?: string | null
   workflow_status_projection?: { zh?: string; code?: string }
+  routing_warehouse?: {code:string;name:string;source:string;revision:number}
   owner_label?: string | null
   order_note?: string | null
   latest_order_note?: string | null
@@ -116,7 +117,9 @@ export function toOrderOmsRow(order: OrderGridOrder): Record<string, unknown> {
     postal_code: order.address?.postal_code || '—',
     address_line_1: order.address?.address_line_1 || '—',
     address_line_2: order.address?.address_line_2 || '—',
-    warehouse_name: order.shipment?.warehouse_name || '—',
+    warehouse_name: order.routing_warehouse?.name || order.shipment?.warehouse_name || '未分仓',
+    routing_warehouse: order.routing_warehouse,
+    can_edit_warehouse_route: true,
     warehouse_id: order.shipment?.warehouse_id ?? null,
     shipment_status: order.shipment?.shipment_status || '—',
     warehouse_selection_source: order.shipment?.warehouse_selection_source || '—',

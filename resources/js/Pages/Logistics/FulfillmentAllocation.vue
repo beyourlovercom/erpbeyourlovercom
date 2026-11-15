@@ -5,6 +5,8 @@ import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
 import OrderWorkflowGridCell from '../../Components/Orders/OrderWorkflowGridCell.vue'
 import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatusPill.vue'
+import OrderWarehouseRouteSelect from '../../Components/Orders/OrderWarehouseRouteSelect.vue'
+import OrderWarehouseRouteGridCell from '../../Components/Orders/OrderWarehouseRouteGridCell.vue'
 import GridBatchFooterControls from '../../Components/DataGrid/GridBatchFooterControls.vue'
 import { publishGlobalFeedback } from '../../lib/globalFeedback'
 import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
@@ -28,13 +30,13 @@ type DerivedOrderRecord = { order_id:number; erp_order_id:string|null; derived:b
 type ExistingAllocation = { status:string; decision_source:'system_recommendation'|'manual'; selected_plan_key:string|null; decision_note:string|null; plan_snapshot:(Plan & { derived_orders?:DerivedOrderRecord[] })|null; submitted_at:string|null }
 type CarrierRoute = { carrier:string|null; carrier_label:string|null; service:string|null; automatic:boolean }
 type AllocationRejection = { source:string; reason:string; by:string|null; at:string|null }
-type Order = { order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
+type Order = { order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
 type Warehouse = { id:number; slug:string; code:string; name:string; country_code:string|null; can_auto_allocate:boolean }
 type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
 type TabKey = 'pending'|'rejected'|'recommendation'|'inventory'|'manual'|'gift'|'processed'
 
-const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; rejectionCount:number; rejectionNoticeVersion:string; rejectionFilter:boolean; canOperate:boolean; canArchive?:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string; canEditWorkflowStatus?:boolean; workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[] }>()
+const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; rejectionCount:number; rejectionNoticeVersion:string; rejectionFilter:boolean; canOperate:boolean; canArchive?:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string; canEditWorkflowStatus?:boolean; workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[]; warehouseRouteOptions?:{code:string;name:string}[]; canEditWarehouseRoute?:boolean }>()
 const activeTab = ref<TabKey>(props.rejectionFilter ? 'rejected' : 'pending')
 watch(() => props.rejectionFilter, isRejected => {
   if (isRejected) activeTab.value = 'rejected'
@@ -103,6 +105,9 @@ const allocationGridRows = computed<GridListRow[]>(() => filteredOrders.value.ma
   workflow_status: order.workflow_status_projection?.zh ?? '—',
   workflow_status_projection: order.workflow_status_projection,
   workflow_revision: order.workflow_revision ?? 0,
+  routing_warehouse:order.routing_warehouse,
+  can_edit_warehouse_route:Boolean(props.canEditWarehouseRoute),
+  warehouse_route_name:order.routing_warehouse?.name??'未分仓',
   can_edit_workflow_status: Boolean(order.can_edit_workflow_status),
   order_kind:order.order_kind,
   original_number: order.external_order_number ?? '—',
@@ -145,6 +150,9 @@ const allocationGridColumns: ColDef<GridListRow>[] = [
   gridColumn({colId:'workflow_status',field:'workflow_status',headerName:'订单状态',width:182,
     cellRenderer:OrderWorkflowGridCell,
     cellRendererParams:{workflowStatusOptions:props.workflowStatusOptions??[],canEditWorkflowStatus:props.canEditWorkflowStatus??false}}),
+  gridColumn({colId:'warehouse_route',field:'warehouse_route_name',headerName:'所属分仓',width:192,
+    cellRenderer:OrderWarehouseRouteGridCell,
+    cellRendererParams:{warehouseRouteOptions:props.warehouseRouteOptions??[],canEditWarehouseRoute:props.canEditWarehouseRoute??false}}),
   // Rejected orders are actionable exceptions: keep their warning/reason
   // beside the pinned order number, not after a long horizontally-scrolling table.
   gridColumn({colId:'rejection_state',field:'rejection_state',headerName:'驳回状态',width:115}),
@@ -654,7 +662,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
       <GlobalGrid v-if="globalGridPilotEnabled"
         :key="'allocation-grid-'+activeTab"
         namespace="grid.logistics.allocation.global.v1" title="待分仓"
-        :rows="allocationGridRows" :columns="allocationGridColumns" :required-column-ids="['order_number','workflow_status']"
+        :rows="allocationGridRows" :columns="allocationGridColumns" :required-column-ids="['order_number','workflow_status','warehouse_route']"
         :enable-selection="canArchive || (canOperate && activeTab!=='processed' && activeTab!=='gift')"
         :selected-order-ids="selectedBulkOrderIds"
         :page="allocationPager" :search="gridSearch ?? ''" search-placeholder="搜索全部订单号 / 收件人..."
@@ -666,7 +674,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
             :busy="bulkBusy" @apply="prepareGridBatch" />
         </template>
       </GlobalGrid>
-      <div v-else class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>订单状态</th><th>SKU 摘要</th><th>收件信息摘要</th><th>区域 / 优先仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
+      <div v-else class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>订单状态</th><th>所属分仓</th><th>SKU 摘要</th><th>收件信息摘要</th><th>区域 / 优先仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
         <tr v-for="(order,index) in filteredOrders" :key="order.id" :class="{'rejected-row':!!order.allocation_rejection}">
           <td>{{ index+1 }}</td>
           <td><Link v-if="order.order_url" class="order-link" :href="order.order_url">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.allocation_rejection" class="domestic-rejection">⚠ {{ order.allocation_rejection.source }}驳回：{{ order.allocation_rejection.reason }}</small></td>
@@ -674,6 +682,9 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
             :projection="order.workflow_status_projection" :revision="order.workflow_revision"
             :can-edit="Boolean(canEditWorkflowStatus && order.can_edit_workflow_status)"
             :options="workflowStatusOptions??[]" /><span v-else>—</span></td>
+          <td><OrderWarehouseRouteSelect v-if="order.routing_warehouse" :order-id="order.id"
+            :projection="order.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute)"
+            :options="warehouseRouteOptions??[]" /><span v-else>—</span></td>
           <td class="sku-list"><div v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? item.product_summary ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-if="item.is_gift" :class="item.resolved_fulfillment_sku?'gift-done':'gift-pending'">{{ item.resolved_fulfillment_sku ? `→ ${item.resolved_fulfillment_sku}` : '待解析' }}</span></div></td>
           <td class="address-summary"><strong>{{ order.recipient_name ?? '—' }}</strong><span>{{ addressLine(order) || '—' }}</span><small v-if="order.phone">{{ order.phone }}</small></td>
           <td><template v-if="order.country==='US'"><span :class="['zone-chip',order.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(order) }}</span><div class="zone-priority">{{ zonePriorityLabel(order.us_fulfillment_zone) }}</div></template><span v-else>{{ order.country ?? '—' }}</span></td>
@@ -681,7 +692,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
           <td><span :class="['status-chip',guidanceFor(order).kind]">{{ guidanceFor(order).status }}</span></td>
           <td class="sticky-action"><button class="primary compact" @click="openPlan(order)">{{ processed(order)?'查看记录':'查看方案' }}</button></td>
         </tr>
-        <tr v-if="!filteredOrders.length"><td colspan="9" class="empty">当前分类暂无订单</td></tr>
+        <tr v-if="!filteredOrders.length"><td colspan="10" class="empty">当前分类暂无订单</td></tr>
       </tbody></table></div>
     </section>
 
