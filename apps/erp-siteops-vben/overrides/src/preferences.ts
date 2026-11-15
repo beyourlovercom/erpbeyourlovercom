@@ -26,6 +26,9 @@ export const overridesPreferences = defineOverridesPreferences({
     compact: true,
     layout: 'sidebar-nav',
   },
+  // Keep ERP's approved 30-workspace-tab upper bound in the new Vben shell.
+  // Three pin + three hot-snapshot behavior still requires a separate parity gate.
+  tabbar: { maxCount: 30, persist: true, enable: true },
   copyright: { ...appCopyrightPreferences, enable: false },
   logo: {
     source: '/siteops-logo.svg',

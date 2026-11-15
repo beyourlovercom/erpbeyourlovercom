@@ -8,14 +8,16 @@ const apply = args.includes('--apply-overlay');
 const packaged = path.resolve(__dirname, '..');
 const base = process.env.ERP_SITEOPS_VBEN_BASE || 'D:/ai/siteops-vben/vue-vben-admin-main';
 const destination = process.env.ERP_SITEOPS_WORKDIR || 'D:/ai/erp-siteops/frontend';
-const archive = 'D:/ai/siteops-vben/vben-upstream-main.zip';
-const known = 'DF1E977A85EB0D55E9A75D19E270180BFF68E8E7FCD15759D69919223E44141B';
 if (!fs.existsSync(packaged)) throw new Error('Versioned overlay directory missing');
+const lock = JSON.parse(fs.readFileSync(path.join(packaged, 'vendor-lock.json'), 'utf8'));
+const archive = lock.archiveLocalPath;
+const known = lock.archiveSha256;
 if (!fs.existsSync(base)) throw new Error('Approved SiteOps V9.1 local base missing');
-if (fs.existsSync(archive)) {
-  const sha = crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex').toUpperCase();
-  if (sha !== known) throw new Error('Pinned Vben archive checksum mismatch');
-}
+if (!fs.existsSync(archive)) throw new Error('Pinned Vben ZIP required: restore approved local source first');
+if (fs.statSync(archive).size !== lock.archiveBytes)
+  throw new Error('Pinned Vben ZIP byte length mismatch');
+const sha = crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex').toUpperCase();
+if (sha !== known) throw new Error('Pinned Vben ZIP checksum mismatch');
 const overrides = path.join(packaged, 'overrides');
 const files = [];
 function collect(dir, rel='') {
@@ -44,6 +46,7 @@ for (const name of [
   'build.cmd', 'install-offline.cmd', 'test-orders.cmd', 'gateway.cjs',
   'r2-smoke.cjs', 'r2-browser.cjs', 'nav-r6-uat.cjs',
   'r2b-current-gateway.cjs', 'r2b-current-smoke.cjs', 'r2b-current-vben-uat.cjs',
+  'r2b-bootstrap-uat.cjs',
 ]) {
   const source = path.join(packaged, 'runtime', name);
   const target = path.join(path.dirname(destination), name);

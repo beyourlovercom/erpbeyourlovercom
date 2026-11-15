@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onActivated, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { applyAuthorizedDevNavigation, clearAuthorizedDevNavigation } from '#/router/erp-live-navigation';
+import { activeDevRole, applyAuthorizedDevNavigation, clearAuthorizedDevNavigation,
+  devBootstrapError, takeInitialDevOrders, type DevRole } from '#/router/erp-live-navigation';
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from 'ag-grid-community';
 import { AgGridVue } from 'ag-grid-vue3';
 import { getExistingErpOrders, getMacDevReadOnlyOrders, getCurrentDevReadOnlyOrders, type ErpOrderPage, type ErpDevMenuNode } from '#/api/erp-orders';
@@ -17,14 +18,14 @@ const router = useRouter();
 const search = ref('');
 const error = ref('');
 const fetching = ref(false);
-const mode = ref<'synthetic' | 'authenticated-erp'>('synthetic');
+const mode = ref<'synthetic' | 'authenticated-erp'>(import.meta.env.VITE_ERP_CURRENT_DEV_ENABLED === '1' ? 'authenticated-erp' : 'synthetic');
 const pager = ref<Pick<ErpOrderPage, 'page' | 'perPage' | 'total' | 'lastPage'>>({
   page: 1, perPage: 50, total: 0, lastPage: 1,
 });
 const currentDevEnabled = import.meta.env.VITE_ERP_CURRENT_DEV_ENABLED === '1';
 const bridgeEnabled = !currentDevEnabled && import.meta.env.VITE_ERP_DEV_BRIDGE_ENABLED === '1';
 const enabled = currentDevEnabled || bridgeEnabled || import.meta.env.VITE_ERP_READONLY_ORDERS_ENABLED === '1';
-const selectedRole = ref<'owner' | 'staff' | 'kol' | 'manager'>('owner');
+const selectedRole = activeDevRole;
 const devOrderScope = ref<'all' | 'customers'>('all');
 const devNavigation = ref<ErpDevMenuNode[]>([]);
 const authorizedWarehouses = computed(() =>
@@ -41,7 +42,9 @@ const sampleRows: Row[] = [
   { order_no: 'UAT-ORDER-003', type: '网红订单', warehouse: 'us-moreplus', sku: 'DEMO-GIFT', status: '待发货', tracking: '—', updated_at: '合成记录' },
   { order_no: 'UAT-ORDER-004', type: '客户订单', warehouse: 'de-tianyun', sku: 'DEMO-SKU-C', status: '异常订单', tracking: '—', updated_at: '合成记录' },
 ];
-const rows = ref<Row[]>([...sampleRows]);
+const rows = ref<Row[]>(currentDevEnabled ? [] : [...sampleRows]);
+let requestSequence = 0;
+let initialOrdersLoaded = false;
 const columns: ColDef<Row>[] = [
   { field: 'order_no', headerName: '订单号', pinned: 'left', width: 170, filter: true },
   { field: 'type', headerName: '订单类型', width: 130, filter: true },
@@ -57,16 +60,28 @@ const gridTheme = themeQuartz.withParams({
 });
 async function loadExisting(page = 1, perPage = pager.value.perPage) {
   if (!enabled) { error.value = '未启用 ERP Dev 只读连接。'; return; }
+  const ticket = ++requestSequence;
+  const roleForRequest: DevRole = selectedRole.value;
+  const preloaded = currentDevEnabled ? takeInitialDevOrders({
+    role:roleForRequest, search:search.value, page, perPage, scope:devOrderScope.value,
+  }) : undefined;
   fetching.value = true;
   error.value = '';
-  if (currentDevEnabled) clearAuthorizedDevNavigation();
+  if (currentDevEnabled) {
+    rows.value = [];
+    pager.value = {page:1,perPage:50,total:0,lastPage:1};
+    devNavigation.value = [];
+    clearAuthorizedDevNavigation();
+  }
   try {
     const data = currentDevEnabled
-      ? await getCurrentDevReadOnlyOrders({ search:search.value, page, perPage,
-          role:selectedRole.value, scope:devOrderScope.value })
+      ? preloaded ?? await getCurrentDevReadOnlyOrders({ search:search.value, page, perPage,
+          role:roleForRequest, scope:devOrderScope.value })
       : bridgeEnabled
         ? await getMacDevReadOnlyOrders({ search:search.value, page, perPage })
         : await getExistingErpOrders({ search:search.value, page, perPage });
+    if (ticket !== requestSequence || roleForRequest !== selectedRole.value) return;
+    if ('role' in data && data.role !== roleForRequest) throw new Error('DEV_ROLE_RESPONSE_MISMATCH');
     if ('navigation' in data && Array.isArray(data.navigation)) {
       devNavigation.value = data.navigation as ErpDevMenuNode[];
       if (currentDevEnabled) applyAuthorizedDevNavigation(devNavigation.value, router);
@@ -80,18 +95,26 @@ async function loadExisting(page = 1, perPage = pager.value.perPage) {
     pager.value = { page:data.page, perPage:data.perPage, total:data.total, lastPage:data.lastPage };
     mode.value = 'authenticated-erp';
   } catch (reason) {
+    if (ticket !== requestSequence || roleForRequest !== selectedRole.value) return;
     rows.value = [];
     devNavigation.value = [];
     if (currentDevEnabled) clearAuthorizedDevNavigation();
     mode.value = 'authenticated-erp';
     error.value = reason instanceof Error ? reason.message : '只读订单查询失败';
-  } finally { fetching.value = false; }
+  } finally { if (ticket === requestSequence) fetching.value = false; }
 }
 function showSynthetic() {
-  if (currentDevEnabled) clearAuthorizedDevNavigation();
+  if (currentDevEnabled) return;
   mode.value = 'synthetic'; rows.value = [...sampleRows]; search.value = '';
   error.value = ''; pager.value = { page:1, perPage:50, total:0, lastPage:1 };
 }
+function initCurrentDevOrders() {
+  if (!currentDevEnabled || !isOrders.value || initialOrdersLoaded) return;
+  initialOrdersLoaded = true;
+  void loadExisting(1, 50);
+}
+onMounted(initCurrentDevOrders);
+onActivated(initCurrentDevOrders);
 </script>
 
 <template>
@@ -112,7 +135,7 @@ function showSynthetic() {
           @keydown.enter="mode === 'authenticated-erp' && loadExisting(1)" />
         <button v-if="mode === 'authenticated-erp'" type="button" class="rounded border px-2 py-1 text-xs"
           :disabled="fetching" @click="loadExisting(1)">查询全部授权记录</button>
-        <button type="button" class="rounded border px-2 py-1 text-xs" @click="showSynthetic">合成演示数据</button>
+        <button v-if="!currentDevEnabled" type="button" class="rounded border px-2 py-1 text-xs" @click="showSynthetic">合成演示数据</button>
         <template v-if="currentDevEnabled">
           <label class="text-xs text-slate-600" for="erp-dev-role">Laravel Dev 测试角色</label>
           <select id="erp-dev-role" v-model="selectedRole" class="rounded border px-2 py-1 text-xs"
@@ -161,6 +184,11 @@ function showSynthetic() {
     <div v-else class="flex min-h-[360px] flex-1 items-center justify-center rounded border border-dashed border-slate-300 bg-white">
       <div class="max-w-md p-6 text-center">
         <h2 class="text-base font-medium text-slate-700">{{ title }} · 导航已恢复</h2>
+        <p v-if="currentDevEnabled && devBootstrapError" role="alert" class="mt-2 text-sm text-amber-700">
+          当前 Laravel Dev 授权菜单加载失败：{{ devBootstrapError }}
+        </p>
+        <button v-if="currentDevEnabled && devBootstrapError" class="mt-2 rounded border px-3 py-1 text-sm"
+          type="button" :disabled="fetching" @click="loadExisting(1)">重新加载 Dev 授权菜单</button>
         <p class="mt-2 text-sm text-slate-500">原 ERP 路径：<code>{{ originalPath }}</code></p>
         <p class="mt-2 text-sm text-slate-500">
           {{ sourceStatus === 'planned' ? '原 ERP 标记为规划中。' : '原 ERP 已有业务入口。' }}

@@ -1,0 +1,47 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {chromium}=require(path.join(__dirname,'frontend/node_modules/playwright'));
+const base='http://127.0.0.1:18786';
+(async()=>{
+ const pass=fs.readFileSync(path.join(__dirname,'private/local-admin-key.txt'),'utf8').trim();
+ const browser=await chromium.launch({executablePath:'D:/Program Files/Chrome/Chrome/chrome.exe',headless:true});
+ const page=await browser.newPage({viewport:{width:1440,height:900}});
+ page.on('console',m=>{if(m.type()==='error')console.log('BROWSER_CONSOLE',m.text().slice(0,180));});
+ try{
+  await page.goto(base+'/#/auth/login',{waitUntil:'domcontentloaded'});
+  await page.locator('input[type=password]').fill(pass);
+  await page.getByRole('button',{name:'进入 ERP 开发工作台'}).click();
+  await page.waitForURL(/#\/erp\/overview/,{waitUntil:'commit',timeout:75000});
+  const sidebar=page.locator('ul.vben-menu').first();
+  await sidebar.getByText('美东纽约仓',{exact:true}).waitFor({state:'attached',timeout:20000});
+  let nav=(await sidebar.textContent())||'';
+  assert.ok(nav.includes('订单')&&nav.includes('物流')&&nav.includes('算账'));
+  assert.ok(!nav.includes('营销')&&!nav.includes('同步'),'Owner unauthorized groups must not flash');
+  console.log('BOOTSTRAP_NAV_PASS',nav.slice(0,180));
+  const tabWidgets=await page.evaluate(()=>[...document.querySelectorAll('[class*=tabbar],[class*=tab-bar],[class*=tab-item]')].slice(0,24).map(e=>({tag:e.tagName,cls:String(e.className).slice(0,100),txt:e.textContent?.trim().slice(0,55)})));
+  console.log('TAB_WIDGETS',JSON.stringify(tabWidgets).slice(0,2700));
+  await page.goto(base+'/#/erp/orders/orders-master',{waitUntil:'domcontentloaded'});
+  await page.getByText('总计 123 条').first().waitFor({timeout:55000});
+  assert.equal(await page.getByText('UAT-ORDER-001',{exact:true}).count(),0);
+  console.log('AUTO_ORDERS_PASS');
+  const roles=page.getByLabel('Laravel Dev 测试角色').last();
+  await roles.selectOption('kol');
+  await page.getByText('总计 20 条').first().waitFor({timeout:55000});
+  nav=(await sidebar.textContent())||'';
+  assert.ok(!nav.includes('库存')&&!nav.includes('算账'));
+  console.log('KOL_NAV_PASS');
+  await roles.selectOption('owner');
+  await page.getByText('总计 123 条').first().waitFor({timeout:55000});
+  console.log('OWNER_RESTORE_PASS');
+  await roles.selectOption('manager');
+  await roles.selectOption('owner');
+  await page.getByText('总计 123 条').first().waitFor({timeout:55000});
+  assert.ok(!(await sidebar.textContent())?.includes('营销'));
+  console.log('ROLE_RACE_PASS');
+  await page.setViewportSize({width:390,height:844});
+  await page.waitForTimeout(400);
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);
+  assert.equal(overflow,false);
+  console.log('R2B_BOOTSTRAP_BROWSER_PASS mobile_no_overflow');
+ }finally{await browser.close()}
+})().catch(e=>{console.error('R2B_BOOTSTRAP_BROWSER_FAIL',e.message);process.exitCode=1});
