@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { applyAuthorizedDevNavigation, clearAuthorizedDevNavigation } from '#/router/erp-live-navigation';
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from 'ag-grid-community';
 import { AgGridVue } from 'ag-grid-vue3';
-import { getExistingErpOrders, getMacDevReadOnlyOrders, type ErpOrderPage } from '#/api/erp-orders';
+import { getExistingErpOrders, getMacDevReadOnlyOrders, getCurrentDevReadOnlyOrders, type ErpOrderPage, type ErpDevMenuNode } from '#/api/erp-orders';
 
 defineOptions({ name: 'ERPWorkspacePreview' });
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -12,6 +13,7 @@ interface Row {
   sku: string; status: string; tracking: string; updated_at: string;
 }
 const route = useRoute();
+const router = useRouter();
 const search = ref('');
 const error = ref('');
 const fetching = ref(false);
@@ -19,8 +21,16 @@ const mode = ref<'synthetic' | 'authenticated-erp'>('synthetic');
 const pager = ref<Pick<ErpOrderPage, 'page' | 'perPage' | 'total' | 'lastPage'>>({
   page: 1, perPage: 50, total: 0, lastPage: 1,
 });
-const bridgeEnabled = import.meta.env.VITE_ERP_DEV_BRIDGE_ENABLED === '1';
-const enabled = bridgeEnabled || import.meta.env.VITE_ERP_READONLY_ORDERS_ENABLED === '1';
+const currentDevEnabled = import.meta.env.VITE_ERP_CURRENT_DEV_ENABLED === '1';
+const bridgeEnabled = !currentDevEnabled && import.meta.env.VITE_ERP_DEV_BRIDGE_ENABLED === '1';
+const enabled = currentDevEnabled || bridgeEnabled || import.meta.env.VITE_ERP_READONLY_ORDERS_ENABLED === '1';
+const selectedRole = ref<'owner' | 'staff' | 'kol' | 'manager'>('owner');
+const devOrderScope = ref<'all' | 'customers'>('all');
+const devNavigation = ref<ErpDevMenuNode[]>([]);
+const authorizedWarehouses = computed(() =>
+  devNavigation.value.find((g) => g.key === 'inventory')?.children
+    ?.filter((n) => n.key.startsWith('inventory-warehouse-')) ?? [],
+);
 const title = computed(() => String(route.meta.title ?? 'ERP 工作台'));
 const originalPath = computed(() => String(route.meta.erpOriginalPath ?? ''));
 const sourceStatus = computed(() => String(route.meta.erpSourceStatus ?? ''));
@@ -49,10 +59,18 @@ async function loadExisting(page = 1, perPage = pager.value.perPage) {
   if (!enabled) { error.value = '未启用 ERP Dev 只读连接。'; return; }
   fetching.value = true;
   error.value = '';
+  if (currentDevEnabled) clearAuthorizedDevNavigation();
   try {
-    const data = bridgeEnabled
-      ? await getMacDevReadOnlyOrders({ search:search.value, page, perPage })
-      : await getExistingErpOrders({ search:search.value, page, perPage });
+    const data = currentDevEnabled
+      ? await getCurrentDevReadOnlyOrders({ search:search.value, page, perPage,
+          role:selectedRole.value, scope:devOrderScope.value })
+      : bridgeEnabled
+        ? await getMacDevReadOnlyOrders({ search:search.value, page, perPage })
+        : await getExistingErpOrders({ search:search.value, page, perPage });
+    if ('navigation' in data && Array.isArray(data.navigation)) {
+      devNavigation.value = data.navigation as ErpDevMenuNode[];
+      if (currentDevEnabled) applyAuthorizedDevNavigation(devNavigation.value, router);
+    }
     // Never merge, cache, or fallback to synthetic rows after a real API failure.
     rows.value = data.rows.map(row => ({
       order_no: row.order_number, type: row.order_kind, warehouse: row.warehouse || '—',
@@ -63,11 +81,14 @@ async function loadExisting(page = 1, perPage = pager.value.perPage) {
     mode.value = 'authenticated-erp';
   } catch (reason) {
     rows.value = [];
+    devNavigation.value = [];
+    if (currentDevEnabled) clearAuthorizedDevNavigation();
     mode.value = 'authenticated-erp';
     error.value = reason instanceof Error ? reason.message : '只读订单查询失败';
   } finally { fetching.value = false; }
 }
 function showSynthetic() {
+  if (currentDevEnabled) clearAuthorizedDevNavigation();
   mode.value = 'synthetic'; rows.value = [...sampleRows]; search.value = '';
   error.value = ''; pager.value = { page:1, perPage:50, total:0, lastPage:1 };
 }
@@ -92,10 +113,25 @@ function showSynthetic() {
         <button v-if="mode === 'authenticated-erp'" type="button" class="rounded border px-2 py-1 text-xs"
           :disabled="fetching" @click="loadExisting(1)">查询全部授权记录</button>
         <button type="button" class="rounded border px-2 py-1 text-xs" @click="showSynthetic">合成演示数据</button>
+        <template v-if="currentDevEnabled">
+          <label class="text-xs text-slate-600" for="erp-dev-role">Laravel Dev 测试角色</label>
+          <select id="erp-dev-role" v-model="selectedRole" class="rounded border px-2 py-1 text-xs"
+            aria-label="Laravel Dev 测试角色" @change="loadExisting(1)">
+            <option value="owner">Owner</option>
+            <option value="staff">运营（普通员工）</option>
+            <option value="kol">KOL 专员</option>
+            <option value="manager">KOL 经理</option>
+          </select>
+          <select v-model="devOrderScope" aria-label="订单读取范围" class="rounded border px-2 py-1 text-xs"
+            @change="loadExisting(1)">
+            <option value="all">订单总表 /orders</option>
+            <option value="customers">客户订单 /customers/orders</option>
+          </select>
+        </template>
         <button v-if="enabled" type="button" class="rounded border px-2 py-1 text-xs"
-          :disabled="fetching" @click="loadExisting(1)">{{ bridgeEnabled ? '读取 Mac mini 的真实 Dev 订单' : '读取 ERP Dev /orders（只读）' }}</button>
+          :disabled="fetching" @click="loadExisting(1)">{{ currentDevEnabled ? '读取当前 Laravel Dev（按角色授权）' : bridgeEnabled ? '读取 Mac mini 的旧 Dev 订单' : '读取 ERP Dev /orders（只读）' }}</button>
         <span class="text-xs text-slate-500">
-          {{ mode === 'synthetic' ? '合成演示，非真实订单' : bridgeEnabled ? 'Mac mini 本地 Dev SQLite · 非正式订单' : 'Laravel Dev 已授权订单' }} · {{ mode === 'synthetic' ? rows.length : pager.total }} 条
+          {{ mode === 'synthetic' ? '合成演示，非真实订单' : currentDevEnabled ? '当前 main · Laravel Dev 隔离 UAT 数据（非 Production）' : bridgeEnabled ? '旧 Mac Dev SQLite' : 'Laravel Dev 已授权订单' }} · {{ mode === 'synthetic' ? rows.length : pager.total }} 条
         </span>
       </div>
       <p v-if="error" role="alert" class="rounded bg-amber-50 p-2 text-sm text-amber-700">{{ error }}</p>
@@ -109,12 +145,17 @@ function showSynthetic() {
         <button :disabled="pager.page <= 1 || fetching" @click="loadExisting(pager.page - 1)">上一页</button>
         <span>第 {{ pager.page }} / {{ pager.lastPage }} 页 · 总计 {{ pager.total }} 条</span>
         <button :disabled="pager.page >= pager.lastPage || fetching" @click="loadExisting(pager.page + 1)">下一页</button>
-        <select :value="pager.perPage" @change="loadExisting(1, Number(($event.target as HTMLSelectElement).value))">
+        <select v-if="!currentDevEnabled || devOrderScope === 'customers'"
+          :value="pager.perPage" @change="loadExisting(1, Number(($event.target as HTMLSelectElement).value))">
           <option :value="20">20 / 页</option><option :value="50">50 / 页</option><option :value="100">100 / 页</option>
         </select>
       </div>
       <p class="text-xs text-slate-400">
-        {{ bridgeEnabled ? 'R2 临时通道：仅 Owner 本地 Dev 数据读取，尚未验证逐用户 Session/RBAC；生产写入关闭。' : '真实连接调用 Laravel 原有授权 GET /orders；业务写入关闭。' }}
+        {{ currentDevEnabled ? 'R2-B：通过原 Laravel Dev 登录 Session 和订单控制器授权；这里是隔离 UAT 角色，不是正式员工登录。全订单 /orders 未开启 OMS Grid Canary 时后端固定 50 条/页。业务写入关闭。' : bridgeEnabled ? '旧 R2 Dev 通道仅用于回归；生产写入关闭。' : '真实连接调用 Laravel 原有授权 GET /orders；业务写入关闭。' }}
+      </p>
+      <p v-if="currentDevEnabled && mode === 'authenticated-erp'" class="text-xs text-slate-500">
+        Laravel 实际授权菜单 {{ devNavigation.length }} 个一级分类 ·
+        实际启用的仓库快捷入口 {{ authorizedWarehouses.length }} 个
       </p>
     </template>
     <div v-else class="flex min-h-[360px] flex-1 items-center justify-center rounded border border-dashed border-slate-300 bg-white">

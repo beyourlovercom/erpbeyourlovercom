@@ -107,3 +107,41 @@ export async function getMacDevReadOnlyOrders(input: {
     throw new Error('ERP_DEV_DATA_SOURCE_REJECTED');
   return normalizeExistingInertiaOrders(result.inertia);
 }
+export interface ErpDevMenuNode {
+  key: string; label: string; path: string; children?: ErpDevMenuNode[];
+}
+export interface ErpCurrentDevPage extends ErpOrderPage {
+  navigation: ErpDevMenuNode[];
+  role: string;
+}
+export async function getCurrentDevReadOnlyOrders(input: {
+  search?: string; page?: number; perPage?: number;
+  role?: 'owner' | 'staff' | 'kol' | 'manager';
+  scope?: 'all' | 'customers';
+}): Promise<ErpCurrentDevPage> {
+  const result = await requestClient.get<{
+    source: string; authenticatedByLaravel: boolean; rowsAreIsolatedUat: boolean;
+    role: string; inertia: unknown;
+  }>('/erp/current/orders', { params: {
+    search: input.search ?? '', page: input.page ?? 1, per_page: input.perPage ?? 50,
+    role: input.role ?? 'owner', scope: input.scope ?? 'all',
+  } });
+  if (result.source !== 'CURRENT_LARAVEL_MAIN_DEV_0508A126' ||
+      result.authenticatedByLaravel !== true || result.rowsAreIsolatedUat !== true) {
+    throw new Error('ERP_CURRENT_DEV_AUTH_SOURCE_REJECTED');
+  }
+  const props = asObject(asObject(result.inertia).props);
+  const navigation = props.shellNavigation;
+
+  if (!Array.isArray(navigation)) throw new Error('ERP_LARAVEL_NAV_MISSING');
+  const menus = navigation.map((raw): ErpDevMenuNode => {
+    const node = asObject(raw);
+    const children = Array.isArray(node.children) ? node.children.map((child) => {
+      const c = asObject(child);
+      return { key: asText(c.key), label: asText(c.label), path: asText(c.path) };
+    }) : [];
+    return { key: asText(node.key), label: asText(node.label),
+      path: asText(node.path), children };
+  });
+  return { ...normalizeExistingInertiaOrders(result.inertia), navigation: menus, role: result.role };
+}

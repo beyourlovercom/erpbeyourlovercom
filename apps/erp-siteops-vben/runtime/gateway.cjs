@@ -4,6 +4,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { currentDevOrders, SOURCE: CURRENT_DEV_SOURCE } = require('./r2b-current-gateway.cjs');
 const ROOT = __dirname;
 const DIST = path.join(ROOT, 'frontend/apps/web-antd/dist');
 const SECRET_FILE = path.join(ROOT, 'private/local-admin-key.txt');
@@ -133,9 +134,18 @@ const server = http.createServer(async (req, res) => {
           roles:['owner'], homePath:'/erp/overview', avatar:'' });
       if (route === '/api/auth/codes') return respond(res, 200, ['erp:read']);
       if (route === '/api/menu/all') return respond(res, 200, []);
+      if (route === '/api/erp/current/orders') {
+        try { return respond(res, 200, await currentDevOrders(url)); }
+        catch (error) {
+          const code=String(error?.message||'DEV_READ_FAILED');
+          const status=/^UNKNOWN_|^INVALID_|^SEARCH_TOO_LONG/.test(code) ? 400
+            : code==='LARAVEL_ROLE_FORBIDDEN' ? 403 : 502;
+          return respond(res, status, 'Current Laravel Dev: '+code);
+        }
+      }
       if (route === '/api/erp/dev/orders') return readOnlyDevOrders(res, url);
       if (route === '/api/erp/status') return respond(res, 200, {
-        source:'Mac mini local Dev SQLite', erp_api_connected:true, production_writes:false });
+        source:CURRENT_DEV_SOURCE, erp_api_connected:true, production_writes:false });
       return respond(res, 404, 'ERP API not connected in R0');
     }
     return serveStatic(req, res, url);
