@@ -2,7 +2,7 @@ import type { Router } from 'vue-router';
 import type { MenuRecordRaw } from '@vben/types';
 
 import { ref } from 'vue';
-import { useAccessStore } from '@vben/stores';
+import { useAccessStore, useTabbarStore } from '@vben/stores';
 
 import { getCurrentDevReadOnlyOrders, type ErpCurrentDevPage, type ErpDevMenuNode } from '#/api/erp-orders';
 
@@ -76,6 +76,18 @@ export function applyAuthorizedDevNavigation(navigation: ErpDevMenuNode[], route
     });
   }
   useAccessStore().setAccessMenus(menus);
+  // A former Owner tab (even pinned) must not outlive a narrower Dev test role.
+  // Remove forbidden cached/bookmarked ERP routes whenever server scope changes.
+  const allowed = new Set<string>();
+  for (const menu of menus) {
+    allowed.add(menu.path);
+    for (const child of menu.children ?? []) allowed.add(child.path);
+  }
+  const tabbar = useTabbarStore();
+  const forbidden = tabbar.tabs
+    .filter((tab) => tab.path.startsWith('/erp/') && !allowed.has(tab.path))
+    .map((tab) => String(tab.key ?? tab.path));
+  if (forbidden.length) void tabbar._bulkCloseByKeys(forbidden);
 }
 export function clearAuthorizedDevNavigation() {
   suspendAuthorizedDevNavigation();
