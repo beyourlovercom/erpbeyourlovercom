@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
+use App\Modules\Logistics\Infrastructure\Models\CarrierService;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -100,6 +101,47 @@ final class CarrierWorkspaceTest extends TestCase
             'UniUni',
             array_column(app(CarrierServiceCatalog::class)->options(), 'value'),
         );
+    }
+
+    public function test_inline_create_returns_a_selectable_carrier_with_default_service(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+
+        $this->actingAs($user)->postJson('/logistics/carriers', [
+            'name' => '德邦物流', 'name_en' => 'Deppon Logistics',
+        ])->assertCreated()
+            ->assertJsonPath('carrier.value', '德邦物流')
+            ->assertJsonPath('carrier.label', '德邦物流')
+            ->assertJsonPath('carrier.default_service_value', '默认')
+            ->assertJsonPath('carrier.services.0.value', '默认');
+
+        $carrier = Carrier::query()->where('name', '德邦物流')->with('defaultService')->firstOrFail();
+        $this->assertDatabaseHas('logistics_carrier_services', [
+            'carrier_id' => $carrier->id,
+            'service_key' => 'default',
+            'service_value' => '默认',
+            'is_active' => 1,
+        ]);
+        self::assertSame('默认', $carrier->defaultService?->service_value);
+        self::assertSame('Deppon Logistics', $carrier->name_en);
+        self::assertSame('默认', app(CarrierServiceCatalog::class)->resolve('德邦物流', '默认')?->service_value);
+    }
+
+    public function test_inline_create_rejects_case_insensitive_duplicates_and_unauthorized_writes(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $this->actingAs($operator)->postJson('/logistics/carriers', ['name' => 'Deppon'])->assertCreated();
+
+        $this->actingAs($operator)->postJson('/logistics/carriers', ['name' => 'deppon'])
+            ->assertUnprocessable()->assertJsonValidationErrors('name');
+
+        $readonly = $this->userWith(['logistics.view']);
+        $this->actingAs($readonly)->postJson('/logistics/carriers', ['name' => 'DeniedCarrier'])
+            ->assertForbidden();
+
+        self::assertSame(1, Carrier::query()->whereRaw('LOWER(name) = ?', ['deppon'])->count());
+        self::assertSame(0, Carrier::query()->where('name', 'DeniedCarrier')->count());
+        self::assertSame(1, CarrierService::query()->whereHas('carrier', fn ($q) => $q->where('name', 'Deppon'))->count());
     }
 
     public function test_billing_extension_keeps_cost_and_raw_evidence_without_copying_shipment_identity(): void
