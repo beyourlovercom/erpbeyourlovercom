@@ -8,6 +8,9 @@ use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Application\MorePlusFifoReconciliationService;
 use App\Modules\Inventory\Application\MorePlusInventorySyncService;
+use App\Modules\Inventory\Application\WarehouseLastReadStockService;
+use Illuminate\Support\Facades\DB;
+use Carbon\CarbonImmutable;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
@@ -311,6 +314,140 @@ final class MorePlusInventorySyncTest extends TestCase
         self::assertSame(7, WarehouseInventory::query()->where('product_id', Product::where('sku', 'MP-CANNOT-MANUAL')->value('id'))->value('quantity_on_hand'));
     }
 
+    public function test_last_read_cache_records_successful_get_without_changing_main_inventory(): void
+    {
+        $p = $this->product('MP-REFERENCE-GET', 35);
+        $this->provider = ['MP-REFERENCE-GET' => [80, 78]];
+        $result = app(MorePlusInventorySyncService::class)->previewWithLastRead($this->warehouse);
+        self::assertSame(1, $result['ready']);
+        $ref = DB::table('warehouse_stock_read_references')->where('warehouse_id', $this->warehouse->id)
+            ->where('product_id', $p->id)->first();
+        self::assertSame(80, (int)$ref->last_read_raw_qty);
+        self::assertSame(80, (int)$ref->last_read_stock_qty);
+        self::assertSame('api_read', $ref->last_read_stock_source);
+        self::assertSame('read_success', $ref->last_read_stock_status);
+        self::assertSame(35, WarehouseInventory::query()->where('product_id',$p->id)->value('quantity_on_hand'));
+        Http::assertSentCount(3);
+        Http::assertSent(fn ($request)=>$request->method()==='GET');
+    }
+
+    public function test_read_is_persisted_when_main_erp_transaction_fails_and_next_read_error_preserves_it(): void
+    {
+        $p = $this->product('MP-REFERENCE-FAIL', 35);
+        $this->provider = ['MP-REFERENCE-FAIL' => [80, 79]];
+        $audit = \Mockery::mock(AuditRecorder::class);
+        $audit->shouldReceive('record')->andThrow(new RuntimeException('SYNTHETIC_ERP_TRANSACTION_ERROR'));
+        $service = new MorePlusInventorySyncService(
+            app(ShipOutProductionInventoryAudit::class), $audit,
+            app(WarehouseLastReadStockService::class)
+        );
+        try {
+            $service->syncProvider($this->warehouse, null);
+            self::fail('ERP mirror must fail in this synthetic test');
+        } catch (RuntimeException $e) {
+            self::assertSame('SYNTHETIC_ERP_TRANSACTION_ERROR', $e->getMessage());
+        }
+        $ref = DB::table('warehouse_stock_read_references')->where('product_id', $p->id)->first();
+        self::assertSame(80, (int)$ref->last_read_stock_qty);
+        self::assertSame('read_success_apply_failed', $ref->last_read_stock_status);
+        self::assertSame(35, WarehouseInventory::query()->where('product_id',$p->id)->value('quantity_on_hand'));
+        $this->provider = [];
+        try {
+            app(MorePlusInventorySyncService::class)->syncProvider($this->warehouse, null);
+            self::fail('Empty GET should not zero last-read cache');
+        } catch (RuntimeException $e) {
+            self::assertSame('MOREPLUS_PROVIDER_STOCK_EMPTY_REVIEW_REQUIRED', $e->getMessage());
+        }
+        $last = DB::table('warehouse_stock_read_references')->where('product_id', $p->id)->first();
+        self::assertSame(80, (int)$last->last_read_raw_qty);
+        self::assertSame(80, (int)$last->last_read_stock_qty);
+        self::assertNotNull($last->last_read_stock_at);
+        self::assertSame('read_failed_last_known', $last->last_read_stock_status);
+        self::assertSame(['source_read', 'erp_mirror_result', 'source_read_failed'],
+            DB::table('warehouse_stock_read_events')->orderBy('id')->pluck('event_type')->all());
+    }
+
+    public function test_signed_read_success_followed_by_real_outbound_is_idempotent_then_rebases(): void
+    {
+        $p = $this->product('MP-REFERENCE-SHIP', 15);
+        $lastRead = app(WarehouseLastReadStockService::class);
+        $originalTime = CarbonImmutable::getTestNow();
+        try {
+            CarbonImmutable::setTestNow('2026-11-14 10:00:00');
+            $this->provider = ['MP-REFERENCE-SHIP' => [80,80]];
+            app(MorePlusInventorySyncService::class)->previewWithLastRead($this->warehouse);
+            $proofAt = CarbonImmutable::parse('2026-11-14 10:01:00','UTC');
+            $lines = [$p->id=>['product_id'=>$p->id,'provider_sku'=>'MP-REFERENCE-SHIP','quantity'=>3]];
+            $first = $lastRead->recordVerifiedLines($this->warehouse,$lines,'OMS-123','OUT-123',$proofAt);
+            self::assertSame(1,$first['applied']);
+            self::assertSame(77, (int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('last_read_stock_qty'));
+            $again = $lastRead->recordVerifiedLines($this->warehouse,$lines,'OMS-123','OUT-123',$proofAt);
+            self::assertSame(1,$again['skipped']);
+            self::assertSame(77, (int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('last_read_stock_qty'));
+            CarbonImmutable::setTestNow('2026-11-14 10:05:00');
+            $this->provider = ['MP-REFERENCE-SHIP' => [75,75]];
+            app(MorePlusInventorySyncService::class)->previewWithLastRead($this->warehouse);
+            self::assertSame(75,(int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('last_read_stock_qty'));
+            self::assertSame(0,(int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('post_read_adjustment_qty'));
+            self::assertSame(15,WarehouseInventory::where('product_id',$p->id)->value('quantity_on_hand'));
+            $late = $lastRead->recordVerifiedLines($this->warehouse,
+                [$p->id=>['product_id'=>$p->id,'provider_sku'=>'MP-REFERENCE-SHIP','quantity'=>2]],
+                'OMS-OLDER','OUT-OLDER',CarbonImmutable::parse('2026-11-14 10:03:00','UTC'));
+            self::assertSame(1,$late['review']);
+            self::assertSame(75,(int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('last_read_stock_qty'));
+            self::assertSame(2,DB::table('warehouse_stock_read_adjustments')->count());
+        } finally {
+            CarbonImmutable::setTestNow($originalTime);
+        }
+    }
+
+    public function test_reference_overdraw_is_held_for_review_never_negative(): void
+    {
+        $p = $this->product('MP-REFERENCE-LOW', 10);
+        $this->provider = ['MP-REFERENCE-LOW' => [2, 2]];
+        app(MorePlusInventorySyncService::class)->previewWithLastRead($this->warehouse);
+        $ref = DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->first();
+        $proofAt = CarbonImmutable::parse($ref->last_read_stock_at,'UTC')->addMinute();
+        $result = app(WarehouseLastReadStockService::class)->recordVerifiedLines($this->warehouse,
+            [$p->id=>['product_id'=>$p->id,'provider_sku'=>'MP-REFERENCE-LOW','quantity'=>3]],
+            'OMS-OVER','OUT-OVER',$proofAt);
+        self::assertSame(1,$result['review']);
+        self::assertSame(2,(int)DB::table('warehouse_stock_read_references')->where('product_id',$p->id)->value('last_read_stock_qty'));
+        self::assertSame('needs_review',DB::table('warehouse_stock_read_adjustments')->value('outcome'));
+    }
+
+    public function test_last_read_column_payload_stays_separate_from_standard_qoh(): void
+    {
+        $p = $this->product('MP-REFERENCE-DISPLAY', 12);
+        $this->provider = ['MP-REFERENCE-DISPLAY' => [28, 26]];
+        app(MorePlusInventorySyncService::class)->previewWithLastRead($this->warehouse);
+        $operator=$this->userWith(['inventory.view']);
+        $this->actingAs($operator)->get('/inventory/us-la')
+            ->assertOk()->assertInertia(fn(Assert $page)=>$page
+                ->component('Inventory/WarehouseShow')
+                ->where('warehouse.inventories.0.last_read.quantity', 28)
+                ->where('warehouse.inventories.0.quantity_on_hand',12)
+                ->etc());
+    }
+
+    public function test_ambiguous_provider_aliases_keep_raw_read_evidence_without_associating_wrong_product(): void
+    {
+        $p = $this->product('MP-DUPLICATE-CANONICAL', 17);
+        app(WarehouseLastReadStockService::class)->captureMorePlus($this->warehouse, [
+            'stock_rows' => [
+                ['provider_sku'=>'MP-ALIAS-A', 'canonical_sku'=>'MP-DUPLICATE-CANONICAL',
+                    'sku_alias_status'=>'verified', 'standard_quantity'=>22,'available_quantity'=>22],
+                ['provider_sku'=>'MP-ALIAS-B', 'canonical_sku'=>'MP-DUPLICATE-CANONICAL',
+                    'sku_alias_status'=>'verified', 'standard_quantity'=>12,'available_quantity'=>12],
+            ],
+        ], CarbonImmutable::now('UTC'));
+        self::assertSame(2, DB::table('warehouse_stock_read_references')->count());
+        self::assertSame(0, DB::table('warehouse_stock_read_references')->whereNotNull('product_id')->count());
+        self::assertSame(34, (int)DB::table('warehouse_stock_read_references')->sum('last_read_raw_qty'));
+        self::assertSame(17, WarehouseInventory::where('product_id',$p->id)->value('quantity_on_hand'));
+        self::assertSame(2, DB::table('warehouse_stock_read_events')->where('status','sku_unverified')->count());
+    }
+
     private function userWith(array $permissions): User
     {
         $user = User::factory()->create(['is_active' => true]);
@@ -432,7 +569,8 @@ final class MorePlusInventorySyncTest extends TestCase
         $audit->shouldReceive('record')->once()->andThrow(new RuntimeException('SYNTHETIC_AUDIT_FAILURE'));
         $service = new MorePlusInventorySyncService(
             app(ShipOutProductionInventoryAudit::class),
-            $audit
+            $audit,
+            app(WarehouseLastReadStockService::class)
         );
         $preview = $service->preview($this->warehouse);
         try {
