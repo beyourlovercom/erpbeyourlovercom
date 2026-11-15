@@ -4,6 +4,8 @@ import { Head, router } from '@inertiajs/vue3'
 import type { ColDef } from 'ag-grid-community'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
+import OrderWarehouseRouteGridCell from '../../Components/Orders/OrderWarehouseRouteGridCell.vue'
+import OrderWorkflowGridCell from '../../Components/Orders/OrderWorkflowGridCell.vue'
 import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
 const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 
@@ -13,14 +15,18 @@ type TingonRow = {
   warehouse:string|null;carrier:string|null;service:string|null
   tracking_number:string|null;logistics_note:string|null
   shipment_status:string;can_edit:boolean
+  routing_warehouse?:{code:string;name:string;source:string;revision:number};can_edit_warehouse_route?:boolean
+  workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean};workflow_revision?:number;order_kind?:string;can_edit_workflow_status?:boolean
 }
 type Pager={data:TingonRow[];current_page:number;last_page:number;per_page:number;total:number}
-const props=defineProps<{orders:Pager;view:string;search:string;canOperate:boolean;carrierOptions:{value:string;label:string}[]}>()
+const props=defineProps<{orders:Pager;view:string;search:string;canOperate:boolean;carrierOptions:{value:string;label:string}[];canEditWarehouseRoute?:boolean;warehouseRouteOptions?:{code:string;name:string}[];canEditWorkflowStatus?:boolean;workflowStatusOptions?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]}>()
 const tabs=[
   {key:'pending',label:'待 Tingon 发货'},
   {key:'brand',label:'Tingon 品牌订单'},
   {key:'all',label:'合作代发全部'},
   {key:'sent',label:'已发货 / 待回填'},
+  {key:'stockout',label:'缺货单'},
+  {key:'exceptions',label:'异常订单'},
 ]
 const term=ref(props.search)
 watch(()=>props.search,v=>term.value=v)
@@ -35,6 +41,14 @@ function changeView(view:string){
 const rows=computed<GridListRow[]>(()=>props.orders.data.map(r=>({
   ...r,order_number:r.order_number??'—',
   carrier_service:[r.carrier,r.service].filter(Boolean).join(' / ')||'—',
+  routing_warehouse:r.routing_warehouse,
+  routing_warehouse_name:r.routing_warehouse?.name??r.warehouse??'未分仓',
+  workflow_status:r.workflow_status_projection?.zh??'—',
+  workflow_status_projection:r.workflow_status_projection,
+  workflow_revision:r.workflow_revision??0,
+  order_kind:r.order_kind,
+  can_edit_workflow_status:Boolean(r.can_edit_workflow_status),
+  can_edit_warehouse_route:Boolean(r.can_edit_warehouse_route),
   tracking:r.tracking_number??'—',
   status:r.shipment_status==='pending'?'待发货':r.shipment_status==='shipped'?'已发货':r.shipment_status,
 })))
@@ -74,7 +88,14 @@ const columns=computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'recipient',field:'recipient_name',headerName:'收件人',width:150}),
   gridColumn({colId:'country',field:'country',headerName:'国家',width:90}),
   gridColumn({colId:'sku',field:'sku',headerName:'SKU / 数量',width:220}),
-  gridColumn({colId:'warehouse',field:'warehouse',headerName:'发货仓',width:142}),
+  gridColumn({colId:'workflow_status',field:'workflow_status',headerName:'订单状态',width:182,
+    cellRenderer:OrderWorkflowGridCell,cellRendererParams:{
+      workflowStatusOptions:props.workflowStatusOptions??[],
+      canEditWorkflowStatus:props.canEditWorkflowStatus??false}}),
+  gridColumn({colId:'route',field:'routing_warehouse_name',headerName:'所属分仓',width:192,
+    cellRenderer:OrderWarehouseRouteGridCell,cellRendererParams:{
+      warehouseRouteOptions:props.warehouseRouteOptions??[],canEditWarehouseRoute:props.canEditWarehouseRoute??false}}),
+  gridColumn({colId:'warehouse',field:'warehouse',headerName:'实际发货仓',width:142}),
   gridColumn({colId:'carrier',field:'carrier_service',headerName:'物流商 / 服务',width:190}),
   gridColumn({colId:'tracking',field:'tracking',headerName:'Tracking',width:170}),
   gridColumn({colId:'status',field:'status',headerName:'发货状态',width:115}),
@@ -103,7 +124,7 @@ const columns=computed<ColDef<GridListRow>[]>(()=>[
       </div>
       <GlobalGrid namespace="grid.logistics.tingon.v1" title="Tingon发货" :columns="columns"
         :rows="rows" :page="props.orders" :search="props.search"
-        :required-column-ids="['order']" row-identity-key="id"
+        :required-column-ids="['order','workflow_status','route']" row-identity-key="id"
         search-placeholder="搜索订单号 / 收件人 / SKU / Tracking..."
         :default-pinned-right="1" @search-change="v=>{term=v;nav.search(v)}"
         @page-change="nav.page($event)" @page-size-change="nav.pageSize($event)"/>

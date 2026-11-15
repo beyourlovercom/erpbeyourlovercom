@@ -13,6 +13,7 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
+use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
@@ -41,6 +42,92 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         // build output. The Vue app is independently built/tested in CI.
         $this->withoutVite();
         config()->set('inertia.testing.ensure_pages_exist', false);
+    }
+
+    public function test_unallocated_order_manual_route_only_draft_appears_in_workbench_without_fake_approval(): void
+    {
+        $actor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-SM'], 'UAT-ROUTE-ONLY-NO-PHYSICAL');
+        $order->shipment()->delete();
+
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 0,
+        ])->assertOk();
+        $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'US-SM', 'expected_routing_revision' => 0,
+        ])->assertOk();
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'warehouse_id' => null,
+            'shipment_status' => 'pending', 'tracking_number' => null,
+        ]);
+        $this->get('/logistics/oversea/us-3sm?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('viewCounts.pending', 1)
+            ->where('viewCounts.review', 0)
+            ->where('rows.data.0.routing_warehouse.code', 'US-SM'));
+        $this->get('/logistics/oversea/us-moreplus?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 0)->where('viewCounts.pending', 0));
+
+        $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'US-LA', 'expected_routing_revision' => 1,
+        ])->assertOk();
+        $this->get('/logistics/oversea/us-moreplus?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('viewCounts.pending', 1)
+            ->where('rows.data.0.routing_warehouse.code', 'US-LA'));
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'warehouse_id' => null,
+            'shipment_status' => 'pending', 'tracking_number' => null,
+        ]);
+        $this->assertDatabaseCount('shipments', 1);
+    }
+
+    public function test_manual_status_plus_route_places_one_order_in_exact_workbench_without_changing_actual_warehouse(): void
+    {
+        $actor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate', 'procurement.view']);
+        $warehouses = $this->warehouses();
+        Warehouse::query()->updateOrCreate(['code' => 'TINGON'], [
+            'slug' => 'tingon', 'name' => '合作-Tingon',
+            'type' => 'warehouse', 'is_active' => true, 'priority' => 75,
+        ]);
+        $order = $this->orderAt($warehouses['US-SM'], 'UAT-ROUTE-PLUS-STATUS');
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 0,
+        ])->assertOk();
+
+        $targets = [
+            ['US-SM', '/logistics/oversea/us-3sm?view=pending', 1],
+            ['US-LA', '/logistics/oversea/us-moreplus?view=pending', 1],
+            ['FACTORY', '/logistics/china?view=pending', 1],
+            ['TINGON', '/logistics/tingon?view=pending', 1],
+            ['OUTSOURCE', '/purchase/external', 1],
+        ];
+        foreach ($targets as $index => [$code, $url, $count]) {
+            $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
+                'warehouse_code' => $code, 'expected_routing_revision' => $index,
+            ])->assertOk()->assertJsonPath('routing_warehouse.code', $code);
+
+            $totalPath = str_contains($url, '/logistics/tingon') ? 'orders.total' : 'rows.total';
+            $this->get($url)->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where($totalPath, $count));
+            if ($code !== 'US-SM') {
+                $this->get('/logistics/oversea/us-3sm?view=pending')
+                    ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+            }
+            $this->assertDatabaseHas('shipments', [
+                'order_id' => $order->id, 'warehouse_id' => $warehouses['US-SM']->id,
+                'shipment_status' => 'pending', 'tracking_number' => null,
+            ]);
+            $this->assertDatabaseHas('orders', [
+                'id' => $order->id, 'workflow_status' => 'sending',
+                'routing_warehouse_code' => $code,
+            ]);
+        }
+        $this->assertDatabaseCount('order_warehouse_route_histories', 5);
     }
 
     public function test_oversea_global_grid_is_default_with_explicit_legacy_fallback(): void
@@ -120,6 +207,138 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         // The explicit fallback does not acquire new filter semantics.
         $this->actingAs($user)->get('/logistics/oversea/us-ny?view=review&global_grid=0&search=FINDME')
             ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 2));
+    }
+
+    public function test_manual_exception_is_only_main_queue_even_with_unresolved_warehouse_stockout(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate', 'orders.view', 'orders.edit']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-SM'], 'UAT-CORE-GRID-OVERSEA-BOTH');
+
+        // Staff selecting "异常" must move the existing order into the
+        // overseas exception queue, not merely change its visible pill.
+        $this->actingAs($actor)->patchJson("/orders/{$order->id}/workflow-status", [
+            'workflow_status' => 'exception',
+            'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'exception');
+
+        $this->get('/logistics/oversea/us-3sm?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $order->id)
+            ->where('rows.data.0.workflow_status_projection.code', 'exception')
+            ->where('viewCounts.exceptions', 1)
+            ->where('viewCounts.stockout', 0)
+            ->where('viewCounts.review', 0)
+            ->where('viewCounts.pending', 0));
+
+        // Dede's physical stockout remains in its audit ledger, but staff
+        // explicitly selected Exception as the ONLY main classification.
+        $this->post("/logistics/oversea/orders/{$order->id}/stockout")->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id,
+            'status' => 'stockout',
+            'reviewed_warehouse_id' => $warehouses['US-SM']->id,
+        ]);
+        $this->get('/logistics/oversea/us-3sm?view=stockout')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 0)
+            ->where('viewCounts.stockout', 0)
+            ->where('viewCounts.exceptions', 1));
+        $this->get('/logistics/oversea/us-3sm?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $order->id));
+        $this->get('/logistics/oversea/us-3sm?view=all')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('viewCounts.all', 1)
+            ->where('viewCounts.stockout', 0)
+            ->where('viewCounts.exceptions', 1));
+        $this->get('/logistics/oversea/us-3sm?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'shipment_status' => 'pending',
+            'tracking_number' => null,
+        ]);
+
+        // Restocking leaves the staff-selected Exception unchanged.
+        $this->post("/logistics/oversea/orders/{$order->id}/restock")->assertRedirect();
+        $this->get('/logistics/oversea/us-3sm?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('viewCounts.stockout', 0)
+            ->where('viewCounts.exceptions', 1)
+            ->where('viewCounts.pending', 0));
+    }
+
+    public function test_manual_primary_status_alone_selects_exactly_one_overseas_queue_and_never_rewrites_warehouse_review(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate', 'orders.view', 'orders.edit']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-SM'], 'UAT-MANUAL-PRIMARY-ONE-QUEUE');
+
+        $this->actingAs($actor)->post("/logistics/oversea/orders/{$order->id}/stockout")->assertRedirect();
+        $this->get('/logistics/oversea/us-3sm?view=stockout')->assertInertia(fn (Assert $p) => $p
+            ->where('rows.total', 1)->where('viewCounts.exceptions', 0));
+
+        foreach ([
+            ['exception', 'exceptions', 1],
+            ['out_of_stock', 'stockout', 2],
+            ['sending', 'pending', 3],
+            ['pending_allocation', null, 4],
+        ] as [$chosen, $expectedView, $revision]) {
+            $this->actingAs($actor)->patchJson("/orders/{$order->id}/workflow-status", [
+                'workflow_status' => $chosen, 'expected_workflow_revision' => $revision - 1,
+            ])->assertOk()->assertJsonPath('workflow_status.code', $chosen);
+            $counts = [];
+            foreach (['review', 'stockout', 'pending', 'issued', 'shipped', 'exceptions', 'all'] as $view) {
+                $response = $this->get('/logistics/oversea/us-3sm?view='.$view)->assertOk();
+                $response->assertInertia(function (Assert $page) use ($view, $expectedView): Assert {
+                    return $page->where('rows.total', ($view === 'all' || $view === $expectedView) ? 1 : 0);
+                });
+            }
+            $this->assertDatabaseHas('oversea_warehouse_reviews', [
+                'order_id' => $order->id, 'status' => 'stockout',
+                'reviewed_warehouse_id' => $warehouses['US-SM']->id,
+            ]);
+            $this->assertDatabaseHas('shipments', [
+                'order_id' => $order->id, 'shipment_status' => 'pending',
+                'tracking_number' => null, 'warehouse_id' => $warehouses['US-SM']->id,
+            ]);
+        }
+        self::assertSame(1, app(OrderProgressQuery::class)
+            ->applyPhase(Order::query(), 'pending_allocation')->whereKey($order->id)->count());
+        // The operator's label remains distinct from actual dispatch proof.
+        self::assertSame(1, Order::query()->whereKey($order->id)->count());
+    }
+
+    public function test_missing_info_manual_hold_enters_overseas_exception_queue_and_preserves_warehouse_filter(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'orders.view', 'orders.edit']);
+        $warehouses = $this->warehouses();
+        $sm = $this->orderAt($warehouses['US-SM'], 'UAT-CORE-GRID-OVERSEA-MISSING');
+        $this->orderAt($warehouses['US-NY'], 'UAT-CORE-GRID-OVERSEA-OTHER-WAREHOUSE');
+
+        $this->actingAs($actor)->patchJson("/orders/{$sm->id}/workflow-status", [
+            'workflow_status' => 'missing_info',
+            'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info');
+
+        $this->get('/logistics/oversea/us-3sm?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $sm->id)
+            ->where('rows.data.0.workflow_status_projection.zh', '信息缺失')
+            ->where('viewCounts.exceptions', 1)
+            ->where('viewCounts.review', 0));
+        $this->get('/logistics/oversea/us-ny?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->get('/logistics/oversea?view=exceptions')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('viewCounts.exceptions', 1));
     }
 
     public function test_overseas_review_stockout_holds_shipping_and_restock_reuses_approval_gate(): void

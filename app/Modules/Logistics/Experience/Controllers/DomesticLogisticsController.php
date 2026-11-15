@@ -19,7 +19,10 @@ use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use App\Modules\Orders\Application\OrderBusinessDateResolver;
+use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderProgressQuery;
+use App\Modules\Orders\Application\OrderWarehouseRouting;
+use App\Modules\Orders\Application\OrderWorkflowGridOptions;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Shell\Application\GlobalGridPilot;
@@ -146,6 +149,10 @@ final class DomesticLogisticsController
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canArchive' => (bool) $request->user()?->can('orders.archive'),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
+            'canEditWorkflowStatus' => (bool) $request->user()?->can('orders.edit'),
+            'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
+            'canEditWarehouseRoute' => (bool) $request->user()?->can('orders.edit'),
+            'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'carrierOptions' => fn () => app(CarrierServiceCatalog::class)->options(),
             'trackingImportProvider' => $previewProvider,
             'trackingImportPreview' => $preview ? [
@@ -405,7 +412,11 @@ final class DomesticLogisticsController
             ->where('order_status', '!=', 'cancelled')
             ->whereDoesntHave('fulfillmentChildren')
             ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
-            ->whereHas('shipment', fn ($q) => $q->where('warehouse_id', $factoryId));
+            ->where(function (Builder $routes) use ($factoryId): void {
+                $routes->whereIn('routing_warehouse_code', ['FACTORY', 'OUTSOURCE'])
+                    ->orWhere(fn (Builder $fallback) => $fallback->whereNull('routing_warehouse_code')
+                        ->whereHas('shipment', fn ($s) => $s->where('warehouse_id', $factoryId)));
+            });
     }
 
     private function applyView(Builder $query, string $view): void
@@ -413,13 +424,21 @@ final class DomesticLogisticsController
         // Purchasing is NOT stock on hand. No other domestic queue may use
         // a pre-release procurement fulfillment even if a marker is stale.
         if ($view !== 'outsource') {
-            $query->whereDoesntHave('procurementOrder', fn ($q) => $q->where('origin', 'external')->whereNull('released_at'));
+            $query->where(fn (Builder $q) => $q->whereNull('routing_warehouse_code')
+                ->orWhere('routing_warehouse_code', '!=', 'OUTSOURCE'))
+                ->whereDoesntHave('procurementOrder', fn ($q) => $q->where('origin', 'external')->whereNull('released_at'));
         }
         match ($view) {
             'outsource' => $query->where('order_status', 'pending_shipment')
-                ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
-                ->whereHas('procurementOrder', fn ($q) => $q->where('origin', 'external')
-                    ->whereNotIn('status', ['cancelled', 'completed'])),
+                ->where(function (Builder $q): void {
+                    $q->where('routing_warehouse_code', 'OUTSOURCE')
+                        ->orWhere(function (Builder $legacy): void {
+                            $legacy->whereNull('routing_warehouse_code')
+                                ->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending'))
+                                ->whereHas('procurementOrder', fn ($p) => $p->where('origin', 'external')
+                                    ->whereNotIn('status', ['cancelled', 'completed']));
+                        });
+                }),
             'review' => $this->progressQueries->domesticReview($query),
             'stockout' => $this->progressQueries->domesticStockout($query),
             'pending' => $this->progressQueries->domesticReady($query),
@@ -427,6 +446,7 @@ final class DomesticLogisticsController
             'today-weship' => $this->progressQueries->domesticTodayProvider($query, 'weship'),
             'exceptions' => $query->where(function (Builder $issues): void {
                 $issues->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'exception'))
+                    ->orWhere(fn (Builder $manual) => $this->progressQueries->applyPhase($manual, 'exception'))
                     ->orWhere(fn (Builder $conflicts) => $this->progressQueries->applyPhase($conflicts, 'progress_conflict'));
             }),
             'today' => $this->progressQueries->domesticToday($query),
@@ -474,6 +494,11 @@ final class DomesticLogisticsController
             'tracking_sync_verified_at' => $trackingState['verified_at'] ?? null,
             'erp_order_id' => $order->erp_order_id,
             'workflow_status_projection' => $projection,
+            'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
+            'workflow_revision' => (int) $order->workflow_revision,
+            'order_kind' => $order->order_kind?->value,
+            'can_edit_workflow_status' => in_array($order->order_kind, [OrderKind::Customer, OrderKind::FulfillmentDerived], true)
+                && ! $order->isOperationallyArchived(),
             'provider_reference' => $reference,
             // Generic details route redirects by order kind (customer, KOL, derived).
             'order_url' => '/orders/'.$order->id,

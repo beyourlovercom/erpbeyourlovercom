@@ -180,7 +180,7 @@ describe('Domestic logistics production workbench', () => {
     const cells = review.findAll('.orders tbody tr:first-child td')
     expect(headers).toContain('SKU')
     expect(headers).toContain('数量')
-    expect(headers.slice(headers.indexOf('订单状态') + 1,headers.indexOf('订单状态') + 5)).toEqual(['成交日期','SKU','数量','金额'])
+    expect(headers.slice(headers.indexOf('订单状态') + 1,headers.indexOf('订单状态') + 5)).toEqual(['所属分仓','成交日期','SKU','数量'])
     expect(cells[headers.indexOf('成交日期')].text()).toBe('11-09')
     expect(cells[headers.indexOf('成交日期')].attributes('title')).toBe('')
     expect(cells[headers.indexOf('SKU')].find('div').text()).toBe('M2')
@@ -605,4 +605,33 @@ describe('Domestic logistics production workbench', () => {
     } finally {vi.unstubAllGlobals()}
   })
 
+})
+
+it('keeps the status dropdown editable across domestic review, pending, stockout and provider views', () => {
+  const active = {
+    ...baseProps.rows.data[0], workflow_revision:5, can_edit_workflow_status:true, order_kind:'customer',
+    workflow_status_projection:{code:'sending',en:'Sending',zh:'待发',color:'neutral',source:'canonical_projection'},
+  }
+  const options = [
+    {code:'sending',en:'Sending',zh:'待发',color:'neutral',mutable:true},
+    {code:'missing_info',en:'Missing Info',zh:'信息缺失',color:'amber',mutable:true},
+  ]
+  for (const view of ['review','pending','stockout','today','today-4px','today-weship','exceptions','4px','weship','outsource']) {
+    const row = view === 'outsource' ? {...active, procurement:{
+      id:90, number:'PO-T1',status:'ordered',carrier:null,tracking_number:null,received_at:null,released_at:null,
+      items:[{id:19,sku:'MF414A',quantity:1,purchase_quantity:1,purchase_url:null,purchase_size:null,received_quantity:0,received_sku:null}],
+    }} : active
+    const page = mount(Index, { props:{
+      ...baseProps, view, globalGridPilotEnabled:false,
+      rows:{...baseProps.rows,data:[row]},canEditWorkflowStatus:true,workflowStatusOptions:options,
+    } })
+    expect(page.find('select[aria-label^="订单工作状态"]').exists(),view).toBe(true)
+  }
+  const readonly = mount(Index,{props:{
+    ...baseProps, view:'pending',globalGridPilotEnabled:false,
+    canEditWorkflowStatus:false,workflowStatusOptions:options,
+    rows:{...baseProps.rows,data:[active]},
+  }})
+  expect(readonly.find('select[aria-label^="订单工作状态"]').exists()).toBe(false)
+  expect(readonly.find('.order-workflow-status').text()).toContain('待发')
 })
