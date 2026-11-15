@@ -11,7 +11,7 @@
 
 ## 30-tab / pinned / snapshots gap
 - New Vben shell sets tabbar.maxCount=30 (old Vben default was unlimited), but this is NOT equivalent to the legacy ERP 30 lightweight bookmarks, max 3 manually pinned bookmarks and max 3 hot data snapshots. Exact parity remains an R3 acceptance gate.
-- A local approved upstream Vben ZIP (69,453,977 bytes) is now lockable by SHA256 in vendor-lock.json; overlay bootstrap must reject absent or altered ZIP. Full base source is NOT yet fully committed or reproducibly reconstructed on clean machines.
+- A local approved upstream Vben ZIP (6,945,397 bytes) is now lockable by SHA256 in vendor-lock.json; overlay bootstrap must reject absent or altered ZIP. Full base source is NOT yet fully committed or reproducibly reconstructed on clean machines.
 
 ## Boundaries
 - Dev-only test role switcher represents four fabricated @local.invalid users. It is NOT Production employee login/RBAC.

@@ -4,7 +4,7 @@
   "sourceKind": "approved-local-vben-v5.8-archive",
   "archiveLocalPath": "D:/ai/siteops-vben/vben-upstream-main.zip",
   "archiveSha256": "DF1E977A85EB0D55E9A75D19E270180BFF68E8E7FCD15759D69919223E44141B",
-  "archiveBytes": 69453977,
+  "archiveBytes": 6945397,
   "baseLocalPath": "D:/ai/siteops-vben/vue-vben-admin-main",
   "verifiedAt": "2026-11-15",
   "policy": "No remote binary download or SiteOps changes. Only isolated frontend. Not a clean-machine build."
