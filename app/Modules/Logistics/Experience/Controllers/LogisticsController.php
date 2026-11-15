@@ -130,6 +130,8 @@ final class LogisticsController
             'rejectionFilter' => $rejectionFilter,
             'canOperate' => $this->allocationAccess->allows($request->user()),
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
+            // Approved V3 menu button only, preserving GET and mutation gates.
+            'canViewHistoricalImportTool' => (bool) ($request->user()?->can('system.permissions.manage') && $request->user()?->can('logistics.view')),
             'globalGridPilotAvailable' => true,
             'globalGridPilotEnabled' => $gridPilot,
             'gridSearch' => $search,
