@@ -32,7 +32,7 @@ type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
 type TabKey = 'pending'|'rejected'|'recommendation'|'inventory'|'manual'|'gift'|'processed'
 
-const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; rejectionCount:number; rejectionNoticeVersion:string; rejectionFilter:boolean; canOperate:boolean; canArchive?:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string }>()
+const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; rejectionCount:number; rejectionNoticeVersion:string; rejectionFilter:boolean; canOperate:boolean; canArchive?:boolean; canViewHistoricalImportTool?:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string }>()
 const activeTab = ref<TabKey>(props.rejectionFilter ? 'rejected' : 'pending')
 watch(() => props.rejectionFilter, isRejected => {
   if (isRejected) activeTab.value = 'rejected'
@@ -624,6 +624,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
       <header class="page-heading">
         <div class="title-row"><h1>待分仓</h1><span class="version">V1.2.1</span></div>
         <div class="header-actions">
+          <Link v-if="canViewHistoricalImportTool" class="secondary" href="/logistics/historical-import" data-testid="approved-historical-logistics-entry">历史物流控制台</Link>
           <button v-if="globalGridPilotAvailable" type="button" class="secondary" data-testid="allocation-global-grid-toggle" @click="gridNavigation.toggle()">{{ globalGridPilotEnabled?'返回原版表格':'切换新版表格' }}</button>
         </div>
       </header>
