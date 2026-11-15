@@ -38,7 +38,7 @@ return [
         'manuals' => ['label' => '操作手册', 'path' => '/guides/manuals'],
         'changelog' => ['label' => '版本更新', 'path' => '/settings/changelog'],
     ]],
-    'accounting' => ['icon' => '💰', 'label' => '会计', 'children' => [
+    'accounting' => ['icon' => '💰', 'label' => '算账', 'children' => [
         'cost-calculation' => ['label' => '成本核算表', 'path' => '/accounting/cost-calculation'],
         'order-costs' => ['label' => '每一单成本表', 'path' => '/accounting/order-costs'],
         'expense-analysis' => ['label' => '费用分析表', 'group' => true, 'children' => [

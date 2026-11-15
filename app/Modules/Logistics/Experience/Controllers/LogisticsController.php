@@ -141,6 +141,8 @@ final class LogisticsController
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
             'canEditWarehouseRoute' => (bool) $request->user()?->can('orders.edit'),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
+            // Approved V3 menu button only, preserving GET and mutation gates.
+            'canViewHistoricalImportTool' => (bool) ($request->user()?->can('system.permissions.manage') && $request->user()?->can('logistics.view')),
             'globalGridPilotAvailable' => true,
             'globalGridPilotEnabled' => $gridPilot,
             'gridSearch' => $search,
