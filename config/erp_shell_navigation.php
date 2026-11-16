@@ -3,6 +3,7 @@
 return [
     ['key' => 'dashboard', 'label' => '仪表盘', 'emoji' => '📊', 'path' => '/dashboard', 'route' => 'dashboard', 'permission' => 'dashboard.view', 'status' => 'in_progress', 'progress' => 20, 'placeholder' => false],
     ['key' => 'orders', 'label' => '订单', 'emoji' => '📋', 'path' => '/orders', 'route' => 'orders.index', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false, 'children' => [
+        ['key' => 'orders-master', 'label' => '订单总表', 'path' => '/orders/master', 'route' => 'orders.master.index', 'permission' => 'orders.view', 'status' => 'in_progress', 'progress' => 80, 'placeholder' => false],
         ['key' => 'orders-customers', 'label' => '客户订单', 'path' => '/customers/orders', 'route' => 'customers.orders', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'orders-kol', 'label' => '网红订单', 'path' => '/kol/orders', 'route' => 'kol.orders', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'orders-collaboration', 'label' => '合作订单', 'path' => '/orders/collaboration', 'route' => 'orders.collaboration', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],

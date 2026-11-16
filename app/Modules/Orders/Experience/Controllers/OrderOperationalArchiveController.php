@@ -24,6 +24,10 @@ final class OrderOperationalArchiveController
     public function index(Request $request): Response
     {
         abort_unless($request->user()?->can('orders.view'), 403);
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'per_page' => ['nullable', 'in:20,50,100'],
+        ]);
         // Direct archives and children suppressed by a parent archive are both
         // listed. A child with its own archive flag can be restored separately.
         $query = Order::query()->with(['owner', 'operationalArchivedByUser', 'fulfillmentParent.operationalArchivedByUser'])
@@ -44,7 +48,28 @@ final class OrderOperationalArchiveController
             }
         }
 
-        $orders = $query->orderByRaw('COALESCE(orders.operational_archived_at, (SELECT parent.operational_archived_at FROM orders AS parent WHERE parent.id = orders.fulfillment_parent_id)) DESC')->latest('orders.id')->paginate(50)->withQueryString();
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            if (preg_match('/^dbid:(\d+)$/i', $search, $match) === 1) {
+                $query->whereKey((int) $match[1]);
+            } else {
+                // Search must happen before pagination; a record on page 2 or 3
+                // must still be reachable from the first page's search field.
+                $query->where(function ($matching) use ($search): void {
+                    $like = '%'.addcslashes($search, '\\%_').'%';
+                    $matching->where('erp_order_id', 'like', $like)
+                        ->orWhere('internal_order_number', 'like', $like)
+                        ->orWhere('external_order_number', 'like', $like)
+                        ->orWhereHas('address', fn ($address) => $address
+                            ->where('recipient_name', 'like', $like)->orWhere('email', 'like', $like))
+                        ->orWhereHas('items', fn ($items) => $items->where('sku', 'like', $like))
+                        ->orWhereHas('externalReferences', fn ($refs) => $refs->where('reference', 'like', $like));
+                });
+            }
+        }
+
+        $orders = $query->orderByRaw('COALESCE(orders.operational_archived_at, (SELECT parent.operational_archived_at FROM orders AS parent WHERE parent.id = orders.fulfillment_parent_id)) DESC')->latest('orders.id')
+            ->paginate((int) ($filters['per_page'] ?? 50))->withQueryString();
 
         return Inertia::render('Orders/Archive', [
             'orders' => $orders->through(fn (Order $order): array => [
@@ -59,6 +84,7 @@ final class OrderOperationalArchiveController
                 'owner' => $order->owner?->name,
             ])->toArray(),
             'canRestore' => (bool) $request->user()?->can('system.permissions.manage'),
+            'filters' => ['search' => $search, 'per_page' => (string) ($filters['per_page'] ?? '50')],
         ]);
     }
 

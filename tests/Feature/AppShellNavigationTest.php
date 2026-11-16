@@ -71,17 +71,21 @@ class AppShellNavigationTest extends TestCase
         $this->assertLessThanOrEqual(4, $queryCount, 'Shell navigation must not query once per permission check.');
     }
 
-    public function test_archive_menu_is_fifth_orders_child_for_readers_only(): void
+    public function test_master_and_archive_menus_are_visible_to_orders_readers_only(): void
     {
         $reader = $this->userWith(['dashboard.view', 'orders.view'], 'archive-menu-reader');
         $this->actingAs($reader)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
             ->where('shellNavigation.1.key', 'orders')
-            ->has('shellNavigation.1.children', 5)
-            ->where('shellNavigation.1.children.2.key', 'orders-collaboration')
-            ->where('shellNavigation.1.children.2.path', '/orders/collaboration')
-            ->where('shellNavigation.1.children.4.key', 'orders-archive')
-            ->where('shellNavigation.1.children.4.label', '归档清单')
-            ->where('shellNavigation.1.children.4.path', '/orders/archive'));
+            ->has('shellNavigation.1.children', 6)
+            ->where('shellNavigation.1.children.0.key', 'orders-master')
+            ->where('shellNavigation.1.children.0.path', '/orders/master')
+            ->where('shellNavigation.1.children.3.key', 'orders-collaboration')
+            ->where('shellNavigation.1.children.3.path', '/orders/collaboration')
+            ->where('shellNavigation.1.children.5.key', 'orders-archive')
+            ->where('shellNavigation.1.children.5.label', '归档清单')
+            ->where('shellNavigation.1.children.5.path', '/orders/archive'));
+        $this->actingAs($reader)->get('/orders/master')
+            ->assertInertia(fn (Assert $page) => $page->component('Orders/Master'));
         $this->actingAs($reader)->get('/orders/archive')
             ->assertInertia(fn (Assert $page) => $page->component('Orders/Archive'));
 

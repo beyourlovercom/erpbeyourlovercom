@@ -52,6 +52,25 @@ final class OrderOperationalArchiveTest extends TestCase
         ])->assertUnprocessable();
     }
 
+    public function test_archive_search_finds_order_beyond_first_page_without_leaking_other_matches(): void
+    {
+        $staff = $this->userWith(['orders.view', 'orders.archive']);
+        $target = $this->makeOrder($staff, 'needle');
+        $target->forceFill(['erp_order_id' => '007-1110-c42262', 'operational_archived_at' => now()->subDays(5)])->save();
+        for ($index = 0; $index < 55; $index++) {
+            $order = $this->makeOrder($staff, 'filler-'.$index);
+            $order->forceFill(['operational_archived_at' => now()->subMinutes($index)])->save();
+        }
+
+        $this->actingAs($staff)->get('/orders/archive')->assertOk()
+            ->assertInertia(fn ($page) => $page->has('orders.data', 50)->where('orders.total', 56));
+        $this->actingAs($staff)->get('/orders/archive?search=007-1110-c42262')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('orders.total', 1)->has('orders.data', 1)
+                ->where('orders.data.0.id', $target->id)->where('filters.search', '007-1110-c42262'));
+        $this->actingAs($staff)->get('/orders/archive?search=dbid:'.$target->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('orders.total', 1)->where('orders.data.0.id', $target->id));
+    }
+
     public function test_archive_separates_order_from_operational_queues_without_destroying_evidence_and_admin_restores(): void
     {
         $staff = $this->userWith(['orders.view', 'orders.archive']);

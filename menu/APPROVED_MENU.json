@@ -39,6 +39,21 @@
       "sort": 20
     },
     {
+      "code": "orders-master",
+      "parent_code": "orders",
+      "level": 2,
+      "label_zh": "订单总表",
+      "slug": "master",
+      "url": "/orders/master",
+      "route": "orders.master.index",
+      "permission": "orders.view",
+      "emoji": null,
+      "function_zh": "以新表格只读检索全部可见的客户、网红和履约子订单，包含运营归档及管理员可见的回收站记录。",
+      "status": "in_progress",
+      "progress": 80,
+      "sort": 5
+    },
+    {
       "code": "orders-customers",
       "parent_code": "orders",
       "level": 2,
