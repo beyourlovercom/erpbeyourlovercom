@@ -12,11 +12,11 @@ final class WarehouseInventory extends Model
     use SoftDeletes;
 
     protected $table = 'warehouse_inventory';
-    protected $fillable = ['warehouse_id','product_id','quantity_on_hand','quantity_reserved','inbound_at','location','standard_qoh','expected_restock_qty','two_month_demand_override'];
-    protected $casts = ['quantity_on_hand'=>'integer','quantity_reserved'=>'integer','standard_qoh'=>'integer','expected_restock_qty'=>'integer','two_month_demand_override'=>'integer','inbound_at'=>'datetime'];
+    protected $fillable = ['warehouse_id','product_id','quantity_on_hand','quantity_reserved','inbound_at','location','standard_qoh','expected_restock_qty','two_month_demand_override','provider_available_quantity','provider_stock_synced_at'];
+    protected $casts = ['quantity_on_hand'=>'integer','quantity_reserved'=>'integer','standard_qoh'=>'integer','expected_restock_qty'=>'integer','two_month_demand_override'=>'integer','provider_available_quantity'=>'integer','provider_stock_synced_at'=>'datetime','inbound_at'=>'datetime'];
     protected $appends = ['quantity_available','stay_days'];
     public function warehouse(): BelongsTo { return $this->belongsTo(Warehouse::class); }
     public function product(): BelongsTo { return $this->belongsTo(\App\Modules\Products\Infrastructure\Models\Product::class); }
-    protected function quantityAvailable(): Attribute { return Attribute::get(fn () => max($this->quantity_on_hand - $this->quantity_reserved, 0)); }
+    protected function quantityAvailable(): Attribute { return Attribute::get(fn () => $this->provider_available_quantity !== null ? max(0, (int) $this->provider_available_quantity) : max($this->quantity_on_hand - $this->quantity_reserved, 0)); }
     protected function stayDays(): Attribute { return Attribute::get(fn () => $this->inbound_at ? $this->inbound_at->startOfDay()->diffInDays(now()->startOfDay()) : null); }
 }

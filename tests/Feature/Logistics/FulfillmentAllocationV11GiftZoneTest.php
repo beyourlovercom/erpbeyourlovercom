@@ -6,9 +6,11 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
 use App\Modules\Logistics\Infrastructure\Models\WarehouseGiftSkuMapping;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Infrastructure\Models\OrderItem;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -34,15 +36,15 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
                 ->where('orders.data.0.us_fulfillment_zone.zone_label', '美西区')
                 ->where('orders.data.0.us_fulfillment_zone.warehouse_priority.0', 'US-SM')
                 ->where('orders.data.0.us_fulfillment_zone.warehouse_priority.1', 'US-LA')
-                ->has('warehouses', 7) // US-AMZ was added to the shared warehouse catalog
+                ->has('warehouses', 8) // Tingon partner warehouse is a manual-only allocation option
                 ->where('warehouses.2.code', 'US-SM')
                 ->where('warehouses.2.name', '美国3世迈仓')
                 ->where('orders.data.0.carrier_routes.US-SM.carrier', 'USPS')
                 ->where('orders.data.0.carrier_routes.US-SM.automatic', true)
                 ->where('orders.data.0.items.0.id', $giftItem->id)
                 ->where('orders.data.0.items.0.is_gift', true)
-                ->where("orders.data.0.items.0.gift_options_by_warehouse.US-SM.0.mapping_id", $mapping->id)
-                ->where("orders.data.0.items.0.gift_options_by_warehouse.US-SM.0.can_fulfill", true)
+                ->where('orders.data.0.items.0.gift_options_by_warehouse.US-SM.0.mapping_id', $mapping->id)
+                ->where('orders.data.0.items.0.gift_options_by_warehouse.US-SM.0.can_fulfill', true)
         );
     }
 
@@ -67,6 +69,24 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
                 ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM'],
             ], null, $user);
         });
+    }
+
+    public function test_blocked_oms_snapshot_rejects_forged_gift_submission_without_mutating_order(): void
+    {
+        [$user, $order, $giftItem, , $mapping] = $this->giftScenario(8);
+        $sm = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        XlwmsInventorySnapshot::query()->create([
+            'warehouse_id' => $sm->id, 'wh_code' => 'OMS-US-SM',
+            'checksum' => hash('sha256', uniqid('blocked-', true)),
+            'status' => 'blocked', 'fetched_at' => now(), 'summary' => ['v2' => true],
+        ]);
+
+        $this->expectGiftError('世迈 OMS 库存快照核验被阻断，暂不能选择该 Gift SKU', function () use ($user, $order, $giftItem, $mapping): void {
+            app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+                ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id],
+            ], null, $user);
+        });
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
     }
 
     public function test_gift_rejects_mapping_from_another_warehouse(): void
@@ -133,7 +153,40 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
         self::assertNull($factoryChild->shipment?->carrier_selection_source);
     }
 
-    /** @return array{User,Order,\App\Modules\Orders\Infrastructure\Models\OrderItem,Product,WarehouseGiftSkuMapping} */
+    public function test_recovery_repairs_woo_rebuilt_pending_gift_without_changing_source_or_shipment(): void
+    {
+        [$user, $order, $giftItem, $realGift, $mapping] = $this->giftScenario(8);
+        app(FulfillmentAllocationSubmissionService::class)->submitManual(
+            $order, [['order_item_id' => $giftItem->id,
+                'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id]],
+            'Vita selected actual gift', $user
+        );
+        $originalId = $giftItem->id;
+        $giftItem->delete();
+        $replacement = $order->items()->create([
+            'product_id' => $giftItem->source_product_id ?: $giftItem->product_id,
+            'sku' => 'gift', 'product_summary' => 'Random Gift',
+            'quantity' => 1, 'unit_price' => '0.00', 'line_revenue' => '0.00',
+        ]);
+        self::assertNotSame($originalId, $replacement->id);
+        $this->artisan('erp:repair-allocated-gift-skus', ['--order' => [$order->id]])->assertSuccessful();
+        self::assertSame('gift', $replacement->fresh()->sku);
+        $this->artisan('erp:repair-allocated-gift-skus', [
+            '--order' => [$order->id], '--apply' => true,
+        ])->assertSuccessful();
+        $actual = $replacement->fresh();
+        self::assertSame($realGift->sku, $actual->sku);
+        self::assertSame($realGift->id, $actual->product_id);
+        self::assertSame('gift', $actual->source_sku);
+        self::assertSame($giftItem->product_id, $actual->source_product_id);
+        $allocation = $order->fresh('fulfillmentAllocation')->fulfillmentAllocation;
+        self::assertSame($replacement->id, $allocation->plan_snapshot['segments'][0]['items'][0]['order_item_id']);
+        self::assertSame($replacement->id, $allocation->manual_assignments[0]['order_item_id']);
+        self::assertSame('pending', $order->fresh('shipment')->shipment->shipment_status);
+        $this->assertDatabaseHas('audit_records', ['action' => 'order_item.selected_gift_sku_restored']);
+    }
+
+    /** @return array{User,Order,OrderItem,Product,WarehouseGiftSkuMapping} */
     private function giftScenario(int $giftStock, bool $withRegular = false): array
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
@@ -213,6 +266,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
         }
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
+
         return $user;
     }
 }

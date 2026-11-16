@@ -6,6 +6,7 @@ use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\FactoryDemandForecast;
+use App\Modules\Inventory\Application\WarehouseLastReadStockService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseClearanceService;
 use App\Modules\Inventory\Application\WarehouseInboundProjection;
@@ -46,6 +47,7 @@ final class WarehouseController
         private readonly WarehouseBillReconciliationService $reconciliation,
         private readonly WarehouseShipmentProjection $shipments,
         private readonly FactoryDemandForecast $factoryDemand,
+        private readonly WarehouseLastReadStockService $lastReadStock,
     ) {}
     public function create(): Response { return Inertia::render('Inventory/WarehouseCreate'); }
     public function store(Request $request): RedirectResponse
@@ -226,6 +228,7 @@ final class WarehouseController
     public function saveInventory(Request $request,string $warehouse): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
+        abort_if(strtoupper((string) $w->code) === 'US-LA', 422, 'MorePlus 仓库存只允许从海外仓实时读取同步，不支持 ERP 人工覆盖。');
         $data=$request->validate($this->inventoryRules()); $productId=(int)$data['product_id']; unset($data['product_id']);
         $this->inventory->saveInventory($w,$productId,$data,$request->user());
         return back()->with('success','库存已保存');
@@ -234,6 +237,7 @@ final class WarehouseController
     public function addInventory(Request $request, string $warehouse): RedirectResponse
     {
         $w = $this->inventory->warehouse($warehouse);
+        abort_if(strtoupper((string) $w->code) === 'US-LA', 422, 'MorePlus 仓库存只允许从海外仓实时读取同步，不支持 ERP 人工覆盖。');
         $data = $request->validate([
             'product_id' => ['nullable', 'integer', 'exists:products,id', 'required_without:new_sku'],
             'new_sku' => ['nullable', 'string', 'max:128', 'unique:products,sku', 'required_without:product_id'],
@@ -256,6 +260,7 @@ final class WarehouseController
     public function removeInventory(Request $request, string $warehouse, int $inventory): RedirectResponse
     {
         $w = $this->inventory->warehouse($warehouse);
+        abort_if(strtoupper((string) $w->code) === 'US-LA', 422, 'MorePlus 仓库存只允许从海外仓实时读取同步，不支持 ERP 人工覆盖。');
         $data = $request->validate(['expected_updated_at' => ['required', 'date']]);
         $this->inventory->removeInventory($w, $inventory, (string) $data['expected_updated_at'], $request->user());
         return back()->with('success', '产品已从当前仓库移出');
@@ -263,6 +268,7 @@ final class WarehouseController
     public function updateInventory(Request $request,string $warehouse,int $inventory): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
+        abort_if(strtoupper((string) $w->code) === 'US-LA', 422, 'MorePlus 仓库存只允许从海外仓实时读取同步，不支持 ERP 人工覆盖。');
         $data=$request->validate($this->inventoryRules(false));
         $this->inventory->updateInventory($w,$inventory,$data,$request->user());
         return back()->with('success','库存已更新');
@@ -283,6 +289,9 @@ final class WarehouseController
         elseif ($field==='location') $rules['value']=['nullable','string','max:128'];
         elseif ($field==='inbound_at') $rules['value']=['nullable','date'];
         $data=$request->validate($rules);
+        abort_if(strtoupper((string) $w->code) === 'US-LA'
+            && in_array($data['field'], ['quantity_on_hand', 'quantity_reserved'], true),
+            422, 'MorePlus 实物与可用库存只能由仓库 API 同步。');
         if (in_array($data['field'], ['sku','name'], true)) {
             abort_unless($request->user()?->can(AuthorizationKeys::ProductsOperate->value), 403);
             abort_unless(! empty($data['expected_product_updated_at']), 422, '缺少产品版本信息。');
@@ -477,6 +486,7 @@ final class WarehouseController
         }
 
         $factoryMetrics = $code === 'FACTORY' ? $this->factoryDemand->forInventories($w->inventories) : [];
+        $lastReadByProduct = $code === 'US-LA' ? $this->lastReadStock->forWarehouse($w) : [];
 
         $lastConfirmedSync = InventorySyncBatch::query()
             ->where('warehouse_id', $w->id)
@@ -517,6 +527,17 @@ final class WarehouseController
                 'quantity_on_hand'=>$i->quantity_on_hand,'quantity_reserved'=>$i->quantity_reserved,'quantity_available'=>$i->quantity_available,
                 'stock_status'=>InventoryStockStatus::classify((int)$i->quantity_available),'stock_status_label'=>InventoryStockStatus::label(InventoryStockStatus::classify((int)$i->quantity_available)),
             'inbound_at'=>$i->inbound_at?->format('Y-m-d'),'stay_days'=>$i->stay_days,'location'=>$i->location,'standard_qoh'=>$i->standard_qoh,'expected_restock_qty'=>$i->expected_restock_qty,
+                'last_read'=>isset($lastReadByProduct[(int)$i->product_id])
+                    ? [
+                        'quantity'=>$lastReadByProduct[(int)$i->product_id]->last_read_stock_qty,
+                        'raw_quantity'=>$lastReadByProduct[(int)$i->product_id]->last_read_raw_qty,
+                        'adjustment_qty'=>$lastReadByProduct[(int)$i->product_id]->post_read_adjustment_qty,
+                        'read_at'=>$lastReadByProduct[(int)$i->product_id]->last_read_stock_at,
+                        'source'=>$lastReadByProduct[(int)$i->product_id]->last_read_stock_source,
+                        'status'=>$lastReadByProduct[(int)$i->product_id]->last_read_stock_status,
+                        'error_code'=>$lastReadByProduct[(int)$i->product_id]->last_read_error_code,
+                        'review_count'=>(int)$lastReadByProduct[(int)$i->product_id]->review_count,
+                    ] : null,
                 'updated_at'=>$i->updated_at?->toIso8601String(),'product_updated_at'=>$i->product->updated_at?->toIso8601String(),
                 'replenishment'=>$this->inventory->replenishmentMetrics($i),
                 'factory_demand'=>$factoryMetrics[(int)$i->id] ?? null,

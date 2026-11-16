@@ -42,7 +42,18 @@ final class WarehouseInboundLifecycleService
                 $batch->received_on = now()->toDateString();
             }
             if ($targetStatus === 'ready') {
-                $this->activateInventory($warehouse, $batch, $actor);
+                if (strtoupper((string) $warehouse->code) === 'US-LA') {
+                    // Arrival manifests are historical evidence only. MorePlus itself
+                    // must confirm receipt via its signed inventory GET.
+                    $this->audit->record(
+                        $actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),
+                        'warehouse.inbound_moreplus_stock_mirror_pending',
+                        WarehouseInboundBatch::class, (int) $batch->id,
+                        reason: 'provider_authoritative_stock_only'
+                    );
+                } else {
+                    $this->activateInventory($warehouse, $batch, $actor);
+                }
             }
 
             $batch->status = $targetStatus;

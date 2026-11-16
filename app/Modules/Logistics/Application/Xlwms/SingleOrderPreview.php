@@ -156,11 +156,17 @@ final class SingleOrderPreview
         $fresh = $snapshot?->fetched_at
             && $snapshot->fetched_at->lte(now())
             && $snapshot->fetched_at->diffInSeconds(now()) <= 120;
-        if (! $snapshot || $snapshot->status !== 'applied'
+        $isolated = (bool) config('inventory_sku_gate.enabled', false);
+        $validStatus = $isolated
+            ? in_array($snapshot?->status, ['applied', 'partial_applied'], true)
+            : $snapshot?->status === 'applied';
+        if (! $snapshot || ! $validStatus
+            || ($snapshot->status === 'partial_applied'
+                && ($summary['sku_isolation_write_proof'] ?? false) !== true)
             || ($summary['v2'] ?? false) !== true
             || ($summary['v2_applied'] ?? false) !== true
-            || (int) $snapshot->unmatched_sku_count !== 0
-            || (int) $snapshot->blocked_sku_count !== 0
+            || (! $isolated && ((int) $snapshot->unmatched_sku_count !== 0
+                || (int) $snapshot->blocked_sku_count !== 0))
             || $snapshot->rows()->count() !== (int) $snapshot->provider_sku_count
             || ! $fresh) {
             $blocking[] = ! $fresh ? 'OMS_SNAPSHOT_NOT_FRESH' : 'OMS_SNAPSHOT_NOT_RECONCILED';

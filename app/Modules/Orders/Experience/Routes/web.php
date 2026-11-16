@@ -3,6 +3,7 @@
 use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
 use App\Modules\Orders\Experience\Controllers\KolOrderLinkPreviewController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
+use App\Modules\Orders\Experience\Controllers\OrderWarehouseRouteController;
 use App\Modules\Orders\Experience\Controllers\OrderNoteController;
 use App\Modules\Orders\Experience\Controllers\OrderOmsTransferController;
 use App\Modules\Orders\Experience\Controllers\OrderOperationalArchiveController;
@@ -37,9 +38,13 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::patch('/orders/views/{savedView}', [OrderSavedViewController::class, 'update'])->middleware('can:orders.view')->name('orders.views.update');
     Route::delete('/orders/views/{savedView}', [OrderSavedViewController::class, 'destroy'])->middleware('can:orders.view')->name('orders.views.destroy');
     Route::post('/orders/{order}/operational-markers/{marker}', [OrderController::class, 'setOperationalMarker'])->middleware('can:orders.edit')->where('order', '[0-9]+')->whereIn('marker', ['exception', 'in_transit', 'return', 'stockout'])->name('orders.operational-markers.update');
+    Route::patch('/orders/{order}/warehouse-route', [OrderWarehouseRouteController::class, 'update'])
+        ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.warehouse-route.update');
     Route::patch('/orders/{order}/workflow-status', [OrderController::class, 'updateWorkflowStatus'])->middleware('can:orders.view')->whereNumber('order')->name('orders.workflow-status.update');
     Route::delete('/orders/{order}/auxiliary-status/{code}', [OrderController::class, 'removeAuxiliaryStatus'])
         ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->where('code', '[a-z_]+')->name('orders.auxiliary-status.remove');
+    Route::get('/orders/collaboration', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'tingon_partner');
+    Route::get('/orders/collaboration/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'tingon_partner');
     Route::get('/orders/procurement', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
     Route::get('/orders/{order}', [OrderController::class, 'showAny'])->middleware('can:orders.view')->whereNumber('order')->name('orders.show');
     Route::get('/orders/procurement/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');

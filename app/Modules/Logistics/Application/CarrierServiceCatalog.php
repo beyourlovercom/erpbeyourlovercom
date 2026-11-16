@@ -59,6 +59,10 @@ final class CarrierServiceCatalog
         }
 
         $serviceValue = trim((string) $serviceValue);
+        if ($serviceValue === '默认') {
+            return $this->servicesFor($carrier)->firstWhere('service_value', '默认')
+                ?? $this->defaultService($carrierName, $destinationCountry);
+        }
         if ($serviceValue !== '') {
             $needle = mb_strtolower($serviceValue);
 

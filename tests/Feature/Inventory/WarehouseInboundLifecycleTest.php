@@ -73,6 +73,34 @@ final class WarehouseInboundLifecycleTest extends TestCase
         app(WarehouseInboundLifecycleService::class)->advance($warehouse, $batch->id, 'ready', null);
     }
 
+    public function test_moreplus_inbound_ready_records_receipt_but_never_increments_provider_mirror(): void
+    {
+        $warehouse = Warehouse::query()->where('slug', 'us-la')->firstOrFail();
+        $product = Product::create(['sku'=>'MP-READY-READONLY','name'=>'MorePlus Inbound','is_active'=>true]);
+        $stock = WarehouseInventory::create([
+            'warehouse_id' => $warehouse->id, 'product_id' => $product->id,
+            'quantity_on_hand' => 7, 'quantity_reserved' => 0,
+            'provider_available_quantity' => 7, 'provider_stock_synced_at' => now(),
+        ]);
+        $batch = WarehouseInboundBatch::create([
+            'warehouse_id' => $warehouse->id, 'reference'=>'MP-INBOUND-LEDGER',
+            'transport_mode'=>'air', 'status'=>'received', 'quantity_total'=>20,
+            'received_on'=>'2026-11-14',
+        ]);
+        WarehouseInboundItem::create([
+            'batch_id' => $batch->id, 'product_id' => $product->id,
+            'source_sku'=>'MP-READY-READONLY','canonical_sku'=>'MP-READY-READONLY',
+            'source_product_name'=>'MorePlus Inbound','quantity'=>20,
+            'evidence_type'=>'actual_manifest','match_status'=>'matched',
+        ]);
+        $ready = app(WarehouseInboundLifecycleService::class)->advance($warehouse, $batch->id, 'ready', null);
+        $this->assertSame('ready', $ready->status);
+        $this->assertSame(7, $stock->fresh()->quantity_on_hand);
+        $this->assertSame(7, $stock->fresh()->quantity_available);
+        $this->assertSame(0, WarehouseInventoryLot::query()->where('product_id', $product->id)->count());
+        $this->assertDatabaseHas('audit_records', ['action'=>'warehouse.inbound_moreplus_stock_mirror_pending']);
+    }
+
     public function test_unresolved_item_blocks_inventory_activation(): void
     {
         $warehouse = Warehouse::create(['slug'=>'lifecycle-c','code'=>'LIFE-C','name'=>'Lifecycle C']);

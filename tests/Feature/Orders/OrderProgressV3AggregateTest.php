@@ -85,7 +85,7 @@ final class OrderProgressV3AggregateTest extends TestCase
             ->applyPhase(Order::query(),'progress_conflict')->whereKey($root->id)->count());
     }
 
-    public function test_auxiliary_annotation_keeps_real_progress_and_can_be_cleared(): void
+    public function test_single_primary_follow_up_replaces_legacy_status_and_restores_shipping_facts(): void
     {
         $user = User::factory()->create(['is_active'=>true]);
         $role = \App\Models\Role::create(['key'=>'v3-editor','label'=>'Editor']);
@@ -98,20 +98,23 @@ final class OrderProgressV3AggregateTest extends TestCase
         $order->shipment()->create(['warehouse_id'=>$factory->id,'carrier'=>'4PX','shipment_status'=>'shipped','shipped_at'=>now(),'tracking_number'=>'TEST-123']);
         $order->operationalMarkers()->create(['marker'=>'domestic_reviewed','marked_at'=>now()]);
         $order->forceFill(['workflow_status'=>'freight_product_cost_follow_up'])->save();
-        self::assertSame('shipping', $this->phase($order));
+        self::assertSame('freight_product_cost_follow_up', $this->phase($order));
         $this->actingAs($user)->patchJson('/orders/'.$order->id.'/workflow-status',[
             'workflow_status'=>'renew','expected_workflow_revision'=>0,
-        ])->assertOk()->assertJsonPath('workflow_status.code','shipping');
-        self::assertCount(2, app(OrderWorkflowStatusProjection::class)->for($order->fresh())['auxiliary']);
+        ])->assertOk()->assertJsonPath('workflow_status.code','renew')
+            ->assertJsonPath('workflow_status.auxiliary', []);
+        self::assertSame('renew', $this->phase($order));
         self::assertSame(1, app(\App\Modules\Orders\Application\OrderService::class)
             ->list(['workflow_status' => 'renew'])->total());
-        self::assertSame(1, app(\App\Modules\Orders\Application\OrderService::class)
+        self::assertSame(0, app(\App\Modules\Orders\Application\OrderService::class)
             ->list(['workflow_status' => 'freight_product_cost_follow_up'])->total());
-        $this->actingAs($user)->deleteJson('/orders/'.$order->id.'/auxiliary-status/freight_product_cost_follow_up',[
-            'expected_workflow_revision'=>1,
+        $this->actingAs($user)->patchJson('/orders/'.$order->id.'/workflow-status',[
+            'workflow_status'=>'resolve_manual_hold','expected_workflow_revision'=>1,
         ])->assertOk()->assertJsonPath('workflow_status.code','shipping');
-        self::assertSame(['renew'],array_column(app(OrderWorkflowStatusProjection::class)->for($order->fresh())['auxiliary'],'code'));
+        self::assertSame([], app(OrderWorkflowStatusProjection::class)->for($order->fresh())['auxiliary']);
+        self::assertSame('shipping', $this->phase($order));
         self::assertSame('shipped',$order->fresh()->shipment->shipment_status);
+        self::assertSame('TEST-123',$order->fresh()->shipment->tracking_number);
     }
 
     private function phase(Order $order): string

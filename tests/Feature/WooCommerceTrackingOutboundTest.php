@@ -5,8 +5,11 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingBatchInspector;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use App\Modules\Sync\Application\SyncOutboxService;
+use App\Modules\Sync\Application\SyncOutboxWriteException;
+use App\Modules\Sync\Application\WooCommerceOrderStatusUnsupportedException;
 use App\Modules\Sync\Application\WooCommerceTrackingConflictException;
 use App\Modules\Sync\Application\WooCommerceTrackingOutboundService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -178,6 +181,109 @@ final class WooCommerceTrackingOutboundTest extends TestCase
         }
     }
 
+    public function test_manual_button_reconciles_legacy_metadata_only_intent_without_500_or_duplicate_outbox(): void
+    {
+        $gateway = new FakeWooCommerceTrackingGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        [$user, $order] = $this->scenario();
+
+        $intent = app(WooCommerceTrackingOutboundService::class)->describeOrder($order)['intent'];
+        unset($intent['payload']['shipped_at_contract']);
+        $old = app(SyncOutboxService::class)->enqueue($intent);
+
+        $this->actingAs($user)
+            ->post('/sync/orders/'.$order->id.'/tracking-outbound')
+            ->assertRedirect()
+            ->assertSessionHas('success', 'WooCommerce Tracking 已写回并验证');
+
+        $this->assertSame(1, $gateway->calls);
+        $this->assertDatabaseHas('sync_outbox', [
+            'id' => $old->id,
+            'status' => 'completed',
+            'attempts' => 1,
+        ]);
+        $this->assertArrayNotHasKey('shipped_at_contract', $old->fresh()->payload);
+        $this->assertSame(1, \DB::table('sync_outbox')
+            ->where('operation', 'woocommerce.tracking_outbound')->count());
+        $this->assertSame('completed', $order->manualSync()->first()->website_sync_status->value);
+    }
+
+    public function test_periodic_path_remains_strict_and_does_not_replay_legacy_intent(): void
+    {
+        $gateway = new FakeWooCommerceTrackingGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        [, $order] = $this->scenario();
+
+        $intent = app(WooCommerceTrackingOutboundService::class)->describeOrder($order)['intent'];
+        unset($intent['payload']['shipped_at_contract']);
+        $old = app(SyncOutboxService::class)->enqueue($intent);
+
+        try {
+            app(WooCommerceTrackingOutboundService::class)->pushOne($order, null);
+            $this->fail('The periodic path must not bypass strict outbox identity.');
+        } catch (SyncOutboxWriteException) {
+            $this->assertSame(0, $gateway->calls);
+            $this->assertSame('pending', $old->fresh()->status->value);
+        }
+    }
+
+    public function test_manual_button_cannot_override_changed_legacy_payload_and_shows_actionable_error(): void
+    {
+        $gateway = new FakeWooCommerceTrackingGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        [$user, $order] = $this->scenario();
+
+        $intent = app(WooCommerceTrackingOutboundService::class)->describeOrder($order)['intent'];
+        unset($intent['payload']['shipped_at_contract']);
+        $intent['payload']['tracking_number'] = 'UNTRUSTED-OLD-TRACKING';
+        $old = app(SyncOutboxService::class)->enqueue($intent);
+
+        $this->actingAs($user)
+            ->post('/sync/orders/'.$order->id.'/tracking-outbound')
+            ->assertRedirect()
+            ->assertSessionHas('error', '已有内容不同的同步任务，系统未覆盖历史任务或官网物流。请联系管理员核对。');
+
+        $this->assertSame(0, $gateway->calls);
+        $this->assertSame('pending', $old->fresh()->status->value);
+    }
+
+    public function test_manual_legacy_replay_blocks_refunded_remote_before_claim_or_website_write(): void
+    {
+        $gateway = new FakeWooCommerceTrackingGateway;
+        $gateway->currentStatus = 'refunded';
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        [$user, $order] = $this->scenario();
+        $intent = app(WooCommerceTrackingOutboundService::class)->describeOrder($order)['intent'];
+        unset($intent['payload']['shipped_at_contract']);
+        $old = app(SyncOutboxService::class)->enqueue($intent);
+
+        $this->actingAs($user)
+            ->post('/sync/orders/'.$order->id.'/tracking-outbound')
+            ->assertRedirect()
+            ->assertSessionHas('error', 'WooCommerce 已存在不同 Tracking，ERP 未覆盖远端数据');
+
+        $this->assertSame(0, $gateway->calls);
+        $this->assertSame('pending', $old->fresh()->status->value);
+    }
+
+    public function test_manual_legacy_replay_requires_sync_operate_permission(): void
+    {
+        $gateway = new FakeWooCommerceTrackingGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        [, $order] = $this->scenario();
+        $reader = $this->userWith(['sync.view']);
+        $intent = app(WooCommerceTrackingOutboundService::class)->describeOrder($order)['intent'];
+        unset($intent['payload']['shipped_at_contract']);
+        $old = app(SyncOutboxService::class)->enqueue($intent);
+
+        $this->actingAs($reader)
+            ->post('/sync/orders/'.$order->id.'/tracking-outbound')
+            ->assertForbidden();
+
+        $this->assertSame(0, $gateway->calls);
+        $this->assertSame('pending', $old->fresh()->status->value);
+    }
+
     public function test_controller_action_surfaces_global_success_flash(): void
     {
         $gateway = new FakeWooCommerceTrackingGateway;
@@ -293,7 +399,7 @@ final class WooCommerceTrackingOutboundTest extends TestCase
     }
 }
 
-final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway, WooCommerceTrackingBatchInspector
+final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingBatchInspector, WooCommerceTrackingGateway
 {
     public int $calls = 0;
 
@@ -302,7 +408,9 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
     public bool $conflict = false;
 
     public bool $fail = false;
+
     public bool $statusFail = false;
+
     public string $currentStatus = 'processing';
 
     public array $publishedPackages = [];
@@ -318,6 +426,7 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
                 'checked_at' => now()->toIso8601String(),
             ];
         }
+
         return $result;
     }
 
@@ -358,6 +467,7 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         $this->publishedPackages[$providerOrderId][] = [
             'tracking_number' => $trackingNumber, 'provider' => $providerSlug, 'ship_date' => $shipDate,
         ];
+
         return ['written' => true, 'verified' => true];
     }
 
@@ -368,7 +478,7 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
             throw new RuntimeException('temporary Woo status error');
         }
         if (in_array($this->currentStatus, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
-            throw new \App\Modules\Sync\Application\WooCommerceOrderStatusUnsupportedException('protected');
+            throw new WooCommerceOrderStatusUnsupportedException('protected');
         }
         $written = $this->currentStatus !== $status;
         $this->currentStatus = $status;

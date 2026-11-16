@@ -55,8 +55,9 @@ final class OrderSavedViewsTest extends TestCase
         $this->actingAs($user)->get('/orders?view=pending')->assertInertia(fn (Assert $page) => $page
             ->has('orders.data', 0)
             ->where('filters.view', 'pending'));
+        // An explicitly excepted order now belongs to exactly one primary queue.
         $this->actingAs($user)->get('/orders?workflow_status=pending_allocation')->assertInertia(fn (Assert $page) => $page
-            ->has('orders.data', 2));
+            ->has('orders.data', 1));
         $this->actingAs($user)->get('/orders?view=shipped')->assertInertia(fn (Assert $page) => $page
             ->has('orders.data', 3)
             ->where('filters.view', 'shipped'));
@@ -131,27 +132,31 @@ final class OrderSavedViewsTest extends TestCase
         $this->assertViewContainsOnly($user, 'overweight', 'ORDER-HEAVY-DOM');
     }
 
-    public function test_stockout_view_requires_manual_stockout_marker_and_selected_warehouse_shortage(): void
+    public function test_stockout_view_uses_real_core_hold_instead_of_rechecking_current_inventory_balance(): void
     {
         $user = $this->userWith(['orders.view', 'orders.edit']);
         $product = Product::create(['sku' => 'STOCKOUT-SKU', 'name' => 'Stockout Product', 'source_type' => 'manual']);
-        $warehouses = Warehouse::query()->orderBy('id')->take(2)->get();
-        $emptyWarehouse = $warehouses[0];
-        $stockedWarehouse = $warehouses[1];
-        WarehouseInventory::create(['warehouse_id' => $emptyWarehouse->id, 'product_id' => $product->id, 'quantity_on_hand' => 0, 'quantity_reserved' => 0]);
-        WarehouseInventory::create(['warehouse_id' => $stockedWarehouse->id, 'product_id' => $product->id, 'quantity_on_hand' => 10, 'quantity_reserved' => 0]);
-
+        $warehouse = Warehouse::query()->firstOrFail();
+        WarehouseInventory::create([
+            'warehouse_id' => $warehouse->id, 'product_id' => $product->id,
+            'quantity_on_hand' => 10, 'quantity_reserved' => 0,
+        ]);
         $markedShort = $this->order($user, 'MARKED-SHORT', 'pending_shipment', $product);
         $unmarkedShort = $this->order($user, 'UNMARKED-SHORT', 'pending_shipment', $product);
         $markedStocked = $this->order($user, 'MARKED-STOCKED', 'pending_shipment', $product);
-        $this->shipment($markedShort, $emptyWarehouse, null);
-        $this->shipment($unmarkedShort, $emptyWarehouse, null);
-        $this->shipment($markedStocked, $stockedWarehouse, null);
+        // The manually confirmed hold is authoritative until it is explicitly lifted;
+        // a current stock count is an independent inventory signal, not the order's state.
         $this->mark($user, $markedShort, 'stockout');
         $this->mark($user, $markedStocked, 'stockout');
 
-        $this->assertViewContainsOnly($user, 'stockout', 'ORDER-MARKED-SHORT');
-        $this->assertDatabaseMissing('order_operational_markers', ['order_id' => $unmarkedShort->id, 'marker' => 'stockout']);
+        $this->actingAs($user)->get('/orders?view=stockout')->assertInertia(fn (Assert $page) => $page
+            ->has('orders.data', 2)
+            ->where('orders.total', 2));
+        $this->assertSame('out_of_stock', $markedShort->fresh()->workflow_status);
+        $this->assertSame('out_of_stock', $markedStocked->fresh()->workflow_status);
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id' => $unmarkedShort->id, 'marker' => 'stockout',
+        ]);
     }
 
     public function test_order_saved_views_reuse_shared_saved_views_table_and_enforce_module_boundary(): void

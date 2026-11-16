@@ -31,6 +31,56 @@ final class HttpWooCommerceTrackingGatewayTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_force_sync_replaces_single_outdated_tracking_without_changing_woo_status(): void
+    {
+        $old = $this->tracking('usps', 'OLD', [1001]);
+        $new = $this->tracking('4px', 'NEW', [1001]);
+        Http::fakeSequence('https://shop.test/wp-json/wc/v3/orders/7001')
+            ->push($this->remoteOrder([$old], status: 'completed'), 200)
+            ->push(['id' => 7001], 200)
+            ->push($this->remoteOrder([$new], status: 'completed'), 200);
+
+        $result = app(HttpWooCommerceTrackingGateway::class)
+            ->forceSyncSingleTracking(7001, '4px', 'NEW', '2026-09-15');
+
+        self::assertSame(['written' => true, 'verified' => true], $result);
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT'
+            && ! array_key_exists('status', $request->data())
+            && ! array_key_exists('line_items', $request->data())
+            && ! array_key_exists('billing', $request->data())
+            && ! array_key_exists('shipping', $request->data())
+            && count(collect($request->data()['meta_data'] ?? [])->firstWhere('key', '_aftership_tracking_items')['value'] ?? []) === 1
+        );
+    }
+
+    public function test_force_sync_matching_number_skips_all_remote_writes(): void
+    {
+        Http::fake(['https://shop.test/wp-json/wc/v3/orders/7001' => Http::response(
+            $this->remoteOrder([$this->tracking('usps', 'EXACT', [1001])], status: 'processing'), 200
+        )]);
+        $result = app(HttpWooCommerceTrackingGateway::class)
+            ->forceSyncSingleTracking(7001, '4px', 'EXACT', '2026-09-15');
+        self::assertFalse($result['written']);
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'PUT');
+    }
+
+    public function test_force_sync_does_not_guess_which_split_package_to_replace(): void
+    {
+        Http::fake(['https://shop.test/wp-json/wc/v3/orders/7001' => Http::response(
+            $this->remoteOrder([
+                $this->tracking('usps', 'A', [1001]),
+                $this->tracking('usps', 'B', [1002]),
+            ], status: 'completed'), 200
+        )]);
+        $this->expectException(WooCommerceTrackingConflictException::class);
+        try {
+            app(HttpWooCommerceTrackingGateway::class)
+                ->forceSyncSingleTracking(7001, 'usps', 'NEW', '2026-09-15');
+        } finally {
+            Http::assertNotSent(fn (Request $request): bool => $request->method() === 'PUT');
+        }
+    }
+
     public function test_first_package_is_written_with_exact_woo_line_item_binding(): void
     {
         Http::fakeSequence('https://shop.test/wp-json/wc/v3/orders/7001')

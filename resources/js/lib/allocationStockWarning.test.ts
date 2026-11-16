@@ -12,6 +12,15 @@ describe('manual fulfillment stock exception warnings', () => {
     expect(warnings[0]).toMatchObject({ warehouseCode: 'US-LA', requiredQuantity: 2, availableQuantity: 1 })
     expect(warnings[1]).toMatchObject({ warehouseCode: 'FACTORY', reason: 'unknown' })
   })
+  it('does not present a stock exception for manually allocated Tingon partner items', () => {
+    const warnings = allocationStockWarnings([
+      { warehouseCode: 'tingon', warehouseName: '合作-Tingon', productId: 42, sku: 'PARTNER', quantity: 2, availableQuantity: null },
+      { warehouseCode: 'FACTORY', warehouseName: '中国工厂', productId: 43, sku: 'FACTORY', quantity: 3, availableQuantity: null },
+    ])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0].warehouseCode).toBe('FACTORY')
+  })
+
   it('sums split lines of the same product in the same warehouse, without blocking gift lines', () => {
     const warnings = allocationStockWarnings([
       { warehouseCode: 'us-la', warehouseName: 'MorePlus', productId: 12, sku: 'SAME', quantity: 2, availableQuantity: 3 },

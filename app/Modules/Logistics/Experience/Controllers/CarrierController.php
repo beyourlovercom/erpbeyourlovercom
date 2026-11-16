@@ -4,11 +4,13 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\CarrierService;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -50,18 +52,48 @@ final class CarrierController
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
         $request->merge(['name' => trim((string) $request->input('name'))]);
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:128', 'unique:logistics_carriers,name'],
+            'name' => ['required', 'string', 'max:128', 'unique:logistics_carriers,name',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (Carrier::query()->whereRaw('LOWER(name) = ?', [mb_strtolower(trim((string) $value))])->exists()) {
+                        $fail('该物流商已存在，请直接在列表中选择。');
+                    }
+                },
+            ],
+            'name_en' => ['nullable', 'string', 'max:128'],
         ]);
 
-        Carrier::query()->create([
-            'name' => $validated['name'],
-            'is_active' => true,
-            'created_by' => $request->user()?->getAuthIdentifier(),
-        ]);
+        $carrier = DB::transaction(function () use ($request, $validated): Carrier {
+            $name = $validated['name'];
+            $english = trim((string) ($validated['name_en'] ?? ''));
+            $isChinese = preg_match('/\p{Han}/u', $name) === 1;
+            $carrier = Carrier::query()->create([
+                'name' => $name,
+                'name_en' => $english !== '' ? $english : ($isChinese ? null : $name),
+                'name_zh' => $isChinese ? $name : null,
+                'display_name' => $name,
+                'is_active' => true,
+                'created_by' => $request->user()?->getAuthIdentifier(),
+            ]);
+            $service = $carrier->services()->create([
+                'service_key' => 'default', 'service_value' => '默认',
+                'name_en' => 'Default', 'name_zh' => '默认',
+                'is_active' => true, 'sort_order' => 10,
+                'created_by' => $request->user()?->getAuthIdentifier(),
+            ]);
+            $carrier->forceFill(['default_service_id' => $service->id])->save();
+
+            return $carrier;
+        });
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'carrier' => collect($this->carrierServices->options())->firstWhere('value', $carrier->name),
+            ], 201);
+        }
 
         return redirect()->route('logistics.carriers')->with('success', '物流商已新增');
     }
@@ -272,7 +304,7 @@ final class CarrierController
             'service_display_name' => $shipment->carrierService?->displayName() ?: $this->carrierServices->serviceDisplayName((string) $shipment->carrier, $shipment->service),
             'tracking_number' => $shipment->tracking_number,
             'items' => $order?->items->map(fn ($item): array => [
-                'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                'sku' => WarehouseSkuPresentation::sku($item),
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'product_summary' => $item->product_summary,
                 'product_id' => $item->product_id,

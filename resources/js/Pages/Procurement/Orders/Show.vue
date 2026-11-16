@@ -12,9 +12,15 @@ type PurchaseItem = {
   purchase_url: string | null
   purchase_size: string | null
   purchase_quantity: number
+  received_quantity?:number
+  received_sku?:string|null
 }
 type ProcurementOrder = {
   id: number
+  origin?:string
+  receipt_note?:string|null
+  received_at?:string|null
+  released_at?:string|null
   procurement_number: string
   status: string
   status_label: string
@@ -47,6 +53,12 @@ const form = useForm({
   status: props.procurementOrder.status,
   carrier: props.procurementOrder.carrier || '',
   tracking_number: props.procurementOrder.tracking_number || '',
+  receipt_note: props.procurementOrder.receipt_note || '',
+  items: props.procurementOrder.items.map(item=>({
+    id:item.id, purchase_url:item.purchase_url||'', purchase_size:item.purchase_size||'',
+    purchase_quantity:item.purchase_quantity, received_sku:item.received_sku||item.sku||'',
+    received_quantity:item.received_quantity||item.source_quantity,
+  })),
 })
 const trackingQueryMessage = ref('')
 const fallbackCopyTrackingNumber = (trackingNumber: string): boolean => {
@@ -138,6 +150,25 @@ const completionReasonLabel = (value: string | null) => value === 'source_order_
               <small v-if="trackingQueryMessage" class="tracking-query-feedback">{{ trackingQueryMessage }}</small>
             </label>
           </div>
+          <div v-if="procurementOrder.origin==='external'" class="workspace-fields external-purchase-lines">
+            <h3>外采商品采购明细</h3>
+            <div v-for="(item,index) in procurementOrder.items" :key="item.id" class="purchase-line-edit">
+              <strong>{{ item.sku }} · 需采购 {{ item.source_quantity }}</strong>
+              <label><span>淘宝 / 1688 / 采购链接</span><input v-model="form.items[index].purchase_url" class="erp-input" type="url" placeholder="https://..." /></label>
+              <label><span>规格</span><input v-model="form.items[index].purchase_size" class="erp-input" placeholder="实际采购规格" /></label>
+              <label><span>采购数量</span><input v-model.number="form.items[index].purchase_quantity" class="erp-input" type="number" min="1" /></label>
+              <template v-if="form.status==='arrived'">
+                <label><span>实际到货 SKU</span><input v-model="form.items[index].received_sku" class="erp-input" /></label>
+                <label><span>实际到货数量</span><input v-model.number="form.items[index].received_quantity" class="erp-input" type="number" min="0" /></label>
+              </template>
+            </div>
+            <label v-if="form.status==='arrived'">
+              <span>工厂到货确认依据（必填）</span>
+              <textarea v-model="form.receipt_note" class="erp-input" rows="2" placeholder="工厂收货人员、日期、核验结果" />
+              <small v-if="form.errors.receipt_note" class="field-error">{{ form.errors.receipt_note }}</small>
+            </label>
+            <p v-if="procurementOrder.released_at" class="ready">Vita 已放行 · {{ formatDate(procurementOrder.released_at) }}，转国内待发货</p>
+          </div>
           <div class="form-actions">
             <button class="erp-btn erp-btn-primary" type="submit" :disabled="form.processing">保存采购信息</button>
           </div>
@@ -184,4 +215,11 @@ const completionReasonLabel = (value: string | null) => value === 'source_order_
 <style scoped>
 .workspace-fields{display:grid;grid-template-columns:180px minmax(200px,1fr) minmax(320px,1fr);gap:14px}.workspace-fields label{display:grid;gap:6px}.workspace-fields label>span{font-size:12px;color:#64748b}.tracking-query-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.tracking-query-button{white-space:nowrap}.tracking-query-feedback{color:#64748b}.form-actions{display:flex;justify-content:flex-end;margin-top:16px}.read-only-grid,.purchase-item dl{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 14px;margin:0}.read-only-grid dt,.purchase-item dt{color:#7a8c94}.read-only-grid dd,.purchase-item dd{margin:0;min-width:0;overflow-wrap:anywhere}.purchase-item{padding:14px 0;border-bottom:1px solid #e5e7eb}.purchase-item:last-child{border-bottom:0}.purchase-url-link{display:inline-block;max-width:100%;overflow-wrap:anywhere;word-break:break-word;text-decoration:underline;text-underline-offset:2px}.purchase-item>div{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px}.purchase-item>div span{color:#7a8c94}.field-error{color:#b91c1c}.page-header-actions{display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:767px){.workspace-fields{grid-template-columns:1fr}.tracking-query-row{grid-template-columns:1fr}.tracking-query-button{width:100%}.form-actions .erp-btn{width:100%}.read-only-grid,.purchase-item dl{grid-template-columns:90px 1fr}.page-header-actions{width:100%}.page-header-actions .erp-btn{flex:1}.purchase-item>div{display:grid}}
+</style>
+
+<style scoped>
+.external-purchase-lines{margin-top:12px;border-top:1px solid #e4ecef;padding-top:12px}
+.purchase-line-edit{display:grid;grid-template-columns:1fr 2fr 1fr 110px;gap:12px;align-items:end;width:100%;margin:8px 0}
+.purchase-line-edit label{display:flex;flex-direction:column;gap:5px}
+@media(max-width:900px){.purchase-line-edit{grid-template-columns:1fr 1fr}}
 </style>

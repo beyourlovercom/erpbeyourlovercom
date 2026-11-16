@@ -25,6 +25,10 @@ final class SingleOrderDispatch
             'address','items','shipment.warehouse','shipment.carrierService','shipment.overseaReview'
         ])->findOrFail($orderId);
         $data=$this->preview->forOrder($order);
+        if ($order->routing_warehouse_code !== null && $order->routing_warehouse_code !== 'US-SM') {
+            $data['ready_for_remote_check']=false;
+            $data['blockers'][]='warehouse_route_mismatch';
+        }
         $data['erp_order_status']=$order->order_status?->value;
         $attempt=XlwmsDispatchAttempt::query()->where('order_id',$orderId)->first();
         $data['attempt']=$attempt ? [

@@ -27,17 +27,34 @@ final class XlwmsInventoryCoverage
     {
         if (! Schema::hasTable('xlwms_inventory_snapshots')) return null;
 
-        $latest = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouseId)
-            ->orderByDesc('id')->first();
+        $query = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouseId);
+        $latest = (config('inventory_sku_gate.enabled', false)
+                ? $query->orderByDesc('fetched_at')->orderByDesc('id')
+                : $query->orderByDesc('id'))->first();
         if ($latest === null) return null;
 
         if ((bool) ($latest->summary['v2'] ?? false)) {
-            if ($latest->status !== 'applied') return [];
+            $isolated = (bool) config('inventory_sku_gate.enabled', false);
+            if ($isolated) {
+                if (! in_array($latest->status, ['applied', 'partial_applied'], true)
+                    || ($latest->summary['v2_applied'] ?? false) !== true) return [];
+            } elseif ($latest->status !== 'applied') {
+                return [];
+            }
+            // For a partial application, a row is trusted ONLY if its exact
+            // product was reconciled and written by the guarded transaction.
+            $appliedIds = $latest->status === 'partial_applied'
+                ? array_map('intval', (array) ($latest->summary['applied_product_ids'] ?? []))
+                : null;
+            if ($latest->status === 'partial_applied'
+                && ($appliedIds === []
+                    || ($latest->summary['sku_isolation_write_proof'] ?? false) !== true)) return [];
             $rows = $latest->rows()->where('resolution_status', 'matched')
                 ->whereNotNull('product_id')->get(['product_id', 'oms_total', 'oms_available', 'oms_locked']);
             $available = [];
             foreach ($rows as $row) {
                 $id = (int) $row->product_id;
+                if ($appliedIds !== null && ! in_array($id, $appliedIds, true)) continue;
                 $total = $row->oms_total;
                 $free = $row->oms_available;
                 $locked = $row->oms_locked;

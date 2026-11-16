@@ -20,6 +20,7 @@ import StockExceptionConfirmDialog from '../../Components/Logistics/StockExcepti
 import { allocationStockWarnings } from '../../lib/allocationStockWarning'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatusPill.vue'
+import OrderWarehouseRouteSelect from '../../Components/Orders/OrderWarehouseRouteSelect.vue'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; can_auto_allocate?: boolean }
@@ -105,7 +106,9 @@ type Order = {
   order_date: string
   order_status: string
   order_status_label: string
+  workflow_status?: string | null
   workflow_status_projection?: { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean }
+  routing_warehouse?: {code:string;name:string;source:string;revision:number}
   workflow_revision?: number
   order_note: string | null
   domestic_reject_reason?: string | null
@@ -139,6 +142,8 @@ const props = withDefaults(defineProps<{
   inventoryAvailability?: Record<number, Availability[]>
   packagingReferences?: Record<number, PackagingReference>
   warehouses?: Warehouse[]
+  warehouseRouteOptions?: {code:string;name:string}[]
+  canEditWarehouseRoute?: boolean
   warehouseRouting?: Record<number,{ carrier:string|null; service:string|null; carrier_service_id:number|null; automatic:boolean }>
   carrierOptions?: CarrierOption[]
   allocationUi?: AllocationUi
@@ -160,6 +165,7 @@ const props = withDefaults(defineProps<{
   canViewPackagingEvidence?: boolean
   canCreateProcurement?: boolean
   canCreateReplacement?: boolean
+  canForceTrackingSync?: boolean
   canOperateLogistics?: boolean
   canReopenFulfillment?: boolean
   canViewProfit?: boolean
@@ -167,10 +173,12 @@ const props = withDefaults(defineProps<{
   wooAdminEditUrl?: string | null
   kolProfile?: { id: number; display_name: string; url: string } | null
 
-}>(), { canAppendOrderNote: false, canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
+}>(), { canAppendOrderNote: false, canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canForceTrackingSync: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
 
 
-const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
+const inlineCarrierOptions = ref<CarrierOption[]>([])
+const shipmentCarrierOptions = computed(() => [...(props.carrierOptions ?? []), ...inlineCarrierOptions.value])
+const carrierOption = (name:string) => shipmentCarrierOptions.value.find(row => row.value === name)
 const carrierDisplay = (name:string|null|undefined) => name ? (carrierOption(name)?.label ?? name) : '—'
 const contextualDefaultService = (name:string, country?:string|null) => {
   const carrier = carrierOption(name)
@@ -180,7 +188,13 @@ const contextualDefaultService = (name:string, country?:string|null) => {
   }
   return carrier.default_service_value ?? ''
 }
-const shipmentServiceOptions = computed(() => carrierOption(shipmentEditor.value.carrier)?.services ?? [])
+const shipmentServiceOptions = computed(() => {
+  const carrier = carrierOption(shipmentEditor.value.carrier)
+  if (!carrier) return []
+  if (carrier.services.some(service => service.value === '默认')) return carrier.services
+  // “默认” is a supported alias for the provider's actual default service.
+  return [{ id: -1, key: 'default_alias', value: '默认', label: '默认', name_en: 'Default', name_zh: '默认' }, ...carrier.services]
+})
 const routeForWarehouse = (warehouseId:number|null) => warehouseId ? props.warehouseRouting?.[warehouseId] : undefined
 const applyShipmentWarehouseDefault = () => {
   const route = routeForWarehouse(shipmentEditor.value.warehouse_id)
@@ -208,6 +222,24 @@ const goToAdjacentOrder = (url: string | null | undefined) => {
   })
 }
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
+const trackingSyncPending = ref(false)
+const trackingSyncFeedback = ref('')
+const forceTrackingSync = async () => {
+  if (trackingSyncPending.value || !props.order.shipment?.tracking_number) return
+  trackingSyncPending.value = true
+  trackingSyncFeedback.value = ''
+  try {
+    const response = await axios.post('/sync/orders/' + props.order.id + '/force-tracking')
+    trackingSyncFeedback.value = response.data?.message ?? '同步成功'
+  } catch (error) {
+    trackingSyncFeedback.value = axios.isAxiosError(error)
+      ? (error.response?.data?.message ?? '同步失败，请检查网络或权限')
+      : '同步失败，请重试'
+  } finally {
+    trackingSyncPending.value = false
+  }
+}
+
 
 const breadcrumbs = computed(() => isKol.value
   ? [{ label: 'BYL ERP', href: '/dashboard' }, { label: '网红', href: '/kol' }, { label: '订单', href: '/kol/orders' }, props.order.erp_order_id ?? '—']
@@ -530,21 +562,55 @@ const submit = () => {
 
 const operationalMarkerOptions = [
   { key: 'exception', label: '异常' },
-  { key: 'in_transit', label: '运输中' },
-  { key: 'return', label: '退货' },
+  { key: 'in_transit', label: '运输关注（辅助）' },
+  { key: 'return', label: '退货关注（辅助）' },
   { key: 'stockout', label: '缺货' },
 ]
-const markerActive = (key: string) => key === 'stockout' && props.isDomesticFactory
-  ? ((props.order.operational_markers?.includes('domestic_stockout') ?? false)
-    || props.order.workflow_status_projection?.code === 'out_of_stock')
-  : (props.order.operational_markers?.includes(key) ?? false)
+// A missing-info hold projects to exception but is removed via its own subtype
+// tag; never make the generic exception button attempt to clear that hold.
+const markerActive = (key: string) => key === 'exception'
+  ? (['exception', 'missing_info', 'renew', 'claims', 'freight_product_cost_follow_up']
+      .includes(props.order.workflow_status_projection?.code ?? ''))
+  : key === 'stockout' && props.isDomesticFactory
+    ? ((props.order.operational_markers?.includes('domestic_stockout') ?? false)
+      || props.order.workflow_status_projection?.code === 'out_of_stock')
+    : (props.order.operational_markers?.includes(key) ?? false)
 const markerDisabled = (key:string) => key === 'stockout' && props.isDomesticFactory
   ? (!props.canMarkDomesticStockout || markerActive(key))
   : !props.canMarkOperational
+const coreStatusSaving = ref(false)
+const changeCoreStatus = async (next: string) => {
+  if (coreStatusSaving.value) return
+  let reason: string | undefined
+  if (next === 'cancelled') {
+    if (!window.confirm('在 ERP 中真正取消订单？不会自动退款或修改 WooCommerce 状态。')) return
+    const input = window.prompt('请填写至少 3 个字的取消原因。')
+    if (!input || input.trim().length < 3) return
+    reason = input.trim()
+  }
+  coreStatusSaving.value = true
+  try {
+    await axios.patch(`/orders/${props.order.id}/workflow-status`, {
+      workflow_status: next,
+      expected_workflow_revision: props.order.workflow_revision ?? 0,
+      ...(reason ? { reason } : {}),
+    })
+    publishGlobalFeedback({state:'SUCCESS',title:'核心状态已更新',message:'状态和订单列表将读取同一份真实数据。'})
+    router.reload()
+  } catch (error: any) {
+    publishGlobalFeedback({state:'ERROR',title:'核心状态未更改',message:error?.response?.data?.message ?? '保存失败，请刷新状态后重试。'})
+  } finally {
+    coreStatusSaving.value = false
+  }
+}
 const toggleMarker = (key: string) => {
-  if (key === 'stockout' && props.isDomesticFactory) {
+  if (key === 'exception') {
+    void changeCoreStatus(markerActive(key) ? 'resolve_exception' : 'exception')
+    return
+  }
+  if (key === 'stockout') {
     if (markerDisabled(key)) return
-    router.post('/logistics/china/orders/' + props.order.id + '/stockout', {}, { preserveScroll:true })
+    void changeCoreStatus(markerActive(key) ? 'resolve_stockout' : 'out_of_stock')
     return
   }
   router.post('/orders/' + props.order.id + '/operational-markers/' + key, { active: !markerActive(key) }, { preserveScroll: true })
@@ -785,6 +851,59 @@ const shipmentEditorError = ref('')
 const shipmentFieldErrors = ref<Record<string,string>>({})
 const shipmentTrackingErrorText = 'Tracking 只能填写英文字母、数字及 . _ : / + -，不能包含中文、空格或备注。'
 const shipmentTrackingPattern = /^[A-Za-z0-9][A-Za-z0-9._:\/+\-]*$/
+const inlineCarrierForm = ref({ name: '', name_en: '' })
+const inlineCarrierOpen = ref(false)
+const inlineCarrierSaving = ref(false)
+const inlineCarrierError = ref('')
+const previousShipmentCarrier = ref('')
+const openInlineCarrier = () => {
+  inlineCarrierForm.value = { name: '', name_en: '' }
+  inlineCarrierError.value = ''
+  inlineCarrierOpen.value = true
+}
+const closeInlineCarrier = () => {
+  if (!inlineCarrierSaving.value) inlineCarrierOpen.value = false
+}
+const onShipmentCarrierChanged = () => {
+  if (shipmentEditor.value.carrier === '__add_carrier__') {
+    shipmentEditor.value.carrier = previousShipmentCarrier.value
+    openInlineCarrier()
+    return
+  }
+  applyShipmentCarrierDefault()
+  clearShipmentFieldError('carrier')
+}
+const submitInlineCarrier = async () => {
+  if (inlineCarrierSaving.value || !props.canOperateLogistics) return
+  inlineCarrierError.value = ''
+  const name = inlineCarrierForm.value.name.trim()
+  if (!name) { inlineCarrierError.value = '请填写物流商名称。'; return }
+  inlineCarrierSaving.value = true
+  try {
+    const response = await axios.post<{ carrier: CarrierOption }>('/logistics/carriers', {
+      name, name_en: inlineCarrierForm.value.name_en.trim() || null,
+    }, { headers: { Accept: 'application/json' } })
+    const created = response.data.carrier
+    if (!created?.value || !created.services?.some(service => service.value === '默认')) {
+      throw new Error('新增结果缺少默认服务，请刷新后检查物流商配置。')
+    }
+    inlineCarrierOptions.value = [...inlineCarrierOptions.value.filter(row => row.value !== created.value), created]
+    shipmentEditor.value.carrier = created.value
+    applyShipmentCarrierDefault()
+    clearShipmentFieldError('carrier')
+    clearShipmentFieldError('service')
+    inlineCarrierOpen.value = false
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const details = error.response?.data as { message?: string; errors?: Record<string, string[]> } | undefined
+      inlineCarrierError.value = details?.errors?.name?.[0] ?? details?.errors?.name_en?.[0] ?? details?.message ?? '添加失败，请重试。'
+    } else {
+      inlineCarrierError.value = error instanceof Error ? error.message : '添加失败，请重试。'
+    }
+  } finally {
+    inlineCarrierSaving.value = false
+  }
+}
 const clearShipmentFieldError = (field:string) => {
   if (!shipmentFieldErrors.value[field]) return
   const next = { ...shipmentFieldErrors.value }
@@ -864,6 +983,8 @@ const openShipmentEditor = (target: {
   }
   shipmentEditorError.value = ''
   shipmentFieldErrors.value = {}
+  inlineCarrierOpen.value = false
+  previousShipmentCarrier.value = initialCarrier
   shipmentEditorOpen.value = true
 }
 const closeShipmentEditor = () => { if (!shipmentEditorSaving.value) shipmentEditorOpen.value = false }
@@ -1183,6 +1304,14 @@ onBeforeUnmount(() => {
 
         </div>
 
+        <div class="erp-form-card ord-route-panel" data-testid="order-warehouse-route-panel">
+          <strong>订单所属分仓</strong>
+          <OrderWarehouseRouteSelect v-if="order.routing_warehouse"
+            :order-id="order.id" :projection="order.routing_warehouse"
+            :options="warehouseRouteOptions ?? []" :can-edit="Boolean(canEditWarehouseRoute)" />
+          <small>决定订单出现在哪个仓库工作台；实际发货仍由履约模块确认</small>
+        </div>
+
         <!-- Card 1: 履约状态 (always read-only) -->
         <div id="order-section-fulfillment" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-fulfillment') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-fulfillment'), 'ord-panel-dragging': draggingSection === 'order-section-fulfillment' }" @dragover.prevent @drop.prevent="dropPanel('order-section-fulfillment')">
 
@@ -1298,7 +1427,11 @@ onBeforeUnmount(() => {
               </div>
               <div class="ord-fulfillment-item">
                 <small class="ord-fulfillment-label">网站同步</small>
-                <strong class="ord-fulfillment-value">{{ order.manual_sync?.status ?? '未进入队列' }}</strong>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <strong class="ord-fulfillment-value">{{ order.manual_sync?.status ?? '未进入队列' }}</strong>
+                  <button v-if="canForceTrackingSync" type="button" class="erp-btn erp-btn-secondary" style="padding:3px 8px;min-height:26px;font-size:12px" :disabled="trackingSyncPending || !order.shipment?.tracking_number" @click="forceTrackingSync">{{ trackingSyncPending ? '同步中' : '同步' }}</button>
+                </div>
+                <small v-if="trackingSyncFeedback" role="status">{{ trackingSyncFeedback }}</small>
               </div>
             </div>
 
@@ -1318,9 +1451,10 @@ onBeforeUnmount(() => {
               :aria-expanded="!isSectionCollapsed('order-section-flags')" @click="toggleSection('order-section-flags')">{{ isSectionCollapsed('order-section-flags') ? '▸' : '▾' }}</button>
           </div>
           </div>
-          <p class="ord-inventory-help">异常、运输中、退货为辅助标记；中国工厂订单点击「缺货」将进入国内缺货审核队列，恢复请在「缺货单」点击「已到货-可发货」。发货、重发、补发仍在上方“履约状态”处理。“归档订单”是独立操作，主订单与子订单都可独立归档；归档后进入归档清单并退出分仓和发货队列，不会永久删除。</p>
+          <p class="ord-inventory-help">异常和缺货为真实核心状态，操作后进入对应主队列；运输关注、退货关注仅为辅助备注，不等于真实发货或退货完成。中国工厂缺货需商务审核，海外仓需 Dede 审核。取消订单不会自动退款或更改网站状态。实际发货仍由上方履约操作确认。</p>
           <div class="ord-marker-row">
             <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="markerDisabled(marker.key)" :title="marker.key==='stockout' && isDomesticFactory && markerActive(marker.key) ? '已在国内缺货单；请在缺货列表确认已到货' : undefined" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
+            <button v-if="canEditWorkflowStatus && order.order_kind === 'customer'" type="button" class="erp-btn erp-btn-secondary ord-marker" :disabled="coreStatusSaving || order.workflow_status_projection?.code === 'cancelled'" @click="changeCoreStatus('cancelled')">取消订单</button>
             <button type="button" class="erp-btn erp-btn-secondary ord-marker" :disabled="!canArchiveOrder" :aria-label="directlyArchived ? '订单已归档' : '归档订单'" @click="archiveOrder">{{ directlyArchived ? '已归档' : '归档订单' }}</button>
           </div>
           <p v-if="operationallyArchived" class="ord-operational-archive-warning" role="status">运营归档：已退出分配、发货和仓库操作序列。财务、物流、同步和历史记录仍予保留。</p>
@@ -1839,9 +1973,9 @@ onBeforeUnmount(() => {
             <select v-model="shipmentEditor.warehouse_id" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.warehouse_id }" :aria-invalid="Boolean(shipmentFieldErrors.warehouse_id)" :disabled="!canOperateLogistics" @change="applyShipmentWarehouseDefault(); clearShipmentFieldError('warehouse_id')"><option :value="null">请选择仓库</option><option v-for="warehouse in warehouses ?? []" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} · {{ warehouse.code }}</option></select><small v-if="shipmentFieldErrors.warehouse_id" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.warehouse_id }}</small>
           </label>
           <label>物流商
-            <select v-model="shipmentEditor.carrier" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.carrier }" :aria-invalid="Boolean(shipmentFieldErrors.carrier)" :disabled="!canOperateLogistics" @change="applyShipmentCarrierDefault(); clearShipmentFieldError('carrier')"><option value="">请选择物流商</option><option v-for="carrier in carrierOptions ?? []" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="shipmentFieldErrors.carrier" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.carrier }}</small>
+            <select v-model="shipmentEditor.carrier" data-testid="shipment-carrier-select" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.carrier }" :aria-invalid="Boolean(shipmentFieldErrors.carrier)" :disabled="!canOperateLogistics" @focus="previousShipmentCarrier = shipmentEditor.carrier" @change="onShipmentCarrierChanged"><option value="">请选择物流商</option><option v-for="carrier in shipmentCarrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option><option v-if="canOperateLogistics" value="__add_carrier__">＋ 添加物流商…</option></select><small v-if="shipmentFieldErrors.carrier" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.carrier }}</small>
           </label>
-          <label>运输 / 服务类型<select v-model="shipmentEditor.service" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.service }" :aria-invalid="Boolean(shipmentFieldErrors.service)" :disabled="!canOperateLogistics || !shipmentEditor.carrier" @change="clearShipmentFieldError('service')"><option value="">请选择服务类型</option><option v-for="service in shipmentServiceOptions" :key="service.id" :value="service.value">{{ service.label }}</option></select><small v-if="shipmentFieldErrors.service" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.service }}</small></label>
+          <label>运输 / 服务类型<select v-model="shipmentEditor.service" data-testid="shipment-service-select" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.service }" :aria-invalid="Boolean(shipmentFieldErrors.service)" :disabled="!canOperateLogistics || !shipmentEditor.carrier" @change="clearShipmentFieldError('service')"><option value="">请选择服务类型</option><option v-for="service in shipmentServiceOptions" :key="service.id" :value="service.value">{{ service.label }}</option></select><small v-if="shipmentFieldErrors.service" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.service }}</small></label>
           <label>Tracking<input v-model="shipmentEditor.tracking_number" class="erp-input" :class="{ 'ord-field-invalid': shipmentFieldErrors.tracking_number }" :aria-invalid="Boolean(shipmentFieldErrors.tracking_number)" :disabled="!canOperateLogistics" placeholder="追踪号，可稍后补录" @input="clearShipmentFieldError('tracking_number')"><small v-if="shipmentFieldErrors.tracking_number" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.tracking_number }}</small></label>
           <label>发货时间<input v-model="shipmentEditor.shipped_at" class="erp-input" :class="{ 'ord-field-invalid': shipmentFieldErrors.shipped_at }" :aria-invalid="Boolean(shipmentFieldErrors.shipped_at)" :disabled="!canOperateLogistics" type="datetime-local" @change="clearShipmentFieldError('shipped_at')"><small v-if="shipmentFieldErrors.shipped_at" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.shipped_at }}</small></label>
           <label class="ord-shipment-note">物流备注<textarea v-model="shipmentEditor.logistics_note" rows="3" class="erp-textarea" :class="{ 'ord-field-invalid': shipmentFieldErrors.logistics_note }" :aria-invalid="Boolean(shipmentFieldErrors.logistics_note)" :disabled="!canOperateLogistics" placeholder="可填写包裹、异常或操作备注" @input="clearShipmentFieldError('logistics_note')"></textarea><small v-if="shipmentFieldErrors.logistics_note" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.logistics_note }}</small></label>
@@ -1855,6 +1989,26 @@ onBeforeUnmount(() => {
           <button v-else type="button" class="erp-btn erp-btn-secondary" @click="closeShipmentEditor">关闭</button>
         </footer>
       </section>
+      <div v-if="inlineCarrierOpen" class="ord-inline-carrier-backdrop" @click.self="closeInlineCarrier">
+        <section class="ord-inline-carrier-dialog" role="dialog" aria-modal="true" aria-label="添加物流商">
+          <header class="ord-replacement-header">
+            <div><small>CARRIER MASTER</small><h2>添加物流商</h2><p>添加后立即用于当前订单，其他订单也可选择。</p></div>
+            <button type="button" class="ord-replacement-close" :disabled="inlineCarrierSaving" @click="closeInlineCarrier">×</button>
+          </header>
+          <form @submit.prevent="submitInlineCarrier">
+            <div class="ord-inline-carrier-fields">
+              <label>物流商名称 <span class="ord-required">*</span><input v-model="inlineCarrierForm.name" class="erp-input" maxlength="128" required :disabled="inlineCarrierSaving" placeholder="例如：德邦物流" autocomplete="off"></label>
+              <label>英文名称（选填）<input v-model="inlineCarrierForm.name_en" class="erp-input" maxlength="128" :disabled="inlineCarrierSaving" placeholder="Deppon Logistics" autocomplete="off"></label>
+              <label class="ord-inline-carrier-default">默认服务<input class="erp-input" value="默认" readonly aria-label="默认服务：默认"></label>
+            </div>
+            <p v-if="inlineCarrierError" class="ord-shipment-error" role="alert">{{ inlineCarrierError }}</p>
+            <footer class="ord-replacement-actions">
+              <button type="button" class="erp-btn erp-btn-secondary" :disabled="inlineCarrierSaving" @click="closeInlineCarrier">取消</button>
+              <button type="submit" class="erp-btn erp-btn-primary" :disabled="inlineCarrierSaving || !inlineCarrierForm.name.trim()">{{ inlineCarrierSaving ? '添加中…' : '添加并选中' }}</button>
+            </footer>
+          </form>
+        </section>
+      </div>
     </div>
 
     <div v-if="replacementOpen" class="ord-replacement-backdrop" @click.self="closeReplacement">
@@ -2382,6 +2536,13 @@ onBeforeUnmount(() => {
 .ord-replacement-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e4eaed; }
 .ord-shipment-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-top: 16px; }
 .ord-shipment-form label { display: grid; gap: 6px; color: #52656d; font-size: 11px; font-weight: 700; }
+.ord-inline-carrier-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(12, 24, 24, .33); }
+.ord-inline-carrier-dialog { width: min(540px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; padding: 20px; border: 1px solid #e1e9e6; border-radius: 16px; background: white; box-shadow: 0 25px 80px rgba(18, 48, 44, .27); }
+.ord-inline-carrier-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+.ord-inline-carrier-fields label { display: grid; gap: 6px; color: #52656d; font-size: 12px; font-weight: 700; }
+.ord-inline-carrier-fields .ord-required { display: inline; color: #c74a4a; }
+.ord-inline-carrier-default { grid-column: 1 / -1; }
+.ord-inline-carrier-default input[readonly] { background: #f7faf9; color: #2d5550; cursor: default; }
 .ord-shipment-note { grid-column: 1 / -1; }
 .ord-shipment-error { margin: 12px 0 0; color: #b44949; font-size: 12px; font-weight: 700; }
 .ord-shipment-form .ord-field-invalid { border-color: #cf303a; box-shadow: 0 0 0 1px rgba(207,48,58,.14); }
@@ -2422,6 +2583,7 @@ onBeforeUnmount(() => {
   .ord-replacement-modal { max-height: calc(100vh - 20px); padding: 16px; border-radius: 14px; }
   .ord-replacement-grid,.ord-replacement-address { grid-template-columns: 1fr; }
   .ord-shipment-form { grid-template-columns: 1fr; }
+  .ord-inline-carrier-fields { grid-template-columns: 1fr; }
   .ord-shipment-note { grid-column: auto; }
   .ord-address-wide { grid-column: auto; }
   .ord-item-row,
@@ -2435,6 +2597,8 @@ onBeforeUnmount(() => {
     align-items: flex-start;
   }
 }
+ .ord-route-panel { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:10px 16px; }
+ .ord-route-panel small { color:#84939e; font-size:11px; }
 </style>
 
 <style scoped>

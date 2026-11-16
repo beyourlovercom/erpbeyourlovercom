@@ -9,6 +9,8 @@ interface SkuAliasRepository
 {
     public function findByMatchKey(string $matchKey): ?Model;
 
+    public function findByMatchKeyIncludingInactive(string $matchKey): ?Model;
+
     public function createAlias(array $attributes): Model;
 
     public function deleteAlias(Model $alias): void;

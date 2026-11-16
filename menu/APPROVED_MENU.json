@@ -69,6 +69,21 @@
       "sort": 20
     },
     {
+      "code": "orders-collaboration",
+      "parent_code": "orders",
+      "level": 2,
+      "label_zh": "合作订单",
+      "slug": "collaboration",
+      "url": "/orders/collaboration",
+      "route": "orders.collaboration",
+      "permission": "orders.view",
+      "emoji": null,
+      "function_zh": "按真实履约仓合作-Tingon筛选原始订单，并兼容分拆履约；不复制订单。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 30
+    },
+    {
       "code": "orders-procurement",
       "parent_code": "orders",
       "level": 2,
@@ -81,7 +96,7 @@
       "function_zh": "查看所属履约仓库为外部仓（ownership_type=external）的订单。",
       "status": "implemented",
       "progress": 100,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "orders-archive",
@@ -96,7 +111,7 @@
       "function_zh": "仅查看和恢复已归档订单；运营归档订单不进入待分仓及发货序列。",
       "status": "implemented",
       "progress": 100,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "logistics",
@@ -159,6 +174,21 @@
       "sort": 30
     },
     {
+      "code": "logistics-tingon",
+      "parent_code": "logistics",
+      "level": 2,
+      "label_zh": "Tingon发货",
+      "slug": "tingon",
+      "url": "/logistics/tingon",
+      "route": "logistics.tingon",
+      "permission": "logistics.view",
+      "emoji": null,
+      "function_zh": "Tingon合作代发工作台及Tingon品牌全部订单筛选，Vita人工发货和追踪号回填。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 40
+    },
+    {
       "code": "logistics-awaiting-tracking",
       "parent_code": "logistics",
       "level": 2,
@@ -171,7 +201,7 @@
       "function_zh": "管理已发货但物流单号尚未回填的订单。",
       "status": "implemented",
       "progress": 100,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "logistics-in-transit",
@@ -186,7 +216,7 @@
       "function_zh": "查看运输中的物流订单状态。",
       "status": "implemented",
       "progress": 100,
-      "sort": 50
+      "sort": 60
     },
     {
       "code": "logistics-exceptions",
@@ -201,7 +231,7 @@
       "function_zh": "处理物流异常订单。",
       "status": "implemented",
       "progress": 100,
-      "sort": 60
+      "sort": 70
     },
     {
       "code": "logistics-carriers",
@@ -216,7 +246,7 @@
       "function_zh": "按承运商汇总 canonical Shipment 发货历史、计费重量、实际物流费用与原始账单凭证。",
       "status": "implemented",
       "progress": 100,
-      "sort": 70
+      "sort": 80
     },
     {
       "code": "sync",

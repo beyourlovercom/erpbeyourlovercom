@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\ShipOut;
 
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Orders\Application\OrderManualHoldStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -80,11 +81,17 @@ final class ShipOutProductionBatchService
                 ->where('status', 'approved')
                 ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'))
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
+                ->where(fn ($routing) => $routing->whereNull('routing_warehouse_code')
+                    ->orWhere('routing_warehouse_code', 'US-LA'))
                 ->where('order_status', 'pending_shipment')
                 ->where(fn ($workflow) => $workflow->whereNull('workflow_status')
-                    ->orWhere('workflow_status', '!=', 'out_of_stock'))
+                    ->orWhereNotIn('workflow_status', ['out_of_stock', 'pending_allocation', ...OrderManualHoldStatus::CODES]))
                 ->whereDoesntHave('operationalMarkers', fn ($markers) => $markers
-                    ->whereIn('marker', ['stockout', 'domestic_stockout']))
+                    ->whereIn('marker', ['stockout', 'domestic_stockout', ...OrderManualHoldStatus::HOLD_MARKERS]))
+                ->whereDoesntHave('fulfillmentParent', fn ($parent) => $parent
+                    ->whereIn('workflow_status', ['pending_allocation', 'out_of_stock', ...OrderManualHoldStatus::CODES])
+                    ->orWhereHas('operationalMarkers', fn ($m) => $m
+                        ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)))
                 ->whereDoesntHave('externalReferences', fn ($references) => $references
                     ->where('provider', 'historical_logistics'))
                 ->whereHas('address', fn ($address) => $address->where('country', 'US')))
@@ -137,7 +144,17 @@ final class ShipOutProductionBatchService
             ->whereHas('overseaReview', fn ($q) => $q->where('status', 'approved')
                 ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'))
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()
+                ->where(fn ($routing) => $routing->whereNull('routing_warehouse_code')
+                    ->orWhere('routing_warehouse_code', 'US-LA'))
                 ->where('order_status', '!=', 'cancelled')
+                ->where(fn ($workflow) => $workflow->whereNull('workflow_status')
+                    ->orWhereNotIn('workflow_status', ['pending_allocation', ...OrderManualHoldStatus::CODES]))
+                ->whereDoesntHave('operationalMarkers', fn ($m) => $m
+                    ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS))
+                ->whereDoesntHave('fulfillmentParent', fn ($parent) => $parent
+                    ->whereIn('workflow_status', ['pending_allocation', 'out_of_stock', ...OrderManualHoldStatus::CODES])
+                    ->orWhereHas('operationalMarkers', fn ($m) => $m
+                        ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)))
                 ->whereDoesntHave('externalReferences', fn ($references) => $references
                     ->where('provider', 'historical_logistics')))
             // R12: scan matches the actual pending tab, including ACK rows

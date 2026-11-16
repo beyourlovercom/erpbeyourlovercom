@@ -87,6 +87,8 @@ const leafColumns = computed(() => flatten(props.columns).map(col => {
       // controlled status dropdown); existing text filters remain default.
       floatingFilterComponent: col.floatingFilterComponent ?? OmsServerFloatingFilter,
       floatingFilterComponentParams: {
+        ...(typeof col.floatingFilterComponentParams === 'object' && col.floatingFilterComponentParams !== null
+          ? col.floatingFilterComponentParams : {}),
         filterValue: props.serverColumnFilters?.[key] ?? '',
         onServerFilter: (value: string) => emit('column-search-change', { colId: key, value }),
         suppressFilterButton: true,

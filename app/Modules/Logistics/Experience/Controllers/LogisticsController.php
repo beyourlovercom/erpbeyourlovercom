@@ -4,10 +4,8 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
-use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\AllocationRejectionReadModel;
-use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
-use App\Modules\Shell\Application\GlobalGridPilot;
+use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
@@ -21,20 +19,29 @@ use App\Modules\Logistics\Application\LogisticsStatusSummary;
 use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
 use App\Modules\Logistics\Application\ReplacementFulfillmentService;
 use App\Modules\Logistics\Application\ShipmentService;
+use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
+use App\Modules\Logistics\Application\WarehousePhysicalSkuResolver;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
+use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
-use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
+use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
+use App\Modules\Orders\Application\OrderWorkflowGridOptions;
+use App\Modules\Orders\Application\OrderWarehouseRouting;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Shell\Application\GlobalGridPilot;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -60,6 +67,8 @@ final class LogisticsController
         private readonly FulfillmentAllocationSubmissionService $allocationSubmissions,
         private readonly FulfillmentAllocationAccess $allocationAccess,
         private readonly GiftSkuResolutionService $giftSkuResolutions,
+        private readonly WarehousePhysicalSkuResolver $physicalSkus,
+        private readonly WarehouseRoutingPolicy $warehouseRouting,
         private readonly LogisticsExecutionAccess $executionAccess,
         private readonly LogisticsStatusSummary $statusSummary,
         private readonly AllocationRejectionReadModel $rejectionReadModel,
@@ -81,6 +90,10 @@ final class LogisticsController
         $rejectionCount = $rejectionSnapshot['count'];
         $query = $this->statusSummary->pendingAllocationQuery()
             ->with(['address', 'items.product', 'owner', 'financials', 'shipment.warehouse',
+                'shipment.overseaReview', 'operationalMarkers', 'fulfillmentParent.operationalMarkers',
+                'originalFulfillmentChildren.operationalMarkers',
+                'originalFulfillmentChildren.shipment.warehouse',
+                'originalFulfillmentChildren.shipment.overseaReview',
                 'fulfillmentAllocation', 'externalReferences:id,order_id,provider',
                 'domesticRejecter:id,name', 'overseaWarehouseReview.reviewer:id,name']);
         if ($rejectionFilter) {
@@ -124,6 +137,12 @@ final class LogisticsController
             'rejectionFilter' => $rejectionFilter,
             'canOperate' => $this->allocationAccess->allows($request->user()),
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
+            'canEditWorkflowStatus' => (bool) $request->user()?->can('orders.edit'),
+            'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
+            'canEditWarehouseRoute' => (bool) $request->user()?->can('orders.edit'),
+            'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
+            // Approved V3 menu button only, preserving GET and mutation gates.
+            'canViewHistoricalImportTool' => (bool) ($request->user()?->can('system.permissions.manage') && $request->user()?->can('logistics.view')),
             'globalGridPilotAvailable' => true,
             'globalGridPilotEnabled' => $gridPilot,
             'gridSearch' => $search,
@@ -164,10 +183,12 @@ final class LogisticsController
             $order = $orders->get($id);
             if (! $order) {
                 $results[] = ['order_id' => $id, 'ok' => false, 'message' => '订单不在待分仓范围，请刷新列表。'];
+
                 continue;
             }
             if ($order->fulfillmentAllocation?->status === 'submitted') {
                 $results[] = ['order_id' => $id, 'ok' => false, 'message' => '该订单已完成分仓，未重复提交。'];
+
                 continue;
             }
 
@@ -231,6 +252,80 @@ final class LogisticsController
         return back()->with('success', '已采用系统推荐并提交分仓');
     }
 
+    /**
+     * Read-only physical SKU validation for the currently selected plan.
+     * The submission revalidates every identity and stock check under its own transaction.
+     */
+    public function preflightManualAllocation(Request $request, Order $order): JsonResponse
+    {
+        $data = $request->validate([
+            'assignments' => ['required', 'array', 'min:1', 'max:500'],
+            'assignments.*.order_item_id' => ['required', 'integer', 'distinct'],
+            'assignments.*.source_code' => ['required', 'string', 'max:32'],
+            'assignments.*.gift_mapping_id' => ['nullable', 'integer'],
+        ]);
+
+        $items = $order->items->keyBy('id');
+        $issues = [];
+        $seen = [];
+        foreach ($data['assignments'] as $row) {
+            $itemId = (int) $row['order_item_id'];
+            $item = $items->get($itemId);
+            $warehouse = strtoupper(trim((string) $row['source_code']));
+            $warehouse = $warehouse === 'OUTSOURCE'
+                ? 'OUTSOURCE'
+                : ($this->warehouseRouting->canonicalWarehouseCode($warehouse) ?? '');
+            $sku = trim((string) ($item?->source_sku ?: $item?->sku ?: $itemId));
+            $seen[] = $itemId;
+            if (! $item || ! in_array($warehouse, ['OUTSOURCE', 'FACTORY', 'US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA'], true)) {
+                $issues[] = ['order_item_id' => $itemId, 'sku' => $sku, 'warehouse' => $warehouse,
+                    'reason' => '商品或仓库无效，请刷新订单重新选择。'];
+
+                continue;
+            }
+            if ($warehouse === 'OUTSOURCE') {
+                if (strcasecmp($sku, 'gift') === 0) {
+                    $issues[] = ['order_item_id' => $itemId, 'sku' => $sku, 'warehouse' => $warehouse,
+                        'reason' => '外采礼品必须先指定真实 SKU。'];
+                }
+
+                continue;
+            }
+            try {
+                $this->physicalSkus->resolve($item, $warehouse, isset($row['gift_mapping_id']) ? (int) $row['gift_mapping_id'] : null);
+            } catch (HttpException $error) {
+                if ($error->getStatusCode() !== 422) {
+                    throw $error;
+                }
+                $issues[] = ['order_item_id' => $itemId, 'sku' => $sku, 'warehouse' => $warehouse,
+                    'reason' => $error->getMessage() ?: '实际 SKU 未验证，禁止分仓。'];
+            }
+        }
+        if (count($seen) !== $items->count() || count(array_unique($seen)) !== $items->count()
+            || array_diff($items->keys()->map(fn ($id) => (int) $id)->all(), $seen) !== []) {
+            $issues[] = ['order_item_id' => null, 'sku' => '订单', 'warehouse' => '',
+                'reason' => '必须为订单中每个 SKU 指定且仅指定一个仓库。'];
+        }
+
+        return response()->json(['can_submit' => $issues === [], 'issues' => $issues,
+            'request_id' => $request->attributes->get('erp_request_id')]);
+    }
+
+    /** Idempotent read-back only; never resubmit a potentially committed allocation. */
+    public function allocationSubmissionStatus(Request $request, Order $order): JsonResponse
+    {
+        $allocation = $order->fulfillmentAllocation;
+
+        return response()->json([
+            'status' => $allocation?->status ?? 'none',
+            'decision_source' => $allocation?->decision_source,
+            'selected_plan_key' => $allocation?->selected_plan_key,
+            'submitted_at' => $allocation?->submitted_at?->toIso8601String(),
+            'assignments' => $allocation?->manual_assignments ?? [],
+            'request_id' => $request->attributes->get('erp_request_id'),
+        ]);
+    }
+
     public function submitManualAllocation(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
@@ -243,7 +338,23 @@ final class LogisticsController
             'decision_note' => ['nullable', 'string', 'max:1000'],
             'stock_exception_acknowledged' => ['sometimes', 'boolean'],
         ]);
-        $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false)));
+        $startedAt = microtime(true);
+        $outcome = 'failed';
+        Log::info('allocation.manual.started', [
+            'order_id' => $order->getKey(),
+            'request_id' => $request->attributes->get('erp_request_id'),
+        ]);
+        try {
+            $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false)));
+            $outcome = 'submitted';
+        } finally {
+            Log::info('allocation.manual.finished', [
+                'order_id' => $order->getKey(),
+                'request_id' => $request->attributes->get('erp_request_id'),
+                'outcome' => $outcome,
+                'elapsed_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+            ]);
+        }
         if ($request->expectsJson()) {
             return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
         }
@@ -276,7 +387,7 @@ final class LogisticsController
             $route = strtoupper(trim((string) $warehouse->code)) === 'FACTORY'
                 ? [] : $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
             $carrier = trim((string) ($route['carrier'] ?? ''));
-            if ($carrier === '' && strtoupper(trim((string) $warehouse->code)) !== 'FACTORY') {
+            if ($carrier === '' && ! in_array(strtoupper(trim((string) $warehouse->code)), ['FACTORY', 'TINGON'], true)) {
                 throw ValidationException::withMessages(['assignments' => "{$warehouse->name} 尚未配置默认物流商，请进入完整待分仓流程。"]);
             }
 
@@ -411,7 +522,7 @@ final class LogisticsController
      * search / pagination / sorting contract. All queue inclusion predicates
      * are applied BEFORE this read-only adapter and remain unchanged.
      */
-    private function l2GridSettings(Request $request, \Illuminate\Database\Eloquent\Builder $query): array
+    private function l2GridSettings(Request $request, Builder $query): array
     {
         $available = GlobalGridPilot::available();
         $enabled = GlobalGridPilot::enabled($request);
@@ -740,7 +851,7 @@ final class LogisticsController
             'logistics_note' => $shipment->logistics_note,
             'shipment_status' => $shipment->shipment_status,
             'order_url' => $this->orderUrl($order),
-            'items' => $order?->items->map(fn ($item): array => ['sku' => $item->resolved_fulfillment_sku ?: $item->sku, 'source_sku' => $item->source_sku ?: $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null, 'quantity' => $item->quantity])->values()->all() ?? [],
+            'items' => $order?->items->map(fn ($item): array => ['sku' => WarehouseSkuPresentation::sku($item), 'source_sku' => $item->source_sku ?: $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null, 'quantity' => $item->quantity])->values()->all() ?? [],
             'review_pending' => $order?->logisticsReview?->status === 'pending',
             'paused' => $order?->operationalMarkers?->contains('marker', 'logistics_paused') ?? false,
         ];
@@ -767,7 +878,7 @@ final class LogisticsController
             'country' => $order->address?->country,
             'order_url' => $this->orderUrl($order),
             'items' => $order->items->map(fn ($item) => [
-                'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                'sku' => WarehouseSkuPresentation::sku($item),
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'product_summary' => $item->product_summary,
                 'product_id' => $item->product_id,
@@ -846,6 +957,10 @@ final class LogisticsController
 
         return [
             'id' => $order->id,
+            'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
+            'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
+            'workflow_revision' => (int) $order->workflow_revision,
+            'can_edit_workflow_status' => $order->order_kind === OrderKind::Customer && ! $order->isOperationallyArchived(),
             'external_order_number' => $order->external_order_number,
             'order_date' => $order->order_date?->toDateString(),
             'amount' => $amount['amount'],
@@ -930,7 +1045,7 @@ final class LogisticsController
             );
         } catch (QueryException|PDOException $exception) {
             throw $exception;
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             Log::warning('erp.logistics.recommendation_row_failed', [
                 'order_id' => $order->id,
                 'exception_class' => $exception::class,

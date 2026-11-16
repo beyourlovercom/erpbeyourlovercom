@@ -60,6 +60,25 @@ final class CarrierMasterV2Test extends TestCase
         // CarrierServiceCatalog caches active services for one HTTP request; read back with a fresh request-scoped catalog.
         self::assertNull((new CarrierServiceCatalog())->resolve('UPS', 'UPS Next Day Air'));
     }
+    public function test_generic_default_service_alias_resolves_to_provider_specific_service(): void
+    {
+        $catalog = app(CarrierServiceCatalog::class);
+        self::assertSame('USPS Priority Mail', $catalog->resolve('USPS', '默认')?->service_value);
+        self::assertSame('DHL PAKET DOMESTIC', $catalog->resolve('DHL', '默认', 'DE')?->service_value);
+
+        $user = $this->operator();
+        $order = Order::query()->create([
+            'internal_order_number' => 'ALIAS-'.uniqid(),
+            'erp_order_id' => '007-ALIAS-'.random_int(100, 999),
+            'source_type' => 'manual', 'order_kind' => 'customer', 'order_date' => '2026-09-20',
+            'order_status' => 'pending_shipment', 'currency' => 'USD',
+        ]);
+        $order->address()->create(['recipient_name' => 'Alias', 'country' => 'US']);
+        app(ShipmentService::class)->saveDraft($order, ['carrier' => 'USPS', 'service' => '默认'], $user);
+        self::assertSame('USPS Priority Mail', $order->fresh()->shipment?->service);
+        self::assertSame('priority_mail', $order->fresh()->shipment?->carrierService?->service_key);
+    }
+
     public function test_blank_service_uses_carrier_default_and_dhl_uses_domestic_default_for_germany(): void
     {
         $user = $this->operator();
