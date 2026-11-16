@@ -13,7 +13,8 @@ import { defineStore } from 'pinia';
 import { getAccessCodesApi, getUserInfoApi, loginApi, logoutApi } from '#/api';
 import { $t } from '#/locales';
 import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
-import { activeDevRole } from '#/router/erp-live-navigation';
+import { activeDevRole, clearAuthorizedDevNavigation } from '#/router/erp-live-navigation';
+import { logoutCanonicalErp } from '#/api/erp-laravel-auth';
 
 export const useAuthStore = defineStore('auth', () => {
   const accessStore = useAccessStore();
@@ -31,6 +32,10 @@ export const useAuthStore = defineStore('auth', () => {
     params: Recordable<any>,
     onSuccess?: () => Promise<void> | void,
   ) {
+    // A canonical ERP employee must never acquire a local Owner fixture JWT.
+    if (import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel') {
+      throw new Error('ERP2_CANONICAL_LOGIN_ONLY');
+    }
     // 异步处理用户登录操作并获取 accessToken
     let userInfo: null | UserInfo = null;
     try {
@@ -80,6 +85,21 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout(redirect: boolean = true) {
+    if (import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel') {
+      let verified = false;
+      try { await logoutCanonicalErp(); verified = true; }
+      catch { /* Fail closed locally, and surface that remote logout may not have completed. */ }
+      clearHotOrderSnapshots();
+      clearAuthorizedDevNavigation();
+      resetAllStores();
+      accessStore.setLoginExpired(false);
+      await router.replace({ path: LOGIN_PATH, query: {} });
+      if (!verified) notification.error({
+        message: 'ERP 原始会话注销未验证',
+        description: '本地数据已清除，请关闭此 Dev 页面并联系管理员确认服务端会话。',
+      });
+      return;
+    }
     try {
       await logoutApi();
     } catch {
