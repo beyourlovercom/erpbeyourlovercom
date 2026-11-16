@@ -50,7 +50,7 @@ test('only the original Laravel web session is accepted; business writes are den
   });
   const upstream = await listen(laravel);
   const gateway = createServer({upstream,distDir:path.join(__dirname,'nonexistent-dist'),
-    host:'127.0.0.1',port:0,allowedUpstreams:[upstream]});
+    host:'127.0.0.1',port:0,allowedUpstreams:[upstream],loginEnabled:true});
   const preview = await listen(gateway);
   try {
     let response = await fetch(preview+'/_erp2/identity');
@@ -84,4 +84,16 @@ test('only the original Laravel web session is accepted; business writes are den
 test('non-approved or Production Laravel authority is refused at startup', () => {
   assert.throws(() => createServer({upstream:'https://erp.beyourlover.com',distDir:__dirname}),
     /UNAPPROVED_LARAVEL_DEV_ORIGIN/);
+});
+
+test('login remains disabled until a genuine Dev staff authority is provisioned', async () => {
+  const upstream = 'http://127.0.0.1:18931';
+  const gateway = createServer({upstream,distDir:__dirname,
+    host:'127.0.0.1',port:0,allowedUpstreams:[upstream]});
+  const preview = await listen(gateway);
+  try {
+    const response = await fetch(preview+'/login',{method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'email=someone&password=secret'});
+    assert.equal(response.status,503);
+  } finally { await close(gateway); }
 });
