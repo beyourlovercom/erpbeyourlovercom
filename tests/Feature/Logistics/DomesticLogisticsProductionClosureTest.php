@@ -494,6 +494,59 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         }
     }
 
+    public function test_pending_sku_merged_download_uses_seventeen_columns_and_preserves_review_gate(): void
+    {
+        $single = $this->domesticOrder('007-0923-c51901', '4PX', reviewed: true, phone: '111', quantity: 1);
+        $multi = $this->domesticOrder('007-0923-c51902', '4PX', reviewed: true, phone: '222', quantity: 2);
+        $multi->items()->create([
+            'product_summary' => 'Second Product',
+            'sku' => 'SECOND-SKU',
+            'quantity' => 3,
+            'unit_price' => '5.00',
+            'line_revenue' => '15.00',
+        ]);
+        $notReviewed = $this->domesticOrder('007-0923-c51903', '4PX', reviewed: false, phone: '333', quantity: 5);
+        $url = '/logistics/china/pending-batch/export-sku-merged';
+
+        $this->actingAs(User::factory()->create(['is_active' => true]))->get($url)->assertForbidden();
+        $response = $this->actingAs($this->logisticsViewer())->get($url)->assertOk();
+        self::assertSame('2', $response->headers->get('X-BYL-Exported-Orders'));
+        self::assertStringContainsString('007-domestic-pending-sku-merged-', $response->headers->get('Content-Disposition'));
+        self::assertSame('pending', $single->fresh()->shipment->shipment_status);
+        self::assertSame('pending', $multi->fresh()->shipment->shipment_status);
+        self::assertSame('pending', $notReviewed->fresh()->shipment->shipment_status);
+
+        $path = tempnam(sys_get_temp_dir(), 'domestic-merged-sku-').'.xlsx';
+        file_put_contents($path, $response->getContent());
+        try {
+            $book = IOFactory::load($path);
+            $sheet = $book->getActiveSheet();
+            $headers = [
+                'ERP订单号', '客户单号', '物流商', '服务', 'Tracking',
+                '收件人', '电话', 'Email', '国家/地区', '州/省', '城市', '邮编', '地址',
+                'SKU', '数量', '金额', '物流备注',
+            ];
+            foreach ($headers as $index => $header) {
+                self::assertSame($header, $sheet->getCell([$index + 1, 1])->getValue());
+            }
+            self::assertSame('Q', $sheet->getHighestDataColumn());
+            self::assertSame(3, $sheet->getHighestDataRow());
+            self::assertSame('007-0923-c51901', $sheet->getCell('A2')->getValue());
+            self::assertSame('007-0923-c51902', $sheet->getCell('A3')->getValue());
+            self::assertSame('TEST-SKU', $sheet->getCell('N2')->getValue());
+            self::assertSame('1', $sheet->getCell('O2')->getValue());
+            self::assertSame("TEST-SKU\nSECOND-SKU", $sheet->getCell('N3')->getValue());
+            self::assertSame("2\n3", $sheet->getCell('O3')->getValue());
+            self::assertSame('s', $sheet->getCell('N3')->getDataType());
+            self::assertTrue($sheet->getStyle('N3')->getAlignment()->getWrapText());
+            self::assertSame('', (string) $sheet->getCell('P3')->getValue());
+            self::assertSame('', (string) $sheet->getCell('Q3')->getValue());
+            $book->disconnectWorksheets();
+        } finally {
+            @unlink($path);
+        }
+    }
+
     public function test_speeda_legacy_xls_return_preview_and_partial_apply_isolated_by_row(): void
     {
         $safe = $this->domesticOrder('007-0923-c50003', '4PX', reviewed: true, phone: '111', quantity: 1);
