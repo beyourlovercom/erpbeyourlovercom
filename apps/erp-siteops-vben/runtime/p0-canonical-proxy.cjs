@@ -79,7 +79,10 @@ function safeFile(distDir, pathname) {
   return path.join(distDir, 'index.html');
 }
 
-function createServer({upstream, distDir, host = HOST, port = PORT, allowedUpstreams = [PINNED_DEV]}) {
+function createServer({
+  upstream, distDir, host = HOST, port = PORT, allowedUpstreams = [PINNED_DEV],
+  loginEnabled = false,
+}) {
   if (!allowedUpstreams.includes(upstream)) throw new Error('UNAPPROVED_LARAVEL_DEV_ORIGIN');
   const base = new URL(upstream);
   if (base.pathname !== '/' || base.search || base.hash || base.username || base.password)
@@ -93,6 +96,8 @@ function createServer({upstream, distDir, host = HOST, port = PORT, allowedUpstr
         const loginWrite = url.pathname === '/login' || url.pathname === '/logout';
         if (!['GET', 'HEAD'].includes(method) && !(loginWrite && method === 'POST'))
           return reject(res, 405, 'ERP business writes are disabled');
+        if (method === 'POST' && url.pathname === '/login' && !loginEnabled)
+          return reject(res, 503, 'Genuine Laravel Dev staff authority not provisioned');
         if (method === 'POST') {
           const origin = req.headers.origin;
           if (origin && origin !== `http://${host}:${port}`) return reject(res, 403, 'Cross-origin login denied');
@@ -148,8 +153,9 @@ function createServer({upstream, distDir, host = HOST, port = PORT, allowedUpstr
 
 if (require.main === module) {
   const distDir = path.join(__dirname,'p0-canonical-uat-dist-20261116');
-  createServer({upstream:PINNED_DEV, distDir}).listen(PORT,HOST,() => {
-    process.stdout.write(`ERP2 canonical Dev preview http://${HOST}:${PORT} (business writes OFF)\n`);
+  const loginEnabled = process.env.BYL_ERP2_STAFF_DEV_AUTH_READY === '1';
+  createServer({upstream:PINNED_DEV, distDir, loginEnabled}).listen(PORT,HOST,() => {
+    process.stdout.write(`ERP2 canonical Dev preview http://${HOST}:${PORT} (business writes OFF, staff login ${loginEnabled ? 'enabled' : 'HOLD'})\n`);
   });
 }
 module.exports = {createServer, PINNED_DEV};
