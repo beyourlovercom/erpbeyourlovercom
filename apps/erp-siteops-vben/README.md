@@ -2,6 +2,14 @@
 
 This is a **Dev-only, opt-in read-only** migration experiment tracked inside the existing BYL ERP repository. Laravel remains the only order/business authority.
 
+## 2026-11-16 — canonical employee ACL Dev opt-in (P0 OPEN)
+
+- The original ERP Production persisted user IDs/roles/permission counts for Vita, Liang, Dede, Emma, Guts and Hiko are recorded in `docs/10_Planning_Roadmap/ERP2_IDENTITY_PERMISSION_PARITY_OWNER_FREEZE_20261116.md`. **All six old 007 Dev fixtures have different IDs/rights**, and Emma is actually a KOL manager in Production.
+- Laravel now provides **Dev-only GET `/_erp2/identity`** using its existing authenticated web session, dynamic role/custom effective permissions and authorized shell navigation. No password/token fields or client-selected role/user. It rejects local admin bypass.
+- A same-origin isolated Dev reverse proxy can opt into **`VITE_ERP_IDENTITY_MODE=laravel`** at frontend build time. In this mode, Vben ignores its isolated fake JWT for ERP authorization, hides the role selector/synthetic data, revalidates Laravel on route navigation and reads `/orders` via the original Laravel controller. **Do not enable on the current 007 fixture gateway** until a real Laravel Dev session and same-origin routing are proven.
+- In-memory SQLite PHPUnit contract regression: **4 tests / 24 assertions PASS**. Node 26 TypeScript adapter parse/fail-closed smoke PASS. PHP syntax checks PASS.
+- **P0 remains HOLD** until 6/6 real employee sessions and effective rights, direct URLs, data scope and revocation pass. PR #766 stays Draft; no Production endpoint/deployment and no resumed P1 migration.
+
 ## Updated 2026-11-15 — current main + reproducible Dev dependencies
 
 - Reference for isolated latest Laravel UAT: `docs/10_Planning_Roadmap/ERP_SITEOPS_007_R2C_R6T_LATEST_MAIN_20261115.md`. R2-C actual employee sessions are still OPEN; only isolated test accounts/data are in scope.
