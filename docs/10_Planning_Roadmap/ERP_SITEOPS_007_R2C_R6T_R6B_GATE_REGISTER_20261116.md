@@ -32,7 +32,7 @@ Date: 2026-11-16 (Hong Kong / Owner). Scope: **PR #766 only, isolated BYL ERP Vb
 ## Open acceptance gates (not PASS)
 | Priority | Gate | Why open / necessary proof | Estimated effective engineering hours |
 |---|---|---|---|
-| P0 | R2-C real staff sessions | Actual Vita, Liang, Dede, Emma, Guts and Hiko Dev login with original authorization and row/menu parity. The four `@local.invalid` identities do not qualify. Only use legitimately provisioned Dev credentials; Owner assistance may be necessary. | 3–6 h after access |
+| P0 | **Canonical account + exact permission parity (Owner freeze)** | Six genuine Dev employees must have the **same canonical ERP user IDs**, `permission_mode`, persisted effective permission keys, first/second-level menus and allow/deny records/actions in ERP1 and ERP2. Original ERP Dev session preflight is necessary but not sufficient. No separate Vben employee authority, role selector or synthetic `@local.test`/`@local.invalid` counterpart can pass. See `ERP2_IDENTITY_PERMISSION_PARITY_OWNER_FREEZE_20261116.md`. | 6–12 h after real Dev access and integration inspection; subject to code gap |
 | CLOSED | Owner visual UAT — Owner PASS 2026-11-16 | Owner explicitly confirmed Step 2 visual review **全部正常** for the 007windows ERP Vben Dev review. Acceptance covers the Owner visual gate; automated 30/3/3 stress and role parity remain separately evidenced. | 0 h |
 | P1 | R6-T cross-page state parity | Hot snapshots cover **Orders response only**. No general proof of unsaved form draft, AG Grid filter/scroll retention or future logistics/inventory module cache parity. Must be scoped with R3 migration; not silently asserted complete. | 4–8 h for Orders-focused gap, other modules deferred to R3 |
 | P1 | R6-B truly portable vendor base | Pinned vendor ZIP and pnpm store currently exist only on approved 007 machine. ZIP-derived offline rebuild is verified *there*, but brand-new-machine artifact acquisition/CI is not. | 2–4 h subject to approved artifact distribution |
@@ -42,8 +42,12 @@ Date: 2026-11-16 (Hong Kong / Owner). Scope: **PR #766 only, isolated BYL ERP Vb
 ## Next actions
 1. Confirm latest-HEAD CI on PR #766 (not just previous integrated commit).
 2. Owner visually approved the 007 Dev review on 2026-11-16; retain the Owner PASS as a completed gate, without claiming this substitutes for role-parity or P1 behavior tests.
-3. Obtain legitimate employee Dev sessions for the real R2-C matrix, or keep a named HOLD rather than replacing proof with synthetic-role selector.
+3. Obtain legitimately authenticated canonical Dev sessions and read persisted effective rights for the six people; bind ERP2 to the same Laravel identity and authorization, then verify complete 6/6 ERP1-vs-ERP2 parity, including negative direct URL/export and cache invalidation. Until this is true, P0 HOLD; do not substitute synthetic role fixtures.
 4. Address Orders in-memory filter/draft state in a separate bounded R6-T follow-up if Owner treats that as a pre-R3 criterion. Reuse the common 30/3/3 tab contract; do not turn unported placeholders into fake working modules.
 5. On full gates PASS, prepare PR review. No Production changes without separate Owner authorization.
 
 **Verdict (Owner update 2026-11-16):** R6-B main integration PASS; R6-T core + 5-context technical UAT PASS; six *named synthetic* Dev accounts pass 6/6; **Owner Step 2 visual UAT PASS**; R2-C genuine staff-identity/permission parity remains OPEN; overall PR #766 remains DRAFT / DEV ONLY.
+
+## Owner priority ruling — exact identity/permission consistency
+
+**2026-11-16 Owner freeze:** ERP2 account permissions must exactly match the existing ERP for the same six employees. Source-of-truth is the original Laravel effective authorization with real persisted user/role/custom permission assignments. The Owner visual PASS and isolated six-named fixture PASS remain valid but are distinct from this **still OPEN P0 parity gate**. **All remaining P1 on HOLD until P0 closes.** No main merge, Production deployment or genuine staff password resets under PR #766. Contract: [`ERP2_IDENTITY_PERMISSION_PARITY_OWNER_FREEZE_20261116.md`](ERP2_IDENTITY_PERMISSION_PARITY_OWNER_FREEZE_20261116.md).
