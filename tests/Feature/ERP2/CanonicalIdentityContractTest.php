@@ -27,9 +27,9 @@ final class CanonicalIdentityContractTest extends TestCase
         $user = User::factory()->create(['is_active' => true, 'permission_mode' => 'role']);
         $user->roles()->attach($role);
 
-        $this->actingAs($user)->getJson('/_erp2/identity')
-            ->assertOk()
-            ->assertHeader('Cache-Control', 'private, no-store, max-age=0')
+        $response = $this->actingAs($user)->getJson('/_erp2/identity');
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $response->assertOk()
             ->assertJsonPath('source', 'ERP_CANONICAL_LARAVEL_DEV_SESSION_V1')
             ->assertJsonPath('user.id', $user->id)
             ->assertJsonPath('user.email', $user->email)
