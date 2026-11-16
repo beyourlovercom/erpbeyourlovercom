@@ -20,11 +20,12 @@ const props = withDefaults(defineProps<{
   filterValues?: Record<string, string>
   showSearch?: boolean
   enableSelection?: boolean
+  cellTextSelection?: boolean
   selectedOrderIds?: number[]
   clientCsvExport?: boolean
   defaultPinnedRight?: number
 }>(), {
-  page: null, rowIdentityKey: 'id', showSearch: true, enableSelection: false, clientCsvExport: false, defaultPinnedRight: 1,
+  page: null, rowIdentityKey: 'id', showSearch: true, enableSelection: false, cellTextSelection: true, clientCsvExport: false, defaultPinnedRight: 1,
   filterColumns: () => [], filterValues: () => ({}),
 })
 const emit = defineEmits<{
@@ -56,6 +57,7 @@ const emit = defineEmits<{
       search-label="表格内搜索全部记录"
       :search-placeholder="searchPlaceholder ?? '搜索全部记录...'"
       :enable-selection="enableSelection"
+      :cell-text-selection="cellTextSelection"
       :selection-order-key="enableSelection ? rowIdentityKey : undefined"
       :selected-order-ids="selectedOrderIds"
       :allow-all-rows="false"

@@ -7,7 +7,7 @@ vi.mock('./OmsGrid.vue', () => ({
   default: {
     name:'OmsGrid',
     props:['namespace','title','columns','rows','requiredColumnIds','serverPagination',
-      'rowIdentityKey','showSearch','enableSelection','allowAllRows','showClientCsvExport','preferenceScope','legacyPreferenceNamespaces','defaultPinnedRight'],
+      'rowIdentityKey','showSearch','enableSelection','cellTextSelection','allowAllRows','showClientCsvExport','preferenceScope','legacyPreferenceNamespaces','defaultPinnedRight'],
     emits:['page-change','page-size-change','sort-change','search-change','column-search-change'],
     template:'<section data-testid="underlying-oms"><slot name="actions"/></section>',
   },
@@ -33,6 +33,7 @@ describe('Global Grid V1 shared contract', () => {
     expect(underlying.props('serverPagination')).toEqual(props.page)
     expect(underlying.props('allowAllRows')).toBe(false)
     expect(underlying.props('enableSelection')).toBe(false)
+    expect(underlying.props('cellTextSelection')).toBe(true)
     expect(underlying.props('showClientCsvExport')).toBe(false)
     expect(underlying.props('showSearch')).toBe(true)
     expect(underlying.props('requiredColumnIds')).toEqual(['sku'])
@@ -45,6 +46,15 @@ describe('Global Grid V1 shared contract', () => {
     expect(syncGrid.findComponent({name:'OmsGrid'}).props('defaultPinnedRight')).toBe(2)
     const defaultGrid = mount(GlobalGrid, { props })
     expect(defaultGrid.findComponent({name:'OmsGrid'}).props('defaultPinnedRight')).toBe(1)
+  })
+
+  it('allows explicit text-selection opt-out without changing row-checkbox behavior', () => {
+    const wrapper = mount(GlobalGrid, { props: {
+      ...props, namespace: 'grid.legacy.special.v1', enableSelection: true, cellTextSelection: false,
+    } })
+    const underlying = wrapper.findComponent({ name: 'OmsGrid' })
+    expect(underlying.props('enableSelection')).toBe(true)
+    expect(underlying.props('cellTextSelection')).toBe(false)
   })
 
   it('forwards only data navigation intents, not business mutation actions', () => {
