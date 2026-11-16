@@ -10,8 +10,7 @@ export const WORKSPACE_PIN_LIMIT = 3
 const domesticViews: Record<string, string> = {
   review: '待审核', stockout: '缺货', pending: '待发货',
   'today-4px': '今日速达', 'today-weship': '今日纬狮',
-  exceptions: '异常订单', today: '今日订单', '4px': '速达订单',
-  weship: '纬狮订单',
+  exceptions: '异常订单', today: '今日订单', all: '全部国内订单',
 }
 const forbidden = /[\\\u0000-\u001f]/
 
@@ -22,6 +21,13 @@ export const safeWorkspaceHref = (raw: string): string | null => {
     const url = new URL(raw, 'https://erp-workspace.invalid')
     if (url.origin !== 'https://erp-workspace.invalid') return null
     if (/^\/(?:login|logout|password|sanctum|api)(?:\/|$)/i.test(url.pathname)) return null
+    if (url.pathname === '/logistics/china') {
+      const legacy = url.searchParams.get('view')?.toLowerCase()
+      if (legacy === '4px' || legacy === 'weship') {
+        url.searchParams.set('view', 'all')
+        url.searchParams.set('filter_carrier', legacy)
+      }
+    }
     return url.pathname + url.search + url.hash
   } catch { return null }
 }

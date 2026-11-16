@@ -3,10 +3,10 @@ import axios from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
 
-const { routerPost, routerPatch, routerVisit, routerReload, feedbackSpy } = vi.hoisted(() => ({ routerPost: vi.fn(), routerPatch: vi.fn(), routerVisit: vi.fn(), routerReload: vi.fn(), feedbackSpy: vi.fn() }))
+const { routerGet, routerPost, routerPatch, routerVisit, routerReload, feedbackSpy } = vi.hoisted(() => ({ routerGet:vi.fn(), routerPost: vi.fn(), routerPatch: vi.fn(), routerVisit: vi.fn(), routerReload: vi.fn(), feedbackSpy: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props:['title'], template:'<title>{{ title }}</title>' },
-  router: { post:routerPost, patch:routerPatch, visit:routerVisit, reload:routerReload },
+  router: { get:routerGet, post:routerPost, patch:routerPatch, visit:routerVisit, reload:routerReload },
 }))
 vi.mock('../../../lib/globalFeedback', () => ({ publishGlobalFeedback:feedbackSpy }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default:{ template:'<div><slot /></div>' } }))
@@ -19,7 +19,7 @@ const baseProps = {
     carrier:'4PX',service:'SD经济挂号-带电',carrier_selection_source:'manual',carrier_ready:true,tracking_number:null,shipment_status:'pending',shipped_at:null,
     review_status:'approved' as const,export_blockers:[],items:[{sku:'M2',quantity:1}],
   }],current_page:1,last_page:1,total:1 },
-  viewCounts:{review:0,pending:1,'today-4px':0,'today-weship':0,exceptions:0,today:0,'4px':1,weship:0},
+  viewCounts:{review:0,pending:1,'today-4px':0,'today-weship':0,exceptions:0,today:0,all:1},
   canOperate:true,
   canReview:true,
   carrierOptions:[
@@ -41,15 +41,15 @@ const baseProps = {
 }
 
 describe('Domestic logistics production workbench', () => {
-  beforeEach(() => { routerPost.mockClear(); routerPatch.mockClear(); routerVisit.mockClear(); routerReload.mockClear(); feedbackSpy.mockClear(); vi.unstubAllGlobals() })
+  beforeEach(() => { routerGet.mockClear(); routerPost.mockClear(); routerPatch.mockClear(); routerVisit.mockClear(); routerReload.mockClear(); feedbackSpy.mockClear(); vi.unstubAllGlobals() })
 
-  it('uses one compact toolbar and bottom help for all ten domestic views', () => {
-    const views=['review','stockout','outsource','pending','today','today-4px','today-weship','exceptions','4px','weship']
+  it('uses one compact toolbar and bottom help for all nine domestic views', () => {
+    const views=['review','stockout','outsource','pending','today','today-4px','today-weship','exceptions','all']
     for (const view of views) {
       const wrapper=mount(Index,{props:{...baseProps,view,trackingImportPreview:null,trackingImportProvider:null}})
       expect(wrapper.find('.domestic-compact-workspace').exists(),view).toBe(true)
       expect(wrapper.find('header.compact-workspace-toolbar').exists(),view).toBe(true)
-      expect(wrapper.findAll('nav.tabs button'),view).toHaveLength(10)
+      expect(wrapper.findAll('nav.tabs button'),view).toHaveLength(9)
       expect(wrapper.find('.domestic-head-actions a[href="/logistics/wait-stock"]').exists(),view).toBe(true)
       expect(wrapper.find('.eyebrow').exists(),view).toBe(false)
       expect(wrapper.find('.continuity').exists(),view).toBe(false)
@@ -57,6 +57,27 @@ describe('Domestic logistics production workbench', () => {
       expect(help.text(),view).toContain('生产连续性')
       expect(help.text(),view).toContain('Tracking 冲突只阻断对应订单')
     }
+  })
+
+  it('retires both provider history tabs and sends unified column dropdown filters to the server', async () => {
+    const wrapper=mount(Index,{props:{...baseProps,view:'all',gridFilters:{carrier:'4px'},
+      globalGridPilotAvailable:true,globalGridPilotEnabled:true,trackingImportProvider:null,trackingImportPreview:null}})
+    const tabs=wrapper.get('nav.tabs').text()
+    expect(tabs).toContain('全部国内订单')
+    expect(tabs).not.toContain('速达订单')
+    expect(tabs).not.toContain('纬狮订单')
+    const state=(wrapper.vm as unknown as {$:{setupState:Record<string,unknown>}}).$.setupState
+    expect(state.allGridFilterColumns).toEqual(expect.arrayContaining(['carrier','status','warehouse_route','review','shipment_status']))
+    expect(state.allGridFilterValues).toMatchObject({carrier:'4px'})
+    const columns=state.domesticGridColumns as {colId:string;floatingFilterComponent?:unknown}[]
+    expect(columns.find(col=>col.colId==='carrier')?.floatingFilterComponent).toBeTruthy()
+    const filter=state.filterAllDomestic as (value:{colId:string;value:string})=>void
+    filter({colId:'carrier',value:'Weship'})
+    expect(routerGet).toHaveBeenCalledWith('/logistics/china',expect.objectContaining({
+      view:'all',filter_carrier:'Weship',page:1,global_grid:'1',
+    }),expect.objectContaining({replace:true}))
+    filter({colId:'unknown',value:'x'})
+    expect(routerGet).toHaveBeenCalledTimes(1)
   })
 
   it('Zhang gets only the dedicated real external-purchase queue and can submit procurement progress', async () => {
@@ -198,7 +219,7 @@ describe('Domestic logistics production workbench', () => {
     expect(pendingCells[pendingHeaders.indexOf('数量')].text()).toBe('1')
     expect(pendingCells[pendingHeaders.indexOf('金额')].text()).toBe('127.35 EUR')
     expect(pendingCells[pendingHeaders.indexOf('金额')].attributes('title')).toBe('网站真实订单总金额')
-    const history = mount(Index,{props:{...baseProps,view:'4px'}})
+    const history = mount(Index,{props:{...baseProps,view:'all'}})
     const historyHeaders = history.findAll('.orders thead th').map(th=>th.text())
     expect(historyHeaders).toContain('SKU / 数量')
     expect(historyHeaders).not.toContain('金额')
@@ -418,7 +439,7 @@ describe('Domestic logistics production workbench', () => {
   })
 
   it('R4-7A 速达历史默认 Grid：直接业务操作，无原操作或重复表，回退原表仍可用',()=>{
-    const speeda=mount(Index,{props:{...baseProps,view:'4px',
+    const speeda=mount(Index,{props:{...baseProps,view:'all',
       globalGridPilotAvailable:true,globalGridPilotEnabled:true,
       trackingImportProvider:null,trackingImportPreview:null,canTrackingSync:true}})
     expect(speeda.find('.domestic-compact-workspace').exists()).toBe(true)
@@ -428,13 +449,13 @@ describe('Domestic logistics production workbench', () => {
     expect(speeda.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('返回原表')
     expect(speeda.findAll('.provider-grid a')).toHaveLength(0)
 
-    const fallback=mount(Index,{props:{...baseProps,view:'4px',
+    const fallback=mount(Index,{props:{...baseProps,view:'all',
       globalGridPilotAvailable:true,globalGridPilotEnabled:false,
       trackingImportProvider:null,trackingImportPreview:null}})
     expect(fallback.find('.table-wrap.orders table').exists()).toBe(true)
     expect(fallback.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('切换新版表')
 
-    const weship=mount(Index,{props:{...baseProps,view:'weship',
+    const weship=mount(Index,{props:{...baseProps,view:'all',
       globalGridPilotAvailable:true,globalGridPilotEnabled:true,
       trackingImportProvider:null,trackingImportPreview:null,canTrackingSync:true}})
     expect(weship.find('.domestic-compact-workspace').exists()).toBe(true)
@@ -444,7 +465,7 @@ describe('Domestic logistics production workbench', () => {
     expect(weship.get('[data-testid="domestic-global-grid-toggle"]').text()).toBe('返回原表')
     expect(weship.findAll('.provider-grid a')).toHaveLength(0)
 
-    const weshipFallback=mount(Index,{props:{...baseProps,view:'weship',
+    const weshipFallback=mount(Index,{props:{...baseProps,view:'all',
       globalGridPilotAvailable:true,globalGridPilotEnabled:false,
       trackingImportProvider:null,trackingImportPreview:null}})
     expect(weshipFallback.find('.table-wrap.orders table').exists()).toBe(true)
@@ -459,13 +480,13 @@ describe('Domestic logistics production workbench', () => {
     expect(pending.text()).toContain('自动识别格式')
     expect(pending.text()).toContain('不改变物流商下单模板')
 
-    const history=mount(Index,{props:{...baseProps,view:'4px',trackingImportPreview:null,trackingImportProvider:null}})
+    const history=mount(Index,{props:{...baseProps,view:'all',trackingImportPreview:null,trackingImportProvider:null}})
     expect(history.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(false)
     expect(history.text()).not.toContain('⏫上传物流单号')
   })
 
   it('R4-7B cumulative Weship has the same direct guarded compact actions and no duplicate toolbars',()=>{
-    const view=mount(Index,{props:{...baseProps,view:'weship',
+    const view=mount(Index,{props:{...baseProps,view:'all',
       globalGridPilotAvailable:true,globalGridPilotEnabled:true,
       canReview:true,canOperate:true,canTrackingSync:true,canArchive:true,
       trackingImportProvider:null,trackingImportPreview:null}})
@@ -481,12 +502,12 @@ describe('Domestic logistics production workbench', () => {
   })
 
   it('keeps cumulative carrier history query-only and hides provider upload/download controls', () => {
-    const speedaHistory=mount(Index,{props:{...baseProps,view:'4px',trackingImportPreview:null,trackingImportProvider:null}})
+    const speedaHistory=mount(Index,{props:{...baseProps,view:'all',trackingImportPreview:null,trackingImportProvider:null}})
     expect(speedaHistory.find('.provider-grid').exists()).toBe(false)
     expect(speedaHistory.find('a[href="/logistics/china/export/4px"]').exists()).toBe(false)
     expect(speedaHistory.find('input[type="file"]').exists()).toBe(false)
 
-    const weshipHistory=mount(Index,{props:{...baseProps,view:'weship',trackingImportPreview:null,trackingImportProvider:null}})
+    const weshipHistory=mount(Index,{props:{...baseProps,view:'all',trackingImportPreview:null,trackingImportProvider:null}})
     expect(weshipHistory.find('.provider-grid').exists()).toBe(false)
     expect(weshipHistory.text()).not.toContain('上传纬狮单号表')
   })
@@ -656,7 +677,7 @@ it('keeps the status dropdown editable across domestic review, pending, stockout
     {code:'sending',en:'Sending',zh:'待发',color:'neutral',mutable:true},
     {code:'missing_info',en:'Missing Info',zh:'信息缺失',color:'amber',mutable:true},
   ]
-  for (const view of ['review','pending','stockout','today','today-4px','today-weship','exceptions','4px','weship','outsource']) {
+  for (const view of ['review','pending','stockout','today','today-4px','today-weship','exceptions','all','outsource']) {
     const row = view === 'outsource' ? {...active, procurement:{
       id:90, number:'PO-T1',status:'ordered',carrier:null,tracking_number:null,received_at:null,released_at:null,
       items:[{id:19,sku:'MF414A',quantity:1,purchase_quantity:1,purchase_url:null,purchase_size:null,received_quantity:0,received_sku:null}],

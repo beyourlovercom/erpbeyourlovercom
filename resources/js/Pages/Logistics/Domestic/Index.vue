@@ -20,6 +20,7 @@ import OrderWarehouseRouteSelect from '../../../Components/Orders/OrderWarehouse
 import OrderWarehouseRouteGridCell from '../../../Components/Orders/OrderWarehouseRouteGridCell.vue'
 import CompactWorkspaceToolbar from '../../../Components/UI/CompactWorkspaceToolbar.vue'
 import CompactWorkspaceHelp from '../../../Components/UI/CompactWorkspaceHelp.vue'
+import DomesticGridSelectFilter from './DomesticGridSelectFilter.vue'
 
 type Item = { sku:string|null; quantity:number }
 type PurchaseLine = { id:number; sku:string; quantity:number; purchase_quantity:number; purchase_url:string|null; purchase_size:string|null; received_quantity:number; received_sku:string|null }
@@ -45,6 +46,7 @@ const props = withDefaults(defineProps<{
   globalGridPilotAvailable?:boolean
   globalGridPilotEnabled?:boolean
   gridSearch?:string
+  gridFilters?:Record<string,string>
   canEditWorkflowStatus?:boolean
   workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[]
   warehouseRouteOptions?:{code:string;name:string}[]
@@ -55,8 +57,8 @@ type BulkChoice = {value:string; label:string; reasonRequired?:boolean}
 const selectedBulkOrderIds = ref<number[]>([])
 const bulkBusy = ref(false)
 const isDailyProviderView = (view:string)=>['today','today-4px','today-weship'].includes(view)
-const isHistoryProviderView = (view:string)=>['4px','weship'].includes(view) // R4-7A/B independently approved cumulative provider views
-const isProviderWorkView = (view:string)=>isDailyProviderView(view)||isHistoryProviderView(view)
+const isAllDomesticView = (view:string)=>view==='all'
+const isProviderWorkView = (view:string)=>isDailyProviderView(view)||isAllDomesticView(view)
 const bulkOptions = computed<BulkChoice[]>(()=>{
   const result:BulkChoice[] = []
   if (props.canReview && props.view==='review') {
@@ -76,7 +78,7 @@ const bulkOptions = computed<BulkChoice[]>(()=>{
 const onBulkSelectionChanged = (rows:GridListRow[])=>{
   selectedBulkOrderIds.value=[...new Set(rows.map(row=>Number(row.id)).filter(id=>Number.isSafeInteger(id)&&id>0))]
 }
-watch(()=>[props.view,props.rows.current_page,props.rows.per_page,props.gridSearch],()=>{
+watch(()=>[props.view,props.rows.current_page,props.rows.per_page,props.gridSearch,props.gridFilters],()=>{
   selectedBulkOrderIds.value=[]
 })
 watch(()=>props.rows.data, rows=>{
@@ -93,8 +95,24 @@ const gridNavigation = useGlobalGridListAdapter({
   enabled:()=>!!props.globalGridPilotEnabled,
   search:()=>domesticGridSearch.value,
   pageSize:()=>props.rows.per_page??50,
-  context:()=>props.view==='outsource' ? {} : {view:props.view},
+  context:()=>props.view==='outsource' ? {} : {view:props.view,...(isAllDomesticView(props.view)
+    ? Object.fromEntries(Object.entries(props.gridFilters??{}).filter(([,value])=>value).map(([key,value])=>['filter_'+key,value])) : {})},
 })
+const allGridFilterColumns=['status','warehouse_route','review','sku','carrier','service','shipment_status','tracking','recipient','destination']
+const allGridFilterValues = computed(()=>Object.fromEntries(allGridFilterColumns.map(key=>[key,props.gridFilters?.[key]??''])))
+const selectFilter = (options:{value:string;label:string}[],placeholder:string)=>({
+  floatingFilterComponent:DomesticGridSelectFilter,
+  floatingFilterComponentParams:{options,placeholder},
+})
+function filterAllDomestic({colId,value}:{colId:string;value:string}){
+  if(!isAllDomesticView(props.view)||!allGridFilterColumns.includes(colId))return
+  router.get('/logistics/china',{
+    view:'all',global_grid:'1',per_page:props.rows.per_page??50,page:1,
+    ...Object.fromEntries(Object.entries(props.gridFilters??{}).filter(([,filter])=>filter).map(([key,filter])=>['filter_'+key,filter])),
+    ...(domesticGridSearch.value.trim()?{search:domesticGridSearch.value.trim()}:{}),
+    ['filter_'+colId]:value||undefined,
+  },{preserveScroll:true,preserveState:true,replace:true})
+}
 const inlineCarrierOptions=ref<CarrierOption[]>([])
 const carrierCatalog=computed(()=>{
   const result=new Map(props.carrierOptions.map(carrier=>[carrier.value.toLowerCase(),carrier]))
@@ -190,9 +208,12 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'order',field:'order_number',headerName:'ERP 订单',width:186,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
   gridColumn({colId:'status',field:'workflow_status',headerName:'订单状态',width:182,
+    ...selectFilter(['pending_review','sending','out_of_stock','sent','shipping','completed','progress_conflict','partially_shipped']
+      .map(code=>({value:code,label:props.workflowStatusOptions?.find(item=>item.code===code)?.zh??code})),'全部状态'),
     cellRenderer:OrderWorkflowGridCell,
     cellRendererParams:{workflowStatusOptions:props.workflowStatusOptions??[],canEditWorkflowStatus:props.canEditWorkflowStatus??false}}),
   gridColumn({colId:'warehouse_route',field:'routing_warehouse_name',headerName:'所属分仓',width:192,
+    ...selectFilter((props.warehouseRouteOptions??[]).map(item=>({value:item.code,label:item.name})),'全部分仓'),
     cellRenderer:OrderWarehouseRouteGridCell,
     cellRendererParams:{warehouseRouteOptions:props.warehouseRouteOptions??[],
       canEditWarehouseRoute:props.canEditWarehouseRoute??false}}),
@@ -202,6 +223,7 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
       tooltipField:'exception_reason'}),
   ]:[]),
   gridColumn({colId:'review',field:'review_status',headerName:'审核',width:120,
+    ...selectFilter([{value:'approved',label:'已通过'},{value:'pending',label:'待审核'},{value:'stockout',label:'缺货'},{value:'conflict',label:'状态待对账'}],'全部审核'),
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}}),
   gridColumn({colId:'paid_date',field:'paid_date',headerName:'成交日期',width:135}),
   gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:['pending','today','today-4px','today-weship'].includes(props.view)?230:178,
@@ -223,6 +245,7 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'export',field:'export_status',headerName:'导出状态',width:175}),
   gridColumn({colId:'provider_ref',field:'provider_reference',headerName:'物流商单号',width:180}),
   gridColumn({colId:'carrier',field:'carrier',headerName:'物流商',width:156,
+    ...selectFilter(carrierCatalog.value.map(item=>({value:item.value,label:item.label})),'全部物流商'),
     ...(props.view==='pending'?{cellRenderer:DomesticGridPendingRouteCell,cellRendererParams:{
       source:(id:number)=>props.rows.data.find(item=>item.order_id===id),
       carrierOptions:props.carrierOptions,getCarrierOptions:()=>carrierCatalog.value,
@@ -250,22 +273,25 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
       },
     }}:{}),
   }),
+  gridColumn({colId:'shipment_status',field:'shipment_status',headerName:'发货状态',width:130,
+    ...selectFilter([{value:'pending',label:'待发货'},{value:'shipped',label:'已发货'},{value:'completed',label:'已完成'},{value:'exception',label:'异常'}],'全部发货状态'),
+  }),
   gridColumn({colId:'tracking',field:'tracking_number',headerName:'Tracking',width:186}),
   gridColumn({colId:'recipient',field:'recipient_name',headerName:'收件人',width:140}),
   gridColumn({colId:'phone',field:'phone',headerName:'电话',width:150}),
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',
-    width:props.view==='review'?185:props.view==='stockout'?248:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?116:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?242:170):210,
-    minWidth:props.view==='review'?185:props.view==='stockout'?240:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?100:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
-    maxWidth:props.view==='review'?190:props.view==='stockout'?260:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):isHistoryProviderView(props.view)?130:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
+    width:props.view==='review'?185:props.view==='stockout'?248:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):isAllDomesticView(props.view)?116:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?242:170):210,
+    minWidth:props.view==='review'?185:props.view==='stockout'?240:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):isAllDomesticView(props.view)?100:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
+    maxWidth:props.view==='review'?190:props.view==='stockout'?260:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):isAllDomesticView(props.view)?130:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
     pinned:'right',
-    cellRenderer:props.view==='exceptions'?GlobalGridCell:(props.view==='pending'||isHistoryProviderView(props.view))?DomesticGridPendingCell:DomesticGridActionCell,
+    cellRenderer:props.view==='exceptions'?GlobalGridCell:(props.view==='pending'||isAllDomesticView(props.view))?DomesticGridPendingCell:DomesticGridActionCell,
     cellRendererParams:props.view==='exceptions'?{
       mode:'actions',
       actionsFor:(row:GridListRow)=>[{label:'查看订单',href:String(row.order_url??'')}],
     }:{
-      compactActions:isHistoryProviderView(props.view),
+      compactActions:isAllDomesticView(props.view),
       carrierOptions:props.carrierOptions,
       getCarrierOptions:()=>carrierCatalog.value,
       openCarrierCreate:openInlineCarrier,
@@ -460,7 +486,7 @@ const applyBusy = ref(false)
 const tabs = [
   ['review','待审核'], ['stockout','缺货单'], ['outsource','外采单'], ['pending','待发货'], ['today','今日订单'],
   ['today-4px','今日速达'], ['today-weship','今日纬狮'], ['exceptions','异常订单'],
-  ['4px','速达订单'], ['weship','纬狮订单'],
+  ['all','全部国内订单'],
 ] as const
 const visibleTabs = computed(() => props.canLogisticsView!==false ? tabs : tabs.filter(tab => tab[0]==='outsource'))
 type ExternalDraft = { carrier:string; tracking_number:string; receipt_note:string; items:Record<number,{ id:number;received_sku:string;received_quantity:number;purchase_url:string;purchase_size:string;purchase_quantity:number }> }
@@ -540,7 +566,7 @@ const switchView = (view:string) => {
   // just because they switched from the approved review view.
   const mode = view === props.view
     ? (props.globalGridPilotEnabled ? '1' : '0')
-    : (['review','stockout','pending','today','today-4px','today-weship','exceptions','4px','weship'].includes(view) ? '1' : '0')
+    : (['review','stockout','pending','today','today-4px','today-weship','exceptions','all'].includes(view) ? '1' : '0')
   router.visit('/logistics/china?view=' + encodeURIComponent(view)
     + '&global_grid=' + mode
     + (view === props.view && mode === '1' && domesticGridSearch.value
@@ -868,11 +894,14 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           :legacy-preference-namespaces="['grid.logistics.domestic.global.v1']"
           :title="'国内发货 · '+(tabs.find(tab=>tab[0]===view)?.[1]??view)"
           :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order','status','warehouse_route']"
-          :default-pinned-right="isHistoryProviderView(view) ? 0 : 1"
+          :default-pinned-right="isAllDomesticView(view) ? 0 : 1"
           :enable-selection="true" :selected-order-ids="selectedBulkOrderIds"
           :page="domesticPager" :search="gridSearch??''"
+          :filter-columns="isAllDomesticView(view)?allGridFilterColumns:[]"
+          :filter-values="isAllDomesticView(view)?allGridFilterValues:{}"
           search-placeholder="搜索当前视图全部订单号 / 收件人..."
           @search-change="searchDomesticGrid($event)"
+          @column-search-change="filterAllDomestic($event)"
           @selection-change="onBulkSelectionChanged($event)"
           @page-change="gridNavigation.page($event)"
           @page-size-change="gridNavigation.pageSize($event)">
