@@ -4,8 +4,8 @@
  * verified server-to-server; its cookies are never sent to the Dev browser.
  *
  * This bridge NEVER accesses production orders, customers, tracking or other
- * business routes. Until the original ERP exposes its own authenticated,
- * current effective-permission projection, staff login stays disabled.
+ * business routes. Staff login remains explicitly gated until the original
+ * ERP current effective-permission projection is verified end-to-end.
  */
 const crypto = require('node:crypto');
 const http = require('node:http');
@@ -73,7 +73,7 @@ function profileFromHtml(html){
 }
 function checkIdentity(input,actual) {
   const user=input?.user;
-  if(input?.source!=='ERP_CANONICAL_LARAVEL_DEV_SESSION_V1'||
+  if(input?.source!=='ERP_ORIGINAL_LARAVEL_PRODUCTION_SESSION_V1'||
     user?.id!==actual.id||user?.email?.toLowerCase()!==actual.email.toLowerCase()||
     !['role','custom'].includes(input.permissionMode)||
     !Array.isArray(input.roleKeys)||!input.roleKeys.every(x=>typeof x==='string')||
