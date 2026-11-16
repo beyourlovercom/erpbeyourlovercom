@@ -2,7 +2,8 @@ import type { Router } from 'vue-router';
 import type { MenuRecordRaw } from '@vben/types';
 
 import { ref } from 'vue';
-import { useAccessStore, useTabbarStore } from '@vben/stores';
+import { useAccessStore, useTabbarStore, useUserStore } from '@vben/stores';
+import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
 
 import { getCurrentDevReadOnlyOrders, type ErpCurrentDevPage, type ErpDevMenuNode } from '#/api/erp-orders';
 import { getCanonicalErpIdentity, type CanonicalErpIdentity } from '#/api/erp-identity';
@@ -23,7 +24,14 @@ export async function bootstrapCanonicalDevNavigation(router: Router): Promise<b
   try {
     const identity = await getCanonicalErpIdentity();
     canonicalDevIdentity.value = identity;
-    applyAuthorizedDevNavigation(identity.navigation, router);
+    useUserStore().setUserInfo({
+      id: String(identity.user.id), username: identity.user.email,
+      realName: identity.user.name, roles: [], avatar: '',
+      homePath: '/erp/orders/orders-master',
+    });
+    applyAuthorizedDevNavigation(identity.navigation, router, {
+      allowOrdersMaster: identity.effectivePermissionKeys.includes('orders.view'),
+    });
     for (const group of identity.navigation) {
       if (!/^[a-z0-9_-]+$/.test(group.key)) continue;
       const parent = group.key === 'dashboard' ? '/erp/overview' : '/erp/' + group.key;
@@ -40,7 +48,7 @@ export async function bootstrapCanonicalDevNavigation(router: Router): Promise<b
     devBootstrapError.value = reason instanceof Error ? reason.message : 'ERP2_CANONICAL_AUTH_FAILED';
     canonicalDevIdentity.value = undefined;
     canonicalAllowedPaths.clear();
-    suspendAuthorizedDevNavigation();
+    clearAuthorizedDevNavigation();
     return false;
   }
 }
@@ -81,7 +89,10 @@ export async function bootstrapAuthorizedDevNavigation(router: Router) {
 // Browser sidebar is NOT a security boundary; server-side Laravel permissions and
 // order scopes are still enforced per request. Never restore all owner menu routes
 // while a per-role Dev request is pending or failed.
-export function applyAuthorizedDevNavigation(navigation: ErpDevMenuNode[], router: Router) {
+export function applyAuthorizedDevNavigation(
+  navigation: ErpDevMenuNode[], router: Router,
+  options: {allowOrdersMaster?: boolean} = {},
+) {
   const menus: MenuRecordRaw[] = [];
   for (const [index, group] of navigation.entries()) {
     if (!/^[a-z0-9_-]+$/.test(group.key)) continue;
@@ -89,7 +100,8 @@ export function applyAuthorizedDevNavigation(navigation: ErpDevMenuNode[], route
     const original = approvedSource.find((item) => item.path === parentPath);
     if (!original) continue;
     const children: MenuRecordRaw[] = [];
-    if (group.key === 'orders') children.push({ name:'订单总表', path:'/erp/orders/orders-master' });
+    if (group.key === 'orders' && options.allowOrdersMaster !== false)
+      children.push({ name:'订单总表', path:'/erp/orders/orders-master' });
     for (const child of group.children ?? []) {
       if (!/^[a-z0-9_-]+$/.test(child.key) || !child.path.startsWith('/')) continue;
       const routeName = 'ERPMenu-' + child.key;
@@ -128,5 +140,11 @@ export function clearAuthorizedDevNavigation() {
   canonicalDevIdentity.value = undefined;
   canonicalAllowedPaths.clear();
   suspendAuthorizedDevNavigation();
+  clearHotOrderSnapshots();
+  const tabbar = useTabbarStore();
+  const stale = tabbar.tabs
+    .filter((tab) => tab.path.startsWith('/erp/'))
+    .map((tab) => String(tab.key ?? tab.path));
+  if (stale.length) void tabbar._bulkCloseByKeys(stale);
   initialPage = undefined;
 }
