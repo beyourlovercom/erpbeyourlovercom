@@ -22,11 +22,18 @@ Date: 2026-11-16 (Hong Kong / Owner). Scope: **PR #766 only, isolated BYL ERP Vb
 5. **R6-B source reconciliation (PASS):**
    PR code has no same-file overlap with the 67 ERP main commits since original PR base; actual Git integration achieved zero conflicts. `ERP Workspace Tabs P0 Protection` passed on integrated SHA `a293ed9c` (run 101). Latest PR head CI must be checked separately.
 
+
+### Owner sign-off and six named Dev counterpart evidence — 2026-11-16
+- **Owner Step 2 visual UAT: PASS**, direct confirmation in ERP2 project conversation: “第二部，**Owner 视觉验收，全部正常。**” The Owner confirms the Vben visual screen and normal interaction for the requested review. No re-interpretation as Production cutover approval or formal role-matrix parity.
+- **Six separately named isolated Laravel Dev accounts: 6/6 PASS** on 007windows. Versioned setup `apps/erp-siteops-vben/runtime/r2c-six-named-dev-seed.php` and client `apps/erp-siteops-vben/runtime/r2c-six-named-dev-uat.cjs`; distinct Vita, Liang, Dede, Emma, Guts, Hiko identities in an additional **copied** SQLite test DB, **not** existing Production employee accounts. Verified real Laravel form login/session, role-menu presence/absence, authorized example orders, specialist cross-owner denial. stdout: `R2C_NAMED_DEV_SUMMARY {"passed":6,"failed":0,"configured":6,"isolatedDev":true,"productionTouched":false}`. No customer data or session tokens recorded in Git.
+- **Important gate distinction:** this is 6/6 *named UAT counterparts*, NOT validation of each real staff member's original Dev session, exact historical permissions or row-for-row current Dev data. The genuine R2-C gate remains explicitly HOLD until such proof exists.
+- **P1 pending:** Orders filter/scroll/draft restoration and portable baseline remain not accepted. PR remains Draft; no main merge or Production deploy authorized by this Owner visual PASS.
+
 ## Open acceptance gates (not PASS)
 | Priority | Gate | Why open / necessary proof | Estimated effective engineering hours |
 |---|---|---|---|
 | P0 | R2-C real staff sessions | Actual Vita, Liang, Dede, Emma, Guts and Hiko Dev login with original authorization and row/menu parity. The four `@local.invalid` identities do not qualify. Only use legitimately provisioned Dev credentials; Owner assistance may be necessary. | 3–6 h after access |
-| P0 | Owner visual/behavioral UAT | Inspect logged-in real 007 Chrome Owner screen, menu levels, Orders, 30 tabs, 3 pins, role switching and mobile. No Owner PASS recorded yet for this PR head. | 1–3 h plus Owner time |
+| CLOSED | Owner visual UAT — Owner PASS 2026-11-16 | Owner explicitly confirmed Step 2 visual review **全部正常** for the 007windows ERP Vben Dev review. Acceptance covers the Owner visual gate; automated 30/3/3 stress and role parity remain separately evidenced. | 0 h |
 | P1 | R6-T cross-page state parity | Hot snapshots cover **Orders response only**. No general proof of unsaved form draft, AG Grid filter/scroll retention or future logistics/inventory module cache parity. Must be scoped with R3 migration; not silently asserted complete. | 4–8 h for Orders-focused gap, other modules deferred to R3 |
 | P1 | R6-B truly portable vendor base | Pinned vendor ZIP and pnpm store currently exist only on approved 007 machine. ZIP-derived offline rebuild is verified *there*, but brand-new-machine artifact acquisition/CI is not. | 2–4 h subject to approved artifact distribution |
 | P0 | Exact latest PR head CI + review | After test-script/document commits, confirm all required checks; independent review and Owner visual gates still apply. | 1–2 h |
@@ -34,9 +41,9 @@ Date: 2026-11-16 (Hong Kong / Owner). Scope: **PR #766 only, isolated BYL ERP Vb
 
 ## Next actions
 1. Confirm latest-HEAD CI on PR #766 (not just previous integrated commit).
-2. Preserve 007 Owner Chrome for visual review; verify it is still live and logged into isolated Dev before handoff.
+2. Owner visually approved the 007 Dev review on 2026-11-16; retain the Owner PASS as a completed gate, without claiming this substitutes for role-parity or P1 behavior tests.
 3. Obtain legitimate employee Dev sessions for the real R2-C matrix, or keep a named HOLD rather than replacing proof with synthetic-role selector.
 4. Address Orders in-memory filter/draft state in a separate bounded R6-T follow-up if Owner treats that as a pre-R3 criterion. Reuse the common 30/3/3 tab contract; do not turn unported placeholders into fake working modules.
 5. On full gates PASS, prepare PR review. No Production changes without separate Owner authorization.
 
-**Verdict:** R6-B main integration PASS; R6-T core + 5-context technical UAT PASS; R2-C real-staff acceptance OPEN; overall PR #766 remains DRAFT / DEV ONLY.
+**Verdict (Owner update 2026-11-16):** R6-B main integration PASS; R6-T core + 5-context technical UAT PASS; six *named synthetic* Dev accounts pass 6/6; **Owner Step 2 visual UAT PASS**; R2-C genuine staff-identity/permission parity remains OPEN; overall PR #766 remains DRAFT / DEV ONLY.
