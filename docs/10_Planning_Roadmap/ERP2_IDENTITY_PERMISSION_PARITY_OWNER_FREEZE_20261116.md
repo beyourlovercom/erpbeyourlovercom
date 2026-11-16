@@ -3,6 +3,27 @@
 **Owner decision: 2026-11-16. Scope: ERP2 Vben migration, PR #766 (Draft), Dev verification only.**
 **Priority: P0 release-blocking.** Do not start remaining P1 work until this identity/permission parity gate closes. No Production login/credential mutation, merge or deployment is authorized by this contract.
 
+## 2026-11-16 execution update — source-controlled Dev P0, still HOLD
+
+This section reports observed outcomes rather than treating an Owner authorization or synthetic test as evidence of parity.
+
+| Gate | Actual result | P0 decision |
+|---|---|---|
+| Read-only original Production authentication | **6/6 genuine employees PASS** for login, matching original user ID/email, permitted orders, denied user administration; all remote sessions logged out and ephemeral jars cleared | Audit reference only, not ERP2 Dev parity |
+| Canonical Dev API contract | Original Laravel Dev-only identity endpoint implemented; isolated PHPUnit 4 tests / 24 assertions (runner emitted 4 warnings) | Contract check, not live employee pass |
+| Vben genuine Laravel login/logout | Added same-origin CSRF/session workflow and disabled local JWT for canonical mode | Source implemented, pending live Dev session |
+| Rights drift / data isolation | Fingerprint on canonical user ID, mode, saved role keys, effective permission keys and menu paths; different authority evicts ERP hot snapshots and forbidden tabs; canonical Orders clears rows before each fresh GET | Source implemented; live revocation test pending |
+| 007windows source/tooling | Vue TypeScript **PASS**, Vitest **10/10 PASS**, separate Vite canonical build **PASS** | Engineering check passed |
+| 007windows isolated gateway | New loopback-only localhost port **18787**; static UI and health **200**, Node gateway **2/2 security tests PASS**, only pinned Mac Dev backend allowed, order writes **405**, simulated Owner API disabled | Preview ready but upstream unavailable |
+| Mac Dev Laravel session | Isolated Mac tailnet port **18931** process no longer listening (local Mac curl failed); no genuine six employees in its in-memory SQLite | **HOLD** |
+| Six employee ERP1↔ERP2 allow/deny/revocation | **0/6 genuine Dev cross-system sessions accepted so far** | **P0 HOLD** |
+
+**Current branch:** PR #766 (Draft). New Dev-only files include p0-canonical-proxy.cjs and p0-canonical-proxy.test.cjs; preview binds to 007 loopback only and cannot connect to Production. Existing 007 port 18786 Owner fixture preview and original Chrome/READY devices were not restarted.
+
+**Remaining blocked acceptance:** create/provide a legitimate original Laravel Dev authority capable of authenticating the exact six existing ERP employee IDs and reading their saved permissions, without exporting Production credentials, password hashes or customer orders into the isolated fixture. A staging replica or a separately scoped identity federation is an infrastructure choice requiring explicit Owner authorization. Recovering an empty SQLite PHP test server alone does **not** satisfy this requirement.
+
+**Next sequence:** (1) Owner chooses approved real-Dev staff authority; (2) connect that authorized Laravel backend to 007 port 18787; (3) execute six identity/permission/menu/order allow/deny matrix; (4) revoke one permission and verify cache/tab invalidation plus logout and session expiry; (5) browser UAT, redacted audit, then P0 PASS. No Production merge/deploy implied.
+
 ## Decision: same employee, same effective authority
 
 ERP2 is a new front end for **the existing ERP identity and authorization system**; it must not become a second permission system.
