@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
+import { ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type Order = { id: number; erp_order_id: string | null; order_kind: string | null; order_status: string | null; operational_archived_at: string | null; archived_by: string | null; owner: string | null; direct_archive: boolean; fulfillment_parent_id: number | null }
-const props = defineProps<{ orders: { data: Order[]; current_page: number; last_page: number; total: number }; canRestore: boolean }>()
+const props = defineProps<{ orders: { data: Order[]; current_page: number; last_page: number; total: number }; canRestore: boolean; filters: { search: string; per_page: string } }>()
+const search = ref(props.filters.search)
+const submitSearch = () => router.get('/orders/archive', { search: search.value.trim(), per_page: props.filters.per_page, page: 1 }, { preserveState: true, replace: true })
+const pageHref = (page: number) => '/orders/archive?' + new URLSearchParams({ search: props.filters.search, per_page: props.filters.per_page, page: String(page) }).toString()
 const detailPath = (order: Order) => '/orders/' + order.id
 const statusLabel = (status: string | null): string => {
   const labels: Record<string, string> = {
@@ -25,6 +29,12 @@ const restore = (order: Order) => {
         <div><p class="mvp-kicker">订单运营</p><h2>归档清单</h2><p>主订单与履约子订单均可独立归档。主单归档的子单会在此显示，所有业务历史保留且不可永久删除。</p></div>
         <div class="mvp-actions page-header-actions"><Link class="mvp-button" href="/orders">返回订单</Link></div>
       </div>
+      <form class="archive-search" role="search" @submit.prevent="submitSearch">
+        <input v-model="search" aria-label="搜索全部归档订单" maxlength="120" placeholder="搜索全部归档订单：ERP号 / 来源号 / 收件人 / SKU…" />
+        <button class="mvp-button mvp-button-primary" type="submit">搜索</button>
+        <button v-if="props.filters.search" class="mvp-button" type="button" @click="search = ''; submitSearch()">清除</button>
+        <span class="archive-result-count">匹配 {{ props.orders.total }} 单 · 搜索覆盖全部分页</span>
+      </form>
       <div class="mvp-table-wrap"><table class="mvp-table archive-table">
         <thead><tr><th>ERP订单号</th><th>类型</th><th>归档时间</th><th>归档人</th><th>状态</th><th>操作</th></tr></thead>
         <tbody>
@@ -39,15 +49,18 @@ const restore = (order: Order) => {
         </tbody>
       </table></div>
       <nav v-if="props.orders.last_page > 1" class="mvp-actions" aria-label="归档订单分页">
-        <Link v-if="props.orders.current_page > 1" class="mvp-button" :href="'/orders/archive?page=' + (props.orders.current_page - 1)">上一页</Link>
+        <Link v-if="props.orders.current_page > 1" class="mvp-button" :href="pageHref(props.orders.current_page - 1)">上一页</Link>
         <span>第 {{ props.orders.current_page }} / {{ props.orders.last_page }} 页 · 共 {{ props.orders.total }} 单</span>
-        <Link v-if="props.orders.current_page < props.orders.last_page" class="mvp-button" :href="'/orders/archive?page=' + (props.orders.current_page + 1)">下一页</Link>
+        <Link v-if="props.orders.current_page < props.orders.last_page" class="mvp-button" :href="pageHref(props.orders.current_page + 1)">下一页</Link>
       </nav>
     </section>
   </AuthenticatedLayout>
 </template>
 
 <style scoped>
+.archive-search{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.archive-search input{flex:1;min-width:220px;border:1px solid #cbd5e1;border-radius:8px;padding:9px 12px}
+.archive-result-count{font-size:12px;color:#64748b}
 @media (max-width: 640px) {
   .archive-table,
   .archive-table tbody { display: block; width: 100%; min-width: 0; }

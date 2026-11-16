@@ -3,6 +3,7 @@
 use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
 use App\Modules\Orders\Experience\Controllers\KolOrderLinkPreviewController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
+use App\Modules\Orders\Experience\Controllers\OrderMasterController;
 use App\Modules\Orders\Experience\Controllers\OrderWarehouseRouteController;
 use App\Modules\Orders\Experience\Controllers\OrderNoteController;
 use App\Modules\Orders\Experience\Controllers\OrderOmsTransferController;
@@ -21,6 +22,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/sync/woocommerce/historical', [WooCommerceInboundController::class, 'historical'])->middleware('can:sync.operate')->name('woocommerce.inbound.historical');
     Route::get('/orders/trash', [OrderTrashController::class, 'index'])->middleware('can:system.permissions.manage')->name('orders.trash.index');
     Route::get('/orders/archive', [OrderOperationalArchiveController::class, 'index'])->middleware('can:orders.view')->name('orders.archive.index');
+    Route::get('/orders/master', [OrderMasterController::class, 'index'])->middleware('can:orders.view')->name('orders.master.index');
     Route::post('/orders/archive/batch', [OrderOperationalArchiveController::class, 'batch'])
         ->middleware(['can:orders.view', 'can:orders.archive', 'throttle:15,1'])->name('orders.archive.batch');
     Route::post('/orders/{order}/archive', [OrderOperationalArchiveController::class, 'archive'])->middleware(['can:orders.view', 'can:orders.archive'])->whereNumber('order')->name('orders.archive');

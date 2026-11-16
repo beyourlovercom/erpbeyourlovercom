@@ -65,8 +65,8 @@ async function runFoundation() {
     await runManagedChild('php', ['tests/e2e/support/provision-users.php'], { env, signal: abortController.signal });
     assertNotAborted(abortController.signal);
     const suite = process.env.BYL_E2E_SUITE ?? 'all';
-    if (!['all', 'kol-role', 'tracking-ux', 'oms-import', 'global-grid', 'rejection-visual'].includes(suite)) {
-        throw new Error('BYL_E2E_SUITE must be all, kol-role, tracking-ux, oms-import, global-grid or rejection-visual.');
+    if (!['all', 'kol-role', 'tracking-ux', 'oms-import', 'orders-master', 'global-grid', 'rejection-visual'].includes(suite)) {
+        throw new Error('BYL_E2E_SUITE must be all, kol-role, tracking-ux, oms-import, orders-master, global-grid or rejection-visual.');
     }
     if (suite === 'global-grid' || suite === 'rejection-visual') {
         await runManagedChild('php', ['tests/e2e/support/provision-global-grid.php'], {
@@ -84,6 +84,8 @@ async function runFoundation() {
         ? [playwrightCli, 'test', 'tests/e2e/global-grid/global-grid-pilot.spec.ts', '--project=chromium', '--timeout=90000']
         : suite === 'oms-import'
         ? [playwrightCli, 'test', 'tests/e2e/orders/oms-import-browser.spec.ts', '--project=chromium', '--timeout=90000']
+        : suite === 'orders-master'
+        ? [playwrightCli, 'test', 'tests/e2e/orders/orders-master-browser.spec.ts', '--project=chromium', '--timeout=90000']
         : suite === 'kol-role'
         ? [playwrightCli, 'test', 'tests/e2e/orders/kol-role-isolation.spec.ts', '--project=chromium', '--timeout=90000']
         : suite === 'tracking-ux'
@@ -92,7 +94,7 @@ async function runFoundation() {
     await runManagedChild(process.execPath, testArgs, {
         env,
         signal: abortController.signal,
-        timeout: suite === 'kol-role' ? 360_000 : suite === 'oms-import' || suite === 'global-grid' || suite === 'rejection-visual' ? 360_000 : 120_000,
+        timeout: suite === 'kol-role' ? 360_000 : ['oms-import', 'orders-master', 'global-grid', 'rejection-visual'].includes(suite) ? 360_000 : 120_000,
     });
 }
 
