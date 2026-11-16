@@ -51,7 +51,7 @@
       "function_zh": "以新表格只读检索全部可见的客户、网红和履约子订单，包含运营归档及管理员可见的回收站记录。",
       "status": "in_progress",
       "progress": 80,
-      "sort": 5
+      "sort": 10
     },
     {
       "code": "orders-customers",
@@ -66,7 +66,7 @@
       "function_zh": "查看客户订单列表。",
       "status": "implemented",
       "progress": 100,
-      "sort": 10
+      "sort": 20
     },
     {
       "code": "orders-kol",
@@ -81,7 +81,7 @@
       "function_zh": "查看网红履约订单列表。",
       "status": "implemented",
       "progress": 100,
-      "sort": 20
+      "sort": 30
     },
     {
       "code": "orders-collaboration",
@@ -96,7 +96,7 @@
       "function_zh": "按真实履约仓合作-Tingon筛选原始订单，并兼容分拆履约；不复制订单。",
       "status": "implemented",
       "progress": 100,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "orders-procurement",
@@ -111,7 +111,7 @@
       "function_zh": "查看所属履约仓库为外部仓（ownership_type=external）的订单。",
       "status": "implemented",
       "progress": 100,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "orders-archive",
@@ -126,7 +126,7 @@
       "function_zh": "仅查看和恢复已归档订单；运营归档订单不进入待分仓及发货序列。",
       "status": "implemented",
       "progress": 100,
-      "sort": 50
+      "sort": 60
     },
     {
       "code": "logistics",

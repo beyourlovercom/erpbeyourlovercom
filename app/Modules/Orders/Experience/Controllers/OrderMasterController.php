@@ -119,7 +119,7 @@ final class OrderMasterController
         ][$filters['sort']];
         $orders = $query->with([
             'owner:id,name', 'address', 'items', 'shipment.warehouse',
-            'fulfillmentParent' => fn (Builder $parent) => $parent->withTrashed()->select('id', 'operational_archived_at', 'archived_at', 'deleted_at'),
+            'fulfillmentParent' => fn ($parent) => $parent->withTrashed()->select('id', 'operational_archived_at', 'archived_at', 'deleted_at'),
         ])->orderBy($sortColumn, $filters['direction'])->orderBy('orders.id', 'desc')
             ->paginate((int) $filters['per_page'])->withQueryString();
 

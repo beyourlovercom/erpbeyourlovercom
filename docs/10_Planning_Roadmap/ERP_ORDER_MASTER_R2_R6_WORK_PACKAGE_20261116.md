@@ -36,6 +36,16 @@
 | R5 | Dev backend integration, real browser Owner UAT | 2–3.5 | Pending |
 | R6 | Branch/PR, review evidence, release prep | 1–2 | PR prep; no merge/Production |
 
+## R5 TEST EVIDENCE (US MAC, ISOLATED TEST DIRECTORY)
+
+- New order master backend: 3 scenarios / 149 assertions PASS (PHPUnit reports only dependency deprecation warnings).
+- Operational archive backend: 6 scenarios / 201 assertions PASS.
+- Navigation feature tests: exit 0 after applying `withoutVite()` in their test-only setup (isolated clone has no Vite manifest).
+- Local frontend: `npm run typecheck` PASS; `npm run build` PASS; 30-tab verifier PASS.
+- Full Vitest baseline: 951/958 pass; 7 failures confined to three existing Inventory component test files, with no Inventory files modified in this branch.
+- Approved menu baseline suite has at least one pre-existing contract mismatch: query-string URL `accounting-loss-orders` violates its old slug assertion. Treat as a separate baseline issue, not as a reason to weaken user-facing Orders permissions or data integrity.
+- Owner live Dev/browser UAT: **PENDING**. No PR merge and no Production release.
+
 Total initial engineering estimate excluding completed R1: **10.5–17 effective hours**. The table is a planning estimate, not a report of hours billed or worked.
 
 ## ESTIMATED CODEX HOURS

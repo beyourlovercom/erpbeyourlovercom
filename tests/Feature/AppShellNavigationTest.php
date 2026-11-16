@@ -16,6 +16,12 @@ class AppShellNavigationTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withoutVite();
+    }
+
     private function userWith(array $permissions, string $roleKey = 'operator'): User
     {
         $role = Role::create(['key' => $roleKey, 'label' => $roleKey]);
