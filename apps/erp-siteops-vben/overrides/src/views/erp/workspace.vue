@@ -93,6 +93,12 @@ async function loadExisting(page = 1, perPage = pager.value.perPage) {
   fetching.value = true;
   hotRefreshing.value = !!stale;
   error.value = '';
+  if (canonicalIdentityMode) {
+    // No stale business rows may remain visible while a fresh Laravel
+    // authorization/search/pagination request is in flight.
+    rows.value = [];
+    pager.value = {page:1,perPage,total:0,lastPage:1};
+  }
   if (currentDevEnabled) {
     rows.value = stale ? toGridRows(stale) : [];
     pager.value = stale
