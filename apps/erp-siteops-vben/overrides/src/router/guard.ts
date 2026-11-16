@@ -11,7 +11,7 @@ import { useAuthStore } from '#/store';
 import { generateAccess } from './access';
 import {
   bootstrapAuthorizedDevNavigation, bootstrapCanonicalDevNavigation,
-  isCanonicalErpPathAllowed, setApprovedMenuSource,
+  isCanonicalErpPathAllowed, setApprovedMenuSource, devBootstrapError,
 } from './erp-live-navigation';
 import { installDevPinLimit } from './erp-workspace-tab-policy';
 import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
@@ -77,9 +77,15 @@ function setupAccessGuard(router: Router) {
         accessStore.setIsAccessChecked(true);
         canonicalRoutesReady = true;
       }
-      if (!await bootstrapCanonicalDevNavigation(router) ||
-          !isCanonicalErpPathAllowed(to.path)) {
-        return {path:'/403',replace:true};
+      if (!await bootstrapCanonicalDevNavigation(router)) {
+        // Missing or expired Laravel session must present the genuine employee
+        // login, while endpoint/contract failures stay denied rather than fake.
+        return devBootstrapError.value === 'ERP2_CANONICAL_SESSION_REQUIRED'
+          ? { path: LOGIN_PATH, replace: true }
+          : { path: '/403', replace: true };
+      }
+      if (!isCanonicalErpPathAllowed(to.path)) {
+        return { path: '/403', replace: true };
       }
       // generateAccess dynamically registers route records; resolve the very
       // first route a second time so the new component is mounted correctly.
