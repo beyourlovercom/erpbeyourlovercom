@@ -9,6 +9,21 @@ export interface CanonicalErpIdentity {
   effectivePermissionKeys: string[];
   navigation: ErpDevMenuNode[];
 }
+/** A session's effective authority may change without its user ID changing. */
+export function canonicalAuthorityFingerprint(identity: CanonicalErpIdentity): string {
+  return JSON.stringify({
+    userId: identity.user.id,
+    email: identity.user.email.toLowerCase(),
+    mode: identity.permissionMode,
+    roleKeys: [...identity.roleKeys].sort(),
+    effectivePermissionKeys: [...identity.effectivePermissionKeys].sort(),
+    navigation: identity.navigation.map((entry) => ({
+      key: entry.key,
+      path: entry.path,
+      children: (entry.children ?? []).map((child) => ({key:child.key,path:child.path})),
+    })),
+  });
+}
 type ObjectValue = Record<string, unknown>;
 const obj = (value: unknown): ObjectValue =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as ObjectValue : {};
