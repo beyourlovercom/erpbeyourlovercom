@@ -9,7 +9,10 @@ import { accessRoutes, coreRouteNames } from '#/router/routes';
 import { useAuthStore } from '#/store';
 
 import { generateAccess } from './access';
-import { bootstrapAuthorizedDevNavigation, setApprovedMenuSource } from './erp-live-navigation';
+import {
+  bootstrapAuthorizedDevNavigation, bootstrapCanonicalDevNavigation,
+  isCanonicalErpPathAllowed, setApprovedMenuSource,
+} from './erp-live-navigation';
 import { installDevPinLimit } from './erp-workspace-tab-policy';
 import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
 
@@ -54,6 +57,27 @@ function setupAccessGuard(router: Router) {
     const authStore = useAuthStore();
     installDevPinLimit();
     if (!accessStore.accessToken) clearHotOrderSnapshots();
+
+    // Opt-in ERP2 staff mode: Laravel web session and persisted effective ACL are
+    // the ONLY authority. Ignore Vben's local JWT and synthetic role selectors.
+    // Every navigation revalidates the server so revocation cannot retain tabs.
+    if (import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel') {
+      if (to.path === '/403' || coreRouteNames.includes(to.name)) return true;
+      if (!accessStore.isAccessChecked) {
+        const { accessibleMenus, accessibleRoutes } = await generateAccess({
+          roles: [], router, routes: accessRoutes,
+        });
+        setApprovedMenuSource(accessibleMenus);
+        accessStore.setAccessRoutes(accessibleRoutes);
+        accessStore.setAccessMenus([]);
+        accessStore.setIsAccessChecked(true);
+      }
+      if (!await bootstrapCanonicalDevNavigation(router) ||
+          !isCanonicalErpPathAllowed(to.path)) {
+        return {path:'/403',replace:true};
+      }
+      return true;
+    }
 
     // 基本路由，这些路由不需要进入权限拦截
     if (coreRouteNames.includes(to.name)) {
