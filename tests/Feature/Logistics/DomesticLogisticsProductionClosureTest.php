@@ -37,11 +37,11 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
     {
         $formal = collect(config('erp_shell_navigation'))->firstWhere('key', 'logistics');
         self::assertSame(
-            ['待分仓', '国内发货', '海外仓发货', '已发待单号', '运输中', '异常订单', '物流商'],
+            ['待分仓', '国内发货', '海外仓发货', 'Tingon发货', '已发待单号', '运输中', '异常订单', '物流商'],
             collect($formal['children'])->pluck('label')->all(),
         );
         self::assertSame(
-            ['/logistics/wait-stock', '/logistics/china', '/logistics/oversea', '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions', '/logistics/carriers'],
+            ['/logistics/wait-stock', '/logistics/china', '/logistics/oversea', '/logistics/tingon', '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions', '/logistics/carriers'],
             collect($formal['children'])->pluck('path')->all(),
         );
         self::assertNotContains('/logistics/pending', collect($formal['children'])->pluck('path')->all());
