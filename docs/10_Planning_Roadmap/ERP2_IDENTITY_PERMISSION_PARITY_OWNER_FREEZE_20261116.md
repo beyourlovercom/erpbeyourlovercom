@@ -18,6 +18,8 @@ This section reports observed outcomes rather than treating an Owner authorizati
 | Mac Dev Laravel session | Isolated Mac tailnet port **18931** process no longer listening (local Mac curl failed); no genuine six employees in its in-memory SQLite | **HOLD** |
 | Six employee ERP1↔ERP2 allow/deny/revocation | **0/6 genuine Dev cross-system sessions accepted so far** | **P0 HOLD** |
 
+**Credential safety lock:** Canonical gateway rejects staff credential POST with HTTP 503 unless an operator deliberately sets the isolated Dev-ready flag after genuine authority provisioning; 007 server currently logs staff login HOLD. This keeps the Owner's temporary shared password out of the empty SQLite test server.
+
 **Current branch:** PR #766 (Draft). New Dev-only files include p0-canonical-proxy.cjs and p0-canonical-proxy.test.cjs; preview binds to 007 loopback only and cannot connect to Production. Existing 007 port 18786 Owner fixture preview and original Chrome/READY devices were not restarted.
 
 **Remaining blocked acceptance:** create/provide a legitimate original Laravel Dev authority capable of authenticating the exact six existing ERP employee IDs and reading their saved permissions, without exporting Production credentials, password hashes or customer orders into the isolated fixture. A staging replica or a separately scoped identity federation is an infrastructure choice requiring explicit Owner authorization. Recovering an empty SQLite PHP test server alone does **not** satisfy this requirement.
