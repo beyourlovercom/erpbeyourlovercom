@@ -1,6 +1,7 @@
 'use strict';
 /**
- * R2-C real-employee Dev session audit. Read-only business requests.
+ * R2-C original-ERP real-employee Dev session PREFLIGHT. Read-only business requests.
+ * This is not an ERP1-versus-ERP2 permission parity test.
  * This does NOT create accounts, impersonate users or obtain passwords.
  * Each employee must first establish a legitimate Laravel Dev session
  * and put its Cookie header in an untracked, locally protected file.
@@ -67,13 +68,21 @@ function checkManifest(manifest) {
   const names = manifest.staff.map(x => x.employee);
   assert.deepEqual([...names].sort(), [...STAFF].sort(), 'STAFF_IDENTITY_MATRIX_INCOMPLETE');
   const emails = new Set();
+  const userIds = new Set();
+  const cookieFiles = new Set();
   for (const item of manifest.staff) {
     if (typeof item.email !== 'string' || !item.email.includes('@') ||
-        item.email.toLowerCase().endsWith('@local.invalid'))
+        /(?:@local\.(?:invalid|test)|\.(?:test|invalid|example|localhost))$/i.test(item.email))
       deny('SYNTHETIC_OR_MISSING_IDENTITY');
     if (emails.has(item.email.toLowerCase())) deny('DUPLICATE_REAL_IDENTITY');
     emails.add(item.email.toLowerCase());
+    if (!Number.isSafeInteger(item.erpUserId) || item.erpUserId < 1)
+      deny('CANONICAL_ERP_USER_ID_REQUIRED');
+    if (userIds.has(item.erpUserId)) deny('DUPLICATE_ERP_USER_ID');
+    userIds.add(item.erpUserId);
     if (typeof item.cookieFile !== 'string') deny('DEV_SESSION_FILE_REQUIRED');
+    if (cookieFiles.has(item.cookieFile)) deny('SHARED_DEV_SESSION_FILE');
+    cookieFiles.add(item.cookieFile);
     if (!Array.isArray(item.requiredMenuKeys) || item.requiredMenuKeys.length === 0)
       deny('EXPECTED_ALLOWED_MENU_KEYS_REQUIRED');
     if (!Array.isArray(item.forbiddenMenuKeys))
@@ -94,6 +103,8 @@ async function main() {
     const cookie = privateText(item.cookieFile);
     if (!cookie.includes('laravel_session=')) deny('LARAVEL_DEV_SESSION_COOKIE_REQUIRED');
     const page = await readDev(manifest.baseUrl, '/orders?per_page=20', cookie);
+    const actualUserId = Number(page.props?.auth?.user?.id);
+    assert.equal(actualUserId, item.erpUserId, 'CANONICAL_ERP_USER_ID_MISMATCH');
     const actualEmail = page.props?.auth?.user?.email;
     assert.equal(String(actualEmail ?? '').toLowerCase(), item.email.toLowerCase(), 'EMPLOYEE_IDENTITY_MISMATCH');
     const nav = page.props?.shellNavigation;
@@ -104,13 +115,13 @@ async function main() {
     await checkSearch(manifest.baseUrl, cookie, item.visibleOrderNumber, true);
     if (item.forbiddenOrderNumber)
       await checkSearch(manifest.baseUrl, cookie, item.forbiddenOrderNumber, false);
-    console.log('REAL_STAFF_DEV_PASS', item.employee, 'authenticated=true',
+    console.log('LEGACY_STAFF_DEV_PREFLIGHT_PASS', item.employee, 'identityBound=true',
       'menus=' + nav.length, 'visibleOrder=yes',
       'negativeScope=' + (item.forbiddenOrderNumber ? 'yes' : 'n/a'));
   }
-  console.log('R2C_REAL_STAFF_DEV_PASS verifiedEmployees=6 readOnlyBusinessRequests=true');
+  console.log('R2C_LEGACY_STAFF_PREFLIGHT_PASS verifiedEmployees=6 readOnlyBusinessRequests=true erp2Parity=NOT_TESTED');
 }
 main().catch(error => {
-  console.error('R2C_REAL_STAFF_DEV_HOLD', error.message);
+  console.error('R2C_LEGACY_STAFF_PREFLIGHT_HOLD', error.message);
   process.exitCode = 2;
 });
