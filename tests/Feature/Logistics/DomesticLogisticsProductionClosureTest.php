@@ -368,6 +368,62 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         }
     }
 
+    public function test_domestic_pending_list_and_both_downloads_exclude_unreviewed_shipped_and_unreleased_procurement(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $approved = $this->domesticOrder('007-1111-c52341', '4PX', true, '111', 1);
+        $unreviewed = $this->domesticOrder('007-1111-c52342', '4PX', false, '222', 1);
+        $shipped = $this->domesticOrder('007-1111-c52343', '4PX', true, '333', 1);
+        $external = $this->domesticOrder('007-1111-c52344', '4PX', false, '444', 1);
+        $this->attachBarcode($approved);
+        $this->attachBarcode($shipped);
+
+        // Reproduce the real 2026-11-14 "out_of_stock -> sending" staff override.
+        $unreviewed->forceFill(['workflow_status' => 'sending'])->save();
+        $external->forceFill(['workflow_status' => 'sending'])->save();
+        $shipped->forceFill(['workflow_status' => 'sending', 'order_status' => OrderStatus::Completed])->save();
+        $shipped->shipment->forceFill([
+            'shipment_status' => 'shipped', 'tracking_number' => '4PX-REAL-TRACK',
+            'shipped_at' => now(),
+        ])->save();
+        $external->procurementOrder()->create([
+            'procurement_number' => 'PURCHASE-TEST-1',
+            'origin' => 'external', 'status' => 'pending',
+        ]);
+
+        $viewer = $this->logisticsViewer();
+        $this->actingAs($viewer)->get('/logistics/china?view=pending')->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.erp_order_id', $approved->erp_order_id));
+        $this->actingAs($viewer)->get('/logistics/china?view=review')->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.erp_order_id', $unreviewed->erp_order_id));
+
+        $batch = $this->actingAs($viewer)->get('/logistics/china/pending-batch/export')->assertOk();
+        self::assertSame('1', $batch->headers->get('X-BYL-Exported-Orders'));
+        $path = tempnam(sys_get_temp_dir(), 'domestic-gate-').'.xlsx';
+        file_put_contents($path, $batch->baseResponse->getContent());
+        try {
+            $book = IOFactory::load($path);
+            self::assertSame(2, $book->getActiveSheet()->getHighestDataRow());
+            self::assertSame($approved->erp_order_id, $book->getActiveSheet()->getCell('A2')->getValue());
+            $book->disconnectWorksheets();
+        } finally {
+            @unlink($path);
+        }
+
+        self::assertSame([], app(SpeedaOutboundExporter::class)->blockers($approved->fresh()));
+        $carrier = $this->actingAs($viewer)->get('/logistics/china/export/4px')->assertOk();
+        self::assertSame('1', $carrier->headers->get('X-BYL-Exported-Orders'));
+        $blockers = app(SpeedaOutboundExporter::class);
+        self::assertContains('商务尚未审核，禁止导出', $blockers->blockers($unreviewed->fresh()));
+        self::assertContains('外采尚未验收到货放行，禁止导出', $blockers->blockers($external->fresh()));
+        self::assertContains('该单已离开待发货队列，禁止重复导出', $blockers->blockers($shipped->fresh()));
+    }
+
     public function test_pending_batch_export_and_mixed_carrier_tracking_upload_are_carrier_safe(): void
     {
         $speeda = $this->domesticOrder('007-0923-c50101', '4PX', reviewed: true, phone: '111', quantity: 1);

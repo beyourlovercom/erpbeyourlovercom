@@ -19,6 +19,7 @@ final class DomesticPendingBatchExporter
         private readonly WarehouseOrderReference $references,
         private readonly DomesticReviewAmountResolver $amounts,
         private readonly CarrierServiceCatalog $carriers,
+        private readonly DomesticDispatchEligibility $eligibility,
     ) {}
 
     /** @param Collection<int,Order> $orders */
@@ -30,7 +31,7 @@ final class DomesticPendingBatchExporter
 
         $eligible = $orders->filter(function (Order $order): bool {
             $order->loadMissing(['address', 'items', 'shipment', 'externalReferences', 'fulfillmentParent.financials', 'shipment.warehouse']);
-            return $order->shipment?->shipment_status === 'pending';
+            return $this->eligibility->allows($order);
         })->values();
         if ($eligible->isEmpty()) {
             throw new DomainException('当前没有可导出的国内待发货订单。');

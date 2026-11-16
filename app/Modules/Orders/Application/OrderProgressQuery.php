@@ -14,8 +14,15 @@ final class OrderProgressQuery
 {
     public function domesticReview(Builder $orders): Builder
     {
-        return $this->withoutManualPrimary($orders)
-            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereNotNull('warehouse_id'))
+        // Manual "sending" is a work label, never a business approval.
+        // Unreviewed factory orders must remain reviewable even after staff
+        // changed that label. Exception/stockout holds still take precedence.
+        return $this->withoutManualException($orders)
+            ->where('order_status', 'pending_shipment')
+            ->where(fn (Builder $q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
+            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')
+                ->whereNull('shipped_at')
+                ->whereHas('warehouse', fn ($w) => $w->where('code', 'FACTORY')))
             ->whereDoesntHave('procurementOrder', fn ($q) => $q->where('origin', 'external')->whereNull('released_at'))
             ->whereDoesntHave('operationalMarkers', fn ($q) => $q->whereIn('marker', ['domestic_reviewed', 'domestic_stockout']));
     }
@@ -34,16 +41,17 @@ final class OrderProgressQuery
 
     public function domesticReady(Builder $orders): Builder
     {
-        return $orders->where(function (Builder $q): void {
-            $q->where('workflow_status', 'sending')
-                ->orWhere(function (Builder $auto): void {
-                    $this->withoutManualPrimary($auto)
-                        ->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending'))
-                        ->whereDoesntHave('procurementOrder', fn ($p) => $p->where('origin', 'external')->whereNull('released_at'))
-                        ->whereHas('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_reviewed'))
-                        ->whereDoesntHave('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_stockout'));
-                });
-        });
+        // A manually selected "sending" status cannot bypass real factory
+        // allocation, Kaven review, procurement release or shipment status.
+        return $this->withoutManualException($orders)
+            ->where('order_status', 'pending_shipment')
+            ->where(fn (Builder $q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
+            ->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending')
+                ->whereNull('shipped_at')
+                ->whereHas('warehouse', fn ($w) => $w->where('code', 'FACTORY')))
+            ->whereDoesntHave('procurementOrder', fn ($p) => $p->where('origin', 'external')->whereNull('released_at'))
+            ->whereHas('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_reviewed'))
+            ->whereDoesntHave('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_stockout'));
     }
 
     public function domesticTodayProvider(Builder $orders, string $carrier): Builder
