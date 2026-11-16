@@ -37,7 +37,7 @@ test('original auth session stays server-side; only verified effective rights re
     }
     if(req.url==='/_erp2/identity'){
       res.writeHead(200,{'content-type':'application/json'});
-      return res.end(JSON.stringify({source:'ERP_CANONICAL_LARAVEL_DEV_SESSION_V1',user,
+      return res.end(JSON.stringify({source:'ERP_ORIGINAL_LARAVEL_PRODUCTION_SESSION_V1',user,
         roleKeys:['role_preset_operations'],permissionMode:'role',
         effectivePermissionKeys:permissions,navigation:[{key:'orders',label:'订单',path:'/orders',children:[]}]}));
     }
