@@ -23,13 +23,13 @@ describe('ERP2 canonical Dev web session', () => {
       .mockResolvedValueOnce(identityResponse());
     await expect(loginCanonicalErp('vita@beyourlover.com', 'temporary', fetcher))
       .resolves.toMatchObject({ user: { id: 18 }, roleKeys: ['role_preset_operations'] });
-    const [path, request] = fetcher.mock.calls[1];
+    const [path, request] = fetcher.mock.calls[1]!;
     expect(path).toBe('/login');
     expect(request).toMatchObject({ method: 'POST', credentials: 'same-origin' });
     expect(request.body.get('email')).toBe('vita@beyourlover.com');
     expect(request.body.get('password')).toBe('temporary');
     expect(request.headers['X-CSRF-TOKEN']).toBe('dev-csrf');
-    expect(fetcher.mock.calls[2][0]).toBe('/_erp2/identity');
+    expect(fetcher.mock.calls[2]?.[0]).toBe('/_erp2/identity');
   });
 
   it('rejects a wrong-password login redirect without a canonical session', async () => {
@@ -54,9 +54,9 @@ describe('ERP2 canonical Dev web session', () => {
       .mockResolvedValueOnce(htmlResponse())
       .mockResolvedValueOnce(identityResponse(401));
     await expect(logoutCanonicalErp(fetcher)).resolves.toBeUndefined();
-    expect(fetcher.mock.calls[0][0]).toBe('/dashboard');
-    expect(fetcher.mock.calls[1][0]).toBe('/logout');
-    expect(fetcher.mock.calls[1][1].method).toBe('POST');
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/dashboard');
+    expect(fetcher.mock.calls[1]?.[0]).toBe('/logout');
+    expect(fetcher.mock.calls[1]?.[1].method).toBe('POST');
   });
 
   it('does not call logout complete if Laravel still accepts the session', async () => {
