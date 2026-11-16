@@ -25,7 +25,8 @@ export async function bootstrapCanonicalDevNavigation(router: Router): Promise<b
     const identity = await getCanonicalErpIdentity();
     canonicalDevIdentity.value = identity;
     useUserStore().setUserInfo({
-      id: String(identity.user.id), username: identity.user.email,
+      userId: String(identity.user.id), id: String(identity.user.id),
+      username: identity.user.email,
       realName: identity.user.name, roles: [], avatar: '',
       homePath: '/erp/orders/orders-master',
     });
