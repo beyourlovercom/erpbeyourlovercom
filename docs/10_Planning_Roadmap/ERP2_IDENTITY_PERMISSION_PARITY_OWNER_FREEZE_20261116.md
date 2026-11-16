@@ -18,6 +18,30 @@ ERP2 is a new front end for **the existing ERP identity and authorization system
 
 PR #766's Vben preview still has its own `loginApi` token and four-role (`owner/staff/kol/manager`) simulated gateway selector. Six **named isolated Dev fixtures** pass basic sessions and example order scopes, but those fixtures are *not* canonical ERP employee IDs with actual saved roles and custom overrides. Their 6/6 technical result **cannot** close this P0 gate. The existing `r2c-real-staff-dev-uat.cjs` only tests original Laravel Dev preflight and cannot itself claim cross-system equivalence.
 
+## Read-only Production authority verified — 2026-11-16
+
+The Owner authorized an identity/ACL read of **all 20 active Production accounts**. No passwords, cookies, tokens or hashes were exported. The six focus accounts have **persisted role-mode** permissions (no custom-mode overrides). This snapshot is an audit baseline, **not a static ERP2 authorization table**; Laravel must always recompute permissions from the currently logged-in database user.
+
+| Employee | Original ERP user ID | Persisted role key | Effective permission count | Current ERP2 isolated Dev fixture ID | Parity |
+|---|---:|---|---:|---:|---|
+| Vita | 18 | `role_preset_operations` | 20 | 5 | Mismatch |
+| Liang | 17 | `role_preset_logistics` | 9 | 6 | Mismatch |
+| Dede | 19 | `role_preset_logistics` | 9 | 7 | Mismatch |
+| Emma | 3 | `role_preset_kol_manager` | 13 | 8 | Mismatch |
+| Guts | 2 | `role_preset_kol_manager` | 13 | 9 | Mismatch |
+| Hiko | 6 | `role_preset_kol_specialist` | 9 | 10 | Mismatch |
+
+Source: original ERP Production Laravel ORM using read-only retrieval of user, role and permission relationships. **6/6 Dev fixtures are incompatible** with the real identities/permissions. Synthetic Dev accounts must remain labelled and isolated; they cannot be used to pass staff UAT.
+
+## Dev integration committed on PR #766
+
+- Dev-only `GET /_erp2/identity` uses the existing Laravel **web session** and the authenticated `User`. It returns only own original user ID, display identity, saved role keys, mode, effective permission keys and `ErpShellNavigation::for(user)`. No user ID/role input, no credentials, no Production endpoint.
+- The endpoint rejects local admin bypass and inactive accounts, sends `no-store` headers, and respects persisted `permission_mode` (including super-admin semantics). It introduces **no write route**.
+- Vben can opt into `VITE_ERP_IDENTITY_MODE=laravel` **only in a same-origin Dev setup**; it ignores local Vben authorization tokens/role fixtures, refreshes Laravel rights on navigation and blocks unauthorized direct ERP2 routes.
+- In that mode, the Orders master calls existing same-origin Laravel `GET /orders` rather than the four-role synthetic gateway. The old 007 visual/fixture mode remains unchanged.
+- PHPUnit `CanonicalIdentityContractTest`: 4 tests / 24 assertions passing on isolated US Mac mini worktree with in-memory SQLite (session denied, real ID/right, custom overrides, permission revocation). This is **engineering validation, not six-person live-session acceptance**.
+- **P0 remains HOLD** until the Dev origin serves the actual ERP session, six real staff identities are available and end-to-end allow/deny cases pass. No merge/Production deploy.
+
 ## Six-person acceptance matrix — verify against live Dev authority, not inferred roles
 
 | Employee | Expected work scope (business reference only) | Mandatory parity evidence |
@@ -25,7 +49,7 @@ PR #766's Vben preview still has its own `loginApi` token and four-role (`owner/
 | Vita | Operations, order sync/allocation | Same ERP ID, exact persisted effective keys, menus/buttons, authorized order set, allocation/action success and forbidden-action denial |
 | Liang | Domestic fulfillment/logistics | Same ERP ID/keys; domestic visibility and shipping operations; denied unrelated overseas/admin operations |
 | Dede | Overseas review/fulfillment | Same ERP ID/keys; overseas review and shipping; denied unrelated domestic/admin operations |
-| Emma | KOL specialist | Same ERP ID/keys; own influencer orders only; other specialist's order denied in list/search/direct URL/export |
+| Emma | **Production role is KOL manager**, not specialist | Same ERP ID/keys; verify current manager scope and deny out-of-authority orders; do not downgrade to remembered specialist role |
 | Guts | KOL manager | Same ERP ID/keys; authorized team orders; out-of-authority records denied |
 | Hiko | KOL specialist/test | Same ERP ID/keys; own influencer orders only; other specialist's order denied in list/search/direct URL/export |
 
