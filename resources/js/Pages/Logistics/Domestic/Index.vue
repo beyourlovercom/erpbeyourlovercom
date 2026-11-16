@@ -766,6 +766,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           <strong>待发货 · 批量登记</strong>
         </div>
         <div class="actions">
+          <a class="secondary" href="/logistics/china/pending-batch/export-sku-merged" data-testid="download-domestic-sku-merged">下载SKU合并版表</a>
           <a class="primary" href="/logistics/china/pending-batch/export">下载待发货批量表</a>
           <button v-if="canOperate" type="button" class="secondary" :disabled="uploadBusy || applyBusy" @click="chooseUpload">⏫上传物流单号</button>
         </div>

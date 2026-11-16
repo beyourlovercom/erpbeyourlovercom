@@ -350,6 +350,29 @@ final class DomesticLogisticsController
         ]);
     }
 
+    public function exportPendingBatchSkuMerged(): HttpResponse
+    {
+        $factory = $this->factory();
+        $orders = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id))
+            ->with(['address', 'items.product', 'shipment', 'externalReferences', 'operationalMarkers'])
+            ->orderBy('order_date')
+            ->orderBy('id')
+            ->get();
+
+        try {
+            $bytes = $this->pendingBatch->exportSkuMerged($orders);
+        } catch (\DomainException $e) {
+            abort(422, $e->getMessage());
+        }
+
+        return response($bytes, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="007-domestic-pending-sku-merged-'.now()->format('ymd').'.xlsx"',
+            'Cache-Control' => 'no-store, private',
+            'X-BYL-Exported-Orders' => (string) $orders->count(),
+        ]);
+    }
+
     public function previewUnifiedTrackingReturn(Request $request): RedirectResponse|JsonResponse
     {
         $data = $request->validate(['file' => ['required', 'file', 'max:10240']]);

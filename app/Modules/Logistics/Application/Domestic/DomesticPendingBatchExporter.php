@@ -24,6 +24,18 @@ final class DomesticPendingBatchExporter
     /** @param Collection<int,Order> $orders */
     public function export(Collection $orders): string
     {
+        return $this->build($orders, false);
+    }
+
+    /** @param Collection<int,Order> $orders */
+    public function exportSkuMerged(Collection $orders): string
+    {
+        return $this->build($orders, true);
+    }
+
+    /** @param Collection<int,Order> $orders */
+    private function build(Collection $orders, bool $skuMerged): string
+    {
         if ($orders->isEmpty()) {
             throw new DomainException('当前没有可导出的国内待发货订单。');
         }
@@ -41,9 +53,13 @@ final class DomesticPendingBatchExporter
             'ERP订单号', '客户单号', '物流商', '服务', 'Tracking',
             '收件人', '电话', 'Email', '国家/地区', '州/省', '城市', '邮编', '地址',
         ];
-        for ($i = 1; $i <= $maxItems; $i++) {
-            $headers[] = $i === 1 ? 'SKU' : "SKU{$i}";
-            $headers[] = $i === 1 ? '数量' : "数量{$i}";
+        if ($skuMerged) {
+            array_push($headers, 'SKU', '数量');
+        } else {
+            for ($i = 1; $i <= $maxItems; $i++) {
+                $headers[] = $i === 1 ? 'SKU' : "SKU{$i}";
+                $headers[] = $i === 1 ? '数量' : "数量{$i}";
+            }
         }
         $headers[] = '金额';
         $headers[] = '物流备注';
@@ -83,13 +99,20 @@ final class DomesticPendingBatchExporter
                 (string) $address?->postal_code,
                 trim(implode(' ', array_filter([(string) $address?->address_line_1, (string) $address?->address_line_2]))),
             ];
-            foreach ($order->items->sortBy('id') as $item) {
-                $values[] = (string) ($item->sku ?: '无SKU');
-                $values[] = (string) (int) $item->quantity;
-            }
-            for ($i = $order->items->count(); $i < $maxItems; $i++) {
-                $values[] = '';
-                $values[] = '';
+            $items = $order->items->sortBy('id')->values();
+            if ($skuMerged) {
+                $values[] = $items->map(fn ($item): string => (string) ($item->sku ?: '无SKU'))->implode("\n");
+                $values[] = $items->map(fn ($item): string => (string) (int) $item->quantity)->implode("\n");
+                $sheet->getRowDimension($row)->setRowHeight(max(15, $items->count() * 16));
+            } else {
+                foreach ($items as $item) {
+                    $values[] = (string) ($item->sku ?: '无SKU');
+                    $values[] = (string) (int) $item->quantity;
+                }
+                for ($i = $items->count(); $i < $maxItems; $i++) {
+                    $values[] = '';
+                    $values[] = '';
+                }
             }
             $amount = $this->amounts->resolve($order);
             $values[] = $amount['amount'] === null ? '' : $amount['amount'].' '.$amount['currency'];
@@ -102,6 +125,11 @@ final class DomesticPendingBatchExporter
         $sheet->freezePane('A2');
         for ($column = 1; $column <= count($headers); $column++) {
             $sheet->getColumnDimensionByColumn($column)->setAutoSize(true);
+        }
+        if ($skuMerged) {
+            $sheet->getStyle('N2:O'.($eligible->count() + 1))->getAlignment()->setWrapText(true);
+            $sheet->getColumnDimension('N')->setAutoSize(false)->setWidth(28);
+            $sheet->getColumnDimension('O')->setAutoSize(false)->setWidth(12);
         }
 
         $tmp = tempnam(sys_get_temp_dir(), 'domestic-pending-batch-');
