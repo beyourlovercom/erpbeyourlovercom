@@ -1,12 +1,18 @@
 <?php
 
 use App\Modules\Identity\Experience\Controllers\AccountController;
+use App\Modules\Identity\Experience\Controllers\OriginalErpIdentityController;
 use App\Modules\Identity\Experience\Controllers\RolePermissionsController;
 use App\Modules\Identity\Experience\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 
 Route::middleware(['web', 'auth'])->group(function (): void {
+    // Self-only authenticated projection for ERP2 Dev verification.
+    // No arbitrary user selector or Production business/order read API.
+    Route::get('/_erp2/identity', OriginalErpIdentityController::class)
+        ->name('erp2.original.identity');
+
     Route::get('/account/profile', [AccountController::class, 'profile'])->name('account.profile');
     Route::match(['put', 'patch'], '/account/profile', [AccountController::class, 'updateProfile'])->name('account.profile.update');
     Route::get('/account/password', [AccountController::class, 'password'])->name('account.password');
