@@ -475,6 +475,7 @@ describe('Domestic logistics production workbench', () => {
   it('shows a mixed-carrier ERP batch download/upload only on the pending work queue', () => {
     const pending=mount(Index,{props:{...baseProps,view:'pending',trackingImportPreview:null,trackingImportProvider:null}})
     expect(pending.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(true)
+    expect(pending.get('[data-testid="download-domestic-sku-merged"]').attributes('href')).toBe('/logistics/china/pending-batch/export-sku-merged')
     expect(pending.text()).toContain('⏫上传物流单号')
     expect(pending.find('input[type="file"]').attributes('accept')).toBe('.xls,.xlsx')
     expect(pending.text()).toContain('自动识别格式')
@@ -482,6 +483,7 @@ describe('Domestic logistics production workbench', () => {
 
     const history=mount(Index,{props:{...baseProps,view:'all',trackingImportPreview:null,trackingImportProvider:null}})
     expect(history.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(false)
+    expect(history.find('[data-testid="download-domestic-sku-merged"]').exists()).toBe(false)
     expect(history.text()).not.toContain('⏫上传物流单号')
   })
 
