@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getCanonicalErpIdentity, parseCanonicalErpIdentity } from './erp-identity';
+import { canonicalAuthorityFingerprint, getCanonicalErpIdentity, parseCanonicalErpIdentity } from './erp-identity';
 
 const valid = {
   source:'ERP_CANONICAL_LARAVEL_DEV_SESSION_V1',
@@ -17,6 +17,21 @@ describe('ERP2 canonical identity contract', () => {
       user:{id:18},roleKeys:['role_preset_operations'],
       effectivePermissionKeys:['orders.view','orders.edit'],
     });
+  });
+  it('distinguishes an in-place permission revocation without changing employee ID', () => {
+    const current = parseCanonicalErpIdentity(valid);
+    const revoked = parseCanonicalErpIdentity({...valid, effectivePermissionKeys:['orders.view']});
+    expect(canonicalAuthorityFingerprint(current)).not.toBe(canonicalAuthorityFingerprint(revoked));
+    const sameGrantsReordered = parseCanonicalErpIdentity({
+      ...valid, effectivePermissionKeys:['orders.edit','orders.view'],
+    });
+    expect(canonicalAuthorityFingerprint(current)).toBe(canonicalAuthorityFingerprint(sameGrantsReordered));
+    const differentUser = parseCanonicalErpIdentity({...valid,user:{...valid.user,id:17}});
+    expect(canonicalAuthorityFingerprint(current)).not.toBe(canonicalAuthorityFingerprint(differentUser));
+    const differentMenu = parseCanonicalErpIdentity({
+      ...valid, navigation:[{key:'orders',label:'订单',path:'/orders',children:[]}],
+    });
+    expect(canonicalAuthorityFingerprint(current)).not.toBe(canonicalAuthorityFingerprint(differentMenu));
   });
   it('rejects fixture roles, missing employee ID and malformed navigation', () => {
     expect(() => parseCanonicalErpIdentity({...valid,source:'LOCAL_UAT'})).toThrow();
