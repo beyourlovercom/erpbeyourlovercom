@@ -401,7 +401,7 @@ const inlineBusy = ref<Record<number,boolean>>({})
 const inlineErrors = ref<Record<number,string>>({})
 const inlineSaved = ref<Record<number,string>>({})
 const trackingDraft = (row:Row):string => inlineTracking.value[row.order_id] ??= row.tracking_number ?? ''
-const canQuickShip = (row:Row):boolean => props.canOperate && row.review_status === 'approved'
+const canQuickShip = (row:Row):boolean => props.canOperate && ['approved','pending'].includes(row.review_status)
   && row.shipment_status === 'pending'
 type CarrierDraft = {carrier:string;service:string}
 const carrierDrafts = ref<Record<number,CarrierDraft>>({})

@@ -57,9 +57,10 @@ describe('R4-3-F row carrier/service dropdowns',()=>{
     await wrapper.get('select').setValue('SD标准挂号-带电')
     expect(saveCarrier).toHaveBeenCalledWith(100,'4PX','SD标准挂号-带电')
   })
-  it('read-only, unapproved and shipped rows never render an editable select',()=>{
+  it('read-only, stockout and shipped rows stay locked while unreviewed pending can edit',()=>{
     expect(setup('carrier',false).wrapper.find('select').exists()).toBe(false)
-    expect(setup('carrier',true,{...row,review_status:'pending'}).wrapper.find('select').exists()).toBe(false)
+    expect(setup('carrier',true,{...row,review_status:'pending'}).wrapper.find('select').exists()).toBe(true)
+    expect(setup('carrier',true,{...row,review_status:'stockout'}).wrapper.find('select').exists()).toBe(false)
     expect(setup('service',true,{...row,shipment_status:'shipped'}).wrapper.find('select').exists()).toBe(false)
   })
 })

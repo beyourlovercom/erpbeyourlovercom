@@ -27,7 +27,7 @@ type Params={
 const props=defineProps<{params:Params}>()
 const id=computed(()=>Number(props.params.data.id))
 const source=computed(()=>props.params.source(id.value))
-const canShip=computed(()=>!!props.params.canOperate && source.value?.review_status==='approved' && source.value.shipment_status==='pending')
+const canShip=computed(()=>!!props.params.canOperate && ['approved','pending'].includes(source.value?.review_status??'') && source.value?.shipment_status==='pending')
 const canReopen=computed(()=>!!props.params.canReview && source.value?.review_status==='approved' && source.value.shipment_status==='pending')
 const carrierConfirmed=computed(()=>source.value?.carrier_ready===true)
 const busy=computed(()=>props.params.carrierBusy(id.value)||props.params.trackingBusy(id.value))

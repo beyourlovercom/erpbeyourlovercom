@@ -19,7 +19,7 @@ const service=computed(()=>source.value?.service??'')
 const catalog=computed(()=>props.params.getCarrierOptions?.()??props.params.carrierOptions)
 const options=computed(()=>catalog.value.find(x=>x.value===carrier.value)?.services??[])
 const serviceLabel=(item:{value:string;label:string;name_zh?:string|null})=>carrier.value==='4PX'?(item.name_zh?.trim()||item.value):item.label
-const editable=computed(()=>!!props.params.canOperate&&source.value?.review_status==='approved'
+const editable=computed(()=>!!props.params.canOperate&&['approved','pending'].includes(source.value?.review_status??'')
   &&source.value?.shipment_status==='pending'&&!props.params.carrierBusy(id.value))
 const localValue=ref('')
 watch([isCarrier,carrier,service],()=>{localValue.value=isCarrier.value?carrier.value:service.value},{immediate:true})

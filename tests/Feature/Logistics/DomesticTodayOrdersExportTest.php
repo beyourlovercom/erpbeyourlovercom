@@ -43,12 +43,12 @@ final class DomesticTodayOrdersExportTest extends TestCase
         $excludedOld->items()->create(['sku' => 'OLD', 'product_summary' => 'Old item', 'quantity' => 1, 'unit_price' => '1.00', 'line_revenue' => '1.00']);
 
         $this->actingAs($this->viewer())->get('/logistics/china?view=today')
-            ->assertOk()->assertInertia(fn ($page) => $page->where('viewCounts.today', 2));
+            ->assertOk()->assertInertia(fn ($page) => $page->where('viewCounts.today', 3));
 
         $response = $this->actingAs($this->viewer())->get('/logistics/china/today/export');
         $response->assertOk();
-        self::assertSame('2', $response->headers->get('X-BYL-Exported-Orders'));
-        self::assertSame('3', $response->headers->get('X-BYL-Exported-Lines'));
+        self::assertSame('3', $response->headers->get('X-BYL-Exported-Orders'));
+        self::assertSame('4', $response->headers->get('X-BYL-Exported-Lines'));
         self::assertStringContainsString('007-domestic-today-', (string) $response->headers->get('Content-Disposition'));
 
         $path = tempnam(sys_get_temp_dir(), 'today-export-test-');
@@ -58,7 +58,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
             $sheet = $book->getActiveSheet();
             self::assertSame(['订单号','SKU','数量','单价','物流商','物流商单号','币种','商品名称','发货状态'],
                 array_map(fn (string $col) => $sheet->getCell($col.'1')->getValue(), range('A','I')));
-            self::assertSame(4, $sheet->getHighestDataRow());
+            self::assertSame(5, $sheet->getHighestDataRow());
             self::assertSame('007-TEST-TODAY-1', $sheet->getCell('A2')->getValue());
             self::assertSame('MF414A', $sheet->getCell('B2')->getValue());
             self::assertSame(2, $sheet->getCell('C2')->getValue());
@@ -78,6 +78,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
             self::assertSame(18.0, $sheet->getCell('D4')->getValue());
             self::assertSame('纬狮', $sheet->getCell('E4')->getValue());
             self::assertSame('shipped', $sheet->getCell('I4')->getValue());
+            self::assertSame('007-NOT-REVIEWED', $sheet->getCell('A5')->getValue());
             $book->disconnectWorksheets();
         } finally {
             @unlink($path);
@@ -107,7 +108,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
             ->assertOk()->assertInertia(fn ($page) => $page
                 ->where('globalGridPilotAvailable',true)
                 ->where('globalGridPilotEnabled',true)
-                ->where('rows.total',2)
+                ->where('rows.total',3)
                 ->where('rows.data.0.erp_order_id','007-R4-4-TODAY-1')
                 ->where('rows.data.0.items.0.quantity',2)
                 ->where('rows.data.1.erp_order_id','007-R4-4-TODAY-2'));
@@ -115,7 +116,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
         $this->actingAs($user)->get('/logistics/china?view=today&global_grid=0')
             ->assertOk()->assertInertia(fn ($page) => $page
                 ->where('globalGridPilotEnabled',false)
-                ->where('rows.total',2)
+                ->where('rows.total',3)
                 ->where('rows.data.0.erp_order_id','007-R4-4-TODAY-1')
                 ->where('rows.data.1.erp_order_id','007-R4-4-TODAY-2'));
 
@@ -165,7 +166,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
         foreach (['','&global_grid=1','&global_grid=0'] as $extra) {
             $this->actingAs($actor)->get('/logistics/china?view=today-4px'.$extra)
                 ->assertOk()->assertInertia(fn ($page) => $page
-                    ->where('rows.total',2)
+                    ->where('rows.total',3)
                     ->where('rows.data.0.erp_order_id','007-R45-4PX-PEND')
                     ->where('rows.data.0.items.0.quantity',2)
                     ->where('rows.data.1.erp_order_id','007-R45-4PX-SHIP')

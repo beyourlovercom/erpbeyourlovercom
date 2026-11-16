@@ -576,7 +576,7 @@ final class DomesticLogisticsController
         $amount = app(DomesticReviewAmountResolver::class)->resolve($order);
 
         $exception = $includeException
-            ? $this->exceptionSummary($order, $conflict, $stockout, $approved)
+            ? $this->exceptionSummary($order, $conflict, $stockout)
             : [];
 
         return [
@@ -639,12 +639,11 @@ final class DomesticLogisticsController
             ] : null,
             'export_blockers' => $shipment?->shipment_status !== 'pending'
                 ? ['该单已离开待发货队列，禁止重复导出']
-                : ($stockout ? ['缺货，禁止导出'] : (! $approved ? ['商务尚未审核，禁止导出']
-                    : (! $this->carrierDefaults->ready($order)
+                : ($stockout ? ['缺货，禁止导出'] : (! $this->carrierDefaults->ready($order)
                         ? ['请检查物流商和服务类型']
                         : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
                         ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
-                        : ['未选定速达或纬狮物流商'])))),
+                        : ['未选定速达或纬狮物流商']))),
             'items' => $order->items->map(fn ($item) => [
                 'sku' => WarehouseSkuPresentation::sku($item),
                 'quantity' => (int) $item->quantity,
@@ -658,7 +657,7 @@ final class DomesticLogisticsController
      *
      * @return array{exception_type: string, exception_reason: string}
      */
-    private function exceptionSummary(Order $order, bool $conflict, bool $stockout, bool $approved): array
+    private function exceptionSummary(Order $order, bool $conflict, bool $stockout): array
     {
         $shipment = $order->shipment;
         if ($shipment?->shipment_status === 'exception') {
@@ -673,7 +672,6 @@ final class DomesticLogisticsController
         $reason = match (true) {
             $stockout && in_array($shipment?->shipment_status, ['shipped', 'completed'], true) => '订单标记缺货，但物流已发货',
             $shipment?->shipment_status === 'shipped' && $shipment->shipped_at === null => '物流已发货，但缺少发货时间',
-            $shipment?->shipment_status === 'shipped' && ! $approved && blank($shipment->tracking_number) => '物流已发货，但缺少商务审核和追踪单号',
             $order->order_status?->value === 'shipped' && $shipment?->shipment_status === 'pending' => '订单已标记发货，但物流仍为待发货',
             default => '履约状态不一致，请打开订单详情核对',
         };

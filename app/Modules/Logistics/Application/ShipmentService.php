@@ -654,19 +654,18 @@ final class ShipmentService
             return;
         }
 
-        // Preserve the Domestic Business confirmation / stockout gate from
-        // current main. Allocation and order-detail actions share this rule.
+        // Domestic stockout remains a shipping gate; Kaven review remains
+        // available as an operational workflow but is not a dispatch prerequisite.
         $isFactory = strtoupper(trim((string) $requestedCode)) === 'FACTORY'
             || strtoupper(trim((string) $assignedCode)) === 'FACTORY';
         if ($isFactory) {
-            abort_unless((int) $shipment->warehouse_id === (int) $warehouseId, 409, '请先重新分仓并完成国内审核');
+            abort_unless((int) $shipment->warehouse_id === (int) $warehouseId, 409, '请先保存正确的中国工厂仓分配');
             $order->loadMissing('operationalMarkers');
             abort_unless(
-                $order->operationalMarkers->contains('marker', 'domestic_reviewed')
-                    && ! $order->operationalMarkers->contains('marker', 'domestic_stockout')
+                ! $order->operationalMarkers->contains('marker', 'domestic_stockout')
                     && $order->workflow_status !== 'out_of_stock',
                 409,
-                '国内订单未经商务确认有货，或已标记缺货，不允许确认发货。',
+                '国内订单已标记缺货，不允许确认发货。',
             );
         }
     }
