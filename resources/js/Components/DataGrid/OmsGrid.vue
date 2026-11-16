@@ -56,7 +56,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   title: 'OMS Grid', preferenceScope: 'account', defaultPinnedLeft: 1,
   defaultPinnedRight: 1, requiredColumnIds: () => [], legacyPreferenceNamespaces: () => [],
-  showSearch: true, enableSelection: true, cellTextSelection: true, allowAllRows: true, showClientCsvExport: true,
+  showSearch: true, enableSelection: true, cellTextSelection: false, allowAllRows: true, showClientCsvExport: true,
 })
 
 const emit = defineEmits<{

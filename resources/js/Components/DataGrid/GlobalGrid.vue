@@ -25,7 +25,7 @@ const props = withDefaults(defineProps<{
   clientCsvExport?: boolean
   defaultPinnedRight?: number
 }>(), {
-  page: null, rowIdentityKey: 'id', showSearch: true, enableSelection: false, cellTextSelection: true, clientCsvExport: false, defaultPinnedRight: 1,
+  page: null, rowIdentityKey: 'id', showSearch: true, enableSelection: false, cellTextSelection: false, clientCsvExport: false, defaultPinnedRight: 1,
   filterColumns: () => [], filterValues: () => ({}),
 })
 const emit = defineEmits<{

@@ -91,6 +91,12 @@ async function runFoundation() {
         : suite === 'tracking-ux'
             ? ['tests/e2e/support/tracking-ux-browser.mjs']
             : [playwrightCli, 'test', '--project=chromium'];
+    // Narrow an isolated Global Grid Dev run to a named regression without
+    // skipping database provisioning or disposable runtime cleanup.
+    if (suite === 'global-grid' && process.env.BYL_E2E_GREP) {
+        testArgs.push('--grep', process.env.BYL_E2E_GREP);
+        process.stdout.write(`E2E_GREP=${process.env.BYL_E2E_GREP}\n`);
+    }
     await runManagedChild(process.execPath, testArgs, {
         env,
         signal: abortController.signal,

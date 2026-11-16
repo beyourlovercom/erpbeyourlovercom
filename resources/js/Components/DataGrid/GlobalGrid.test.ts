@@ -33,7 +33,7 @@ describe('Global Grid V1 shared contract', () => {
     expect(underlying.props('serverPagination')).toEqual(props.page)
     expect(underlying.props('allowAllRows')).toBe(false)
     expect(underlying.props('enableSelection')).toBe(false)
-    expect(underlying.props('cellTextSelection')).toBe(true)
+    expect(underlying.props('cellTextSelection')).toBe(false)
     expect(underlying.props('showClientCsvExport')).toBe(false)
     expect(underlying.props('showSearch')).toBe(true)
     expect(underlying.props('requiredColumnIds')).toEqual(['sku'])
@@ -48,13 +48,13 @@ describe('Global Grid V1 shared contract', () => {
     expect(defaultGrid.findComponent({name:'OmsGrid'}).props('defaultPinnedRight')).toBe(1)
   })
 
-  it('allows explicit text-selection opt-out without changing row-checkbox behavior', () => {
+  it('requires explicit text-selection opt-in and leaves row-checkbox behavior independent', () => {
     const wrapper = mount(GlobalGrid, { props: {
-      ...props, namespace: 'grid.legacy.special.v1', enableSelection: true, cellTextSelection: false,
+      ...props, namespace: 'grid.logistics.domestic.pending.global.v1', enableSelection: true, cellTextSelection: true,
     } })
     const underlying = wrapper.findComponent({ name: 'OmsGrid' })
     expect(underlying.props('enableSelection')).toBe(true)
-    expect(underlying.props('cellTextSelection')).toBe(false)
+    expect(underlying.props('cellTextSelection')).toBe(true)
   })
 
   it('forwards only data navigation intents, not business mutation actions', () => {

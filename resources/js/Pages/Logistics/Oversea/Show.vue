@@ -1586,6 +1586,7 @@ const compactPages = computed<(number|string)[]>(() => {
           :required-column-ids="['order','status','route']" :page="rows" row-identity-key="id"
           :search="gridSearch??''" :sort="gridSort??undefined"
           :filter-columns="[]" :filter-values="gridFilters??{}"
+          :cell-text-selection="view==='pending'"
           :enable-selection="Boolean((canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || bulkShipPreviewScope || canTrackingSync || showShipoutSelection)"
           :selected-order-ids="(canArchive && view!=='stockout')?archiveSelection:bulkShipPreviewScope?bulkShipSelection:(canReview && ['review','stockout'].includes(view))?reviewSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
           search-placeholder="搜索全部订单号 / Tracking / 收件人 / SKU..."

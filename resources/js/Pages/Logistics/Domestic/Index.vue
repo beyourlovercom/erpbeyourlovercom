@@ -895,6 +895,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           :title="'国内发货 · '+(tabs.find(tab=>tab[0]===view)?.[1]??view)"
           :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order','status','warehouse_route']"
           :default-pinned-right="isAllDomesticView(view) ? 0 : 1"
+          :cell-text-selection="view==='pending'"
           :enable-selection="true" :selected-order-ids="selectedBulkOrderIds"
           :page="domesticPager" :search="gridSearch??''"
           :filter-columns="isAllDomesticView(view)?allGridFilterColumns:[]"
