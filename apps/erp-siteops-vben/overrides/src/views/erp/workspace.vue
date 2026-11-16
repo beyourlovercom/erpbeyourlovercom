@@ -4,7 +4,7 @@ import { getHotOrderSnapshot, putHotOrderSnapshot, expireHotOrderSnapshot,
   sleepOtherHotOrders, clearHotOrderSnapshots, getHotOrderCacheStats, type HotOrderKey } from '#/api/erp-hot-snapshots';
 import { useRoute, useRouter } from 'vue-router';
 import { activeDevRole, applyAuthorizedDevNavigation, clearAuthorizedDevNavigation,
-  devBootstrapError, takeInitialDevOrders, type DevRole } from '#/router/erp-live-navigation';
+  canonicalDevIdentity, devBootstrapError, takeInitialDevOrders, type DevRole } from '#/router/erp-live-navigation';
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from 'ag-grid-community';
 import { AgGridVue } from 'ag-grid-vue3';
 import { getExistingErpOrders, getMacDevReadOnlyOrders, getCurrentDevReadOnlyOrders, type ErpCurrentDevPage, type ErpOrderPage, type ErpDevMenuNode } from '#/api/erp-orders';
@@ -20,13 +20,16 @@ const router = useRouter();
 const search = ref('');
 const error = ref('');
 const fetching = ref(false);
-const mode = ref<'synthetic' | 'authenticated-erp'>(import.meta.env.VITE_ERP_CURRENT_DEV_ENABLED === '1' ? 'authenticated-erp' : 'synthetic');
+const canonicalIdentityMode = import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel';
+const mode = ref<'synthetic' | 'authenticated-erp'>(
+  canonicalIdentityMode || import.meta.env.VITE_ERP_CURRENT_DEV_ENABLED === '1' ? 'authenticated-erp' : 'synthetic',
+);
 const pager = ref<Pick<ErpOrderPage, 'page' | 'perPage' | 'total' | 'lastPage'>>({
   page: 1, perPage: 50, total: 0, lastPage: 1,
 });
-const currentDevEnabled = import.meta.env.VITE_ERP_CURRENT_DEV_ENABLED === '1';
+const currentDevEnabled = !canonicalIdentityMode && import.meta.env.VITE_ERP_CURRENT_DEV_ENABLED === '1';
 const bridgeEnabled = !currentDevEnabled && import.meta.env.VITE_ERP_DEV_BRIDGE_ENABLED === '1';
-const enabled = currentDevEnabled || bridgeEnabled || import.meta.env.VITE_ERP_READONLY_ORDERS_ENABLED === '1';
+const enabled = canonicalIdentityMode || currentDevEnabled || bridgeEnabled || import.meta.env.VITE_ERP_READONLY_ORDERS_ENABLED === '1';
 const selectedRole = activeDevRole;
 const devOrderScope = ref<'all' | 'customers'>('all');
 const devNavigation = ref<ErpDevMenuNode[]>([]);
@@ -44,7 +47,7 @@ const sampleRows: Row[] = [
   { order_no: 'UAT-ORDER-003', type: '网红订单', warehouse: 'us-moreplus', sku: 'DEMO-GIFT', status: '待发货', tracking: '—', updated_at: '合成记录' },
   { order_no: 'UAT-ORDER-004', type: '客户订单', warehouse: 'de-tianyun', sku: 'DEMO-SKU-C', status: '异常订单', tracking: '—', updated_at: '合成记录' },
 ];
-const rows = ref<Row[]>(currentDevEnabled ? [] : [...sampleRows]);
+const rows = ref<Row[]>(currentDevEnabled || canonicalIdentityMode ? [] : [...sampleRows]);
 let requestSequence = 0;
 let initialOrdersLoaded = false;
 let lastFetchStartedAt = 0;
@@ -140,18 +143,18 @@ function onDevRoleChange() {
   void loadExisting(1);
 }
 function showSynthetic() {
-  if (currentDevEnabled) return;
+  if (currentDevEnabled || canonicalIdentityMode) return;
   mode.value = 'synthetic'; rows.value = [...sampleRows]; search.value = '';
   error.value = ''; pager.value = { page:1, perPage:50, total:0, lastPage:1 };
 }
 function initCurrentDevOrders() {
-  if (!currentDevEnabled || !isOrders.value || initialOrdersLoaded) return;
+  if ((!currentDevEnabled && !canonicalIdentityMode) || !isOrders.value || initialOrdersLoaded) return;
   initialOrdersLoaded = true;
   void loadExisting(1, 50);
 }
 onMounted(initCurrentDevOrders);
 onActivated(() => {
-  if (!currentDevEnabled || !isOrders.value) return;
+  if ((!currentDevEnabled && !canonicalIdentityMode) || !isOrders.value) return;
   if (!initialOrdersLoaded) { initCurrentDevOrders(); return; }
   // Returning to an inactive page always revalidates server-side. The cached
   // response can render immediately but does not permit interaction.
@@ -164,7 +167,11 @@ onActivated(() => {
     <header class="flex flex-wrap items-center justify-between gap-2">
       <div>
         <h1 class="text-lg font-semibold text-slate-800">{{ title }}</h1>
-        <p class="text-xs text-slate-500">BYL ERP · SiteOps / Vben 独立开发环境</p>
+        <p class="text-xs text-slate-500">BYL ERP · SiteOps / Vben 独立开发环境
+          <span v-if="canonicalIdentityMode && canonicalDevIdentity">
+            · Laravel 员工 {{ canonicalDevIdentity.user.name }} (#{{ canonicalDevIdentity.user.id }})
+          </span>
+        </p>
       </div>
       <span class="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
         007 本地 UAT · 所有业务写入关闭
@@ -217,7 +224,7 @@ onActivated(() => {
         </select>
       </div>
       <p class="text-xs text-slate-400">
-        {{ currentDevEnabled ? 'R2-B：通过原 Laravel Dev 登录 Session 和订单控制器授权；这里是隔离 UAT 角色，不是正式员工登录。全订单 /orders 未开启 OMS Grid Canary 时后端固定 50 条/页。业务写入关闭。' : bridgeEnabled ? '旧 R2 Dev 通道仅用于回归；生产写入关闭。' : '真实连接调用 Laravel 原有授权 GET /orders；业务写入关闭。' }}
+        {{ canonicalIdentityMode ? 'ERP2 P0：真实员工 Laravel Session + 原 ERP 服务端权限；/orders 仅 GET，禁止假角色与业务写入。' : currentDevEnabled ? 'R2-B：通过原 Laravel Dev 登录 Session 和订单控制器授权；这里是隔离 UAT 角色，不是正式员工登录。全订单 /orders 未开启 OMS Grid Canary 时后端固定 50 条/页。业务写入关闭。' : bridgeEnabled ? '旧 R2 Dev 通道仅用于回归；生产写入关闭。' : '真实连接调用 Laravel 原有授权 GET /orders；业务写入关闭。' }}
       </p>
       <div v-if="currentDevEnabled" class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
         <span v-if="hotRefreshing" role="status" class="font-semibold text-amber-700">热快照待服务器校验 · 表格暂不可操作</span>
