@@ -9,7 +9,7 @@ test('R5 isolated browser: compact all-order master searches canonical orders on
 
   await page.goto('/orders/master', { waitUntil: 'domcontentloaded' })
   await expect(page.locator('.orders-master')).toBeVisible({ timeout: 20000 })
-  await expect(page.getByRole('heading', { name: '订单总表' })).toBeVisible()
+  await expect(page.locator('.orders-master h2', { hasText: '订单总表' })).toBeVisible()
   await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toBeVisible({ timeout: 20000 })
   await expect(page.getByText('全部可查看记录 4 单')).toBeVisible()
   await expect(page.getByText('007erp-1009-c999', { exact: true }).first()).toBeVisible()

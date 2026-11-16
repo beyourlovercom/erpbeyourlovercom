@@ -30,11 +30,11 @@
 | Gate | Work | Estimated effective hours | Current stage |
 | --- | --- | ---: | --- |
 | R1 | Design mockup / Owner feedback | Completed before branch | Design PASS |
-| R2 / P0 | Archive database search across pages, tests | 1.5–2.5 | Implemented; backend test pending |
-| R3 / P1 | Historical read-only canonical query, access scope | 3–4.5 | Implemented; backend test pending |
-| R4 / P1 | Global Grid compact UI, quick chips, columns | 3–4.5 | Implemented; typecheck/build passed |
-| R5 | Dev backend integration, real browser Owner UAT | 2–3.5 | Pending |
-| R6 | Branch/PR, review evidence, release prep | 1–2 | PR prep; no merge/Production |
+| R2 / P0 | Archive database search across pages, tests | 1.5–2.5 | Implemented; backend PASS |
+| R3 / P1 | Historical read-only canonical query, access scope | 3–4.5 | Implemented; backend PASS |
+| R4 / P1 | Global Grid compact UI, quick chips, columns | 3–4.5 | Implemented; typecheck/build PASS |
+| R5 | Isolated browser E2E + real rendered Dev Owner UAT | 2–3.5 | Isolated browser PASS; Owner Dev PASS pending |
+| R6 | Branch/PR, review evidence, release prep | 1–2 | Draft PR #787; no merge/Production |
 
 ## R5 TEST EVIDENCE (US MAC, ISOLATED TEST DIRECTORY)
 
@@ -42,6 +42,8 @@
 - Operational archive backend: 6 scenarios / 201 assertions PASS.
 - Navigation feature tests: exit 0 after applying `withoutVite()` in their test-only setup (isolated clone has no Vite manifest).
 - Local frontend: `npm run typecheck` PASS; `npm run build` PASS; 30-tab verifier PASS.
+- US Mac mini real Chrome + isolated Laravel/Fortify/disposable SQLite: `BYL_E2E_BROWSER=chrome BYL_E2E_SUITE=orders-master npm run test:e2e` **1/1 PASS** in ~6s; compact page, canonical customer/KOL rows, server search, order-kind filter, no-match and clear, archive-search entry, browser guard, cleanup PASS. This proves a real rendered browser flow in an isolated Dev harness but does **not** constitute a public Dev deployment or Owner visual PASS.
+- Local E2E TypeScript typecheck: `npm run typecheck:e2e` PASS.
 - Full Vitest baseline: 951/958 pass; 7 failures confined to three existing Inventory component test files, with no Inventory files modified in this branch.
 - Approved menu baseline suite has at least one pre-existing contract mismatch: query-string URL `accounting-loss-orders` violates its old slug assertion. Treat as a separate baseline issue, not as a reason to weaken user-facing Orders permissions or data integrity.
 - Owner live Dev/browser UAT: **PENDING**. No PR merge and no Production release.
