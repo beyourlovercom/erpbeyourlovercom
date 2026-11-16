@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Cell from './DomesticGridPendingCell.vue'
 
@@ -64,6 +65,34 @@ describe('G-P1 compact cumulative Speeda history actions', () => {
       expect(p.confirmShip).not.toHaveBeenCalled()
       view.unmount()
     }
+  })
+  it('opens shared create form from the shipment popover and keeps save/ship explicit', async()=>{
+    const p={...params(),compactActions:false}
+    type TestCarrier={value:string;label:string;services:{value:string;label:string}[]}
+    const catalog=ref<TestCarrier[]>([...p.carrierOptions])
+    const onCreated=vi.fn<(carrier:TestCarrier)=>void>()
+    const openCarrierCreate=vi.fn((callback:(carrier:TestCarrier)=>void)=>{
+      onCreated.mockImplementation(created=>{catalog.value=[...catalog.value,created];callback(created)})
+    })
+    const view=mount(Cell,{props:{params:{...p,getCarrierOptions:()=>catalog.value,openCarrierCreate}},attachTo:document.body})
+    await view.get('button.pending-edit').trigger('click')
+    const selector=document.querySelector('.domestic-pending-popover select[aria-label="物流商"]') as HTMLSelectElement
+    expect(Array.from(selector.options).at(-1)?.text).toContain('添加物流商')
+    selector.value='__add_carrier__'
+    selector.dispatchEvent(new Event('change',{bubbles:true}))
+    await view.vm.$nextTick()
+    expect(openCarrierCreate).toHaveBeenCalledOnce()
+    expect(p.saveCarrier).not.toHaveBeenCalled()
+    expect(p.confirmShip).not.toHaveBeenCalled()
+    onCreated({value:'德邦物流',label:'德邦物流',services:[{value:'默认',label:'默认'}]})
+    await view.vm.$nextTick()
+    expect(selector.value).toBe('德邦物流')
+    expect((document.querySelector('.domestic-pending-popover select[aria-label="服务类型"]') as HTMLSelectElement).value).toBe('默认')
+    const confirm=document.querySelector('.domestic-pending-popover button:not([disabled])') as HTMLButtonElement
+    confirm.click()
+    expect(p.saveCarrier).toHaveBeenCalledWith(42,'德邦物流','默认')
+    expect(p.confirmShip).not.toHaveBeenCalled()
+    view.unmount()
   })
   it('with no permission and no sync-eligible shipment renders only a dash', () => {
     const p = { ...params(), canOperate: false, canReview: false }
