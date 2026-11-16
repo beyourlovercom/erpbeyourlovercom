@@ -7,6 +7,8 @@ type Source={order_id:number;review_status:string;shipment_status:string|null;ca
 type Draft={carrier:string;service:string;tracking:string}
 type Params={
   data:Row;canReview:boolean;canOperate:boolean;carrierOptions:Carrier[]
+  getCarrierOptions?:()=>Carrier[]
+  openCarrierCreate?:(onCreated:(carrier:Carrier)=>void)=>void
   compactActions?:boolean
   source:(id:number)=>Source|undefined
   carrierBusy:(id:number)=>boolean
@@ -42,7 +44,21 @@ const outbound=ref('')
 const needsOutbound=computed(()=>props.params.requiresOutboundReference?.(id.value)===true)
 const xy=ref({top:0,left:0})
 const width=354
-const services=computed(()=>props.params.carrierOptions.find(c=>c.value===draft.value.carrier)?.services??[])
+const catalog=computed(()=>props.params.getCarrierOptions?.()??props.params.carrierOptions)
+const services=computed(()=>catalog.value.find(c=>c.value===draft.value.carrier)?.services??[])
+const chooseCarrier=()=>{
+  if(draft.value.carrier==='__add_carrier__'){
+    draft.value.carrier=source.value?.carrier??''
+    draft.value.service=source.value?.service??''
+    props.params.openCarrierCreate?.(created=>{
+      if(!canShip.value||!open.value)return
+      draft.value.carrier=created.value
+      draft.value.service='默认'
+    })
+    return
+  }
+  draft.value.service=''
+}
 const serviceLabel=(s:{value:string;label:string;name_zh?:string|null})=>draft.value.carrier==='4PX'?(s.name_zh?.trim()||s.value):s.label
 const carrierDirty=computed(()=>!!source.value && (draft.value.carrier!==(source.value.carrier??'') || draft.value.service!==(source.value.service??'')))
 const trackDirty=computed(()=>draft.value.tracking.trim()!==(source.value?.tracking_number??''))
@@ -60,10 +76,11 @@ const reposition=()=>{
 const outside=(ev:PointerEvent)=>{
   if(!open.value&&!compactOpen.value)return
   const t=ev.target as Node
+  if(t instanceof Element && t.closest('.domestic-inline-carrier-backdrop'))return
   if(floating.value?.contains(t)||compactEl.value?.contains(t)||trigger.value?.contains(t))return
   close()
 }
-const esc=(ev:KeyboardEvent)=>{if(ev.key==='Escape'){ev.preventDefault();close()}}
+const esc=(ev:KeyboardEvent)=>{if(ev.key==='Escape'&&!document.querySelector('.domestic-inline-carrier-backdrop')){ev.preventDefault();close()}}
 const remove=()=>{
   document.removeEventListener('pointerdown',outside,true)
   document.removeEventListener('keydown',esc,true)
@@ -165,9 +182,10 @@ onBeforeUnmount(remove)
         <strong>{{params.data.order_number}} · 填写物流</strong>
         <label>物流商
           <select ref="carrierEl" v-model="draft.carrier" aria-label="物流商"
-            :disabled="busy" @change="draft.service=''">
+            :disabled="busy" @change="chooseCarrier">
             <option value="">请选择物流商</option>
-            <option v-for="c in params.carrierOptions" :key="c.value" :value="c.value">{{c.label}}</option>
+            <option v-for="c in catalog" :key="c.value" :value="c.value">{{c.label}}</option>
+            <option v-if="params.openCarrierCreate" value="__add_carrier__">＋ 添加物流商…</option>
           </select>
         </label>
         <label>服务类型
