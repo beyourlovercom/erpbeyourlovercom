@@ -5,10 +5,45 @@ import { ref } from 'vue';
 import { useAccessStore, useTabbarStore } from '@vben/stores';
 
 import { getCurrentDevReadOnlyOrders, type ErpCurrentDevPage, type ErpDevMenuNode } from '#/api/erp-orders';
+import { getCanonicalErpIdentity, type CanonicalErpIdentity } from '#/api/erp-identity';
 
 export type DevRole = 'owner' | 'staff' | 'kol' | 'manager';
 export const activeDevRole = ref<DevRole>('owner');
 export const devBootstrapError = ref('');
+export const canonicalDevIdentity = ref<CanonicalErpIdentity | undefined>();
+const canonicalAllowedPaths = new Set<string>();
+export const isCanonicalErpPathAllowed = (path: string) => canonicalAllowedPaths.has(path);
+
+export async function bootstrapCanonicalDevNavigation(router: Router): Promise<boolean> {
+  // No role dropdown, local mock user, snapshot cache, or alternate identity DB.
+  suspendAuthorizedDevNavigation();
+  canonicalDevIdentity.value = undefined;
+  canonicalAllowedPaths.clear();
+  devBootstrapError.value = '';
+  try {
+    const identity = await getCanonicalErpIdentity();
+    canonicalDevIdentity.value = identity;
+    applyAuthorizedDevNavigation(identity.navigation, router);
+    for (const group of identity.navigation) {
+      if (!/^[a-z0-9_-]+$/.test(group.key)) continue;
+      const parent = group.key === 'dashboard' ? '/erp/overview' : '/erp/' + group.key;
+      if (!group.children?.length) canonicalAllowedPaths.add(parent);
+      for (const child of group.children ?? []) {
+        if (/^[a-z0-9_-]+$/.test(child.key)) canonicalAllowedPaths.add(parent + '/' + child.key);
+      }
+      if (group.key === 'orders' && identity.effectivePermissionKeys.includes('orders.view')) {
+        canonicalAllowedPaths.add('/erp/orders/orders-master');
+      }
+    }
+    return true;
+  } catch (reason) {
+    devBootstrapError.value = reason instanceof Error ? reason.message : 'ERP2_CANONICAL_AUTH_FAILED';
+    canonicalDevIdentity.value = undefined;
+    canonicalAllowedPaths.clear();
+    suspendAuthorizedDevNavigation();
+    return false;
+  }
+}
 let approvedSource: MenuRecordRaw[] = [];
 let initialPage: ErpCurrentDevPage | undefined;
 
@@ -90,6 +125,8 @@ export function applyAuthorizedDevNavigation(navigation: ErpDevMenuNode[], route
   if (forbidden.length) void tabbar._bulkCloseByKeys(forbidden);
 }
 export function clearAuthorizedDevNavigation() {
+  canonicalDevIdentity.value = undefined;
+  canonicalAllowedPaths.clear();
   suspendAuthorizedDevNavigation();
   initialPage = undefined;
 }
