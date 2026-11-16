@@ -52,6 +52,7 @@ for (const name of [
   'r2b-bootstrap-uat.cjs', 'r6t-browser-uat.cjs',
   'r6t-current-hot-browser-uat.cjs', 'r6t-pin-browser-uat.cjs',
   'r6t-five-session-browser-uat.cjs',
+  'r2c-real-staff-dev-uat.cjs',
 ]) {
   const source = path.join(packaged, 'runtime', name);
   const target = path.join(path.dirname(destination), name);
