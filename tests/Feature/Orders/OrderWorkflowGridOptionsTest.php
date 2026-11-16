@@ -11,11 +11,11 @@ final class OrderWorkflowGridOptionsTest extends TestCase
     {
         $options = collect(OrderWorkflowGridOptions::customer())->keyBy('code');
 
-        foreach (['pending_allocation', 'sending', 'missing_info', 'renew', 'returned_follow_up', 'claims', 'freight_product_cost_follow_up', 'exception', 'out_of_stock', 'cancelled'] as $code) {
+        foreach (['pending_allocation', 'pending_review', 'sending', 'finished', 'shipped', 'completed', 'missing_info', 'renew', 'returned_follow_up', 'claims', 'freight_product_cost_follow_up', 'exception', 'out_of_stock', 'cancelled'] as $code) {
             self::assertTrue($options->get($code)['mutable'], $code);
         }
 
-        foreach (['pending_review', 'allocated', 'shipping', 'shipped', 'completed', 'archived', 'progress_conflict', 'published', 'refunded', 'finished'] as $code) {
+        foreach (['allocated', 'shipping', 'archived', 'progress_conflict', 'published', 'refunded'] as $code) {
             self::assertFalse($options->get($code)['mutable'], $code);
         }
 

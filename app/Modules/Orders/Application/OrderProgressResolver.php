@@ -21,6 +21,11 @@ final class OrderProgressResolver
         if ($order->archived_at !== null || $order->isOperationallyArchived()) {
             return 'archived';
         }
+        // Staff explicitly returning an order to allocation/review wins over
+        // its former visible phase; shipment facts still gate real dispatch.
+        if (in_array($order->workflow_status, ['pending_allocation', 'pending_review'], true)) {
+            return $order->workflow_status;
+        }
         if ($order->order_status === OrderStatus::Cancelled) {
             return 'cancelled';
         }

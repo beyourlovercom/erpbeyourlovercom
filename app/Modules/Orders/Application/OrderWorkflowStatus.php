@@ -10,8 +10,8 @@ final class OrderWorkflowStatus
     public static function registry(): array
     {
         return [
-            'pending_allocation' => ['en' => 'Pending Allocation', 'zh' => '待分仓', 'color' => 'neutral', 'mutable' => false],
-            'pending_review' => ['en' => 'Pending Review', 'zh' => '待审核', 'color' => 'amber', 'mutable' => false],
+            'pending_allocation' => ['en' => 'Pending Allocation', 'zh' => '待分仓', 'color' => 'neutral', 'mutable' => true],
+            'pending_review' => ['en' => 'Pending Review', 'zh' => '待审核', 'color' => 'amber', 'mutable' => true],
             'partially_shipped' => ['en' => 'Partially Shipped', 'zh' => '部分已发货', 'color' => 'blue', 'mutable' => false],
             'archived' => ['en' => 'Archived', 'zh' => '已归档', 'color' => 'neutral', 'mutable' => false],
             'progress_conflict' => ['en' => 'Reconciliation Required', 'zh' => '状态待对账', 'color' => 'red', 'mutable' => false],
@@ -31,8 +31,8 @@ final class OrderWorkflowStatus
             'cancel' => ['en' => 'Cancel', 'zh' => '取消订单', 'color' => 'red', 'mutable' => false],
             'refunded' => ['en' => 'Refunded', 'zh' => '退款单', 'color' => 'red', 'mutable' => false],
             'finished' => ['en' => 'Finished', 'zh' => '完结', 'color' => 'green', 'mutable' => true],
-            'shipped' => ['en' => 'Shipped', 'zh' => '已发货', 'color' => 'green', 'mutable' => false],
-            'completed' => ['en' => 'Completed', 'zh' => '已完成', 'color' => 'green', 'mutable' => false],
+            'shipped' => ['en' => 'Shipped', 'zh' => '已发货', 'color' => 'green', 'mutable' => true],
+            'completed' => ['en' => 'Completed', 'zh' => '已完成', 'color' => 'green', 'mutable' => true],
             'cancelled' => ['en' => 'Cancelled', 'zh' => '已取消', 'color' => 'red', 'mutable' => true],
             'returned_follow_up' => ['en' => 'Returned', 'zh' => '退件需跟进', 'color' => 'amber', 'mutable' => true],
             'claims' => ['en' => 'Claims', 'zh' => '索赔需跟进', 'color' => 'red', 'mutable' => true],

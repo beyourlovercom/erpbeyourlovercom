@@ -26,7 +26,7 @@ it('renders the same editable dropdown inside Global Grid and sends the authorit
   await wrapper.find('select').setValue('missing_info')
   await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/107/workflow-status', {
     workflow_status: 'missing_info', expected_workflow_revision: 3,
-  }))
+  }, expect.any(Object)))
   expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('missing_info')
   expect(reload).toHaveBeenCalled()
   patch.mockRestore()
