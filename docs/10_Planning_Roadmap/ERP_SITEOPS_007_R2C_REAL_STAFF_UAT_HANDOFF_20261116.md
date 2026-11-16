@@ -6,14 +6,14 @@ Execution provider: GPT_WEB (bounded test-only change). Verification tier: HIGH_
 ## Verified source facts
 - The isolated Laravel Dev fixture on US Mac mini at `100.94.52.109:18811` contains exactly **4 users, all `@local.invalid`** (read-only SQLite inspection on 2026-11-16). No Vita, Liang, Dede, Emma, Guts or Hiko real account exists in this fixture.
 - Existing 007windows `r2b-current-gateway.cjs` accepts only `owner/staff/kol/manager`; `logIn()` explicitly rejects non-`@local.invalid` identities. Thus its four-role PASS is synthetic and cannot close R2-C.
-- The Owner's existing 007windows Chrome process reports `R2C_OWNER_VISUAL_REVIEW_READY` at `http://127.0.0.1:18786/#/erp/orders/orders-master`, 123 isolated orders; Owner has not yet issued personal visual PASS.
+- **Owner Step 2 visual review PASS (2026-11-16)**, explicitly confirmed by Owner. This does not close genuine employee identity/permission parity.
 
 ## New versioned evidence runner
 `apps/erp-siteops-vben/runtime/r2c-real-staff-dev-uat.cjs`, also installed by `scripts/bootstrap.cjs`.
 
 The runner is **fail-closed** and does not provision accounts or scrape passwords. It accepts existing, legitimately established Laravel **Dev** session cookies from protected, untracked local files. It sends only GET business requests (`/orders` and server-filtered `/orders?search=...`); no fulfillment, inventory, Woo, OMS, status update, logout or Production API operations. It checks:
-1. Exactly six distinct named employees, real Dev emails (rejects `@local.invalid`), and an explicitly allowlisted Dev base URL.
-2. Per-person authenticated Inertia `auth.user.email` equals the expected actual Dev account, with separate session cookies.
+1. Exactly six distinct named employees, non-synthetic Dev emails (rejects `@local.invalid`, `@local.test`, reserved `.test`/`.invalid`/`.example`/`.localhost`), distinct canonical ERP numeric user IDs and cookie files, and an explicitly allowlisted Dev base URL.
+2. Per-person authenticated Inertia `auth.user.id` **and** `auth.user.email` equal the expected canonical original ERP Dev account, with separate session cookies.
 3. Server-provided allowed/forbidden first-/second-level menu keys match the written expectations.
 4. Positive exact visible order; for Emma/Guts/Hiko also a negative exact out-of-scope order. Any missing fixture is a HOLD, never an automatic PASS.
 5. Only emits employee labels and pass/fail flags, never cookie values, passwords or customer rows.
@@ -30,6 +30,7 @@ The manifest is a private JSON file named by `BYL_R2C_DEV_STAFF_MANIFEST`:
     {
       "employee": "Vita",
       "email": "<legitimate-Vita-Dev-email>",
+      "erpUserId": 12345,
       "cookieFile": "/approved/private/vita.dev-cookie",
       "requiredMenuKeys": ["orders"],
       "forbiddenMenuKeys": [],
@@ -48,10 +49,14 @@ BYL_R2C_DEV_STAFF_MANIFEST=/approved/private/staff-sessions.json \
   node apps/erp-siteops-vben/runtime/r2c-real-staff-dev-uat.cjs
 ```
 
-The exact success marker is `R2C_REAL_STAFF_DEV_PASS verifiedEmployees=6 readOnlyBusinessRequests=true`; failures emit `R2C_REAL_STAFF_DEV_HOLD` and exit nonzero. Syntax check passed; absent manifest correctly produced `REAL_STAFF_DEV_SESSIONS_NOT_PROVISIONED`. **No real employee PASS was claimed.**
+The exact success marker is `R2C_LEGACY_STAFF_PREFLIGHT_PASS verifiedEmployees=6 readOnlyBusinessRequests=true erp2Parity=NOT_TESTED`; failures emit `R2C_LEGACY_STAFF_PREFLIGHT_HOLD` and exit nonzero. This verifies **original ERP Dev only**, not ERP2 identity binding or cross-system permissions. Syntax check passed; absent manifest correctly produced `REAL_STAFF_DEV_SESSIONS_NOT_PROVISIONED`. **No real employee PASS was claimed.**
 
 ## Remaining hard gates
 - **P0 HOLD:** actual six employee Dev identities/sessions and read-only record-level evidence (3–6h after legitimate access). Backend audit is necessary but does not replace front-end session-bound Vben role UI verification.
-- **P0 Owner UAT READY, NOT PASS:** inspect the already-running 007windows Chrome live ERP Vben Orders, two-level navigation, 30/3/3 tabs and mobile; only Owner may declare PASS.
+- **Owner Step 2 visual UAT CLOSED, PASS:** Owner explicitly confirmed the 007windows ERP2 preview looks and behaves normally.
 - P1 state parity/portable ZIP postponed until both P0 gates close per Owner direction.
 - PR #766 stays Draft and Dev-only; no main merge or Production release.
+
+## Owner P0 parity freeze — controlling instruction
+
+See [`ERP2_IDENTITY_PERMISSION_PARITY_OWNER_FREEZE_20261116.md`](ERP2_IDENTITY_PERMISSION_PARITY_OWNER_FREEZE_20261116.md). Staff **permission equivalence requires comparing canonical ERP user IDs, persisted effective permission keys and record/action scopes between ERP1 and ERP2**. A successful legacy Dev-session preflight alone cannot close this gate. Remaining P1 stays HOLD until 6/6 original-ERP-versus-ERP2 comparison passes. PR #766 remains Draft.
