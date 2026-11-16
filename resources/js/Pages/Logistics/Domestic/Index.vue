@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
+import axios from 'axios'
 import { computed, defineAsyncComponent, nextTick, reactive, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
@@ -94,7 +95,56 @@ const gridNavigation = useGlobalGridListAdapter({
   pageSize:()=>props.rows.per_page??50,
   context:()=>props.view==='outsource' ? {} : {view:props.view},
 })
-const displayCarrier = (carrier:string|null|undefined) => props.carrierOptions.find(item=>item.value.toLowerCase()===(carrier??'').toLowerCase())?.label ?? carrier ?? '—'
+const inlineCarrierOptions=ref<CarrierOption[]>([])
+const carrierCatalog=computed(()=>{
+  const result=new Map(props.carrierOptions.map(carrier=>[carrier.value.toLowerCase(),carrier]))
+  for(const carrier of inlineCarrierOptions.value)result.set(carrier.value.toLowerCase(),carrier)
+  return [...result.values()]
+})
+const inlineCarrierOpen=ref(false)
+const inlineCarrierSaving=ref(false)
+const inlineCarrierForm=ref({name:'',name_en:''})
+const inlineCarrierError=ref('')
+let onInlineCarrierCreated:((carrier:CarrierOption)=>void)|null=null
+const openInlineCarrier=(onCreated:(carrier:CarrierOption)=>void)=>{
+  if(!props.canOperate)return
+  onInlineCarrierCreated=onCreated
+  inlineCarrierForm.value={name:'',name_en:''}
+  inlineCarrierError.value=''
+  inlineCarrierOpen.value=true
+}
+const closeInlineCarrier=()=>{
+  if(inlineCarrierSaving.value)return
+  inlineCarrierOpen.value=false
+  onInlineCarrierCreated=null
+}
+const submitInlineCarrier=async()=>{
+  if(!props.canOperate||inlineCarrierSaving.value)return
+  const name=inlineCarrierForm.value.name.trim()
+  inlineCarrierError.value=''
+  if(!name){inlineCarrierError.value='请填写物流商名称。';return}
+  inlineCarrierSaving.value=true
+  try{
+    const response=await axios.post<{carrier:CarrierOption}>('/logistics/carriers',{
+      name,name_en:inlineCarrierForm.value.name_en.trim()||null,
+    },{headers:{Accept:'application/json'}})
+    const created=response.data.carrier
+    if(!created?.value||!created.services?.some(service=>service.value==='默认')){
+      throw new Error('新增结果缺少默认服务，请刷新后检查物流商配置。')
+    }
+    inlineCarrierOptions.value=[...inlineCarrierOptions.value.filter(row=>row.value!==created.value),created]
+    const onCreated=onInlineCarrierCreated
+    inlineCarrierOpen.value=false
+    onInlineCarrierCreated=null
+    onCreated?.(created)
+  }catch(error){
+    if(axios.isAxiosError(error)){
+      const data=error.response?.data as {message?:string;errors?:Record<string,string[]>}|undefined
+      inlineCarrierError.value=data?.errors?.name?.[0]??data?.errors?.name_en?.[0]??data?.message??'添加失败，请重试。'
+    }else inlineCarrierError.value=error instanceof Error?error.message:'添加失败，请重试。'
+  }finally{inlineCarrierSaving.value=false}
+}
+const displayCarrier = (carrier:string|null|undefined) => carrierCatalog.value.find(item=>item.value.toLowerCase()===(carrier??'').toLowerCase())?.label ?? carrier ?? '—'
 const nativeOperationRows = computed(()=>!props.globalGridPilotEnabled || showBatchLegacyOperations.value
   ? props.rows.data : props.rows.data.filter(row=>row.order_id===activeOperationId.value))
 const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
@@ -175,7 +225,8 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'carrier',field:'carrier',headerName:'物流商',width:156,
     ...(props.view==='pending'?{cellRenderer:DomesticGridPendingRouteCell,cellRendererParams:{
       source:(id:number)=>props.rows.data.find(item=>item.order_id===id),
-      carrierOptions:props.carrierOptions,canOperate:props.canOperate,
+      carrierOptions:props.carrierOptions,getCarrierOptions:()=>carrierCatalog.value,
+      openCarrierCreate:openInlineCarrier,canOperate:props.canOperate,
       carrierBusy:(id:number)=>!!carrierBusy.value[id],
       saveCarrier:(id:number,carrier:string,service:string)=>{
         const row=props.rows.data.find(item=>item.order_id===id)
@@ -188,7 +239,8 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'service',field:'service',headerName:'服务',width:200,
     ...(props.view==='pending'?{cellRenderer:DomesticGridPendingRouteCell,cellRendererParams:{
       source:(id:number)=>props.rows.data.find(item=>item.order_id===id),
-      carrierOptions:props.carrierOptions,canOperate:props.canOperate,
+      carrierOptions:props.carrierOptions,getCarrierOptions:()=>carrierCatalog.value,
+      openCarrierCreate:openInlineCarrier,canOperate:props.canOperate,
       carrierBusy:(id:number)=>!!carrierBusy.value[id],
       saveCarrier:(id:number,carrier:string,service:string)=>{
         const row=props.rows.data.find(item=>item.order_id===id)
@@ -215,6 +267,8 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
     }:{
       compactActions:isHistoryProviderView(props.view),
       carrierOptions:props.carrierOptions,
+      getCarrierOptions:()=>carrierCatalog.value,
+      openCarrierCreate:openInlineCarrier,
       canTrackingSync:props.canTrackingSync,
       syncEligible:(id:number)=>{
         const row=props.rows.data.find(item=>item.order_id===id)
@@ -335,7 +389,18 @@ const carrierChanged = (row:Row):boolean => {
   return draft.carrier!==saved.carrier || draft.service!==saved.service
 }
 const chooseCarrier = (row:Row,event:Event) => {
-  carrierDrafts.value[row.order_id]={carrier:(event.target as HTMLSelectElement).value,service:''}
+  const selected=(event.target as HTMLSelectElement).value
+  if(selected==='__add_carrier__'){
+    ;(event.target as HTMLSelectElement).value=carrierDraft(row).carrier
+    openInlineCarrier(created=>{
+      if(!canQuickShip(row))return
+      carrierDrafts.value[row.order_id]={carrier:created.value,service:'默认'}
+      carrierErrors.value[row.order_id]=''
+      carrierSaved.value[row.order_id]=''
+    })
+    return
+  }
+  carrierDrafts.value[row.order_id]={carrier:selected,service:''}
   carrierErrors.value[row.order_id]=''
   carrierSaved.value[row.order_id]=''
 }
@@ -344,7 +409,7 @@ const chooseService = (row:Row,event:Event) => {
   carrierErrors.value[row.order_id]=''
   carrierSaved.value[row.order_id]=''
 }
-const serviceOptions = (row:Row) => props.carrierOptions.find(c=>c.value===carrierDraft(row).carrier)?.services ?? []
+const serviceOptions = (row:Row) => carrierCatalog.value.find(c=>c.value===carrierDraft(row).carrier)?.services ?? []
 const carrierReady = (row:Row) => row.carrier_ready === true && !carrierChanged(row)
 const saveCarrier = (row:Row) => {
   const draft=carrierDraft(row)
@@ -859,7 +924,8 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                   :aria-label="'选择物流商 '+(row.erp_order_id??row.order_id)" :disabled="!!carrierBusy[row.order_id]"
                   @change="chooseCarrier(row,$event)">
                   <option value="">请选择物流商</option>
-                  <option v-for="option in carrierOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                  <option v-for="option in carrierCatalog" :key="option.value" :value="option.value">{{ option.label }}</option>
+                  <option value="__add_carrier__">＋ 添加物流商…</option>
                 </select>
                 <span v-else>{{ row.shipment_status==='pending' && row.carrier_selection_source!=='manual' ? '—' : displayCarrier(row.carrier) }}</span>
               </td>
@@ -915,6 +981,20 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         <span v-if="view==='today-4px'">新版 27 列模板 · 所有订单按现有数据填写 SKU / 69条码（空缺留空） · XLSX 下载 · XLS/XLSX 回传。</span>
         <span v-if="view==='today-weship' && providerStatus.weship.export_ready">{{ providerStatus.weship.note ?? '纬狮下单导出可用' }}</span>
       </CompactWorkspaceHelp>
+      <div v-if="inlineCarrierOpen" class="domestic-inline-carrier-backdrop" @click.self="closeInlineCarrier">
+        <section class="domestic-inline-carrier-dialog" role="dialog" aria-modal="true" aria-label="添加物流商">
+          <header><div><small>CARRIER MASTER</small><h2>添加物流商</h2></div><button type="button" aria-label="关闭新增物流商" :disabled="inlineCarrierSaving" @click="closeInlineCarrier">×</button></header>
+          <p>创建后可在所有订单中使用；当前服务自动选择“默认”。</p>
+          <form @submit.prevent="submitInlineCarrier">
+            <label>物流商名称 *<input v-model="inlineCarrierForm.name" maxlength="128" required :disabled="inlineCarrierSaving" placeholder="例如：德邦物流" autocomplete="off" /></label>
+            <label>英文名称（选填）<input v-model="inlineCarrierForm.name_en" maxlength="128" :disabled="inlineCarrierSaving" placeholder="例如：Deppon" autocomplete="off" /></label>
+            <label>运输 / 服务类型<input value="默认" readonly aria-label="默认运输服务" /></label>
+            <small v-if="inlineCarrierError" role="alert" class="danger">{{inlineCarrierError}}</small>
+            <div class="actions"><button type="button" class="secondary" :disabled="inlineCarrierSaving" @click="closeInlineCarrier">取消</button>
+              <button type="submit" class="primary" :disabled="inlineCarrierSaving||!inlineCarrierForm.name.trim()">{{inlineCarrierSaving?'添加中…':'添加并选中'}}</button></div>
+          </form>
+        </section>
+      </div>
       <div v-if="rejectTarget" class="review-reject-backdrop" @click.self="rejectTarget=null">
         <section class="review-reject-dialog" role="dialog" aria-modal="true" aria-label="驳回国内订单">
           <h2>驳回到 Vita 待分仓</h2>
@@ -936,6 +1016,10 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 </template>
 
 <style scoped>
+.domestic-inline-carrier-backdrop{position:fixed;inset:0;z-index:12100;background:rgba(15,23,42,.48);display:flex;align-items:center;justify-content:center;padding:16px}
+.domestic-inline-carrier-dialog{width:min(440px,100%);background:white;border-radius:12px;padding:20px;display:grid;gap:10px;box-shadow:0 25px 80px rgba(15,23,42,.2)}
+.domestic-inline-carrier-dialog header{display:flex;align-items:start;justify-content:space-between;gap:12px}.domestic-inline-carrier-dialog header small{color:#0f766e;font-size:10px;font-weight:800;letter-spacing:.09em}.domestic-inline-carrier-dialog header h2{margin:3px 0 0;font-size:19px}.domestic-inline-carrier-dialog header button{border:0;background:#f1f5f9;border-radius:6px;font-size:20px;color:#475569;padding:2px 9px}
+.domestic-inline-carrier-dialog p{color:#64748b;font-size:12px;margin:0}.domestic-inline-carrier-dialog form{display:grid;gap:12px}.domestic-inline-carrier-dialog label{display:grid;gap:5px;color:#475569;font-size:12px;font-weight:700}.domestic-inline-carrier-dialog input{width:100%;height:38px;border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;color:#1e293b;background:#fff;box-sizing:border-box}.domestic-inline-carrier-dialog input[readonly]{background:#f8fafc}.domestic-inline-carrier-dialog .actions{justify-content:flex-end;margin-top:5px}
 .domestic-grid-main{margin:8px 0 14px;min-width:0}
 .domestic-grid-legacy-tools{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
 

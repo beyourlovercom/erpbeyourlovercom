@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import axios from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
 
@@ -581,6 +582,45 @@ describe('Domestic logistics production workbench', () => {
     expect(conflictWrapper.text()).toContain('冲突待核对')
     expect(conflictWrapper.find('input[aria-label^="选择同步"]').exists()).toBe(false)
     expect(conflictWrapper.findAll('tbody button').filter(b=>b.text().includes('同步官网物流'))).toHaveLength(0)
+  })
+  it('creates a warehouse-list carrier with 默认 and waits for explicit row confirmation',async()=>{
+    const post=vi.spyOn(axios,'post').mockResolvedValue({data:{carrier:{value:'德邦物流',label:'德邦物流',default_service_value:'默认',services:[{value:'默认',label:'默认'}]}}})
+    try{
+      const wrapper=mount(Index,{props:baseProps})
+      const carrier=wrapper.get('select[aria-label^="选择物流商"]')
+      expect(carrier.findAll('option').at(-1)?.text()).toContain('添加物流商')
+      await carrier.setValue('__add_carrier__')
+      expect(wrapper.find('[role="dialog"][aria-label="添加物流商"]').exists()).toBe(true)
+      await wrapper.get('input[placeholder="例如：德邦物流"]').setValue('德邦物流')
+      await wrapper.get('.domestic-inline-carrier-dialog form').trigger('submit')
+      await flushPromises()
+      expect(post).toHaveBeenCalledWith('/logistics/carriers',{name:'德邦物流',name_en:null},expect.objectContaining({headers:{Accept:'application/json'}}))
+      expect((carrier.element as HTMLSelectElement).value).toBe('德邦物流')
+      await wrapper.setProps({carrierOptions:[...baseProps.carrierOptions,{value:'德邦物流',label:'德邦物流',services:[{value:'默认',label:'默认'}]}]})
+      expect([...((carrier.element as HTMLSelectElement).options)].filter(option=>option.value==='德邦物流')).toHaveLength(1)
+      expect((wrapper.get('select[aria-label^="选择服务类型"]').element as HTMLSelectElement).value).toBe('默认')
+      expect(routerPost).not.toHaveBeenCalled()
+      await wrapper.get('.domestic-service-entry button').trigger('click')
+      expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/carrier-service',expect.objectContaining({carrier:'德邦物流',service:'默认'}),expect.any(Object))
+      expect(routerPost).toHaveBeenCalledTimes(1)
+    }finally{post.mockRestore()}
+  })
+  it('preserves warehouse selection on carrier-create validation failure and restricts edit permissions',async()=>{
+    const post=vi.spyOn(axios,'post').mockRejectedValue({isAxiosError:true,response:{status:422,data:{errors:{name:['物流商已存在']}}}})
+    try{
+      const wrapper=mount(Index,{props:baseProps})
+      const carrier=wrapper.get('select[aria-label^="选择物流商"]')
+      await carrier.setValue('__add_carrier__')
+      await wrapper.get('input[placeholder="例如：德邦物流"]').setValue('速达')
+      await wrapper.get('.domestic-inline-carrier-dialog form').trigger('submit')
+      await flushPromises()
+      expect(wrapper.get('.domestic-inline-carrier-dialog [role="alert"]').text()).toContain('物流商已存在')
+      expect((carrier.element as HTMLSelectElement).value).toBe('4PX')
+      expect(routerPost).not.toHaveBeenCalled()
+      const readonly=mount(Index,{props:{...baseProps,canOperate:false}})
+      expect(readonly.find('select[aria-label^="选择物流商"]').exists()).toBe(false)
+      expect(readonly.find('.domestic-inline-carrier-dialog').exists()).toBe(false)
+    }finally{post.mockRestore()}
   })
   it('looks up the exact EU parcel barcode inline without altering carrier exports', async () => {
     const fetchMock = vi.fn().mockResolvedValue({

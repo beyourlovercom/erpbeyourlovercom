@@ -35,6 +35,17 @@ describe('R4-3-F row carrier/service dropdowns',()=>{
     expect(readonly.text()).toBe('SD经济挂号-带电')
     expect(readonly.text()).not.toContain('Economy Registered')
   })
+  it('offers creation in editable carrier rows and assigns the created carrier with 默认 without shipment confirmation',async()=>{
+    const {wrapper,saveCarrier}=setup('carrier')
+    const openCarrierCreate=vi.fn((done:(carrier:typeof carriers[number])=>void)=>done({value:'德邦物流',label:'德邦物流',default_service_value:'默认',services:[{value:'默认',label:'默认'}]}))
+    await wrapper.setProps({params:{...wrapper.props('params'),openCarrierCreate}})
+    expect(wrapper.get('select').findAll('option').at(-1)!.text()).toContain('添加物流商')
+    await wrapper.get('select').setValue('__add_carrier__')
+    expect(openCarrierCreate).toHaveBeenCalledOnce()
+    expect(saveCarrier).toHaveBeenCalledWith(100,'德邦物流','默认')
+    expect(saveCarrier).toHaveBeenCalledTimes(1)
+    expect(setup('carrier',false).wrapper.find('select').exists()).toBe(false)
+  })
   it('changing carrier selects its configured service and persists both fields',async()=>{
     const {wrapper,saveCarrier}=setup('carrier')
     await wrapper.get('select').setValue('Weship')

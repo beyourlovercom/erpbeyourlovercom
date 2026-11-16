@@ -5,7 +5,8 @@ type Carrier={value:string;label:string;default_service_value?:string|null;servi
 type Source={carrier:string|null;service:string|null;review_status:string;shipment_status:string|null}
 type Params={
   data:{id:number};column:{getColId:()=>string}
-  carrierOptions:Carrier[];canOperate:boolean
+  carrierOptions:Carrier[];getCarrierOptions?:()=>Carrier[];canOperate:boolean
+  openCarrierCreate?:(onCreated:(carrier:Carrier)=>void)=>void
   source:(id:number)=>Source|undefined;carrierBusy:(id:number)=>boolean
   saveCarrier:(id:number,carrier:string,service:string)=>void
 }
@@ -15,7 +16,8 @@ const source=computed(()=>props.params.source(id.value))
 const isCarrier=computed(()=>props.params.column.getColId()==='carrier')
 const carrier=computed(()=>source.value?.carrier??'')
 const service=computed(()=>source.value?.service??'')
-const options=computed(()=>props.params.carrierOptions.find(x=>x.value===carrier.value)?.services??[])
+const catalog=computed(()=>props.params.getCarrierOptions?.()??props.params.carrierOptions)
+const options=computed(()=>catalog.value.find(x=>x.value===carrier.value)?.services??[])
 const serviceLabel=(item:{value:string;label:string;name_zh?:string|null})=>carrier.value==='4PX'?(item.name_zh?.trim()||item.value):item.label
 const editable=computed(()=>!!props.params.canOperate&&source.value?.review_status==='approved'
   &&source.value?.shipment_status==='pending'&&!props.params.carrierBusy(id.value))
@@ -26,7 +28,17 @@ const update=(event:Event)=>{
   localValue.value=value
   if(!editable.value)return
   if(isCarrier.value){
-    const selected=props.params.carrierOptions.find(x=>x.value===value)
+    if(value==='__add_carrier__'){
+      localValue.value=carrier.value
+      ;(event.target as HTMLSelectElement).value=carrier.value
+      props.params.openCarrierCreate?.(created=>{
+        if(!editable.value)return
+        localValue.value=created.value
+        props.params.saveCarrier(id.value,created.value,'默认')
+      })
+      return
+    }
+    const selected=catalog.value.find(x=>x.value===value)
     const first=selected?.services.find(x=>x.value===selected.default_service_value)??selected?.services[0]
     if(first&&value!==carrier.value)props.params.saveCarrier(id.value,value,first.value)
   }else if(carrier.value&&value!==service.value){
@@ -40,14 +52,15 @@ const update=(event:Event)=>{
     :value="localValue" @change.stop="update" @click.stop @mousedown.stop>
     <option v-if="!localValue" value="">请选择</option>
     <template v-if="isCarrier">
-      <option v-for="c in params.carrierOptions" :key="c.value" :value="c.value">{{c.label}}</option>
+      <option v-for="c in catalog" :key="c.value" :value="c.value">{{c.label}}</option>
+      <option v-if="params.openCarrierCreate" value="__add_carrier__">＋ 添加物流商…</option>
     </template>
     <template v-else>
       <option v-for="s in options" :key="s.value" :value="s.value">{{serviceLabel(s)}}</option>
     </template>
   </select>
   <span v-else class="domestic-pending-route-readonly" :title="isCarrier?carrier:service">
-    {{ isCarrier?(params.carrierOptions.find(c=>c.value===carrier)?.label??carrier):
+    {{ isCarrier?(catalog.find(c=>c.value===carrier)?.label??carrier):
       (options.find(s=>s.value===service)?serviceLabel(options.find(s=>s.value===service)!):service) || '—' }}
   </span>
 </template>
