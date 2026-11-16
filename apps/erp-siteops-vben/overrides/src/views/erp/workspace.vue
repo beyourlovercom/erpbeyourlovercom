@@ -184,7 +184,7 @@ onActivated(() => {
           @keydown.enter="mode === 'authenticated-erp' && loadExisting(1)" />
         <button v-if="mode === 'authenticated-erp'" type="button" class="rounded border px-2 py-1 text-xs"
           :disabled="fetching" @click="loadExisting(1)">查询全部授权记录</button>
-        <button v-if="!currentDevEnabled" type="button" class="rounded border px-2 py-1 text-xs" @click="showSynthetic">合成演示数据</button>
+        <button v-if="!currentDevEnabled && !canonicalIdentityMode" type="button" class="rounded border px-2 py-1 text-xs" @click="showSynthetic">合成演示数据</button>
         <template v-if="currentDevEnabled">
           <label class="text-xs text-slate-600" for="erp-dev-role">Laravel Dev 测试角色</label>
           <select id="erp-dev-role" v-model="selectedRole" class="rounded border px-2 py-1 text-xs"
