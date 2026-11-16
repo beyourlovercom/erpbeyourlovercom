@@ -51,6 +51,9 @@ function setupCommonGuard(router: Router) {
  * @param router
  */
 function setupAccessGuard(router: Router) {
+  // Not persisted: canonical routes must be registered once in THIS Vben runtime,
+  // even if the prior local fixture login left isAccessChecked in store state.
+  let canonicalRoutesReady = false;
   router.beforeEach(async (to, from) => {
     const accessStore = useAccessStore();
     const userStore = useUserStore();
@@ -63,7 +66,7 @@ function setupAccessGuard(router: Router) {
     // Every navigation revalidates the server so revocation cannot retain tabs.
     if (import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel') {
       if (to.path === '/403' || coreRouteNames.includes(to.name)) return true;
-      const firstCanonicalNavigation = !accessStore.isAccessChecked;
+      const firstCanonicalNavigation = !canonicalRoutesReady;
       if (firstCanonicalNavigation) {
         const { accessibleMenus, accessibleRoutes } = await generateAccess({
           roles: [], router, routes: accessRoutes,
@@ -72,6 +75,7 @@ function setupAccessGuard(router: Router) {
         accessStore.setAccessRoutes(accessibleRoutes);
         accessStore.setAccessMenus([]);
         accessStore.setIsAccessChecked(true);
+        canonicalRoutesReady = true;
       }
       if (!await bootstrapCanonicalDevNavigation(router) ||
           !isCanonicalErpPathAllowed(to.path)) {
