@@ -297,6 +297,61 @@ describe('Orders/Show V2', () => {
     expect((selects[2].element as HTMLSelectElement).value).toBe('USPS Priority Mail')
   })
 
+  it('creates a carrier inline, selects it, and sets its stored default service', async () => {
+    const post = vi.spyOn(axios, 'post').mockResolvedValueOnce({ data: {
+      carrier: {
+        value: '德邦物流', label: '德邦物流', default_service_id: 501, default_service_value: '默认',
+        services: [{ id: 501, key: 'default', value: '默认', label: '默认', name_en: 'Default', name_zh: '默认' }],
+      },
+    } })
+    try {
+      const wrapper = mountShipmentReview(true, true)
+      await openShipmentReview(wrapper)
+      const carrier = wrapper.get('[data-testid="shipment-carrier-select"]')
+      expect(carrier.find('option[value="__add_carrier__"]').exists()).toBe(true)
+      await carrier.setValue('__add_carrier__')
+
+      const create = wrapper.get('[role="dialog"][aria-label="添加物流商"]')
+      await create.findAll('input')[0].setValue('德邦物流')
+      await create.findAll('input')[1].setValue('Deppon Logistics')
+      await create.get('form').trigger('submit')
+      await flushPromises()
+
+      expect(post).toHaveBeenCalledWith('/logistics/carriers', {
+        name: '德邦物流', name_en: 'Deppon Logistics',
+      }, { headers: { Accept: 'application/json' } })
+      expect(wrapper.find('[role="dialog"][aria-label="添加物流商"]').exists()).toBe(false)
+      expect((wrapper.get('[data-testid="shipment-carrier-select"]').element as HTMLSelectElement).value).toBe('德邦物流')
+      expect((wrapper.get('[data-testid="shipment-service-select"]').element as HTMLSelectElement).value).toBe('默认')
+    } finally {
+      post.mockRestore()
+    }
+  })
+
+  it('keeps the inline carrier form open when creation fails and hides the action from read-only users', async () => {
+    const post = vi.spyOn(axios, 'post').mockRejectedValueOnce(new Error('网络暂不可用'))
+    try {
+      const wrapper = mountShipmentReview(true, true)
+      await openShipmentReview(wrapper)
+      await wrapper.get('[data-testid="shipment-carrier-select"]').setValue('__add_carrier__')
+      const create = wrapper.get('[role="dialog"][aria-label="添加物流商"]')
+      await create.find('input').setValue('新物流商')
+      await create.get('form').trigger('submit')
+      await flushPromises()
+      expect(wrapper.get('[role="dialog"][aria-label="添加物流商"]').text()).toContain('网络暂不可用')
+      expect((wrapper.get('[data-testid="shipment-carrier-select"]').element as HTMLSelectElement).value).toBe('USPS')
+    } finally {
+      post.mockRestore()
+    }
+
+    const readonly = mount(Show, { props: { order: baseOrder, audit, canOperateLogistics: false } })
+    const action = readonly.find('[data-testid="fulfillment-actions"]').findAll('button')
+      .find(button => button.text().includes('查看履约'))
+    expect(action).toBeTruthy()
+    await action!.trigger('click')
+    expect(readonly.find('[data-testid="shipment-carrier-select"] option[value="__add_carrier__"]').exists()).toBe(false)
+  })
+
   it('offers direct fulfillment execution on a pending single order', async () => {
     const wrapper = mount(Show, { props: {
       order: baseOrder,

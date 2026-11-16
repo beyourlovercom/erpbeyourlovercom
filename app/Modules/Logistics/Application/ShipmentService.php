@@ -566,7 +566,9 @@ final class ShipmentService
         abort_unless($resolved, 422, '请选择该物流商已启用的运输 / 服务类型');
 
         return [
-            'service' => $serviceText !== '' ? $serviceText : $resolved->service_value,
+            // “默认” is a UI alias for the configured carrier service; do not overwrite
+            // the actual USPS/DHL/etc. service value with a generic label.
+            'service' => $serviceText === '' || $serviceText === '默认' ? $resolved->service_value : $serviceText,
             'carrier_service_id' => (int) $resolved->id,
         ];
     }
