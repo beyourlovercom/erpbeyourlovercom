@@ -63,7 +63,8 @@ function setupAccessGuard(router: Router) {
     // Every navigation revalidates the server so revocation cannot retain tabs.
     if (import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel') {
       if (to.path === '/403' || coreRouteNames.includes(to.name)) return true;
-      if (!accessStore.isAccessChecked) {
+      const firstCanonicalNavigation = !accessStore.isAccessChecked;
+      if (firstCanonicalNavigation) {
         const { accessibleMenus, accessibleRoutes } = await generateAccess({
           roles: [], router, routes: accessRoutes,
         });
@@ -76,7 +77,11 @@ function setupAccessGuard(router: Router) {
           !isCanonicalErpPathAllowed(to.path)) {
         return {path:'/403',replace:true};
       }
-      return true;
+      // generateAccess dynamically registers route records; resolve the very
+      // first route a second time so the new component is mounted correctly.
+      return firstCanonicalNavigation
+        ? {...router.resolve(to.fullPath), replace:true}
+        : true;
     }
 
     // 基本路由，这些路由不需要进入权限拦截
