@@ -147,6 +147,49 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
                 ->where('rows.total', 1));
     }
 
+    public function test_all_domestic_orders_replaces_provider_history_with_authoritative_second_row_filters(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $speeda = $this->domesticOrder('007-ALL-SPEEDA', '4PX', true, '13800138001', 1);
+        $weship = $this->domesticOrder('007-ALL-WESHIP', 'Weship', true, '13800138002', 1);
+        $other = $this->domesticOrder('007-ALL-OTHER', 'Deppon', false, '13800138003', 1);
+        $weship->shipment->update(['shipment_status' => 'shipped', 'tracking_number' => 'WESHIP-ALL-01', 'shipped_at' => now()]);
+        $viewer = $this->logisticsViewer();
+
+        $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&per_page=20')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('view', 'all')->where('rows.total', 3)
+                ->where('globalGridPilotEnabled', true)->where('rows.per_page', 20)
+                ->where('viewCounts.all', 3)->missing('viewCounts.4px')->missing('viewCounts.weship'));
+
+        foreach (['4px' => $speeda->id, 'weship' => $weship->id, 'deppon' => $other->id] as $carrier => $id) {
+            $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_carrier='.$carrier)
+                ->assertOk()->assertInertia(fn ($page) => $page
+                    ->where('rows.total', 1)->where('rows.data.0.order_id', $id)
+                    ->where('gridFilters.carrier', $carrier));
+        }
+        $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_shipment_status=shipped')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)->where('rows.data.0.order_id', $weship->id));
+        $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_review=pending')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)->where('rows.data.0.order_id', $other->id));
+        $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_tracking=WESHIP-ALL')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)->where('rows.data.0.order_id', $weship->id));
+        $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_shipment_status=DROP_TABLE')
+            ->assertOk()->assertInertia(fn ($page) => $page->where('rows.total', 0));
+
+        // Legacy provider URLs are retired rather than rendering a second page.
+        foreach (['4px', 'weship'] as $legacy) {
+            $response = $this->actingAs($viewer)->get('/logistics/china?view='.$legacy.'&global_grid=1');
+            $response->assertRedirect();
+            self::assertStringContainsString('view=all', (string) $response->headers->get('Location'));
+            self::assertStringContainsString('filter_carrier='.$legacy, (string) $response->headers->get('Location'));
+        }
+    }
+
     public function test_domestic_daily_views_render_rows_with_enum_manual_sync_status(): void
     {
         $this->withoutVite();
