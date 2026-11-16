@@ -313,7 +313,7 @@ final class OrderController
                         && ($order->order_kind === OrderKind::KolFulfillment
                             ? $code !== 'cancelled'
                             : (($code !== 'cancelled' || ! $isDerived)
-                                && in_array($code, ['pending_allocation', 'sending', 'out_of_stock', 'exception', 'cancelled', ...OrderAuxiliaryStatusService::CODES], true)))
+                                && in_array($code, ['pending_allocation', 'pending_review', 'sending', 'finished', 'shipped', 'completed', 'out_of_stock', 'exception', 'cancelled', ...OrderAuxiliaryStatusService::CODES], true)))
                         && (($request->user()?->can('orders.edit') ?? false)
                             || ($request->user()?->can('domestic.review') && in_array($code, ['sending', 'out_of_stock'], true))
                             || (app(LogisticsReviewAccess::class)->allows($request->user()) && $code === 'out_of_stock')),

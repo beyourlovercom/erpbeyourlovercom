@@ -38,7 +38,7 @@ final class OrderProgressTransitionService
         }
 
         if (in_array($order->order_kind, [OrderKind::Customer, OrderKind::FulfillmentDerived], true)) {
-            if (in_array($next, [...OrderManualHoldStatus::PRIMARY_CODES, 'resolve_exception', 'resolve_manual_hold', 'cancelled'], true)) {
+            if (in_array($next, [...OrderManualHoldStatus::PRIMARY_CODES, 'pending_allocation', 'pending_review', 'finished', 'shipped', 'completed', 'resolve_exception', 'resolve_manual_hold', 'cancelled'], true)) {
                 return $this->core->transition($order, $next, $revision, $actor, $reason);
             }
             // Every manual classification is already handled by the single

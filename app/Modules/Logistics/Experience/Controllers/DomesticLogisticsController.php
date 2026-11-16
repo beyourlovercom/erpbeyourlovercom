@@ -279,8 +279,9 @@ final class DomesticLogisticsController
         $label = $this->providerLabel($provider);
 
         $factory = $this->factory();
-        $orders = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id))
-            ->with(['address', 'shipment', 'items.product', 'externalReferences', 'operationalMarkers'])
+        $query = $this->baseQuery((int) $factory->id);
+        $this->applyView($query, 'pending');
+        $orders = $query->with(['address', 'shipment.warehouse', 'items.product', 'externalReferences', 'operationalMarkers', 'procurementOrder'])
             ->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', [$carrier])
                 ->whereIn('carrier_selection_source', ['manual', 'automatic']))
             ->orderBy('order_date')
@@ -329,9 +330,9 @@ final class DomesticLogisticsController
     public function exportPendingBatch(): HttpResponse
     {
         $factory = $this->factory();
-        $orders = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id))
-            ->with(['address', 'items.product', 'shipment', 'externalReferences', 'operationalMarkers'])
-
+        $query = $this->baseQuery((int) $factory->id);
+        $this->applyView($query, 'pending');
+        $orders = $query->with(['address', 'items.product', 'shipment.warehouse', 'externalReferences', 'operationalMarkers', 'procurementOrder'])
             ->orderBy('order_date')
             ->orderBy('id')
             ->get();

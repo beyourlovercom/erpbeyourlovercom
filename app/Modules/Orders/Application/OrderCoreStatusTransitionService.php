@@ -6,6 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Logistics\Application\LogisticsReviewAccess;
+use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderWorkflowStatusHistory;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -21,6 +22,7 @@ final class OrderCoreStatusTransitionService
     public function __construct(
         private readonly AuditRecorder $audit,
         private readonly OrderProgressResolver $progress,
+        private readonly InventoryReservationRepository $reservations,
     ) {}
 
     public function transition(Order $order, string $command, int $expectedRevision, Authenticatable $actor, ?string $reason = null): Order
@@ -57,6 +59,54 @@ final class OrderCoreStatusTransitionService
                     && blank($shipment->tracking_number) && $shipment->shipped_at === null));
             switch ($command) {
                 case 'pending_allocation':
+                    if ($locked->originalFulfillmentChildren->isNotEmpty()) {
+                        throw new HttpException(409, '拆单订单已有独立物流记录，请先在履约发货中逐段复核后再重新分仓。');
+                    }
+                    // A deliberate operational reset must really return an unshipped
+                    // order to Vita's allocation queue, not merely rename a label.
+                    // Already-shipped evidence is never erased or made re-exportable.
+                    if ($shipment && $shipment->shipment_status === 'pending'
+                        && blank($shipment->tracking_number) && $shipment->shipped_at === null) {
+                        $reservation = $this->reservations->activeForOrder((int) $locked->id);
+                        if ($reservation) {
+                            $this->reservations->release((int) $reservation['id'], (int) $actor->getAuthIdentifier(), 'staff_force_return_allocation');
+                        }
+                        $shipment->forceFill([
+                            'warehouse_id' => null, 'warehouse_selection_source' => null,
+                            'carrier' => null, 'service' => null, 'carrier_service_id' => null,
+                            'carrier_selection_source' => null, 'handled_by' => null,
+                        ])->save();
+                        $shipment->overseaReview()->update([
+                            'status' => 'pending', 'reviewed_warehouse_id' => null,
+                            'reviewed_by' => null, 'reviewed_at' => null,
+                        ]);
+                        $locked->operationalMarkers()->whereIn('marker', ['domestic_reviewed', 'domestic_stockout'])->delete();
+                        $locked->fulfillmentAllocation?->forceFill(['status' => 'rejected'])->save();
+                    }
+                    if (! $shipment || ($shipment->shipment_status === 'pending'
+                        && blank($shipment->tracking_number) && $shipment->shipped_at === null)) {
+                        $locked->order_status = OrderStatus::PendingShipment;
+                    }
+                    $locked->routing_warehouse_code = 'UNASSIGNED';
+                    $locked->routing_revision = (int) $locked->routing_revision + 1;
+                    $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
+                    $locked->workflow_status = 'pending_allocation';
+                    break;
+                case 'pending_review':
+                    if (! $shipment || ! $shipment->warehouse_id
+                        || $shipment->shipment_status !== 'pending'
+                        || filled($shipment->tracking_number) || $shipment->shipped_at !== null) {
+                        throw new HttpException(409, '进入待审核需要已分仓且尚未实际出库；已发货记录不可退回仓库审核。');
+                    }
+                    $locked->operationalMarkers()->where('marker', 'domestic_reviewed')->delete();
+                    $shipment->overseaReview()->update([
+                        'status' => 'pending', 'reviewed_warehouse_id' => null,
+                        'reviewed_by' => null, 'reviewed_at' => null,
+                    ]);
+                    $locked->order_status = OrderStatus::PendingShipment;
+                    $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
+                    $locked->workflow_status = 'pending_review';
+                    break;
                 case 'sending':
                 case 'out_of_stock':
                 case 'exception':
@@ -69,10 +119,12 @@ final class OrderCoreStatusTransitionService
                     // Warehouse review / allocation / tracking facts are NEVER
                     // changed by choosing a label. Real physical actions use
                     // their own audited endpoints and safety checks.
-                    if ($locked->order_status === OrderStatus::Cancelled) {
-                        throw new HttpException(409, '已取消订单不可直接改为其他主状态，请先走取消复核流程。');
+                    if ($locked->order_status === OrderStatus::Cancelled
+                        && (! $shipment || ($shipment->shipment_status === 'pending'
+                            && blank($shipment->tracking_number) && $shipment->shipped_at === null))) {
+                        $locked->order_status = OrderStatus::PendingShipment;
                     }
-                    if ($locked->workflow_status === $command
+                    if ($locked->workflow_status === $command && ! $locked->isDirty('order_status')
                         && ! $locked->operationalMarkers->contains(fn ($m) => in_array($m->marker, OrderManualHoldStatus::HOLD_MARKERS, true))) {
                         return $locked;
                     }
@@ -113,23 +165,37 @@ final class OrderCoreStatusTransitionService
                     }
                     $locked->workflow_status = null;
                     break;
+                case 'finished':
+                case 'completed':
+                    $locked->order_status = OrderStatus::Completed;
+                    $locked->workflow_status = null;
+                    $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
+                    break;
+                case 'shipped':
+                    // Do not fabricate an actual shipment or tracking number.
+                    // A manual shipping state requires genuine dispatch evidence.
+                    if (! $shipment || ! in_array($shipment->shipment_status, ['shipped', 'completed'], true)
+                        || $shipment->shipped_at === null) {
+                        throw new HttpException(409, '未找到真实发货记录，无法直接标记已发货；请先完成履约发货。');
+                    }
+                    $locked->order_status = OrderStatus::Shipped;
+                    $locked->workflow_status = null;
+                    break;
                 case 'cancelled':
                     if ($locked->order_status === OrderStatus::Cancelled) {
                         return $locked;
                     }
-                    if ($locked->order_kind !== OrderKind::Customer
-                        || ! $unallocated || ! $unshipped || $locked->originalFulfillmentChildren->isNotEmpty()
-                        || $locked->fulfillmentAllocation?->status === 'submitted') {
-                        throw new HttpException(409, '只能直接取消未分仓、无真实出库或分单记录的客户订单；其他订单请先履约复核。');
+                    if ($locked->order_kind !== OrderKind::Customer) {
+                        throw new HttpException(409, '仅客户订单可通过人工权限取消。');
                     }
+                    // A dispatched parcel is never erased or automatically refunded.
+                    // Cancellation changes ERP customer status, not provider facts.
                     if (mb_strlen(trim((string) $reason)) < 3) {
                         throw new HttpException(422, '取消订单必须填写至少 3 个字的原因。');
                     }
                     $locked->order_status = OrderStatus::Cancelled;
                     $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
-                    if (in_array((string) $locked->workflow_status, OrderManualHoldStatus::CODES, true)) {
-                        $locked->workflow_status = null;
-                    }
+                    $locked->workflow_status = null;
                     break;
                 default:
                     throw new HttpException(422, '不支持的核心状态操作。');

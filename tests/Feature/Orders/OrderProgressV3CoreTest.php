@@ -39,7 +39,9 @@ final class OrderProgressV3CoreTest extends TestCase
             'order_id' => $order->id, 'marker' => 'domestic_reviewed',
         ]);
         self::assertSame('sending', $this->phase($order));
-        self::assertSame(1, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
+        // Staff's manual "sending" label does not grant Kaven approval or export.
+        self::assertSame(0, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
+        self::assertSame(1, app(OrderProgressQuery::class)->domesticReview(Order::query())->whereKey($order->id)->count());
         self::assertSame(1, app(OrderProgressQuery::class)->readyForShipment(Order::query())->whereKey($order->id)->count());
 
         $this->actingAs($kaven)->patchJson('/orders/'.$order->id.'/workflow-status', [
@@ -51,7 +53,8 @@ final class OrderProgressV3CoreTest extends TestCase
         $this->actingAs($kaven)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'sending', 'expected_workflow_revision' => 2,
         ])->assertOk()->assertJsonPath('workflow_status.code', 'sending');
-        self::assertSame(1, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
+        self::assertSame(0, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
+        self::assertSame(1, app(OrderProgressQuery::class)->domesticReview(Order::query())->whereKey($order->id)->count());
     }
 
     public function test_nonreviewer_cannot_forge_domestic_approval_or_shipped_phase(): void

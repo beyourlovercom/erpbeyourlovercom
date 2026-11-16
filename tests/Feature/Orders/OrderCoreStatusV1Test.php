@@ -73,6 +73,95 @@ final class OrderCoreStatusV1Test extends TestCase
         $this->assertDatabaseHas('order_workflow_status_histories', ['order_id' => $order->id, 'to_status' => 'cancelled']);
     }
 
+    public function test_staff_can_reopen_cancelled_order_into_allocation_and_mark_completed(): void
+    {
+        $order = $this->order();
+        $actor = $this->user(['orders.view', 'orders.edit']);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'cancelled', 'expected_workflow_revision' => 0,
+            'reason' => '客户改为取消订单',
+        ])->assertOk();
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 1,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_allocation');
+        $this->assertSame('pending_shipment', $order->fresh()->order_status->value);
+        $this->assertSame(1, $this->inQueue($order, 'pending_allocation'));
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'completed', 'expected_workflow_revision' => 2,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'completed');
+        $this->assertSame('completed', $order->fresh()->order_status->value);
+        $this->assertNull($order->fresh()->shipment);
+    }
+
+    public function test_staff_can_return_already_allocated_unshipped_order_to_real_allocation_queue(): void
+    {
+        $order = $this->order();
+        $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $order->shipment()->create([
+            'warehouse_id' => $factory->id, 'shipment_status' => 'pending',
+            'carrier' => '4PX', 'warehouse_selection_source' => 'manual',
+        ]);
+        $order->operationalMarkers()->create(['marker' => 'domestic_reviewed', 'marked_at' => now()]);
+        $order->forceFill(['workflow_status' => 'sending'])->save();
+        $actor = $this->user(['orders.view', 'orders.edit']);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_allocation');
+        $fresh = $order->fresh('shipment');
+        $this->assertNull($fresh->shipment->warehouse_id);
+        $this->assertNull($fresh->shipment->carrier);
+        $this->assertSame('UNASSIGNED', $fresh->routing_warehouse_code);
+        $this->assertSame(1, $this->inQueue($order, 'pending_allocation'));
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id' => $order->id, 'marker' => 'domestic_reviewed',
+        ]);
+    }
+
+    public function test_pending_review_rejects_an_unallocated_order_without_pretending_it_entered_review(): void
+    {
+        $order = $this->order();
+        $editor = $this->user(['orders.view', 'orders.edit']);
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'pending_review', 'expected_workflow_revision' => 0,
+        ])->assertStatus(409);
+        $this->assertSame(0, (int) $order->fresh()->workflow_revision);
+        $this->assertSame(0, $this->inQueue($order, 'pending_review'));
+        $this->assertSame(1, $this->inQueue($order, 'pending_allocation'));
+    }
+
+    public function test_split_root_must_not_reallocate_without_child_shipment_reconciliation(): void
+    {
+        $root = $this->order();
+        $child = $this->order();
+        $child->forceFill([
+            'order_kind' => OrderKind::FulfillmentDerived,
+            'fulfillment_parent_id' => $root->id,
+            'fulfillment_role' => 'original',
+            'fulfillment_suffix' => 'A',
+        ])->save();
+        $editor = $this->user(['orders.view', 'orders.edit']);
+        $this->actingAs($editor)->patchJson('/orders/'.$root->id.'/workflow-status', [
+            'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 0,
+        ])->assertStatus(409);
+        $this->assertSame(0, (int) $root->fresh()->workflow_revision);
+        $this->assertNull($root->fresh()->workflow_status);
+        $this->assertSame((int) $root->id, (int) $child->fresh()->fulfillment_parent_id);
+    }
+
+    public function test_staff_can_send_reviewed_factory_order_back_to_review_without_export_permission(): void
+    {
+        $order = $this->order();
+        $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $order->shipment()->create(['warehouse_id' => $factory->id, 'shipment_status' => 'pending']);
+        $order->operationalMarkers()->create(['marker' => 'domestic_reviewed', 'marked_at' => now()]);
+        $actor = $this->user(['orders.view', 'orders.edit']);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'pending_review', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_review');
+        $this->assertSame(1, app(OrderProgressQuery::class)->domesticReview(Order::query())->whereKey($order->id)->count());
+        $this->assertSame(0, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
+    }
+
     public function test_invalid_permission_and_stale_revision_do_not_write(): void
     {
         $order = $this->order();
@@ -88,7 +177,7 @@ final class OrderCoreStatusV1Test extends TestCase
         $this->assertSame(0, $this->inQueue($order, 'exception'));
     }
 
-    public function test_shipped_order_exception_preserves_tracking_and_cancel_is_blocked(): void
+    public function test_shipped_order_can_be_manually_cancelled_without_erasing_tracking(): void
     {
         $order = $this->order();
         $warehouse = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
@@ -105,9 +194,30 @@ final class OrderCoreStatusV1Test extends TestCase
         $this->assertSame('UAT-TRACK-123', $order->fresh()->shipment->tracking_number);
         $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'cancelled', 'expected_workflow_revision' => 1, 'reason' => '客户申请取消',
-        ])->assertStatus(409);
-        $this->assertSame('shipped', $order->fresh()->order_status->value);
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'cancelled');
+        $this->assertSame('cancelled', $order->fresh()->order_status->value);
         $this->assertSame('UAT-TRACK-123', $order->fresh()->shipment->tracking_number);
+    }
+
+    public function test_shipped_order_return_to_allocation_preserves_dispatch_evidence_and_cannot_export(): void
+    {
+        $order = $this->order();
+        $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $order->shipment()->create([
+            'warehouse_id' => $factory->id, 'shipment_status' => 'shipped',
+            'shipped_at' => now(), 'tracking_number' => 'HISTORY-TRACK-123',
+        ]);
+        $order->forceFill(['order_status' => 'shipped'])->save();
+        $actor = $this->user(['orders.view', 'orders.edit']);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_allocation');
+        $fresh = $order->fresh('shipment');
+        $this->assertSame('shipped', $fresh->order_status->value);
+        $this->assertSame('HISTORY-TRACK-123', $fresh->shipment->tracking_number);
+        $this->assertSame((int) $factory->id, (int) $fresh->shipment->warehouse_id);
+        $this->assertSame(1, $this->inQueue($order, 'pending_allocation'));
+        $this->assertSame(0, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
     }
 
     public function test_existing_marker_button_uses_core_transition_and_shipping_is_held_by_exception(): void
@@ -348,7 +458,7 @@ final class OrderCoreStatusV1Test extends TestCase
         self::assertNull($order->fresh()->shipment);
     }
 
-    public function test_manual_reclassification_keeps_warehouse_evidence_and_blocks_real_dispatch(): void
+    public function test_manual_reclassification_unassigns_unshipped_warehouse_and_blocks_real_dispatch(): void
     {
         $order = $this->order();
         $actor = $this->user(['orders.view', 'orders.edit']);
@@ -375,8 +485,9 @@ final class OrderCoreStatusV1Test extends TestCase
         self::assertSame(1, $this->inQueue($order, 'pending_allocation'));
         self::assertSame(0, $this->inQueue($order, 'exception'));
         $this->assertDatabaseHas('orders', ['id' => $order->id, 'workflow_revision' => 4, 'workflow_status' => 'pending_allocation']);
-        self::assertSame((int) $warehouse->id, (int) $order->fresh()->shipment->warehouse_id);
-        // A manual classification is never a real release authorization.
+        self::assertNull($order->fresh()->shipment->warehouse_id);
+        self::assertNull($order->fresh()->shipment->carrier);
+        // A returned allocation is not a real release authorization.
         try {
             app(ShipmentService::class)->markShipped($order->fresh(), ['tracking_number' => 'NOT_REAL'], $actor);
             self::fail('Manual pending allocation must not bypass actual dispatch safeguards.');

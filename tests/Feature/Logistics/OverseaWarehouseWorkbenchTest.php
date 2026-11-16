@@ -102,7 +102,8 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $targets = [
             ['US-SM', '/logistics/oversea/us-3sm?view=pending', 1],
             ['US-LA', '/logistics/oversea/us-moreplus?view=pending', 1],
-            ['FACTORY', '/logistics/china?view=pending', 1],
+            // A manual routing label cannot bypass actual FACTORY assignment and Kaven approval.
+            ['FACTORY', '/logistics/china?view=pending', 0],
             ['TINGON', '/logistics/tingon?view=pending', 1],
             ['OUTSOURCE', '/purchase/external', 1],
         ];
@@ -296,17 +297,30 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             foreach (['review', 'stockout', 'pending', 'issued', 'shipped', 'exceptions', 'all'] as $view) {
                 $response = $this->get('/logistics/oversea/us-3sm?view='.$view)->assertOk();
                 $response->assertInertia(function (Assert $page) use ($view, $expectedView): Assert {
-                    return $page->where('rows.total', ($view === 'all' || $view === $expectedView) ? 1 : 0);
+                    // Returning to allocation removes the unshipped physical warehouse;
+                    // the order then belongs to Vita, not an overseas workbench.
+                    return $page->where('rows.total', ($expectedView !== null && ($view === 'all' || $view === $expectedView)) ? 1 : 0);
                 });
             }
-            $this->assertDatabaseHas('oversea_warehouse_reviews', [
-                'order_id' => $order->id, 'status' => 'stockout',
-                'reviewed_warehouse_id' => $warehouses['US-SM']->id,
-            ]);
-            $this->assertDatabaseHas('shipments', [
-                'order_id' => $order->id, 'shipment_status' => 'pending',
-                'tracking_number' => null, 'warehouse_id' => $warehouses['US-SM']->id,
-            ]);
+            if ($chosen === 'pending_allocation') {
+                $this->assertDatabaseHas('oversea_warehouse_reviews', [
+                    'order_id' => $order->id, 'status' => 'pending',
+                    'reviewed_warehouse_id' => null,
+                ]);
+                $this->assertDatabaseHas('shipments', [
+                    'order_id' => $order->id, 'shipment_status' => 'pending',
+                    'tracking_number' => null, 'warehouse_id' => null,
+                ]);
+            } else {
+                $this->assertDatabaseHas('oversea_warehouse_reviews', [
+                    'order_id' => $order->id, 'status' => 'stockout',
+                    'reviewed_warehouse_id' => $warehouses['US-SM']->id,
+                ]);
+                $this->assertDatabaseHas('shipments', [
+                    'order_id' => $order->id, 'shipment_status' => 'pending',
+                    'tracking_number' => null, 'warehouse_id' => $warehouses['US-SM']->id,
+                ]);
+            }
         }
         self::assertSame(1, app(OrderProgressQuery::class)
             ->applyPhase(Order::query(), 'pending_allocation')->whereKey($order->id)->count());

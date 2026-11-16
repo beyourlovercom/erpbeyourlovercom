@@ -20,11 +20,18 @@ final class SpeedaOutboundExporter
     private const TEMPLATE = 'resources/logistics/templates/speeda-outbound-v1.xlsx';
     // Official 2026-10-26 4PX template: Y SKU, Z manufacturer barcode, AA blank.
 
-    public function __construct(private readonly WarehouseOrderReference $references) {}
+    public function __construct(
+        private readonly WarehouseOrderReference $references,
+        private readonly DomesticDispatchEligibility $eligibility,
+    ) {}
 
     /** @return list<string> */
     public function blockers(Order $order, string $providerLabel = '速达'): array
     {
+        $reviewBlockers = $this->eligibility->blockers($order);
+        if ($reviewBlockers !== []) {
+            return $reviewBlockers;
+        }
         $order->loadMissing(['address', 'items', 'externalReferences']);
         $address = $order->address;
         $missing = [];
@@ -110,6 +117,13 @@ final class SpeedaOutboundExporter
     {
         if ($orders->isEmpty()) {
             throw new DomainException('当前没有可导出的'.$providerLabel.'待发货订单。');
+        }
+        // Direct export callers may not bypass the same per-order gate.
+        foreach ($orders as $order) {
+            $reasons = $this->eligibility->blockers($order);
+            if ($reasons !== []) {
+                throw new DomainException($order->erp_order_id.'：'.implode('、', $reasons));
+            }
         }
 
         $path = base_path(self::TEMPLATE);

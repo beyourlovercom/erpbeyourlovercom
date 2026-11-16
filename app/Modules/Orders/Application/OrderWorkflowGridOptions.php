@@ -8,7 +8,7 @@ final class OrderWorkflowGridOptions
     /** @return list<array<string, mixed>> */
     public static function customer(): array
     {
-        $editable = ['pending_allocation', 'sending', 'out_of_stock', 'exception', 'cancelled', ...OrderManualHoldStatus::CODES];
+        $editable = ['pending_allocation', 'pending_review', 'sending', 'finished', 'shipped', 'completed', 'out_of_stock', 'exception', 'cancelled', ...OrderManualHoldStatus::CODES];
 
         return collect(OrderWorkflowStatus::registry())
             ->map(fn (array $definition, string $code): array => [
