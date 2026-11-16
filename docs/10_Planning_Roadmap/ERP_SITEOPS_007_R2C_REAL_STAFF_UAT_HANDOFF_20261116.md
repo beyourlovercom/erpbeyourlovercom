@@ -60,3 +60,15 @@ The exact success marker is `R2C_LEGACY_STAFF_PREFLIGHT_PASS verifiedEmployees=6
 ## Owner P0 parity freeze — controlling instruction
 
 See [`ERP2_IDENTITY_PERMISSION_PARITY_OWNER_FREEZE_20261116.md`](ERP2_IDENTITY_PERMISSION_PARITY_OWNER_FREEZE_20261116.md). Staff **permission equivalence requires comparing canonical ERP user IDs, persisted effective permission keys and record/action scopes between ERP1 and ERP2**. A successful legacy Dev-session preflight alone cannot close this gate. Remaining P1 stays HOLD until 6/6 original-ERP-versus-ERP2 comparison passes. PR #766 remains Draft.
+
+## Read-only canonical effective-permission inventory (added 2026-11-16)
+
+`apps/erp-siteops-vben/runtime/r2c-dev-effective-permission-snapshot.php` is a new **non-Production-only**, read-only Laravel CLI inventory. It uses the same private six-person manifest with each employee's **actual canonical `erpUserId` and legitimate Dev email**, loads the **persisted** role-permission grants plus custom grants, and writes each employee's effective permission keys and mode into a protected, new-once local JSON output (mode `0600`). Super-admin is represented by `*`. It **rejects synthetic `.test`/`.invalid` identities** and exits HOLD when any true account is missing/mismatched. It does not touch passwords, tokens, sessions, roles or business records; no permission snapshot is committed to Git.
+
+```sh
+BYL_R2C_DEV_STAFF_MANIFEST=/approved/private/staff.json \\
+BYL_R2C_PERMISSION_SNAPSHOT_OUT=/approved/private/erp1-effective-permissions.json \\
+php apps/erp-siteops-vben/runtime/r2c-dev-effective-permission-snapshot.php
+```
+
+**Verification:** `php -l` on US Mac mini passed; inspected isolated Dev DB has 10/10 synthetic users (six `@local.test`, four `@local.invalid`), so a genuine six-person inventory **cannot yet be executed**. This command only inventories original ERP Dev grants; it **does not** by itself verify ERP2 session binding, row/action scope or cross-system parity. Owner visual PASS stands; parity remains P0 HOLD; P1 remains paused.
