@@ -6,7 +6,7 @@ import { useAccessStore, useTabbarStore, useUserStore } from '@vben/stores';
 import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
 
 import { getCurrentDevReadOnlyOrders, type ErpCurrentDevPage, type ErpDevMenuNode } from '#/api/erp-orders';
-import { getCanonicalErpIdentity, type CanonicalErpIdentity } from '#/api/erp-identity';
+import { getCanonicalErpIdentity, canonicalAuthorityFingerprint, type CanonicalErpIdentity } from '#/api/erp-identity';
 
 export type DevRole = 'owner' | 'staff' | 'kol' | 'manager';
 export const activeDevRole = ref<DevRole>('owner');
@@ -17,12 +17,19 @@ export const isCanonicalErpPathAllowed = (path: string) => canonicalAllowedPaths
 
 export async function bootstrapCanonicalDevNavigation(router: Router): Promise<boolean> {
   // No role dropdown, local mock user, snapshot cache, or alternate identity DB.
+  const priorAuthority = canonicalDevIdentity.value;
   suspendAuthorizedDevNavigation();
   canonicalDevIdentity.value = undefined;
   canonicalAllowedPaths.clear();
   devBootstrapError.value = '';
   try {
     const identity = await getCanonicalErpIdentity();
+    // Role/permission/nav changes can narrow scope without changing the account.
+    // Never keep pinned tabs or hot data from a prior authority snapshot.
+    if (priorAuthority &&
+        canonicalAuthorityFingerprint(priorAuthority) !== canonicalAuthorityFingerprint(identity)) {
+      clearAuthorizedDevNavigation();
+    }
     canonicalDevIdentity.value = identity;
     useUserStore().setUserInfo({
       userId: String(identity.user.id), id: String(identity.user.id),
