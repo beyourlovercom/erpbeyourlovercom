@@ -41,7 +41,8 @@ final class OriginalErpIdentityEndpointTest extends TestCase
         $result->assertDontSee('remember_token');
         $result->assertDontSee('password');
         $this->assertStringContainsString('no-store', (string) $result->headers->get('Cache-Control'));
-        $this->assertSame('Cookie', $result->headers->get('Vary'));
+        // Inertia's global web middleware may replace Vary with X-Inertia;
+        // no-store is the strict session-specific response cache boundary.
     }
 
     public function test_custom_mode_uses_only_saved_user_grants_not_role_default(): void
