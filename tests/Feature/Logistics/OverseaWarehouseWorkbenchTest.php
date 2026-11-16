@@ -102,7 +102,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $targets = [
             ['US-SM', '/logistics/oversea/us-3sm?view=pending', 1],
             ['US-LA', '/logistics/oversea/us-moreplus?view=pending', 1],
-            // A manual routing label cannot bypass actual FACTORY assignment and Kaven approval.
+            // A manual routing label alone cannot substitute for actual physical FACTORY allocation.
             ['FACTORY', '/logistics/china?view=pending', 0],
             ['TINGON', '/logistics/tingon?view=pending', 1],
             ['OUTSOURCE', '/purchase/external', 1],
