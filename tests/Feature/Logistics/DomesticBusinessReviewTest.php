@@ -15,6 +15,7 @@ use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
@@ -405,6 +406,50 @@ final class DomesticBusinessReviewTest extends TestCase
                 ->where('order.domestic_reject_reason', '收件人地址有误，需要 Vita 核对'));
     }
 
+    public function test_unreviewed_pending_order_with_staged_tracking_can_be_rejected_and_audited(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'domestic.review']);
+        $order = $this->order();
+        $order->shipment()->update(['tracking_number' => 'STAGED-TRACK-20261117']);
+
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/reject', [
+            'reason' => '客户地址需要 Vita 重新核对', 'return_view' => 'pending',
+        ])->assertRedirect('/logistics/china?view=pending');
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id,
+            'shipment_status' => 'pending', 'warehouse_id' => null, 'tracking_number' => null, 'carrier' => null]);
+        $this->assertDatabaseHas('orders', ['id' => $order->id,
+            'domestic_reject_reason' => '客户地址需要 Vita 重新核对',
+            'domestic_rejected_by' => $actor->id]);
+        self::assertSame(1, app(LogisticsStatusSummary::class)->pendingAllocationQuery()->whereKey($order->id)->count());
+        $record = DB::table('audit_records')->where('entity_id', $order->id)
+            ->where('action', 'domestic.review_reject')->latest('id')->first();
+        self::assertNotNull($record);
+        $before = json_decode((string) $record->before, true, 512, JSON_THROW_ON_ERROR);
+        $after = json_decode((string) $record->after, true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame('STAGED-TRACK-20261117', $before['cleared_staged_tracking'][0]['tracking_number']);
+        self::assertSame(1, $after['staged_tracking_cleared_count']);
+    }
+
+    public function test_reject_never_clears_actual_shipment_or_allows_logistics_only_actor(): void
+    {
+        $reviewer = $this->userWith(['domestic.review']);
+        $logistics = $this->userWith(['logistics.view', 'logistics.operate']);
+        $order = $this->order();
+        $warehouseId = $order->shipment->warehouse_id;
+        $order->shipment()->update(['tracking_number' => 'REAL-TRACK-1',
+            'shipment_status' => 'shipped', 'shipped_at' => now()]);
+        $this->actingAs($reviewer)->post('/logistics/china/orders/'.$order->id.'/reject', [
+            'reason' => '不能撤销真实出库',
+        ])->assertStatus(409);
+        $this->actingAs($logistics)->post('/logistics/china/orders/'.$order->id.'/reject', [
+            'reason' => '物流无商务权限',
+        ])->assertForbidden();
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'warehouse_id' => $warehouseId,
+            'tracking_number' => 'REAL-TRACK-1', 'shipment_status' => 'shipped']);
+        $this->assertDatabaseMissing('audit_records', [
+            'entity_id' => $order->id, 'action' => 'domestic.review_reject']);
+    }
+
     public function test_domestic_rejection_notifies_operations_and_opens_rejected_queue(): void
     {
         $reviewer = $this->userWith(['orders.view', 'logistics.view', 'domestic.review']);
@@ -474,6 +519,9 @@ final class DomesticBusinessReviewTest extends TestCase
             $child->shipment()->create(['warehouse_id' => $warehouse->id, 'shipment_status' => 'pending']);
         }
         $domestic = $parent->originalFulfillmentChildren()->where('fulfillment_suffix', 'A')->firstOrFail();
+        foreach ($parent->originalFulfillmentChildren as $child) {
+            $child->shipment()->update(['tracking_number' => 'STAGED-'.$child->fulfillment_suffix]);
+        }
         $this->actingAs($actor)->post('/logistics/china/orders/'.$domestic->id.'/reject', [
             'reason' => '收件人税号需重新核对',
         ])->assertRedirect();
@@ -482,9 +530,45 @@ final class DomesticBusinessReviewTest extends TestCase
         ]);
         foreach ($parent->originalFulfillmentChildren as $child) {
             self::assertNull($child->fresh()->shipment->warehouse_id);
+            self::assertNull($child->fresh()->shipment->tracking_number);
         }
+        $record = DB::table('audit_records')->where('entity_id', $domestic->id)
+            ->where('action', 'domestic.review_reject')->latest('id')->first();
+        self::assertCount(2, json_decode((string) $record->before, true)['cleared_staged_tracking']);
         self::assertSame(1, app(LogisticsStatusSummary::class)->pendingAllocationQuery()
             ->whereKey($parent->id)->count());
+    }
+
+    public function test_split_reject_with_shipped_sibling_aborts_without_partial_unassignment(): void
+    {
+        $actor = $this->userWith(['domestic.review']);
+        $parent = $this->order();
+        $parent->shipment()->delete();
+        $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $overseas = Warehouse::query()->where('code', 'US-LA')->firstOrFail();
+        $children = [];
+        foreach (['A' => $factory, 'B' => $overseas] as $suffix => $warehouse) {
+            $child = Order::query()->create([
+                'fulfillment_parent_id' => $parent->id, 'fulfillment_suffix' => $suffix,
+                'fulfillment_role' => 'original', 'erp_order_id' => $parent->erp_order_id.$suffix,
+                'internal_order_number' => 'FULF-'.$parent->id.'-'.$suffix,
+                'source_type' => OrderSourceType::ManualOther, 'order_kind' => OrderKind::FulfillmentDerived,
+                'order_date' => '2026-11-17', 'order_status' => OrderStatus::PendingShipment, 'currency' => 'USD',
+            ]);
+            $child->shipment()->create(['warehouse_id' => $warehouse->id,
+                'shipment_status' => $suffix === 'B' ? 'shipped' : 'pending',
+                'tracking_number' => 'STAGED-'.$suffix,
+                'shipped_at' => $suffix === 'B' ? now() : null]);
+            $children[$suffix] = $child;
+        }
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$children['A']->id.'/reject', [
+            'reason' => '收件地址需要重新核对',
+        ])->assertStatus(409);
+        self::assertSame($factory->id, $children['A']->fresh()->shipment->warehouse_id);
+        self::assertSame('STAGED-A', $children['A']->fresh()->shipment->tracking_number);
+        self::assertSame($overseas->id, $children['B']->fresh()->shipment->warehouse_id);
+        self::assertSame('STAGED-B', $children['B']->fresh()->shipment->tracking_number);
+        self::assertNull($parent->fresh()->domestic_reject_reason);
     }
 
     public function test_super_admin_can_review_domestic_orders(): void
