@@ -61,6 +61,32 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         config()->set('inertia.testing.ensure_pages_exist', false);
     }
 
+    public function test_legacy_lowercase_moreplus_is_visible_and_selectable_by_canonical_code(): void
+    {
+        [$order, $actor, $warehouses] = $this->fixture();
+        $moreplus = $warehouses['US-LA'];
+        $moreplus->forceFill(['code' => 'us-la'])->save();
+
+        $routing = app(OrderWarehouseRouting::class);
+        $options = collect($routing->options());
+        self::assertSame(1, $options->where('code', 'US-LA')->count());
+        self::assertSame('美西 MorePlus 仓', $options->firstWhere('code', 'US-LA')['name']);
+
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 0,
+        ])->assertOk();
+        $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'US-LA', 'expected_routing_revision' => 0,
+        ])->assertOk()->assertJsonPath('routing_warehouse.code', 'US-LA');
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'warehouse_id' => $moreplus->id,
+            'shipment_status' => 'pending',
+        ]);
+
+        $moreplus->forceFill(['is_active' => false])->save();
+        self::assertNotContains('US-LA', collect($routing->options())->pluck('code')->all());
+    }
+
     public function test_staff_route_and_pending_physical_warehouse_change_together(): void
     {
         [$order, $actor, $warehouse] = $this->fixture();
