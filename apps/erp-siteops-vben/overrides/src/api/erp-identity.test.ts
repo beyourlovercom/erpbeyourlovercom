@@ -18,6 +18,15 @@ describe('ERP2 canonical identity contract', () => {
       effectivePermissionKeys:['orders.view','orders.edit'],
     });
   });
+  it('accepts only approved original ERP source while invalidating on authority source change', () => {
+    const current = parseCanonicalErpIdentity(valid);
+    const production = parseCanonicalErpIdentity({
+      ...valid, source:'ERP_ORIGINAL_LARAVEL_PRODUCTION_SESSION_V1',
+    });
+    expect(production.source).toBe('ERP_ORIGINAL_LARAVEL_PRODUCTION_SESSION_V1');
+    expect(canonicalAuthorityFingerprint(current)).not.toBe(canonicalAuthorityFingerprint(production));
+    expect(() => parseCanonicalErpIdentity({...valid,source:'UNTRUSTED_PROJECTION'})).toThrow();
+  });
   it('distinguishes an in-place permission revocation without changing employee ID', () => {
     const current = parseCanonicalErpIdentity(valid);
     const revoked = parseCanonicalErpIdentity({...valid, effectivePermissionKeys:['orders.view']});
