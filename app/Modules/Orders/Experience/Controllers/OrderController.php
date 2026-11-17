@@ -633,7 +633,7 @@ final class OrderController
     public function updateWorkflowStatus(Request $request, Order $order): JsonResponse
     {
         KolOrderAccessScope::authorize($request->user(), $order);
-        abort_if($order->trashed() || $order->archived_at !== null, 409, '回收站订单不能直接修改状态。');
+        abort_if($order->trashed() || $order->archived_at !== null, 422, '回收站订单不能直接修改状态。');
         $reactivating = $order->isOperationallyArchived();
         if ($reactivating) abort_unless($request->user()?->can('orders.edit'), 403);
         abort_unless($request->user()?->can('orders.edit') || $request->user()?->can('domestic.review')
