@@ -7,6 +7,7 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
 use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
@@ -22,7 +23,10 @@ final class OrderWarehouseRouting
 
     public const OUTSOURCE = 'OUTSOURCE';
 
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(
+        private readonly AuditRecorder $audit,
+        private readonly CarrierRoutingPolicy $carriers,
+    ) {}
 
     /** Same active warehouse choices as Vita's manual allocation. */
     public function options(): array
@@ -210,15 +214,34 @@ final class OrderWarehouseRouting
             $before = $locked->routing_warehouse_code;
             $fromWarehouseId = $shipment?->warehouse_id;
             if (! $shipment) {
+                $targetCode = strtoupper(trim((string) ($warehouse?->code ?? '')));
+                $route = $warehouse
+                    ? $this->carriers->warehouseRoute($locked->address?->country, $targetCode)
+                    : [];
                 $shipment = $locked->shipment()->create([
                     'warehouse_id' => $targetWarehouseId,
                     'shipment_status' => 'pending',
                     'warehouse_selection_source' => $warehouse ? 'manual' : 'manual_route_only',
+                    'carrier' => $route['carrier'] ?? null,
+                    'service' => $route['service'] ?? null,
+                    'carrier_service_id' => $route['carrier_service_id'] ?? null,
+                    'carrier_selection_source' => filled($route['carrier'] ?? null) ? 'automatic' : null,
                 ]);
             } elseif (($shipment->warehouse_id === null ? null : (int) $shipment->warehouse_id) !== $targetWarehouseId) {
+                $targetCode = strtoupper(trim((string) ($warehouse?->code ?? '')));
+                $route = $warehouse
+                    ? $this->carriers->warehouseRoute($locked->address?->country, $targetCode)
+                    : [];
+                // A carrier/service is bound to its old physical warehouse.
+                // Never carry FACTORY 4PX into US-SM or US-NY into MorePlus.
                 $shipment->forceFill([
                     'warehouse_id' => $targetWarehouseId,
                     'warehouse_selection_source' => $warehouse ? 'manual' : 'manual_route_only',
+                    'carrier' => $route['carrier'] ?? null,
+                    'service' => $route['service'] ?? null,
+                    'carrier_service_id' => $route['carrier_service_id'] ?? null,
+                    'carrier_selection_source' => filled($route['carrier'] ?? null) ? 'automatic' : null,
+                    'handled_by' => null,
                 ])->save();
             }
             if (($fromWarehouseId === null ? null : (int) $fromWarehouseId) !== $targetWarehouseId) {
@@ -291,6 +314,10 @@ final class OrderWarehouseRouting
         $segment['source_type'] = $code === 'FACTORY' ? 'factory' : 'warehouse';
         $segment['warehouse_id'] = (int) $warehouse->id;
         $segment['warehouse_name'] = (string) $warehouse->name;
+        $route = $this->carriers->warehouseRoute($order->address?->country, $code);
+        $segment['carrier'] = $route['carrier'] ?? null;
+        $segment['service'] = $route['service'] ?? null;
+        $segment['carrier_selection_source'] = filled($route['carrier'] ?? null) ? 'automatic' : null;
         unset($segment);
         $snapshot['segments'] = $segments;
         $snapshot['plan_type'] = $code === 'FACTORY' ? 'factory' : 'single';
@@ -298,12 +325,18 @@ final class OrderWarehouseRouting
             $derived[0]['warehouse_code'] = $code;
             $derived[0]['warehouse_id'] = (int) $warehouse->id;
             $derived[0]['warehouse_name'] = (string) $warehouse->name;
+            $derived[0]['carrier'] = $route['carrier'] ?? null;
+            $derived[0]['service'] = $route['service'] ?? null;
+            $derived[0]['carrier_selection_source'] = filled($route['carrier'] ?? null) ? 'automatic' : null;
             $snapshot['derived_orders'] = $derived;
         }
         $assignments = is_array($allocation->manual_assignments) ? $allocation->manual_assignments : null;
         if ($assignments !== null) {
             foreach ($assignments as &$assignment) {
                 $assignment['source_code'] = $code;
+                $assignment['carrier'] = $route['carrier'] ?? null;
+                $assignment['service'] = $route['service'] ?? null;
+                $assignment['carrier_selection_source'] = filled($route['carrier'] ?? null) ? 'automatic' : null;
             }
             unset($assignment);
         }

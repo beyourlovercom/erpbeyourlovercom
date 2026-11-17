@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\OverseaFiles;
 
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Products\Application\OutboundOrderSkuResolver;
 
 final class Wms64OutboundExporter
 {
@@ -24,6 +25,7 @@ final class Wms64OutboundExporter
     public function __construct(
         private readonly ProviderXlsxWriter $xlsx,
         private readonly WarehouseOrderReference $references,
+        private readonly OutboundOrderSkuResolver $outboundSkus,
     ) {}
 
     /** @param iterable<Shipment> $shipments */
@@ -124,6 +126,7 @@ final class Wms64OutboundExporter
                 && strcasecmp($sku, trim((string) $item->resolved_fulfillment_sku)) !== 0,
                 422, "订单 {$order->erp_order_id} 履约 SKU 未实际写入，禁止导出仓库文件");
             abort_if($sku === '', 422, "订单 {$order->erp_order_id} 存在空 SKU。");
+            $sku = $this->outboundSkus->canonical($sku, (int) $item->product_id);
             $row[24 + ($index * 2)] = $sku;
             $quantity = (int) $item->quantity;
             if ($warehouseKey === 'us-3sm') {

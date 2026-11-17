@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Application\ShipOut;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionInventoryAudit;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionReadOnlyGateway;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Application\OutboundOrderSkuResolver;
 use App\Modules\Products\Application\SkuMatchKey;
 use App\Modules\Products\Application\VerifiedOmsProductIdentityResolver;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
@@ -25,6 +26,7 @@ final class ShipOutProductionCanaryPreflight
     public function __construct(
         private readonly ShipOutOutboundPayloadFactory $factory,
         private readonly VerifiedOmsProductIdentityResolver $identity,
+        private readonly OutboundOrderSkuResolver $outboundSkus,
         private readonly ShipOutProductionInventoryAudit $inventory,
         private readonly ShipOutProductionReadOnlyGateway $reader,
     ) {}
@@ -158,18 +160,18 @@ final class ShipOutProductionCanaryPreflight
             if (filled($item->resolved_fulfillment_sku) && strcasecmp($erpSku, trim((string) $item->resolved_fulfillment_sku)) !== 0) {
                 throw new RuntimeException('SHIPOUT_R10_SKU_NOT_MATERIALIZED');
             }
-            $verified = $this->identity->resolve($erpSku);
+            $canonicalSku = $this->outboundSkus->canonical($erpSku, $id);
+            $verified = $this->identity->resolve($canonicalSku);
             if ($id < 1 || ($verified['status'] ?? '') !== 'resolved'
                 || (int) ($verified['product_id'] ?? 0) !== $id) {
                 throw new RuntimeException('SHIPOUT_R10_ERP_SKU_UNVERIFIED');
             }
             $options = $eligibleByProductId[$id] ?? [];
-            // Preserve exact physical SKU priority. Alias substitution requires
-            // an exact, Owner-approved ERP=>provider pair plus the existing
-            // independent Product OS physical verification and provider stock.
-            // Never infer variants from shared Product IDs or arbitrary aliases.
+            // Prefer the Product's canonical physical SKU when it exists in
+            // verified OMS inventory. Never infer a variant from Product ID alone.
+            // Non-canonical provider SKUs still require explicit alias approval.
             $exact = array_values(array_filter(
-                $options, fn (array $r) => strcasecmp($r['omsSku'], $erpSku) === 0
+                $options, fn (array $r) => strcasecmp($r['omsSku'], $canonicalSku) === 0
             ));
             if (count($exact) === 1) {
                 $choice = $exact[0];
