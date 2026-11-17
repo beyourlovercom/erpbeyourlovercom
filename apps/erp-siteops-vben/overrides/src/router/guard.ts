@@ -12,6 +12,7 @@ import { generateAccess } from './access';
 import {
   bootstrapAuthorizedDevNavigation, bootstrapCanonicalDevNavigation,
   isCanonicalErpPathAllowed, setApprovedMenuSource, devBootstrapError,
+  canonicalDevIdentity,
 } from './erp-live-navigation';
 import { installDevPinLimit } from './erp-workspace-tab-policy';
 import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
@@ -54,6 +55,21 @@ function setupAccessGuard(router: Router) {
   // Not persisted: canonical routes must be registered once in THIS Vben runtime,
   // even if the prior local fixture login left isAccessChecked in store state.
   let canonicalRoutesReady = false;
+  if (import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel' &&
+      typeof window !== 'undefined') {
+    const revalidate = () => {
+      if (!canonicalRoutesReady || !canonicalDevIdentity.value) return;
+      void bootstrapCanonicalDevNavigation(router, true).then((valid) => {
+        if (!valid && devBootstrapError.value === 'ERP2_CANONICAL_SESSION_REQUIRED')
+          void router.replace({path: LOGIN_PATH, replace: true});
+        else if (!valid) void router.replace({path:'/403', replace:true});
+      });
+    };
+    // Revalidate in the background and when resuming a stale 007 browser tab.
+    // The sidebar and saved workspaces remain mounted while a request is pending.
+    window.setInterval(() => { if (!document.hidden) revalidate(); }, 60_000);
+    window.addEventListener('focus', revalidate);
+  }
   router.beforeEach(async (to, from) => {
     const accessStore = useAccessStore();
     const userStore = useUserStore();
@@ -63,7 +79,7 @@ function setupAccessGuard(router: Router) {
 
     // Opt-in ERP2 staff mode: Laravel web session and persisted effective ACL are
     // the ONLY authority. Ignore Vben's local JWT and synthetic role selectors.
-    // Every navigation revalidates the server so revocation cannot retain tabs.
+    // Routes reuse the verified scope; background checks detect live revocation.
     if (import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel') {
       if (to.path === '/403' || coreRouteNames.includes(to.name)) return true;
       const firstCanonicalNavigation = !canonicalRoutesReady;

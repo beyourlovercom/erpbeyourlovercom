@@ -15,50 +15,70 @@ export const canonicalDevIdentity = ref<CanonicalErpIdentity | undefined>();
 const canonicalAllowedPaths = new Set<string>();
 export const isCanonicalErpPathAllowed = (path: string) => canonicalAllowedPaths.has(path);
 
-export async function bootstrapCanonicalDevNavigation(router: Router): Promise<boolean> {
-  // No role dropdown, local mock user, snapshot cache, or alternate identity DB.
-  const priorAuthority = canonicalDevIdentity.value;
-  suspendAuthorizedDevNavigation();
-  canonicalDevIdentity.value = undefined;
-  canonicalAllowedPaths.clear();
-  devBootstrapError.value = '';
-  try {
-    const identity = await getCanonicalErpIdentity();
-    // Role/permission/nav changes can narrow scope without changing the account.
-    // Never keep pinned tabs or hot data from a prior authority snapshot.
-    if (priorAuthority &&
-        canonicalAuthorityFingerprint(priorAuthority) !== canonicalAuthorityFingerprint(identity)) {
-      clearAuthorizedDevNavigation();
-    }
-    canonicalDevIdentity.value = identity;
-    useUserStore().setUserInfo({
-      userId: String(identity.user.id), id: String(identity.user.id),
-      username: identity.user.email,
-      realName: identity.user.name, roles: [], avatar: '',
-      homePath: '/erp/orders/orders-master',
-    });
-    applyAuthorizedDevNavigation(identity.navigation, router, {
-      allowOrdersMaster: identity.effectivePermissionKeys.includes('orders.view'),
-    });
-    for (const group of identity.navigation) {
-      if (!/^[a-z0-9_-]+$/.test(group.key)) continue;
-      const parent = group.key === 'dashboard' ? '/erp/overview' : '/erp/' + group.key;
-      if (!group.children?.length) canonicalAllowedPaths.add(parent);
-      for (const child of group.children ?? []) {
-        if (/^[a-z0-9_-]+$/.test(child.key)) canonicalAllowedPaths.add(parent + '/' + child.key);
+// Route changes are read-only against the last verified scope. An independent
+// timer/focus check performs revalidation, never a fetch on every sidebar click.
+let canonicalRefresh: Promise<boolean> | undefined;
+let authorityGeneration = 0;
+export async function bootstrapCanonicalDevNavigation(
+  router: Router, forceRevalidation = false,
+): Promise<boolean> {
+  if (!forceRevalidation && canonicalDevIdentity.value) return true;
+  if (canonicalRefresh) return canonicalRefresh;
+  const generation = authorityGeneration;
+  const refresh = async (): Promise<boolean> => {
+    const priorAuthority = canonicalDevIdentity.value;
+    devBootstrapError.value = '';
+    try {
+      const identity = await getCanonicalErpIdentity();
+      if (generation !== authorityGeneration) return !!canonicalDevIdentity.value;
+      const changed = !!priorAuthority &&
+        canonicalAuthorityFingerprint(priorAuthority) !== canonicalAuthorityFingerprint(identity);
+      // Revocation, identity switch, or permission narrowing invalidates tabs
+      // and hot snapshots before the new authorized menu is installed.
+      if (changed) clearAuthorizedDevNavigation();
+      canonicalDevIdentity.value = identity;
+      if (!priorAuthority || changed) {
+        useUserStore().setUserInfo({
+          userId: String(identity.user.id), id: String(identity.user.id),
+          username: identity.user.email,
+          realName: identity.user.name, roles: [], avatar: '',
+          homePath: '/erp/orders/orders-master',
+        });
+        applyAuthorizedDevNavigation(identity.navigation, router, {
+          allowOrdersMaster: identity.effectivePermissionKeys.includes('orders.view'),
+        });
       }
-      if (group.key === 'orders' && identity.effectivePermissionKeys.includes('orders.view')) {
-        canonicalAllowedPaths.add('/erp/orders/orders-master');
+      canonicalAllowedPaths.clear();
+      for (const group of identity.navigation) {
+        if (!/^[a-z0-9_-]+$/.test(group.key)) continue;
+        const parent = group.key === 'dashboard' ? '/erp/overview' : '/erp/' + group.key;
+        if (!group.children?.length) canonicalAllowedPaths.add(parent);
+        for (const child of group.children ?? []) {
+          if (/^[a-z0-9_-]+$/.test(child.key))
+            canonicalAllowedPaths.add(parent + '/' + child.key);
+        }
+        if (group.key === 'orders' && identity.effectivePermissionKeys.includes('orders.view'))
+          canonicalAllowedPaths.add('/erp/orders/orders-master');
       }
+      return true;
+    } catch (reason) {
+      if (generation !== authorityGeneration) return !!canonicalDevIdentity.value;
+      devBootstrapError.value =
+        reason instanceof Error ? reason.message : 'ERP2_CANONICAL_AUTH_FAILED';
+      if (devBootstrapError.value === 'ERP2_CANONICAL_SESSION_REQUIRED' ||
+          devBootstrapError.value === 'ERP2_CANONICAL_IDENTITY_INVALID' ||
+          devBootstrapError.value === 'ERP2_CANONICAL_NAVIGATION_INVALID') {
+        clearAuthorizedDevNavigation();
+        return false;
+      }
+      // A transient 503/network error must not erase an already verified
+      // sidebar or the Owner's open tabs. Server ACL still denies requests.
+      return !!priorAuthority;
     }
-    return true;
-  } catch (reason) {
-    devBootstrapError.value = reason instanceof Error ? reason.message : 'ERP2_CANONICAL_AUTH_FAILED';
-    canonicalDevIdentity.value = undefined;
-    canonicalAllowedPaths.clear();
-    clearAuthorizedDevNavigation();
-    return false;
-  }
+  };
+  canonicalRefresh = refresh();
+  try { return await canonicalRefresh; }
+  finally { canonicalRefresh = undefined; }
 }
 let approvedSource: MenuRecordRaw[] = [];
 let initialPage: ErpCurrentDevPage | undefined;
@@ -145,6 +165,7 @@ export function applyAuthorizedDevNavigation(
   if (forbidden.length) void tabbar._bulkCloseByKeys(forbidden);
 }
 export function clearAuthorizedDevNavigation() {
+  authorityGeneration++;
   canonicalDevIdentity.value = undefined;
   canonicalAllowedPaths.clear();
   suspendAuthorizedDevNavigation();

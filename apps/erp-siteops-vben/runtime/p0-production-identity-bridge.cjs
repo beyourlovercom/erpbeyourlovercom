@@ -8,6 +8,7 @@
  * ERP current effective-permission projection is verified end-to-end.
  */
 const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -17,7 +18,8 @@ const HOST = '127.0.0.1';
 const PORT = 18788;
 const MAX_BODY = 8192;
 const MAX_REMOTE = 2_000_000;
-const TTL = 10 * 60_000;
+const TTL = 60 * 24 * 60 * 60_000; // Dev session ceiling: 60 days, not an upstream guarantee.
+const COOKIE_MAX_AGE = Math.floor(TTL / 1000);
 const COOKIE = 'erp2_identity_dev';
 const STATIC = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
   '.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml',
@@ -43,7 +45,7 @@ function cookieValue(req) {
   const found=raw.find(s=>s.startsWith(COOKIE+'='));
   return found ? found.slice(COOKIE.length+1) : '';
 }
-function localCookie(value,maxAge=600) {
+function localCookie(value,maxAge=COOKIE_MAX_AGE) {
   return `${COOKIE}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
 }
 function csrfFrom(html) {
@@ -83,7 +85,36 @@ function checkIdentity(input,actual) {
   return input;
 }
 
-function createBridge({upstream=ORIGINAL_ERP,distDir,
+// A Windows-user DPAPI sealed key keeps Laravel cookie jars private across Dev restarts.
+function windowsDevSessionStorage() {
+  if(process.platform!=='win32')throw Error('WINDOWS_DEV_ONLY');
+  const directory=path.join(process.env.LOCALAPPDATA||'', 'BYL', 'ERP2-Identity-Dev');
+  if(!path.isAbsolute(directory))throw Error('LOCALAPPDATA_REQUIRED');
+  fs.mkdirSync(directory,{recursive:true,mode:0o700});
+  const keyFile=path.join(directory,'session-key.dpapi');
+  const escaped=keyFile.replace(/'/g,"''");
+  const script=`$p='${escaped}'; if (Test-Path -LiteralPath $p) {
+    $s=ConvertTo-SecureString ([IO.File]::ReadAllText($p));
+    $b=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s);
+    try { $v=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($b) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($b) }
+  } else {
+    $bytes=New-Object byte[] 32;
+    $rng=[Security.Cryptography.RandomNumberGenerator]::Create();
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+    $v=[Convert]::ToBase64String($bytes);
+    $s=ConvertTo-SecureString -String $v -AsPlainText -Force;
+    [IO.File]::WriteAllText($p,(ConvertFrom-SecureString $s))
+  }; [Console]::Out.Write($v)`;
+  const command=Buffer.from(script,'utf16le').toString('base64');
+  const key=Buffer.from(execFileSync('powershell.exe',
+    ['-NoProfile','-NonInteractive','-EncodedCommand',command],
+    {encoding:'utf8',timeout:15_000,windowsHide:true}).trim(),'base64');
+  if(key.length!==32)throw Error('ERP2_SESSION_KEY_INVALID');
+  return {filePath:path.join(directory,'session-state.enc'),key};
+}
+
+function createBridge({upstream=ORIGINAL_ERP,distDir,sessionStorage,
   allowedUpstreams=[ORIGINAL_ERP],enableCredentials=false,host=HOST,port=PORT}) {
   if(!allowedUpstreams.includes(upstream))throw Error('UNAPPROVED_ORIGINAL_ERP');
   const origin=new URL(upstream);
@@ -91,6 +122,37 @@ function createBridge({upstream=ORIGINAL_ERP,distDir,
     throw Error('UNSAFE_ORIGINAL_ERP_ORIGIN');
   const preauth=new Map(), sessions=new Map();
   const dist=path.resolve(distDir);
+  if(sessionStorage && (!path.isAbsolute(sessionStorage.filePath) ||
+      !Buffer.isBuffer(sessionStorage.key) || sessionStorage.key.length!==32))
+    throw Error('INVALID_ENCRYPTED_SESSION_STORAGE');
+  function saveSessions() {
+    if(!sessionStorage)return;
+    const valid=[...sessions].filter(([,s])=>s.expires>Date.now())
+      .map(([id,s])=>[id,{expires:s.expires,jar:[...s.jar]}]);
+    const iv=crypto.randomBytes(12);
+    const cipher=crypto.createCipheriv('aes-256-gcm',sessionStorage.key,iv);
+    const data=Buffer.concat([cipher.update(JSON.stringify({version:1,valid}),'utf8'),cipher.final()]);
+    const payload=Buffer.concat([iv,cipher.getAuthTag(),data]);
+    const temp=sessionStorage.filePath+'.pending';
+    fs.writeFileSync(temp,payload,{mode:0o600});
+    fs.renameSync(temp,sessionStorage.filePath);
+  }
+  if(sessionStorage && fs.existsSync(sessionStorage.filePath)) {
+    // Corrupt or foreign-user DPAPI stores fail closed; never silently reset auth.
+    const payload=fs.readFileSync(sessionStorage.filePath);
+    if(payload.length<29)throw Error('INVALID_SESSION_STORE');
+    const decipher=crypto.createDecipheriv('aes-256-gcm',sessionStorage.key,payload.subarray(0,12));
+    decipher.setAuthTag(payload.subarray(12,28));
+    const parsed=JSON.parse(Buffer.concat([decipher.update(payload.subarray(28)),decipher.final()]).toString());
+    if(parsed.version!==1||!Array.isArray(parsed.valid))throw Error('INVALID_SESSION_STORE');
+    for(const [id,s] of parsed.valid) {
+      if(typeof id!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(id)||
+         !Number.isSafeInteger(s?.expires)||!Array.isArray(s.jar)||
+         !s.jar.every(p=>Array.isArray(p)&&p.length===2&&
+           typeof p[0]==='string'&&typeof p[1]==='string'))throw Error('INVALID_SESSION_STORE');
+      if(s.expires>Date.now())sessions.set(id,{expires:s.expires,jar:new Map(s.jar)});
+    }
+  }
 
   async function original(route,jar,options={}) {
     // Strict static routes: no caller-supplied URL, no production order API.
@@ -107,10 +169,17 @@ function createBridge({upstream=ORIGINAL_ERP,distDir,
   }
   async function verified(jar) {
     const p=await original('/account/profile',jar);
-    if(p.status!==200)throw Error('ORIGINAL_ERP_SESSION_EXPIRED');
+    if([401,403].includes(p.status) ||
+      (p.status===302 && /\/login(?:[?#]|$)/i.test(p.headers.get('location')||'')))
+      throw Error('ORIGINAL_ERP_SESSION_EXPIRED');
+    if(p.status!==200)throw Error('ORIGINAL_ERP_PROFILE_UPSTREAM_UNAVAILABLE');
     const html=await remoteText(p);
     const actual=profileFromHtml(html);
     const identityRes=await original('/_erp2/identity',jar,{accept:'application/json'});
+    if([401,403].includes(identityRes.status) ||
+      (identityRes.status===302 &&
+        /\/login(?:[?#]|$)/i.test(identityRes.headers.get('location')||'')))
+      throw Error('ORIGINAL_ERP_SESSION_EXPIRED');
     if(identityRes.status!==200||!String(identityRes.headers.get('content-type')).includes('application/json'))
       throw Error('ORIGINAL_ERP_PERMISSION_ENDPOINT_REQUIRED');
     const identity=checkIdentity(JSON.parse(await remoteText(identityRes)),actual);
@@ -118,7 +187,7 @@ function createBridge({upstream=ORIGINAL_ERP,distDir,
   }
   function current(req) {
     const id=cookieValue(req),state=sessions.get(id);
-    if(!state||state.expires<Date.now()){sessions.delete(id);return undefined;}
+    if(!state||state.expires<=Date.now()){if(sessions.delete(id))saveSessions();return undefined;}
     return {id,state};
   }
   return http.createServer(async(req,res)=>{
@@ -126,7 +195,7 @@ function createBridge({upstream=ORIGINAL_ERP,distDir,
       const url=new URL(req.url||'/',`http://${host}:${port}`),route=url.pathname;
       if(route==='/api/health'&&req.method==='GET')
         return reply(res,200,{mode:'ORIGINAL_ERP_IDENTITY_ONLY',productionOrders:false,
-          identityEnabled:enableCredentials,storage:'memory-only'});
+          identityEnabled:enableCredentials,storage:sessionStorage?'dpapi-aes256gcm':'memory-only'});
       if(['/orders','/customers/orders'].includes(route)||route.startsWith('/api/'))
         return reply(res,405,{code:'PRODUCTION_BUSINESS_ACCESS_FORBIDDEN'});
       if(route==='/login'&&req.method==='GET') {
@@ -152,7 +221,7 @@ function createBridge({upstream=ORIGINAL_ERP,distDir,
         const fields=new URLSearchParams(await requestBody(req));
         if(!fields.get('email')||!fields.get('password'))return reply(res,401,{code:'CREDENTIALS_REQUIRED'});
         const login=await original('/login',state.jar,{method:'POST',csrf:state.token,
-          body:new URLSearchParams({email:fields.get('email'),password:fields.get('password')}).toString()});
+          body:new URLSearchParams({email:fields.get('email'),password:fields.get('password'),remember:'1'}).toString()});
         if(login.status!==302)return reply(res,401,{code:'ORIGINAL_LOGIN_REJECTED'});
         const loginLocation=login.headers.get('location')||'';
         if(/\/login(?:[?#]|$)/i.test(loginLocation))
@@ -165,13 +234,25 @@ function createBridge({upstream=ORIGINAL_ERP,distDir,
           identity.user.name.toLowerCase()!==fields.get('email').toLowerCase())
           return reply(res,403,{code:'PRINCIPAL_MISMATCH'});
         const next=makeId();sessions.set(next,{jar:state.jar,expires:Date.now()+TTL});
+        saveSessions();
         return reply(res,200,{authenticated:true},{'set-cookie':localCookie(next)});
       }
       if(route==='/_erp2/identity'&&req.method==='GET'){
         const active=current(req);if(!active)return reply(res,401,{code:'LOGIN_REQUIRED'});
-        try{const {identity}=await verified(active.state.jar);return reply(res,200,identity);}
-        catch{sessions.delete(active.id);return reply(res,401,{code:'IDENTITY_REVALIDATION_FAILED'},
-          {'set-cookie':localCookie('',0)});}
+        try{
+          const {identity}=await verified(active.state.jar);
+          saveSessions(); // Laravel may rotate remembered-cookie or session state.
+          return reply(res,200,identity);
+        }catch(error){
+          if(error?.message==='ORIGINAL_ERP_SESSION_EXPIRED'){
+            sessions.delete(active.id);saveSessions();
+            return reply(res,401,{code:'IDENTITY_REVALIDATION_FAILED'},
+              {'set-cookie':localCookie('',0)});
+          }
+          // Timeout, 5xx, malformed upstream response: deny this check but
+          // preserve the opaque cookie for recovery when upstream returns.
+          return reply(res,503,{code:'IDENTITY_REVALIDATION_TEMPORARILY_UNAVAILABLE'});
+        }
       }
       if(route==='/dashboard'&&req.method==='GET'){
         const active=current(req);if(!active)return reply(res,401,{code:'LOGIN_REQUIRED'});
@@ -188,7 +269,7 @@ function createBridge({upstream=ORIGINAL_ERP,distDir,
         const csrf=page.status===200?csrfFrom(await remoteText(page)):undefined;
         if(!csrf||req.headers['x-csrf-token']!==csrf)
           return reply(res,403,{code:'LOGOUT_CSRF_INVALID'});
-        sessions.delete(active.id);
+        sessions.delete(active.id);saveSessions();
         await original('/logout',active.state.jar,{method:'POST',csrf,body:''});
         return reply(res,200,{authenticated:false},{'set-cookie':localCookie('',0)});
       }
@@ -213,8 +294,9 @@ function createBridge({upstream=ORIGINAL_ERP,distDir,
 if(require.main===module){
   const ready=process.env.BYL_ERP2_ORIGINAL_IDENTITY_READY==='1';
   const distDir=path.join(__dirname,'p0-canonical-uat-dist-20261116');
-  createBridge({distDir,enableCredentials:ready}).listen(PORT,HOST,()=>{
+  createBridge({distDir,enableCredentials:ready,
+    sessionStorage:ready?windowsDevSessionStorage():undefined}).listen(PORT,HOST,()=>{
     process.stdout.write(`ERP2 identity-only bridge http://${HOST}:${PORT}, login ${ready?'READY':'HOLD'}\n`);
   });
 }
-module.exports={createBridge,ORIGINAL_ERP};
+module.exports={createBridge,windowsDevSessionStorage,ORIGINAL_ERP};

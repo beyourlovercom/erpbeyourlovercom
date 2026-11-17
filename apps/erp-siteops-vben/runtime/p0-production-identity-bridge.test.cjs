@@ -17,6 +17,7 @@ const profile=`<html><head><meta name="csrf-token" content="csrf-after-login"></
 test('original auth session stays server-side; only verified effective rights reach ERP2',async()=>{
   const seen=[];
   let permissions=['orders.view','orders.edit'];
+  let profileUnavailable=false, expired=false;
   const upstream=http.createServer(async(req,res)=>{
     seen.push(`${req.method} ${req.url}`);
     if(req.url==='/login'&&req.method==='GET'){
@@ -28,10 +29,13 @@ test('original auth session stays server-side; only verified effective rights re
       assert.equal(req.headers['x-csrf-token'],'csrf-before-login');
       assert.match(req.headers.cookie,/laravel_session=pre/);
       assert.match(body,/email=Vita/);
+      assert.match(body,/remember=1/);
       res.writeHead(302,{'location':'/dashboard','set-cookie':'laravel_session=active; HttpOnly; Secure; Path=/'});
       return res.end();
     }
     if(req.url==='/account/profile'){
+      if(expired)return res.writeHead(302).end();
+      if(profileUnavailable)return res.writeHead(503).end();
       if(!String(req.headers.cookie).includes('laravel_session=active'))return res.writeHead(302).end();
       res.writeHead(200,{'content-type':'text/html'});return res.end(profile);
     }
@@ -68,6 +72,14 @@ test('original auth session stays server-side; only verified effective rights re
     permissions=['orders.view'];
     res=await fetch(origin+'/_erp2/identity',{headers:{Cookie:nextCookie}});
     assert.deepEqual((await res.json()).effectivePermissionKeys,['orders.view']);
+    profileUnavailable=true;
+    res=await fetch(origin+'/_erp2/identity',{headers:{Cookie:nextCookie}});
+    assert.equal(res.status,503);
+    assert.equal((await res.json()).code,'IDENTITY_REVALIDATION_TEMPORARILY_UNAVAILABLE');
+    assert.equal(res.headers.get('set-cookie'),null);
+    profileUnavailable=false;
+    res=await fetch(origin+'/_erp2/identity',{headers:{Cookie:nextCookie}});
+    assert.equal(res.status,200,'transient upstream fault must not destroy local session');
     res=await fetch(origin+'/orders',{headers:{Cookie:nextCookie}});
     assert.equal(res.status,405);
     res=await fetch(origin+'/api/erp/current/orders',{headers:{Cookie:nextCookie}});
