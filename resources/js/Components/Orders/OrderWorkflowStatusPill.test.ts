@@ -101,7 +101,7 @@ it('replaces the main visible selection instead of appending old tags', async ()
   reload.mockRestore()
 })
 
-it('allows privileged correction from derived states but keeps archived records read-only', () => {
+it('allows a privileged archived-order status correction but keeps viewer projections read-only', () => {
   for (const code of ['archived', 'progress_conflict', 'allocated', 'partially_shipped', 'completed']) {
     const wrapper = mount(OrderWorkflowStatusPill, {
       props: {
@@ -110,8 +110,48 @@ it('allows privileged correction from derived states but keeps archived records 
         options: [{ code, en: code, zh: code, color: 'red', mutable: false }],
       },
     })
-    expect(wrapper.find('select').exists()).toBe(code !== 'archived')
+    expect(wrapper.find('select').exists()).toBe(true)
+    wrapper.unmount()
   }
+  const viewer = mount(OrderWorkflowStatusPill, {
+    props: {
+      orderId: 28, canEdit: false,
+      projection: { code: 'archived', en: 'Archived', zh: '已归档', color: 'neutral', source: 'canonical_projection' },
+      options: [{ code: 'sending', en: 'Sending', zh: '待发', color: 'neutral', mutable: true }],
+    },
+  })
+  expect(viewer.find('select').exists()).toBe(false)
+})
+
+it('reactivates an archived order only after confirmation and navigates to its real queue', async () => {
+  const axios = await import('axios')
+  const { router } = await import('@inertiajs/vue3')
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+  const patch = vi.spyOn(axios.default, 'patch').mockResolvedValueOnce({ data: {
+    order: { workflow_revision: 3 }, workflow_status: { code: 'sending', auxiliary: [] },
+    target_url: '/logistics/china?view=pending&global_grid=1',
+  } })
+  const visit = vi.spyOn(router, 'visit').mockImplementation(() => undefined)
+  const wrapper = mount(OrderWorkflowStatusPill, { props: {
+    orderId: 91, canEdit: true, revision: 2,
+    projection: { code: 'archived', en: 'Archived', zh: '已归档', color: 'neutral', source: 'canonical_projection' },
+    options: [
+      { code: 'archived', en: 'Archived', zh: '已归档', color: 'neutral', mutable: false },
+      { code: 'sending', en: 'Sending', zh: '待发', color: 'neutral', mutable: true },
+    ],
+  } })
+  expect(wrapper.find('option[value="archived"]').attributes('disabled')).toBeDefined()
+  await wrapper.find('select').setValue('sending')
+  expect(patch).not.toHaveBeenCalled()
+  expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('archived')
+  await wrapper.find('select').setValue('sending')
+  await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/91/workflow-status', {
+    workflow_status: 'sending', expected_workflow_revision: 2,
+  }, expect.any(Object)))
+  await vi.waitFor(() => expect(visit).toHaveBeenCalledWith('/logistics/china?view=pending&global_grid=1',
+    { replace: true, preserveState: false, preserveScroll: false }))
+  expect(confirm).toHaveBeenCalledTimes(2)
+  confirm.mockRestore();patch.mockRestore();visit.mockRestore()
 })
 
 it('exposes manual exception resolution as a real core command with the same revision', async () => {

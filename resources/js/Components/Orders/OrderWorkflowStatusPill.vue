@@ -46,6 +46,10 @@ const visibleOptions = computed<Option[]>(() => [
 const update = async (next: string) => {
   if (!props.canEdit || saving.value || next === code.value) return
   const previous = code.value
+  if (previous === 'archived' && !window.confirm('修改归档订单状态将同时恢复运营资格，订单会进入新状态对应的业务列表。确认继续？')) {
+    if (select.value) select.value.value = previous
+    return
+  }
   let reason: string | undefined
   if (next === 'cancelled') {
     if (!window.confirm('确认在 ERP 中真正取消此订单？不会自动向 WooCommerce 取消，也不会退款。')) {
@@ -96,7 +100,7 @@ const update = async (next: string) => {
 
 <template>
   <span class="order-workflow-status" :class="`status-color-${current.color}`" :data-color="current.color">
-    <select v-if="canEdit && options.length && current.code !== 'archived'" ref="select" :value="code" :disabled="saving" :aria-label="`订单工作状态 ${current.zh}`" :title="`工作进度选项按编号显示；${current.zh}`" @change="update(($event.target as HTMLSelectElement).value)">
+    <select v-if="canEdit && options.length" ref="select" :value="code" :disabled="saving" :aria-label="`订单工作状态 ${current.zh}`" :title="`工作进度选项按编号显示；${current.zh}`" @change="update(($event.target as HTMLSelectElement).value)">
       <option v-for="option in visibleOptions" :key="option.code" :value="option.code" :disabled="!option.mutable">{{ optionCaption(option) }}</option>
     </select>
     <span v-else class="mvp-status" :title="`${current.en} · ${current.source === 'canonical_projection' ? '来自订单真实状态的只读投影' : '员工工作进度'}`" :aria-label="`订单状态 ${current.zh}`">{{ current.zh }}</span>

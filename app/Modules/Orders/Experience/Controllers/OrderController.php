@@ -319,10 +319,13 @@ final class OrderController
                             || (app(LogisticsReviewAccess::class)->allows($request->user()) && $code === 'out_of_stock')),
                 ])->values()->all(),
             'canEditOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
-            'canEditWorkflowStatus' => ! $order->isOperationallyArchived()
+            'canEditWorkflowStatus' => ($order->operational_archived_at !== null && $order->archived_at === null
+                && $order->fulfillmentParent?->operational_archived_at === null
+                && ($request->user()?->can('orders.edit') ?? false))
+                || (! $order->isOperationallyArchived()
                 && (($request->user()?->can('orders.edit') ?? false)
                     || ($request->user()?->can('domestic.review') && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY')
-                    || app(LogisticsReviewAccess::class)->allows($request->user())),
+                    || app(LogisticsReviewAccess::class)->allows($request->user()))),
             'canManageAuxiliary' => ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canTrashOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canArchiveOrder' => ! $order->trashed() && $order->archived_at === null && $order->operational_archived_at === null && ($request->user()?->can('orders.archive') ?? false),
@@ -630,7 +633,9 @@ final class OrderController
     public function updateWorkflowStatus(Request $request, Order $order): JsonResponse
     {
         KolOrderAccessScope::authorize($request->user(), $order);
-        abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能修改履约状态。');
+        abort_if($order->trashed() || $order->archived_at !== null, 422, '回收站订单不能直接修改状态。');
+        $reactivating = $order->isOperationallyArchived();
+        if ($reactivating) abort_unless($request->user()?->can('orders.edit'), 403);
         abort_unless($request->user()?->can('orders.edit') || $request->user()?->can('domestic.review')
             || app(LogisticsReviewAccess::class)->allows($request->user()), 403);
 
@@ -651,7 +656,9 @@ final class OrderController
                 || ($overseas && app(LogisticsReviewAccess::class)->allows($request->user())
                     && in_array($data['workflow_status'], ['out_of_stock', 'resolve_stockout'], true)), 403);
         }
-        $updated = $this->progressTransitions->transition($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user(), $data['reason'] ?? null);
+        $updated = $reactivating
+            ? $this->progressTransitions->reactivateAndTransition($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user(), $data['reason'] ?? null)
+            : $this->progressTransitions->transition($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user(), $data['reason'] ?? null);
 
         return response()->json(['order' => $this->orderData($updated), 'workflow_status' => $this->workflowProjection($updated),
             'target_url' => app(OrderWarehouseRouting::class)->destination($updated, $request->user())]);
