@@ -119,8 +119,8 @@ const actorId = computed(() => {
   return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : 0
 })
 const theme = themeBalham.withParams({ fontSize: 12, spacing: 5, headerFontSize: 12 })
-const storageKey = computed(() => 'oms-grid-pref:user:' + actorId.value + ':' + props.namespace)
-const oldStorageKey = (namespace: string) => 'oms-grid-pref:' + namespace
+const storageKey = computed(() => actorId.value > 0
+  ? 'oms-grid-pref:user:' + actorId.value + ':' + props.namespace : null)
 const scopedStorageKey = (namespace: string) => 'oms-grid-pref:user:' + actorId.value + ':' + namespace
 
 const defaultColDef: ColDef<GridRow> = { sortable: true, filter: true, floatingFilter: true, resizable: true, minWidth: 85 }
@@ -234,32 +234,38 @@ const readCache = (key: string): OmsGridPreference | null => {
   } catch { return null }
 }
 const cache = (value: OmsGridPreference) => {
+  if (!storageKey.value) return
   try { window.localStorage.setItem(storageKey.value, JSON.stringify(value)) } catch { /* local cache is optional */ }
 }
-// Serialize writes: a slow earlier request must never overwrite a newer
-// column layout on the server. The latest layout is cached synchronously.
+// Capture edits at the time they happen, not after a debounce or a page refresh.
+// Serialize writes so a slow older PUT cannot overwrite the newest layout.
 let saveInFlight = false
-let savePending = false
+let pendingValue: OmsGridPreference | null = null
 const save = async () => {
-  if (!api.value || !layoutReady.value) return
   if (props.preferenceScope === 'local') { syncState.value = 'saved'; return }
-  if (saveInFlight) { savePending = true; return }
+  if (saveInFlight || !pendingValue) return
   saveInFlight = true
-  do {
-    savePending = false
-    const value = snapshot()
+  while (pendingValue) {
+    const value = pendingValue
+    pendingValue = null
     syncState.value = 'saving'
     try {
       await axios.put('/ui/preferences/' + encodeURIComponent(props.namespace), { value })
       syncState.value = 'saved'
-    } catch { syncState.value = 'error' }
-  } while (savePending && api.value)
+    } catch {
+      // Keep the newer edit (if there is one) queued for a future attempt.
+      pendingValue ??= value
+      syncState.value = 'error'
+      break
+    }
+  }
   saveInFlight = false
 }
 const scheduleSave = () => {
   if (restoring || !api.value || !layoutReady.value) return
   refresh()
-  cache(snapshot())
+  pendingValue = snapshot()
+  cache(pendingValue)
   if (timer) clearTimeout(timer)
   timer = setTimeout(() => { void save() }, 450)
 }
@@ -325,7 +331,7 @@ const restore = (value: OmsGridPreference) => {
 // applied. A user-scoped local snapshot is instant on repeat navigation, and
 // requires no network request; cold browsers fetch the account copy ONCE.
 const load = async () => {
-  const current = readCache(storageKey.value)
+  const current = storageKey.value ? readCache(storageKey.value) : null
   if (current) { restore(current); return }
   const getServer = async (namespace: string): Promise<OmsGridPreference | null> => {
     if (props.preferenceScope !== 'account') return null
@@ -338,14 +344,13 @@ const load = async () => {
   if (!value) {
     for (const namespace of props.legacyPreferenceNamespaces) {
       if (!namespace || namespace === props.namespace) continue
-      value = readCache(scopedStorageKey(namespace))
+      value = (actorId.value > 0 ? readCache(scopedStorageKey(namespace)) : null)
         ?? await getServer(namespace)
-        ?? readCache(oldStorageKey(namespace))
       if (value) break
     }
   }
-  // Legacy unscoped cache is LAST resort when account API has no preference.
-  value ??= readCache(oldStorageKey(props.namespace))
+  // Unscoped legacy browser values have no owner identity. Never import another
+  // person's layout into an authenticated account on a shared browser.
   if (value) { restore(value); cache(snapshot()) }
   else { restoring = true; applyPins(); restoring = false }
 }
@@ -492,7 +497,10 @@ const onKeydown = (event: KeyboardEvent) => {
 }
 if (typeof window !== 'undefined') window.addEventListener('keydown', onKeydown)
 onBeforeUnmount(() => {
-  if (timer) clearTimeout(timer)
+  if (timer) { clearTimeout(timer); timer = undefined }
+  // An Inertia navigation or successful batch review may unmount this Grid
+  // before the 450ms debounce expires. Persist the captured human edit now.
+  if (pendingValue) void save()
   if (searchTimer) clearTimeout(searchTimer)
   if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeydown)
   if (maximized.value) document.body.style.overflow = ''
@@ -524,6 +532,7 @@ onBeforeUnmount(() => {
           :enable-cell-text-selection="cellTextSelection"
           :ensure-dom-order="cellTextSelection"
           :column-defs="leafColumns"
+          :maintain-column-order="true"
           :default-col-def="effectiveDefaultColDef"
           :row-selection="enableSelection ? rowSelection : undefined"
           :get-row-id="rowIdentityKey ? getRowId : undefined"
