@@ -93,9 +93,17 @@ beforeEach(() => {
   mock.state = []
   mock.get.mockReset().mockResolvedValue({ data: { value: null } })
   mock.put.mockReset().mockResolvedValue({ data: {} })
-  window.localStorage.clear()
+  // Node 25 can expose an unusable experimental localStorage global. Use a
+  // deterministic per-test browser cache on both Node and jsdom runtimes.
+  const cache = new Map<string, string>()
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => cache.get(key) ?? null,
+    setItem: (key: string, value: string) => { cache.set(key, String(value)) },
+    removeItem: (key: string) => { cache.delete(key) },
+    clear: () => { cache.clear() },
+  })
 })
-afterEach(() => { vi.useRealTimers() })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('account-level Grid column stability', () => {
   it('keeps Dede SKU and quantity at the front after batch-review row reload and column definition updates', async () => {
