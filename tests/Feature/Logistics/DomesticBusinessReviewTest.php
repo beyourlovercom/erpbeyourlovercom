@@ -441,22 +441,17 @@ final class DomesticBusinessReviewTest extends TestCase
         $this->assertDatabaseHas('orders', ['id' => $order->id, 'workflow_status' => null]);
     }
 
-    public function test_domestic_shipping_cannot_bypass_business_approval(): void
+    public function test_domestic_shipping_without_business_approval_keeps_kaven_review_optional(): void
     {
         $actor = $this->userWith(['logistics.view', 'logistics.operate']);
         $order = $this->order();
 
-        try {
-            app(ShipmentService::class)->markShipped($order, [
-                'warehouse_id' => $order->shipment->warehouse_id,
-                'carrier' => '4PX', 'tracking_number' => 'TEST123', 'shipped_at' => now()->toIso8601String(),
-            ], $actor);
-            self::fail('Unreviewed factory shipment must be rejected');
-        } catch (HttpException $exception) {
-            self::assertSame(409, $exception->getStatusCode());
-            self::assertStringContainsString('商务确认', $exception->getMessage());
-        }
-        self::assertSame('pending', $order->fresh()->shipment->shipment_status);
+        app(ShipmentService::class)->markShipped($order, [
+            'warehouse_id' => $order->shipment->warehouse_id,
+            'carrier' => '4PX', 'tracking_number' => 'TEST123', 'shipped_at' => now()->toIso8601String(),
+        ], $actor);
+        self::assertSame('shipped', $order->fresh()->shipment->shipment_status);
+        self::assertFalse($order->operationalMarkers()->where('marker', 'domestic_reviewed')->exists());
     }
 
     public function test_split_order_rejection_unassigns_unshipped_siblings_and_returns_parent_to_vita(): void

@@ -270,7 +270,7 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame(['A', 'B', 'C'], collect($allocation->fresh()->plan_snapshot['derived_orders'])->pluck('suffix')->all());
     }
 
-    public function test_split_source_shows_allocated_and_children_cannot_ship_before_warehouse_review(): void
+    public function test_split_source_shows_allocated_and_only_overseas_child_requires_warehouse_review(): void
     {
         [$user, $root] = $this->scenario(2);
         $items = $root->items()->orderBy('id')->get();
@@ -295,14 +295,24 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame(['pending', 'pending'], $children->map(fn ($child) => $child->shipment->shipment_status)->all());
 
         foreach ($children as $child) {
+            $attributes = [
+                'warehouse_id' => (int) $child->shipment->warehouse_id,
+                'carrier' => $child->shipment->carrier,
+                'service' => $child->shipment->service,
+                'tracking_number' => 'UAT-SPLIT-'.$child->fulfillment_suffix,
+                'shipped_at' => now()->toIso8601String(),
+            ];
+            if ($child->shipment->warehouse->code === 'FACTORY') {
+                app(ShipmentService::class)->markShipped($child, $attributes, $user);
+                self::assertSame('shipped', $child->fresh()->order_status->value);
+                self::assertSame('shipped', $child->fresh()->shipment->shipment_status);
+                self::assertSame('UAT-SPLIT-'.$child->fulfillment_suffix, $child->fresh()->shipment->tracking_number);
+                self::assertFalse($child->fresh()->operationalMarkers()->where('marker', 'domestic_reviewed')->exists());
+                continue;
+            }
             try {
-                app(ShipmentService::class)->markShipped($child, [
-                    'warehouse_id' => (int) $child->shipment->warehouse_id,
-                    'carrier' => $child->shipment->carrier,
-                    'service' => $child->shipment->service,
-                    'shipped_at' => now()->toIso8601String(),
-                ], $user);
-                self::fail('A split segment bypassed warehouse review.');
+                app(ShipmentService::class)->markShipped($child, $attributes, $user);
+                self::fail('An overseas split segment bypassed warehouse review.');
             } catch (HttpException $exception) {
                 self::assertSame(409, $exception->getStatusCode());
                 self::assertMatchesRegularExpression('/审核|商务确认/u', $exception->getMessage());
@@ -311,7 +321,7 @@ final class FulfillmentAllocationV1Test extends TestCase
             self::assertSame('pending', $child->fresh()->shipment->shipment_status);
             self::assertNull($child->fresh()->shipment->shipped_at);
         }
-        $this->assertDatabaseMissing('audit_records', ['action' => 'shipment.marked_shipped']);
+        $this->assertDatabaseHas('audit_records', ['action' => 'shipment.marked_shipped']);
     }
 
     public function test_manual_v1_requires_every_order_item_and_forbids_duplicate_item_split(): void

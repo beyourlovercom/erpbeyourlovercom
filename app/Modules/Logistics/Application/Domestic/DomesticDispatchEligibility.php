@@ -39,9 +39,6 @@ final class DomesticDispatchEligibility
             || $order->operationalMarkers->contains(fn ($m) => in_array($m->marker, OrderManualHoldStatus::HOLD_MARKERS, true))) {
             return ['订单处于异常或人工跟进状态，禁止导出'];
         }
-        if (! $order->operationalMarkers->contains('marker', 'domestic_reviewed')) {
-            return ['商务尚未审核，禁止导出'];
-        }
 
         return [];
     }

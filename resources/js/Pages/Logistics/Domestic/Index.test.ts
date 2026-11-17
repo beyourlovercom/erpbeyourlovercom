@@ -186,14 +186,14 @@ describe('Domestic logistics production workbench', () => {
       {carrier:'4PX',service:'SD标准挂号-普货'},expect.any(Object))
   })
 
-  it('prevents routing writes from readonly or unreviewed domestic rows', () => {
+  it('keeps readonly and review queues non-editable but allows unreviewed pending routes', () => {
     const readonly=mount(Index,{props:{...baseProps,canOperate:false}})
     expect(readonly.find('select[aria-label^="选择物流商"]').exists()).toBe(false)
     const review=mount(Index,{props:{...baseProps,view:'review'}})
     expect(review.find('select[aria-label^="选择物流商"]').exists()).toBe(false)
     const unreviewed=mount(Index,{props:{...baseProps,view:'pending',
       rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],review_status:'pending' as const}]}}})
-    expect(unreviewed.find('select[aria-label^="选择物流商"]').exists()).toBe(false)
+    expect(unreviewed.find('select[aria-label^="选择物流商"]').exists()).toBe(true)
   })
 
   it('splits SKU and product quantity into separate columns on the domestic review page only', () => {
@@ -339,7 +339,7 @@ describe('Domestic logistics production workbench', () => {
     expect(routerPost).not.toHaveBeenCalledWith('/logistics/china/orders/1/quick-ship',expect.anything(),expect.anything())
   })
 
-  it('confirms actual shipment only on explicit click and hides input for unreviewed, stockout or shipped rows', async () => {
+  it('confirms only on click; unreviewed pending stays editable, stockout and shipped do not', async () => {
     const ready=mount(Index,{props:{...baseProps,view:'pending'}})
     await ready.find('input[aria-label^="填写发货单号"]').setValue('4PX20261103')
     const confirm=ready.findAll('button').find(b=>b.text()==='确认发货')
@@ -352,8 +352,8 @@ describe('Domestic logistics production workbench', () => {
       const blocked=mount(Index,{props:{...baseProps,rows:{...baseProps.rows,data:[{
         ...baseProps.rows.data[0],review_status:review,
       }]}}})
-      expect(blocked.find('input[aria-label^="填写发货单号"]').exists()).toBe(false)
-      expect(blocked.findAll('button').filter(b => b.text() === '确认发货')).toHaveLength(0)
+      expect(blocked.find('input[aria-label^="填写发货单号"]').exists()).toBe(review==='pending')
+      expect(blocked.findAll('button').filter(b => b.text() === '确认发货')).toHaveLength(review==='pending'?1:0)
     }
     const shipped=mount(Index,{props:{...baseProps,rows:{...baseProps.rows,data:[{
       ...baseProps.rows.data[0],shipment_status:'shipped',tracking_number:'TRACKED',

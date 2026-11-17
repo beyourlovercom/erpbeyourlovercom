@@ -159,7 +159,7 @@ final class OrderCoreStatusV1Test extends TestCase
             'workflow_status' => 'pending_review', 'expected_workflow_revision' => 0,
         ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_review');
         $this->assertSame(1, app(OrderProgressQuery::class)->domesticReview(Order::query())->whereKey($order->id)->count());
-        $this->assertSame(0, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
+        $this->assertSame(1, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
     }
 
     public function test_invalid_permission_and_stale_revision_do_not_write(): void

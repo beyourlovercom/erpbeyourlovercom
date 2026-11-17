@@ -37,10 +37,10 @@ final class OrderProgressV3AggregateTest extends TestCase
         self::assertSame('shipping', $this->phase($b));
     }
 
-    public function test_submitted_allocation_cannot_hide_existing_shipment_exception(): void
+    public function test_submitted_allocation_preserves_sent_factory_shipment_without_review_marker(): void
     {
-        // Mirrors a historical 4PX source order with submitted allocation,
-        // shipped Shipment, no Tracking and no Kaven review marker.
+        // A historical 4PX shipment with no Tracking and no Kaven review
+        // remains sent, not an artificial approval conflict.
         $root = $this->order('ORPHAN-ALLOCATED');
         $root->fulfillmentAllocation()->create(['status'=>'submitted','decision_source'=>'manual']);
         $factory = Warehouse::where('code','FACTORY')->firstOrFail();
@@ -50,10 +50,10 @@ final class OrderProgressV3AggregateTest extends TestCase
         ]);
 
         self::assertSame('shipped', $root->fresh()->shipment?->shipment_status);
-        self::assertSame('progress_conflict', $this->phase($root));
+        self::assertSame('sent', $this->phase($root));
         self::assertSame(0, app(OrderProgressQuery::class)->applyPhase(Order::query(),'allocated')
             ->whereKey($root->id)->count());
-        self::assertSame(1, app(OrderProgressQuery::class)->applyPhase(Order::query(),'progress_conflict')
+        self::assertSame(1, app(OrderProgressQuery::class)->applyPhase(Order::query(),'sent')
             ->whereKey($root->id)->count());
         self::assertSame('shipped', $root->fresh()->shipment->shipment_status);
 
@@ -63,7 +63,7 @@ final class OrderProgressV3AggregateTest extends TestCase
             ->whereKey($root->id)->count());
     }
 
-    public function test_conflicting_split_child_is_not_misreported_as_partially_shipped(): void
+    public function test_unreviewed_sent_split_child_rolls_up_as_partially_shipped(): void
     {
         $root = $this->order('CONFLICT-ROOT');
         $root->fulfillmentAllocation()->create(['status'=>'submitted','decision_source'=>'manual']);
@@ -77,11 +77,11 @@ final class OrderProgressV3AggregateTest extends TestCase
         $b->shipment()->create([
             'warehouse_id'=>$factory->id,'carrier'=>'4PX','shipment_status'=>'pending',
         ]);
-        self::assertSame('progress_conflict', $this->phase($a));
-        self::assertSame('progress_conflict', $this->phase($root));
-        self::assertSame(0, app(OrderProgressQuery::class)
-            ->applyPhase(Order::query(),'partially_shipped')->whereKey($root->id)->count());
+        self::assertSame('sent', $this->phase($a));
+        self::assertSame('partially_shipped', $this->phase($root));
         self::assertSame(1, app(OrderProgressQuery::class)
+            ->applyPhase(Order::query(),'partially_shipped')->whereKey($root->id)->count());
+        self::assertSame(0, app(OrderProgressQuery::class)
             ->applyPhase(Order::query(),'progress_conflict')->whereKey($root->id)->count());
     }
 

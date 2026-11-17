@@ -92,8 +92,7 @@ final class OrderProgressResolver
             $overseasReviewed = $review && $review->status === 'approved'
                 && (int) $review->reviewed_warehouse_id === (int) $shipment->warehouse_id;
             if ($stockout || $shipment->shipped_at === null
-                || (($factory && ! $domesticReviewed) || ($overseas && ! $overseasReviewed))
-                    && blank($shipment->tracking_number)) {
+                || ($overseas && ! $overseasReviewed && blank($shipment->tracking_number))) {
                 return 'progress_conflict';
             }
 
