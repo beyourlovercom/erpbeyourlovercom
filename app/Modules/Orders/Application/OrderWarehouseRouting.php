@@ -27,8 +27,14 @@ final class OrderWarehouseRouting
     public function options(): array
     {
         $codes = (array) config('warehouse_master.fulfillment_codes', []);
-        $known = Warehouse::query()->where('is_active', true)->whereIn('code', $codes)
-            ->get(['code', 'name'])->keyBy('code');
+        // Production has legacy lowercase codes (notably us-la). The public
+        // route contract remains canonical uppercase, including on SQLite UAT.
+        $lookupCodes = collect($codes)
+            ->flatMap(fn (string $code): array => [$code, strtolower($code)])
+            ->unique()->all();
+        $known = Warehouse::query()->where('is_active', true)->whereIn('code', $lookupCodes)
+            ->get(['code', 'name'])
+            ->keyBy(fn (Warehouse $warehouse): string => strtoupper(trim((string) $warehouse->code)));
 
         $rows = [['code' => self::UNASSIGNED, 'name' => '未分仓']];
         foreach ($codes as $code) {
@@ -175,7 +181,8 @@ final class OrderWarehouseRouting
             // Owner rule: the workbench route and actual pending shipment warehouse
             // are one atomic change. Repair legacy mismatches even on same-code saves.
             $warehouse = in_array($code, [self::UNASSIGNED, self::OUTSOURCE], true)
-                ? null : Warehouse::query()->where('code', $code)->where('is_active', true)->firstOrFail();
+                ? null : Warehouse::query()->whereIn('code', [$code, strtolower($code)])
+                    ->where('is_active', true)->firstOrFail();
             $targetWarehouseId = $warehouse?->getKey();
             $shipment = $locked->shipment;
             if ($locked->routing_warehouse_code === $code
