@@ -2,7 +2,7 @@ import type { ErpDevMenuNode } from './erp-orders';
 
 /** ERP2 P0: session-derived identity from the existing Laravel ERP, never Vben role fixtures. */
 export interface CanonicalErpIdentity {
-  source: 'ERP_CANONICAL_LARAVEL_DEV_SESSION_V1';
+  source: 'ERP_CANONICAL_LARAVEL_DEV_SESSION_V1' | 'ERP_ORIGINAL_LARAVEL_PRODUCTION_SESSION_V1';
   user: { id: number; name: string; email: string };
   permissionMode: 'role' | 'custom';
   roleKeys: string[];
@@ -12,6 +12,7 @@ export interface CanonicalErpIdentity {
 /** A session's effective authority may change without its user ID changing. */
 export function canonicalAuthorityFingerprint(identity: CanonicalErpIdentity): string {
   return JSON.stringify({
+    source: identity.source,
     userId: identity.user.id,
     email: identity.user.email.toLowerCase(),
     mode: identity.permissionMode,
@@ -32,7 +33,8 @@ const strings = (value: unknown): value is string[] =>
 
 export function parseCanonicalErpIdentity(input: unknown): CanonicalErpIdentity {
   const payload = obj(input), user = obj(payload.user);
-  if (payload.source !== 'ERP_CANONICAL_LARAVEL_DEV_SESSION_V1' ||
+  if (!['ERP_CANONICAL_LARAVEL_DEV_SESSION_V1',
+        'ERP_ORIGINAL_LARAVEL_PRODUCTION_SESSION_V1'].includes(String(payload.source)) ||
       !Number.isSafeInteger(user.id) || Number(user.id) <= 0 ||
       typeof user.name !== 'string' || typeof user.email !== 'string' ||
       !['role', 'custom'].includes(String(payload.permissionMode)) ||
@@ -55,7 +57,7 @@ export function parseCanonicalErpIdentity(input: unknown): CanonicalErpIdentity 
     return {key:entry.key,label:entry.label,path:entry.path,children};
   });
   return {
-    source:'ERP_CANONICAL_LARAVEL_DEV_SESSION_V1',
+    source:payload.source as CanonicalErpIdentity['source'],
     user:{id:Number(user.id),name:user.name as string,email:user.email as string},
     permissionMode:payload.permissionMode as 'role' | 'custom',
     roleKeys:payload.roleKeys,
