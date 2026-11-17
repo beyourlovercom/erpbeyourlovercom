@@ -7,6 +7,8 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Logistics\Application\LogisticsStatusSummary;
 use App\Modules\Logistics\Application\ShipmentService;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -185,6 +187,96 @@ final class OrderOperationalArchiveTest extends TestCase
             $this->assertSame(409, $exception->getStatusCode());
         }
         $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
+    }
+
+    public function test_editor_changes_archived_factory_order_into_real_pending_queue(): void
+    {
+        $archiver = $this->userWith(['orders.view', 'orders.archive']);
+        $editor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view']);
+        $order = $this->makeOrder($archiver, 'reactivate-factory');
+        $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $order->shipment()->create(['warehouse_id' => $factory->id, 'shipment_status' => 'pending']);
+        $this->actingAs($archiver)->post('/orders/'.$order->id.'/archive')->assertRedirect();
+
+        $this->actingAs($editor)->get('/orders/archive')->assertOk()->assertInertia(fn ($page) =>
+            $page->where('canChangeStatus', true)->where('orders.data.0.can_change_status', true)
+                ->where('orders.data.0.workflow_status_projection.code', 'archived'));
+        $this->actingAs($editor)->get('/customers/orders/'.$order->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('canEditWorkflowStatus', true));
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('target_url', '/logistics/china?view=pending&global_grid=1')
+            ->assertJsonPath('workflow_status.code', 'sending');
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id, 'operational_archived_at' => null, 'operational_archived_by' => null,
+            'order_status' => 'pending_shipment', 'workflow_status' => 'sending',
+        ]);
+        $this->assertSame(1, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
+        $this->assertDatabaseHas('audit_records', ['entity_id' => $order->id, 'action' => 'order.operational_archive_restored']);
+    }
+
+    public function test_archive_reactivation_requires_editor_and_rolls_back_on_invalid_transition(): void
+    {
+        $archiver = $this->userWith(['orders.view', 'orders.archive']);
+        $viewer = $this->userWith(['orders.view']);
+        $editor = $this->userWith(['orders.view', 'orders.edit']);
+        $order = $this->makeOrder($archiver, 'reactivate-denied');
+        $this->actingAs($archiver)->post('/orders/'.$order->id.'/archive')->assertRedirect();
+        $payload = ['workflow_status' => 'sending', 'expected_workflow_revision' => 0];
+        $this->actingAs($viewer)->patchJson('/orders/'.$order->id.'/workflow-status', $payload)->assertForbidden();
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 1,
+        ])->assertStatus(409);
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'shipped', 'expected_workflow_revision' => 0,
+        ])->assertStatus(409);
+        $this->assertNotNull($order->fresh()->operational_archived_at);
+        $this->assertSame(0, (int) $order->fresh()->workflow_revision);
+        $this->assertDatabaseMissing('audit_records', ['entity_id' => $order->id, 'action' => 'order.operational_archive_restored']);
+    }
+
+    public function test_shipped_archive_cannot_be_reexported_by_changing_status(): void
+    {
+        $archiver = $this->userWith(['orders.view', 'orders.archive']);
+        $editor = $this->userWith(['orders.view', 'orders.edit']);
+        $order = $this->makeOrder($archiver, 'reactivate-shipped');
+        $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $order->shipment()->create([
+            'warehouse_id' => $factory->id, 'shipment_status' => 'shipped',
+            'shipped_at' => now(), 'tracking_number' => 'ARCHIVED-TRACK-001',
+        ]);
+        $order->forceFill(['order_status' => 'shipped'])->save();
+        $this->actingAs($archiver)->post('/orders/'.$order->id.'/archive')->assertRedirect();
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 0,
+        ])->assertStatus(409);
+        $this->assertNotNull($order->fresh()->operational_archived_at);
+        $this->assertSame('shipped', $order->fresh()->order_status->value);
+        $this->assertSame('ARCHIVED-TRACK-001', $order->fresh()->shipment->tracking_number);
+
+        // A stale canonical pending status must not disguise real dispatch evidence.
+        $order->forceFill(['order_status' => 'pending_shipment'])->save();
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 0,
+        ])->assertStatus(409);
+        $this->assertNotNull($order->fresh()->operational_archived_at);
+        $this->assertSame('ARCHIVED-TRACK-001', $order->fresh()->shipment->tracking_number);
+    }
+
+    public function test_child_cannot_be_reactivated_while_parent_stays_archived(): void
+    {
+        $archiver = $this->userWith(['orders.view', 'orders.archive']);
+        $editor = $this->userWith(['orders.view', 'orders.edit']);
+        $parent = $this->makeOrder($archiver, 'reactivate-parent');
+        $child = $this->makeOrder($archiver, 'reactivate-child');
+        $child->forceFill(['order_kind' => 'fulfillment_derived', 'fulfillment_parent_id' => $parent->id])->save();
+        $this->actingAs($archiver)->post('/orders/'.$parent->id.'/archive')->assertRedirect();
+        $this->actingAs($archiver)->post('/orders/'.$child->id.'/archive')->assertRedirect();
+        $this->actingAs($editor)->patchJson('/orders/'.$child->id.'/workflow-status', [
+            'workflow_status' => 'sending', 'expected_workflow_revision' => 0,
+        ])->assertStatus(409);
+        $this->assertNotNull($child->fresh()->operational_archived_at);
     }
 
     private function userWith(array $permissionKeys): User
