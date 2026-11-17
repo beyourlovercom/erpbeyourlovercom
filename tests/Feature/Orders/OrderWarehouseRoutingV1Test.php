@@ -61,7 +61,7 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         config()->set('inertia.testing.ensure_pages_exist', false);
     }
 
-    public function test_staff_route_is_one_real_field_and_does_not_perform_warehouse_allocation(): void
+    public function test_staff_route_and_pending_physical_warehouse_change_together(): void
     {
         [$order, $actor, $warehouse] = $this->fixture();
         $routing = app(OrderWarehouseRouting::class);
@@ -80,19 +80,18 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         ])->assertOk()->assertJsonPath('routing_warehouse.code', 'US-SM')
             ->assertJsonPath('routing_warehouse.revision', 1);
         $this->assertDatabaseHas('shipments', [
-            'order_id' => $order->id, 'warehouse_id' => null, 'shipment_status' => 'pending',
-            'tracking_number' => null, 'warehouse_selection_source' => 'manual_route_only',
+            'order_id' => $order->id, 'warehouse_id' => $warehouse['US-SM']->id, 'shipment_status' => 'pending',
+            'tracking_number' => null, 'warehouse_selection_source' => 'manual',
         ]);
         self::assertSame('sending', $order->fresh()->workflow_status);
         self::assertSame(1, (int) $order->fresh()->workflow_revision);
         self::assertSame(1, Shipment::query()->where('order_id', $order->id)->count());
-        // Routing to a logical workbench cannot replace real warehouse approval
-        // or make this unallocated draft a valid shipment.
+        // Changing the warehouse does not bypass the normal overseas review gate.
         try {
             app(ShipmentService::class)->markShipped(
                 $order->fresh(), ['tracking_number' => 'SHOULD_NOT_DISPATCH', 'shipped_at' => now()], $actor
             );
-            self::fail('Routing-only draft must not authorize physical shipment.');
+            self::fail('Unreviewed warehouse must not authorize physical shipment.');
         } catch (HttpException $exception) {
             self::assertSame(409, $exception->getStatusCode());
         }
@@ -100,6 +99,7 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
             'warehouse_code' => 'US-LA', 'expected_routing_revision' => 1,
         ])->assertOk()->assertJsonPath('routing_warehouse.code', 'US-LA');
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'warehouse_id' => $warehouse['US-LA']->id]);
         self::assertSame(0, OrderWarehouseRouting::shipmentIn(Shipment::query(), 'US-SM',
             (int) $warehouse['US-SM']->id)->where('order_id', $order->id)->count());
         self::assertSame(1, OrderWarehouseRouting::shipmentIn(Shipment::query(), 'US-LA',
@@ -108,11 +108,13 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
             'warehouse_code' => 'FACTORY', 'expected_routing_revision' => 2,
         ])->assertOk();
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'warehouse_id' => $warehouse['FACTORY']->id]);
         self::assertSame(1, OrderWarehouseRouting::orderIn(Order::query(), 'FACTORY',
             (int) $warehouse['FACTORY']->id)->whereKey($order->id)->count());
         $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
             'warehouse_code' => 'TINGON', 'expected_routing_revision' => 3,
         ])->assertOk();
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'warehouse_id' => $warehouse['TINGON']->id]);
         self::assertSame(1, OrderWarehouseRouting::shipmentIn(Shipment::query(), 'TINGON',
             (int) $warehouse['TINGON']->id)->where('order_id', $order->id)->count());
         $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
@@ -128,7 +130,7 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
     }
 
-    public function test_staff_override_wins_physical_fallback_and_keeps_shipment_tracking(): void
+    public function test_shipped_order_cannot_change_logical_or_physical_warehouse(): void
     {
         [$order, $actor, $warehouses] = $this->fixture();
         $order->shipment()->create([
@@ -139,17 +141,16 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         self::assertSame('US-SM', $routing->project($order->fresh())['code']);
         $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/warehouse-route', [
             'warehouse_code' => 'US-LA', 'expected_routing_revision' => 0,
-        ])->assertOk()->assertJsonPath('routing_warehouse.source', 'manual');
+        ])->assertStatus(409);
         $this->assertDatabaseHas('shipments', ['order_id' => $order->id,
             'warehouse_id' => $warehouses['US-SM']->id, 'tracking_number' => 'REAL123',
             'shipment_status' => 'shipped']);
-        self::assertSame(0, OrderWarehouseRouting::shipmentIn(Shipment::query(), 'US-SM',
-            (int) $warehouses['US-SM']->id)->where('order_id', $order->id)->count());
-        self::assertSame(1, OrderWarehouseRouting::shipmentIn(Shipment::query(), 'US-LA',
-            (int) $warehouses['US-LA']->id)->where('order_id', $order->id)->count());
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id, 'routing_warehouse_code' => null, 'routing_revision' => 0,
+        ]);
     }
 
-    public function test_route_plus_status_drives_tingon_partner_and_outsource_lists_without_physical_allocations(): void
+    public function test_route_plus_status_drives_tingon_partner_and_outsource_lists(): void
     {
         [$order, $actor] = $this->fixture();
         $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
@@ -163,7 +164,7 @@ final class OrderWarehouseRoutingV1Test extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.routing_warehouse.code', 'TINGON')
-                ->where('orders.data.0.can_edit', false));
+                ->where('orders.data.0.can_edit', true));
         $this->get('/orders/collaboration')->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
@@ -216,7 +217,7 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         self::assertSame(0, $service->list(['warehouse_route_code' => 'US-LA'])->total());
     }
 
-    public function test_old_real_warehouse_cannot_write_logistics_after_staff_moves_order_elsewhere(): void
+    public function test_manual_route_moves_real_shipment_and_keeps_other_details(): void
     {
         [$order, $actor, $warehouses] = $this->fixture();
         $order->shipment()->create([
@@ -227,18 +228,9 @@ final class OrderWarehouseRoutingV1Test extends TestCase
             'warehouse_code' => 'US-NY', 'expected_routing_revision' => 0,
         ])->assertOk();
 
-        try {
-            app(ShipmentService::class)->saveDraft($order->fresh(), [
-                'logistics_note' => 'Should be blocked at the old warehouse',
-            ], $actor);
-            self::fail('Stale source warehouse must never save logistics after re-route.');
-        } catch (HttpException $exception) {
-            self::assertSame(409, $exception->getStatusCode());
-            self::assertStringContainsString('所属分仓与实际发货仓不一致', $exception->getMessage());
-        }
         $this->assertDatabaseHas('shipments', [
-            'order_id' => $order->id, 'warehouse_id' => $warehouses['US-SM']->id,
-            'logistics_note' => null,
+            'order_id' => $order->id, 'warehouse_id' => $warehouses['US-NY']->id,
+            'warehouse_selection_source' => 'manual', 'shipment_status' => 'pending',
         ]);
     }
 
@@ -283,7 +275,7 @@ final class OrderWarehouseRoutingV1Test extends TestCase
             }
         }
         $this->assertDatabaseHas('shipments', [
-            'order_id' => $order->id, 'warehouse_id' => $warehouses['US-SM']->id,
+            'order_id' => $order->id, 'warehouse_id' => $warehouses['US-NY']->id,
             'shipment_status' => 'pending',
         ]);
         $this->assertDatabaseHas('orders', [
@@ -320,6 +312,101 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         ])->assertOk()->assertJsonPath('target_url', '/logistics/wait-stock?global_grid=1');
         $this->get('/logistics/tingon?view=stockout')
             ->assertOk()->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
+    }
+
+    public function test_same_route_repairs_legacy_mismatch_and_restores_domestic_pending(): void
+    {
+        [$order, $actor, $warehouses] = $this->fixture();
+        $order->forceFill(['routing_warehouse_code' => 'FACTORY', 'routing_revision' => 1])->save();
+        $order->shipment()->create([
+            'warehouse_id' => $warehouses['US-SM']->id, 'shipment_status' => 'pending',
+        ]);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'FACTORY', 'expected_routing_revision' => 1,
+        ])->assertOk()->assertJsonPath('routing_warehouse.revision', 2);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'warehouse_id' => $warehouses['FACTORY']->id,
+            'shipment_status' => 'pending',
+        ]);
+        $this->get('/logistics/china?view=pending')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('rows.total', 1));
+        $this->assertDatabaseHas('order_warehouse_route_histories', [
+            'order_id' => $order->id, 'from_code' => 'FACTORY', 'to_code' => 'FACTORY', 'revision' => 2,
+        ]);
+    }
+
+    public function test_reassign_one_leg_updates_allocation_and_invalidates_prior_overseas_approval(): void
+    {
+        [$order, $actor, $warehouses] = $this->fixture();
+        $order->shipment()->create([
+            'warehouse_id' => $warehouses['US-SM']->id, 'shipment_status' => 'pending',
+            'carrier' => 'MyCarrier', 'service' => 'Custom', 'carrier_selection_source' => 'manual',
+        ]);
+        $order->fulfillmentAllocation()->create([
+            'status' => 'submitted', 'decision_source' => 'manual',
+            'plan_snapshot' => [
+                'is_split' => false, 'plan_type' => 'single',
+                'segments' => [['source_code' => 'US-SM', 'warehouse_id' => $warehouses['US-SM']->id,
+                    'warehouse_name' => 'Old', 'procurement_required' => false, 'items' => []]],
+                'derived_orders' => [['order_id' => $order->id, 'warehouse_id' => $warehouses['US-SM']->id]],
+            ],
+            'manual_assignments' => [['order_item_id' => 91, 'source_code' => 'US-SM']],
+        ]);
+        $order->overseaWarehouseReview()->create([
+            'status' => 'approved', 'progress' => 'sending_pending',
+            'submitted_warehouse_id' => $warehouses['US-SM']->id,
+            'reviewed_warehouse_id' => $warehouses['US-SM']->id,
+            'reviewed_by' => $actor->id, 'reviewed_at' => now(),
+        ]);
+
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'US-NY', 'expected_routing_revision' => 0,
+        ])->assertOk();
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'warehouse_id' => $warehouses['US-NY']->id,
+            'carrier' => 'MyCarrier', 'service' => 'Custom', 'carrier_selection_source' => 'manual',
+        ]);
+        $allocation = $order->fresh()->fulfillmentAllocation;
+        self::assertSame('US-NY', $allocation->plan_snapshot['segments'][0]['source_code']);
+        self::assertSame($warehouses['US-NY']->id, $allocation->plan_snapshot['segments'][0]['warehouse_id']);
+        self::assertSame('US-NY', $allocation->manual_assignments[0]['source_code']);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id, 'status' => 'pending',
+            'submitted_warehouse_id' => $warehouses['US-NY']->id,
+            'reviewed_warehouse_id' => null,
+        ]);
+    }
+
+    public function test_pending_shipment_with_tracking_cannot_be_rerouted(): void
+    {
+        [$order, $actor, $warehouses] = $this->fixture();
+        $order->shipment()->create([
+            'warehouse_id' => $warehouses['US-SM']->id,
+            'shipment_status' => 'pending', 'tracking_number' => 'EXTERNAL123',
+        ]);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'FACTORY', 'expected_routing_revision' => 0,
+        ])->assertStatus(409);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'warehouse_id' => $warehouses['US-SM']->id,
+            'tracking_number' => 'EXTERNAL123',
+        ]);
+        $this->assertDatabaseCount('order_warehouse_route_histories', 0);
+    }
+
+    public function test_split_order_cannot_be_rerouted_from_order_dropdown(): void
+    {
+        [$order, $actor, $warehouses] = $this->fixture();
+        $child = Order::query()->create([
+            'erp_order_id' => 'CHILD-'.uniqid(), 'internal_order_number' => 'CHILD-'.uniqid(),
+            'external_order_number' => 'CHILD-'.uniqid(),
+            'source_type' => 'manual', 'order_kind' => 'customer', 'order_status' => 'pending_shipment',
+            'order_date' => '2026-11-17', 'fulfillment_parent_id' => $order->id, 'fulfillment_role' => 'original',
+        ]);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'FACTORY', 'expected_routing_revision' => 0,
+        ])->assertStatus(409);
+        $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
     }
 
     public function test_version_permissions_bad_options_and_archived_routes_are_rejected_without_mutation(): void
