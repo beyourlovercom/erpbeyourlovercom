@@ -7,6 +7,7 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
 use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -161,7 +162,7 @@ final class OrderWarehouseRouting
             .'&view='.($view === 'exceptions' ? 'exception' : $phase);
     }
 
-    public function select(Order $order, string $code, int $revision, Authenticatable $actor): array
+    public function select(Order $order, string $code, int $revision, Authenticatable $actor, bool $stockExceptionAcknowledged = false): array
     {
         abort_unless($actor->can('orders.edit'), 403, '没有修改所属分仓的权限。');
         $allowed = collect($this->options())->pluck('code')->all();
@@ -169,7 +170,7 @@ final class OrderWarehouseRouting
             throw new HttpException(422, '所属分仓不在可用选项中。');
         }
 
-        return DB::transaction(function () use ($order, $code, $revision, $actor): array {
+        return DB::transaction(function () use ($order, $code, $revision, $actor, $stockExceptionAcknowledged): array {
             $locked = Order::withTrashed()->with('shipment.warehouse')
                 ->whereKey($order->id)->lockForUpdate()->firstOrFail();
             if ($locked->trashed() || $locked->archived_at !== null || $locked->isOperationallyArchived()) {
@@ -188,6 +189,20 @@ final class OrderWarehouseRouting
             if ($locked->routing_warehouse_code === $code
                 && ($shipment?->warehouse_id === null ? null : (int) $shipment->warehouse_id) === $targetWarehouseId) {
                 return $this->project($locked);
+            }
+            $reactivatedUnassignedChild = $locked->fulfillment_parent_id !== null
+                && ($locked->workflow_status === 'pending_allocation'
+                    || ($locked->routing_warehouse_code === self::UNASSIGNED
+                        && ($shipment === null || $shipment->warehouse_id === null)));
+            if ($reactivatedUnassignedChild) {
+                abort_unless($warehouse !== null, 409, '重新运营的拆单请先选择实际发货仓库。');
+                // A/B children retain their parent allocation and must use the
+                // audited single-leg flow; never create a second split plan.
+                $updated = app(PendingFulfillmentReallocationService::class)->reallocate(
+                    $locked, (int) $warehouse->getKey(), $actor, null, $stockExceptionAcknowledged
+                );
+
+                return $this->project($updated->fresh(['shipment.warehouse']));
             }
             $this->assertSafeToReassign($locked, $shipment);
             $this->syncSubmittedAllocation($locked, $warehouse, $code, $actor);

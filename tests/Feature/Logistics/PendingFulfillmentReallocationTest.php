@@ -5,6 +5,7 @@ namespace Tests\Feature\Logistics;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -97,6 +98,97 @@ final class PendingFulfillmentReallocationTest extends TestCase
         ])->assertStatus(409);
     }
 
+    public function test_reactivated_unshipped_split_child_can_select_legacy_moreplus_and_other_active_warehouses(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.edit', 'logistics.operate']);
+        [$parent, $a, $b, $ny] = $this->splitScenario();
+        $la = Warehouse::query()->where('code', 'US-LA')->firstOrFail();
+        $la->forceFill(['code' => 'us-la'])->save();
+        $a->shipment()->update([
+            'shipment_status' => 'pending', 'tracking_number' => null, 'shipped_at' => null,
+        ]);
+        $a->forceFill(['order_status' => 'pending_shipment'])->save();
+        $siblingWarehouseId = (int) $b->shipment()->value('warehouse_id');
+
+        $this->actingAs($user)->patchJson('/orders/'.$a->id.'/workflow-status', [
+            'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 0,
+        ])->assertOk();
+        $this->assertDatabaseHas('orders', [
+            'id' => $a->id, 'workflow_status' => 'pending_allocation',
+            'routing_warehouse_code' => 'UNASSIGNED',
+        ]);
+        $this->assertNull($a->shipment()->value('warehouse_id'));
+
+        foreach ([['code' => 'US-NY', 'id' => $ny->id], ['code' => 'US-LA', 'id' => $la->id]] as $target) {
+            $options = collect(app(OrderWarehouseRouting::class)->options())->pluck('code')->all();
+            $this->assertContains($target['code'], $options);
+
+            $a->refresh();
+            $this->actingAs($user)->patchJson('/orders/'.$a->id.'/warehouse-route', [
+                'warehouse_code' => $target['code'],
+                'expected_routing_revision' => (int) $a->routing_revision,
+            ])->assertStatus(422)->assertJsonValidationErrors('stock_exception_acknowledged');
+            $this->assertNull($a->shipment()->value('warehouse_id'));
+
+            $this->actingAs($user)->patchJson('/orders/'.$a->id.'/warehouse-route', [
+                'warehouse_code' => $target['code'],
+                'expected_routing_revision' => (int) $a->routing_revision,
+                'stock_exception_acknowledged' => true,
+            ])->assertOk()->assertJsonPath('routing_warehouse.code', $target['code']);
+
+            $this->assertDatabaseHas('orders', [
+                'id' => $a->id, 'routing_warehouse_code' => $target['code'],
+                'workflow_status' => 'pending_review',
+            ]);
+            $this->assertSame((int) $target['id'], (int) $a->shipment()->value('warehouse_id'));
+            $this->assertSame($siblingWarehouseId, (int) $b->shipment()->value('warehouse_id'));
+            $allocation = $parent->fulfillmentAllocation()->firstOrFail();
+            $this->assertSame($target['code'], $allocation->plan_snapshot['segments'][0]['source_code']);
+            $this->assertSame($target['code'], $allocation->plan_snapshot['derived_orders'][0]['warehouse_code']);
+
+            if ($target['code'] !== 'US-LA') {
+                $this->actingAs($user)->patchJson('/orders/'.$a->id.'/workflow-status', [
+                    'workflow_status' => 'pending_allocation',
+                    'expected_workflow_revision' => (int) $a->fresh()->workflow_revision,
+                ])->assertOk();
+            }
+        }
+    }
+
+    public function test_reactivated_sending_split_child_without_physical_warehouse_can_be_assigned(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.edit', 'logistics.operate']);
+        [, $a, $b, $ny] = $this->splitScenario();
+        $a->shipment()->update([
+            'shipment_status' => 'pending', 'tracking_number' => null, 'shipped_at' => null,
+            'warehouse_id' => null, 'carrier' => null, 'service' => null,
+        ]);
+        $a->forceFill([
+            'order_status' => 'pending_shipment', 'workflow_status' => 'sending',
+            'routing_warehouse_code' => 'UNASSIGNED',
+        ])->save();
+        $originalSiblingWarehouse = (int) $b->shipment()->value('warehouse_id');
+
+        $this->actingAs($user)->patchJson('/orders/'.$a->id.'/warehouse-route', [
+            'warehouse_code' => 'US-NY',
+            'expected_routing_revision' => 0,
+            'stock_exception_acknowledged' => true,
+        ])->assertOk()->assertJsonPath('routing_warehouse.code', 'US-NY');
+        $this->assertSame((int) $ny->id, (int) $a->shipment()->value('warehouse_id'));
+        $this->assertSame('sending', $a->fresh()->workflow_status);
+        $this->assertSame($originalSiblingWarehouse, (int) $b->shipment()->value('warehouse_id'));
+    }
+
+    public function test_shipped_split_child_is_still_blocked_by_route_dropdown(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.edit', 'logistics.operate']);
+        [, $shipped] = $this->splitScenario();
+        $this->actingAs($user)->patchJson('/orders/'.$shipped->id.'/warehouse-route', [
+            'warehouse_code' => 'US-NY',
+            'expected_routing_revision' => 0,
+        ])->assertStatus(409);
+    }
+
     private function splitScenario(): array
     {
         $productA = Product::query()->create(['sku' => 'PARTIAL-A', 'name' => 'Partial A', 'product_type' => 'simple']);
@@ -158,6 +250,7 @@ final class PendingFulfillmentReallocationTest extends TestCase
             'carrier' => $status === 'shipped' ? 'USPS' : '4PX', 'service' => $status === 'shipped' ? 'Ground' : '普通',
             'tracking_number' => $tracking, 'shipped_at' => $tracking ? now() : null,
         ]);
+
         return $child;
     }
 
@@ -169,6 +262,7 @@ final class PendingFulfillmentReallocationTest extends TestCase
         }
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
+
         return $user;
     }
 }

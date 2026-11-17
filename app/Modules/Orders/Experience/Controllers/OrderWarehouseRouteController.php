@@ -19,9 +19,11 @@ final class OrderWarehouseRouteController
         $data = $request->validate([
             'warehouse_code' => ['required', 'string', Rule::in($allowed)],
             'expected_routing_revision' => ['required', 'integer', 'min:0'],
+            'stock_exception_acknowledged' => ['sometimes', 'boolean'],
         ]);
         $projection = $routing->select(
-            $order, $data['warehouse_code'], (int) $data['expected_routing_revision'], $request->user()
+            $order, $data['warehouse_code'], (int) $data['expected_routing_revision'], $request->user(),
+            (bool) ($data['stock_exception_acknowledged'] ?? false)
         );
 
         return response()->json([
