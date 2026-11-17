@@ -257,10 +257,14 @@ final class DomesticLogisticsController
     public function reject(Request $request, Order $order): RedirectResponse
     {
         abort_unless($this->reviewAccess->allows($request->user()), 403);
-        $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:500']]);
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:3', 'max:500'],
+            'return_view' => ['sometimes', 'in:review,pending'],
+        ]);
         $this->decisions->decide($order, 'reject', $data['reason'], $request->user());
 
-        return redirect('/logistics/china?view=review')->with('success', '已驳回并退回 Vita 待分仓，原因已写入订单详情。');
+        return redirect('/logistics/china?view='.($data['return_view'] ?? 'review'))
+            ->with('success', '已驳回并退回 Vita 待分仓，原因已写入订单详情。');
     }
 
     public function reopenReview(Request $request, Order $order): RedirectResponse

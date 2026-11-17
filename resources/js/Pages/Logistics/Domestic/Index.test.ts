@@ -59,6 +59,25 @@ describe('Domestic logistics production workbench', () => {
     }
   })
 
+  it('routes pending-row commercial reject through the existing reason dialog and keeps the pending view', async () => {
+    const staged = { ...baseProps.rows.data[0], review_status: 'pending' as const, tracking_number: 'STAGED-0001' }
+    const wrapper = mount(Index, { props: { ...baseProps, trackingImportPreview: null,
+      rows: { ...baseProps.rows, data: [staged] } } })
+    const state = (wrapper.vm as unknown as { $: { setupState: Record<string, unknown> } }).$.setupState
+    const columns = state.domesticGridColumns as { colId: string; cellRendererParams?: { rejectPending?: (id: number) => void } }[]
+    const reject = columns.find(column => column.colId === 'actions')?.cellRendererParams?.rejectPending
+    expect(reject).toBeTypeOf('function')
+    reject?.(1)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[aria-label="驳回国内订单"]').text()).toContain('STAGED-0001')
+    expect(wrapper.get('[aria-label="驳回国内订单"]').text()).toContain('不会自动取消物流商')
+    await wrapper.get('#domestic-reject-reason').setValue('收件人地址需要重新核对')
+    await wrapper.get('.review-reject-dialog button.reject-btn').trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/reject',
+      { reason: '收件人地址需要重新核对', return_view: 'pending' },
+      expect.objectContaining({ preserveScroll: true, preserveState: true }))
+  })
+
   it('retires both provider history tabs and sends unified column dropdown filters to the server', async () => {
     const wrapper=mount(Index,{props:{...baseProps,view:'all',gridFilters:{carrier:'4px'},
       globalGridPilotAvailable:true,globalGridPilotEnabled:true,trackingImportProvider:null,trackingImportPreview:null}})

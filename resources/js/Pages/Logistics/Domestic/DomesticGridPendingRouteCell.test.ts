@@ -71,7 +71,7 @@ describe('Domestic Global Grid pending shipping dialog labels',()=>{
       data:{id:100,order_number:'C100-007',review_status:'approved',shipment_status:'pending'},
       carrierOptions:carriers,canReview:true,canOperate:true,source:()=>({...row,order_id:100,carrier_ready:true,tracking_number:null}),
       carrierBusy:()=>false,trackingBusy:()=>false,feedback:()=>'',
-      saveCarrier:vi.fn(),saveTracking:vi.fn(),confirmShip:vi.fn(),reopenPending:vi.fn(),
+      saveCarrier:vi.fn(),saveTracking:vi.fn(),confirmShip:vi.fn(),reopenPending:vi.fn(),rejectPending:vi.fn(),
       canTrackingSync:false,syncEligible:()=>false,syncBusy:()=>false,syncTracking:vi.fn(),
     }}})
     await wrapper.get('button.pending-edit').trigger('click')

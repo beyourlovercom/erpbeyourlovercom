@@ -44,7 +44,8 @@ final class DomesticReviewDecisionService
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '订单状态不允许进行国内商务审核。');
             abort_unless($locked->shipment && (int) $locked->shipment->warehouse_id === (int) $factory->id, 409, '订单不属于中国工厂仓。');
             abort_unless($locked->shipment->shipment_status === 'pending'
-                && blank($locked->shipment->tracking_number) && $locked->shipment->shipped_at === null,
+                && $locked->shipment->shipped_at === null
+                && ($decision === 'reject' || blank($locked->shipment->tracking_number)),
                 409, '已进入实际发货的订单不可撤回审核。');
             abort_if($locked->externalReferences->contains('provider', 'historical_logistics'), 409, '历史物流订单不可操作。');
 
@@ -63,6 +64,7 @@ final class DomesticReviewDecisionService
                 );
             }
 
+            $clearedStagedTracking = [];
             if (in_array($decision, ['approve', 'restock'], true)) {
                 // Approved factory orders receive a persisted, country-aware
                 // route. Existing staff overrides are never overwritten.
@@ -89,13 +91,15 @@ final class DomesticReviewDecisionService
                 $siblings = $root->originalFulfillmentChildren()->with('shipment')->get();
                 if ($siblings->isNotEmpty()) {
                     abort_if($siblings->contains(fn (Order $sibling): bool => ! $sibling->shipment || $sibling->shipment->shipment_status !== 'pending'
-                        || filled($sibling->shipment->tracking_number) || $sibling->shipment->shipped_at !== null
+                        || ($decision !== 'reject' && filled($sibling->shipment->tracking_number)) || $sibling->shipment->shipped_at !== null
                     ), 409, '拆单已有发货或异常段，不能整单驳回；请联系运营单独处理。');
                     foreach ($siblings as $sibling) {
-                        $this->unassign($sibling, $actor);
+                        if ($staged = $this->unassign($sibling, $actor, $decision === 'reject')) {
+                            $clearedStagedTracking[] = $staged;
+                        }
                     }
-                } else {
-                    $this->unassign($locked, $actor);
+                } elseif ($staged = $this->unassign($locked, $actor, $decision === 'reject')) {
+                    $clearedStagedTracking[] = $staged;
                 }
                 $this->releaseReservations(array_unique([
                     (int) $root->getKey(), ...$siblings->pluck('id')->map(fn ($id): int => (int) $id)->all(),
@@ -122,11 +126,15 @@ final class DomesticReviewDecisionService
                 $locked->operationalMarkers()->whereIn('marker', ['domestic_stockout', 'domestic_reviewed'])->delete();
             }
 
+            if ($decision === 'reject') {
+                $before['cleared_staged_tracking'] = $clearedStagedTracking;
+            }
             $this->audit->record(
                 AuditActor::user($actor, AuditSource::Web), 'domestic.review_'.$decision,
                 Order::class, $locked->getKey(), $before,
                 [
                     'decision' => $decision,
+                    'staged_tracking_cleared_count' => count($clearedStagedTracking),
                     'review_reason' => $decision === 'reject' ? trim((string) $reason) : null,
                     'stockout_return_to_allocation' => $decision === 'return_allocation',
                     'carrier' => $locked->shipment->fresh()?->carrier,
@@ -182,19 +190,27 @@ final class DomesticReviewDecisionService
         ])->save();
     }
 
-    private function unassign(Order $order, Authenticatable $actor): void
+    /** @return array{order_id: int, shipment_id: int, tracking_number: string}|null */
+    private function unassign(Order $order, Authenticatable $actor, bool $clearStagedTracking = false): ?array
     {
-        $shipment = $order->shipment;
+        // Re-read under a row lock: shipping may have started after the initial review query.
+        $shipment = $order->shipment()->lockForUpdate()->first();
         abort_unless($shipment && $shipment->shipment_status === 'pending'
-            && blank($shipment->tracking_number) && $shipment->shipped_at === null, 409, '订单已发货，不能退回待分仓。');
+            && $shipment->shipped_at === null
+            && ($clearStagedTracking || blank($shipment->tracking_number)), 409, '订单已发货，不能退回待分仓。');
+        $staged = $clearStagedTracking && filled($shipment->tracking_number)
+            ? ['order_id' => (int) $order->getKey(), 'shipment_id' => (int) $shipment->getKey(), 'tracking_number' => (string) $shipment->tracking_number]
+            : null;
         $shipment->forceFill([
             'warehouse_id' => null, 'warehouse_selection_source' => null,
             'carrier' => null, 'service' => null, 'carrier_service_id' => null,
             'carrier_selection_source' => null, 'handled_by' => null,
+            'tracking_number' => $clearStagedTracking ? null : $shipment->tracking_number,
         ])->save();
         $order->operationalMarkers()->whereIn('marker', ['domestic_stockout', 'domestic_reviewed'])->delete();
         if ($order->workflow_status === 'out_of_stock') {
             $this->workflow->set($order, 'sending', (int) $order->workflow_revision, $actor);
         }
+        return $staged;
     }
 }

@@ -282,9 +282,9 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'destination',field:'destination',headerName:'国家 / 地区',width:177}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:140}),
   gridColumn({colId:'actions',field:'id',headerName:'操作',
-    width:props.view==='review'?185:props.view==='stockout'?248:props.view==='pending'?(props.canReview?252:170)+(pendingHasSyncAction.value?105:0):isAllDomesticView(props.view)?116:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?242:170):210,
-    minWidth:props.view==='review'?185:props.view==='stockout'?240:props.view==='pending'?(props.canReview?248:166)+(pendingHasSyncAction.value?105:0):isAllDomesticView(props.view)?100:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
-    maxWidth:props.view==='review'?190:props.view==='stockout'?260:props.view==='pending'?(props.canReview?256:175)+(pendingHasSyncAction.value?105:0):isAllDomesticView(props.view)?130:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
+    width:props.view==='review'?185:props.view==='stockout'?248:props.view==='pending'?(props.canReview?314:170)+(pendingHasSyncAction.value?105:0):isAllDomesticView(props.view)?116:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?242:170):210,
+    minWidth:props.view==='review'?185:props.view==='stockout'?240:props.view==='pending'?(props.canReview?308:166)+(pendingHasSyncAction.value?105:0):isAllDomesticView(props.view)?100:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?235:162):190,
+    maxWidth:props.view==='review'?190:props.view==='stockout'?260:props.view==='pending'?(props.canReview?322:175)+(pendingHasSyncAction.value?105:0):isAllDomesticView(props.view)?130:isDailyProviderView(props.view)?(props.canReview&&props.canTrackingSync?250:178):210,
     pinned:'right',
     cellRenderer:props.view==='exceptions'?GlobalGridCell:(props.view==='pending'||isAllDomesticView(props.view))?DomesticGridPendingCell:DomesticGridActionCell,
     cellRendererParams:props.view==='exceptions'?{
@@ -331,6 +331,11 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
         const row=props.rows.data.find(item=>item.order_id===id)
         if(row && props.canReview && row.shipment_status==='pending' && row.review_status==='approved')reopen(row)
       },
+      rejectPending:(id:number)=>{
+        const row=props.rows.data.find(item=>item.order_id===id)
+        if(row && props.canReview && row.shipment_status==='pending' && ['pending','approved'].includes(row.review_status))openReject(row)
+      },
+      reviewBusy:()=>reviewBusy.value,
       view:props.view, canReview:props.canReview, canOperate:props.canOperate,
       get busy(){return reviewBusy.value},
       native:(row:GridListRow)=>openNativeOperation(Number(row.id)),
@@ -617,7 +622,7 @@ const submitReject = () => {
   if (rejectReason.value.trim().length<3) { reviewError.value='请填写至少 3 个字的驳回原因。'; return }
   reviewBusy.value = true
   router.post('/logistics/china/orders/' + rejectTarget.value.order_id + '/reject',
-    {reason:rejectReason.value.trim()}, {
+    {reason:rejectReason.value.trim(),...(props.view==='pending'?{return_view:'pending'}:{})}, {
       preserveScroll:true, preserveState:true,
       onSuccess:()=>{rejectTarget.value=null;rejectReason.value=''},
       onError:(errors)=>{reviewError.value=errors.reason??'驳回失败，请核对订单状态。'},
@@ -1030,6 +1035,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         <section class="review-reject-dialog" role="dialog" aria-modal="true" aria-label="驳回国内订单">
           <h2>驳回到 Vita 待分仓</h2>
           <p>订单 {{ rejectTarget.erp_order_id }} 将撤销当前工厂分配。驳回原因会显示在订单详情及待分仓列表中。</p>
+          <p v-if="rejectTarget.tracking_number" class="danger">该订单已暂存 Tracking：{{ rejectTarget.tracking_number }}。确认驳回后会清除 ERP 暂存单号并保留审计记录；不会自动取消物流商已创建的运单。</p>
           <div class="reason-shortcuts">
             <button v-for="reason in ['缺少收件信息','收件人地址有误','税号不匹配','其他信息需核对']" :key="reason" type="button" class="secondary" @click="rejectReason=reason">{{ reason }}</button>
           </div>

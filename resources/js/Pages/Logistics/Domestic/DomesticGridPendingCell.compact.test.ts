@@ -10,12 +10,12 @@ const source = {
 }
 const params = () => ({
   data: { id: 42, order_number: '007-OLD-42', review_status: 'approved', shipment_status: 'pending' },
-  compactActions: true,
+  compactActions: true, view: 'pending',
   canOperate: true, canReview: true, canTrackingSync: false,
   carrierOptions: [{ value: '4PX', label: '速达', services: [{ value: 'SD经济挂号-带电', label: '带电' }] }],
   source: () => source, carrierBusy: () => false, trackingBusy: () => false,
   feedback: () => '', saveCarrier: vi.fn(), saveTracking: vi.fn(),
-  confirmShip: vi.fn(), reopenPending: vi.fn(),
+  confirmShip: vi.fn(), reopenPending: vi.fn(), rejectPending: vi.fn(), reviewBusy: () => false,
   syncEligible: () => false, syncBusy: () => false, syncTracking: vi.fn(),
 })
 
@@ -43,6 +43,42 @@ describe('G-P1 compact cumulative Speeda history actions', () => {
     await view.vm.$nextTick()
     expect(document.querySelector('.domestic-pending-popover')).toBeNull()
     view.unmount()
+  })
+  it('adds commercial reject in direct and compact pending actions, even before review and with staged Tracking', async () => {
+    for (const compactActions of [false, true]) {
+      for (const review_status of ['pending', 'approved']) {
+        const p = { ...params(), compactActions, source: () => ({ ...source, review_status, tracking_number: 'STAGED-1' }) }
+        const wrapper = mount(Cell, { props: { params: p }, attachTo: document.body })
+        if (compactActions) await wrapper.get('button[aria-label="操作"]').trigger('click')
+        const reject = compactActions
+          ? [...document.querySelectorAll('.domestic-pending-compact-menu button')].find(button => button.textContent === '驳回') as HTMLButtonElement
+          : wrapper.get('button.pending-reject').element as HTMLButtonElement
+        expect(reject, `${review_status} compact=${compactActions}`).toBeTruthy()
+        reject.click()
+        expect(p.rejectPending).toHaveBeenCalledWith(42)
+        expect(p.confirmShip).not.toHaveBeenCalled()
+        wrapper.unmount()
+      }
+    }
+  })
+  it('hides commercial reject without authority or after shipping', () => {
+    for (const options of [
+      { canReview: false, review_status: 'approved', shipment_status: 'pending' },
+      { canReview: true, review_status: 'stockout', shipment_status: 'pending' },
+      { canReview: true, review_status: 'approved', shipment_status: 'shipped' },
+    ]) {
+      const p = { ...params(), canReview: options.canReview,
+        source: () => ({ ...source, review_status: options.review_status, shipment_status: options.shipment_status }) }
+      const wrapper = mount(Cell, { props: { params: p } })
+      expect(wrapper.find('.pending-reject').exists()).toBe(false)
+      wrapper.unmount()
+    }
+  })
+  it('limits the new reject action to the pending view without expanding all-domestic controls', () => {
+    const p = { ...params(), view: 'all' }
+    const wrapper = mount(Cell, { props: { params: p } })
+    expect(wrapper.find('.pending-reject').exists()).toBe(false)
+    wrapper.unmount()
   })
   it('never bypasses overseas MorePlus proof requirement via compact or direct actions', async () => {
     for(const compactActions of [false,true]){

@@ -10,6 +10,7 @@ type Params={
   getCarrierOptions?:()=>Carrier[]
   openCarrierCreate?:(onCreated:(carrier:Carrier)=>void)=>void
   compactActions?:boolean
+  view?:string
   source:(id:number)=>Source|undefined
   carrierBusy:(id:number)=>boolean
   trackingBusy:(id:number)=>boolean
@@ -19,6 +20,8 @@ type Params={
   confirmShip:(id:number,tracking:string,outboundReference?:string)=>void
   requiresOutboundReference?:(id:number)=>boolean
   reopenPending:(id:number)=>void
+  rejectPending:(id:number)=>void
+  reviewBusy?:()=>boolean
   canTrackingSync:boolean
   syncEligible:(id:number)=>boolean
   syncBusy:()=>boolean
@@ -29,12 +32,13 @@ const id=computed(()=>Number(props.params.data.id))
 const source=computed(()=>props.params.source(id.value))
 const canShip=computed(()=>!!props.params.canOperate && ['approved','pending'].includes(source.value?.review_status??'') && source.value?.shipment_status==='pending')
 const canReopen=computed(()=>!!props.params.canReview && source.value?.review_status==='approved' && source.value.shipment_status==='pending')
+const canReject=computed(()=>props.params.view==='pending' && !!props.params.canReview && ['pending','approved'].includes(source.value?.review_status??'') && source.value?.shipment_status==='pending')
 const carrierConfirmed=computed(()=>source.value?.carrier_ready===true)
-const busy=computed(()=>props.params.carrierBusy(id.value)||props.params.trackingBusy(id.value))
+const busy=computed(()=>props.params.carrierBusy(id.value)||props.params.trackingBusy(id.value)||!!props.params.reviewBusy?.())
 const compactOpen=ref(false)
 const compactEl=ref<HTMLElement|null>(null)
 const compactXY=ref({top:0,left:0})
-const hasActions=computed(()=>canShip.value||canReopen.value||(props.params.canTrackingSync&&props.params.syncEligible(id.value)))
+const hasActions=computed(()=>canShip.value||canReopen.value||canReject.value||(props.params.canTrackingSync&&props.params.syncEligible(id.value)))
 const open=ref(false)
 const trigger=ref<HTMLButtonElement|null>(null)
 const floating=ref<HTMLElement|null>(null)
@@ -93,7 +97,7 @@ const toggleCompact=()=>{
   if(compactOpen.value){close();return}
   if(!trigger.value||!hasActions.value)return
   const rect=trigger.value.getBoundingClientRect()
-  const height=(Number(canShip.value)*2+Number(canReopen.value)+Number(props.params.canTrackingSync&&props.params.syncEligible(id.value)))*32+10
+  const height=(Number(canShip.value)*2+Number(canReopen.value)+Number(canReject.value)+Number(props.params.canTrackingSync&&props.params.syncEligible(id.value)))*32+10
   compactXY.value={
     left:Math.max(6,Math.min(rect.left,window.innerWidth-154)),
     top:rect.bottom+height+6<=window.innerHeight?rect.bottom+4:Math.max(6,rect.top-height-4),
@@ -157,6 +161,8 @@ onBeforeUnmount(remove)
             @click.stop="close();params.confirmShip(id,(source?.tracking_number??'').trim())">确认发货</button>
           <button v-if="canReopen" type="button" :disabled="busy"
             @click.stop="close();params.reopenPending(id)">重新审核</button>
+          <button v-if="canReject" type="button" class="pending-reject" :disabled="busy"
+            @click.stop="close();params.rejectPending(id)">驳回</button>
           <button v-if="params.canTrackingSync&&params.syncEligible(id)" type="button" :disabled="params.syncBusy()"
             @click.stop="close();params.syncTracking(id)">同步官网物流</button>
         </div>
@@ -171,9 +177,11 @@ onBeforeUnmount(remove)
     </template>
     <button v-if="canReopen" type="button" class="pending-reopen" :disabled="busy"
       @click.stop="params.reopenPending(id)">重新审核</button>
+    <button v-if="canReject" type="button" class="pending-reject" :disabled="busy"
+      @click.stop="params.rejectPending(id)">驳回</button>
     <button v-if="params.canTrackingSync&&params.syncEligible(id)" type="button"
       :disabled="params.syncBusy()" @click.stop="params.syncTracking(id)">同步官网物流</button>
-    <span v-if="!canShip&&!canReopen&&!(params.canTrackingSync&&params.syncEligible(id))">—</span>
+    <span v-if="!canShip&&!canReopen&&!canReject&&!(params.canTrackingSync&&params.syncEligible(id))">—</span>
     </template>
     <Teleport to="body">
       <div v-if="open&&canShip" ref="floating" class="domestic-pending-popover"
@@ -228,9 +236,11 @@ onBeforeUnmount(remove)
  border-radius:4px;text-align:left;font-size:12px;padding:5px 9px;cursor:pointer}
 .domestic-pending-compact-menu button:disabled{opacity:.45;cursor:not-allowed}
 .domestic-pending-compact-menu button:hover:not(:disabled){background:#f1f6f4}
+.domestic-pending-compact-menu button.pending-reject{color:#b4232d}
 .domestic-pending-actions .pending-edit{color:#0f766e;border-color:#8ccdc2}
 .domestic-pending-actions .pending-confirm{color:white;background:#008f7c;border-color:#008f7c}
 .domestic-pending-actions .pending-reopen{color:#a16207;border-color:#f0c783}
+.domestic-pending-actions .pending-reject{color:#b4232d;border-color:#eab4b4}
 .domestic-pending-actions button:disabled,.domestic-pending-popover button:disabled{opacity:.45;cursor:not-allowed}
 .domestic-pending-popover{position:fixed;z-index:12055;width:354px;max-width:calc(100vw - 16px);box-sizing:border-box;display:flex;flex-direction:column;gap:7px;padding:12px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 12px 32px rgba(15,23,42,.24);font-size:12px;color:#334155}
 .domestic-pending-popover label{display:flex;align-items:center;justify-content:space-between;gap:8px}
