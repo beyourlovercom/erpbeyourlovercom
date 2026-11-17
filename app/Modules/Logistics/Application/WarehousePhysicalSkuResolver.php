@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application;
 
 use App\Modules\Orders\Infrastructure\Models\OrderItem;
+use App\Modules\Products\Application\OutboundOrderSkuResolver;
 use App\Modules\Products\Application\SkuMatchKey;
 use App\Modules\Products\Application\VerifiedOmsProductIdentityResolver;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
@@ -19,6 +20,7 @@ final class WarehousePhysicalSkuResolver
         private readonly GiftSkuResolutionService $gifts,
         private readonly MorePlusPhysicalStockReader $morePlus,
         private readonly VerifiedOmsProductIdentityResolver $identity,
+        private readonly OutboundOrderSkuResolver $outboundSkus,
     ) {}
 
     /** @return array<string,mixed> */
@@ -92,6 +94,12 @@ final class WarehousePhysicalSkuResolver
 
     private function approvedAlias(string $sourceSku, string $candidate, int $productId): bool
     {
+        // A registered active ERP alias may use its own canonical Product SKU
+        // only when that exact SKU is independently verified in the MorePlus
+        // provider catalog and actual available stock above.
+        if (strcasecmp($candidate, $this->outboundSkus->canonical($sourceSku, $productId)) === 0) {
+            return true;
+        }
         $key = SkuMatchKey::compute($candidate);
         $alias = $key ? ProductSkuAlias::query()
             ->where('product_id', $productId)->where('match_key', $key)

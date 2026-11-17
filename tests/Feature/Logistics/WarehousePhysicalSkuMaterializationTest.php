@@ -90,6 +90,32 @@ final class WarehousePhysicalSkuMaterializationTest extends TestCase
         self::assertSame($product->id, $actual->source_product_id);
     }
 
+    public function test_active_erp_alias_materializes_canonical_provider_sku_without_env_pair(): void
+    {
+        [$user, $order, $item, $product] = $this->ordinaryScenario();
+        $product->forceFill(['sku' => 'BY489A'])->save();
+        ProductSkuAlias::query()->forceCreate([
+            'product_id' => $product->id, 'alias_sku' => 'BY489A-Lubes',
+            'match_key' => SkuMatchKey::compute('BY489A-Lubes'),
+            'source_type' => 'woocommerce', 'is_active' => true,
+        ]);
+        config()->set('shipout.production_read_enabled', true);
+        config()->set('shipout.production_warehouse_id', '1265864414750314497');
+        config()->set('shipout.production_verified_alias_pairs', '');
+        $this->mock(MorePlusPhysicalStockReader::class)->shouldReceive('snapshot')->once()->andReturn([
+            'warehouse_id' => '1265864414750314497',
+            'stock_rows' => [[
+                'provider_sku' => 'BY489A', 'available_quantity' => 8,
+                'in_product_catalog' => true, 'product_status' => '1', 'sku_alias_status' => 'verified',
+            ]],
+        ]);
+        app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $item->id, 'source_code' => 'US-LA'],
+        ], null, $user);
+        self::assertSame('BY489A', $item->fresh()->sku);
+        self::assertSame('BY489A-Lubes', $item->fresh()->source_sku);
+    }
+
     public function test_moreplus_missing_physical_sku_fails_closed_and_keeps_order_unchanged(): void
     {
         [$user, $order, $item] = $this->ordinaryScenario();

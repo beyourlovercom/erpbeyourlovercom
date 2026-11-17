@@ -384,6 +384,31 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
     }
 
+    public function test_active_erp_alias_automatically_uses_verified_canonical_provider_stock_without_env_pair(): void
+    {
+        $order = $this->order('us-la', 'BY489A');
+        $pid = (int) $order->items->first()->product_id;
+        ProductSkuAlias::query()->forceCreate([
+            'product_id' => $pid,
+            'alias_sku' => 'BY489A-Lubes',
+            'match_key' => SkuMatchKey::compute('BY489A-Lubes'),
+            'source_type' => 'woocommerce',
+            'is_active' => true,
+        ]);
+        $order->items->first()->forceFill([
+            'sku' => 'BY489A-Lubes',
+            'resolved_fulfillment_sku' => 'BY489A-Lubes',
+        ])->save();
+        config()->set('shipout.production_verified_alias_pairs', '');
+        $this->fakeProvider(8, 'BY489A');
+
+        $preview = $this->preflight($order);
+        self::assertSame([['omsSku' => 'BY489A', 'qty' => 1]], $preview['items']);
+        self::assertSame('BY489A-Lubes', $order->items->first()->fresh()->sku);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+    }
+
     public function test_owner_approved_verified_moreplus_alias_maps_to_provider_sku_read_only(): void
     {
         $order = $this->order('us-la', 'BY489A-Lubes');

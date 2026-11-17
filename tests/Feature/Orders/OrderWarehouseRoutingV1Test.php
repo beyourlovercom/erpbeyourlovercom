@@ -156,6 +156,31 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
     }
 
+    public function test_route_already_us_sm_repairs_factory_shipment_and_removes_old_4px_carrier(): void
+    {
+        [$order, $actor, $warehouses] = $this->fixture();
+        $order->address()->create([
+            'recipient_name' => 'Synthetic Recipient', 'country' => 'US',
+            'province_state' => 'CA', 'city' => 'Test', 'postal_code' => '90210',
+            'address_line_1' => 'Example Street', 'phone' => '5550100',
+        ]);
+        $order->shipment()->create([
+            'warehouse_id' => $warehouses['FACTORY']->id,
+            'shipment_status' => 'pending', 'carrier' => '4PX',
+            'service' => '普通', 'carrier_selection_source' => 'manual',
+        ]);
+        $order->forceFill(['routing_warehouse_code' => 'US-SM', 'routing_revision' => 1])->save();
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/warehouse-route', [
+            'warehouse_code' => 'US-SM', 'expected_routing_revision' => 1,
+        ])->assertOk()->assertJsonPath('routing_warehouse.code', 'US-SM');
+        $shipment = $order->fresh()->shipment;
+        self::assertSame($warehouses['US-SM']->id, (int) $shipment->warehouse_id);
+        self::assertSame('USPS', $shipment->carrier);
+        self::assertNotSame('4PX', $shipment->carrier);
+        self::assertSame('pending', $shipment->shipment_status);
+        self::assertNull($shipment->tracking_number);
+    }
+
     public function test_shipped_order_cannot_change_logical_or_physical_warehouse(): void
     {
         [$order, $actor, $warehouses] = $this->fixture();
@@ -390,7 +415,7 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         ])->assertOk();
         $this->assertDatabaseHas('shipments', [
             'order_id' => $order->id, 'warehouse_id' => $warehouses['US-NY']->id,
-            'carrier' => 'MyCarrier', 'service' => 'Custom', 'carrier_selection_source' => 'manual',
+            'carrier' => 'USPS', 'service' => 'USPS Priority Mail', 'carrier_selection_source' => 'automatic',
         ]);
         $allocation = $order->fresh()->fulfillmentAllocation;
         self::assertSame('US-NY', $allocation->plan_snapshot['segments'][0]['source_code']);
