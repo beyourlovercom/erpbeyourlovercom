@@ -297,7 +297,7 @@ final class OrderSavedViewsTest extends TestCase
         $this->actingAs($unauthorized)->get('/orders')->assertForbidden();
     }
 
-    public function test_oms_grid_native_search_and_column_filters_query_full_server_dataset(): void
+    public function test_master_grid_search_and_column_filters_query_full_server_dataset(): void
     {
         $viewer = $this->userWith(['orders.view']);
         $first = $this->order($viewer, 'GRID-ALPHA', 'pending_shipment');
@@ -306,62 +306,53 @@ final class OrderSavedViewsTest extends TestCase
         $second->update(['erp_order_id' => '007-1105-40224']);
         $second->address()->update(['country' => 'CA']);
 
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&search=GRID-BETA')
+        $this->actingAs($viewer)->get('/orders?search=GRID-BETA')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $second->id));
 
-        // A numeric fragment must search ERP order numbers too (not just exact external references).
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&search=40223')
+        // The canonical master supports substring lookup of ERP numbers.
+        $this->actingAs($viewer)->get('/orders?search=40223')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $first->id));
-        // Legacy numeric identity searches remain exact; only the opt-in OMS grid uses substring matching.
-        $this->actingAs($viewer)->get('/orders?search=40223')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('orders.total', 0));
         // Explicit dbid syntax remains an exact database ID lookup.
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&search=dbid:'.$second->id)
+        $this->actingAs($viewer)->get('/orders?search=dbid:'.$second->id)
             ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $second->id));
 
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_order_number=40223')
+        $this->actingAs($viewer)->get('/orders?grid_order_number=40223')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('filters.grid_order_number', '40223')
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $first->id));
-
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_source=woo&grid_recipient=ALPHA&grid_country=US')
+        $this->actingAs($viewer)->get('/orders?grid_source=woo&grid_recipient=ALPHA')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $first->id));
-
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_country=CA&grid_date=2026-08')
+        $this->actingAs($viewer)->get('/orders?grid_recipient=BETA&grid_date=2026-08')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $second->id));
 
-        // Even a partial month string is a contains-match in a column filter.
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_date=08')
+        // Partial month and external order number are both server-filterable.
+        $this->actingAs($viewer)->get('/orders?grid_date=08')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
-
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_owner='.urlencode($viewer->name))
+        $this->actingAs($viewer)->get('/orders?grid_external_number=ORDER-GRID')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
-
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_status='.urlencode('待发'))
+        $this->actingAs($viewer)->get('/orders?grid_status=pending_shipment')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_status='.urlencode('不存在的状态'))
+        $this->actingAs($viewer)->get('/orders?grid_status=nonexistent')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
 
-        // Malformed array input is ignored, and grid-only filters must not affect the legacy route.
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_order_number[]=bogus')
-            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
+        // Unvalidated array input cannot be interpolated into SQL.
+        $this->actingAs($viewer)->getJson('/orders?grid_order_number[]=bogus')->assertUnprocessable();
         $this->actingAs($viewer)->get('/orders?grid_order_number=NO-MATCH')
-            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
     }
 
-    public function test_oms_grid_sku_and_individual_line_quantity_are_server_filterable_across_all_orders(): void
+    public function test_master_grid_sku_search_and_combined_filters_match_canonical_order_lines(): void
     {
         $viewer = $this->userWith(['orders.view']);
         $first = $this->order($viewer, 'R3-SKU-ALPHA', 'pending_shipment');
@@ -379,40 +370,25 @@ final class OrderSavedViewsTest extends TestCase
             'sku' => 'A1', 'product_summary' => 'Product Three',
             'quantity' => 4, 'unit_price' => '20.00', 'line_revenue' => '80.00',
         ]);
-        $first->address()->update(['city' => 'Austin', 'postal_code' => '78701']);
 
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_sku=MF414')
+        $this->actingAs($viewer)->get('/orders?grid_sku=MF414')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $first->id)
-                ->has('orders.data.0.items', 2));
-
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=2')
+                ->where('orders.data.0.skus', 'MF414A / A1'));
+        $this->actingAs($viewer)->get('/orders?grid_sku=A1')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
+        $this->actingAs($viewer)->get('/orders?grid_sku=MF414A&grid_recipient=ALPHA')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $first->id));
-
-        // A combination must match the SAME SKU line, not different lines of one order.
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_sku=MF414A&grid_quantity=1')
-            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_sku=MF414A&grid_quantity=2&grid_product_names=Product%20One')
-            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 1));
-
-        // The filter must match one individual item line, never aggregate order-level units.
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=3')
-            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=abc')
+        $this->actingAs($viewer)->get('/orders?grid_sku=MF414A&grid_recipient=BETA')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
 
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_product_names=Product%20One&grid_city=Aus&grid_postal_code=787')
+        $this->actingAs($viewer)->get('/orders?search=MF414')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 1));
-
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&search=MF414')
-            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 1));
-
-        // The old Orders route is not affected by the new filters.
-        $this->actingAs($viewer)->get('/orders?grid_sku=NO_MATCH&grid_quantity=77')
-            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
+        $this->actingAs($viewer)->get('/orders?grid_sku=NO_MATCH')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
     }
 
     private function assertViewContainsOnly(User $user, string $view, string $externalOrderNumber): void
