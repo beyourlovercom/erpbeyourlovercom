@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3'
 import type { ColDef } from 'ag-grid-community'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
+import OrderOmsTransfer from '../../Components/Orders/OrderOmsTransfer.vue'
 import { gridColumn, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
@@ -20,6 +21,8 @@ const props = defineProps<{
   counts: Record<string, number>
   filters: MasterFilters
   canSeeTrash: boolean
+  canImportOmsOrders: boolean
+  canConfirmOmsOrders: boolean
 }>()
 
 const search = ref(props.filters.search ?? '')
@@ -55,7 +58,7 @@ const params = (overrides: Record<string, string | number> = {}) => ({
   ...overrides,
 })
 const go = (overrides: Record<string, string | number> = {}) => router.get(
-  '/orders/master', params(overrides), { preserveState: true, preserveScroll: true, replace: true },
+  '/orders', params(overrides), { preserveState: true, preserveScroll: true, replace: true },
 )
 let searchTimeout: ReturnType<typeof setTimeout> | undefined
 const submitSearch = () => {
@@ -127,7 +130,7 @@ const changeSort = ({ colId, direction }: { colId: string; direction: 'asc' | 'd
     <section class="mvp-page orders-master">
       <div class="master-heading">
         <div><h2>订单总表</h2><span class="master-total">全部可查看记录 {{ props.counts.all.toLocaleString('en-US') }} 单</span></div>
-        <div class="mvp-actions page-header-actions"><Link class="mvp-button" href="/orders">原订单列表</Link><Link class="mvp-button" href="/orders/archive">归档清单</Link></div>
+        <div class="mvp-actions page-header-actions"><Link class="mvp-button" href="/orders/archive">归档清单</Link></div>
       </div>
       <form class="master-toolbar" role="search" @submit.prevent="submitSearch">
         <div class="master-search"><span aria-hidden="true">⌕</span><input v-model="search" aria-label="搜索所有订单" maxlength="120" placeholder="搜索 ERP 单号 / 来源单号 / 收件人 / SKU / 邮箱…" /><button v-if="search" aria-label="清空搜索" class="clear-search" type="button" @click="search = ''">×</button></div>
@@ -148,7 +151,13 @@ const changeSort = ({ colId, direction }: { colId: string; direction: 'asc' | 'd
           :filter-columns="filterColumns" :filter-values="filterValues"
           @page-change="page => go({ page })"
           @page-size-change="size => { if (size !== 'all') go({ per_page: size, page: 1 }) }"
-          @sort-change="changeSort" @column-search-change="changeColumnSearch" />
+          @sort-change="changeSort" @column-search-change="changeColumnSearch">
+          <template #actions>
+            <OrderOmsTransfer export-url="" :can-import="canImportOmsOrders"
+              :can-confirm-import="canConfirmOmsOrders" :can-export="false"
+              :total="orders.total" :selected-order-ids="[]" />
+          </template>
+        </GlobalGrid>
         <template #fallback><div class="master-loading" role="status">正在加载订单总表…</div></template>
       </Suspense>
       <p class="master-help">说明：总表只读展示真实订单记录，不改变订单状态或履约队列。运营归档保留历史；回收站记录仅管理员可查看。表格筛选和分页均在服务端覆盖全部可见记录。</p>
