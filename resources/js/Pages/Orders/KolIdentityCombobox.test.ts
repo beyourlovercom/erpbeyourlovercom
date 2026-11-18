@@ -84,9 +84,11 @@ describe('KolIdentityCombobox', () => {
     const wrapper = mount(KolIdentityCombobox, { props: { modelValue: null } })
     await wrapper.get('input').trigger('focus')
     await wrapper.get('input').setValue('Mary')
-    await vi.advanceTimersByTimeAsync(200)
-    await flushPromises()
+    // The earlier empty-query response must be ignored even before debounce completes.
     firstResolve?.(response([unbound]))
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Mary No Affiliate')
+    await vi.advanceTimersByTimeAsync(200)
     await flushPromises()
     expect(wrapper.text()).toContain('Mary Creator')
     expect(wrapper.text()).not.toContain('Mary No Affiliate')
