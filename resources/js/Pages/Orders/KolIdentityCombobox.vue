@@ -93,6 +93,10 @@ const onFocus = () => {
 
 const onInput = (event: Event) => {
   inputValue.value = (event.target as HTMLInputElement).value
+  // Invalidate even an in-flight focus lookup before the debounce timer fires.
+  sequence++
+  loading.value = true
+  errorMessage.value = ''
   chosen.value = null
   emit('update:modelValue', null)
   results.value = []
