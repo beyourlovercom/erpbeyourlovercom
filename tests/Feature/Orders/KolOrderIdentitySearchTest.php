@@ -44,6 +44,20 @@ final class KolOrderIdentitySearchTest extends TestCase
         }
     }
 
+    public function test_exact_numeric_id_ranks_before_twenty_partial_text_matches(): void
+    {
+        $staff = $this->userWith(['orders.create', 'kol.view']);
+        $target = $this->kol($staff, 'Z Exact ID Creator');
+        $id = (string) $target->id;
+        for ($index = 0; $index < 25; $index++) {
+            $this->kol($staff, 'A Creator '.$id.' Match '.str_pad((string) $index, 3, '0', STR_PAD_LEFT));
+        }
+
+        $this->actingAs($staff)->getJson('/kol/orders/kol-search?q='.$id)
+            ->assertOk()->assertJsonCount(20)
+            ->assertJsonPath('0.value', $target->id);
+    }
+
     public function test_search_is_owner_scoped_excludes_archived_and_requires_both_permissions(): void
     {
         $emma = $this->userWith(['orders.create', 'kol.view']);
