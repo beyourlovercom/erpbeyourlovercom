@@ -77,3 +77,18 @@
 - `app/Modules/Orders/Application/OrderProgressQuery.php`：三队列进度谓词。
 - `tests/Feature/Logistics/PendingAllocationEntryPolicyTest.php`、`DomesticBusinessReviewTest.php`、`OverseaWarehouseWorkbenchTest.php`：优先回归测试；**文件存在，不代表已运行 PASS**。
 - 下一步：审计 Source+ERP2 #766 的字段接线和认证 session 机制 → 独立 R1/R2 后端实施 Work Package → 精确 HEAD PHPUnit/HTTP 负例 → 007windows Dev 前台逐页 UAT。任何新 UI 代码先走 Owner 视觉方案 PASS。Production 不变。
+
+
+## 6. 已确认的 ERP2 #766 前端/网关集成缺口
+
+只读审计未合并的 `feat/erp-siteops-007-r0-orders-readonly-20261114@299f837a` 后，以下是**现存源文件的事实**：
+
+| 已有 ERP2 源文件 | 当前实现 | R1/R2 必补的缺口 |
+|---|---|---|
+| `apps/erp-siteops-vben/overrides/src/api/erp-orders.ts` | `getCurrentDevReadOnlyOrders` 仅支持 `scope='all'|'customers'`，GET `/erp/current/orders`；`normalizeExistingInertiaOrders` 只接受 `Orders/Index` | 尚无 `FulfillmentAllocation`、`Logistics/Domestic/Index`、`Logistics/Oversea/Index` 对应投影；原 `items[].sku` 仍按初始 SKU 串联显示，不能称为每仓 final SKU |
+| `apps/erp-siteops-vben/runtime/r2b-current-gateway.cjs` | 只向原 Laravel DEV 请求 `/orders` 或 `/customers/orders`，并仅解析 `Orders/Index` | 未连接待分仓、国内/海外真实 Laravel 队列；需要独立受控 read adapter 和角色负例 |
+| `apps/erp-siteops-vben/runtime/p0-canonical-proxy.cjs` | `DEV_PATHS` allowlist 仅涵盖登录、dashboard、identity、orders、customers/orders | 没有物流三 GET 入口；不能简单通过前端菜单跳转宣告实际 API 通路 |
+| `apps/erp-siteops-vben/overrides/src/api/erp-hot-snapshots.ts` | 内存缓存 TTL 60 秒，版本常量为 `b07885e36c491a997f88ae3c7a6ef0b14d17ad31` | 源代码 `main@eb8ed64e` 已变更；必须先重建 Dev 源版本证据并统一版本 pin、缓存隔离键，不能直接沿用旧快照 |
+| `apps/erp-siteops-vben/overrides/src/api/erp-orders.ts` + `runtime/r2b-current-gateway.cjs` | 前后端共同检查 `CURRENT_LARAVEL_MAIN_DEV_B07885E3` 标记 | 来源 pin 是 Dev UAT 安全约束，不可单方面改标签来假装兼容当前 `main`；必须同时更新真实 Laravel Dev checkout、网关和前端测试 |
+
+**结论（静态代码审计）：** #766 是**订单/客户列表阶段的 ERP2 只读实现**，并非本轮 3 个物流业务队列连接已完成；R1/R2 实施须先解决 source-version pin 与三路由投影。未运行 007windows 远端浏览器或 HTTP 实测，不能将此差距当作现场故障结论。
