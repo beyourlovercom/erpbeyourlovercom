@@ -22,11 +22,17 @@ final class WarehouseSkuPresentation
 
     public static function verified(OrderItem $item): bool
     {
-        $sku = trim((string) ($item->final_sku ?: $item->resolved_fulfillment_sku ?: $item->sku));
+        $final = trim((string) $item->final_sku);
+        $source = trim((string) $item->sku);
+        $resolved = trim((string) $item->resolved_fulfillment_sku);
+        if ($final !== '') {
+            return strcasecmp($final, 'gift') !== 0
+                && ($resolved === '' || strcasecmp($final, $resolved) === 0);
+        }
 
-        return $sku !== '' && strcasecmp($sku, 'gift') !== 0
-            && (! filled($item->final_sku)
-                || ! filled($item->resolved_fulfillment_sku)
-                || strcasecmp(trim((string) $item->final_sku), trim((string) $item->resolved_fulfillment_sku)) === 0);
+        // Preserve the pre-Final-SKU safeguard for legacy rows. A different
+        // resolved SKU with no verified final SKU is not safe for dispatch.
+        return $source !== '' && strcasecmp($source, 'gift') !== 0
+            && ($resolved === '' || strcasecmp($source, $resolved) === 0);
     }
 }

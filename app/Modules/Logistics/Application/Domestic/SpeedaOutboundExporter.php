@@ -259,6 +259,20 @@ final class SpeedaOutboundExporter
         }
 
         $sku = $uniqueSkus[0];
+        $productId = (int) ($items->first()?->product_id ?? 0);
+        $warehouseId = (int) $order->shipment?->warehouse_id;
+        $verifiedMapping = $productId > 0 && $warehouseId > 0
+            ? $this->finalSkus->mapped($productId, $warehouseId)
+            : null;
+        if ($verifiedMapping !== null && strcasecmp($verifiedMapping, $sku) === 0
+            && $items->every(fn ($item): bool => (int) $item->product_id === $productId
+                && filled($item->final_sku)
+                && strcasecmp(trim((string) $item->final_sku), $sku) === 0)) {
+            $barcode = trim((string) $items->first()->product?->barcode_69);
+
+            return [$sku, preg_match('/^[0-9]{8,14}$/D', $barcode) === 1 ? $barcode : ''];
+        }
+
         $matches = Product::query()->where('sku', $sku)->limit(2)->get(['id', 'barcode_69']);
         if ($matches->count() !== 1) {
             return [$sku, ''];
