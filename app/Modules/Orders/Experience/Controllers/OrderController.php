@@ -163,10 +163,10 @@ final class OrderController
         return Kol::query()->whereNull('archived_at')
             ->when(! KolScope::isAllScope($request->user()),
                 fn (Builder $query) => $query->where('owner_id', $request->user()->getAuthIdentifier()))
-            ->withExists(['affiliateAccounts as affiliate_ready' => fn (Builder $query) => KolAffiliateIdentity::scopeActiveAffiliate($query)])
+            ->withExists(['affiliateAccounts as affiliate_ready' => fn ($query) => KolAffiliateIdentity::scopeActiveAffiliate($query)])
             ->with([
-                'socialAccounts' => fn (Builder $query) => $query->where('is_active', true)->orderBy('id'),
-                'affiliateAccounts' => fn (Builder $query) => KolAffiliateIdentity::scopeActiveAffiliate($query)->orderBy('id'),
+                'socialAccounts' => fn ($query) => $query->where('is_active', true)->orderBy('id'),
+                'affiliateAccounts' => fn ($query) => KolAffiliateIdentity::scopeActiveAffiliate($query)->orderBy('id'),
             ]);
     }
 
