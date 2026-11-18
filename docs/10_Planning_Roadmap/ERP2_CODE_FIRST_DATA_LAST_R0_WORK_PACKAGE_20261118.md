@@ -101,7 +101,7 @@
 - `LogisticsExecutionAccess` 除 `logistics.operate` 外，还显式拒绝 `super_admin` 角色执行发货；ERP2 不可因“管理员”自动赋予出库操作。
 - `PendingAllocationEntryPolicy`：Woo 客户单要求财务 provider order status 为 `processing`；manual / manual_other 客户单另有入口；KOL fulfillment 不需要网红经理审批或订单日期截止；全部还受 `eligibleForOperations` 约束。
 
-**审计证据级别：** 以上来自 20 个相关 migration 与 5 个核心权限/状态源文件的**静态源码读取**。未导入真实订单、未执行 `migrate:status`、未运行准确 HEAD PHPUnit，不代表最新生产运行时 schema 或权限已经 PASS。对剩余迁移的全量 schema diff 仍属 R0 剩余项。
+**审计证据级别：** 以上来自 20 个相关 migration 与 5 个核心权限/状态源文件的**静态源码读取**。另已逐一读取 **178/178** migration 并制作 `ERP2_R0_FULL_MIGRATION_SCHEMA_INDEX_20261118.md`：发现 12 个不直接改 Schema、但会进行参考数据/权限预置或历史业务回填的迁移；必须在独立 Dev DB 验证副作用。未导入真实订单、未执行 `migrate:status`、未运行准确 HEAD PHPUnit，不代表最新生产运行时 schema 或权限已经 PASS。全量 **实际执行后** schema diff 仍属 R0 剩余项。
 
 ## 5. 最小测试场景（在独立 Dev 数据库生成）
 
@@ -133,7 +133,7 @@
 - **PARALLEL_SAFE:** YES（docs-only，独立 branch，不修改 #766 工作树及任何共享前端）。
 - **PROHIBITED:** Production 读取/写入订单、生产发布、真实订单迁移、关闭/重启现有 UAT 端口、覆盖已 PASS 的 Vben dist、自动调用 OMS。
 - **ACCEPTANCE:** Owner 审阅合同矩阵与路线；进一步完成当前 main 全量模块+表+路由覆盖登记、R1 视觉提案与独立测试设计，R0 才能称为 COMPLETE。
-- **CURRENT RESULT:** 22 模块 Routes/Feature Test 目录索引、8 表基础字段契约、待分仓/国内/海外三独立 read model 规则与 ERP2 #766 接线缺口的 GitHub 静态证据已建立；**R0 尚未 COMPLETE**，未运行准确 HEAD Dev 测试或完整 178 migration 最终 schema 审计。
+- **CURRENT RESULT:** 22 模块 Routes/Feature Test 目录索引、8 表基础字段契约、待分仓/国内/海外独立 read model、ERP2 #766 接线缺口、178/178 migration 静态覆盖及 12 个数据副作用迁移均已记录；**R0 尚未 COMPLETE**，缺准确 HEAD 的隔离 Dev 运行时权限、迁移和 E2E 证据。
 - **CI/VALIDATION:** 本文档仅仓库只读证据和 Markdown 路径/状态检查；任何代码实施都需在准确 head 上运行对应 PHPUnit、Vitest、typecheck、build 和 007windows E2E。
 - **MERGE:** 本 PR 暂保持 Draft，基线对账与 Owner 审阅未完成；不合并 main，也不部署 Production。
 
@@ -150,7 +150,7 @@ GITHUB_STATE: `main` 不含 `apps/erp-siteops-vben`；本 R0 独立文档分支 
 SOURCE_CONFLICTS: 历史 AI/CURRENT_CONTEXT 2026-08-29 与文档13 2026-09-19 不能代表当前 ERP Production；待运行时核对。旧数据库 SKU 字段与新 final SKU 契约未同步；Draft #766 不能当 main 已实现。
 GLOBAL_GATE: Owner 新路线已确认；R1 UI 实施前需 OWNER_VISUAL_PASS，正式数据与部署均独立审批。
 PRODUCTION_DEPLOYMENT_STATUS: NO（本 R0 文档不部署；未核对当日现有 ERP Production 实际版本）。
-NEXT_DEPENDENCY: 继续 R0 后续 migration/schema 与权限/HTTP/roles 盘点，确认 #766 Dev checkout source pin；R1 视觉方案 Owner PASS 后才能实施 UI。
+NEXT_DEPENDENCY: 007windows 独立 DB migrate:status/安全迁移演练与权限/HTTP/roles 运行时对账，确认 #766 Dev checkout source pin；R1 视觉方案 Owner PASS 后才能实施 UI。
 EVIDENCE_AS_OF: 2026-11-18 GitHub contents/branch/PR 与 007windows 独立探针记录。
 
 ## ROADMAP HOURS
