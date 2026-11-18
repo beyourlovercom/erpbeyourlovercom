@@ -37,6 +37,7 @@ use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Application\WooCommerceAdminOrderLink;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -157,26 +158,70 @@ final class OrderController
         ]);
     }
 
+    private function scopedKolSelection(Request $request): Builder
+    {
+        return Kol::query()->whereNull('archived_at')
+            ->when(! KolScope::isAllScope($request->user()),
+                fn (Builder $query) => $query->where('owner_id', $request->user()->getAuthIdentifier()))
+            ->withExists(['affiliateAccounts as affiliate_ready' => fn (Builder $query) => KolAffiliateIdentity::scopeActiveAffiliate($query)])
+            ->with([
+                'socialAccounts' => fn (Builder $query) => $query->where('is_active', true)->orderBy('id'),
+                'affiliateAccounts' => fn (Builder $query) => KolAffiliateIdentity::scopeActiveAffiliate($query)->orderBy('id'),
+            ]);
+    }
+
+    /** @return array{value: int, label: string, account: ?string, hasAffiliate: bool} */
+    private function kolSelectionData(Kol $kol): array
+    {
+        return [
+            'value' => (int) $kol->id,
+            'label' => $kol->display_name,
+            'account' => $kol->socialAccounts->first()?->handle
+                ?: $kol->affiliateAccounts->first()?->wordpress_user_login,
+            'hasAffiliate' => (bool) $kol->affiliate_ready,
+        ];
+    }
+
+    public function searchKolOptions(Request $request): JsonResponse
+    {
+        KolOrderAccessScope::authorizeCreate($request->user(), OrderKind::KolFulfillment);
+        abort_unless($request->user()->can('kol.view'), 403);
+        $validated = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $term = trim((string) ($validated['q'] ?? ''));
+        $query = $this->scopedKolSelection($request);
+        if ($term !== '') {
+            $pattern = '%'.mb_strtolower($term).'%';
+            $accountPattern = '%'.mb_strtolower(ltrim($term, '@')).'%';
+            $query->where(function (Builder $builder) use ($term, $pattern, $accountPattern): void {
+                $builder->whereRaw('LOWER(display_name) LIKE ?', [$pattern])
+                    ->orWhereRaw('LOWER(contact_email) LIKE ?', [$pattern])
+                    ->orWhereHas('socialAccounts', fn (Builder $accounts) => $accounts
+                        ->where('is_active', true)->whereRaw('LOWER(handle) LIKE ?', [$accountPattern]))
+                    ->orWhereHas('affiliateAccounts', fn (Builder $accounts) => $accounts
+                        ->whereRaw('LOWER(wordpress_user_login) LIKE ?', [$accountPattern]));
+                if (ctype_digit($term)) {
+                    $builder->orWhere('id', (int) $term);
+                }
+            });
+        }
+
+        $options = $query->orderBy('display_name')->orderBy('id')->limit(20)->get(['id', 'display_name'])
+            ->map(fn (Kol $kol): array => $this->kolSelectionData($kol))->all();
+
+        return response()->json($options);
+    }
+
     public function create(Request $request): Response
     {
         $kind = $this->kind($request);
         KolOrderAccessScope::authorizeCreate($request->user(), $kind);
-
-        $kolOptions = $kind === OrderKind::KolFulfillment && $request->user()->can('kol.view')
-            ? Kol::query()->whereNull('archived_at')
-                ->when(! KolScope::isAllScope($request->user()),
-                    fn ($query) => $query->where('owner_id', $request->user()->getAuthIdentifier()))
-                ->withExists(['affiliateAccounts as affiliate_ready' => fn ($query) => KolAffiliateIdentity::scopeActiveAffiliate($query)])
-                ->orderBy('display_name')->limit(1500)->get(['id', 'display_name'])
-                ->map(fn (Kol $kol): array => [
-                    'value' => (int) $kol->id, 'label' => $kol->display_name,
-                    'hasAffiliate' => (bool) $kol->affiliate_ready,
-                ])->all()
-            : [];
         $requestedKolId = $request->integer('kol_id');
-        $requestedKol = collect($kolOptions)->firstWhere('value', $requestedKolId);
-        $selectedKolId = $requestedKol && $requestedKol['hasAffiliate'] ? $requestedKolId : null;
-        $requestedKolUnbound = $requestedKol && ! $requestedKol['hasAffiliate'];
+        $requestedKol = $kind === OrderKind::KolFulfillment && $request->user()->can('kol.view') && $requestedKolId > 0
+            ? $this->scopedKolSelection($request)->find($requestedKolId)
+            : null;
+        $kolOptions = $requestedKol ? [$this->kolSelectionData($requestedKol)] : [];
+        $selectedKolId = $requestedKol && $kolOptions[0]['hasAffiliate'] ? $requestedKolId : null;
+        $requestedKolUnbound = $requestedKol && ! $kolOptions[0]['hasAffiliate'];
 
         return Inertia::render('Orders/Create', [
             'defaultOrderKind' => $kind->value,
