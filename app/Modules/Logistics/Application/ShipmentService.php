@@ -222,8 +222,18 @@ final class ShipmentService
         foreach ($order->items()->lockForUpdate()->get() as $item) {
             $mapped = $this->finalSkus->mapped((int) $item->product_id, $selectedWarehouseId);
             if ($mapped === null) {
-                abort_if($moved || (bool) config('warehouse_final_sku.require_verified_mapping'), 422,
+                abort_if((bool) config('warehouse_final_sku.require_verified_mapping')
+                    || ($moved && filled($item->final_sku)), 422,
                     '目标仓库没有经过确认的商品 SKU 映射，不能沿用原仓 SKU');
+                // Transitional legacy orders with no physical SKU assignment
+                // may still be re-routed, but never acquire a false final SKU.
+                if ($moved && filled($item->source_sku)) {
+                    $item->forceFill([
+                        'sku' => $item->source_sku,
+                        'resolved_fulfillment_sku' => $item->source_sku,
+                        'final_sku' => null,
+                    ])->save();
+                }
                 continue;
             }
 

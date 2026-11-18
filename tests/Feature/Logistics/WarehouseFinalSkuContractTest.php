@@ -48,7 +48,7 @@ final class WarehouseFinalSkuContractTest extends TestCase
     private function order(Product $product, Warehouse $warehouse): Order
     {
         $order = Order::query()->create([
-            'erp_order_id' => '007-1118-final-sku', 'internal_order_number' => 'INT-FINAL-SKU-TEST',
+            'erp_order_id' => '007-1118-c42380', 'internal_order_number' => 'INT-FINAL-SKU-TEST',
             'source_type' => 'manual_other', 'order_kind' => 'customer',
             'order_status' => 'pending_shipment', 'order_date' => now()->toDateString(),
         ]);

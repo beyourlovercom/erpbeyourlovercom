@@ -94,7 +94,8 @@ final class PendingFulfillmentReallocationService
             ], $actor);
 
             foreach ($child->items as $item) {
-                $finalSku = $this->finalSkus->resolve(
+                $mapped = $this->finalSkus->mapped((int) $item->product_id, (int) $warehouse->getKey());
+                $finalSku = $mapped ?? $this->finalSkus->resolve(
                     (int) $item->product_id, $canonicalCode,
                     (string) ($item->source_sku ?: $item->sku),
                 );
@@ -102,7 +103,7 @@ final class PendingFulfillmentReallocationService
                 $item->forceFill([
                     'sku' => $finalSku,
                     'resolved_fulfillment_sku' => $finalSku,
-                    'final_sku' => $finalSku,
+                    'final_sku' => $mapped,
                 ])->save();
             }
 
