@@ -1233,7 +1233,17 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
 
     public function test_warehouse_batch_route_requires_logistics_operation_permission(): void
     {
-        $this->postJson('/logistics/oversea/us-3sm/xlwms/sync')->assertRedirect();
+        Http::preventStrayRequests();
+        Http::fake();
+        $route = '/logistics/oversea/us-3sm/xlwms/sync';
+
+        $this->postJson($route)->assertUnauthorized();
+
+        $viewer = \App\Models\User::factory()->create(['is_active' => true]);
+        $this->actingAs($viewer)->postJson($route)->assertForbidden();
+
+        $this->assertDatabaseCount('xlwms_dispatch_attempts', 0);
+        Http::assertNothingSent();
     }
 
     public function test_warehouse_batch_never_selects_a_different_warehouse(): void
