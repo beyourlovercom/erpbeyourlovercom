@@ -52,6 +52,23 @@
 
 本矩阵仅标记“存在源代码或测试文件”；单测通过情况、Dev 兼容性和功能完整性仍须逐项实际运行。
 
+## 4A. 字段级数据库契约（main@eb8ed64e 的基础迁移；后续增量迁移仍待审计）
+
+| canonical 表 | 初始迁移已证实的字段/唯一约束 | ERP2 不变量 | 待确认的后续改动 |
+|---|---|---|---|
+| `orders` | `id`、`internal_order_number UNIQUE`、`external_order_number`、`source_type`、`order_status`、`owner_id`、`order_date` | `orders.id` 为唯一订单主键；前台展示独立业务订单号，不能使用内部 ID 替代 | 2026-09-01 `erp_order_id UNIQUE`、归档/状态/路由字段与后续 schema |
+| `order_items` | `order_id` 外键、`sku`、`quantity`、`unit_price DECIMAL(18,2)`、`line_revenue DECIMAL(18,2)` | 商品行归属 Order；金额不可转浮点精度；初始 SKU 不是自动确定的最终仓库 SKU | `product_id`、`woocommerce_line_item_id`、final SKU 方案及其迁移状态 |
+| `shipments` | `order_id UNIQUE`、`shipment_status`、`carrier`、`tracking_number`、`shipped_at` | 原始模型每个 `orders.id` 至多一个 Shipment；A/B/C 通过派生订单而非覆写父单发货证据 | warehouse、service、review/dispatch、补发状态与 OMS 只读尝试字段 |
+| `orders` 派生关系 | 2026-09-11 `fulfillment_parent_id → orders.id` + `fulfillment_suffix`；`UNIQUE(parent,suffix)` | A/B/C 每个派生单有独立主键及去重后缀，父子查询可双向追溯 | 切分服务及最新归档重发行为 |
+| `fulfillment_allocations` | `order_id UNIQUE`、`status`、`decision_source`、`manual_assignments JSON`、`plan_snapshot JSON` | 分仓事实与手工选择不能靠 UI 列值重新构造；迁移要保留关联 | routing_warehouse_code、shipment warehouse_id 的同步规则 |
+| `warehouses` / `warehouse_inventory` | warehouse `code UNIQUE` / `slug UNIQUE`；库存 `UNIQUE(warehouse_id,product_id)`；`quantity_on_hand`、`quantity_reserved` | 库存按商品×仓库唯一，预留量不可与在库量混淆 | 实际出库 SKU 对应的仓库产品身份、仓库别名、预留账本 |
+| `product_sku_aliases` | `product_id`、`alias_sku`、`match_key UNIQUE`、`source_type` | 该 **初始 SKU 别名表没有 warehouse 维度**；绝不能据此宣称已实现每仓最终 SKU | 并行 Final SKU PR 落地后重新审计 warehouse-specific mapping |
+| `order_external_references` | `order_id`、`provider`、`reference`，初始 `UNIQUE(provider,reference)` | 外部 ID 匹配与幂等不能仅凭模糊业务单号 | 后续 provider connection_key/扩展与历史导入策略 |
+
+**关键差异：** 早期书面契约把 `external_order_number` 作为显示编号，2026-09-01 数据库又新增 `erp_order_id`；ERP2 必须读取最新 `Order` 展示投影，不得把旧设计文档的字段约定硬编码成现在的最终编号规则。
+
+上述引用均是 GitHub `main` 中已存在的 **基础迁移文件静态证据**；没有运行 `migrate:status` 或完整 178 文件归并分析，故尚不能宣告 Production 最终列清单或 Schema PASS。
+
 ## 5. 最小测试场景（在独立 Dev 数据库生成）
 
 - 正常客户单，KOL 专员本人单、KOL 管理员可见单、无权限跨账户单。
