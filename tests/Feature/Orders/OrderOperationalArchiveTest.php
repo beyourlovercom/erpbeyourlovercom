@@ -94,6 +94,11 @@ final class OrderOperationalArchiveTest extends TestCase
         $this->assertSame(0, app(LogisticsStatusSummary::class)->pendingAllocationQuery()->whereKey($order->id)->count());
 
         $this->actingAs($staff)->get('/orders')->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Orders/Master')
+                ->has('orders.data', 1)
+                ->where('orders.data.0.id', $order->id)
+                ->where('orders.data.0.archive_state', 'operational'));
+        $this->actingAs($staff)->get('/customers/orders')->assertOk()
             ->assertInertia(fn ($page) => $page->has('orders.data', 0));
         $this->actingAs($staff)->get('/orders/archive')->assertOk()
             ->assertInertia(fn ($page) => $page->has('orders.data', 1)
