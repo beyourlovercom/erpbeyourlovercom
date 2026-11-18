@@ -205,6 +205,10 @@ final class OrderController
             });
         }
 
+        // An exact numeric KOL ID must remain visible even among many partial text matches.
+        if (ctype_digit($term)) {
+            $query->orderByRaw('CASE WHEN kols.id = ? THEN 0 ELSE 1 END', [(int) $term]);
+        }
         $options = $query->orderBy('display_name')->orderBy('id')->limit(20)->get(['id', 'display_name'])
             ->map(fn (Kol $kol): array => $this->kolSelectionData($kol))->all();
 
