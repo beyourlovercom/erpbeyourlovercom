@@ -341,7 +341,7 @@ final class OrderSavedViewsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
         $this->actingAs($viewer)->get('/orders?grid_external_number=ORDER-GRID')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
-        $this->actingAs($viewer)->get('/orders?grid_status=pending_shipment')
+        $this->actingAs($viewer)->get('/orders?grid_status=pending')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
         $this->actingAs($viewer)->get('/orders?grid_status=nonexistent')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
@@ -375,7 +375,7 @@ final class OrderSavedViewsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $first->id)
-                ->where('orders.data.0.skus', 'MF414A / A1'));
+                ->where('orders.data.0.skus', 'A1 / MF414A'));
         $this->actingAs($viewer)->get('/orders?grid_sku=A1')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
         $this->actingAs($viewer)->get('/orders?grid_sku=MF414A&grid_recipient=ALPHA')
