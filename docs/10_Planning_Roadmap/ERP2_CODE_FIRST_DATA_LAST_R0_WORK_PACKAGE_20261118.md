@@ -77,6 +77,32 @@
 - 在 #766 的现有代码中，只读网关/前端 adapter 尚只覆盖 `all/customers` 订单列表，未覆盖上述三个队列；且 Dev source pin 仍指向旧版 `b07885e3`，不能更改字符串来假装与当前 `main` 一致。
 - R1/R2 若要新建 JSON 投影，必须先冻结真实 Controller/Read Model/权限与现有 Inertia 的一致性，使用 **007windows 独立合成数据**做 HTTP 权限负例、列表+计数、分页 E2E；新可见页面仍先交 Owner 视觉提案。
 
+## 4C. 2026-11-18 增量迁移及权限补充审计（20 个精选文件；不是全量 migrate:status）
+
+| 域 | 最新 main migration / source 已证实的事实 | ERP2 代码契约与回归门槛 |
+|---|---|---|
+| 手动分仓 | `2026_11_15_080000_add_order_routing_warehouse` 在 `orders` 加 `routing_warehouse_code`、`routing_revision` 及 `order_warehouse_route_histories` | 路由仓与 `shipments.warehouse_id` 物理仓须区分；任一改仓操作要验证 revision、去向与审核失效/重审；不可仅改表格显示 |
+| 手动工作流 | `2026_11_01_120000_add_order_workflow_status` 加 `workflow_status`、`workflow_revision`、`order_workflow_status_histories` | 手工 Sending 是运营分类，不自动变成仓库审核或实际出库；状态更改后所有队列由统一 Query 投影重算 |
+| 归档/回收站 | `2026_10_27_000001_add_order_trash_fields` 与 `2026_11_03_000001_add_operational_archive_fields_to_orders` 引入软删除、普通归档及独立运营归档字段 | 前台“全部/归档”与运营待发货队列需要明确排除、恢复/再发货合同，不能将多个 archive 字段合并为一个布尔 |
+| 来源商品身份 | `2026_11_13_180000_preserve_order_item_source_product_identity` 在 `order_items` 保留 `source_product_id` 与 `source_product_summary` | 原商品、原始 SKU、仓库最终 SKU 不互相覆盖；Warehouse Final SKU 并行分支合并后须再核对物理列/映射 |
+| SKU OMS 核验 | `2026_10_26_200000_add_oms_verification_to_product_sku_aliases` 与 `2026_11_09_100000_add_oms_dispatch_approval_to_product_sku_aliases` 增加 `oms_verified_at`、`oms_dispatch_approved_at`、`oms_dispatch_canonical_sku` | OMS 认可的出库 SKU 是**需要验证的映射事实**，不等于任意 alias；该老表无 warehouse dimension，须独立解决每仓映射 |
+| 外部订单关联 | `2026_08_27_181000_add_woocommerce_inbound_order_contract` 把外部唯一键从 `(provider, reference)` 调整为 `(provider, connection_key, reference)` | 多 Woo 连接下不得误合并不同来源订单；早期基础迁移的旧唯一键不是当前最晚源码设计 |
+| 海外审核 | `2026_09_10_130000_create_oversea_warehouse_reviews_table` 的 `order_id UNIQUE`、`submitted_warehouse_id`、`reviewed_warehouse_id`、`status` | 审核只对当下仓库有效；改仓必须进入重新审核或对应例外流程；拒绝旧仓已批状态透传 |
+| 预留库存 | `2026_09_05_160000_create_inventory_reservations_tables` 有 `reservation_key UNIQUE`、`order_id`、`warehouse_id`、状态及预留 item 数量 | 分仓/库存读投影要能区分 on hand、reserved、released，不得把采购中库存算作可用量 |
+| 发货服务 | `2026_08_27_020000_add_manual_fulfillment_fields_to_shipments` 加 `warehouse_id`、`service`、仓/承运商选择来源 | 列展示 routing warehouse 与 actual shipment warehouse 同时可审计；carrier service 默认值不覆盖已手工选择 |
+| 补发/拆单 | `2026_09_19_083000_add_replacement_fulfillment_metadata_to_orders` 加 `fulfillment_role`、`fulfillment_origin_id`、`fulfillment_reason`、`fulfillment_note` | A/B/C 子单与补发单要有独立父子/来源关系，财务与物流汇总时不能重复计算 |
+| MorePlus OMS 证据 | `2026_10_29_000001_create_shipout_dispatch_attempts_table`、`2026_11_09_230000_create_shipout_production_batches`、`2026_11_10_200000_create_shipout_oms_readbacks` | 列表只读已持久化的 OMS 结果；不同 queued/acknowledged/created/exception 状态不得混为“已发货”；ERP2 禁向真实 OMS 外呼 |
+| 审核驳回 | `2026_11_03_150000_add_domestic_review_rejection_fields` 增加 `domestic_reject_reason`、`domestic_rejected_at`、`domestic_rejected_by` | 待审核和待发货驳回应保留原因及责任人；运营退回和实仓补发要各自满足事实门槛 |
+
+**权限源码复核：**
+- `GET /logistics/wait-stock` 源路由要求 `auth + can:logistics.view`。
+- `GET /logistics/china` 在路由层仅 `web + auth`，但 `DomesticLogisticsController::index` 额外核对 `logistics.view`，只对 `view=outsource` 开放 `procurement.view`。新增 ERP2 JSON 接口必须复用**服务端**业务权限，不可靠菜单隐藏代替。
+- `GET /logistics/oversea/{warehouse?}` 源路由要求 `auth + can:logistics.view`；`LogisticsReviewAccess` 依赖 `logistics.operate`，`DomesticReviewAccess` 单独依赖 `domestic.review`。
+- `LogisticsExecutionAccess` 除 `logistics.operate` 外，还显式拒绝 `super_admin` 角色执行发货；ERP2 不可因“管理员”自动赋予出库操作。
+- `PendingAllocationEntryPolicy`：Woo 客户单要求财务 provider order status 为 `processing`；manual / manual_other 客户单另有入口；KOL fulfillment 不需要网红经理审批或订单日期截止；全部还受 `eligibleForOperations` 约束。
+
+**审计证据级别：** 以上来自 20 个相关 migration 与 5 个核心权限/状态源文件的**静态源码读取**。未导入真实订单、未执行 `migrate:status`、未运行准确 HEAD PHPUnit，不代表最新生产运行时 schema 或权限已经 PASS。对剩余迁移的全量 schema diff 仍属 R0 剩余项。
+
 ## 5. 最小测试场景（在独立 Dev 数据库生成）
 
 - 正常客户单，KOL 专员本人单、KOL 管理员可见单、无权限跨账户单。
