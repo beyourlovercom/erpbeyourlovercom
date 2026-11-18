@@ -18,6 +18,7 @@
 - 仓库：`beyourlovercom/erpbeyourlovercom`，默认分支 `main`，本工作包审计起点 **`eb8ed64e7790efbcc6271742c8beaac3eaa3b30b`**。
 - `main/app/Modules/` 含 **24 个顶层条目**（其中 ModuleManifest.php 和 ModulesServiceProvider.php 是文件，业务目录为 22 个）；不是 24 个业务模块。主要目录：Orders、Logistics、Inventory、Finance、Kol、Products、Procurement、Customers、Sync、Identity、Shell、Audit 等。
 - `main/database/migrations/` 列出 **178** 个迁移文件（仅文件目录计数，不代表已在 Production 完成 178 个迁移）。
+- 22 模块的 source Route 文件与 Feature Test 目录级盘点见 `ERP2_CODE_FIRST_R0_MODULE_SOURCE_INVENTORY_20261118.md`；路由/测试存在不等于功能 PASS。
 - 现有原 ERP 契约参考：`docs/10_Planning_Roadmap/16_BYL_ERP_CANONICAL_ORDER_FINANCE_KOL_DATA_CONTRACT_V1.md`；`main` 的功能测试目录包括 Orders 24、Logistics 62、Finance 18、KOL 35 个顶层条目（目录计数，不等同于通过的测试数）。
 - ERP2 Vben 源码 **不在当前 main 的 apps 目录**；它位于未合并的 **Draft PR #766** / `feat/erp-siteops-007-r0-orders-readonly-20261114`。该 PR 之前在 007windows 验收：原 Laravel Dev 独立生成 126 个订单、123 条有效主表记录，Owner/Staff 123、KOL 20/41，客户 82，Vben 客户/网红专属只读路由 PASS。不得把这些状态描述为 ERP2 main 已发布。
 - 隔离 Laravel 原始三路由在 007windows 只读探针中成功：`/logistics/wait-stock` 7、`/logistics/china?view=review` 0、`/logistics/china?view=pending` 0、`/logistics/oversea?view=review` 16、`/logistics/oversea/us-moreplus?view=pending` 0。KOL 对这三种业务入口返回 403。**新 ERP2 前台尚未完成这三类独立业务数据投影**，空样本不能证明完整业务流程。
@@ -69,6 +70,13 @@
 
 上述引用均是 GitHub `main` 中已存在的 **基础迁移文件静态证据**；没有运行 `migrate:status` 或完整 178 文件归并分析，故尚不能宣告 Production 最终列清单或 Schema PASS。
 
+## 4B. 三个物流业务队列的实际源契约与 ERP2 缺口
+
+- 单独审计报告：`ERP2_R1_R2_LARAVEL_READONLY_QUEUE_CONTRACT_20261118.md`。
+- **待分仓**从 canonical `Order` + `pendingAllocation` 规则构建；**国内**以 `Order` + Factory/审核/发货阶段构建；**海外**则从 `Shipment` + 当前审核仓 + OMS 本地证据构建。不能由订单总表的同一个结果集前端过滤得到。
+- 在 #766 的现有代码中，只读网关/前端 adapter 尚只覆盖 `all/customers` 订单列表，未覆盖上述三个队列；且 Dev source pin 仍指向旧版 `b07885e3`，不能更改字符串来假装与当前 `main` 一致。
+- R1/R2 若要新建 JSON 投影，必须先冻结真实 Controller/Read Model/权限与现有 Inertia 的一致性，使用 **007windows 独立合成数据**做 HTTP 权限负例、列表+计数、分页 E2E；新可见页面仍先交 Owner 视觉提案。
+
 ## 5. 最小测试场景（在独立 Dev 数据库生成）
 
 - 正常客户单，KOL 专员本人单、KOL 管理员可见单、无权限跨账户单。
@@ -99,7 +107,7 @@
 - **PARALLEL_SAFE:** YES（docs-only，独立 branch，不修改 #766 工作树及任何共享前端）。
 - **PROHIBITED:** Production 读取/写入订单、生产发布、真实订单迁移、关闭/重启现有 UAT 端口、覆盖已 PASS 的 Vben dist、自动调用 OMS。
 - **ACCEPTANCE:** Owner 审阅合同矩阵与路线；进一步完成当前 main 全量模块+表+路由覆盖登记、R1 视觉提案与独立测试设计，R0 才能称为 COMPLETE。
-- **CURRENT RESULT:** 初步 GitHub 目录及现有测试入口盘点，**R0 尚未 COMPLETE**。没有运行测试或声明后续模块 PASS。
+- **CURRENT RESULT:** 22 模块 Routes/Feature Test 目录索引、8 表基础字段契约、待分仓/国内/海外三独立 read model 规则与 ERP2 #766 接线缺口的 GitHub 静态证据已建立；**R0 尚未 COMPLETE**，未运行准确 HEAD Dev 测试或完整 178 migration 最终 schema 审计。
 - **CI/VALIDATION:** 本文档仅仓库只读证据和 Markdown 路径/状态检查；任何代码实施都需在准确 head 上运行对应 PHPUnit、Vitest、typecheck、build 和 007windows E2E。
 - **MERGE:** 本 PR 暂保持 Draft，基线对账与 Owner 审阅未完成；不合并 main，也不部署 Production。
 
@@ -116,7 +124,7 @@ GITHUB_STATE: `main` 不含 `apps/erp-siteops-vben`；本 R0 独立文档分支 
 SOURCE_CONFLICTS: 历史 AI/CURRENT_CONTEXT 2026-08-29 与文档13 2026-09-19 不能代表当前 ERP Production；待运行时核对。旧数据库 SKU 字段与新 final SKU 契约未同步；Draft #766 不能当 main 已实现。
 GLOBAL_GATE: Owner 新路线已确认；R1 UI 实施前需 OWNER_VISUAL_PASS，正式数据与部署均独立审批。
 PRODUCTION_DEPLOYMENT_STATUS: NO（本 R0 文档不部署；未核对当日现有 ERP Production 实际版本）。
-NEXT_DEPENDENCY: 继续 R0 完整 schema / route / permission 盘点，R1 视觉方案 Owner PASS 后才能实施 UI。
+NEXT_DEPENDENCY: 继续 R0 后续 migration/schema 与权限/HTTP/roles 盘点，确认 #766 Dev checkout source pin；R1 视觉方案 Owner PASS 后才能实施 UI。
 EVIDENCE_AS_OF: 2026-11-18 GitHub contents/branch/PR 与 007windows 独立探针记录。
 
 ## ROADMAP HOURS
