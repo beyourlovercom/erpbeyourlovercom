@@ -61,6 +61,7 @@ final class WarehouseFinalSkuDevUatSeeder extends Seeder
                 'source_type' => 'manual_other',
                 'order_kind' => 'customer', 'order_status' => 'pending_shipment',
                 'order_date' => now()->toDateString(), 'owner_id' => $owner->id,
+                'workflow_status' => 'sending', // Export workbenches select only dispatch-ready synthetic rows.
                 'routing_warehouse_code' => $warehouse->code,
                 'order_note' => 'SYNTHETIC DEV UAT; NEVER SEND TO A WAREHOUSE',
             ]);
