@@ -43,7 +43,7 @@
       "parent_code": "orders",
       "level": 2,
       "label_zh": "订单总表",
-      "slug": "master",
+      "slug": "orders",
       "url": "/orders",
       "route": "orders.index",
       "permission": "orders.view",
