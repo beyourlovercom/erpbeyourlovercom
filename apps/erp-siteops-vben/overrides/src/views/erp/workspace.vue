@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onActivated, onMounted, ref } from 'vue';
+import { computed, onActivated, onMounted, ref, watch } from 'vue';
 import { getHotOrderSnapshot, putHotOrderSnapshot, expireHotOrderSnapshot,
   sleepOtherHotOrders, clearHotOrderSnapshots, getHotOrderCacheStats, type HotOrderKey } from '#/api/erp-hot-snapshots';
 import { useRoute, useRouter } from 'vue-router';
@@ -32,6 +32,8 @@ const bridgeEnabled = !currentDevEnabled && import.meta.env.VITE_ERP_DEV_BRIDGE_
 const enabled = canonicalIdentityMode || currentDevEnabled || bridgeEnabled || import.meta.env.VITE_ERP_READONLY_ORDERS_ENABLED === '1';
 const selectedRole = activeDevRole;
 const devOrderScope = ref<'all' | 'customers'>('all');
+// Each dedicated ERP2 order page binds to exactly one original Laravel read scope.
+const pageScope = computed<'all' | 'customers'>(() => isCustomerOrders.value ? 'customers' : 'all');
 const devNavigation = ref<ErpDevMenuNode[]>([]);
 const authorizedWarehouses = computed(() =>
   devNavigation.value.find((g) => g.key === 'inventory')?.children
@@ -40,7 +42,10 @@ const authorizedWarehouses = computed(() =>
 const title = computed(() => String(route.meta.title ?? 'ERP 工作台'));
 const originalPath = computed(() => String(route.meta.erpOriginalPath ?? ''));
 const sourceStatus = computed(() => String(route.meta.erpSourceStatus ?? ''));
-const isOrders = computed(() => route.meta.erpMenuKey === 'orders-master');
+const isOrdersMaster = computed(() => route.meta.erpMenuKey === 'orders-master');
+const isCustomerOrders = computed(() => ['orders-customers', 'customers-orders'].includes(String(route.meta.erpMenuKey)));
+const isKolOrders = computed(() => ['orders-kol', 'kol-orders'].includes(String(route.meta.erpMenuKey)));
+const isOrders = computed(() => isOrdersMaster.value || isCustomerOrders.value || isKolOrders.value);
 const sampleRows: Row[] = [
   { order_no: 'UAT-ORDER-001', type: '客户订单', warehouse: '中国工厂', sku: 'DEMO-SKU-A', status: '待分仓', tracking: '—', updated_at: '合成记录' },
   { order_no: 'UAT-ORDER-002', type: '客户订单', warehouse: 'us-ny', sku: 'DEMO-SKU-B', status: '待审核', tracking: '—', updated_at: '合成记录' },
@@ -85,6 +90,18 @@ async function loadExisting(page = 1, perPage = pager.value.perPage) {
   const ticket = ++requestSequence;
   lastFetchStartedAt = Date.now();
   const roleForRequest: DevRole = selectedRole.value;
+  if (currentDevEnabled && !isOrdersMaster.value) devOrderScope.value = pageScope.value;
+  // The dedicated KOL page must never reuse a customer/Owner role's all-orders response.
+  const roleMatchesPage = isKolOrders.value
+    ? roleForRequest === 'kol' || roleForRequest === 'manager'
+    : !isCustomerOrders.value || roleForRequest === 'owner' || roleForRequest === 'staff';
+  if (currentDevEnabled && !roleMatchesPage) {
+    rows.value = [];
+    pager.value = {page:1,perPage:50,total:0,lastPage:1};
+    error.value = '此页面需要相应的隔离 Dev 测试身份；已阻止跨业务范围读取。';
+    fetching.value = false;
+    return;
+  }
   const preloaded = currentDevEnabled ? takeInitialDevOrders({
     role:roleForRequest, search:search.value, page, perPage, scope:devOrderScope.value,
   }) : undefined;
@@ -155,10 +172,33 @@ function showSynthetic() {
 }
 function initCurrentDevOrders() {
   if ((!currentDevEnabled && !canonicalIdentityMode) || !isOrders.value || initialOrdersLoaded) return;
+  if (currentDevEnabled) {
+    devOrderScope.value = pageScope.value;
+    // Local fixture identities are explicitly scoped by business page.
+    if (isKolOrders.value && selectedRole.value !== 'kol' && selectedRole.value !== 'manager') {
+      selectedRole.value = 'kol';
+      clearHotOrderSnapshots();
+    } else if (isCustomerOrders.value && selectedRole.value !== 'owner' && selectedRole.value !== 'staff') {
+      selectedRole.value = 'owner';
+      clearHotOrderSnapshots();
+    }
+  }
   initialOrdersLoaded = true;
-  void loadExisting(1, 50);
+  void loadExisting(1, isCustomerOrders.value ? 20 : 50);
 }
 onMounted(initCurrentDevOrders);
+watch(() => route.meta.erpMenuKey, () => {
+  // Workspace can be reused across routes: invalidate every previous request and row.
+  ++requestSequence;
+  initialOrdersLoaded = false;
+  fetching.value = false;
+  hotRefreshing.value = false;
+  rows.value = [];
+  search.value = '';
+  error.value = '';
+  pager.value = {page:1,perPage:50,total:0,lastPage:1};
+  if (isOrders.value) initCurrentDevOrders();
+});
 onActivated(() => {
   if ((!currentDevEnabled && !canonicalIdentityMode) || !isOrders.value) return;
   if (!initialOrdersLoaded) { initCurrentDevOrders(); return; }
@@ -184,6 +224,12 @@ onActivated(() => {
       </span>
     </header>
     <template v-if="isOrders">
+      <p v-if="currentDevEnabled && !isOrdersMaster"
+        class="rounded border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
+        {{ isCustomerOrders
+          ? '客户订单：仅通过隔离 Laravel /customers/orders 原控制器读取；客户记录独立分页。'
+          : '网红订单：仅通过网红专员或经理的隔离 Laravel 授权身份读取 /orders；严禁使用 Owner 全订单结果冒充网红订单。' }}
+      </p>
       <div class="flex flex-wrap items-center gap-2">
         <input v-model="search" type="search" placeholder="搜索订单号、仓库或 SKU"
           class="w-64 max-w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -195,12 +241,12 @@ onActivated(() => {
           <label class="text-xs text-slate-600" for="erp-dev-role">Laravel Dev 测试角色</label>
           <select id="erp-dev-role" v-model="selectedRole" class="rounded border px-2 py-1 text-xs"
             aria-label="Laravel Dev 测试角色" @change="onDevRoleChange">
-            <option value="owner">Owner</option>
-            <option value="staff">运营（普通员工）</option>
-            <option value="kol">KOL 专员</option>
-            <option value="manager">KOL 经理</option>
+            <option v-if="!isKolOrders" value="owner">Owner</option>
+            <option v-if="!isKolOrders" value="staff">运营（普通员工）</option>
+            <option v-if="!isCustomerOrders" value="kol">KOL 专员</option>
+            <option v-if="!isCustomerOrders" value="manager">KOL 经理</option>
           </select>
-          <select v-model="devOrderScope" aria-label="订单读取范围" class="rounded border px-2 py-1 text-xs"
+          <select v-if="isOrdersMaster" v-model="devOrderScope" aria-label="订单读取范围" class="rounded border px-2 py-1 text-xs"
             @change="loadExisting(1)">
             <option value="all">订单总表 /orders</option>
             <option value="customers">客户订单 /customers/orders</option>
