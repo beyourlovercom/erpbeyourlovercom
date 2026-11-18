@@ -85,7 +85,7 @@
 
 | 已有 ERP2 源文件 | 当前实现 | R1/R2 必补的缺口 |
 |---|---|---|
-| `apps/erp-siteops-vben/overrides/src/api/erp-orders.ts` | `getCurrentDevReadOnlyOrders` 仅支持 `scope='all'|'customers'`，GET `/erp/current/orders`；`normalizeExistingInertiaOrders` 只接受 `Orders/Index` | 尚无 `FulfillmentAllocation`、`Logistics/Domestic/Index`、`Logistics/Oversea/Index` 对应投影；原 `items[].sku` 仍按初始 SKU 串联显示，不能称为每仓 final SKU |
+| `apps/erp-siteops-vben/overrides/src/api/erp-orders.ts` | `getCurrentDevReadOnlyOrders` 仅支持 `scope='all'|'customers'`，GET `/erp/current/orders`；`normalizeExistingInertiaOrders` 只接受 `Orders/Index` | 尚无 `FulfillmentAllocation`、`Logistics/Domestic/Index`、`Logistics/Oversea/Show` 对应投影；原 `items[].sku` 仍按初始 SKU 串联显示，不能称为每仓 final SKU |
 | `apps/erp-siteops-vben/runtime/r2b-current-gateway.cjs` | 只向原 Laravel DEV 请求 `/orders` 或 `/customers/orders`，并仅解析 `Orders/Index` | 未连接待分仓、国内/海外真实 Laravel 队列；需要独立受控 read adapter 和角色负例 |
 | `apps/erp-siteops-vben/runtime/p0-canonical-proxy.cjs` | `DEV_PATHS` allowlist 仅涵盖登录、dashboard、identity、orders、customers/orders | 没有物流三 GET 入口；不能简单通过前端菜单跳转宣告实际 API 通路 |
 | `apps/erp-siteops-vben/overrides/src/api/erp-hot-snapshots.ts` | 内存缓存 TTL 60 秒，版本常量为 `b07885e36c491a997f88ae3c7a6ef0b14d17ad31` | 源代码 `main@eb8ed64e` 已变更；必须先重建 Dev 源版本证据并统一版本 pin、缓存隔离键，不能直接沿用旧快照 |
