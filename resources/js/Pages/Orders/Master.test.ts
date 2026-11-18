@@ -13,7 +13,7 @@ vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: {
 } }))
 vi.mock('../../Components/DataGrid/GlobalGrid.vue', () => ({ default: {
   props: ['rows', 'columns', 'namespace'], template: '<div data-testid="master-global-grid"><slot name="actions" /></div>',
-} }))
+}, __isTeleport: false, __isSuspense: false, __isKeepAlive: false }))
 
 vi.mock('../../Components/Orders/OrderOmsTransfer.vue', () => ({ default: {
   props: ['canImport', 'canConfirmImport'],
