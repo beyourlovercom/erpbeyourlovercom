@@ -27,6 +27,7 @@ final class ReplacementFulfillmentService
     public function __construct(
         private readonly ShipmentService $shipments,
         private readonly AuditRecorder $audit,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /**
@@ -104,13 +105,21 @@ final class ReplacementFulfillmentService
             foreach ($normalized as $row) {
                 $source = $rootItems->get($row['order_item_id']);
                 $resolved = $this->resolvedSourceItem($source, $origin);
+                $productId = (int) ($resolved?->product_id ?? $source->product_id);
+                $finalSku = $this->finalSkus->resolve(
+                    $productId,
+                    (string) $warehouse->code,
+                    (string) ($resolved?->source_sku ?: $source->source_sku ?: $source->sku),
+                );
+                abort_if($finalSku === '', 422, '补发单没有有效最终 SKU');
                 $replacement->items()->create([
-                    'product_id' => $resolved?->product_id ?? $source->product_id,
+                    'product_id' => $productId,
                     'woocommerce_line_item_id' => $source->woocommerce_line_item_id,
                     'product_summary' => $resolved?->product_summary ?? $source->product_summary,
-                    'sku' => $resolved?->sku ?? $source->sku,
+                    'sku' => $finalSku,
                     'source_sku' => $source->source_sku ?: $source->sku,
-                    'resolved_fulfillment_sku' => $resolved?->resolved_fulfillment_sku ?: ($source->resolved_fulfillment_sku ?: $source->sku),
+                    'resolved_fulfillment_sku' => $finalSku,
+                    'final_sku' => $finalSku,
                     'quantity' => $row['quantity'],
                     'unit_price' => '0.00',
                     'line_revenue' => '0.00',

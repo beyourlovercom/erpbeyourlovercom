@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Application\ShipOut;
 
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionInventoryAudit;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionReadOnlyGateway;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -29,6 +30,7 @@ final class ShipOutProductionCanaryPreflight
         private readonly OutboundOrderSkuResolver $outboundSkus,
         private readonly ShipOutProductionInventoryAudit $inventory,
         private readonly ShipOutProductionReadOnlyGateway $reader,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /** @return array{order_id:int,order_no:string,warehouse_id:string,shipping_mode:string,items:list<array{omsSku:string,qty:int}>,payload_hash:string,ready:bool} */
@@ -133,15 +135,28 @@ final class ShipOutProductionCanaryPreflight
             throw new RuntimeException('SHIPOUT_R10_STOCK_IDENTITY_UNTRUSTED');
         }
         $eligibleByProductId = [];
+        $eligibleByExactSku = [];
         foreach ($snapshot['stock_rows'] ?? [] as $row) {
             if (! is_array($row) || ! ($row['in_product_catalog'] ?? false)
-                || ($row['sku_alias_status'] ?? '') !== 'verified'
                 || (string) ($row['product_status'] ?? '') !== '1'
                 || ! is_int($row['available_quantity'] ?? null)
                 || $row['available_quantity'] < 1) {
                 continue;
             }
-            $providerSku = (string) ($row['provider_sku'] ?? '');
+            $providerSku = trim((string) ($row['provider_sku'] ?? ''));
+            if ($providerSku === '') {
+                continue;
+            }
+            $eligibleByExactSku[strtoupper($providerSku)][] = [
+                'omsSku' => $providerSku,
+                'available' => $row['available_quantity'],
+            ];
+            // A warehouse-specific product mapping may be verified independently
+            // from the legacy global SKU alias catalog. Only the legacy
+            // product-identity inference still requires a verified alias row.
+            if (($row['sku_alias_status'] ?? '') !== 'verified') {
+                continue;
+            }
             $resolved = $this->identity->resolve($providerSku);
             if (($resolved['status'] ?? '') !== 'resolved') {
                 continue;
@@ -156,6 +171,23 @@ final class ShipOutProductionCanaryPreflight
         $items = [];
         foreach ($order->items as $item) {
             $id = (int) $item->product_id;
+            if (filled($item->final_sku) || (bool) config('warehouse_final_sku.require_verified_mapping')) {
+                $finalSku = $this->finalSkus->forShipment($order->shipment, $item);
+                $mapping = $this->finalSkus->mapped($id, (int) $order->shipment->warehouse_id);
+                $identity = $this->identity->resolve($finalSku);
+                if ($id < 1 || (($identity['status'] ?? null) !== 'resolved'
+                    || (int) ($identity['product_id'] ?? 0) !== $id)
+                    && ($mapping === null || strcasecmp($mapping, $finalSku) !== 0)) {
+                    throw new RuntimeException('SHIPOUT_R10_ERP_SKU_UNVERIFIED');
+                }
+                $exactRows = $eligibleByExactSku[strtoupper($finalSku)] ?? [];
+                if (count($exactRows) !== 1) {
+                    throw new RuntimeException(count($exactRows) > 1
+                        ? 'SHIPOUT_R10_PHYSICAL_SKU_AMBIGUOUS'
+                        : 'SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE');
+                }
+                $choice = $exactRows[0];
+            } else {
             $erpSku = trim((string) $item->sku);
             if (filled($item->resolved_fulfillment_sku) && strcasecmp($erpSku, trim((string) $item->resolved_fulfillment_sku)) !== 0) {
                 throw new RuntimeException('SHIPOUT_R10_SKU_NOT_MATERIALIZED');
@@ -221,6 +253,7 @@ final class ShipOutProductionCanaryPreflight
                 } else {
                     throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_AMBIGUOUS');
                 }
+            }
             }
             $sku = $choice['omsSku'];
             $qty = (int) $item->quantity;

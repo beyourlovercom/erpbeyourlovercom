@@ -15,6 +15,7 @@ use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductWarehouseSku;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -219,6 +220,33 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame([$order->erp_order_id.'A', $order->erp_order_id.'B'], collect($allocation->fresh()->plan_snapshot['derived_orders'])->pluck('erp_order_id')->all());
 
         $this->actingAs($user)->get('/logistics/pending')->assertRedirect('/logistics/wait-stock');
+    }
+
+    public function test_verified_mapping_materializes_distinct_final_skus_for_each_split_shipping_warehouse(): void
+    {
+        [$user, $order] = $this->scenario(2);
+        $items = $order->items()->orderBy('id')->get();
+        config()->set('warehouse_final_sku.require_verified_mapping', true);
+        foreach ([0 => ['US-LA', 'MP-PHYSICAL'], 1 => ['FACTORY', 'CN-PHYSICAL']] as $index => [$code, $sku]) {
+            $warehouse = Warehouse::query()->where('code', $code)->firstOrFail();
+            ProductWarehouseSku::query()->create([
+                'product_id' => $items[$index]->product_id,
+                'warehouse_id' => $warehouse->id,
+                'sku' => $sku, 'is_active' => true, 'verified_at' => now(),
+                'verification_note' => 'Physical warehouse identity verified for split order',
+            ]);
+        }
+
+        app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $items[0]->id, 'source_code' => 'US-LA'],
+            ['order_item_id' => $items[1]->id, 'source_code' => 'FACTORY'],
+        ], 'Independent per-line fulfillment SKU verification', $user, true);
+
+        $children = $order->fresh()->originalFulfillmentChildren()
+            ->with(['items', 'shipment.warehouse'])->orderBy('fulfillment_suffix')->get();
+        self::assertSame(['US-LA', 'FACTORY'], $children->map(fn ($c) => $c->shipment->warehouse->code)->all());
+        self::assertSame(['MP-PHYSICAL', 'CN-PHYSICAL'], $children->map(fn ($c) => $c->items->first()->final_sku)->all());
+        self::assertSame($items->pluck('sku')->all(), $children->map(fn ($c) => $c->items->first()->source_sku)->all());
     }
 
     public function test_split_children_inherit_woo_line_item_identity_from_parent_items(): void

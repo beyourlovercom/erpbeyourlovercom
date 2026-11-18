@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use DomainException;
@@ -23,6 +24,7 @@ final class SpeedaOutboundExporter
     public function __construct(
         private readonly WarehouseOrderReference $references,
         private readonly DomesticDispatchEligibility $eligibility,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /** @return list<string> */
@@ -249,7 +251,7 @@ final class SpeedaOutboundExporter
             return ['', ''];
         }
 
-        $skuList = $items->map(fn ($item) => trim((string) ($item->resolved_fulfillment_sku ?: $item->sku)))->all();
+        $skuList = $items->map(fn ($item): string => $this->finalSkus->forShipment($order->shipment, $item))->all();
         $uniqueSkus = array_values(array_unique($skuList));
         // One Y/Z pair cannot represent multiple different SKUs or an unknown item.
         if (count($uniqueSkus) !== 1 || $uniqueSkus[0] === '') {

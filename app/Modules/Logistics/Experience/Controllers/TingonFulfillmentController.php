@@ -6,6 +6,7 @@ use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
@@ -160,7 +161,7 @@ final class TingonFulfillmentController
             'order_url' => '/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,
             'country' => $order->address?->country,
-            'sku' => $order->items->map(fn ($item) => ($item->source_sku ?: $item->sku).' × '.(int) $item->quantity)->implode('、'),
+            'sku' => $order->items->map(fn ($item) => WarehouseSkuPresentation::sku($item).' × '.(int) $item->quantity)->implode('、'),
             'warehouse' => $shipment?->warehouse?->name ?? '待分仓 / 多仓',
             'carrier' => $shipment?->carrier,
             'service' => $shipment?->service,
@@ -188,7 +189,7 @@ final class TingonFulfillmentController
             'order_url' => '/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,
             'country' => $order->address?->country,
-            'sku' => $order->items->map(fn ($item) => ($item->source_sku ?: $item->sku).' × '.(int) $item->quantity)->implode('、'),
+            'sku' => $order->items->map(fn ($item) => WarehouseSkuPresentation::sku($item).' × '.(int) $item->quantity)->implode('、'),
             'warehouse' => $order ? app(OrderWarehouseRouting::class)->project($order)['name'] : null,
             'carrier' => $shipment->carrier,
             'service' => $shipment->service,

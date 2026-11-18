@@ -2,6 +2,7 @@
 
 namespace App\Modules\Orders\Experience\Controllers;
 
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
@@ -95,7 +96,8 @@ final class OrderMasterController
                         ->where('recipient_name', 'like', $like)->orWhere('email', 'like', $like))
                     ->orWhereHas('customer', fn (Builder $customer) => $customer->where('email', 'like', $like))
                     ->orWhereHas('items', fn (Builder $items) => $items
-                        ->where('sku', 'like', $like)->orWhere('product_summary', 'like', $like))
+                        ->where('sku', 'like', $like)->orWhere('source_sku', 'like', $like)
+                        ->orWhere('final_sku', 'like', $like)->orWhere('product_summary', 'like', $like))
                     ->orWhereHas('externalReferences', fn (Builder $refs) => $refs->where('reference', 'like', $like))
                     ->orWhereHas('shipment', fn (Builder $shipment) => $shipment->where('tracking_number', 'like', $like)));
             }
@@ -141,7 +143,7 @@ final class OrderMasterController
                     'warehouse' => $order->routing_warehouse_code ?: $order->shipment?->warehouse?->name,
                     'recipient' => $order->address?->recipient_name,
                     'email' => $order->address?->email,
-                    'skus' => $order->items->pluck('sku')->filter()->unique()->implode(' / '),
+                    'skus' => $order->items->map(fn ($item) => WarehouseSkuPresentation::sku($item))->filter()->unique()->implode(' / '),
                     'date' => $order->order_date?->toDateString(),
                     'owner' => $order->owner?->name,
                     'detail_url' => $isTrash ? '/orders/trash' : '/orders/'.$order->id,
@@ -190,7 +192,8 @@ final class OrderMasterController
                 'order_number' => $query->where('orders.erp_order_id', 'like', $like),
                 'external_number' => $query->where('orders.external_order_number', 'like', $like),
                 'recipient' => $query->whereHas('address', fn (Builder $address) => $address->where('recipient_name', 'like', $like)),
-                'sku' => $query->whereHas('items', fn (Builder $item) => $item->where('sku', 'like', $like)),
+                'sku' => $query->whereHas('items', fn (Builder $item) => $item->where('sku', 'like', $like)
+                    ->orWhere('source_sku', 'like', $like)->orWhere('final_sku', 'like', $like)),
                 'warehouse' => $query->where(fn (Builder $warehouse) => $warehouse
                     ->where('orders.routing_warehouse_code', 'like', $like)
                     ->orWhereHas('shipment.warehouse', fn (Builder $actual) => $actual->where('name', 'like', $like))),

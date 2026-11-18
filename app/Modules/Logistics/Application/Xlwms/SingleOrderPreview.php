@@ -6,6 +6,7 @@ use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Products\Application\VerifiedOmsProductIdentityResolver;
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Support\Facades\Schema;
 
@@ -56,8 +57,14 @@ final class SingleOrderPreview
         $add(! $webDraft && $shipment?->carrierService && ! $shipment->carrierService->is_active, 'logistics_channel_inactive');
 
         $items = [];
+        $skuByItemId = [];
         foreach ($order->items as $item) {
-            $sku = trim((string) ($item->resolved_fulfillment_sku ?: $item->sku));
+            try {
+                $sku = $shipment ? $this->finalSkus->forShipment($shipment, $item) : '';
+            } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+                $blocking[] = 'final_sku_not_verified';
+                continue;
+            }
             $qty = (int) $item->quantity;
             if ($sku === '' || $qty <= 0) {
                 $blocking[] = 'invalid_item';
@@ -75,6 +82,7 @@ final class SingleOrderPreview
                 $blocking[] = 'insufficient_warehouse_stock:'.$sku;
             }
             $items[] = ['sku' => $sku, 'quantity' => $qty];
+            $skuByItemId[(int) $item->id] = $sku;
         }
         $add($items === [], 'no_valid_order_items');
 
@@ -82,9 +90,15 @@ final class SingleOrderPreview
         // before an outbound create can ever be reached. This is deliberately
         // local/read-only: it does not refresh OMS or mutate ERP stock.
         foreach ($webDraft ? [] : $order->items as $item) {
-            $sku = trim((string) ($item->resolved_fulfillment_sku ?: $item->sku));
+            $sku = $skuByItemId[(int) $item->id] ?? null;
+            if ($sku === null) {
+                continue;
+            }
             $identity = $this->identities->resolve($sku);
-            if (($identity['status'] ?? null) !== 'resolved') {
+            $mapped = $this->finalSkus->mapped((int) $item->product_id, (int) $shipment?->warehouse_id);
+            $verifiedByMapping = $mapped !== null && strcasecmp($mapped, $sku) === 0;
+            if (! $verifiedByMapping && (($identity['status'] ?? null) !== 'resolved'
+                || (int) ($identity['product_id'] ?? 0) !== (int) $item->product_id)) {
                 $blocking[] = (string) ($identity['code'] ?? 'OMS_PRODUCT_IDENTITY_NOT_VERIFIED');
             }
         }
@@ -135,6 +149,7 @@ final class SingleOrderPreview
     public function __construct(
         private readonly VerifiedOmsProductIdentityResolver $identities,
         private readonly XlwmsInventoryCoverage $coverage,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /** @param iterable<object> $items @param list<string> $blocking */

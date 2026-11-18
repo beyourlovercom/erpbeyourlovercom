@@ -4,6 +4,8 @@ namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
 use Illuminate\Support\Collection;
@@ -19,7 +21,11 @@ use RuntimeException;
  */
 final class DomesticTodayOrdersExporter
 {
-    public function __construct(private readonly WarehouseOrderReference $references, private readonly CarrierServiceCatalog $carriers) {}
+    public function __construct(
+        private readonly WarehouseOrderReference $references,
+        private readonly CarrierServiceCatalog $carriers,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
+    ) {}
 
     /** @param Collection<int, Order> $orders */
     public function export(Collection $orders): string
@@ -49,7 +55,9 @@ final class DomesticTodayOrdersExporter
             foreach ($order->items->isEmpty() ? [null] : $order->items->sortBy('id') as $item) {
                 $values = [
                     1 => (string) $order->erp_order_id,
-                    2 => (string) ($item?->sku ?? ''),
+                    2 => $item ? ($shipment
+                        ? $this->finalSkus->forShipment($shipment, $item)
+                        : WarehouseSkuPresentation::sku($item)) : '',
                     5 => $carrierLabel,
                     6 => (string) $providerReference,
                     7 => (string) $order->currency,

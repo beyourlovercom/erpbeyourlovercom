@@ -8,6 +8,7 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Audit\Application\ProductActivityProjection;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Kol\Application\ProductKolProjection;
 use App\Modules\Logistics\Application\ProductShipmentProjection;
 use App\Modules\Orders\Application\ProductOrderProjection;
@@ -19,6 +20,7 @@ use App\Modules\Products\Application\ProductPackagingPresentation;
 use App\Modules\Products\Application\ProductWeightEvidenceService;
 use App\Modules\Products\Application\WooCommerceProductInboundService;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductWarehouseSku;
 use App\Modules\Products\Infrastructure\Models\ProductMedia;
 use App\Modules\Products\Infrastructure\Models\ProductProviderSnapshot;
 use App\Modules\Products\Infrastructure\Models\ProductParameterTask;
@@ -456,6 +458,20 @@ final class ProductController
                 'hs_code' => $product->hs_code,
             ],
             'externalReferences' => $this->externalRefs->forProduct($id),
+            'warehouseSkus' => Warehouse::query()->whereIn('code', (array) config('warehouse_master.fulfillment_codes', []))
+                ->where('is_active', true)->orderBy('priority')->get()->map(function (Warehouse $warehouse) use ($id): array {
+                    $mapping = ProductWarehouseSku::query()->where('product_id', $id)
+                        ->where('warehouse_id', $warehouse->id)->first();
+                    return [
+                        'warehouse_id' => $warehouse->id,
+                        'warehouse_code' => $warehouse->code,
+                        'warehouse_name' => $warehouse->name,
+                        'sku' => $mapping?->sku,
+                        'is_active' => (bool) $mapping?->is_active,
+                        'verified_at' => $mapping?->verified_at?->toIso8601String(),
+                        'verification_note' => $mapping?->verification_note,
+                    ];
+                })->values()->all(),
             'woo' => $snapshot ? ['provider_status' => $snapshot->provider_status, 'categories' => $snapshot->category_names ?? [], 'description' => $snapshot->description_text, 'short_description' => $snapshot->short_description_text, 'variation_count' => $snapshot->variation_count, 'provider_created_at' => $snapshot->provider_created_at?->toIso8601String(), 'provider_modified_at' => $snapshot->provider_modified_at?->toIso8601String(), 'last_synced_at' => $snapshot->last_synced_at?->toIso8601String(), 'connection_key' => $snapshot->connection_key] : null,
             'media' => $media->map(fn (ProductMedia $item): array => ['id' => $item->id, 'url' => $this->gridImageUrl($item), 'alt_text' => $item->alt_text, 'position' => $item->position, 'is_primary' => $item->is_primary])->filter(fn (array $item): bool => $item['url'] !== null)->values()->all(),
             'wooSyncHistory' => $recentProductRuns,

@@ -31,6 +31,7 @@ final class ShipmentService
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly FulfillmentPaymentGate $paymentGate,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     public function saveDraft(Model $order, array $attributes, ?Authenticatable $actor): Model
@@ -45,6 +46,7 @@ final class ShipmentService
 
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
             $before = $this->snapshot($shipment);
+            $originalWarehouseId = (int) $shipment->warehouse_id;
             $warehouseProvided = array_key_exists('warehouse_id', $attributes);
             $carrierProvided = array_key_exists('carrier', $attributes) || array_key_exists('service', $attributes);
             $trackingNumber = array_key_exists('tracking_number', $attributes)
@@ -85,6 +87,7 @@ final class ShipmentService
             ]);
             $changed = $shipment->isDirty();
             $shipment->save();
+            $this->syncFinalSkusForWarehouse($lockedOrder, $originalWarehouseId, (int) $shipment->warehouse_id);
             $this->syncPackagingSnapshots($lockedOrder, $shipment);
 
             if ($changed) {
@@ -133,6 +136,7 @@ final class ShipmentService
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
             $alreadyShipped = $lockedOrder->order_status?->value === 'shipped' && $shipment->shipment_status === 'shipped';
             $before = $this->snapshot($shipment);
+            $originalWarehouseId = (int) $shipment->warehouse_id;
             $trackingNumber = $this->canonicalTrackingNumber($attributes['tracking_number'] ?? null);
             $selectedWarehouseId = $attributes['warehouse_id'] ?? $shipment->warehouse_id;
             if (! $alreadyShipped && $shipment->warehouse_selection_source === 'manual_route_only'
@@ -182,6 +186,7 @@ final class ShipmentService
             $changed = $shipment->isDirty() || $lockedOrder->order_status?->value !== 'shipped';
             $shipment->save();
             if (! $alreadyShipped) {
+                $this->syncFinalSkusForWarehouse($lockedOrder, $originalWarehouseId, (int) $shipment->warehouse_id);
                 $this->syncPackagingSnapshots($lockedOrder, $shipment);
             }
             if ($lockedOrder->order_status?->value !== 'shipped') {
@@ -200,6 +205,41 @@ final class ShipmentService
 
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync', 'financials', 'costEntries']);
         });
+    }
+
+    /**
+     * One physical warehouse selection determines every current order-line SKU.
+     * A previously allocated shipment cannot carry its old physical SKU into
+     * a different warehouse when the new mapping is missing or unverified.
+     */
+    private function syncFinalSkusForWarehouse(Model $order, int $previousWarehouseId, int $selectedWarehouseId): void
+    {
+        if ($selectedWarehouseId < 1) {
+            return;
+        }
+
+        $moved = $previousWarehouseId > 0 && $previousWarehouseId !== $selectedWarehouseId;
+        foreach ($order->items()->lockForUpdate()->get() as $item) {
+            $mapped = $this->finalSkus->mapped((int) $item->product_id, $selectedWarehouseId);
+            if ($mapped === null) {
+                abort_if($moved || (bool) config('warehouse_final_sku.require_verified_mapping'), 422,
+                    '目标仓库没有经过确认的商品 SKU 映射，不能沿用原仓 SKU');
+                continue;
+            }
+
+            if ($item->final_sku === $mapped) {
+                continue;
+            }
+
+            $item->forceFill([
+                'source_sku' => $item->source_sku ?: $item->sku,
+                'source_product_id' => $item->source_product_id ?: $item->product_id,
+                'source_product_summary' => $item->source_product_summary ?: $item->product_summary,
+                'sku' => $mapped,
+                'resolved_fulfillment_sku' => $mapped,
+                'final_sku' => $mapped,
+            ])->save();
+        }
     }
 
     public function updateTracking(Model $order, string $trackingNumber, ?Authenticatable $actor): Model
