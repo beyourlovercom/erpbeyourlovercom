@@ -56,8 +56,8 @@ describe('Orders/Create V2', () => {
       kolOptions: [{ value: 42, label: 'Synthetic KOL', hasAffiliate: true }, { value: 43, label: 'Other KOL', hasAffiliate: false }],
     } })
     const input = wrapper.get('[data-testid="kol-identity-select"]')
-    expect((input.element as HTMLSelectElement).value).toBe('42')
-    expect(input.text()).toContain('Synthetic KOL')
+    expect(input.attributes('role')).toBe('combobox')
+    expect((input.element as HTMLInputElement).value).toBe('Synthetic KOL')
     wrapper.unmount()
 
     const customer = mount(Create, { props: { ...customerProps, selectedKolId: 42 } })
@@ -70,7 +70,7 @@ describe('Orders/Create V2', () => {
       ...kolProps, selectedKolId: null, requestedKolUnbound: true,
       kolOptions: [{ value: 5, label: 'Unbound', hasAffiliate: false }],
     } })
-    expect((wrapper.get('option[value="5"]').element as HTMLOptionElement).disabled).toBe(true)
+    expect((wrapper.get('[data-testid="kol-identity-select"]').element as HTMLInputElement).value).toBe('')
     expect(wrapper.get('[data-testid="kol-affiliate-unbound"]').text()).toContain('AffiliateWP')
     wrapper.unmount()
   })
