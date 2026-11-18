@@ -27,7 +27,7 @@ final class OrderSavedViewsTest extends TestCase
     {
         $user = $this->userWith(['orders.view', 'sync.view']);
         $this->actingAs($user)->get('/orders')->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->component('Orders/Index')
+            ->component('Orders/Master')
             ->missing('wooOrderSync')
         );
     }
@@ -52,13 +52,13 @@ final class OrderSavedViewsTest extends TestCase
 
         // R3: a canonical pending_shipment without warehouse and review is
         // pending ALLOCATION, not operationally ready for shipment.
-        $this->actingAs($user)->get('/orders?view=pending')->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($user)->get('/customers/orders?view=pending')->assertInertia(fn (Assert $page) => $page
             ->has('orders.data', 0)
             ->where('filters.view', 'pending'));
         // An explicitly excepted order now belongs to exactly one primary queue.
-        $this->actingAs($user)->get('/orders?workflow_status=pending_allocation')->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($user)->get('/customers/orders?workflow_status=pending_allocation')->assertInertia(fn (Assert $page) => $page
             ->has('orders.data', 1));
-        $this->actingAs($user)->get('/orders?view=shipped')->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($user)->get('/customers/orders?view=shipped')->assertInertia(fn (Assert $page) => $page
             ->has('orders.data', 3)
             ->where('filters.view', 'shipped'));
 
@@ -83,7 +83,7 @@ final class OrderSavedViewsTest extends TestCase
         $this->assertViewContainsOnly($user, 'loss', 'ORDER-LOSS');
         // The canonical confirmed-loss list is the Orders saved view, not the
         // removed Logistics loss route/status-bar slot.
-        $this->actingAs($user)->get('/orders?view=loss')->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($user)->get('/customers/orders?view=loss')->assertInertia(fn (Assert $page) => $page
             ->has('orders.data', 1)
             ->where('orders.total', 1)
             ->where('orders.data.0.external_order_number', 'ORDER-LOSS')
@@ -149,7 +149,7 @@ final class OrderSavedViewsTest extends TestCase
         $this->mark($user, $markedShort, 'stockout');
         $this->mark($user, $markedStocked, 'stockout');
 
-        $this->actingAs($user)->get('/orders?view=stockout')->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($user)->get('/customers/orders?view=stockout')->assertInertia(fn (Assert $page) => $page
             ->has('orders.data', 2)
             ->where('orders.total', 2));
         $this->assertSame('out_of_stock', $markedShort->fresh()->workflow_status);
@@ -172,7 +172,7 @@ final class OrderSavedViewsTest extends TestCase
         $this->assertSame('private', $view->visibility);
         $this->assertSame('pending', $view->filters_json['view']);
 
-        $this->actingAs($user)->get('/orders')->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($user)->get('/customers/orders')->assertInertia(fn (Assert $page) => $page
             ->has('savedViews', 1)
             ->where('savedViews.0.id', $view->id)
             ->where('savedViews.0.name', 'My Pending'));
@@ -193,37 +193,30 @@ final class OrderSavedViewsTest extends TestCase
         $this->assertDatabaseMissing('order_operational_markers', ['order_id' => $order->id]);
     }
 
-    public function test_oms_grid_opt_in_preserves_legacy_default_and_server_paging_boundaries(): void
+    public function test_canonical_master_grid_uses_bounded_server_paging_and_valid_sorting(): void
     {
         $user = $this->userWith(['orders.view']);
         $this->order($user, 'OMS-ONE', 'pending_shipment');
         $this->order($user, 'OMS-TWO', 'shipped');
 
         $this->actingAs($user)->get('/orders')->assertInertia(fn (Assert $page) => $page
-            ->where('omsGridAvailable', true)
-            ->where('omsGridEnabled', false)
+            ->component('Orders/Master')
+            ->where('filters.per_page', '50')
             ->where('orders.total', 2));
-
-        $this->actingAs($user)->get('/orders?oms_grid=1&per_page=20&sort=order_number&direction=asc')
+        $this->actingAs($user)->get('/orders?per_page=20&sort=order_number&direction=asc')
             ->assertInertia(fn (Assert $page) => $page
-                ->where('omsGridEnabled', true)
                 ->where('filters.sort', 'order_number')
                 ->where('filters.direction', 'asc')
                 ->where('orders.per_page', 20)
                 ->where('orders.total', 2));
-
-        $this->actingAs($user)->get('/orders?oms_grid=1&per_page=all')
+        $this->actingAs($user)->get('/orders?per_page=100')
             ->assertInertia(fn (Assert $page) => $page
-                ->where('omsGridEnabled', true)
-                ->where('filters.per_page', 'all')
-                ->where('orders.total', 2)
-                ->has('orders.data', 2));
+                ->where('filters.per_page', '100')
+                ->where('orders.per_page', 100));
+        $this->actingAs($user)->getJson('/orders?per_page=all')->assertUnprocessable();
+        $this->actingAs($user)->getJson('/orders?per_page=5000&sort=arbitrary_sql')->assertUnprocessable();
 
-        $this->actingAs($user)->get('/orders?oms_grid=1&per_page=5000&sort=arbitrary_sql')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('filters.sort', 'date')
-                ->where('orders.per_page', 50));
-
+        // The customer list retains its independent grid defaults.
         $this->actingAs($user)->get('/customers/orders?oms_grid=1')->assertInertia(fn (Assert $page) => $page
             ->where('omsGridEnabled', false));
     }
@@ -285,23 +278,23 @@ final class OrderSavedViewsTest extends TestCase
         self::assertStringNotContainsString('ORDER-CSV-EMAIL-B', $content);
     }
 
-    public function test_oms_grid_all_option_cannot_bypass_server_limit_or_permissions(): void
+    public function test_master_grid_never_exposes_unbounded_results_or_bypasses_permissions(): void
     {
         $viewer = $this->userWith(['orders.view']);
         for ($i = 0; $i < 201; $i++) {
             $this->order($viewer, 'GRID-'.$i, 'pending_shipment');
         }
-
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&per_page=all')
+        $this->actingAs($viewer)->get('/orders?per_page=50')
             ->assertInertia(fn (Assert $page) => $page
-                ->where('omsGridEnabled', true)
+                ->component('Orders/Master')
                 ->where('filters.per_page', '50')
                 ->where('orders.per_page', 50)
                 ->where('orders.total', 201)
                 ->has('orders.data', 50));
+        $this->actingAs($viewer)->getJson('/orders?per_page=all')->assertUnprocessable();
 
         $unauthorized = $this->userWith([]);
-        $this->actingAs($unauthorized)->get('/orders?oms_grid=1')->assertForbidden();
+        $this->actingAs($unauthorized)->get('/orders')->assertForbidden();
     }
 
     public function test_oms_grid_native_search_and_column_filters_query_full_server_dataset(): void
@@ -424,7 +417,7 @@ final class OrderSavedViewsTest extends TestCase
 
     private function assertViewContainsOnly(User $user, string $view, string $externalOrderNumber): void
     {
-        $this->actingAs($user)->get('/orders?view='.$view)->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($user)->get('/customers/orders?view='.$view)->assertInertia(fn (Assert $page) => $page
             ->has('orders.data', 1)
             ->where('orders.data.0.external_order_number', $externalOrderNumber)
             ->where('filters.view', $view));
