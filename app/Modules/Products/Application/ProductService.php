@@ -363,6 +363,7 @@ final class ProductService
                         throw new \RuntimeException("Confirm blocked: SKU '{$sku}' match key is already registered as a SKU alias");
                     }
                     $cleanValues = $this->stripInternalKeys($values);
+                    $cleanValues['has_liquid'] = ProductLiquidSkuPolicy::defaultsToLiquid($sku);
                     $product = $this->products->create($cleanValues);
                     $inserted++;
                 } else {
@@ -440,7 +441,7 @@ final class ProductService
                 return null;
             }
 
-return is_numeric($value) && (float) $value >= 0 ? (float) $value : null;
+            return is_numeric($value) && (float) $value >= 0 ? (float) $value : null;
         };
         $rawWeight = $cell('Weight (kg)');
         $rawSale = $cell('Sale price');
@@ -571,7 +572,7 @@ return is_numeric($value) && (float) $value >= 0 ? (float) $value : null;
             'brand_local_override' => (bool) ($attributes['brand_local_override'] ?? false),
             'has_battery' => array_key_exists('has_battery', $attributes) ? (bool) $attributes['has_battery'] : true,
             'has_liquid' => array_key_exists('has_liquid', $attributes) ? (bool) $attributes['has_liquid']
-                : in_array(strtoupper(trim((string) ($attributes['sku'] ?? ''))), ['BY489A', 'BV339A'], true),
+                : ProductLiquidSkuPolicy::defaultsToLiquid((string) ($attributes['sku'] ?? '')),
             'material_full_name' => $nullable('material_full_name'),
             'name' => $attributes['name'],
             'unit' => $nullable('unit'),
