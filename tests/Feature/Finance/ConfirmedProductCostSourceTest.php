@@ -190,6 +190,13 @@ final class ConfirmedProductCostSourceTest extends TestCase
         self::assertSame('24.00', $candidate['amount']);
         self::assertSame('confirmed', $candidate['status']);
         self::assertSame(['AUG-LONG'], $candidate['source_keys']);
+
+        // A future monthly import must not leak August costs into July orders.
+        $older = $this->order('CNY', '2026-07-15');
+        $older->items()->create(['product_id' => $product->id, 'product_summary' => 'x', 'sku' => $product->sku, 'quantity' => 2, 'unit_price' => '20.00', 'line_revenue' => '40.00']);
+        $earlier = $this->candidate($this->app->make(CostMaterializationService::class)->preview($older), 'product_cost');
+        self::assertSame('20.00', $earlier['amount']);
+        self::assertSame(['JULY-LONG'], $earlier['source_keys']);
     }
 
     public function test_import_blocks_conflict_with_existing_confirmed_source_in_same_period(): void

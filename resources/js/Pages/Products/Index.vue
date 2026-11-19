@@ -312,6 +312,7 @@ const doDelete = () => {
             <button v-if="globalGridPilotAvailable" type="button" class="mvp-button mvp-button-secondary" data-testid="products-global-toggle" @click="toggleGlobalPilot">{{ globalGridPilotEnabled ? '返回原列表' : 'Dev · Global Grid' }}</button>
             <a v-if="currentView==='standard'" class="mvp-button mvp-button-secondary" :href="exportUrl" download>下载 XLSX</a>
             <template v-if="canOperate">
+              <a href="/products/cost-import" class="mvp-button mvp-button-secondary">月度成本导入</a>
               <a href="/products/import" class="mvp-button mvp-button-secondary">导入 CSV</a>
               <a href="/products/material-names/import" class="mvp-button mvp-button-secondary">导入物料全称</a>
               <a href="/products/create" class="mvp-button mvp-button-primary">新增产品</a>
