@@ -21,12 +21,12 @@ CURRENT_WORK_PACKAGE: ERP-COLLABORATION-PARTNER-IMPORT-V1
 PACKAGE_STATUS: DEV_VERIFIED_AWAIT_OWNER_UAT
 WAITING_PHASES: Owner real UAT PASS → PR merge review → separately approved R4 Production release
 BASELINE: 078de3ecdebc1b9dbbc26f29717e0f4833af55bc
-GITHUB_STATE: dedicated branch, Draft PR pending
+GITHUB_STATE: Draft PR #807, head 05c1d9b44d8277b16468c8ac795e2e5ffe8ff6eb, GitHub 7/7 checks PASS
 SOURCE_CONFLICTS: old collaboration view filters TINGON warehouse instead of actual partner; resolved by separate field
 GLOBAL_GATE: Owner UAT mandatory; Production release independent
 PRODUCTION_DEPLOYMENT_STATUS: NO, not authorized
-NEXT_DEPENDENCY: Owner inspect real local UAT and explicitly PASS; no Production changes
-EVIDENCE_AS_OF: 2026-11-19; PHP 35 tests/744 assertions PASS, Vue import 7 tests PASS, typecheck/Pint/build/workspace tabs PASS; complete Vue suite pending
+NEXT_DEPENDENCY: Owner inspect http://127.0.0.1:18879/orders/collaboration on US Mac mini, explicit real UAT PASS; no Production changes
+EVIDENCE_AS_OF: 2026-11-19; PHP 35 tests/744 assertions PASS; Vue import 7 tests PASS; typecheck/Pint/build/workspace tabs PASS; GitHub CI 7/7 PASS. Full Vue: 975/982 tests pass; seven Inventory test failures reproduced identically on baseline main 078de3ec. Isolated local SQLite migrated; Playwright login, 3 synthetic rows, partner dropdown and modal confirmed. Owner UAT PENDING.
 ## ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: 23h planning; range 18–28h
 KNOWN_CURRENT_TRACK_REMAINING: Owner real UAT/review and optional remediation; 2–5h planning remainder, actual unmeasured
