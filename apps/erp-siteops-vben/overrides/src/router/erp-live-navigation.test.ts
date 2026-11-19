@@ -22,6 +22,7 @@ vi.mock('#/api/erp-identity', () => ({
 import {
   bootstrapCanonicalDevNavigation, canonicalDevIdentity, clearAuthorizedDevNavigation,
   isCanonicalErpPathAllowed, setApprovedMenuSource, devBootstrapError,
+  seedCanonicalVerifiedLogin, canonicalHomePath,
 } from './erp-live-navigation';
 
 const router = {
@@ -45,6 +46,36 @@ beforeEach(() => {
   setApprovedMenuSource([{name:'Orders',path:'/erp/orders'}]);
 });
 describe('P0-C/D canonical navigation stability', () => {
+  it('routes logistics-only staff to their authorized logistics page', () => {
+    const staff = {...canonical, effectivePermissionKeys:['logistics.view'], navigation:[
+      {key:'logistics', label:'Logistics', path:'/logistics', children:[
+        {key:'logistics-wait-stock',label:'Pending stock',path:'/logistics/wait-stock'},
+      ]},
+    ]};
+    expect(canonicalHomePath(staff as any)).toBe('/erp/logistics/logistics-wait-stock');
+    expect(canonicalHomePath({...staff,navigation:[{key:'../../orders',label:'Invalid',path:'/',children:[]}] } as any)).toBe('/403');
+  });
+  it('sends authorized orders staff to orders master and no-module users to 403', () => {
+    expect(canonicalHomePath(canonical as any)).toBe('/erp/orders/orders-master');
+    expect(canonicalHomePath({...canonical, navigation:[]} as any)).toBe('/403');
+  });
+  it('uses the just-verified login identity for the first route, without an immediate second fetch', async () => {
+    fixtures.identity.mockRejectedValue(new Error('ERP2_CANONICAL_ENDPOINT_UNAVAILABLE'));
+    seedCanonicalVerifiedLogin(canonical as any);
+    expect(await bootstrapCanonicalDevNavigation(router)).toBe(true);
+    expect(canonicalDevIdentity.value?.user.id).toBe(18);
+    expect(isCanonicalErpPathAllowed('/erp/orders/pending')).toBe(true);
+    expect(fixtures.identity).not.toHaveBeenCalled();
+    expect(await bootstrapCanonicalDevNavigation(router, true)).toBe(true);
+    expect(fixtures.identity).toHaveBeenCalledTimes(1);
+  });
+  it('never reuses a login seed after logout invalidation', async () => {
+    seedCanonicalVerifiedLogin(canonical as any);
+    clearAuthorizedDevNavigation();
+    fixtures.identity.mockRejectedValue(new Error('ERP2_CANONICAL_SESSION_REQUIRED'));
+    expect(await bootstrapCanonicalDevNavigation(router)).toBe(false);
+    expect(canonicalDevIdentity.value).toBeUndefined();
+  });
   it('loads once; repeated route changes never refetch or blank the sidebar', async () => {
     fixtures.identity.mockResolvedValue(canonical);
     expect(await bootstrapCanonicalDevNavigation(router)).toBe(true);

@@ -5,7 +5,7 @@ import { useAuthStore } from '#/store';
 import { useRouter } from 'vue-router';
 import { resetAllStores } from '@vben/stores';
 import { loginCanonicalErp } from '#/api/erp-laravel-auth';
-import { clearAuthorizedDevNavigation, seedCanonicalVerifiedLogin } from '#/router/erp-live-navigation';
+import { canonicalHomePath, clearAuthorizedDevNavigation, seedCanonicalVerifiedLogin } from '#/router/erp-live-navigation';
 import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
 
 const canonicalMode = import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel';
@@ -26,7 +26,7 @@ async function submit() {
       clearAuthorizedDevNavigation();
       resetAllStores();
       seedCanonicalVerifiedLogin(verifiedIdentity);
-      await router.replace('/erp/orders/orders-master');
+      await router.replace(canonicalHomePath(verifiedIdentity));
     } else {
       await store.authLogin({ username: username.value.trim().toLowerCase(), password: password.value });
     }

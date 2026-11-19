@@ -16,6 +16,21 @@ export const canonicalDevIdentity = ref<CanonicalErpIdentity | undefined>();
 const canonicalAllowedPaths = new Set<string>();
 export const isCanonicalErpPathAllowed = (path: string) => canonicalAllowedPaths.has(path);
 
+export function canonicalHomePath(identity: CanonicalErpIdentity): string {
+  const safeKey = /^[a-z0-9_-]+$/;
+  for (const group of identity.navigation) {
+    if (!safeKey.test(group.key)) continue;
+    const parent = group.key === 'dashboard' ? '/erp/overview' : '/erp/' + group.key;
+    if (group.key === 'orders' && identity.effectivePermissionKeys.includes('orders.view'))
+      return '/erp/orders/orders-master';
+    for (const child of group.children ?? []) {
+      if (safeKey.test(child.key)) return parent + '/' + child.key;
+    }
+    if (!group.children?.length) return parent;
+  }
+  return '/403';
+}
+
 // Route changes are read-only against the last verified scope. An independent
 // timer/focus check performs revalidation, never a fetch on every sidebar click.
 let canonicalRefresh: Promise<boolean> | undefined;
@@ -52,7 +67,7 @@ export async function bootstrapCanonicalDevNavigation(
           userId: String(identity.user.id), id: String(identity.user.id),
           username: identity.user.email,
           realName: identity.user.name, roles: [], avatar: '',
-          homePath: '/erp/orders/orders-master',
+          homePath: canonicalHomePath(identity),
         });
         applyAuthorizedDevNavigation(identity.navigation, router, {
           allowOrdersMaster: identity.effectivePermissionKeys.includes('orders.view'),
