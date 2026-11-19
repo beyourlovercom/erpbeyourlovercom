@@ -9,7 +9,7 @@ import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
 
 type ColumnKey =
-  | 'status' | 'sku' | 'cnf' | 'material_name' | 'name' | 'image_url' | 'woo_url'
+  | 'status' | 'sku' | 'cnf' | 'material_name' | 'has_liquid' | 'name' | 'image_url' | 'woo_url'
   | 'units_per_carton' | 'packaging_dimensions' | 'weight_kg' | 'regular_price'
   | 'sale_price' | 'brand' | 'available_stock' | 'gtin' | 'label_description'
   | 'dimensions_cm' | 'shipping_weight_kg' | 'standard_production_cost'
@@ -55,7 +55,8 @@ const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'status', label: '状态' },
   { key: 'sku', label: 'SKU' },
   { key: 'cnf', label: 'CNF（待接入）', defaultVisible: false },
-  { key: 'material_name', label: '物料名称（待接入）', defaultVisible: false },
+  { key: 'material_name', label: '物料全称', defaultVisible: false },
+  { key: 'has_liquid', label: '是否带液体', defaultVisible: false },
   { key: 'name', label: '产品名称' },
   { key: 'image_url', label: '图片' },
   { key: 'woo_url', label: '官网链接' },
@@ -220,20 +221,21 @@ const exportUrl = computed(() => {
   return '/products/list/export?' + params.toString()
 })
 const fmt = (value: unknown) => value === null || value === undefined || value === '' ? '—' : String(value)
-const cellValue = (p: Product, key: ColumnKey) => key === 'source' && p.source == null ? (p.source_type === 'manual' ? '手动' : 'Woo') : fmt(p[key])
+const cellValue = (p: Product, key: ColumnKey) => key === 'source' && p.source == null ? (p.source_type === 'manual' ? '手动' : 'Woo') : key === 'has_liquid' ? (p.has_liquid ? '带液体' : '不带液体') : fmt(p[key])
 
 type GridRow = Record<string, unknown>
 const globalProductRows = computed<GridRow[]>(() => props.products.data.map(product => ({
   ...product,
   display_status: product.is_active ? '启用' : '停用',
   display_source: cellValue(product, 'source'),
+  display_liquid: cellValue(product, 'has_liquid'),
 })))
 const globalProductColumns = computed<ColDef<GridRow>[]>(() => [
   ...definitions.map(def => {
     const key = def.key
     const common: ColDef<GridRow> = {
-      colId: key, field: key === 'status' ? 'display_status' : key === 'source' ? 'display_source' : key,
-      headerName: def.label, width: key === 'name' ? 250 : key === 'image_url' ? 92 : 144,
+      colId: key, field: key === 'status' ? 'display_status' : key === 'source' ? 'display_source' : key === 'has_liquid' ? 'display_liquid' : key,
+      headerName: def.label, width: key === 'name' ? 250 : key === 'material_name' ? 315 : key === 'image_url' ? 92 : 144,
       hide: def.defaultVisible === false,
       sortable: sortable.has(key),
       filter: false,
@@ -250,7 +252,7 @@ const globalProductColumns = computed<ColDef<GridRow>[]>(() => [
       ...common, cellRenderer: GlobalGridCell,
       cellRendererParams: { mode:'image', hrefFor:(row:GridRow)=>typeof row.image_url==='string'?row.image_url:null, imageAltFor:(row:GridRow)=>String(row.name ?? '') },
     }
-    if (key === 'status' || key === 'parameter_status') return {
+    if (key === 'status' || key === 'parameter_status' || key === 'has_liquid') return {
       ...common, cellRenderer: GlobalGridCell, cellRendererParams: { mode:'badge' },
     }
     return common
@@ -311,6 +313,7 @@ const doDelete = () => {
             <a v-if="currentView==='standard'" class="mvp-button mvp-button-secondary" :href="exportUrl" download>下载 XLSX</a>
             <template v-if="canOperate">
               <a href="/products/import" class="mvp-button mvp-button-secondary">导入 CSV</a>
+              <a href="/products/material-names/import" class="mvp-button mvp-button-secondary">导入物料全称</a>
               <a href="/products/create" class="mvp-button mvp-button-primary">新增产品</a>
             </template>
           </div>
@@ -431,6 +434,7 @@ const doDelete = () => {
                 <template v-if="col.key === 'status'"><span class="product-status" :class="{ inactive: !p.is_active }">{{ p.is_active ? '启用' : '停用' }}</span></template>
                 <template v-else-if="col.key === 'sku'"><a :href="'/products/' + p.id" class="product-grid-link">{{ fmt(p.sku) }}</a><small v-if="p.matched_alias" class="product-grid-alias-hit">匹配别名：{{ p.matched_alias }}</small></template>
                 <template v-else-if="col.key === 'name'"><a :href="'/products/' + p.id" class="product-grid-link">{{ p.name }}</a></template>
+                <template v-else-if="col.key === 'has_liquid'"><span :class="{'product-status':true,'inactive':!p.has_liquid}">{{ p.has_liquid ? '带液体' : '不带液体' }}</span></template>
                 <template v-else-if="col.key === 'image_url'"><img v-if="p.image_url && !failedImageIds.includes(p.id)" :src="p.image_url" :alt="p.name" class="product-thumbnail" loading="lazy" referrerpolicy="no-referrer" @error="markImageFailed(p.id)"><span v-else class="product-image-empty">—</span></template>
                 <template v-else-if="col.key === 'woo_url'"><a v-if="p.woo_url" :href="p.woo_url" target="_blank" rel="noopener noreferrer" class="product-grid-link external-url">{{ p.woo_url }}</a><span v-else>—</span></template>
                 <template v-else-if="col.key === 'parameter_status'"><span class="product-status">{{fmt(p.parameter_status)}}</span></template>

@@ -12,7 +12,7 @@ type MasterOrder = {
   id: number; number: string; external_number: string | null; kind: string | null
   source: string | null; collaboration_partner: string | null; status: string | null; archive_state: string
   warehouse: string | null; recipient: string | null; email: string | null
-  skus: string; date: string | null; owner: string | null; detail_url: string
+  skus: string; material_full_name: string; date: string | null; owner: string | null; detail_url: string
 }
 type Pager = { data: MasterOrder[]; current_page: number; last_page: number; per_page: number; total: number }
 type MasterFilters = Record<string, string>
@@ -91,6 +91,7 @@ const rows = computed<GridListRow[]>(() => props.orders.data.map(order => ({
   recipient: order.recipient ?? '—',
   email: order.email ?? '—',
   sku: order.skus || '—',
+  material_full_name: order.material_full_name || '—',
   date: order.date ?? '—',
   owner: order.owner ?? '—',
   order_url: order.detail_url,
@@ -111,6 +112,7 @@ const columns: ColDef<GridListRow>[] = [
   gridColumn({ colId: 'recipient', field: 'recipient', headerName: '收件人', width: 152 }),
   gridColumn({ colId: 'email', field: 'email', headerName: '客户邮箱', width: 210 }),
   gridColumn({ colId: 'sku', field: 'sku', headerName: 'SKU', width: 225 }),
+  gridColumn({ colId: 'material_full_name', field: 'material_full_name', headerName: '物料全称', width: 350, hide: true, tooltipField: 'material_full_name' }),
   gridColumn({ colId: 'owner', field: 'owner', headerName: '负责人', width: 120 }),
   gridColumn({ colId: 'actions', field: 'id', headerName: '操作', width: 116,
     cellRenderer: GlobalGridCell, cellRendererParams: { mode: 'actions',

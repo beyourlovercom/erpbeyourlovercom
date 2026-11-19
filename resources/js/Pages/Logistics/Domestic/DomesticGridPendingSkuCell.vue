@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {computed,nextTick,onBeforeUnmount,ref} from 'vue'
 type Item={sku:string;quantity:number;barcode_69:string}
-type Row={id:number;sku:string;country?:string}
+type Row={id:number;sku:string;country?:string;has_liquid?:boolean;liquid_skus?:string[]}
 type Params={
   data:Row
   showBarcode:(id:number)=>void
@@ -54,6 +54,7 @@ onBeforeUnmount(remove)
 <template>
   <div class="domestic-pending-sku">
     <span :title="params.data.sku">{{ params.data.sku }}</span>
+    <span v-if="params.data.has_liquid" class="liquid-mark" role="note" :title="'含液体 SKU：'+(params.data.liquid_skus??[]).join('、')">含液体</span>
     <button v-if="eligible" ref="trigger" type="button" :disabled="params.loading()" @click.stop="open?close():show()">69条码</button>
     <Teleport to="body">
       <div v-if="open" ref="floating" class="domestic-pending-barcode-popover"
@@ -72,6 +73,7 @@ onBeforeUnmount(remove)
 <style>
 .domestic-pending-sku{height:100%;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
 .domestic-pending-sku>span{overflow:hidden;text-overflow:ellipsis}
+.domestic-pending-sku .liquid-mark{flex:0 0 auto;padding:2px 4px;border:1px solid #eab54f;background:#fff2cc;border-radius:4px;color:#92400e;font-size:11px;font-weight:700}
 .domestic-pending-sku button{flex:0 0 auto;border:1px solid #cbd5e1;border-radius:4px;background:#fff;color:#0f766e;height:24px;font-size:11px;padding:0 5px;cursor:pointer}
 .domestic-pending-barcode-popover{position:fixed;z-index:12058;width:300px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:12px;background:white;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 12px 32px rgba(15,23,42,.24);display:flex;flex-direction:column;gap:9px;font-size:12px;color:#334155}
 .domestic-pending-barcode-popover button{align-self:flex-end;padding:4px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px}
