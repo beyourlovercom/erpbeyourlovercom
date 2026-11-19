@@ -121,7 +121,7 @@ final class OrderMasterController
             'status' => 'orders.order_status',
         ][$filters['sort']];
         $orders = $query->with([
-            'owner:id,name', 'address', 'items', 'shipment.warehouse',
+            'owner:id,name', 'address', 'items', 'shipment.warehouse', 'collaborationPartner:id,name',
             'fulfillmentParent' => fn ($parent) => $parent->withTrashed()->select('id', 'operational_archived_at', 'archived_at', 'deleted_at'),
         ])->orderBy($sortColumn, $filters['direction'])->orderBy('orders.id', 'desc')
             ->paginate((int) $filters['per_page'])->withQueryString();
@@ -139,6 +139,7 @@ final class OrderMasterController
                     'external_number' => $order->external_order_number,
                     'kind' => $order->order_kind?->value,
                     'source' => $order->source_type?->value,
+                    'collaboration_partner' => $order->collaborationPartner?->name,
                     'status' => $order->order_status?->value,
                     'archive_state' => $isTrash ? 'trash' : ($isOperational ? 'operational' : 'normal'),
                     'warehouse' => $order->routing_warehouse_code ?: $order->shipment?->warehouse?->name,

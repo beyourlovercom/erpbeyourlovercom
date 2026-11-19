@@ -18,12 +18,23 @@ const open = ref(false)
 const busy = ref(false)
 const file = ref<File | null>(null)
 const importType = ref('')
-const typeLabels: Record<string, string> = { website: '网站订单', kol: '网红订单', manual_other: '外采订单' }
-const changeImportType = () => { preview.value = null; committed.value = null; message.value = '' }
+type Partner = { id: number; code: string; name: string }
+const partners = ref<Partner[]>([])
+const partnerId = ref('')
+const canManagePartners = ref(false)
+const showAddPartner = ref(false)
+const newPartnerName = ref('')
+const partnerBusy = ref(false)
+const isCollaboration = computed(() => importType.value === 'collaboration')
+const partnerReady = computed(() => !isCollaboration.value || (partnerId.value !== '' && partners.value.some(p => String(p.id) === partnerId.value)))
+const partnerName = computed(() => partners.value.find(p => String(p.id) === partnerId.value)?.name ?? '未指定')
+const typeLabels: Record<string, string> = { website: '网站订单', kol: '网红订单', manual_other: '外采订单', collaboration: '合作订单' }
+const changeImportType = () => { partnerId.value = ''; preview.value = null; committed.value = null; message.value = '' }
+const changePartner = () => { preview.value = null; committed.value = null; message.value = '' }
 const preview = ref<Preview | null>(null)
 const message = ref('')
 const committed = ref<{ created: number; orders: Array<{ id: number; erp_order_id: string }> } | null>(null)
-const canConfirm = computed(() => props.canConfirmImport === true && !!importType.value && file.value !== null && preview.value?.errors.length === 0 && !!preview.value?.token && !busy.value)
+const canConfirm = computed(() => props.canConfirmImport === true && !!importType.value && partnerReady.value && file.value !== null && preview.value?.errors.length === 0 && !!preview.value?.token && !busy.value)
 const close = () => { if (busy.value) return; open.value = false }
 const chooseFile = (event: Event) => {
   file.value = (event.target as HTMLInputElement).files?.[0] ?? null
@@ -39,32 +50,60 @@ const errorMessage = (error: unknown): string => {
   }
   return '请求失败，请检查文件内容'
 }
+async function loadPartners() {
+  try {
+    const { data } = await axios.get<{ partners: Partner[]; can_manage: boolean }>('/orders/collaboration/partners')
+    partners.value = data.partners
+    canManagePartners.value = data.can_manage
+  } catch (error) { message.value = errorMessage(error) }
+}
+async function openDialog() {
+  open.value = true
+  await loadPartners()
+}
+async function createPartner() {
+  const name = newPartnerName.value.trim()
+  if (!name || partnerBusy.value || !canManagePartners.value) return
+  partnerBusy.value = true
+  try {
+    const { data } = await axios.post<{ partner: Partner }>('/orders/collaboration/partners', { name })
+    partners.value = [...partners.value, data.partner].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+    partnerId.value = String(data.partner.id)
+    newPartnerName.value = ''
+    showAddPartner.value = false
+    preview.value = null
+    message.value = '已新增合作商：' + data.partner.name + '。请重新预检。'
+  } catch (error) { message.value = errorMessage(error) }
+  finally { partnerBusy.value = false }
+}
 async function inspect() {
-  if (!file.value || !importType.value || busy.value) return
+  if (!file.value || !importType.value || !partnerReady.value || busy.value) return
   busy.value = true
   preview.value = null
   message.value = ''
   const payload = new FormData()
   payload.append('file', file.value)
   payload.append('import_type', importType.value)
+  if (isCollaboration.value) payload.append('partner_id', partnerId.value)
   try {
     const { data } = await axios.post<Preview>('/orders/oms/import/preview', payload)
     preview.value = data
     message.value = data.errors.length
       ? '预检发现 ' + data.errors.length + ' 项问题，请修改 XLSX 后重新上传。'
-      : '预检通过：' + data.count + ' 个' + typeLabels[importType.value] + '、共 ' + data.row_count + ' 个 SKU 行；不会修改现有订单。'
+      : '预检通过：' + data.count + ' 个' + (isCollaboration.value ? partnerName.value + ' · ' : '') + typeLabels[importType.value] + '、共 ' + data.row_count + ' 个 SKU 行；不会修改现有订单。'
   } catch (error) { message.value = errorMessage(error) }
   finally { busy.value = false }
 }
 async function confirm() {
   if (!canConfirm.value || !file.value || !preview.value?.token) return
-  if (!window.confirm('确定批量创建 ' + preview.value.count + ' 个真实 ERP ' + typeLabels[importType.value] + '吗？该操作会产生订单编号及审计记录，无法通过取消导入直接撤销。')) return
+  if (!window.confirm('确定批量创建 ' + preview.value.count + ' 个真实 ERP ' + (isCollaboration.value ? partnerName.value + ' · ' : '') + typeLabels[importType.value] + '吗？该操作会产生订单编号及审计记录，无法通过取消导入直接撤销。')) return
   busy.value = true
   message.value = ''
   const payload = new FormData()
   payload.append('file', file.value)
   payload.append('token', preview.value.token)
   payload.append('import_type', importType.value)
+  if (isCollaboration.value) payload.append('partner_id', partnerId.value)
   payload.append('confirm', '1')
   try {
     const { data } = await axios.post<{ created: number; orders: Array<{ id: number; erp_order_id: string }> }>('/orders/oms/import/confirm', payload)
@@ -82,7 +121,7 @@ async function confirm() {
 
 <template>
   <div class="oms-transfer-actions">
-    <button v-if="canImport" type="button" @click="open = true">导入</button>
+    <button v-if="canImport" type="button" @click="openDialog">导入</button>
     <span v-if="canExport && selectionMode" class="oms-export-scope" title="导出所选订单的全部 SKU 行，不再使用当前筛选条件">已选 {{ selectedCount }} 单</span>
     <a v-if="canExport && selectedCount <= 200 && (selectionMode || total <= 2000)" :href="activeExportUrl" class="oms-transfer-export">导出{{ selectionMode ? '已选 ' + selectedCount + ' 单' : '筛选结果' }} XLSX</a>
     <span v-else-if="canExport" class="oms-export-limit">XLSX {{ selectedCount > 200 ? '选择上限200单' : '请筛选到≤2000单' }}</span>
@@ -104,7 +143,22 @@ async function confirm() {
               <option value="website">网站订单</option>
               <option value="kol">网红订单</option>
               <option value="manual_other">外采订单</option>
+              <option value="collaboration">合作订单</option>
             </select>
+            <div v-if="isCollaboration" class="oms-partner-choice">
+              <label for="oms-import-partner"><strong>所属合作商 *</strong></label>
+              <select id="oms-import-partner" v-model="partnerId" :disabled="busy || partnerBusy" @change="changePartner">
+                <option value="" disabled>请选择合作商</option>
+                <option v-for="partner in partners" :key="partner.id" :value="String(partner.id)">{{ partner.name }}</option>
+              </select>
+              <button v-if="canManagePartners" type="button" class="oms-partner-add-trigger" @click="showAddPartner = !showAddPartner">＋ 新增合作商</button>
+              <form v-if="showAddPartner && canManagePartners" class="oms-partner-add" @submit.prevent="createPartner">
+                <label for="oms-partner-new-name">合作商名称</label>
+                <input id="oms-partner-new-name" v-model="newPartnerName" maxlength="160" placeholder="如：亚马逊 Jenny" :disabled="partnerBusy" />
+                <button type="submit" :disabled="!newPartnerName.trim() || partnerBusy">{{ partnerBusy ? '保存中…' : '保存合作商' }}</button>
+              </form>
+              <small>归属写入 ERP 订单，分仓和物流变更不会影响合作商身份。</small>
+            </div>
             <strong>模板 1 · 一行一个 SKU</strong>
             <p>同一个来源订单号的多行 SKU 归为一张订单；首行填写收件信息，后续行重复订单号、SKU、数量、单价即可。黄色表头为必填。XLSX 最多 200 单、2000 个 SKU 行。</p>
             <div class="oms-import-file">
@@ -136,7 +190,7 @@ async function confirm() {
         </main>
         <footer class="oms-import-footer">
           <button type="button" :disabled="busy" @click="close">关闭</button>
-          <button type="button" :disabled="!file || !importType || busy" @click="inspect">{{ busy ? '处理中...' : '上传并预检' }}</button>
+          <button type="button" :disabled="!file || !importType || !partnerReady || busy" @click="inspect">{{ busy ? '处理中...' : '上传并预检' }}</button>
           <span v-if="!canConfirmImport" class="oms-import-readonly" role="status">预检模式：创建订单未开放</span>
           <button v-else type="button" class="oms-import-commit" :disabled="!canConfirm" @click="confirm">确认创建 {{ preview?.count ?? 0 }} 单</button>
         </footer>
@@ -156,6 +210,11 @@ async function confirm() {
 .oms-import-body{padding:24px;overflow:auto;display:flex;flex-direction:column;gap:14px;font-size:13px}
 .oms-template-panel{border:1px solid #dbe0e8;border-radius:6px;padding:20px;max-width:640px;display:flex;flex-direction:column;gap:10px}
 .oms-template-panel select{max-width:220px;padding:8px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#334155}
+.oms-partner-choice{display:flex;align-items:flex-start;flex-direction:column;gap:7px;padding:10px 12px;border:1px solid #bae6d4;border-radius:8px;background:#f0fdf8}
+.oms-template-panel .oms-partner-choice strong{font-size:13px}.oms-partner-choice select{min-width:220px}
+.oms-partner-add-trigger{border:0;background:transparent;color:#087d67;cursor:pointer;font-size:12px;padding:2px 0}
+.oms-partner-add{display:flex;align-items:end;flex-wrap:wrap;gap:7px}.oms-partner-add label{font-size:12px}
+.oms-partner-add input{padding:8px;border:1px solid #cbd5e1;border-radius:6px}.oms-partner-add button{padding:8px;border:1px solid #a4dccd;border-radius:6px;background:#e2f5f0;cursor:pointer}
 .oms-template-panel strong{font-size:17px}.oms-template-panel p{color:#64748b;font-size:12px;line-height:1.6;margin:0}
 .oms-import-file{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
 .oms-file-button{cursor:pointer;background:#2252f5;color:#fff;padding:9px 16px;border-radius:5px}

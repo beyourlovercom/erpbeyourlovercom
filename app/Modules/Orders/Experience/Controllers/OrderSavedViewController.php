@@ -57,6 +57,7 @@ final class OrderSavedViewController
             'filters_json' => ['sometimes', 'array'],
             'filters_json.search' => ['nullable', 'string', 'max:255'],
             'filters_json.source_type' => ['nullable', 'string', 'max:32'],
+            'filters_json.partner_id' => ['nullable', 'string', 'max:32'],
             'filters_json.order_status' => ['nullable', 'string', 'in:pending_shipment,shipped,completed,completed_delivered,cancelled'],
             'filters_json.view' => ['nullable', 'string', 'in:all,pending,exception,in_transit,shipped,return,loss,overweight,stockout'],
             'filters_json.workflow_status' => ['nullable', 'string', 'max:64'],
@@ -87,6 +88,7 @@ final class OrderSavedViewController
         return array_filter([
             'search' => $filters['search'] ?? '',
             'source_type' => $filters['source_type'] ?? '',
+            'partner_id' => $filters['partner_id'] ?? '',
             'order_status' => $filters['order_status'] ?? '',
             'view' => $filters['view'] ?? 'all',
             'workflow_status' => $filters['workflow_status'] ?? '',
