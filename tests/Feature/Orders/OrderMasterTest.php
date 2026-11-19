@@ -31,20 +31,20 @@ final class OrderMasterTest extends TestCase
         $trash = $this->makeOrder($admin, 'trashed');
         $trash->delete();
 
-        $this->actingAs($admin)->get('/orders/master')->assertOk()
+        $this->actingAs($admin)->get('/orders')->assertOk()
             ->assertInertia(fn ($page) => $page->component('Orders/Master')
                 ->where('counts.all', 5)->where('counts.operational', 2)
                 ->where('counts.normal', 2)->where('counts.trash', 1)
                 ->where('canSeeTrash', true)->has('orders.data', 5));
-        $this->actingAs($admin)->get('/orders/master?view=operational')->assertOk()
+        $this->actingAs($admin)->get('/orders?view=operational')->assertOk()
             ->assertInertia(fn ($page) => $page->where('orders.total', 2));
-        $this->actingAs($admin)->get('/orders/master?view=trash')->assertOk()
+        $this->actingAs($admin)->get('/orders?view=trash')->assertOk()
             ->assertInertia(fn ($page) => $page->where('orders.total', 1)
                 ->where('orders.data.0.id', $trash->id)->where('orders.data.0.detail_url', '/orders/trash'));
-        $this->actingAs($admin)->get('/orders/master?search=007-1110-c42262')->assertOk()
+        $this->actingAs($admin)->get('/orders?search=007-1110-c42262')->assertOk()
             ->assertInertia(fn ($page) => $page->where('orders.total', 1)
                 ->where('orders.data.0.id', $archived->id));
-        $this->actingAs($admin)->get('/orders/master?kind=kol_fulfillment')->assertOk()
+        $this->actingAs($admin)->get('/orders?kind=kol_fulfillment')->assertOk()
             ->assertInertia(fn ($page) => $page->where('orders.total', 1)->where('orders.data.0.id', $kol->id));
         $this->assertDatabaseHas('orders', ['id' => $normal->id, 'deleted_at' => null]);
     }
@@ -60,17 +60,17 @@ final class OrderMasterTest extends TestCase
         $otherKol = $this->makeOrder($admin, 'other-kol', 'kol_fulfillment');
         $ownedKol = $this->makeOrder($specialist, 'owned-kol', 'kol_fulfillment');
 
-        $this->actingAs($employee)->get('/orders/master')->assertOk()
+        $this->actingAs($employee)->get('/orders')->assertOk()
             ->assertInertia(fn ($page) => $page->where('counts.all', 3)
                 ->where('counts.trash', 0)->where('canSeeTrash', false));
-        $this->actingAs($employee)->get('/orders/master?view=trash')->assertOk()
+        $this->actingAs($employee)->get('/orders?view=trash')->assertOk()
             ->assertInertia(fn ($page) => $page->where('orders.total', 0));
-        $this->actingAs($specialist)->get('/orders/master')->assertOk()
+        $this->actingAs($specialist)->get('/orders')->assertOk()
             ->assertInertia(fn ($page) => $page->where('orders.total', 1)
                 ->where('orders.data.0.id', $ownedKol->id));
-        $this->actingAs($specialist)->get('/orders/master?search='.$otherKol->erp_order_id)->assertOk()
+        $this->actingAs($specialist)->get('/orders?search='.$otherKol->erp_order_id)->assertOk()
             ->assertInertia(fn ($page) => $page->where('orders.total', 0));
-        $this->actingAs($specialist)->get('/orders/master?search='.$normal->erp_order_id)->assertOk()
+        $this->actingAs($specialist)->get('/orders?search='.$normal->erp_order_id)->assertOk()
             ->assertInertia(fn ($page) => $page->where('orders.total', 0));
     }
 
@@ -83,15 +83,34 @@ final class OrderMasterTest extends TestCase
             $this->makeOrder($reader, 'newer-'.$index);
         }
 
-        $this->actingAs($reader)->get('/orders/master')->assertOk()
+        $this->actingAs($reader)->get('/orders')->assertOk()
             ->assertInertia(fn ($page) => $page->where('orders.total', 56)->has('orders.data', 50));
-        $this->actingAs($reader)->get('/orders/master?search=42262-TL278A-Green')->assertOk()
+        $this->actingAs($reader)->get('/orders?search=42262-TL278A-Green')->assertOk()
             ->assertInertia(fn ($page) => $page->where('orders.total', 1)
                 ->where('orders.data.0.id', $target->id));
-        $this->actingAs($reader)->get('/orders/master?grid_external_number=TL278A')->assertOk()
+        $this->actingAs($reader)->get('/orders?grid_external_number=TL278A')->assertOk()
             ->assertInertia(fn ($page) => $page->where('orders.total', 1));
-        $this->actingAs($reader)->getJson('/orders/master?sort=orders.id')->assertUnprocessable();
-        $this->actingAs($reader)->getJson('/orders/master?per_page=1000')->assertUnprocessable();
+        $this->actingAs($reader)->getJson('/orders?sort=orders.id')->assertUnprocessable();
+        $this->actingAs($reader)->getJson('/orders?per_page=1000')->assertUnprocessable();
+    }
+
+    public function test_old_master_url_redirects_and_preserves_filter_query(): void
+    {
+        $user = $this->userWith(['orders.view']);
+        $this->actingAs($user)->get('/orders/master?search=EXAMPLE&view=normal')
+            ->assertRedirect('/orders?search=EXAMPLE&view=normal');
+    }
+
+    public function test_import_entry_respects_existing_order_creation_permissions(): void
+    {
+        $viewer = $this->userWith(['orders.view']);
+        $this->actingAs($viewer)->get('/orders')->assertOk()->assertInertia(
+            fn ($page) => $page->where('canImportOmsOrders', false)->where('canConfirmOmsOrders', false)
+        );
+        $creator = $this->userWith(['orders.view', 'orders.create']);
+        $this->actingAs($creator)->get('/orders')->assertOk()->assertInertia(
+            fn ($page) => $page->where('canImportOmsOrders', true)->where('canConfirmOmsOrders', true)
+        );
     }
 
     private function userWith(array $keys): User

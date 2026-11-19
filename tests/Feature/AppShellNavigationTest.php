@@ -84,14 +84,15 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.1.key', 'orders')
             ->has('shellNavigation.1.children', 6)
             ->where('shellNavigation.1.children.0.key', 'orders-master')
-            ->where('shellNavigation.1.children.0.path', '/orders/master')
+            ->where('shellNavigation.1.children.0.path', '/orders')
             ->where('shellNavigation.1.children.3.key', 'orders-collaboration')
             ->where('shellNavigation.1.children.3.path', '/orders/collaboration')
             ->where('shellNavigation.1.children.5.key', 'orders-archive')
             ->where('shellNavigation.1.children.5.label', '归档清单')
             ->where('shellNavigation.1.children.5.path', '/orders/archive'));
-        $this->actingAs($reader)->get('/orders/master')
+        $this->actingAs($reader)->get('/orders')
             ->assertInertia(fn (Assert $page) => $page->component('Orders/Master'));
+        $this->actingAs($reader)->get('/orders/master')->assertRedirect('/orders');
         $this->actingAs($reader)->get('/orders/archive')
             ->assertInertia(fn (Assert $page) => $page->component('Orders/Archive'));
 
@@ -337,7 +338,7 @@ class AppShellNavigationTest extends TestCase
             }
             $this->actingAs($user)->get($path)->assertInertia(fn (Assert $page) => $page
                 ->component(match ($path) {
-                    '/orders' => 'Orders/Index',
+                    '/orders' => 'Orders/Master',
                     '/sync' => 'Sync/Index',
                     '/products' => 'Products/Dashboard',
                     '/inventory' => 'Inventory/Dashboard',

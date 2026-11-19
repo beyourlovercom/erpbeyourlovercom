@@ -362,8 +362,9 @@ final class WooCommerceInboundTest extends TestCase
         $user->roles()->attach($role);
         Http::fake(['https://shop.test/wp-json/wc/v3/orders*' => Http::response([], 200, ['X-WP-TotalPages' => '1'])]);
 
-        $this->actingAs($user)->get('/orders')->assertOk()->assertInertia(fn ($page) => $page
-            ->where('wooOrderSync.can_import_today', true)->etc()
+        $this->actingAs($user)->get('/sync/woocommerce')->assertOk()->assertInertia(fn ($page) => $page
+            ->component('Sync/WooCommerceInbound')
+            ->where('canImportToday', true)->etc()
         );
         $this->actingAs($user)->post('/sync/woocommerce/incremental')->assertSessionHas('success');
         $this->assertDatabaseHas('sync_runs', ['run_type' => 'woocommerce_order_manual_today', 'initiated_by' => $user->id]);

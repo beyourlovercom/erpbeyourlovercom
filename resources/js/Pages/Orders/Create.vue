@@ -15,13 +15,14 @@ const currencyOptions = [
 ]
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
+import KolIdentityCombobox from './KolIdentityCombobox.vue'
 import { publishGlobalFeedback } from '../../lib/globalFeedback'
 
 const props = defineProps<{
   defaultOrderKind: string
   orderKindLabel: string
   generatedExternalOrderNumber: string
-  kolOptions?: { value: number; label: string; hasAffiliate: boolean }[]
+  kolOptions?: { value: number; label: string; account?: string | null; hasAffiliate: boolean }[]
   selectedKolId?: number | null
   requestedKolUnbound?: boolean
 }>()
@@ -165,10 +166,12 @@ const submit = () => {
               </div>
               <div v-if="isKol" class="erp-form-field ord-span-2">
                 <label for="linked_kol_id" class="erp-form-label">关联网红 <span class="erp-form-required">*</span></label>
-                <select id="linked_kol_id" v-model="form.kol_id" class="erp-input" :class="{ 'has-error': form.errors.kol_id }" required data-testid="kol-identity-select">
-                  <option :value="null">选择现有网红档案（不得使用收件人猜测）</option>
-                  <option v-for="item in kolOptions ?? []" :key="item.value" :value="item.value" :disabled="!item.hasAffiliate">{{ item.label }} · ID {{ item.value }}{{ item.hasAffiliate ? "" : " — AffiliateWP 未绑定，暂不可建单" }}</option>
-                </select>
+                <KolIdentityCombobox
+                  v-model="form.kol_id"
+                  :initial-option="(kolOptions ?? []).find(item => item.value === form.kol_id) ?? null"
+                  :has-error="Boolean(form.errors.kol_id)"
+                  required
+                />
                 <p v-if="requestedKolUnbound" role="status" data-testid="kol-affiliate-unbound">此网红尚未绑定有效 AffiliateWP 账号。请先在网红详情完成绑定，暂不能创建订单。</p>
                 <p v-if="form.errors.kol_id" class="erp-field-error">{{ form.errors.kol_id }}</p>
               </div>

@@ -5,6 +5,7 @@ namespace App\Modules\Orders\Experience\Controllers;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderOmsAvailability;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Database\Eloquent\Builder;
@@ -152,6 +153,12 @@ final class OrderMasterController
             'counts' => $counts,
             'filters' => $filters,
             'canSeeTrash' => $canSeeTrash,
+            'canImportOmsOrders' => $request->user()->can('orders.create')
+                && ! KolOrderAccessScope::isKolOnly($request->user())
+                && OrderOmsAvailability::importPreview($request->user()),
+            'canConfirmOmsOrders' => $request->user()->can('orders.create')
+                && ! KolOrderAccessScope::isKolOnly($request->user())
+                && OrderOmsAvailability::import($request->user()),
         ]);
     }
 

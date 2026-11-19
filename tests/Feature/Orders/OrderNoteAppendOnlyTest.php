@@ -120,7 +120,7 @@ final class OrderNoteAppendOnlyTest extends TestCase
         $this->actingAs($actor)->post("/customers/orders/{$updated->id}/notes", ['body' => '第一条新增'])->assertRedirect();
         $this->actingAs($actor)->post("/customers/orders/{$updated->id}/notes", ['body' => '最新：明天发货'])->assertRedirect();
 
-        foreach (['/customers/orders', '/customers/orders?legacy_grid=1', '/orders'] as $url) {
+        foreach (['/customers/orders', '/customers/orders?legacy_grid=1'] as $url) {
             $result = $this->actingAs($actor)->get($url)->assertOk();
             $result->assertInertia(fn (Assert $page) => $page
                 ->where('orders.data.0.id', $updated->id)
@@ -129,6 +129,11 @@ final class OrderNoteAppendOnlyTest extends TestCase
                 ->where('orders.data.1.id', $legacy->id)
                 ->where('orders.data.1.latest_order_note', '最初来源备注'));
         }
+        $this->actingAs($actor)->get('/orders')->assertInertia(fn (Assert $page) => $page
+            ->component('Orders/Master')
+            ->where('orders.total', 2)
+            ->missing('orders.data.0.latest_order_note')
+            ->missing('orders.data.0.order_note'));
         $this->assertSame(2, $updated->noteEntries()->count());
     }
 
