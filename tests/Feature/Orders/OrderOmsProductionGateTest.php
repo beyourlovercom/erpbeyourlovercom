@@ -60,8 +60,9 @@ final class OrderOmsProductionGateTest extends TestCase
             config()->set('oms_grid.production_import_enabled', false);
             $this->actingAs($user)->get('/orders?oms_grid=1', ['Accept' => 'text/html'])
                 ->assertInertia(fn (Assert $page) => $page
-                    ->where('omsGridAvailable', false)
-                    ->where('omsGridEnabled', false));
+                    ->component('Orders/Master')
+                    ->where('canImportOmsOrders', false)
+                    ->where('canConfirmOmsOrders', false));
             $this->actingAs($user)->get('/orders/oms/export')->assertNotFound();
             $this->actingAs($user)->get('/orders/oms/import/template')->assertNotFound();
             $this->actingAs($user)->post('/orders/oms/import/preview', ['import_type' => 'website'])->assertNotFound();
@@ -79,16 +80,15 @@ final class OrderOmsProductionGateTest extends TestCase
             config()->set('oms_grid.production_enabled', true);
             config()->set('oms_grid.production_user_ids', ' ,invalid,-1,  ');
             $this->actingAs($user)->get('/orders?oms_grid=1', ['Accept' => 'text/html'])
-                ->assertInertia(fn (Assert $page) => $page->where('omsGridEnabled', false));
+                ->assertInertia(fn (Assert $page) => $page->where('canImportOmsOrders', false));
             config()->set('oms_grid.production_user_ids', (string) $user->id);
             $this->actingAs($outsider)->get('/orders?oms_grid=1', ['Accept' => 'text/html'])
-                ->assertInertia(fn (Assert $page) => $page->where('omsGridEnabled', false));
+                ->assertInertia(fn (Assert $page) => $page->where('canImportOmsOrders', false));
             $this->actingAs($user)->get('/orders?oms_grid=1', ['Accept' => 'text/html'])
                 ->assertInertia(fn (Assert $page) => $page
-                    ->where('omsGridAvailable', true)
-                    ->where('omsGridEnabled', true)
+                    ->component('Orders/Master')
                     ->where('canImportOmsOrders', false)
-                    ->where('canExportOmsOrders', false));
+                    ->where('canConfirmOmsOrders', false));
             $this->actingAs($user)->get('/orders/oms/export')->assertNotFound();
             $this->actingAs($user)->get('/orders/oms/import/template')->assertNotFound();
         });
@@ -162,8 +162,8 @@ final class OrderOmsProductionGateTest extends TestCase
             config()->set('oms_grid.production_import_enabled', false);
             $this->actingAs($user)->get('/orders?oms_grid=1', ['Accept' => 'text/html'])
                 ->assertInertia(fn (Assert $page) => $page
-                    ->where('canExportOmsOrders', true)
-                    ->where('canImportOmsOrders', false));
+                    ->where('canImportOmsOrders', false)
+                    ->where('canConfirmOmsOrders', false));
             $this->actingAs($user)->get('/orders/oms/export?format=csv')->assertOk();
             $this->actingAs($user)->get('/orders/oms/import/template')->assertNotFound();
 
@@ -220,12 +220,11 @@ final class OrderOmsProductionGateTest extends TestCase
 
             $this->actingAs($admin)->get('/orders?oms_grid=1', ['Accept' => 'text/html'])
                 ->assertInertia(fn (Assert $page) => $page
-                    ->where('omsGridEnabled', true)
                     ->where('canImportOmsOrders', true)
                     ->where('canConfirmOmsOrders', true));
             $this->actingAs($outsider)->get('/orders?oms_grid=1', ['Accept' => 'text/html'])
                 ->assertInertia(fn (Assert $page) => $page
-                    ->where('omsGridEnabled', false)
+                    ->where('canImportOmsOrders', false)
                     ->where('canConfirmOmsOrders', false));
             $this->actingAs($outsider)->get('/orders/oms/import/template')->assertNotFound();
             $this->actingAs($outsider)->post('/orders/oms/import/preview', ['import_type' => 'website', 'file' => $file])->assertNotFound();

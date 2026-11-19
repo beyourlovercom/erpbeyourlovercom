@@ -104,7 +104,7 @@ class ApprovedMenuBaselineTest extends TestCase
     {
         $items = collect($this->baseline()['items'])->where('parent_code', 'orders')->sortBy('sort')->values();
         $this->assertSame(['orders-master', 'orders-customers', 'orders-kol', 'orders-collaboration', 'orders-procurement', 'orders-archive'], $items->pluck('code')->all());
-        $this->assertSame('/orders/master', $items->first()['url']);
+        $this->assertSame('/orders', $items->first()['url']);
         $this->assertSame('/orders/archive', $items->last()['url']);
         $this->assertSame('orders.view', $items->last()['permission']);
     }

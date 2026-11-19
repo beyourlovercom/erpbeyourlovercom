@@ -100,11 +100,11 @@ class ErpNavigationTest extends TestCase
         $this->post('/kol/orders', [...$base, 'kol_id' => $this->fixtureKolId(), 'external_order_number' => 'ALL-KOL-1'])->assertRedirect();
 
         $this->get('/orders')->assertInertia(fn (Assert $page) => $page
-            ->component('Orders/Index')
-            ->where('orderKind', 'all')
+            ->component('Orders/Master')
+            ->where('filters.kind', 'all')
             ->has('orders.data', 2)
-            ->where('orders.data.0.order_kind', 'kol_fulfillment')
-            ->where('orders.data.1.order_kind', 'customer'));
+            ->where('orders.data.0.kind', 'kol_fulfillment')
+            ->where('orders.data.1.kind', 'customer'));
         $this->get('/orders/export')->assertOk();
     }
 

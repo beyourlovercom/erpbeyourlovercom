@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Master from './Master.vue'
 
@@ -11,8 +11,13 @@ vi.mock('@inertiajs/vue3', () => ({
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: {
   props: ['title', 'breadcrumbs'], template: '<div><slot /></div>',
 } }))
-vi.mock('../../Components/DataGrid/GlobalGrid.vue', () => ({ default: {
-  props: ['rows', 'columns', 'namespace'], template: '<div data-testid="master-global-grid" />',
+vi.mock('../../Components/DataGrid/GlobalGrid.vue', () => ({ __esModule: true, default: {
+  props: ['rows', 'columns', 'namespace'], template: '<div data-testid="master-global-grid"><slot name="actions" /></div>',
+} }))
+
+vi.mock('../../Components/Orders/OrderOmsTransfer.vue', () => ({ default: {
+  props: ['canImport', 'canConfirmImport'],
+  template: '<button v-if="canImport" data-testid="master-import">导入</button>',
 } }))
 
 const props = {
@@ -20,6 +25,8 @@ const props = {
   counts: { all: 8104, normal: 7978, operational: 126, trash: 0, pending: 450 },
   filters: { search: '', view: 'all', kind: 'all', source: 'all', sort: 'date', direction: 'desc', per_page: '50' },
   canSeeTrash: true,
+  canImportOmsOrders: true,
+  canConfirmOmsOrders: true,
 }
 
 describe('Orders read-only master workspace', () => {
@@ -38,10 +45,21 @@ describe('Orders read-only master workspace', () => {
   it('routes archive chip, kind selector and filters to server pagination', async () => {
     const wrapper = mount(Master, { props })
     await wrapper.findAll('.quick-chip').find(button => button.text().includes('运营归档'))!.trigger('click')
-    expect(get).toHaveBeenCalledWith('/orders/master', expect.objectContaining({ view: 'operational', page: 1 }), expect.any(Object))
+    expect(get).toHaveBeenCalledWith('/orders', expect.objectContaining({ view: 'operational', page: 1 }), expect.any(Object))
     await wrapper.find('select[aria-label="订单类型"]').setValue('kol_fulfillment')
-    expect(get).toHaveBeenCalledWith('/orders/master', expect.objectContaining({ kind: 'kol_fulfillment', page: 1 }), expect.any(Object))
+    expect(get).toHaveBeenCalledWith('/orders', expect.objectContaining({ kind: 'kol_fulfillment', page: 1 }), expect.any(Object))
     wrapper.unmount()
+  })
+
+  it('places the existing import action in the canonical order master only for permitted users', async () => {
+    const allowed = mount(Master, { props })
+    await flushPromises()
+    expect(allowed.find('[data-testid="master-import"]').exists()).toBe(true)
+    allowed.unmount()
+    const denied = mount(Master, { props: { ...props, canImportOmsOrders: false, canConfirmOmsOrders: false } })
+    await flushPromises()
+    expect(denied.find('[data-testid="master-import"]').exists()).toBe(false)
+    denied.unmount()
   })
 
   it('does not show the trash filter to a non-admin reader', () => {
