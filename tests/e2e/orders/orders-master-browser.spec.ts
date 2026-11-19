@@ -50,7 +50,8 @@ test('R5 isolated browser: compact all-order master searches canonical orders on
 
 
 test('R6 isolated Dev: canonical /orders shows XLSX import and previews without creating an order', async ({ context, page }) => {
-  const guard = await installBrowserGuards(context, page)
+  // A successful XLSX attachment download aborts its navigation request in Chrome.
+  const guard = await installBrowserGuards(context, page, { allowedNavigationAbortPaths: ['/orders/oms/import/template'] })
   await page.setViewportSize({ width: 1440, height: 900 })
   await loginThroughUi(page, syntheticUsers().authorized)
 
