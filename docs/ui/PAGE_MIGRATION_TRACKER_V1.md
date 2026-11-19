@@ -43,7 +43,7 @@
 Owner 已对统一列表 + 第二行筛选的交互预览明确 PASS。`速达订单` 与 `纬狮订单` 两个累计历史 Tab 在新版本退出导航，统一替换为 `全部国内订单`（`view=all`），保留 `今日速达`、`今日纬狮`。旧累计书签 `view=4px` / `view=weship` 转向 `view=all&filter_carrier=4px|weship`；原 Shipment、Tracking、模板下载/回传与业务状态不迁移、不删除。筛选在服务器查询级执行，保留分页与 Global Grid 账户偏好。当前此项：**DESIGN_PASS；开发/自动测试进行中；真实 Local/UAT Owner PASS、合并、生产读回分别待核验**。此变更覆盖旧 R4-7A/B 的双累计历史入口设计，不改变其历史实施证据。
 
 **2026-11-19 产品液体/物料全称独立 Work Package（不改变旧 P0 视觉验收）：**
-`ERP-PRODUCT-LIQUID-MATERIAL-20261119` 在隔离分支开发 Product360 物料全称/带液体字段、国内待发货固定含液体标识、产品/订单/库存/海外/外采表格可选物料全称。仍复用现有 Compact Workspace 和账户级列偏好；当前为本地代码/自动测试阶段，Owner 真实 Local/UAT 未 PASS，未合并、未发布 Production。具体证据和门禁见 `docs/60_Codex_Operations/ERP_PRODUCT_LIQUID_MATERIAL_V1_20261119.md`。
+`ERP-PRODUCT-LIQUID-MATERIAL-20261119` 在隔离分支开发 Product360 物料全称/带液体字段、国内待发货固定含液体标识、产品/订单/库存/海外/外采表格可选物料全称。仍复用现有 Compact Workspace 和账户级列偏好；Owner 已在美国 Mac mini 本地隔离 UAT 实页检查后于 2026-11-19 回复 PASS；PR #806 自动测试 11/11 PASS（该版本前一提交），等待最终文档提交后 CI 和合并，尚未发布 Production。具体证据和门禁见 `docs/60_Codex_Operations/ERP_PRODUCT_LIQUID_MATERIAL_V1_20261119.md`。
 
 **Global Grid 独立发布门禁（与九视图 Compact Workspace 视觉门禁分开）：**
 2026-11-11 R4-6「异常订单」PR #723 已合并并受控发布，

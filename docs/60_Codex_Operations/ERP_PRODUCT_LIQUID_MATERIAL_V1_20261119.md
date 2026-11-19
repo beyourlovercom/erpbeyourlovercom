@@ -8,7 +8,7 @@ BRANCH: feat/erp-product-liquid-material-20261119
 WORKTREE: /Users/a/AI/007/_worktrees/erp-product-liquid-material-20261119
 DEPENDENCIES: NONE (do not import unfinished product-cost branch changes)
 PARALLEL_SAFE: YES only in this dedicated worktree; one active provider.
-STATUS: OWNER_VISUAL_PASS / US_LOCAL_UAT_AUTO_OPEN_READY / OWNER_LIVE_UAT_PASS_PENDING / PRODUCTION_NOT_AUTHORIZED
+STATUS: OWNER_VISUAL_PASS / US_LOCAL_UAT_OWNER_PASS_2026-11-19 / PRODUCTION_NOT_AUTHORIZED
 
 ## Goal
 Add Product master has_liquid (boolean default false) and material_full_name (nullable UTF-8 text), preserve has_battery behavior, show the full name above battery and liquid controls in Product 360, and offer material name as an opt-in user-account-specific column in SKU-bearing ERP grids. Show amber non-blocking liquid warning in domestic pending, including mixed-item orders.
@@ -50,22 +50,22 @@ Observed source facts: 595 material rows in 物料代码; 515 names start with S
 - Broad unrelated legacy test suites currently do **not** pass cleanly: PHP six existing failures include fake nonnumeric Woo order references and stale domestic viewCounts=10 expectation; full frontend 979/986 passing with 7 failures in 3 pre-existing test suites (including WarehouseCostCenterP3 stale label). They are not claimed as this package regressions until baseline comparison is recorded. Re-run focused contract gates after final diff.
 - US-local isolated SQLite UAT: migrated new schema, ran `LocalUatSeeder`, set up synthetic BY489A/BV339A/MF414A Product masters and mixed domestic order, started `127.0.0.1:8777`, logged into approved local-only admin, and opened Product360 / material preview / product list / domestic pending / external procurement / orders / inventory pages in a dedicated Chrome profile. All opened pages returned 200; browser smoke confirmed product controls, one amber order warning + SKU marker, and external material column toggler.
 - Import live UAT preview used synthetic XLSX only: 6 rows = 1 unique empty-fill, 2 multiple variants for manual review, 2 unchanged, 1 unmatched, and no write to Product master. No Production or real-order mutation.
-- Owner live US Local/UAT **NOT YET PASS**; implementation branch pushed and Draft PR [#806](https://github.com/beyourlovercom/erpbeyourlovercom/pull/806) opened. No merge, Production database mutation or deployment.
+- Owner explicitly responded `pass` on 2026-11-19 after the US Local/UAT 10-tab handoff: **OWNER LIVE UAT PASS**. PR [#806](https://github.com/beyourlovercom/erpbeyourlovercom/pull/806) had all 11 required checks PASS at aee1180b; advance through final documentation-head CI and merge gate. No Production database mutation or deployment authorization.
 
 ## PROJECT POSITION
 PROGRAM_ROADMAP: Architecture -> MVP1 Operations -> Inquiry -> Woo Sync -> Product/Media -> Logistics/KOL/Inventory/Procurement/Accounting -> Hardening
 CURRENT_TRACK_PHASE_MAP: R0 scope PASS -> R1 schema -> R2 Product360/import -> R3 grids/reminders -> R4 tests/UAT -> merge gate -> separate Production gate
 COMPLETED_PHASES: R0 visual design and source workbook analysis
-CURRENT_PHASE: R4 US-local test and Owner live UAT preparation
+CURRENT_PHASE: R4 Owner live UAT PASS; final CI and Git merge gate
 CURRENT_WORK_PACKAGE: ERP-PRODUCT-LIQUID-MATERIAL-20261119
-PACKAGE_STATUS: IMPLEMENTATION_AUTHORIZED
-WAITING_PHASES: OWNER_LIVE_UAT_PASS; PRODUCTION_RELEASE_AUTHORIZATION
+PACKAGE_STATUS: OWNER_LIVE_UAT_PASS / MERGE_GATE_AUTHORIZED
+WAITING_PHASES: FINAL_CI_AND_MERGE; PRODUCTION_RELEASE_AUTHORIZATION
 BASELINE: main 078de3ec
 GITHUB_STATE: Draft PR #806; branch pushed, not merged
 SOURCE_CONFLICTS: NONE WITH EVIDENCE (source workbook ambiguity is intentionally queued)
-GLOBAL_GATE: Owner visual PASS; US Local UAT pages auto-open ready; Owner live UAT pending
+GLOBAL_GATE: Owner visual PASS; US Local UAT OWNER PASS 2026-11-19; merge after final green CI
 PRODUCTION_DEPLOYMENT_STATUS: NO WITH EVIDENCE
-NEXT_DEPENDENCY: US-local tests and Owner UAT
+NEXT_DEPENDENCY: final PR #806 CI green then merge; Production release separate Owner gate
 EVIDENCE_AS_OF: 2026-11-19
 
 ## ROADMAP HOURS
