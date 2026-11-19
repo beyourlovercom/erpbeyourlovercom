@@ -2,11 +2,16 @@
 
 namespace App\Modules\Logistics\Application;
 
+use App\Modules\Audit\Application\AuditActor;
+use App\Modules\Audit\Application\AuditSource;
+use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
 
 final class FulfillmentDerivedOrderService
@@ -16,6 +21,7 @@ final class FulfillmentDerivedOrderService
     public function __construct(
         private readonly ShipmentService $shipments,
         private readonly WarehouseFinalSkuResolver $finalSkus,
+        private readonly AuditRecorder $audit,
     ) {}
 
     /** @param array<string,mixed> $plan @return list<array<string,mixed>> */
@@ -208,6 +214,42 @@ final class FulfillmentDerivedOrderService
     {
         $warehouseId = (int) ($segment['warehouse_id'] ?? 0);
         abort_if($warehouseId <= 0, 422, '履约方案缺少有效仓库');
+        $sourceCode = strtoupper(trim((string) ($segment['source_code'] ?? '')));
+        $physicalCode = $sourceCode === 'OUTSOURCE' ? 'FACTORY' : $sourceCode;
+        $warehouse = Warehouse::query()->whereKey($warehouseId)->first();
+        abort_unless($sourceCode !== '' && $warehouse
+            && strtoupper(trim((string) $warehouse->code)) === $physicalCode,
+            422, '履约方案所属分仓与真实仓库不一致');
+
+        // The plan is the authorized routing change. Persist it before
+        // ShipmentService validates route == physical warehouse. The caller
+        // holds the allocation transaction, so failures roll everything back.
+        if ($order->routing_warehouse_code !== $sourceCode) {
+            $beforeCode = $order->routing_warehouse_code;
+            $beforeRevision = (int) $order->routing_revision;
+            $beforeWarehouseId = $order->shipment?->warehouse_id;
+            $order->forceFill([
+                'routing_warehouse_code' => $sourceCode,
+                'routing_revision' => $beforeRevision + 1,
+            ])->save();
+            DB::table('order_warehouse_route_histories')->insert([
+                'order_id' => $order->id,
+                'actor_id' => $actor->getAuthIdentifier(),
+                'from_code' => $beforeCode,
+                'to_code' => $sourceCode,
+                'revision' => $beforeRevision + 1,
+                'created_at' => now(),
+            ]);
+            $this->audit->record(
+                AuditActor::user($actor, AuditSource::Web),
+                'order.warehouse_route_changed',
+                Order::class,
+                $order->id,
+                ['code' => $beforeCode, 'revision' => $beforeRevision, 'warehouse_id' => $beforeWarehouseId],
+                ['code' => $sourceCode, 'revision' => $beforeRevision + 1, 'warehouse_id' => $warehouseId],
+                'fulfillment_allocation_route_sync',
+            );
+        }
         $attributes = [
             'warehouse_id' => $warehouseId,
             'warehouse_selection_source' => 'allocation',
