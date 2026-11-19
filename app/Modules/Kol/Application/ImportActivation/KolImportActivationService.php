@@ -7,6 +7,7 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Application\KolService;
+use App\Modules\Kol\Application\OwnerMapping\KolOwnerUserMatcher;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolImportActivationBatch;
 use App\Modules\Kol\Infrastructure\Models\KolImportActivationItem;
@@ -27,7 +28,7 @@ final class KolImportActivationService
     private const BLOCKED = 'blocked';
     private const EXISTING = 'existing';
 
-    public function __construct(private readonly AuditRecorder $audit, private readonly KolService $kols) {}
+    public function __construct(private readonly AuditRecorder $audit, private readonly KolService $kols, private readonly KolOwnerUserMatcher $matcher) {}
 
     public function workspace(Authenticatable $actor, ?int $previewBatchId = null): array
     {
@@ -146,8 +147,18 @@ final class KolImportActivationService
             }
 
             $currentIndex = $this->kolIndex();
-            $eligibleOwnerIds = $this->eligibleUsers()->pluck('id')->map(fn ($id): int => (int) $id)->all();
+            $eligibleOwnerUsers = $this->eligibleUsers();
+            $eligibleOwnerIds = $eligibleOwnerUsers->pluck('id')->map(fn ($id): int => (int) $id)->all();
             foreach ($locked->items->where('readiness_status', self::READY) as $item) {
+                foreach ((array) (($item->source_owner_evidence ?? [])['source_mappings'] ?? []) as $evidence) {
+                    if (($evidence['match_method'] ?? null) !== 'automatic') {
+                        continue;
+                    }
+                    $currentMatch = $this->matcher->match((string) ($evidence['source_owner'] ?? ''), $eligibleOwnerUsers);
+                    if (($currentMatch['user']?->id ?? null) !== ($evidence['mapped_user_id'] ?? null)) {
+                        abort(422, '来源 Owner 的 ERP 身份或角色已变化，请重新生成导入计划。');
+                    }
+                }
                 $guard = $this->existingGuard($item->exact_identity ?? [], $currentIndex);
                 if ($guard['status'] !== 'none') {
                     abort(422, '导入前身份重检发现现有或冲突 KOL，请刷新计划后再确认。');
@@ -205,9 +216,11 @@ final class KolImportActivationService
         $kolIndex = $this->kolIndex();
         $items = [];
         $blockers = [];
+        $autoEnabled = $preview->reconciliationBatch?->source_type === 'tencent_xlsx';
+        $autoMatches = [];
 
         foreach ($preview->candidates as $candidate) {
-            $owner = $this->effectiveOwner($candidate, $mappings, $decisions, $eligibleById);
+            $owner = $this->effectiveOwner($candidate, $mappings, $decisions, $eligibleById, $eligibleUsers, $autoEnabled, $autoMatches);
             $guard = $this->existingGuard($candidate->exact_identity ?? [], $kolIndex);
             $reasons = $this->blockReasons($candidate, $owner, $guard);
             $status = $this->readinessStatus($candidate, $guard, $reasons);
@@ -270,16 +283,27 @@ final class KolImportActivationService
         return array_values(array_unique($reasons));
     }
 
-    private function effectiveOwner(KolImportPreviewCandidate $candidate, $mappings, $decisions, $eligibleById): array
+    private function effectiveOwner(KolImportPreviewCandidate $candidate, $mappings, $decisions, $eligibleById, EloquentCollection $eligibleUsers, bool $autoEnabled, array &$autoMatches): array
     {
         $values = $this->sourceValues($candidate);
         $mappedIds = [];
         $mappingEvidence = [];
         foreach ($values as $value) {
-            $mapping = $mappings->get($this->ownerKey($value));
-            $user = $mapping?->mapped_user_id ? $eligibleById->get((int) $mapping->mapped_user_id) : null;
+            $key = $this->ownerKey($value);
+            $mapping = $mappings->get($key);
+            if (! $mapping && $autoEnabled && ! isset($autoMatches[$key])) {
+                $autoMatches[$key] = $this->matcher->match($value, $eligibleUsers);
+            }
+            $autoUser = ! $mapping ? ($autoMatches[$key]['user'] ?? null) : null;
+            $user = $mapping
+                ? ($mapping->mapped_user_id ? $eligibleById->get((int) $mapping->mapped_user_id) : null)
+                : $autoUser;
             $mappedIds[] = $user ? (int) $user->id : null;
-            $mappingEvidence[] = ['source_owner' => $value, 'mapped_user_id' => $user ? (int) $user->id : null];
+            $mappingEvidence[] = [
+                'source_owner' => $value,
+                'mapped_user_id' => $user ? (int) $user->id : null,
+                'match_method' => $mapping ? 'manual' : ($autoUser ? 'automatic' : null),
+            ];
         }
 
         $decision = $decisions->get($candidate->cluster_key);
@@ -290,7 +314,8 @@ final class KolImportActivationService
         $userId = null;
         $resolution = 'unmapped';
         if (count($values) === 1 && count($mappedIds) === 1 && $mappedIds[0]) {
-            $userId = $mappedIds[0]; $resolution = 'mapped';
+            $userId = $mappedIds[0];
+            $resolution = ($mappingEvidence[0]['match_method'] ?? null) === 'automatic' ? 'auto_matched' : 'mapped';
         } elseif (count($values) > 1 && $decisionUser && $decisionMatches) {
             $userId = (int) $decisionUser->id; $resolution = 'decided';
         } elseif (count($values) > 1 && ! in_array(null, $mappedIds, true) && count(array_unique($mappedIds)) === 1) {
@@ -410,10 +435,10 @@ final class KolImportActivationService
 
     private function eligibleUsers(): EloquentCollection
     {
-        return User::query()->where('is_active', true)->where(function ($query): void {
+        return User::query()->with('roles:id,key')->where('is_active', true)->where(function ($query): void {
             $query->whereHas('roles.permissions', fn ($permission): mixed => $permission->where('key', 'kol.view'))
                 ->orWhereHas('customPermissions', fn ($permission): mixed => $permission->where('key', 'kol.view'));
-        })->orderBy('name')->orderBy('id')->get(['id', 'name', 'email']);
+        })->orderBy('name')->orderBy('id')->get(['id', 'name', 'email', 'contact_name', 'is_active', 'permission_mode']);
     }
 
     private function planChecksum(array $items): string
