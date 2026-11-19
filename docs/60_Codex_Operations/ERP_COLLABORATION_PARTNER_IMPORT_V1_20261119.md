@@ -1,6 +1,6 @@
 # ERP Collaboration Partner Import V1 — Work Package
 Date: 2026-11-19 | Owner: Andy | EXECUTION_PROVIDER: GPT_WEB | VERIFICATION_TIER: HIGH_RISK
-Status: OWNER_DESIGN_PASS / DEV_VERIFIED / OWNER_REAL_UAT_PENDING / NO_PRODUCTION_RELEASE
+Status: OWNER_DESIGN_PASS / OWNER_REAL_UAT_PASS / DEV_CI_PASS / MERGE_READY / NO_PRODUCTION_RELEASE
 Approved UI: import order type “合作订单”, select dynamic partner, current 15-column XLSX unchanged; confirmed by Owner “合理，升级。执行”.
 Baseline: GitHub erpbeyourlovercom main 078de3ecdebc1b9dbbc26f29717e0f4833af55bc.
 Branch: feat/erp-collaboration-partner-import-v1; worktree: US Mac mini /Users/a/ai/007/erp-collaboration-partners-20261119.
@@ -15,18 +15,18 @@ Estimation: R0 contract/schema 3–5h; R1 registry/import 6–9h; R2 list/filter
 ## PROJECT POSITION
 PROGRAM_ROADMAP: ERP live operations → ERP2 code-first → safe data migration → staged Production release; unrelated tracks preserved
 CURRENT_TRACK_PHASE_MAP: R0 schema → R1 import registry → R2 list UI → R3 verification/UAT → R4 separately authorized release
-COMPLETED_PHASES: Owner visual design PASS; R0 schema, R1 dynamic registry/import, R2 collaboration list/UI, R3 automated code/tests (Owner real UAT pending)
-CURRENT_PHASE: R3 — Owner real local UAT handoff
+COMPLETED_PHASES: Owner visual design PASS; R0 schema, R1 registry/import, R2 list/UI, R3 tests + Owner real Local/UAT PASS on 2026-11-19
+CURRENT_PHASE: R4 — Git merge only; Production release separately authorized
 CURRENT_WORK_PACKAGE: ERP-COLLABORATION-PARTNER-IMPORT-V1
-PACKAGE_STATUS: DEV_VERIFIED_AWAIT_OWNER_UAT
-WAITING_PHASES: Owner real UAT PASS → PR merge review → separately approved R4 Production release
+PACKAGE_STATUS: OWNER_UAT_PASS_MERGE_READY
+WAITING_PHASES: PR merge → separately approved Production deployment/migration/readback
 BASELINE: 078de3ecdebc1b9dbbc26f29717e0f4833af55bc
-GITHUB_STATE: Draft PR #807, head 05c1d9b44d8277b16468c8ac795e2e5ffe8ff6eb, GitHub 7/7 checks PASS
+GITHUB_STATE: PR #807, latest merged-main feature head at review 51592e6a; 7 GitHub checks PASS before UAT closure commit
 SOURCE_CONFLICTS: old collaboration view filters TINGON warehouse instead of actual partner; resolved by separate field
-GLOBAL_GATE: Owner UAT mandatory; Production release independent
+GLOBAL_GATE: Owner real Local/UAT PASS 2026-11-19; Production release independent and NOT AUTHORIZED
 PRODUCTION_DEPLOYMENT_STATUS: NO, not authorized
-NEXT_DEPENDENCY: Owner inspect http://127.0.0.1:18879/orders/collaboration on US Mac mini, explicit real UAT PASS; no Production changes
-EVIDENCE_AS_OF: 2026-11-19; PHP 35 tests/744 assertions PASS; Vue import 7 tests PASS; typecheck/Pint/build/workspace tabs PASS; GitHub CI 7/7 PASS. Full Vue: 975/982 tests pass; seven Inventory test failures reproduced identically on baseline main 078de3ec. Isolated local SQLite migrated; Playwright login, 3 synthetic rows, partner dropdown and modal confirmed. Owner UAT PENDING.
+NEXT_DEPENDENCY: Merge PR #807 after final CI; Production release requires separate explicit Owner authorization
+EVIDENCE_AS_OF: 2026-11-19; PHP 35 tests/744 assertions PASS; Vue import 7 tests PASS; typecheck/Pint/build/workspace tabs PASS; GitHub CI 7/7 PASS. Full Vue: 975/982 tests pass; seven Inventory test failures reproduced identically on baseline main 078de3ec. Isolated local SQLite migrated; Playwright login, 3 synthetic rows, partner dropdown and modal confirmed. Owner UAT PASS explicitly received from Andy on 2026-11-19; no Production changes.
 ## ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: 23h planning; range 18–28h
 KNOWN_CURRENT_TRACK_REMAINING: Owner real UAT/review and optional remediation; 2–5h planning remainder, actual unmeasured
