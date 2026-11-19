@@ -53,8 +53,13 @@
 - 合成 XLSX 的独立 Dev 浏览器验证：先不勾选时被前端阻止；确认后生成预览批次 #2（1 行），来源负责人 `Guts` 明确显示。SQLite 读回只保存 Contact Email、社交链接及 Belongs to；合成物流 PII 未持久化；KOL 原负责人不变，Affiliate 未绑定。
 - 修正后回归：`php artisan test tests/Feature/Kol` 335 tests / 1,713 assertions PASS；KOL Vue 18 files / 122 tests PASS；TypeScript typecheck、Vue 生产构建和相关 PHP Pint PASS。真实文件、真实账号及 Owner UAT 仍未执行或获批。
 
+## Owner 人员范围确认（2026-11-19）
+- Owner 明确：Hiko 是网红负责人，应参与唯一姓名自动匹配；Emma 在 ERP 实际只有一个账号，`Emma`、`emma`、`EMMA` 应视为同一人且**大小写不构成审核条件**；Liang 是物流人员，不参与自动匹配。
+- 已将这三项作为 PHP 合成角色/身份回归：Hiko/Emma 大小写映射必须通过；Liang 即便持有泛化 `kol.view` 也不会被非网红角色自动认领。重名阻塞仅用“Duplicate Tester”等虚构人员测试，不暗示真实 Emma 存在重复 ERP 账号。
+- 本段属于 Owner 已确认的业务事实；尚未直接核对 Production 员工表，不声称真实账号 ID 已核验。
+
 ## Owner 反馈修正：ERP 在职网红专员/经理精确自动匹配
 - 原因：此前 Owner Mapping 只认人工保存的 `KolOwnerSourceMapping`，即使 ERP 已有 Emma/Guts 也不会自动识别。现在**仅针对腾讯 XLSX** 的 `Belongs to`，用唯一精确匹配（大小写、首尾及连续空格规范化）匹配在职 ERP 员工 `name`、`contact_name` 或 `email`，且要求角色为 `role_preset_kol_specialist` / `role_preset_kol_manager` 并拥有 KOL 查看权限。
 - 自动结果只在预览/创建计划中计算，不向 Owner 映射表静默插入记录；人工保存的映射优先，历史非腾讯导入沿用原行为。重名、停用、角色不符、缺失姓名、身份冲突仍保持阻塞/人工复核。已生成计划若员工角色变化，执行时再次核验并拒绝；KOL 实际创建/绑定仍保留独立开关与审批。
 - 隔离 Dev SQLite 中新增 **Guts 模拟员工**（非真实员工），对应网红经理预设角色；之前合成批次 #2 生成 P2 预览 #1，核验 `resolved=1`、`source_status=matched`、`source_user=Guts`，未执行创建/绑定。美国 Mac mini 现有 Chrome UAT 窗口新增并打开 `/kol/owner-mapping?preview_batch_id=1`，页面标题确认为“Owner 映射 · BYL ERP”，无需重启 Chrome。因浏览器 JavaScript Apple Events 权限关闭，未声称完成 DOM 文本/真实 Owner 视觉验收。
-- 自动回归：PHP KOL 339 tests / 1,735 assertions PASS；KOL 前端 18 files / 123 tests PASS；typecheck、build + 30-tab bundle PASS；新 Matcher、映射服务与新测试的 Pint PASS。ImportActivationService.php 全文件 Pint 仍报广泛存量格式问题，本次不作与功能无关的全文件重排；新增逻辑通过 PHP 测试及语法检查。真实腾讯表及 Production 尚未匹配或写入，Owner UAT/PR CI/合并仍待门禁。
+- 自动回归：PHP KOL 339 tests / 1,737 assertions PASS；KOL 前端 18 files / 123 tests PASS；typecheck、build + 30-tab bundle PASS；新 Matcher、映射服务与新测试的 Pint PASS。ImportActivationService.php 全文件 Pint 仍报广泛存量格式问题，本次不作与功能无关的全文件重排；新增逻辑通过 PHP 测试及语法检查。真实腾讯表及 Production 尚未匹配或写入，Owner UAT/PR CI/合并仍待门禁。

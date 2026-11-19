@@ -26,47 +26,53 @@ class KolTencentOwnerAutoMatchTest extends TestCase
         $admin = $this->admin();
         $emma = $this->presetUser('Emma', RolePreset::KolSpecialist);
         $guts = $this->presetUser('Guts Login', RolePreset::KolManager, 'Guts');
+        $hiko = $this->presetUser('Hiko', RolePreset::KolManager);
         $batch = $this->batch();
-        $this->row($batch, 2, 'emma@example.test', '  emMA  ');
-        $this->row($batch, 3, 'guts@example.test', 'GUTS');
+        $this->row($batch, 2, 'emma-one@example.test', '  emMA  ');
+        $this->row($batch, 3, 'emma-two@example.test', 'EMMA');
+        $this->row($batch, 4, 'guts@example.test', 'GUTS');
+        $this->row($batch, 5, 'hiko@example.test', 'hIKO');
         $preview = $this->app->make(KolImportPreviewService::class)->generate($batch->id, $admin);
         $workspace = $this->app->make(KolOwnerMappingService::class)->workspace($admin, $preview->id);
 
-        self::assertSame(2, $workspace['summary']['resolved_candidates']);
+        self::assertSame(4, $workspace['summary']['resolved_candidates']);
         $emmaRow = collect($workspace['source_owners'])->firstWhere('key', 'emma');
         $gutsRow = collect($workspace['source_owners'])->firstWhere('key', 'guts');
+        $hikoRow = collect($workspace['source_owners'])->firstWhere('key', 'hiko');
         self::assertSame($emma->id, $emmaRow['auto_match']['user']['id']);
         self::assertSame($guts->id, $gutsRow['auto_match']['user']['id']);
+        self::assertSame($hiko->id, $hikoRow['auto_match']['user']['id']);
         self::assertNull($emmaRow['mapping']);
+        self::assertSame('matched', $emmaRow['auto_match']['status']);
         self::assertSame('matched', $gutsRow['auto_match']['status']);
         self::assertSame(0, KolOwnerSourceMapping::count());
         self::assertSame(0, Kol::count());
 
         $plan = $this->app->make(KolImportActivationService::class)->prepare($preview->id, $admin);
-        self::assertSame(2, $plan->ready_count);
-        self::assertEqualsCanonicalizing([$emma->id, $guts->id], $plan->items->pluck('effective_owner_id')->all());
+        self::assertSame(4, $plan->ready_count);
+        self::assertEqualsCanonicalizing([$emma->id, $emma->id, $guts->id, $hiko->id], $plan->items->pluck('effective_owner_id')->all());
         self::assertSame(0, Kol::count());
     }
 
     public function test_duplicate_names_non_kol_roles_and_inactive_users_fail_closed(): void
     {
         $admin = $this->admin();
-        $this->presetUser('Emma', RolePreset::KolSpecialist);
-        $this->presetUser(' EMMA ', RolePreset::KolManager);
+        $this->presetUser('Duplicate Tester', RolePreset::KolSpecialist);
+        $this->presetUser('DUPLICATE TESTER', RolePreset::KolManager);
         $this->userWith(['kol.view'], 'Liang');
-        $inactive = $this->presetUser('Hiko', RolePreset::KolSpecialist);
+        $inactive = $this->presetUser('Inactive Tester', RolePreset::KolSpecialist);
         $inactive->update(['is_active' => false]);
         $batch = $this->batch();
-        $this->row($batch, 2, 'duplicate@example.test', 'Emma');
+        $this->row($batch, 2, 'duplicate@example.test', 'duplicate tester');
         $this->row($batch, 3, 'otherrole@example.test', 'Liang');
-        $this->row($batch, 4, 'inactive@example.test', 'Hiko');
+        $this->row($batch, 4, 'inactive@example.test', 'Inactive Tester');
         $preview = $this->app->make(KolImportPreviewService::class)->generate($batch->id, $admin);
         $workspace = $this->app->make(KolOwnerMappingService::class)->workspace($admin, $preview->id);
 
         self::assertSame(0, $workspace['summary']['resolved_candidates']);
-        self::assertSame('ambiguous', collect($workspace['source_owners'])->firstWhere('key', 'emma')['auto_match']['status']);
+        self::assertSame('ambiguous', collect($workspace['source_owners'])->firstWhere('key', 'duplicate tester')['auto_match']['status']);
         self::assertSame('not_found', collect($workspace['source_owners'])->firstWhere('key', 'liang')['auto_match']['status']);
-        self::assertSame('not_found', collect($workspace['source_owners'])->firstWhere('key', 'hiko')['auto_match']['status']);
+        self::assertSame('not_found', collect($workspace['source_owners'])->firstWhere('key', 'inactive tester')['auto_match']['status']);
         self::assertSame(0, $this->app->make(KolImportActivationService::class)->prepare($preview->id, $admin)->ready_count);
     }
 

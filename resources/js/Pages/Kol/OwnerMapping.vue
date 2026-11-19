@@ -247,7 +247,7 @@ const completionRate = computed(() => state.value.summary.total_candidates ? Mat
 
       <section class="workspace-card">
         <div class="section-head">
-          <div><p class="eyebrow">STEP 1</p><h2>来源 Owner 全局映射</h2><p>腾讯 Belongs to 与在职 ERP 网红专员/网红经理的姓名、联系人姓名或邮箱唯一精确一致时自动匹配；重名或角色不符需人工核对。显式映射优先。</p></div>
+          <div><p class="eyebrow">STEP 1</p><h2>来源 Owner 全局映射</h2><p>腾讯 Belongs to 匹配在职 ERP 网红专员/网红经理的姓名、联系人姓名或邮箱，忽略大小写和多余空格；仅唯一账号自动匹配。物流人员排除，真正重名才需人工核对。显式映射优先。</p></div>
           <span class="count-pill">{{ state.summary.source_owner_count }} 个来源 Owner</span>
         </div>
         <div class="kol-grid-switch"><strong>来源 Owner · {{ state.source_owners.length }} 条</strong>
