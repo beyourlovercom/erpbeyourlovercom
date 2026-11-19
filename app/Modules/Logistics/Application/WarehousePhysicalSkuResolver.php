@@ -21,6 +21,7 @@ final class WarehousePhysicalSkuResolver
         private readonly MorePlusPhysicalStockReader $morePlus,
         private readonly VerifiedOmsProductIdentityResolver $identity,
         private readonly OutboundOrderSkuResolver $outboundSkus,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /** @return array<string,mixed> */
@@ -33,6 +34,8 @@ final class WarehousePhysicalSkuResolver
         $gift = $this->gifts->resolve($item, $warehouseCode, $giftMappingId);
         $targetId = (int) ($gift['resolved_product_id'] ?? $sourceProductId);
         $targetSku = trim((string) ($gift['resolved_fulfillment_sku'] ?? $sourceSku));
+
+        $targetSku = $this->finalSkus->resolve($targetId, $warehouseCode, $targetSku);
 
         if (strtoupper($warehouseCode) === 'US-LA' && config('shipout.production_read_enabled', false)) {
             [$targetId, $targetSku] = $this->morePlusPhysical($sourceSku, $targetId, $targetSku, (int) $item->quantity, $gift !== null);
@@ -55,15 +58,18 @@ final class WarehousePhysicalSkuResolver
         $snapshot = $this->morePlusSnapshot ??= $this->morePlus->snapshot();
         abort_unless((string) ($snapshot['warehouse_id'] ?? '') === trim((string) config('shipout.production_warehouse_id')), 422, 'MorePlus 仓库库存身份不匹配');
         $options = [];
+        $mapping = $this->finalSkus->resolve($productId, 'US-LA', '');
         foreach ($snapshot['stock_rows'] ?? [] as $row) {
             if (! is_array($row) || ! ($row['in_product_catalog'] ?? false)
-                || (string) ($row['product_status'] ?? '') !== '1'
-                || ($row['sku_alias_status'] ?? '') !== 'verified') {
+                || (string) ($row['product_status'] ?? '') !== '1') {
                 continue;
             }
             $candidateSku = trim((string) ($row['provider_sku'] ?? ''));
             $verified = $this->identity->resolve($candidateSku);
-            if (($verified['status'] ?? '') !== 'resolved' || (int) ($verified['product_id'] ?? 0) !== $productId) {
+            $verifiedIdentity = ($row['sku_alias_status'] ?? '') === 'verified'
+                && ($verified['status'] ?? '') === 'resolved'
+                && (int) ($verified['product_id'] ?? 0) === $productId;
+            if (! $verifiedIdentity && ($mapping === '' || strcasecmp($candidateSku, $mapping) !== 0)) {
                 continue;
             }
             if (! is_int($row['available_quantity'] ?? null)) {

@@ -554,7 +554,8 @@ final class DomesticLogisticsController
                 'service' => $query->whereHas('shipment', fn ($s) => $s->where('service', 'like', $pattern)),
                 'tracking' => $query->whereHas('shipment', fn ($s) => $s->where('tracking_number', 'like', $pattern)),
                 'recipient' => $query->whereHas('address', fn ($a) => $a->where('recipient_name', 'like', $pattern)),
-                'sku' => $query->whereHas('items', fn ($i) => $i->where('sku', 'like', $pattern)),
+                'sku' => $query->whereHas('items', fn ($i) => $i->where('sku', 'like', $pattern)
+                    ->orWhere('source_sku', 'like', $pattern)->orWhere('final_sku', 'like', $pattern)),
                 'destination' => $query->whereHas('address', fn ($a) => $a->where('country', 'like', $pattern)
                     ->orWhere('province_state', 'like', $pattern)->orWhere('city', 'like', $pattern)),
                 default => null,
@@ -650,6 +651,8 @@ final class DomesticLogisticsController
                         : ['未选定速达或纬狮物流商']))),
             'items' => $order->items->map(fn ($item) => [
                 'sku' => WarehouseSkuPresentation::sku($item),
+                'final_sku' => $item->final_sku,
+                'source_sku' => $item->source_sku ?: $item->sku,
                 'quantity' => (int) $item->quantity,
             ])->values()->all(),
         ];

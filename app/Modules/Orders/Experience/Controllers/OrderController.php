@@ -22,6 +22,7 @@ use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderAuxiliaryStatusService;
 use App\Modules\Orders\Application\OrderItemAmendmentPreflight;
@@ -871,7 +872,12 @@ final class OrderController
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'customer_email' => $includeCustomerEmail ? ($order->address?->email ?: $order->customer?->email) : null,
             'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code']),
-            'items' => $order->items->map(fn ($item): array => $item->only(['id', 'product_id', 'product_summary', 'sku', 'quantity', 'unit_price', 'line_revenue']))->values()->all(),
+            'items' => $order->items->map(fn ($item): array => [
+                ...$item->only(['id', 'product_id', 'product_summary', 'quantity', 'unit_price', 'line_revenue']),
+                'sku' => WarehouseSkuPresentation::sku($item),
+                'source_sku' => $item->source_sku ?: $item->sku,
+                'final_sku' => $item->final_sku,
+            ])->values()->all(),
             'tracking_sync_status' => $trackingSync['status'],
             'tracking_sync_reason' => $trackingSync['reason'],
             'tracking_sync_verified_at' => $trackingSync['verified_at'] ?? null,
@@ -948,7 +954,8 @@ final class OrderController
                     && collect($startedOriginalIds)->contains(fn ($id): bool => (int) $id !== (int) $segment->getKey()),
                 'items' => $segment->items->map(fn ($item): array => [
                     'id' => (int) $item->id,
-                    'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                    'sku' => WarehouseSkuPresentation::sku($item),
+                    'final_sku' => $item->final_sku,
                     'product_summary' => $item->product_summary,
                     'quantity' => (int) $item->quantity,
                 ])->values()->all(),

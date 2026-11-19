@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use DomainException;
@@ -23,6 +24,7 @@ final class SpeedaOutboundExporter
     public function __construct(
         private readonly WarehouseOrderReference $references,
         private readonly DomesticDispatchEligibility $eligibility,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /** @return list<string> */
@@ -249,7 +251,7 @@ final class SpeedaOutboundExporter
             return ['', ''];
         }
 
-        $skuList = $items->map(fn ($item) => trim((string) ($item->resolved_fulfillment_sku ?: $item->sku)))->all();
+        $skuList = $items->map(fn ($item): string => $this->finalSkus->forShipment($order->shipment, $item))->all();
         $uniqueSkus = array_values(array_unique($skuList));
         // One Y/Z pair cannot represent multiple different SKUs or an unknown item.
         if (count($uniqueSkus) !== 1 || $uniqueSkus[0] === '') {
@@ -257,6 +259,20 @@ final class SpeedaOutboundExporter
         }
 
         $sku = $uniqueSkus[0];
+        $productId = (int) ($items->first()?->product_id ?? 0);
+        $warehouseId = (int) $order->shipment?->warehouse_id;
+        $verifiedMapping = $productId > 0 && $warehouseId > 0
+            ? $this->finalSkus->mapped($productId, $warehouseId)
+            : null;
+        if ($verifiedMapping !== null && strcasecmp($verifiedMapping, $sku) === 0
+            && $items->every(fn ($item): bool => (int) $item->product_id === $productId
+                && filled($item->final_sku)
+                && strcasecmp(trim((string) $item->final_sku), $sku) === 0)) {
+            $barcode = trim((string) $items->first()->product?->barcode_69);
+
+            return [$sku, preg_match('/^[0-9]{8,14}$/D', $barcode) === 1 ? $barcode : ''];
+        }
+
         $matches = Product::query()->where('sku', $sku)->limit(2)->get(['id', 'barcode_69']);
         if ($matches->count() !== 1) {
             return [$sku, ''];

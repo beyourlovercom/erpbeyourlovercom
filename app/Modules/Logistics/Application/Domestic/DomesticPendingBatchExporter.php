@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use DomainException;
@@ -20,6 +21,7 @@ final class DomesticPendingBatchExporter
         private readonly DomesticReviewAmountResolver $amounts,
         private readonly CarrierServiceCatalog $carriers,
         private readonly DomesticDispatchEligibility $eligibility,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /** @param Collection<int,Order> $orders */
@@ -102,12 +104,12 @@ final class DomesticPendingBatchExporter
             ];
             $items = $order->items->sortBy('id')->values();
             if ($skuMerged) {
-                $values[] = $items->map(fn ($item): string => (string) ($item->sku ?: '无SKU'))->implode("\n");
+                $values[] = $items->map(fn ($item): string => $this->finalSkus->forShipment($shipment, $item))->implode("\n");
                 $values[] = $items->map(fn ($item): string => (string) (int) $item->quantity)->implode("\n");
                 $sheet->getRowDimension($row)->setRowHeight(max(15, $items->count() * 16));
             } else {
                 foreach ($items as $item) {
-                    $values[] = (string) ($item->sku ?: '无SKU');
+                    $values[] = $this->finalSkus->forShipment($shipment, $item);
                     $values[] = (string) (int) $item->quantity;
                 }
                 for ($i = $items->count(); $i < $maxItems; $i++) {

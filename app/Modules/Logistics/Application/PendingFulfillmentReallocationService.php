@@ -20,6 +20,7 @@ final class PendingFulfillmentReallocationService
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly AuditRecorder $audit,
         private readonly FulfillmentAllocationStockGate $stockGate,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     public function reallocate(Order $fulfillment, int $warehouseId, Authenticatable $actor, ?string $note = null, bool $stockExceptionAcknowledged = false): Order
@@ -91,6 +92,20 @@ final class PendingFulfillmentReallocationService
                 'carrier_selection_source' => $carrier !== '' ? 'automatic' : null,
                 'logistics_note' => trim((string) $note) !== '' ? trim((string) $note) : $child->shipment?->logistics_note,
             ], $actor);
+
+            foreach ($child->items as $item) {
+                $mapped = $this->finalSkus->mapped((int) $item->product_id, (int) $warehouse->getKey());
+                $finalSku = $mapped ?? $this->finalSkus->resolve(
+                    (int) $item->product_id, $canonicalCode,
+                    (string) ($item->source_sku ?: $item->sku),
+                );
+                abort_if($finalSku === '', 422, '新仓库没有有效最终 SKU');
+                $item->forceFill([
+                    'sku' => $finalSku,
+                    'resolved_fulfillment_sku' => $finalSku,
+                    'final_sku' => $mapped,
+                ])->save();
+            }
 
             $this->updateAllocationSnapshot($parent, $child, $warehouse, $carrier !== '' ? $carrier : null, $service !== '' ? $service : null, $actor, $note, $stockWarnings);
             $this->syncRoutingAndReview($updated, $warehouse, $actor, $previousRoute);

@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\ShipOut;
 
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutReadOnlyGateway;
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Products\Application\VerifiedOmsProductIdentityResolver;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use RuntimeException;
@@ -15,6 +16,7 @@ final class ShipOutProviderSkuStockVerifier
     public function __construct(
         private readonly ShipOutReadOnlyGateway $gateway,
         private readonly VerifiedOmsProductIdentityResolver $identity,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /** @param array<int,array<string,mixed>> $payload
@@ -59,22 +61,45 @@ final class ShipOutProviderSkuStockVerifier
             $pid=(int)$identity['product_id'];
             $candidates[$pid][]=$sku;
         }
-        $order->loadMissing('items');
+        $order->loadMissing('items', 'shipment');
         $items=$order->items->values();
         $list=$payload[0]['shipmentForms'][0]['productList']??[];
         if (count($list)!==$items->count()) throw new RuntimeException('SHIPOUT_SKU_NOT_VERIFIED');
         $used=[];
         foreach ($items as $index=>$item) {
             $pid=(int)$item->product_id;
-            $erpSku=trim((string)$item->sku);
-            $resolved=$this->identity->resolve($erpSku);
-            if (($resolved['status']??null)!=='resolved'||(int)$resolved['product_id']!==$pid)
-                throw new RuntimeException('SHIPOUT_SKU_NOT_VERIFIED');
-            $options=$candidates[$pid]??[];
-            if (in_array($erpSku,$options,true))$sku=$erpSku;
-            elseif(count($options)===1)$sku=$options[0];
-            elseif($options===[])throw new RuntimeException('SHIPOUT_PROVIDER_SKU_NOT_FOUND');
-            else throw new RuntimeException('SHIPOUT_PROVIDER_SKU_AMBIGUOUS');
+            $finalSku=trim((string)$item->final_sku);
+            if ($finalSku!=='') {
+                // A verified warehouse final SKU is frozen by the payload factory.
+                // The read-only provider stock check must never replace it with
+                // the source SKU or another alias for the same product.
+                $payloadSku=trim((string)($list[$index]['omsSku']??''));
+                if ($payloadSku!==$finalSku)throw new RuntimeException('SHIPOUT_FINAL_SKU_PAYLOAD_MISMATCH');
+                $resolved=$this->identity->resolve($finalSku);
+                if (($resolved['status']??null)==='resolved'
+                    && (int)$resolved['product_id']!==$pid) {
+                    throw new RuntimeException('SHIPOUT_SKU_NOT_VERIFIED');
+                }
+                $mapping=$this->finalSkus->mapped($pid,(int)($order->shipment?->warehouse_id??0));
+                if (($resolved['status']??null)!=='resolved'
+                    && ($mapping===null || strcasecmp($mapping,$finalSku)!==0)) {
+                    throw new RuntimeException('SHIPOUT_SKU_NOT_VERIFIED');
+                }
+                if (!isset($providers[$finalSku]))throw new RuntimeException('SHIPOUT_PROVIDER_SKU_NOT_FOUND');
+                $sku=$finalSku;
+            } else {
+                // Legacy orders without final_sku retain the existing alias
+                // compatibility path until a separately approved backfill.
+                $erpSku=trim((string)$item->sku);
+                $resolved=$this->identity->resolve($erpSku);
+                if (($resolved['status']??null)!=='resolved'||(int)$resolved['product_id']!==$pid)
+                    throw new RuntimeException('SHIPOUT_SKU_NOT_VERIFIED');
+                $options=$candidates[$pid]??[];
+                if (in_array($erpSku,$options,true))$sku=$erpSku;
+                elseif(count($options)===1)$sku=$options[0];
+                elseif($options===[])throw new RuntimeException('SHIPOUT_PROVIDER_SKU_NOT_FOUND');
+                else throw new RuntimeException('SHIPOUT_PROVIDER_SKU_AMBIGUOUS');
+            }
             if (isset($used[$sku]))throw new RuntimeException('SHIPOUT_DUPLICATE_SKU_REQUIRES_AGGREGATION');
             $used[$sku]=true;
             $qty=(int)$item->quantity;

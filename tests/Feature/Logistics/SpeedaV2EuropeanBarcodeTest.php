@@ -76,6 +76,25 @@ final class SpeedaV2EuropeanBarcodeTest extends TestCase
         $this->assertSame(['TEST-SKU-FR','6977291390537',null], array_slice($rows[2], 24, 3));
         $this->assertSame(['TEST-SKU-US','6977291390285',null], array_slice($rows[3], 24, 3));
     }
+    public function test_verified_factory_final_sku_exports_manufacturer_barcode_from_linked_product(): void
+    {
+        $order = $this->order('UAT-SOURCE-4PX', 'FR', '0697729139053', 912);
+        $item = $order->items()->firstOrFail();
+        $warehouseId = (int) $order->shipment->warehouse_id;
+        \App\Modules\Products\Infrastructure\Models\ProductWarehouseSku::create([
+            'product_id' => $item->product_id, 'warehouse_id' => $warehouseId,
+            'sku' => 'UAT-FACTORY-4PX', 'verified_at' => now(),
+            'verification_note' => 'Factory physical SKU matched to product and barcode',
+        ]);
+        $item->update([
+            'source_sku' => 'UAT-SOURCE-4PX',
+            'resolved_fulfillment_sku' => 'UAT-FACTORY-4PX',
+            'final_sku' => 'UAT-FACTORY-4PX',
+        ]);
+        $rows = $this->rows([$order->fresh()]);
+        $this->assertSame(['UAT-FACTORY-4PX', '0697729139053', null], array_slice($rows[2], 24, 3));
+    }
+
     public function test_missing_barcode_leaves_z_blank_without_blocking_any_orders(): void
     {
         $good = $this->order('GOOD-DE', 'DE', '6977291390537', 904);

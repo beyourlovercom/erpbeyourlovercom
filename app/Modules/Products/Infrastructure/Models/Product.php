@@ -49,6 +49,11 @@ class Product extends Model
         return $this->hasMany(ProductSkuAlias::class);
     }
 
+    public function warehouseSkus(): HasMany
+    {
+        return $this->hasMany(ProductWarehouseSku::class);
+    }
+
     public function costSources(): HasMany
     {
         return $this->hasMany(ProductCostSource::class);

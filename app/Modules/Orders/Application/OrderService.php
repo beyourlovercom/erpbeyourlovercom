@@ -78,6 +78,9 @@ final class OrderService
                 $order->items()->create([
                     ...$item,
                     'sku' => $resolved['sku'],
+                    'source_sku' => $resolved['sku'],
+                    'source_product_id' => $item['product_id'],
+                    'source_product_summary' => $resolved['product_summary'],
                     'product_summary' => $resolved['product_summary'],
                     'line_revenue' => $this->lineRevenue($item['unit_price'], (int) $item['quantity']),
                 ]);
@@ -239,6 +242,14 @@ final class OrderService
                         'product_summary' => $resolved['product_summary'],
                         'line_revenue' => $this->lineRevenue($item['unit_price'], (int) $item['quantity']),
                     ];
+                    if (! $existingItem || (int) $existingItem->product_id !== (int) $item['product_id']
+                        || strcasecmp((string) ($existingItem->source_sku ?: $existingItem->sku), $resolved['sku']) !== 0) {
+                        $payload['source_sku'] = $resolved['sku'];
+                        $payload['source_product_id'] = $item['product_id'];
+                        $payload['source_product_summary'] = $resolved['product_summary'];
+                        $payload['resolved_fulfillment_sku'] = null;
+                        $payload['final_sku'] = null;
+                    }
                     if ($existingItem) {
                         $existingItem->update($payload);
                         $retainedItemIds[] = $existingItem->id;
@@ -288,6 +299,9 @@ final class OrderService
                 'product_id' => $resolved['product_id'],
                 'woocommerce_line_item_id' => $lineId,
                 'sku' => $resolved['sku'],
+                'source_sku' => $resolved['sku'],
+                'source_product_id' => $resolved['product_id'],
+                'source_product_summary' => $resolved['product_summary'],
                 'product_summary' => $resolved['product_summary'],
                 'quantity' => (int) $item['quantity'],
                 'unit_price' => (string) $item['unit_price'],

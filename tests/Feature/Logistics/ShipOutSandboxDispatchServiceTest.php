@@ -8,6 +8,7 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutProviderSkuStockVerifier;
 use App\Modules\Logistics\Application\ShipOut\ShipOutSandboxLabelStage;
 use App\Modules\Logistics\Application\ShipOut\ShipOutOutboundPayloadFactory;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
+use App\Modules\Products\Infrastructure\Models\ProductWarehouseSku;
 use App\Modules\Products\Application\SkuMatchKey;
 use App\Modules\Logistics\Application\ShipOut\ShipOutTrackingApplyService;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutReadOnlyGateway;
@@ -425,6 +426,77 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
         $this->assertSame([['omsSku'=>'MOREPLUS-UAT-PHYSICAL','qty'=>1]],
             $verified[0]['shipmentForms'][0]['productList']);
         Http::assertSentCount(2);
+    }
+
+    public function test_stock_preflight_preserves_verified_final_sku_even_when_source_is_also_in_provider_catalog(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_inventory_preflight_enabled', true);
+        config()->set('shipout.sandbox_client_org_id', 'TEST-CLIENT');
+        $order = $this->order();
+        $item = $order->items->first();
+        $final = 'MOREPLUS-PHYSICAL-FINAL';
+        ProductWarehouseSku::query()->create([
+            'product_id' => $item->product_id,
+            'warehouse_id' => $order->shipment->warehouse_id,
+            'sku' => $final, 'is_active' => true,
+            'verified_at' => now(), 'verification_note' => 'Synthetic test mapping only',
+        ]);
+        $item->forceFill(['final_sku' => $final])->save();
+
+        Http::fake(fn ($req) => str_contains($req->url(), '/product/queryList')
+            ? Http::response(['result' => 'OK', 'data' => ['total' => 2, 'records' => [
+                ['omsSku' => 'SHIPOUT-LOCAL-TEST', 'skuId' => 'S1'],
+                ['omsSku' => $final, 'skuId' => 'S2'],
+            ]]], 200)
+            : Http::response(['result' => 'OK', 'data' => ['total' => 2, 'records' => [
+                ['warehouseId' => 'TEST-W', 'omsSku' => 'SHIPOUT-LOCAL-TEST', 'availableQuantity' => 10],
+                ['warehouseId' => 'TEST-W', 'omsSku' => $final, 'availableQuantity' => 3],
+            ]]], 200));
+        Http::preventStrayRequests();
+
+        $payload = app(ShipOutOutboundPayloadFactory::class)
+            ->fromApprovedOrder($order, 'TEST-W', '2026-10-30', '9');
+        $this->assertSame($final, $payload[0]['shipmentForms'][0]['productList'][0]['omsSku']);
+        $verified = app(ShipOutProviderSkuStockVerifier::class)->verify($order, $payload, 'TEST-W');
+        $this->assertSame([['omsSku' => $final, 'qty' => 1]],
+            $verified[0]['shipmentForms'][0]['productList']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_stock_preflight_cannot_substitute_source_when_verified_final_sku_is_missing_at_provider(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_inventory_preflight_enabled', true);
+        config()->set('shipout.sandbox_client_org_id', 'TEST-CLIENT');
+        $order = $this->order();
+        $item = $order->items->first();
+        $final = 'MOREPLUS-MISSING-FINAL';
+        ProductWarehouseSku::query()->create([
+            'product_id' => $item->product_id,
+            'warehouse_id' => $order->shipment->warehouse_id,
+            'sku' => $final, 'is_active' => true,
+            'verified_at' => now(), 'verification_note' => 'Synthetic test mapping only',
+        ]);
+        $item->forceFill(['final_sku' => $final])->save();
+        Http::fake(fn ($req) => str_contains($req->url(), '/product/queryList')
+            ? Http::response(['result' => 'OK', 'data' => ['total' => 1, 'records' => [
+                ['omsSku' => 'SHIPOUT-LOCAL-TEST', 'skuId' => 'S1'],
+            ]]], 200)
+            : Http::response(['result' => 'OK', 'data' => ['total' => 1, 'records' => [
+                ['warehouseId' => 'TEST-W', 'omsSku' => 'SHIPOUT-LOCAL-TEST', 'availableQuantity' => 10],
+            ]]], 200));
+        Http::preventStrayRequests();
+
+        $payload = app(ShipOutOutboundPayloadFactory::class)
+            ->fromApprovedOrder($order, 'TEST-W', '2026-10-30', '9');
+        $this->expectExceptionMessage('SHIPOUT_PROVIDER_SKU_NOT_FOUND');
+        try {
+            app(ShipOutProviderSkuStockVerifier::class)->verify($order, $payload, 'TEST-W');
+        } finally {
+            Http::assertSentCount(2);
+            $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        }
     }
 
     public function test_stock_preflight_no_available_qty_fails_closed_without_dispatch(): void

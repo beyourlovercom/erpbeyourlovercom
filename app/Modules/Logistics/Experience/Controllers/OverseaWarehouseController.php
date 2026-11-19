@@ -122,7 +122,8 @@ final class OverseaWarehouseController
                     ->where('tracking_number', 'like', $like)
                     ->orWhereHas('order', fn ($orders) => $orders->where('erp_order_id', 'like', $like))
                     ->orWhereHas('order.address', fn ($addresses) => $addresses->where('recipient_name', 'like', $like))
-                    ->orWhereHas('order.items', fn ($items) => $items->where('sku', 'like', $like)));
+                    ->orWhereHas('order.items', fn ($items) => $items->where('sku', 'like', $like)
+                        ->orWhere('source_sku', 'like', $like)->orWhere('final_sku', 'like', $like)));
             }
             foreach (['carrier' => 'carrier', 'tracking' => 'tracking_number'] as $key => $field) {
                 if ($gridFilters[$key] !== '') {
@@ -790,6 +791,7 @@ final class OverseaWarehouseController
 
             'items' => $order?->items->map(fn ($item): array => [
                 'sku' => WarehouseSkuPresentation::sku($item),
+                'final_sku' => $item->final_sku,
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'quantity' => (int) $item->quantity,
             ])->values()->all() ?? [],

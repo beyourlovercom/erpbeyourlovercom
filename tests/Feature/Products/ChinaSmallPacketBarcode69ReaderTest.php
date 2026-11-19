@@ -48,6 +48,40 @@ final class ChinaSmallPacketBarcode69ReaderTest extends TestCase
         $this->assertSame('6977291390537', $rows[0]['barcode_69']);
     }
 
+    public function test_verified_final_sku_keeps_its_product_barcode_but_unverified_alias_fails(): void
+    {
+        $product = Product::create([
+            'sku' => 'UAT-SOURCE-69', 'name' => 'QA', 'product_type' => 'simple',
+            'source_type' => 'manual', 'barcode_69' => '6977291390537',
+        ]);
+        $warehouse = \App\Modules\Inventory\Infrastructure\Models\Warehouse::query()->firstOrCreate(
+            ['code' => 'FACTORY'],
+            ['slug' => 'factory', 'name' => 'Factory', 'type' => 'owned', 'is_domestic' => true, 'is_active' => true],
+        );
+        $mapping = \App\Modules\Products\Infrastructure\Models\ProductWarehouseSku::create([
+            'product_id' => $product->id, 'warehouse_id' => $warehouse->id,
+            'sku' => 'UAT-CN-69', 'verified_at' => now(),
+            'verification_note' => 'Physical warehouse barcode confirmed',
+        ]);
+        $order = Order::create([
+            'internal_order_number' => 'BC69-'.uniqid(), 'erp_order_id' => '007-BC69-'.uniqid(),
+            'source_type' => 'manual', 'order_kind' => 'customer',
+            'order_date' => now()->toDateString(), 'order_status' => 'pending_shipment', 'currency' => 'USD',
+        ]);
+        $order->shipment()->create(['warehouse_id' => $warehouse->id, 'shipment_status' => 'pending']);
+        $order->items()->create([
+            'product_id' => $product->id, 'sku' => 'UAT-SOURCE-69', 'source_sku' => 'UAT-SOURCE-69',
+            'resolved_fulfillment_sku' => 'UAT-CN-69', 'final_sku' => 'UAT-CN-69',
+            'product_summary' => 'QA product', 'quantity' => 2, 'unit_price' => 0, 'line_revenue' => 0,
+        ]);
+        $reader = app(ChinaSmallPacketBarcode69Reader::class);
+        $this->assertSame([['sku' => 'UAT-CN-69', 'quantity' => 2, 'barcode_69' => '6977291390537']],
+            $reader->forOrder($order));
+        $mapping->update(['verified_at' => null]);
+        $this->expectException(ValidationException::class);
+        $reader->forOrder($order);
+    }
+
     public function test_refuses_product_id_with_different_fulfillment_sku(): void
     {
         $product = Product::create([

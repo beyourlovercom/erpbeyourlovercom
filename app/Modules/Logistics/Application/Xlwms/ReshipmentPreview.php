@@ -129,7 +129,7 @@ final class ReshipmentPreview {
             || $snapshot->updated_at->diffInSeconds(now()) > 120) return false;
         $qtyBySku=[];
         foreach ($order->items as $item) {
-            $sku=trim((string)($item->resolved_fulfillment_sku ?: $item->sku));
+            $sku=trim((string)($item->final_sku ?: $item->resolved_fulfillment_sku ?: $item->sku));
             $product=(int)$item->product_id;
             $qty=(int)$item->quantity;
             if ($sku==='' || $product<1 || $qty<1) return false;

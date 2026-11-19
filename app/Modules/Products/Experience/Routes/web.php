@@ -6,6 +6,7 @@ use App\Modules\Products\Experience\Controllers\ProductBarcode69ImportController
 use App\Modules\Products\Experience\Controllers\ProductPackagingProfileController;
 use App\Modules\Products\Experience\Controllers\ProductSkuController;
 use App\Modules\Products\Experience\Controllers\ProductSkuAliasController;
+use App\Modules\Products\Experience\Controllers\ProductWarehouseSkuController;
 use App\Modules\Products\Experience\Controllers\ProductWeightEvidenceController;
 use App\Modules\Products\Experience\Controllers\ProductParameterFactoryController;
 use App\Modules\Products\Experience\Controllers\ProductParameterBatchController;
@@ -28,6 +29,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
 });
 
 Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): void {
+    Route::put('/products/{productId}/warehouse-skus/{warehouseId}', [ProductWarehouseSkuController::class, 'upsert'])
+        ->whereNumber('productId')->whereNumber('warehouseId')->name('products.warehouse-skus.upsert');
+    Route::patch('/products/{productId}/warehouse-skus/{warehouseId}/deactivate', [ProductWarehouseSkuController::class, 'deactivate'])
+        ->whereNumber('productId')->whereNumber('warehouseId')->name('products.warehouse-skus.deactivate');
     Route::post('/products/parameter-tasks/bulk', [ProductParameterBatchController::class, 'update'])->name('products.parameter.tasks.bulk');
     Route::post('/products/parameter-tasks/{product}', [ProductParameterFactoryController::class, 'assign'])->whereNumber('product')->name('products.parameter.task');
     Route::post('/products/parameter-submissions/{product}/{submission}/review', [ProductParameterFactoryController::class, 'review'])->whereNumber('product')->whereNumber('submission')->name('products.parameter.review');
