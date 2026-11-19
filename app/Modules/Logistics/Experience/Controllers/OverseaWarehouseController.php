@@ -794,6 +794,7 @@ final class OverseaWarehouseController
                 'final_sku' => $item->final_sku,
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'quantity' => (int) $item->quantity,
+                'material_full_name' => $item->product?->material_full_name,
             ])->values()->all() ?? [],
         ];
     }

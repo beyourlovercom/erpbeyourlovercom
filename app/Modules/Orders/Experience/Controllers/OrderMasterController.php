@@ -8,6 +8,7 @@ use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderOmsAvailability;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Application\ProductOrderItemMetadata;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -20,7 +21,7 @@ use Inertia\Response;
  */
 final class OrderMasterController
 {
-    public function index(Request $request): Response
+    public function index(Request $request, ProductOrderItemMetadata $metadata): Response
     {
         abort_unless($request->user()?->can('orders.view'), 403);
         $data = $request->validate([
@@ -121,13 +122,15 @@ final class OrderMasterController
             'status' => 'orders.order_status',
         ][$filters['sort']];
         $orders = $query->with([
-            'owner:id,name', 'address', 'items', 'shipment.warehouse',
+            'owner:id,name', 'address', 'items.product', 'shipment.warehouse',
             'fulfillmentParent' => fn ($parent) => $parent->withTrashed()->select('id', 'operational_archived_at', 'archived_at', 'deleted_at'),
         ])->orderBy($sortColumn, $filters['direction'])->orderBy('orders.id', 'desc')
             ->paginate((int) $filters['per_page'])->withQueryString();
 
+        $fallback = $metadata->fallbackProductsForOrders($orders->getCollection());
+
         return Inertia::render('Orders/Master', [
-            'orders' => $orders->through(function (Order $order): array {
+            'orders' => $orders->through(function (Order $order) use ($metadata, $fallback): array {
                 $parent = $order->fulfillmentParent;
                 $isTrash = $order->deleted_at !== null || $order->archived_at !== null
                     || $parent?->deleted_at !== null || $parent?->archived_at !== null;
@@ -145,6 +148,11 @@ final class OrderMasterController
                     'recipient' => $order->address?->recipient_name,
                     'email' => $order->address?->email,
                     'skus' => $order->items->map(fn ($item) => WarehouseSkuPresentation::sku($item))->filter()->unique()->implode(' / '),
+                    'material_full_name' => $order->items->map(function ($item) use ($metadata, $fallback): ?string {
+                        $name = $metadata->productForItem($item, $fallback)?->material_full_name;
+
+                        return $name ? WarehouseSkuPresentation::sku($item).'：'.$name : null;
+                    })->filter()->unique()->implode('；'),
                     'date' => $order->order_date?->toDateString(),
                     'owner' => $order->owner?->name,
                     'detail_url' => $isTrash ? '/orders/trash' : '/orders/'.$order->id,

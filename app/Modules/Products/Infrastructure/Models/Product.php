@@ -5,6 +5,7 @@ namespace App\Modules\Products\Infrastructure\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Product extends Model
 {
@@ -17,6 +18,8 @@ class Product extends Model
         'brand_local_override',
         'woocommerce_brand',
         'has_battery',
+        'has_liquid',
+        'material_full_name',
         'label_sku',
         'label_description',
         'gtin',
@@ -74,7 +77,7 @@ class Product extends Model
         return $this->hasMany(ProductMedia::class)->orderBy('position');
     }
 
-    public function parameterTask(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function parameterTask(): HasOne
     {
         return $this->hasOne(ProductParameterTask::class);
     }
@@ -89,7 +92,7 @@ class Product extends Model
         return $this->hasMany(ProductParameterAccessory::class);
     }
 
-    public function packagingProfile(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function packagingProfile(): HasOne
     {
         return $this->hasOne(ProductPackagingProfile::class);
     }
@@ -113,6 +116,7 @@ class Product extends Model
         'woocommerce_product_id' => 'integer',
         'is_active' => 'boolean',
         'has_battery' => 'boolean',
+        'has_liquid' => 'boolean',
         'brand_local_override' => 'boolean',
         'weight_kg' => 'decimal:4',
         'weight_evidence_id' => 'integer',

@@ -6,6 +6,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -92,6 +93,26 @@ final class OrderMasterTest extends TestCase
             ->assertInertia(fn ($page) => $page->where('orders.total', 1));
         $this->actingAs($reader)->getJson('/orders?sort=orders.id')->assertUnprocessable();
         $this->actingAs($reader)->getJson('/orders?per_page=1000')->assertUnprocessable();
+    }
+
+    public function test_master_projects_optional_full_material_name_by_order_sku(): void
+    {
+        $viewer = $this->userWith(['orders.view']);
+        $order = $this->makeOrder($viewer, 'material-name');
+        Product::create([
+            'source_type' => 'manual', 'product_type' => 'simple',
+            'sku' => 'BV339A', 'name' => 'Massager',
+            'material_full_name' => 'BV339A胸部按摩仪成品紫色含润滑油版',
+        ]);
+        $order->items()->create([
+            'sku' => 'BV339A', 'product_summary' => 'Massager',
+            'quantity' => 1, 'unit_price' => '1.00', 'line_revenue' => '1.00',
+        ]);
+        $this->actingAs($viewer)->get('/orders?search=BV339A')->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('orders.total', 1)
+                ->where('orders.data.0.material_full_name',
+                    'BV339A：BV339A胸部按摩仪成品紫色含润滑油版'));
     }
 
     public function test_old_master_url_redirects_and_preserves_filter_query(): void
