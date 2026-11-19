@@ -60,7 +60,7 @@ test('R6 isolated Dev: canonical /orders shows XLSX import and previews without 
   await expect(page.locator('.orders-master')).toBeVisible({ timeout: 20000 })
   await expect(page.getByText('全部可查看记录 4 单')).toBeVisible()
   await expect(page.getByRole('button', { name: '导入', exact: true })).toBeVisible({ timeout: 20000 })
-  await expect(page.getByRole('link', { name: '归档清单' })).toBeVisible()
+  await expect(page.locator('.orders-master').getByRole('link', { name: '归档清单' })).toBeVisible()
 
   await page.getByRole('button', { name: '导入', exact: true }).click()
   const modal = page.getByRole('dialog', { name: '导入订单' })
