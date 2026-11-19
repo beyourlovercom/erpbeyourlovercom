@@ -14,14 +14,42 @@ use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 final class DomesticBusinessReviewTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_pending_mixed_order_has_persistent_liquid_flag_and_material_name_from_sku_fallback(): void
+    {
+        $this->withoutVite();
+        $actor = $this->userWith(['logistics.view', 'domestic.review']);
+        $product = Product::create([
+            'source_type' => 'manual', 'product_type' => 'simple',
+            'sku' => 'BY489A', 'name' => 'Liquid Product',
+            'has_liquid' => true, 'material_full_name' => 'BEYOURLOVER  35毫升软管润滑油',
+        ]);
+        $order = $this->order();
+        $order->items()->create([
+            'sku' => 'BY489A', 'product_summary' => 'Liquid tube',
+            'quantity' => 1, 'unit_price' => '10.00', 'line_revenue' => '10.00',
+        ]);
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/approve')->assertRedirect();
+        $this->get('/logistics/china?view=pending')->assertOk()->assertInertia(
+            fn ($page) => $page->component('Logistics/Domestic/Index')
+                ->where('rows.total', 1)
+                ->where('rows.data.0.has_liquid', true)
+                ->where('rows.data.0.liquid_skus.0', 'BY489A')
+                ->where('rows.data.0.items', fn ($items) => collect($items)
+                    ->contains(fn ($item) => $item['sku'] === 'BY489A'
+                        && $item['has_liquid'] === true
+                        && $item['material_full_name'] === $product->material_full_name)
+                    && collect($items)->contains(fn ($item) => $item['has_liquid'] === false))
+        );
+    }
 
     public function test_review_split_child_uses_parent_payment_date_in_real_inertia_response(): void
     {

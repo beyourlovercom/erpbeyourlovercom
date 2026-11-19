@@ -92,6 +92,8 @@ const reviewInitial = () => Object.fromEntries(reviewParameterFields.map(
 const parametersForm = useForm({
   barcode_69: String(props.product.barcode_69 ?? ''),
   has_battery: Boolean(props.product.has_battery ?? true),
+  has_liquid: Boolean(props.product.has_liquid ?? false),
+  material_full_name: String(props.product.material_full_name ?? ''),
   weight_kg: String(props.product.weight_kg ?? ''),
   shipping_weight_kg: String(props.product.shipping_weight_kg ?? ''),
   length_cm: String(props.product.length_cm ?? ''),
@@ -103,6 +105,8 @@ const parameterErrors = computed(() => parametersForm.errors as Record<string, s
 function beginParametersEdit() {
   parametersForm.barcode_69 = String(props.product.barcode_69 ?? '')
   parametersForm.has_battery = Boolean(props.product.has_battery ?? true)
+  parametersForm.has_liquid = Boolean(props.product.has_liquid ?? false)
+  parametersForm.material_full_name = String(props.product.material_full_name ?? '')
   for (const field of masterParameterFields) {
     parametersForm[field.key] = String(props.product[field.key] ?? '')
   }
@@ -123,6 +127,14 @@ function selectBatteryOption(value: boolean, event: Event) {
     return
   }
   parametersForm.has_battery = value
+}
+function selectLiquidOption(value: boolean, event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.checked) {
+    input.checked = true
+    return
+  }
+  parametersForm.has_liquid = value
 }
 function saveInlineParameters() {
   parametersForm.transform(data => {
@@ -328,6 +340,11 @@ const selectRelative = async (tab: Tab, delta: number) => {
             <div class="product360-inline-field"><span>产品名称</span><strong>{{ display(product.name) }}</strong></div>
             <div class="product360-inline-field"><span>品牌 <small>来自 WordPress brand</small></span><strong>{{ display(product.brand) }}</strong></div>
             <div class="product360-inline-field"><span>型号（SKU）</span><strong>{{ display(product.sku) }}</strong></div>
+            <label class="product360-inline-field" style="grid-column:1/-1">
+              <span>物料全称 <small>仓库采购核对使用；保留完整 SKU、中英文与规格，不同步至 Woo</small></span>
+              <textarea v-model="parametersForm.material_full_name" rows="2" maxlength="10000" placeholder="待填写物料全称" :aria-invalid="!!parameterErrors.material_full_name" />
+              <small v-if="parameterErrors.material_full_name" class="product360-inline-error">{{ parameterErrors.material_full_name }}</small>
+            </label>
             <fieldset class="product360-inline-field" style="border:0;padding:0;margin:0">
               <legend>是否带电</legend>
               <div style="display:flex;gap:16px;align-items:center;margin-top:8px">
@@ -335,6 +352,14 @@ const selectRelative = async (tab: Tab, delta: number) => {
                 <label><input type="checkbox" :checked="!parametersForm.has_battery" @change="selectBatteryOption(false, $event)"> 不带电</label>
               </div>
               <small v-if="parameterErrors.has_battery" class="product360-inline-error">{{ parameterErrors.has_battery }}</small>
+            </fieldset>
+            <fieldset class="product360-inline-field" style="border:0;padding:0;margin:0">
+              <legend>是否带液体</legend>
+              <div style="display:flex;gap:16px;align-items:center;margin-top:8px">
+                <label><input type="checkbox" :checked="parametersForm.has_liquid" @change="selectLiquidOption(true, $event)"> 带液体</label>
+                <label><input type="checkbox" :checked="!parametersForm.has_liquid" @change="selectLiquidOption(false, $event)"> 不带液体</label>
+              </div>
+              <small v-if="parameterErrors.has_liquid" class="product360-inline-error">{{ parameterErrors.has_liquid }}</small>
             </fieldset>
             <label class="product360-inline-field" v-for="field in masterParameterFields" :key="field.key">
               <span>{{ field.label }} <small>{{ field.suffix }}</small></span>
@@ -360,7 +385,8 @@ const selectRelative = async (tab: Tab, delta: number) => {
         </div>
         <div v-else class="product360-detail-grid product360-parameters-grid">
           <p>产品名称：{{ display(product.name) }}</p><p>品牌：{{ display(product.brand) }}</p>
-          <p>型号（SKU）：{{ display(product.sku) }}</p><p>是否带电：{{ product.has_battery ? '带电' : '不带电' }}</p>
+          <p>型号（SKU）：{{ display(product.sku) }}</p><p style="overflow-wrap:anywhere">物料全称：{{ display(product.material_full_name) }}</p>
+          <p>是否带电：{{ product.has_battery ? '带电' : '不带电' }}</p><p>是否带液体：{{ product.has_liquid ? '带液体' : '不带液体' }}</p>
           <p>产品类型：{{ display(product.product_type) }}</p><p>产品材质：{{ approvedMeasure('material') }}</p>
           <p>重量组成说明：{{ approvedMeasure('weight_composition') }}</p>
           <p>已审核工厂净重：{{ approvedMeasure('net_weight_kg',' kg') }}</p>
@@ -529,9 +555,11 @@ const selectRelative = async (tab: Tab, delta: number) => {
 .product360-inline-field{display:flex;flex-direction:column;gap:5px;font-size:13px;color:#334155}
 .product360-inline-field>span{font-weight:600}
 .product360-inline-field small{color:#718096;font-weight:400}
-.product360-inline-field input{width:100%;min-width:0;height:39px;background:#fff;border:1px solid #cad8d0;border-radius:7px;padding:7px 11px;font-size:13px}
-.product360-inline-field input:focus{outline:2px solid #cce9da;outline-offset:1px;border-color:#408c68}
-.product360-inline-field input[aria-invalid=true]{border-color:#b42318}
+.product360-inline-field input:not([type=checkbox]),.product360-inline-field textarea{width:100%;min-width:0;background:#fff;border:1px solid #cad8d0;border-radius:7px;padding:7px 11px;font-size:13px}
+.product360-inline-field input:not([type=checkbox]){height:39px}
+.product360-inline-field textarea{resize:vertical;min-height:62px;line-height:1.5}
+.product360-inline-field input:focus,.product360-inline-field textarea:focus{outline:2px solid #cce9da;outline-offset:1px;border-color:#408c68}
+.product360-inline-field input[aria-invalid=true],.product360-inline-field textarea[aria-invalid=true]{border-color:#b42318}
 .product360-inline-error{color:#b42318!important;font-size:12px}
 .product360-inline-success{background:#eef9f0;border-radius:6px;padding:9px 12px;color:#235b40;font-size:12px;margin-top:12px}
 @media(max-width:1000px){.product360-inline-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
