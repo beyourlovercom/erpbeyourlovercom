@@ -2,8 +2,8 @@
 
 namespace App\Modules\Orders\Experience\Controllers;
 
-use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderOmsAvailability;
@@ -54,9 +54,10 @@ final class OrderOmsTransferController
             $payload = $request->validate([
                 'file' => ['required', 'file', 'extensions:xlsx', 'max:5120'],
                 'import_type' => ['required', Rule::in(OrderOmsBatchImport::IMPORT_TYPES)],
+                'partner_id' => ['nullable', 'integer', 'min:1'],
             ]);
             KolOrderAccessScope::authorizeCreate($request->user(), OrderOmsBatchImport::importKind($payload['import_type']));
-            $result = $this->import->inspect($payload['file'], $request->user(), $payload['import_type']);
+            $result = $this->import->inspect($payload['file'], $request->user(), $payload['import_type'], isset($payload['partner_id']) ? (int) $payload['partner_id'] : null);
             unset($result['orders']);
 
             return response()->json($result);
@@ -75,11 +76,12 @@ final class OrderOmsTransferController
                 'token' => ['required', 'string', 'max:8000'],
                 'import_type' => ['required', Rule::in(OrderOmsBatchImport::IMPORT_TYPES)],
                 'confirm' => ['required', 'accepted'],
+                'partner_id' => ['nullable', 'integer', 'min:1'],
             ]);
 
             KolOrderAccessScope::authorizeCreate($request->user(), OrderOmsBatchImport::importKind($payload['import_type']));
 
-            return response()->json($this->import->commit($payload['file'], $payload['token'], $request->user(), $payload['import_type']));
+            return response()->json($this->import->commit($payload['file'], $payload['token'], $request->user(), $payload['import_type'], isset($payload['partner_id']) ? (int) $payload['partner_id'] : null));
         } catch (ValidationException $e) {
             return response()->json(['message' => '批量创建失败，请重新预检', 'errors' => $e->errors()], 422);
         }
