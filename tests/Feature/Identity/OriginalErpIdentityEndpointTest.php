@@ -29,7 +29,7 @@ final class OriginalErpIdentityEndpointTest extends TestCase
 
         $result = $this->actingAs($user)->getJson('/_erp2/identity?user_id='.$other->id);
         $result->assertOk()
-            ->assertJsonPath('source', 'ERP_ORIGINAL_LARAVEL_PRODUCTION_SESSION_V1')
+            ->assertJsonPath('source', 'ERP_CANONICAL_LARAVEL_DEV_SESSION_V1')
             ->assertJsonPath('user.id', $user->id)
             ->assertJsonPath('user.email', $user->email)
             ->assertJsonPath('permissionMode', 'role')
@@ -75,6 +75,14 @@ final class OriginalErpIdentityEndpointTest extends TestCase
         $role->permissions()->sync([$view->id]);
         $this->actingAs($user->fresh())->getJson('/_erp2/identity')->assertOk()
             ->assertJsonPath('effectivePermissionKeys', ['logistics.view']);
+    }
+
+    public function test_real_production_session_retains_production_source_marker(): void
+    {
+        $this->app['env'] = 'production';
+        $user = User::factory()->create(['is_active' => true]);
+        $this->actingAs($user)->getJson('/_erp2/identity')->assertOk()
+            ->assertJsonPath('source', 'ERP_ORIGINAL_LARAVEL_PRODUCTION_SESSION_V1');
     }
 
     public function test_super_admin_and_inactive_users_do_not_bypass_canonical_rules(): void

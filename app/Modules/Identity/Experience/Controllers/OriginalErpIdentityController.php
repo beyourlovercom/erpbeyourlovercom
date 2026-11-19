@@ -33,7 +33,9 @@ final class OriginalErpIdentityController
                 : $roles->flatMap(fn ($role) => $role->permissions->pluck('key'))->all());
 
         return response()->json([
-            'source' => 'ERP_ORIGINAL_LARAVEL_PRODUCTION_SESSION_V1',
+            'source' => app()->environment('production')
+                ? 'ERP_ORIGINAL_LARAVEL_PRODUCTION_SESSION_V1'
+                : 'ERP_CANONICAL_LARAVEL_DEV_SESSION_V1',
             'user' => ['id' => $user->id, 'name' => $user->name, 'email' => $user->email],
             'permissionMode' => $mode,
             'roleKeys' => $roles->pluck('key')->unique()->sort()->values()->all(),
