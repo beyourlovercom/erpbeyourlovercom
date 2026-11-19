@@ -6,6 +6,8 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Finance\Application\FxReferenceSettingsService;
+use App\Modules\Identity\Application\RolePreset;
+use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Products\Application\ConfirmedProductCostSourceImportService;
 use App\Modules\Products\Application\MonthlyInventoryCostResolutionPlanner;
 use App\Modules\Products\Application\MonthlyInventoryCostWorkbookReader;
@@ -29,10 +31,11 @@ final class MonthlyInventoryCostImportController
         private readonly AuditRecorder $audit,
     ) {}
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
         return Inertia::render('Products/MonthlyCostImport', [
-            'applyEnabled' => ! app()->environment('production') && (bool) config('erp_cost_import.dev_apply_enabled', false),
+            'applyEnabled' => $this->canApply($request),
+            'applyMode' => app()->environment('production') ? 'production' : 'dev',
         ]);
     }
 
@@ -148,10 +151,13 @@ final class MonthlyInventoryCostImportController
 
     public function confirm(Request $request): JsonResponse
     {
-        // No Production mutation endpoint is enabled by this Work Package.
-        abort_if(app()->environment('production') || ! config('erp_cost_import.dev_apply_enabled', false), 403, '产品成本导入仅开放隔离 Dev UAT');
+        abort_unless($this->canApply($request), 403, '仅允许已启用的管理员成本批次确认');
         $data = $this->validateResolutionRequest($request);
-        $request->validate(['plan_fingerprint' => ['required', 'string', 'size:64']]);
+        $approval = $request->validate([
+            'plan_fingerprint' => ['required', 'string', 'size:64'],
+            'approval_phrase' => ['required', 'string', 'max:100'],
+            'approval_reason' => ['required', 'string', 'min:8', 'max:500'],
+        ]);
         $batch = $this->loadBatch($request, $data['fingerprint']);
         $decisions = $data['decisions'] ?? [];
         $preflight = $this->buildPlan($batch, $decisions);
@@ -161,10 +167,21 @@ final class MonthlyInventoryCostImportController
         if (! $preflight['can_apply']) {
             throw ValidationException::withMessages(['plan_fingerprint' => '仍存在 SKU、价格或汇率阻断项，请先处理']);
         }
+        $expectedPhrase = '确认导入'.$preflight['summary']['canonical_create'].'条成本';
+        if (! hash_equals($expectedPhrase, trim((string) $approval['approval_phrase']))) {
+            throw ValidationException::withMessages(['approval_phrase' => '请准确输入本批新增成本的确认文字']);
+        }
 
-        $outcomes = DB::transaction(function () use ($preflight, $request, $batch): array {
+        $outcomes = DB::transaction(function () use ($preflight, $request, $batch, $data, $approval): array {
             $created = 0;
             $noop = 0;
+            // Serialize cost confirms for all affected products in MySQL. A second
+            // request must re-read committed sources after the first batch finishes.
+            $productIds = collect($preflight['canonical_plans'])
+                ->flatMap(fn (array $staged) => collect($staged['input_rows'])->pluck('erp_product_id'))
+                ->unique()->sort()->values()->all();
+            DB::table('products')->whereIn('id', $productIds)->orderBy('id')->lockForUpdate()->pluck('id');
+
             foreach ($preflight['canonical_plans'] as $effectiveFrom => $staged) {
                 // Verify canonical product/cost evidence again just before writing.
                 $fresh = $this->confirmed->plan($staged['input_rows'], $batch['source_reference'], $effectiveFrom);
@@ -203,13 +220,33 @@ final class MonthlyInventoryCostImportController
                 );
             }
 
+            $this->audit->record(
+                AuditActor::user($request->user(), AuditSource::Web),
+                'product.cost_import.batch_confirmed',
+                'monthly_product_cost_import',
+                $data['fingerprint'],
+                after: [
+                    'mode' => app()->environment('production') ? 'production' : 'dev',
+                    'source_reference' => $batch['source_reference'],
+                    'filename' => $batch['filename'],
+                    'plan_fingerprint' => $preflight['plan_fingerprint'],
+                    'effective_months' => array_keys($preflight['canonical_plans']),
+                    'created' => $created,
+                    'noop' => $noop,
+                    'approved_phrase' => $approval['approval_phrase'],
+                    'approval_reason' => trim((string) $approval['approval_reason']),
+                    'usd_to_cny_reference' => $preflight['fx']['usd_to_cny'] ?? null,
+                ],
+                reason: 'monthly_cost_import_admin_approved',
+            );
+
             return ['created' => $created, 'noop' => $noop];
         });
 
         Cache::forget($this->cacheKey($request, $data['fingerprint']));
         $request->session()->forget('monthly_cost_import_fingerprint');
 
-        return response()->json($outcomes + ['mode' => 'dev_apply']);
+        return response()->json($outcomes + ['mode' => app()->environment('production') ? 'production_apply' : 'dev_apply']);
     }
 
     /** @return array<string,mixed> */
@@ -295,6 +332,20 @@ final class MonthlyInventoryCostImportController
         }
 
         return $batch;
+    }
+
+    private function canApply(Request $request): bool
+    {
+        if (app()->environment('production')) {
+            $user = $request->user();
+
+            return (bool) config('erp_cost_import.production_apply_enabled', false)
+                && $user instanceof User
+                && (bool) $user->is_active
+                && $user->roles()->whereIn('key', ['super_admin', RolePreset::Administrator->roleKey()])->exists();
+        }
+
+        return (bool) config('erp_cost_import.dev_apply_enabled', false);
     }
 
     private function cacheKey(Request $request, string $fingerprint): string
