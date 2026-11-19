@@ -9,19 +9,23 @@ use App\Modules\Kol\Infrastructure\Models\KolImportPreviewCandidate;
 use App\Modules\Kol\Infrastructure\Models\KolReconciliationBatch;
 use App\Modules\Kol\Infrastructure\Models\KolReconciliationRow;
 use DateTimeImmutable;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Auth\Access\AuthorizationException;
 
 final class KolImportPreviewService
 {
     private const EMAIL_HEADERS = ['Contact Email', 'contact email', 'email', 'E-mail'];
+
     private const PROFILE_HEADERS = ['Influencer`s Link/URL', "Influencer's Link/URL", 'profile_url', 'profile url'];
 
     public function generate(int $reconciliationBatchId, Authenticatable $actor): KolImportPreviewBatch
     {
         $this->authorize($actor);
         $source = KolReconciliationBatch::query()->with(['rows'])->findOrFail($reconciliationBatchId);
+        if ($source->source_type === 'tencent_xlsx' && ! $actor->can('system.permissions.manage')) {
+            throw new AuthorizationException('仅管理员可处理腾讯 KOL 来源。');
+        }
         $rows = $source->rows;
         [$components, $unresolved] = $this->cluster($rows->all());
         $kolIndex = $this->kolIndex();
@@ -29,7 +33,9 @@ final class KolImportPreviewService
 
         return DB::transaction(function () use ($source, $rows, $components, $unresolved, $kolIndex, $ownerIndex, $actor): KolImportPreviewBatch {
             $batch = KolImportPreviewBatch::query()->firstOrNew(['reconciliation_batch_id' => $source->id]);
-            if ($batch->exists) $batch->candidates()->delete();
+            if ($batch->exists) {
+                $batch->candidates()->delete();
+            }
             $batch->fill([
                 'creator_user_id' => $actor->getAuthIdentifier(),
                 'status' => 'preview',
@@ -46,14 +52,21 @@ final class KolImportPreviewService
                 KolImportPreviewCandidate::create(array_merge($candidate, ['import_preview_batch_id' => $batch->id]));
             }
             $batch->update(['candidate_count' => count($components), 'preview_summary' => $summary]);
+
             return $batch->fresh(['reconciliationBatch', 'candidates.existingKol']);
         });
     }
 
-    public function workspace(): array
+    public function workspace(?Authenticatable $actor = null): array
     {
-        return KolReconciliationBatch::query()->latest('id')->limit(20)->get()->map(function (KolReconciliationBatch $batch): array {
+        $query = KolReconciliationBatch::query();
+        if (! $actor?->can('system.permissions.manage')) {
+            $query->where('source_type', '!=', 'tencent_xlsx');
+        }
+
+        return $query->latest('id')->limit(20)->get()->map(function (KolReconciliationBatch $batch): array {
             $preview = KolImportPreviewBatch::query()->where('reconciliation_batch_id', $batch->id)->first();
+
             return [
                 'id' => (int) $batch->id,
                 'original_filename' => $batch->original_filename,
@@ -69,6 +82,7 @@ final class KolImportPreviewService
     public function batchView(KolImportPreviewBatch $batch, bool $includeCandidates = true): array
     {
         $batch->loadMissing(['reconciliationBatch', 'candidates.existingKol']);
+
         return [
             'id' => (int) $batch->id,
             'reconciliation_batch_id' => (int) $batch->reconciliation_batch_id,
@@ -99,34 +113,55 @@ final class KolImportPreviewService
     /** @param array<int, KolReconciliationRow> $rows */
     private function cluster(array $rows): array
     {
-        $parent = []; $tokenOwner = []; $eligible = []; $unresolved = 0;
+        $parent = [];
+        $tokenOwner = [];
+        $eligible = [];
+        $unresolved = 0;
         foreach ($rows as $row) {
             $id = (int) $row->id;
             $tokens = $this->tokens($row);
-            if ($tokens === []) { $unresolved++; continue; }
+            if ($tokens === []) {
+                $unresolved++;
+
+                continue;
+            }
             $parent[$id] = $id;
             $eligible[$id] = ['row' => $row, 'tokens' => $tokens];
             foreach ($tokens as $token) {
-                if (isset($tokenOwner[$token])) $this->union($parent, $id, $tokenOwner[$token]);
-                else $tokenOwner[$token] = $id;
+                if (isset($tokenOwner[$token])) {
+                    $this->union($parent, $id, $tokenOwner[$token]);
+                } else {
+                    $tokenOwner[$token] = $id;
+                }
             }
         }
         $groups = [];
-        foreach ($eligible as $id => $item) $groups[$this->find($parent, $id)][] = $item;
+        foreach ($eligible as $id => $item) {
+            $groups[$this->find($parent, $id)][] = $item;
+        }
+
         return [array_values($groups), $unresolved];
     }
 
     private function find(array &$parent, int $id): int
     {
-        if ($parent[$id] !== $id) $parent[$id] = $this->find($parent, $parent[$id]);
+        if ($parent[$id] !== $id) {
+            $parent[$id] = $this->find($parent, $parent[$id]);
+        }
+
         return $parent[$id];
     }
 
     private function union(array &$parent, int $a, int $b): void
     {
-        $ra = $this->find($parent, $a); $rb = $this->find($parent, $b);
-        if ($ra === $rb) return;
-        $keep = min($ra, $rb); $move = max($ra, $rb); $parent[$move] = $keep;
+        $ra = $this->find($parent, $a);
+        $rb = $this->find($parent, $b);
+        if ($ra === $rb) {
+            return;
+        }
+        $keep = min($ra, $rb);
+        $move = max($ra, $rb);
+        $parent[$move] = $keep;
     }
 
     private function tokens(KolReconciliationRow $row): array
@@ -134,7 +169,10 @@ final class KolImportPreviewService
         $identity = $row->normalized_identity ?? [];
         $email = $this->normalizeEmail($identity['email'] ?? $this->value($row->raw_source ?? [], self::EMAIL_HEADERS));
         $tokens = $email ? ['email:'.$email] : [];
-        foreach ($this->profileUrls($row->raw_source ?? []) as $url) $tokens[] = 'url:'.$url;
+        foreach ($this->profileUrls($row->raw_source ?? []) as $url) {
+            $tokens[] = 'url:'.$url;
+        }
+
         return array_values(array_unique($tokens));
     }
 
@@ -143,11 +181,15 @@ final class KolImportPreviewService
     {
         $rows = array_map(fn (array $item) => $item['row'], $component);
         $tokens = [];
-        foreach ($component as $item) $tokens = array_merge($tokens, $item['tokens']);
-        $tokens = array_values(array_unique($tokens)); sort($tokens);
+        foreach ($component as $item) {
+            $tokens = array_merge($tokens, $item['tokens']);
+        }
+        $tokens = array_values(array_unique($tokens));
+        sort($tokens);
         $emails = array_values(array_map(fn ($t) => substr($t, 6), array_filter($tokens, fn ($t) => str_starts_with($t, 'email:'))));
         $urls = array_values(array_map(fn ($t) => substr($t, 4), array_filter($tokens, fn ($t) => str_starts_with($t, 'url:'))));
-        sort($emails); sort($urls);
+        sort($emails);
+        sort($urls);
         [$existingStatus, $existingId] = $this->existingKol($tokens, $kolIndex);
         [$ownerStatus, $ownerId, $ownerEvidence] = $this->owner($rows, $ownerIndex);
         $socials = $this->socials($rows, $urls);
@@ -172,17 +214,34 @@ final class KolImportPreviewService
         sort($affiliateIds);
 
         $issues = [];
-        if (count($emails) > 1) $issues[] = 'multiple_emails';
-        if (in_array($ownerStatus, ['unresolved', 'multiple', 'conflict'], true)) $issues[] = 'owner_'.$ownerStatus;
-        if ($variations !== []) $issues[] = 'field_variation';
-        if (count($socials) > 10) $issues[] = 'too_many_social_accounts';
-        if (count($affiliateIds) > 1) $issues[] = 'multiple_affiliate_accounts';
-        if ($display === '') $issues[] = 'missing_display_name';
+        if (count($emails) > 1) {
+            $issues[] = 'multiple_emails';
+        }
+        if (in_array($ownerStatus, ['unresolved', 'multiple', 'conflict'], true)) {
+            $issues[] = 'owner_'.$ownerStatus;
+        }
+        if ($variations !== []) {
+            $issues[] = 'field_variation';
+        }
+        if (count($socials) > 10) {
+            $issues[] = 'too_many_social_accounts';
+        }
+        if (count($affiliateIds) > 1) {
+            $issues[] = 'multiple_affiliate_accounts';
+        }
+        if ($display === '') {
+            $issues[] = 'missing_display_name';
+        }
 
-        if ($existingStatus === 'conflict') $status = 'conflict';
-        elseif ($existingStatus === 'matched') $status = 'existing_kol';
-        elseif ($issues !== []) $status = 'needs_review';
-        else $status = 'ready_new_kol';
+        if ($existingStatus === 'conflict') {
+            $status = 'conflict';
+        } elseif ($existingStatus === 'matched') {
+            $status = 'existing_kol';
+        } elseif ($issues !== []) {
+            $status = 'needs_review';
+        } else {
+            $status = 'ready_new_kol';
+        }
 
         return [
             'cluster_key' => hash('sha256', implode('|', $tokens)),
@@ -209,13 +268,22 @@ final class KolImportPreviewService
         foreach (Kol::query()->active()->with(['socialAccounts' => fn ($q) => $q->active()])->get(['id', 'contact_email']) as $kol) {
             $id = (int) $kol->id;
             $email = $this->normalizeEmail($kol->contact_email);
-            if ($email) $index['email'][$email][] = $id;
+            if ($email) {
+                $index['email'][$email][] = $id;
+            }
             foreach ($kol->socialAccounts as $social) {
                 $url = $this->normalizeUrl($social->profile_url);
-                if ($url) $index['url'][$url][] = $id;
+                if ($url) {
+                    $index['url'][$url][] = $id;
+                }
             }
         }
-        foreach ($index as $type => $values) foreach ($values as $key => $ids) $index[$type][$key] = array_values(array_unique($ids));
+        foreach ($index as $type => $values) {
+            foreach ($values as $key => $ids) {
+                $index[$type][$key] = array_values(array_unique($ids));
+            }
+        }
+
         return $index;
     }
 
@@ -229,10 +297,15 @@ final class KolImportPreviewService
         foreach ($users as $user) {
             foreach ([$user->name, $user->email] as $value) {
                 $key = mb_strtolower(trim((string) $value));
-                if ($key !== '') $index[$key][] = (int) $user->id;
+                if ($key !== '') {
+                    $index[$key][] = (int) $user->id;
+                }
             }
         }
-        foreach ($index as $key => $ids) $index[$key] = array_values(array_unique($ids));
+        foreach ($index as $key => $ids) {
+            $index[$key] = array_values(array_unique($ids));
+        }
+
         return $index;
     }
 
@@ -240,12 +313,21 @@ final class KolImportPreviewService
     {
         $ids = [];
         foreach ($tokens as $token) {
-            if (str_starts_with($token, 'email:')) $ids = array_merge($ids, $index['email'][substr($token, 6)] ?? []);
-            if (str_starts_with($token, 'url:')) $ids = array_merge($ids, $index['url'][substr($token, 4)] ?? []);
+            if (str_starts_with($token, 'email:')) {
+                $ids = array_merge($ids, $index['email'][substr($token, 6)] ?? []);
+            }
+            if (str_starts_with($token, 'url:')) {
+                $ids = array_merge($ids, $index['url'][substr($token, 4)] ?? []);
+            }
         }
         $ids = array_values(array_unique(array_map('intval', $ids)));
-        if ($ids === []) return ['none', null];
-        if (count($ids) === 1) return ['matched', $ids[0]];
+        if ($ids === []) {
+            return ['none', null];
+        }
+        if (count($ids) === 1) {
+            return ['matched', $ids[0]];
+        }
+
         return ['conflict', null];
     }
 
@@ -254,14 +336,25 @@ final class KolImportPreviewService
         $names = [];
         foreach ($rows as $row) {
             $value = trim((string) $this->value($row->raw_source ?? [], ['Belongs to']));
-            if ($value !== '') $names[mb_strtolower($value)] = $value;
+            if ($value !== '') {
+                $names[mb_strtolower($value)] = $value;
+            }
         }
         $values = array_values($names);
-        if ($values === []) return ['none', null, ['source_values' => []]];
-        if (count($values) > 1) return ['multiple', null, ['source_values' => $values]];
+        if ($values === []) {
+            return ['none', null, ['source_values' => []]];
+        }
+        if (count($values) > 1) {
+            return ['multiple', null, ['source_values' => $values]];
+        }
         $ids = $index[mb_strtolower($values[0])] ?? [];
-        if ($ids === []) return ['unresolved', null, ['source_values' => $values, 'candidate_user_ids' => []]];
-        if (count($ids) > 1) return ['conflict', null, ['source_values' => $values, 'candidate_user_ids' => $ids]];
+        if ($ids === []) {
+            return ['unresolved', null, ['source_values' => $values, 'candidate_user_ids' => []]];
+        }
+        if (count($ids) > 1) {
+            return ['conflict', null, ['source_values' => $values, 'candidate_user_ids' => $ids]];
+        }
+
         return ['matched', $ids[0], ['source_values' => $values, 'candidate_user_ids' => $ids]];
     }
 
@@ -280,25 +373,53 @@ final class KolImportPreviewService
                     $observation['raw_followers_value'] = mb_substr($followersRaw, 0, 32);
                     $observation['measured_at'] = $this->inputTime($row) ?? now()->toIso8601String();
                 }
-                if (! isset($observations[$url]) || $rank >= $observations[$url]['_rank']) $observations[$url] = $observation;
+                if (! isset($observations[$url]) || $rank >= $observations[$url]['_rank']) {
+                    $observations[$url] = $observation;
+                }
             }
         }
-        foreach ($urls as $url) if (! isset($observations[$url])) $observations[$url] = array_merge($this->socialFromUrl($url), ['followers' => null, 'raw_followers_value' => null, 'measured_at' => null, '_rank' => 0]);
+        foreach ($urls as $url) {
+            if (! isset($observations[$url])) {
+                $observations[$url] = array_merge($this->socialFromUrl($url), ['followers' => null, 'raw_followers_value' => null, 'measured_at' => null, '_rank' => 0]);
+            }
+        }
         ksort($observations);
-        return array_values(array_map(function (array $item): array { unset($item['_rank']); return $item; }, $observations));
+
+        return array_values(array_map(function (array $item): array {
+            unset($item['_rank']);
+
+            return $item;
+        }, $observations));
     }
 
     private function socialFromUrl(string $url): array
     {
-        $parts = parse_url($url); $host = strtolower((string) ($parts['host'] ?? '')); $path = trim((string) ($parts['path'] ?? ''), '/');
+        $parts = parse_url($url);
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $path = trim((string) ($parts['path'] ?? ''), '/');
         $segments = array_values(array_filter(explode('/', $path), fn ($v) => $v !== ''));
-        $platform = 'other'; $handle = null;
-        if (str_contains($host, 'instagram.com')) { $platform = 'instagram'; $handle = $segments[0] ?? null; }
-        elseif (str_contains($host, 'tiktok.com')) { $platform = 'tiktok'; $handle = isset($segments[0]) ? ltrim($segments[0], '@') : null; }
-        elseif ($host === 'x.com' || str_ends_with($host, '.x.com') || str_contains($host, 'twitter.com')) { $platform = 'twitter'; $handle = $segments[0] ?? null; }
-        elseif (str_contains($host, 'youtube.com') || $host === 'youtu.be') { $platform = 'youtube'; $handle = isset($segments[0]) && str_starts_with($segments[0], '@') ? ltrim($segments[0], '@') : null; }
-        elseif (str_contains($host, 'facebook.com')) { $platform = 'facebook'; $handle = $segments[0] ?? null; }
-        if (in_array(strtolower((string) $handle), ['p', 'reel', 'reels', 'tv', 'watch', 'channel'], true)) $handle = null;
+        $platform = 'other';
+        $handle = null;
+        if (str_contains($host, 'instagram.com')) {
+            $platform = 'instagram';
+            $handle = $segments[0] ?? null;
+        } elseif (str_contains($host, 'tiktok.com')) {
+            $platform = 'tiktok';
+            $handle = isset($segments[0]) ? ltrim($segments[0], '@') : null;
+        } elseif ($host === 'x.com' || str_ends_with($host, '.x.com') || str_contains($host, 'twitter.com')) {
+            $platform = 'twitter';
+            $handle = $segments[0] ?? null;
+        } elseif (str_contains($host, 'youtube.com') || $host === 'youtu.be') {
+            $platform = 'youtube';
+            $handle = isset($segments[0]) && str_starts_with($segments[0], '@') ? ltrim($segments[0], '@') : null;
+        } elseif (str_contains($host, 'facebook.com')) {
+            $platform = 'facebook';
+            $handle = $segments[0] ?? null;
+        }
+        if (in_array(strtolower((string) $handle), ['p', 'reel', 'reels', 'tv', 'watch', 'channel'], true)) {
+            $handle = null;
+        }
+
         return ['platform' => $platform, 'handle' => $handle ? mb_substr($handle, 0, 255) : null, 'profile_url' => $url, 'is_active' => true];
     }
 
@@ -306,13 +427,25 @@ final class KolImportPreviewService
     {
         $priority = ['instagram' => 1, 'tiktok' => 2, 'twitter' => 3, 'youtube' => 4, 'facebook' => 5, 'other' => 9];
         usort($socials, fn ($a, $b) => [($priority[$a['platform']] ?? 99), (string) ($a['handle'] ?? '')] <=> [($priority[$b['platform']] ?? 99), (string) ($b['handle'] ?? '')]);
-        foreach ($socials as $social) if (! empty($social['handle'])) return mb_substr((string) $social['handle'], 0, 255);
-        if ($email) return mb_substr((string) strstr($email, '@', true), 0, 255);
+        foreach ($socials as $social) {
+            if (! empty($social['handle'])) {
+                return mb_substr((string) $social['handle'], 0, 255);
+            }
+        }
+        if ($email) {
+            return mb_substr((string) strstr($email, '@', true), 0, 255);
+        }
         if ($urls !== []) {
-            $parts = parse_url($urls[0]); $path = trim((string) ($parts['path'] ?? ''), '/');
-            $last = basename($path); if ($last !== '' && $last !== '.') return mb_substr($last, 0, 255);
+            $parts = parse_url($urls[0]);
+            $path = trim((string) ($parts['path'] ?? ''), '/');
+            $last = basename($path);
+            if ($last !== '' && $last !== '.') {
+                return mb_substr($last, 0, 255);
+            }
+
             return mb_substr((string) ($parts['host'] ?? 'KOL'), 0, 255);
         }
+
         return '';
     }
 
@@ -324,6 +457,7 @@ final class KolImportPreviewService
         $statuses = $this->distinct($rows, ['Status 进度']);
         $times = array_values(array_filter(array_map(fn ($row) => $this->inputTime($row), $rows)));
         sort($times);
+
         return [
             'source_row_count' => count($rows),
             'source_order_count' => count($orders),
@@ -344,28 +478,41 @@ final class KolImportPreviewService
         $out = [];
         foreach ($fields as $key => $headers) {
             $values = $this->distinct($rows, $headers);
-            if (count($values) > 1) $out[$key] = array_slice($values, 0, 10);
+            if (count($values) > 1) {
+                $out[$key] = array_slice($values, 0, 10);
+            }
         }
+
         return $out;
     }
 
     private function latestEmail(array $rows): ?string
     {
-        $best = null; $bestRank = -1;
+        $best = null;
+        $bestRank = -1;
         foreach ($rows as $row) {
             $email = $this->normalizeEmail(($row->normalized_identity ?? [])['email'] ?? $this->value($row->raw_source ?? [], self::EMAIL_HEADERS));
-            if ($email !== null && $this->rank($row) >= $bestRank) { $best = $email; $bestRank = $this->rank($row); }
+            if ($email !== null && $this->rank($row) >= $bestRank) {
+                $best = $email;
+                $bestRank = $this->rank($row);
+            }
         }
+
         return $best;
     }
 
     private function latestValue(array $rows, array $headers): ?string
     {
-        $best = null; $bestRank = -1;
+        $best = null;
+        $bestRank = -1;
         foreach ($rows as $row) {
             $value = trim((string) $this->value($row->raw_source ?? [], $headers));
-            if ($value !== '' && $this->rank($row) >= $bestRank) { $best = $value; $bestRank = $this->rank($row); }
+            if ($value !== '' && $this->rank($row) >= $bestRank) {
+                $best = $value;
+                $bestRank = $this->rank($row);
+            }
         }
+
         return $best;
     }
 
@@ -374,68 +521,100 @@ final class KolImportPreviewService
         $values = [];
         foreach ($rows as $row) {
             $value = trim((string) $this->value($row->raw_source ?? [], $headers));
-            if ($value !== '') $values[mb_strtolower($value)] = $value;
+            if ($value !== '') {
+                $values[mb_strtolower($value)] = $value;
+            }
         }
-        $out = array_values($values); sort($out, SORT_NATURAL | SORT_FLAG_CASE); return $out;
+        $out = array_values($values);
+        sort($out, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $out;
     }
 
     private function profileUrls(array $raw): array
     {
         $value = (string) $this->value($raw, self::PROFILE_HEADERS);
-        if ($value === '') return [];
+        if ($value === '') {
+            return [];
+        }
         preg_match_all('~https?://[^\s]+~iu', $value, $matches);
         $urls = [];
         foreach ($matches[0] ?? [] as $match) {
-            $url = $this->normalizeUrl(rtrim($match, ",;)]}"));
-            if ($url !== null) $urls[$url] = true;
+            $url = $this->normalizeUrl(rtrim($match, ',;)]}'));
+            if ($url !== null) {
+                $urls[$url] = true;
+            }
         }
+
         return array_keys($urls);
     }
 
     private function normalizeUrl(mixed $value): ?string
     {
-        $value = trim((string) $value); if ($value === '') return null;
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
         $parts = parse_url($value);
-        if ($parts === false || ! isset($parts['scheme'], $parts['host']) || ! in_array(strtolower($parts['scheme']), ['http', 'https'], true)) return null;
+        if ($parts === false || ! isset($parts['scheme'], $parts['host']) || ! in_array(strtolower($parts['scheme']), ['http', 'https'], true)) {
+            return null;
+        }
         $path = rtrim($parts['path'] ?? '', '/');
         $port = isset($parts['port']) ? ':'.$parts['port'] : '';
         $query = array_key_exists('query', $parts) ? '?'.$parts['query'] : '';
+
         return strtolower($parts['scheme']).'://'.strtolower($parts['host']).$port.$path.$query;
     }
 
     private function normalizeEmail(mixed $value): ?string
     {
-        $value = strtolower(trim((string) $value)); return filter_var($value, FILTER_VALIDATE_EMAIL) ? $value : null;
+        $value = strtolower(trim((string) $value));
+
+        return filter_var($value, FILTER_VALIDATE_EMAIL) ? $value : null;
     }
 
     private function followers(string $raw): ?int
     {
         $value = strtoupper(str_replace([',', ' '], '', trim($raw)));
-        if (preg_match('/^([0-9]+(?:\.[0-9]+)?)([KMB])?$/', $value, $m) !== 1) return null;
+        if (preg_match('/^([0-9]+(?:\.[0-9]+)?)([KMB])?$/', $value, $m) !== 1) {
+            return null;
+        }
         $multiplier = ['' => 1, 'K' => 1000, 'M' => 1000000, 'B' => 1000000000][$m[2] ?? ''] ?? 1;
+
         return (int) round(((float) $m[1]) * $multiplier);
     }
 
     private function inputTime(KolReconciliationRow $row): ?string
     {
         $raw = trim((string) $this->value($row->raw_source ?? [], ['Input Time']));
-        if ($raw === '') return null;
+        if ($raw === '') {
+            return null;
+        }
         if (is_numeric($raw) && (float) $raw > 20000) {
             $seconds = (int) round(((float) $raw - 25569) * 86400);
+
             return gmdate('c', $seconds);
         }
-        try { return (new DateTimeImmutable($raw))->format(DATE_ATOM); } catch (\Throwable) { return null; }
+        try {
+            return (new DateTimeImmutable($raw))->format(DATE_ATOM);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function rank(KolReconciliationRow $row): int
     {
-        $time = $this->inputTime($row); $timestamp = $time ? (strtotime($time) ?: 0) : 0;
+        $time = $this->inputTime($row);
+        $timestamp = $time ? (strtotime($time) ?: 0) : 0;
+
         return ($timestamp * 10000) + (int) $row->source_row_number;
     }
 
     private function countryCode(?string $country): ?string
     {
-        if ($country === null || trim($country) === '') return null;
+        if ($country === null || trim($country) === '') {
+            return null;
+        }
         $value = mb_strtolower(trim($country));
         $direct = [
             'us' => 'US', 'usa' => 'US', 'united states' => 'US', 'united states of america' => 'US',
@@ -443,22 +622,36 @@ final class KolImportPreviewService
             'de' => 'DE', 'germany' => 'DE', 'deutschland' => 'DE', 'fr' => 'FR', 'france' => 'FR',
             'ca' => 'CA', 'canada' => 'CA', 'au' => 'AU', 'australia' => 'AU', 'ph' => 'PH', 'philippines' => 'PH',
         ];
-        if (isset($direct[$value])) return $direct[$value];
-        $eu = ['austria','belgium','bulgaria','croatia','cyprus','czech republic','czechia','denmark','estonia','finland','greece','hungary','ireland','italy','italia','latvia','lithuania','luxembourg','malta','netherlands','poland','portugal','romania','slovakia','slovenia','spain','sweden'];
+        if (isset($direct[$value])) {
+            return $direct[$value];
+        }
+        $eu = ['austria', 'belgium', 'bulgaria', 'croatia', 'cyprus', 'czech republic', 'czechia', 'denmark', 'estonia', 'finland', 'greece', 'hungary', 'ireland', 'italy', 'italia', 'latvia', 'lithuania', 'luxembourg', 'malta', 'netherlands', 'poland', 'portugal', 'romania', 'slovakia', 'slovenia', 'spain', 'sweden'];
+
         return in_array($value, $eu, true) ? 'EU' : 'OTHER';
     }
 
     private function value(array $raw, array $headers): mixed
     {
-        foreach ($headers as $header) if (array_key_exists($header, $raw)) return $raw[$header];
+        foreach ($headers as $header) {
+            if (array_key_exists($header, $raw)) {
+                return $raw[$header];
+            }
+        }
         $wanted = array_map(fn ($h) => mb_strtolower(trim($h)), $headers);
-        foreach ($raw as $key => $value) if (in_array(mb_strtolower(trim((string) $key)), $wanted, true)) return $value;
+        foreach ($raw as $key => $value) {
+            if (in_array(mb_strtolower(trim((string) $key)), $wanted, true)) {
+                return $value;
+            }
+        }
+
         return null;
     }
 
     private function authorize(Authenticatable $actor): void
     {
-        if (! $actor->can('kol.operate') || ! $actor->can('kol.affiliates.manage')) throw new AuthorizationException('KOL import preview management permission is required.');
+        if (! $actor->can('kol.operate') || ! $actor->can('kol.affiliates.manage')) {
+            throw new AuthorizationException('KOL import preview management permission is required.');
+        }
     }
 
     private function message(string $status, array $issues): string

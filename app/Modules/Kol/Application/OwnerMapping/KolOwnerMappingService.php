@@ -27,6 +27,7 @@ final class KolOwnerMappingService
         $eligibleById = $eligibleUsers->keyBy(fn (User $user): int => (int) $user->id);
         $previews = KolImportPreviewBatch::query()
             ->with('reconciliationBatch')
+            ->when(! $actor->can('system.permissions.manage'), fn ($query) => $query->whereHas('reconciliationBatch', fn ($source) => $source->where('source_type', '!=', 'tencent_xlsx')))
             ->latest('id')
             ->limit(20)
             ->get();
@@ -124,7 +125,8 @@ final class KolOwnerMappingService
     public function saveSourceMapping(int $previewBatchId, string $sourceOwnerValue, int $mappedUserId, Authenticatable $actor): array
     {
         $this->authorize($actor);
-        $preview = KolImportPreviewBatch::query()->with('candidates')->findOrFail($previewBatchId);
+        $preview = KolImportPreviewBatch::query()->with(['candidates', 'reconciliationBatch'])->findOrFail($previewBatchId);
+        $this->authorizeTencent($preview, $actor);
         $sourceOwnerValue = trim($sourceOwnerValue);
         if ($sourceOwnerValue === '' || ! $this->previewHasSourceOwner($preview, $sourceOwnerValue)) {
             throw ValidationException::withMessages(['source_owner_value' => '该来源负责人不属于当前 P2 预览。']);
@@ -165,6 +167,7 @@ final class KolOwnerMappingService
     public function deleteSourceMapping(KolOwnerSourceMapping $mapping, int $previewBatchId, Authenticatable $actor): array
     {
         $this->authorize($actor);
+        $this->authorizeTencent(KolImportPreviewBatch::query()->with('reconciliationBatch')->findOrFail($previewBatchId), $actor);
         $before = $this->mappingAudit($mapping);
         $id = (int) $mapping->id;
         $mapping->delete();
@@ -176,13 +179,15 @@ final class KolOwnerMappingService
             $before,
             null,
         );
+
         return $this->workspace($actor, $previewBatchId);
     }
 
     public function saveCandidateDecision(int $previewBatchId, string $clusterKey, int $mappedUserId, ?string $reason, Authenticatable $actor): array
     {
         $this->authorize($actor);
-        $preview = KolImportPreviewBatch::query()->findOrFail($previewBatchId);
+        $preview = KolImportPreviewBatch::query()->with('reconciliationBatch')->findOrFail($previewBatchId);
+        $this->authorizeTencent($preview, $actor);
         $candidate = KolImportPreviewCandidate::query()
             ->where('import_preview_batch_id', $preview->id)
             ->where('cluster_key', $clusterKey)
@@ -233,6 +238,7 @@ final class KolOwnerMappingService
     public function deleteCandidateDecision(KolOwnerCandidateDecision $decision, int $previewBatchId, Authenticatable $actor): array
     {
         $this->authorize($actor);
+        $this->authorizeTencent(KolImportPreviewBatch::query()->with('reconciliationBatch')->findOrFail($previewBatchId), $actor);
         $before = $this->decisionAudit($decision);
         $id = (int) $decision->id;
         $decision->delete();
@@ -244,7 +250,15 @@ final class KolOwnerMappingService
             $before,
             null,
         );
+
         return $this->workspace($actor, $previewBatchId);
+    }
+
+    private function authorizeTencent(KolImportPreviewBatch $preview, Authenticatable $actor): void
+    {
+        if ($preview->reconciliationBatch?->source_type === 'tencent_xlsx' && ! $actor->can('system.permissions.manage')) {
+            throw new AuthorizationException('仅管理员可操作腾讯 KOL 来源。');
+        }
     }
 
     private function projectCandidate(KolImportPreviewCandidate $candidate, array $sourceValues, $mappings, $decisions, $eligibleById): array
@@ -296,6 +310,7 @@ final class KolOwnerMappingService
         $identity = $candidate->exact_identity ?? [];
         $proposed = $candidate->proposed_kol ?? [];
         $socials = $candidate->proposed_social_accounts ?? [];
+
         return [
             'id' => (int) $candidate->id,
             'cluster_key' => $candidate->cluster_key,
@@ -324,9 +339,12 @@ final class KolOwnerMappingService
         $key = $this->ownerKey($needle);
         foreach ($preview->candidates as $candidate) {
             foreach ($this->sourceValues($candidate) as $value) {
-                if ($this->ownerKey($value) === $key) return true;
+                if ($this->ownerKey($value) === $key) {
+                    return true;
+                }
             }
         }
+
         return false;
     }
 
@@ -336,11 +354,14 @@ final class KolOwnerMappingService
         $unique = [];
         foreach ((array) $values as $value) {
             $value = trim((string) $value);
-            if ($value === '') continue;
+            if ($value === '') {
+                continue;
+            }
             $unique[$this->ownerKey($value)] ??= $value;
         }
         $values = array_values($unique);
         usort($values, 'strcasecmp');
+
         return $values;
     }
 
@@ -348,6 +369,7 @@ final class KolOwnerMappingService
     {
         $normalized = array_values(array_unique(array_filter(array_map(fn ($value): string => $this->ownerKey((string) $value), $values))));
         sort($normalized);
+
         return $normalized;
     }
 
@@ -375,6 +397,7 @@ final class KolOwnerMappingService
         if (! $user) {
             throw ValidationException::withMessages(['mapped_user_id' => '所选 ERP 用户当前不可作为 KOL Owner。']);
         }
+
         return $user;
     }
 
