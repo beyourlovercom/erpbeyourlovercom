@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import ProductSectionRail from '../../Components/Products/ProductSectionRail.vue'
 
@@ -42,6 +42,11 @@ const form = ref({
   cost_note: '',
   notes: '',
 })
+// Keep the initial selection aligned with the exact SKU defaults in ProductLiquidSkuPolicy.
+watch(() => form.value.sku, sku => {
+  form.value.has_liquid = ['BY489A', 'BV339A', 'BV339A-P', 'BV339A-Y'].includes(sku.trim().toUpperCase())
+})
+
 const errors = ref<Record<string, string>>({})
 const submitting = ref(false)
 const images = ref<File[]>([])
