@@ -136,6 +136,20 @@ final class WooCommerceProductInboundTest extends TestCase
         $this->assertSame('ERP 原始中文 / English material', $product->fresh()->material_full_name);
     }
 
+    public function test_new_woo_products_default_only_approved_bv339a_variants_to_liquid(): void
+    {
+        foreach (['BV339A-P' => 9311, 'BV339A-Y' => 9312, 'BV339A-Z' => 9313] as $sku => $id) {
+            $this->fakeSingle($this->payload($id, $sku));
+            app(WooCommerceProductInboundService::class)->sync(null, false, $id);
+            $this->assertSame(in_array($sku, ['BV339A-P', 'BV339A-Y'], true),
+                (bool) Product::where('sku', $sku)->value('has_liquid'), $sku);
+        }
+        Product::where('sku', 'BV339A-P')->update(['has_liquid' => false]);
+        $this->fakeSingle($this->payload(9311, 'BV339A-P', [], ['name' => 'Woo refreshed']));
+        app(WooCommerceProductInboundService::class)->sync(null, false, 9311);
+        $this->assertFalse((bool) Product::where('sku', 'BV339A-P')->value('has_liquid'));
+    }
+
     public function test_media_failure_preserves_last_known_good_gallery(): void
     {
         $product = Product::create(['source_type' => 'manual', 'product_type' => 'simple', 'sku' => 'MEDIA-001', 'name' => 'Media']);
