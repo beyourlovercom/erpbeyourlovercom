@@ -16,6 +16,7 @@ final class Erp2ReadOnlyProjectionTest extends TestCase
     use RefreshDatabase;
 
     private const URL = '/api/erp2/v1/logistics/domestic/pending';
+
     private const ALLOCATION_URL = '/api/erp2/v1/logistics/pending-allocation';
 
     private Warehouse $factory;
@@ -51,6 +52,7 @@ final class Erp2ReadOnlyProjectionTest extends TestCase
             ->assertJsonPath('meta.total', 2)
             ->assertJsonPath('meta.per_page', 20)
             ->assertJsonPath('data.0.order_number', 'SYNTHETIC-READONLY-2')
+            ->assertJsonPath('data.0.status', 'pending_shipment')
             ->assertJsonPath('data.1.items.0.sku', 'SOURCE-SKU')
             ->assertJsonPath('data.1.items.0.resolved_sku', 'RESOLVED-SKU')
             ->assertJsonPath('data.1.items.0.final_sku', null);
@@ -75,6 +77,23 @@ final class Erp2ReadOnlyProjectionTest extends TestCase
             ->assertJsonPath('data.0.order_number', 'CROSS-FACTORY-READY');
         $this->getJson(self::ALLOCATION_URL.'?search=CROSS-FACTORY-READY')
             ->assertOk()->assertJsonPath('meta.total', 0);
+    }
+
+    public function test_external_frontend_number_is_used_when_erp_number_is_missing(): void
+    {
+        $user = $this->userWith('logistics.view');
+        $unallocated = $this->unallocatedOrder('SYNTHETIC-EXTERNAL-ALLOCATION');
+        $unallocated->update(['erp_order_id' => null]);
+
+        $domestic = $this->pendingOrder('SYNTHETIC-EXTERNAL-DOMESTIC');
+        $domestic->update(['erp_order_id' => null]);
+
+        $this->actingAs($user)->getJson(self::ALLOCATION_URL.'?search=EXTERNAL-ALLOCATION')
+            ->assertOk()->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.order_number', 'SYNTHETIC-EXTERNAL-ALLOCATION');
+        $this->getJson(self::URL.'?search=EXTERNAL-DOMESTIC')
+            ->assertOk()->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.order_number', 'SYNTHETIC-EXTERNAL-DOMESTIC');
     }
 
     public function test_unauthenticated_and_forbidden_users_cannot_read_projection(): void

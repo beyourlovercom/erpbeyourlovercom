@@ -5,8 +5,8 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\DomesticPendingQueue;
 use App\Modules\Logistics\Application\LogisticsStatusSummary;
-use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\OverseasShipmentQueue;
+use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -18,7 +18,9 @@ use Illuminate\Validation\ValidationException;
 final class Erp2ReadOnlyProjectionController
 {
     private const WAREHOUSES = ['FACTORY', 'OUTSOURCE', 'US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA'];
+
     private const SORTS = ['order_date', 'order_number', 'status'];
+
     private const OVERSEAS_VIEWS = ['review', 'stockout', 'pending', 'pending_dispatch', 'issued', 'dispatched', 'shipped', 'exceptions', 'all'];
 
     public function pendingAllocation(Request $request, LogisticsStatusSummary $status): JsonResponse
@@ -116,6 +118,7 @@ final class Erp2ReadOnlyProjectionController
                     ->orWhere('source_sku', 'like', $pattern)
                     ->orWhere('final_sku', 'like', $pattern)));
         }
+
         return $this->jsonPage($builder, $validated);
     }
 
@@ -183,9 +186,9 @@ final class Erp2ReadOnlyProjectionController
         $data = collect($page->items())->map(fn (Shipment $shipment): array => [
             'shipment_id' => (int) $shipment->id,
             'order_id' => (int) $shipment->order_id,
-            'order_number' => $shipment->order?->erp_order_id,
+            'order_number' => $shipment->order?->erp_order_id ?: $shipment->order?->external_order_number,
             'order_date' => $shipment->order?->order_date?->toDateString(),
-            'workflow_status' => $shipment->order?->workflow_status,
+            'workflow_status' => $shipment->order?->workflow_status ?: $shipment->order?->order_status,
             'shipment_status' => $shipment->shipment_status,
             'warehouse_code' => $shipment->warehouse?->code,
             'carrier' => $shipment->carrier ?: OverseaWarehouseReviewService::carrierForWarehouseCode($shipment->warehouse?->code),
@@ -233,9 +236,9 @@ final class Erp2ReadOnlyProjectionController
             ->paginate((int) ($validated['per_page'] ?? 50), ['*'], 'page', (int) ($validated['page'] ?? 1));
         $items = collect($page->items())->map(fn (Order $order): array => [
             'id' => (int) $order->id,
-            'order_number' => $order->erp_order_id,
+            'order_number' => $order->erp_order_id ?: $order->external_order_number,
             'order_date' => $order->order_date?->toDateString(),
-            'status' => $order->workflow_status,
+            'status' => $order->workflow_status ?: $order->order_status,
             'warehouse_code' => $order->routing_warehouse_code ?: $order->shipment?->warehouse?->code,
             'tracking' => $order->shipment?->tracking_number,
             'carrier' => $order->shipment?->carrier,
