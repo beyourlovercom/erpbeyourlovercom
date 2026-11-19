@@ -36,4 +36,13 @@
 - `npm exec vitest run resources/js/Pages/Kol/`：18 test files / 122 tests PASS。
 - `npm run typecheck`、`npm run build`（含 Workspace Tabs 验证）及改动 PHP 文件 `pint --test` PASS。
 - 全库 `npm test`：3 个库存模块测试文件共 7 个失败（InventoryBatchSync、WarehouseClearanceGiftPool、WarehouseCostCenterP3）；不在当前 Work Package 变更范围，暂未作归因或改动。
-- 必要后续门禁：隔离 Dev 真正页面预览和 Owner UAT PASS；之后 Draft PR/CI 与合并治理，Production 发布另需明确批准。
+- 必要后续门禁：Owner 在已打开的隔离 Local Dev 页面完成真实视觉/交互 UAT PASS；之后 PR/CI 与合并治理，Production 发布另需明确批准。
+
+## Local Dev 实测证据（仅合成数据，Owner 尚未验收）
+- 2026-11-19，提交 `94a96ac9`，PR #805；美国 Mac mini 上独立 Laravel :8127 实例 + 独立 SQLite 文件 `storage/app/private/kol-tencent-uat-20261119.sqlite`，不复用 `http://erp.b` 的已有运行环境，不接入正式数据库；单独 Chrome 临时 Profile 已登录本地管理员并停留于 `http://127.0.0.1:8127/kol/affiliatewp/tencent-import`。
+- 浏览器 HTTP：管理员 GET 腾讯导入、AffiliateWP、KOL 匹配审核、Owner Mapping、KOL 创建计划、Affiliate 绑定计划 6/6 返回 200；普通 KOL 经理 GET 腾讯导入为 403，同时原 AffiliateWP 首页为 200。
+- 真正浏览器上传合成双工作表 XLSX：`网红-KOL` 选中后生成批次 #1（1 行），唯一邮箱/社交 URL 同时匹配合成 KOL #1 与合成 Affiliate 快照 #1，状态“待审核绑定”。初始未选文件时按钮禁用。
+- SQLite 持久化读回：来源行仅 `Contact Email`、``Influencer`s Link/URL`` 两列；模拟手机号/地址/运单号均未落库（PASS），Affiliate 仍未绑定（PASS），上传预览动作未新增 WWW/ERP KOL。
+- GitHub PR #805 截至本次检查 8/8 required checks PASS（含 `orders-kol-regression`、`mysql8-runtime`、`owner-frozen-workspace-tabs`）；另有上文说明的本地全仓库存页 Vitest 7 项失败，未处理亦未归因。
+- 已在美国 Mac mini 的独立 Chrome 验收窗口打开 6 个本地页签：腾讯导入（当前前台）、AffiliateWP 首页、KOL 匹配审核、负责人映射、创建计划、Affiliate 绑定计划；本地管理员已登录，无需 Owner 重复登录。
+- 该 Local Dev 登录及批次全部为模拟账号；任何 Owner UAT PASS、真实腾讯 XLSX 身份与业务负责人核实、`pixelpebbles_2` Production 关联和合并/部署均仍待独立门禁。
