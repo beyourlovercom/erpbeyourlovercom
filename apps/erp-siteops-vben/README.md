@@ -2,6 +2,17 @@
 
 This is a **Dev-only, opt-in read-only** migration experiment tracked inside the existing BYL ERP repository. Laravel remains the only order/business authority.
 
+## 2026-11-19 — R2 original employee identity-only UAT (real sessions pending)
+
+- Source: `runtime/erp2-original-identity-auth-only.cjs` and its Node mocks. This is a loopback-only **Dev gateway**, not an ERP Production service or a source of business records.
+- Gateway allowlist: `GET/POST /login`, `POST /logout`, `GET /_erp2/identity`. An authenticated Laravel session is held only in server memory; the browser gets a separate 15-minute opaque, HttpOnly, SameSite=Strict handle. Login redirects are not followed.
+- All `/api/*` business paths fail closed with 403. `GET /dashboard` is a synthetic CSRF placeholder only, never a Production dashboard fetch; all other dashboard methods/queries are denied. Logout is verified against identity 401/redirect.
+- 007windows required a **separate** Vite build with `VITE_ERP_IDENTITY_MODE=laravel`; its prior compiled bundle still showed Owner/local-key fixture login. The new compiled output lives outside the existing synthetic dist and must never overwrite the older fixture UAT in place.
+- UAT browser (007windows Chrome CDP, no restart): `http://localhost:18799/auth/login`; displays **原 ERP 员工账号或邮箱** and **原 ERP 密码**. Gateway: `127.0.0.1:18799`; synthetic UAT remains `127.0.0.1:18795`.
+- Mock tests 2/2 PASS. Live anonymous route smoke: home and original login 200, identity 401, business API 403, synthetic logout CSRF page 200. These checks prove the safe transport boundary, **not** an actual employee login.
+- **R2 actual same-user sessions: 0/6 PASS at this checkpoint.** Each employee must log in with their own existing ERP session and compare exact canonical ID, saved role/permissions and filtered menu; credentials/cookies are never added to code or the synthetic account database.
+- **R3 release permission parity remains HOLD:** auth-only transport cannot verify per-employee business-row scope, server-side action denial or revocation using real staff; Production orders/customer data and Production code/merges remain forbidden.
+
 ## 2026-11-19 — three logistics pages: Owner visual PASS / Dev code closure
 
 - Three independent Vben routes: 待分仓 (`logistics-wait-stock`), 国内发货 (`logistics-china`), 海外仓发货 (`logistics-oversea`).
