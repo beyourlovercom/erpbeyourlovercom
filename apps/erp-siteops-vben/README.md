@@ -2,6 +2,17 @@
 
 This is a **Dev-only, opt-in read-only** migration experiment tracked inside the existing BYL ERP repository. Laravel remains the only order/business authority.
 
+## 2026-11-19 — three logistics pages: Owner visual PASS / Dev code closure
+
+- Three independent Vben routes: 待分仓 (`logistics-wait-stock`), 国内发货 (`logistics-china`), 海外仓发货 (`logistics-oversea`).
+- Versioned source: `overrides/src/views/erp/logistics-*.vue`, `overrides/src/api/erp-logistics.ts`, `erp-logistics.test.ts`, `router/erp-view-resolver.ts`, and the exact navigation/login wiring.
+- Canonical backend is **separate Draft PR #803** (GET-only Laravel projections); this Draft PR #766 contains only the Vben overlay and local Dev gateway. Neither PR may be merged or deployed to Production by this checkpoint.
+- Build with `VITE_ERP_IDENTITY_MODE=laravel`; the isolated fake JWT is never an alternative authority for logistics data.
+- The isolated gateway `runtime/erp2-logistics-dev-gateway.cjs` requires explicit `ERP2_LOGISTICS_DEV_UPSTREAM=http://<tailnet-ip>:<isolated-dev-port>` and an **absolute** `ERP2_LOGISTICS_VBEN_DIST`. It binds **only** to `127.0.0.1:18795` by default, refuses Production/public upstream hosts, external redirects, and all non-whitelisted business writes.
+- Owner UAT preview is **local to 007windows**: `http://127.0.0.1:18795/#/erp/logistics/logistics-wait-stock`; this URL is not reachable from other machines.
+- Verified against **synthetic isolated SQLite only**: allocation 3 rows, domestic 2, overseas 4 (including A/B/C); frontend Vitest, typecheck and build PASS, genuine Laravel session Owner login and 007 Chrome page walkthrough PASS.
+- Do not commit personal Chrome profiles, local credentials, fixture databases, compiled dist, or host-specific service config. No Woo/OMS/Production business data access or write.
+
 ## 2026-11-16 — canonical employee ACL Dev opt-in (P0 OPEN)
 
 - The original ERP Production persisted user IDs/roles/permission counts for Vita, Liang, Dede, Emma, Guts and Hiko are recorded in `docs/10_Planning_Roadmap/ERP2_IDENTITY_PERMISSION_PARITY_OWNER_FREEZE_20261116.md`. **All six old 007 Dev fixtures have different IDs/rights**, and Emma is actually a KOL manager in Production.

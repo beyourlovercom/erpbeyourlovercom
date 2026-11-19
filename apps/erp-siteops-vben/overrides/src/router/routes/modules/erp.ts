@@ -1,6 +1,7 @@
 import type { RouteRecordRaw } from 'vue-router';
 
 import { erpMenuSource } from '../../erp-menu-source';
+import { erpViewFor } from '../../erp-view-resolver';
 
 const workspace = () => import('#/views/erp/workspace.vue');
 const icons: Record<string, string> = {
@@ -46,7 +47,7 @@ const routes: RouteRecordRaw[] = erpMenuSource.map((group, order) => {
     children: children.map((child) => ({
       name: `ERPMenu-${child.key}`,
       path: child.key,
-      component: workspace,
+      component: erpViewFor(child.key),
       meta: {
         title: child.label,
         // Original ERP keeps 30 lightweight navigation entries, not 30 mounted Grids.

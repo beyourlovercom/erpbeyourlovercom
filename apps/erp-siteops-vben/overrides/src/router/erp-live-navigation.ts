@@ -4,6 +4,7 @@ import type { MenuRecordRaw } from '@vben/types';
 import { ref } from 'vue';
 import { useAccessStore, useTabbarStore, useUserStore } from '@vben/stores';
 import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
+import { erpViewFor } from './erp-view-resolver';
 
 import { getCurrentDevReadOnlyOrders, type ErpCurrentDevPage, type ErpDevMenuNode } from '#/api/erp-orders';
 import { getCanonicalErpIdentity, canonicalAuthorityFingerprint, type CanonicalErpIdentity } from '#/api/erp-identity';
@@ -19,6 +20,13 @@ export const isCanonicalErpPathAllowed = (path: string) => canonicalAllowedPaths
 // timer/focus check performs revalidation, never a fetch on every sidebar click.
 let canonicalRefresh: Promise<boolean> | undefined;
 let authorityGeneration = 0;
+let canonicalLoginIdentitySeed: CanonicalErpIdentity | undefined;
+
+// Reuse the live Laravel identity verified during login for the first route.
+// The next timed/focus revalidation still consults the upstream authority.
+export function seedCanonicalVerifiedLogin(identity: CanonicalErpIdentity): void {
+  canonicalLoginIdentitySeed = identity;
+}
 export async function bootstrapCanonicalDevNavigation(
   router: Router, forceRevalidation = false,
 ): Promise<boolean> {
@@ -29,7 +37,9 @@ export async function bootstrapCanonicalDevNavigation(
     const priorAuthority = canonicalDevIdentity.value;
     devBootstrapError.value = '';
     try {
-      const identity = await getCanonicalErpIdentity();
+      const seeded = !forceRevalidation ? canonicalLoginIdentitySeed : undefined;
+      canonicalLoginIdentitySeed = undefined;
+      const identity = seeded ?? await getCanonicalErpIdentity();
       if (generation !== authorityGeneration) return !!canonicalDevIdentity.value;
       const changed = !!priorAuthority &&
         canonicalAuthorityFingerprint(priorAuthority) !== canonicalAuthorityFingerprint(identity);
@@ -137,7 +147,7 @@ export function applyAuthorizedDevNavigation(
       if (!router.hasRoute(routeName)) {
         router.addRoute('ERPSection-' + group.key, {
           name: routeName, path: child.key,
-          component: () => import('#/views/erp/workspace.vue'),
+          component: erpViewFor(child.key),
           meta: {title:child.label, keepAlive:true, erpMenuKey:child.key,
             erpModule:group.key, erpOriginalPath:child.path,
             erpSourceStatus:'implemented'},
@@ -166,6 +176,7 @@ export function applyAuthorizedDevNavigation(
 }
 export function clearAuthorizedDevNavigation() {
   authorityGeneration++;
+  canonicalLoginIdentitySeed = undefined;
   canonicalDevIdentity.value = undefined;
   canonicalAllowedPaths.clear();
   suspendAuthorizedDevNavigation();

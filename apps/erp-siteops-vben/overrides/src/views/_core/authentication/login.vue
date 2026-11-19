@@ -5,7 +5,7 @@ import { useAuthStore } from '#/store';
 import { useRouter } from 'vue-router';
 import { resetAllStores } from '@vben/stores';
 import { loginCanonicalErp } from '#/api/erp-laravel-auth';
-import { clearAuthorizedDevNavigation } from '#/router/erp-live-navigation';
+import { clearAuthorizedDevNavigation, seedCanonicalVerifiedLogin } from '#/router/erp-live-navigation';
 import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
 
 const canonicalMode = import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel';
@@ -21,10 +21,11 @@ async function submit() {
   try {
     if (canonicalMode) {
       // The original Laravel session and real employee ID are mandatory.
-      await loginCanonicalErp(username.value.trim(), password.value);
+      const verifiedIdentity = await loginCanonicalErp(username.value.trim(), password.value);
       clearHotOrderSnapshots();
       clearAuthorizedDevNavigation();
       resetAllStores();
+      seedCanonicalVerifiedLogin(verifiedIdentity);
       await router.replace('/erp/orders/orders-master');
     } else {
       await store.authLogin({ username: username.value.trim().toLowerCase(), password: password.value });
