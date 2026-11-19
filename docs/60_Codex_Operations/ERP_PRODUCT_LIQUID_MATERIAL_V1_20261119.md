@@ -50,7 +50,7 @@ Observed source facts: 595 material rows in 物料代码; 515 names start with S
 - Broad unrelated legacy test suites currently do **not** pass cleanly: PHP six existing failures include fake nonnumeric Woo order references and stale domestic viewCounts=10 expectation; full frontend 979/986 passing with 7 failures in 3 pre-existing test suites (including WarehouseCostCenterP3 stale label). They are not claimed as this package regressions until baseline comparison is recorded. Re-run focused contract gates after final diff.
 - US-local isolated SQLite UAT: migrated new schema, ran `LocalUatSeeder`, set up synthetic BY489A/BV339A/MF414A Product masters and mixed domestic order, started `127.0.0.1:8777`, logged into approved local-only admin, and opened Product360 / material preview / product list / domestic pending / external procurement / orders / inventory pages in a dedicated Chrome profile. All opened pages returned 200; browser smoke confirmed product controls, one amber order warning + SKU marker, and external material column toggler.
 - Import live UAT preview used synthetic XLSX only: 6 rows = 1 unique empty-fill, 2 multiple variants for manual review, 2 unchanged, 1 unmatched, and no write to Product master. No Production or real-order mutation.
-- Owner live US Local/UAT **NOT YET PASS**; Draft PR/commit status not yet finalized. No Production database mutation/deployment.
+- Owner live US Local/UAT **NOT YET PASS**; implementation branch pushed and Draft PR [#806](https://github.com/beyourlovercom/erpbeyourlovercom/pull/806) opened. No merge, Production database mutation or deployment.
 
 ## PROJECT POSITION
 PROGRAM_ROADMAP: Architecture -> MVP1 Operations -> Inquiry -> Woo Sync -> Product/Media -> Logistics/KOL/Inventory/Procurement/Accounting -> Hardening
@@ -61,7 +61,7 @@ CURRENT_WORK_PACKAGE: ERP-PRODUCT-LIQUID-MATERIAL-20261119
 PACKAGE_STATUS: IMPLEMENTATION_AUTHORIZED
 WAITING_PHASES: OWNER_LIVE_UAT_PASS; PRODUCTION_RELEASE_AUTHORIZATION
 BASELINE: main 078de3ec
-GITHUB_STATE: independent branch; not merged
+GITHUB_STATE: Draft PR #806; branch pushed, not merged
 SOURCE_CONFLICTS: NONE WITH EVIDENCE (source workbook ambiguity is intentionally queued)
 GLOBAL_GATE: Owner visual PASS; US Local UAT pages auto-open ready; Owner live UAT pending
 PRODUCTION_DEPLOYMENT_STATUS: NO WITH EVIDENCE
