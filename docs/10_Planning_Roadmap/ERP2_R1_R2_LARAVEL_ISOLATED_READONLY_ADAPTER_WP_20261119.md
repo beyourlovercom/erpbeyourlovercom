@@ -1,7 +1,9 @@
 # ERP2 R1/R2 isolated Laravel read-only adapters — Work Package 2026-11-19
 
 STATUS: OWNER APPROVED R0-R2 / BACKEND ONLY / OWNER UI DESIGN PASS PENDING.
-EXECUTION_PROVIDER: CLAUDE_CODE
+EXECUTION_PROVIDER: CODEX_CLI_US
+EXECUTION_MODEL: gpt-6-luna (Owner-mandated; no Claude Code)
+PROVIDER_ROUTING_REASON: Owner explicitly corrected the provider to US Mac mini Codex CLI Luna on 2026-11-19; this package supersedes the original Claude selection.
 VERIFICATION_TIER: HIGH_RISK
 WORK_PACKAGE_ID: ERP2-R1R2-LARAVEL-READONLY-20261119
 BRANCH: feat/erp2-logistics-readonly-r1r2-20261119
@@ -52,7 +54,7 @@ CURRENT_TRACK_PHASE_MAP: R0 baseline delta documented; R0 runtime schema status 
 COMPLETED_PHASES: R0 GitHub static source audit at old SHA and latest main delta documented, NOT runtime PASS
 CURRENT_PHASE: R1/R2 backend-only read contract
 CURRENT_WORK_PACKAGE: ERP2-R1R2-LARAVEL-READONLY-20261119
-PACKAGE_STATUS: ACTIVE / IMPLEMENTATION AUTHORIZED / NOT YET TESTED
+PACKAGE_STATUS: BACKEND TESTS PASS / R0 RUNTIME + UI GATES PENDING
 WAITING_PHASES: ERP2 UI design visual PASS, frontend integration, 007windows UAT, isolated migration, Production migration
 BASELINE: main@5026ddc060c43ab44c8e09c1b229e3c744036b3e
 GITHUB_STATE: PR #800 Draft; PR #766 Draft; this branch starts from latest known main
