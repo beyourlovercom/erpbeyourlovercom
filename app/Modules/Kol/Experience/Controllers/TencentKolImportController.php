@@ -60,6 +60,7 @@ final class TencentKolImportController
                 'identity' => $row->normalized_identity,
                 'kol' => $row->kol ? ['id' => $row->kol->id, 'display_name' => $row->kol->display_name] : null,
                 'affiliate_account_id' => $row->matched_affiliate_account_id,
+                'source_owner' => ($row->raw_source ?? [])['Belongs to'] ?? null,
                 'status' => $row->reconciliation_status, 'message' => $row->message,
             ])->values()->all(),
         ]]);

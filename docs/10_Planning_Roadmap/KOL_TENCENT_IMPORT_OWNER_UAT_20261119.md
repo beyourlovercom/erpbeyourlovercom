@@ -15,7 +15,7 @@
 ## 管理员操作步骤
 1. 在正式 WWW AffiliateWP 快照已按原机制同步的前提下，进入 ERP `网红 → AffiliateWP`，点击右上角“腾讯表格导入（管理员）”。
 2. 选择从腾讯文档“【007日更】BYL发货信息表 - 腾讯-物流-同步”导出的 `.xlsx` 文件；填入含有 KOL 身份数据的**工作表名称**（示例 `网红-KOL`，以导出文件中的实际工作表为准）。
-3. 手动核对邮箱列名和社交主页列名（至少映射其中一个）；平台、Handle 可选。若真实表格没有网红业务负责人，请**保持负责人列为空**，后续单独人工分配。
+3. 手动核对邮箱列名和社交主页列名（至少映射其中一个）；平台、Handle 可选。网红负责人列默认填写 `Belongs to`，须先核对本次导出文件里它确实指网红业务负责人并勾选确认，才能把负责人纳入预览。若真实表格无业务负责人列，请清空此列名并在后续审核中人工分配。
 4. 点击“生成安全预览”：查看匹配的现有 ERP KOL、唯一 AffiliateWP 快照、冲突和未识别记录。最多 64 MiB / 5,000 行；文件缺失／工作表不存在／身份列有歧义，均拒绝。
 5. 前往 `/kol/import-preview` 聚合真实身份，检查冲突后生成候选；前往 `/kol/owner-mapping` 映射真实 ERP KOL 负责人。
 6. 管理员在 `/kol/import-activation` 生成创建计划，核对 checksum、ready/blocked 数量；仅在获批的 Local/Dev 环境开关允许时执行。
@@ -46,3 +46,9 @@
 - GitHub PR #805 截至本次检查 8/8 required checks PASS（含 `orders-kol-regression`、`mysql8-runtime`、`owner-frozen-workspace-tabs`）；另有上文说明的本地全仓库存页 Vitest 7 项失败，未处理亦未归因。
 - 已在美国 Mac mini 的独立 Chrome 验收窗口打开 6 个本地页签：腾讯导入（当前前台）、AffiliateWP 首页、KOL 匹配审核、负责人映射、创建计划、Affiliate 绑定计划；本地管理员已登录，无需 Owner 重复登录。
 - 该 Local Dev 登录及批次全部为模拟账号；任何 Owner UAT PASS、真实腾讯 XLSX 身份与业务负责人核实、`pixelpebbles_2` Production 关联和合并/部署均仍待独立门禁。
+
+## Owner 反馈修正：Belongs to 网红负责人
+- 问题根因：导入页原先默认把负责人列名留空且预览行没有显示来源负责人，所以实际有 `Belongs to` 的表也看不到负责人。若旧批次导入时未明确确认该列，旧批次不保存原始负责人值，必须重新上传 XLSX。
+- 修正：列名默认 `Belongs to`，每次 XLSX 仍需管理员明确确认语义；后端安全预览返回规范化后的 `source_owner`，表格新增“表格负责人（Belongs to）”。这仅是待审核来源证据，绝不自动覆盖原 ERP KOL 负责人。
+- 合成 XLSX 的独立 Dev 浏览器验证：先不勾选时被前端阻止；确认后生成预览批次 #2（1 行），来源负责人 `Guts` 明确显示。SQLite 读回只保存 Contact Email、社交链接及 Belongs to；合成物流 PII 未持久化；KOL 原负责人不变，Affiliate 未绑定。
+- 修正后回归：`php artisan test tests/Feature/Kol` 335 tests / 1,713 assertions PASS；KOL Vue 18 files / 122 tests PASS；TypeScript typecheck、Vue 生产构建和相关 PHP Pint PASS。真实文件、真实账号及 Owner UAT 仍未执行或获批。

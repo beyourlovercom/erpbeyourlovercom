@@ -9,6 +9,7 @@ type Row = {
   identity: Record<string, unknown>
   kol: { id: number; display_name: string } | null
   affiliate_account_id: number | null
+  source_owner: string | null
   status: string
   message: string
 }
@@ -24,7 +25,7 @@ const emailColumn = ref('Contact Email')
 const profileColumn = ref('Influencer`s Link/URL')
 const platformColumn = ref('')
 const handleColumn = ref('')
-const ownerColumn = ref('')
+const ownerColumn = ref('Belongs to')
 const ownerConfirmed = ref(false)
 const preview = ref<Batch | null>(null)
 const busy = ref(false)
@@ -79,18 +80,20 @@ const statusLabel = (value: string) => ({
           <label>社交主页链接列名 <input v-model="profileColumn" class="erp-input" maxlength="191" /></label>
           <label>社交平台列名（可选） <input v-model="platformColumn" class="erp-input" maxlength="191" /></label>
           <label>账号 Handle 列名（可选） <input v-model="handleColumn" class="erp-input" maxlength="191" /></label>
-          <label>网红业务负责人列名（可选） <input v-model="ownerColumn" class="erp-input" maxlength="191" /></label>
+          <label>网红负责人列名（默认 Belongs to） <input v-model="ownerColumn" class="erp-input" maxlength="191" /></label>
         </div>
-        <label class="mt-3 flex items-start gap-2"><input v-model="ownerConfirmed" type="checkbox" /><span>我已核实所选负责人是网红业务负责人，不是物流跟单/发货负责人。未确认时不得导入此字段。</span></label>
+        <label class="mt-3 flex items-start gap-2"><input v-model="ownerConfirmed" type="checkbox" /><span>我已确认本次表格的 {{ ownerColumn.trim() || '负责人' }} 列是网红业务负责人，不是物流跟单/发货负责人。勾选后才纳入预览，ERP 负责人归属仍需下一步审核。</span></label>
+        <p class="erp-form-subtitle">旧批次若未选择负责人列，需重新上传生成预览；系统不会保留被排除的原始物流列。</p>
         <p v-if="error" class="erp-error" role="alert">{{ error }}</p>
       </div>
       <div v-if="preview" class="erp-form-card">
         <h2>安全预览 #{{ preview.id }} · {{ preview.total_rows }} 行 · {{ preview.distinct_source_identities }} 个来源身份</h2>
-        <p>只保存映射后的网红身份和经确认的负责人字段；原始物流文件不保留，订单/Referral/WWW 不写入。</p>
+        <p>表格负责人仅取自本次明确确认的来源列，并统一记为 Belongs to；它是待审核证据，不会自动覆盖 ERP KOL 负责人。原始物流文件不保留，订单/Referral/WWW 不写入。</p>
         <div class="mvp-table-wrap"><table class="mvp-table">
-          <thead><tr><th>来源行</th><th>身份</th><th>ERP KOL</th><th>Affiliate 快照</th><th>状态</th></tr></thead>
+          <thead><tr><th>来源行</th><th>身份</th><th>表格负责人（Belongs to）</th><th>ERP KOL</th><th>Affiliate 快照</th><th>状态</th></tr></thead>
           <tbody><tr v-for="row in preview.rows" :key="row.source_row_number">
             <td>{{ row.source_row_number }}</td><td><code>{{ JSON.stringify(row.identity) }}</code></td>
+            <td>{{ row.source_owner?.trim() || '未提供' }}</td>
             <td>{{ row.kol?.display_name ?? '待创建/复核' }}</td><td>{{ row.affiliate_account_id ?? '—' }}</td><td>{{ statusLabel(row.status) }}</td>
           </tr></tbody>
         </table></div>

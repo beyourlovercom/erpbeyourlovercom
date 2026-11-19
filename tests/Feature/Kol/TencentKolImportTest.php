@@ -51,8 +51,8 @@ class TencentKolImportTest extends TestCase
         $this->actingAs($admin)->post('/kol/affiliatewp/tencent-import/preview', [
             'file' => $this->xlsx(), 'sheet_name' => '网红-KOL',
             'email_column' => 'Contact Email', 'profile_url_column' => 'Influencer`s Link/URL',
-            'owner_column' => '负责人', 'owner_confirmed' => true,
-        ])->assertOk();
+            'owner_column' => 'Belongs to', 'owner_confirmed' => true,
+        ])->assertOk()->assertJsonPath('batch.rows.0.source_owner', 'Liang');
         $batch = KolReconciliationBatch::query()->latest('id')->firstOrFail();
         self::assertSame('tencent_xlsx', $batch->source_type);
         self::assertSame(1, $batch->total_rows);
@@ -78,7 +78,7 @@ class TencentKolImportTest extends TestCase
         $admin = $this->admin();
         $this->actingAs($admin)->post('/kol/affiliatewp/tencent-import/preview', [
             'file' => $this->xlsx(), 'sheet_name' => '网红-KOL', 'email_column' => 'Contact Email',
-            'owner_column' => '负责人', 'owner_confirmed' => false,
+            'owner_column' => 'Belongs to', 'owner_confirmed' => false,
         ])->assertStatus(422);
         self::assertSame(0, KolReconciliationBatch::query()->count());
     }
@@ -138,7 +138,7 @@ class TencentKolImportTest extends TestCase
         $this->actingAs($admin)->post('/kol/affiliatewp/tencent-import/preview', [
             'file' => $this->xlsx(), 'sheet_name' => '网红-KOL',
             'email_column' => 'Contact Email', 'profile_url_column' => 'Influencer`s Link/URL',
-            'owner_column' => '负责人', 'owner_confirmed' => true,
+            'owner_column' => 'Belongs to', 'owner_confirmed' => true,
         ])->assertOk();
         $batch = KolReconciliationBatch::query()->firstOrFail();
         $preview = $this->app->make(KolImportPreviewService::class)->generate($batch->id, $admin);
@@ -199,7 +199,7 @@ class TencentKolImportTest extends TestCase
             ['Full name', 'Phone'], ['Test Recipient', '555-PRIVATE-PHONE'],
         ]));
         $zip->addFromString('xl/worksheets/kol.xml', $this->sheet([
-            ['Contact Email', 'Influencer`s Link/URL', '负责人', 'Phone', 'Address Street', 'Tracking'],
+            ['Contact Email', 'Influencer`s Link/URL', 'Belongs to', 'Phone', 'Address Street', 'Tracking'],
             ['creator@example.test', 'https://instagram.com/creator/', 'Liang', '555-PRIVATE-PHONE', 'Sensitive Street 99', 'PRIVATE-TRACKING-001'],
         ]));
         $zip->close();
