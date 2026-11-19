@@ -42,24 +42,24 @@ OWNER_AUTHORITY: 2026-11-19 explicit P0 Dev fix → Owner UAT → controlled Pro
 - Domestic partial test corrected outdated view-count expectation (actual 9): 2 tests / 23 assertions PASS.
 - Frontend focused tests: 19 PASS; runtime Nginx template test: PASS; PHP Pint and `git diff --check`: PASS.
 - Isolated Mac mini Dev: temporary SQLite, seeded synthetic records, Chrome browser test; logistics root, wait-stock, China, MorePlus, Germany, New York and Canada routes all returned HTTP 200 with rendered content and successful reload. No Production DB or external integrations used.
-- Owner's live authenticated Dev window prepared; separate human UAT gate remains PENDING.
+- Owner reviewed the prepared authenticated Dev window and explicitly returned **Dev UAT PASS** on 2026-11-19; no Production authorization was bundled with that message.
 - Caution: Production includes intermittent DB/Redis latency and PHP-FPM 30-second timeouts. The isolated synthetic-data smoke test does NOT prove that these production-size timeout causes are eliminated. A real-user latency/error-rate canary is mandatory before widening traffic or closing the P0.
 - Legacy `/assets` 404 totals include bot/scanner probes and our diagnostic requests: they are NOT a count of affected employees.
 
 ## PROJECT POSITION
 PROGRAM_ROADMAP: Architecture COMPLETE → MVP1 ops COMPLETE → KOL/Orders/Product/Logistics/Finance phased releases → current Production stability → future automation/expansion; see roadmap document 13 and its V3 overlay.
-CURRENT_TRACK_PHASE_MAP: R0 diagnostics COMPLETE → R1 code fix COMPLETE → R2 local/isolated Dev tests PASS → R3 Owner UAT CURRENT → R4 controlled release WAIT.
-COMPLETED_PHASES: R0, R1, R2
-CURRENT_PHASE: R3
+CURRENT_TRACK_PHASE_MAP: R0 diagnostics COMPLETE → R1 code fix COMPLETE → R2 local/isolated Dev tests PASS → R3 Owner UAT PASS → R4 integration/merge CURRENT → R5 controlled Production release WAIT.
+COMPLETED_PHASES: R0, R1, R2, R3
+CURRENT_PHASE: R4
 CURRENT_WORK_PACKAGE: ERP-LOGISTICS-LOAD-STABILITY-P0-20261119
-PACKAGE_STATUS: DEV_VERIFIED / OWNER_UAT_PENDING / PRODUCTION_UNCHANGED
-WAITING_PHASES: R3, R4
+PACKAGE_STATUS: OWNER_DEV_UAT_PASS / FINAL_CI_AND_MERGE / PRODUCTION_UNCHANGED
+WAITING_PHASES: R4, R5
 BASELINE: origin/main 2cbb405c on 2026-11-19
-GITHUB_STATE: Issue #809; one dedicated branch; PR pending
+GITHUB_STATE: Issue #809; Draft PR #811; merged origin/main 26d7a364 into the branch as da55c639 for final integration; CI re-run pending
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md is stale 2026-08-29 versus actual main and Production release facts on 2026-11-19; GitHub/runtime wins.
-GLOBAL_GATE: OWNER_DEV_UAT_PASS_PENDING + PRODUCTION_FORMAL_RELEASE_GATE
+GLOBAL_GATE: OWNER_DEV_UAT_PASS_20261119 + PRODUCTION_FORMAL_RELEASE_GATE_PENDING
 PRODUCTION_DEPLOYMENT_STATUS: NO; runtime production symlink unchanged by this package
-NEXT_DEPENDENCY: Owner reviews live isolated Dev, then CI/PR and separate Production release gate
+NEXT_DEPENDENCY: Re-run CI on merged latest main (26d7a364) → merge Draft PR once green → separate Owner Production release approval; verify exact release contents, canary and rollback
 EVIDENCE_AS_OF: 2026-11-19
 
 ## ROADMAP HOURS
