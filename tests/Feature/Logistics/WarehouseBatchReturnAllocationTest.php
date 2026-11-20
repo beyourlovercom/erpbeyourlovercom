@@ -48,7 +48,7 @@ final class WarehouseBatchReturnAllocationTest extends TestCase
         }
     }
 
-    public function test_overseas_approved_and_stockout_reset_review_warehouse_and_do_not_modify_other_warehouse(): void
+    public function test_overseas_approved_and_stockout_reset_review_and_leave_unselected_warehouses_untouched(): void
     {
         $actor = $this->actor(['logistics.view', 'logistics.operate']);
         $approved = $this->order('US-NY', 'sending');
@@ -63,9 +63,8 @@ final class WarehouseBatchReturnAllocationTest extends TestCase
             ]);
         }
         $this->actingAs($actor)->postJson('/logistics/oversea/batch-return-allocation', [
-            'order_ids' => [$approved->id, $stockout->id, $factory->id],
-        ])->assertOk()->assertJsonPath('success_count', 2)->assertJsonPath('failed_count', 1)
-            ->assertJsonPath('results.2.ok', false);
+            'order_ids' => [$approved->id, $stockout->id],
+        ])->assertOk()->assertJsonPath('success_count', 2)->assertJsonPath('failed_count', 0);
         foreach ([$approved, $stockout] as $order) {
             $fresh = $order->fresh(['shipment', 'overseaWarehouseReview']);
             $this->assertSame('pending_allocation', $fresh->workflow_status);
@@ -77,7 +76,7 @@ final class WarehouseBatchReturnAllocationTest extends TestCase
         $this->assertNotNull($factory->fresh()->shipment->warehouse_id);
     }
 
-    public function test_permissions_invalid_payload_and_genuine_dispatch_fact_cannot_be_overwritten(): void
+    public function test_permissions_payload_and_dispatched_shipment_force_return_with_immutable_attempt(): void
     {
         $viewer = $this->actor(['logistics.view']);
         $domestic = $this->actor(['logistics.view', 'domestic.review']);
@@ -91,12 +90,86 @@ final class WarehouseBatchReturnAllocationTest extends TestCase
 
         $order->shipment->forceFill(['shipment_status' => 'shipped', 'shipped_at' => now(), 'tracking_number' => 'REAL-DISPATCH'])->save();
         $this->actingAs($domestic)->postJson($url, ['order_ids' => [$order->id]])
-            ->assertOk()->assertJsonPath('success_count', 0)->assertJsonPath('failed_count', 1);
-        $this->assertSame('REAL-DISPATCH', $order->fresh()->shipment->tracking_number);
-        $this->assertNotNull($order->fresh()->shipment->warehouse_id);
-        $this->assertDatabaseMissing('audit_records', ['action' => 'logistics.bulk_return_allocation', 'entity_id' => (string) $order->id]);
+            ->assertOk()->assertJsonPath('success_count', 1)->assertJsonPath('failed_count', 0);
+        $this->assertNull($order->fresh()->shipment->tracking_number);
+        $this->assertNull($order->fresh()->shipment->warehouse_id);
+        $this->assertSame('pending', $order->fresh()->shipment->shipment_status);
+        $this->assertNull($order->fresh()->shipment->shipped_at);
+        $this->assertDatabaseHas('shipment_attempts', [
+            'order_id' => $order->id, 'shipment_status' => 'shipped', 'tracking_number' => 'REAL-DISPATCH',
+        ]);
+        $this->assertDatabaseHas('audit_records', ['action' => 'logistics.bulk_return_allocation', 'entity_id' => (string) $order->id]);
         $this->actingAs($oversea)->postJson('/logistics/oversea/batch-return-allocation', ['order_ids' => [$order->id]])
-            ->assertOk()->assertJsonPath('failed_count', 1);
+            ->assertOk()->assertJsonPath('success_count', 1);
+        $this->assertTrue(app(LogisticsStatusSummary::class)->pendingAllocationQuery()->whereKey($order->id)->exists());
+    }
+
+    public function test_archived_and_completed_woo_orders_are_reactivated_without_woo_writes(): void
+    {
+        $actor = $this->actor(['logistics.view', 'domestic.review', 'logistics.operate']);
+        $archived = $this->order('FACTORY', 'completed');
+        $archived->forceFill(['archived_at' => now(), 'operational_archived_at' => now(),
+            'operational_archived_by' => $actor->id, 'order_status' => OrderStatus::Completed])->save();
+        $archived->delete();
+        $woo = $this->order('US-NY', 'completed');
+        $woo->forceFill(['source_type' => OrderSourceType::WooCommerce, 'order_status' => OrderStatus::Completed])->save();
+        $woo->financials()->create(['provider_order_status' => 'completed', 'currency' => 'USD', 'paid_at' => now()]);
+        $woo->shipment->forceFill(['shipment_status' => 'completed', 'shipped_at' => now(),
+            'tracking_number' => 'REAL-WOO-TRACK'])->save();
+
+        $this->actingAs($actor)->postJson('/logistics/china/batch-return-allocation', [
+            'order_ids' => [$archived->id],
+        ])->assertOk()->assertJsonPath('success_count', 1);
+        $this->actingAs($actor)->postJson('/logistics/oversea/batch-return-allocation', [
+            'order_ids' => [$woo->id],
+        ])->assertOk()->assertJsonPath('success_count', 1);
+
+        $restored = Order::query()->findOrFail($archived->id);
+        $this->assertNull($restored->archived_at);
+        $this->assertNull($restored->operational_archived_at);
+        $this->assertNull($restored->deleted_at);
+        $this->assertSame('pending_allocation', $restored->workflow_status);
+        $this->assertNull($restored->shipment->warehouse_id);
+        $this->assertSame('pending', $woo->fresh()->shipment->shipment_status);
+        $this->assertNull($woo->fresh()->shipment->warehouse_id);
+        $this->assertSame('completed', $woo->fresh()->financials->provider_order_status);
+        $this->assertDatabaseHas('shipment_attempts', ['order_id' => $woo->id,
+            'shipment_status' => 'completed', 'tracking_number' => 'REAL-WOO-TRACK']);
+        $this->assertTrue(app(LogisticsStatusSummary::class)->pendingAllocationQuery()->whereKey($archived->id)->exists());
+        $this->assertTrue(app(LogisticsStatusSummary::class)->pendingAllocationQuery()->whereKey($woo->id)->exists());
+    }
+
+    public function test_split_child_returns_through_parent_queue_without_resetting_sibling_until_parent_selected(): void
+    {
+        $actor = $this->actor(['logistics.view', 'domestic.review', 'logistics.operate']);
+        $parent = $this->order('FACTORY', 'sending');
+        $a = $this->order('US-NY', 'sending');
+        $b = $this->order('US-NY', 'sending');
+        foreach (['A' => $a, 'B' => $b] as $suffix => $child) {
+            $child->forceFill([
+                'fulfillment_parent_id' => $parent->id, 'fulfillment_suffix' => $suffix,
+                'fulfillment_role' => 'original', 'order_kind' => OrderKind::FulfillmentDerived,
+            ])->save();
+        }
+        $b->shipment->forceFill(['shipment_status' => 'shipped', 'shipped_at' => now(),
+            'tracking_number' => 'SIBLING-DISPATCH'])->save();
+
+        $this->actingAs($actor)->postJson('/logistics/oversea/batch-return-allocation', [
+            'order_ids' => [$a->id],
+        ])->assertOk()->assertJsonPath('success_count', 1);
+        $this->assertNull($a->fresh()->shipment->warehouse_id);
+        $this->assertSame('pending_allocation', $a->fresh()->workflow_status);
+        $this->assertSame('pending_allocation', $parent->fresh()->workflow_status);
+        $this->assertNotNull($b->fresh()->shipment->warehouse_id);
+        $this->assertTrue(app(LogisticsStatusSummary::class)->pendingAllocationQuery()->whereKey($parent->id)->exists());
+
+        $this->actingAs($actor)->postJson('/logistics/china/batch-return-allocation', [
+            'order_ids' => [$parent->id],
+        ])->assertOk()->assertJsonPath('success_count', 1);
+        $this->assertNull($b->fresh()->shipment->warehouse_id);
+        $this->assertSame('pending', $b->fresh()->shipment->shipment_status);
+        $this->assertDatabaseHas('shipment_attempts', ['order_id' => $b->id,
+            'shipment_status' => 'shipped', 'tracking_number' => 'SIBLING-DISPATCH']);
     }
 
     private function actor(array $permissions): User

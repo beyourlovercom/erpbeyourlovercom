@@ -11,16 +11,20 @@ final class PendingAllocationEntryPolicy
     public function constrain(Builder $query): Builder
     {
         return $query->where(function (Builder $eligible): void {
-            // KOL fulfillment orders require no separate manager approval or date cutoff.
-            $eligible->where('order_kind', 'kol_fulfillment')
-                ->orWhere(function (Builder $customer): void {
-                    // Pending allocation is based on eligibility, never an order-date cutoff.
-                    $customer->where('order_kind', 'customer')
-                        ->where(function (Builder $sources): void {
-                            $sources->where(function (Builder $woo): void {
-                                $woo->where('source_type', 'woocommerce')
-                                    ->whereHas('financials', fn (Builder $financial) => $financial->where('provider_order_status', 'processing'));
-                            })->orWhereIn('source_type', ['manual', 'manual_other']);
+            // An explicit staff force-return is authoritative even when Woo
+            // still reports completed/cancelled. This does not write Woo.
+            $eligible->where('workflow_status', 'pending_allocation')
+                ->orWhere(function (Builder $ordinary): void {
+                    // KOL fulfillment orders require no manager approval or date cutoff.
+                    $ordinary->where('order_kind', 'kol_fulfillment')
+                        ->orWhere(function (Builder $customer): void {
+                            $customer->where('order_kind', 'customer')
+                                ->where(function (Builder $sources): void {
+                                    $sources->where(function (Builder $woo): void {
+                                        $woo->where('source_type', 'woocommerce')
+                                            ->whereHas('financials', fn (Builder $financial) => $financial->where('provider_order_status', 'processing'));
+                                    })->orWhereIn('source_type', ['manual', 'manual_other']);
+                                });
                         });
                 });
         });
