@@ -58,6 +58,22 @@ describe('KOL Affiliate Binding Activation', () => {
     expect(routerPost).toHaveBeenCalledWith('/kol/affiliatewp/binding-activation/21/apply',{plan_checksum:'c'.repeat(64),ready_count:7},expect.objectContaining({preserveScroll:true}))
   })
 
+  it('shows inactive and unresolved owner blockers instead of actionable binding counts', () => {
+    const blocked = { ...item, readiness_status: 'blocked',
+      block_reasons: ['affiliate_not_active', 'multiple_source_owners'] }
+    const updatedPlan = { ...plan, ready_count: 0, blocked_count: 4,
+      blocker_summary: { affiliate_not_active: 1, multiple_source_owners: 1 }, items: [blocked] }
+    const wrapper = mount(BindingActivation, { props: {
+      workspace: { ...workspace(false), plan: updatedPlan },
+      gridPreferenceNamespace: 'grid.kol.affiliate_binding_activation.v1', gridPreference: null,
+    } })
+    expect(wrapper.find('.green strong').text()).toBe('0')
+    expect(wrapper.text()).toContain('WWW 联盟账号非 Active')
+    expect(wrapper.text()).toContain('来源多负责人待审核')
+    const apply = wrapper.findAll('button').find(b => b.text().includes('确认执行精确绑定'))!
+    expect(apply.attributes('disabled')).toBeDefined()
+  })
+
   it('exposes account-synced columns and provider-preservation detail evidence', async () => {
     const wrapper=mount(BindingActivation,{props:{workspace:workspace(false),gridPreferenceNamespace:'grid.kol.affiliate_binding_activation.v1',gridPreference:null}})
     await wrapper.get('.settings-trigger').trigger('click')

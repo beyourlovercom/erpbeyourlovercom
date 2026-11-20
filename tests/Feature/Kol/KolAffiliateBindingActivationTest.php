@@ -92,12 +92,81 @@ class KolAffiliateBindingActivationTest extends TestCase
         self::assertNotNull($noAffiliateKol);
     }
 
+    public function test_inactive_and_non_current_mirrors_are_blocked_before_binding(): void
+    {
+        $admin = $this->admin();
+        [$activation] = $this->activationWithKol($admin, 'mirror-guard@example.com');
+        $account = $this->account(691, 'mirror-guard@example.com', ['provider_status' => 'inactive']);
+        $activation->items()->firstOrFail()->update(['affiliate_evidence' => ['account_ids' => [$account->id]]]);
+
+        $inactive = $this->service()->prepare($activation->id, $admin);
+        self::assertSame(0, $inactive->ready_count);
+        self::assertSame(1, $inactive->blocked_count);
+        self::assertContains('affiliate_not_active', $inactive->items->first()->block_reasons);
+
+        $account->update(['provider_status' => 'active', 'sync_status' => 'failed']);
+        $stale = $this->service()->prepare($activation->id, $admin);
+        self::assertSame(0, $stale->ready_count);
+        self::assertContains('affiliate_not_current', $stale->items->first()->block_reasons);
+
+        $account->update(['sync_status' => 'synced']);
+        $ready = $this->service()->prepare($activation->id, $admin);
+        self::assertSame(1, $ready->ready_count);
+        self::assertNull($account->fresh()->kol_id);
+    }
+
+    public function test_existing_kol_with_multiple_source_owners_stays_blocked_but_case_variants_match(): void
+    {
+        $admin = $this->admin();
+        [$activation, $kol] = $this->activationWithKol($admin, 'owner-guard@example.com');
+        $account = $this->account(692, 'owner-guard@example.com');
+        $item = $activation->items()->firstOrFail();
+        $item->update([
+            'created_kol_id' => null,
+            'existing_guard' => ['status' => 'matched', 'kol_ids' => [$kol->id]],
+            'affiliate_evidence' => ['account_ids' => [$account->id]],
+            'source_owner_evidence' => ['source_values' => ['Emma', 'Zhixi']],
+        ]);
+
+        $blocked = $this->service()->prepare($activation->id, $admin);
+        self::assertSame(0, $blocked->ready_count);
+        self::assertSame(1, $blocked->blocked_count);
+        self::assertContains('multiple_source_owners', $blocked->items->first()->block_reasons);
+
+        $item->update(['source_owner_evidence' => ['source_values' => [' emMA ', 'Emma']]]);
+        $casefold = $this->service()->prepare($activation->id, $admin);
+        self::assertSame(1, $casefold->ready_count);
+        self::assertSame(0, $casefold->blocked_count);
+        self::assertSame($kol->owner_id, $kol->fresh()->owner_id);
+        self::assertNull($account->fresh()->kol_id);
+    }
+
+    public function test_apply_rechecks_provider_status_and_blocks_stale_active_plan(): void
+    {
+        config(['kol.affiliate_binding_activation_enabled' => true]);
+        $admin = $this->admin();
+        [$activation] = $this->activationWithKol($admin, 'status-drift@example.com');
+        $account = $this->account(693, 'status-drift@example.com');
+        $activation->items()->firstOrFail()->update(['affiliate_evidence' => ['account_ids' => [$account->id]]]);
+        $plan = $this->service()->prepare($activation->id, $admin);
+        self::assertSame(1, $plan->ready_count);
+
+        $account->update(['provider_status' => 'inactive']);
+        try {
+            $this->service()->apply($plan, $plan->plan_checksum, 1, $admin);
+            self::fail('Provider status drift must block binding.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            self::assertSame(422, $e->getStatusCode());
+        }
+        self::assertNull($account->fresh()->kol_id);
+    }
+
     public function test_apply_uses_existing_bind_authority_reresolves_referrals_and_preserves_provider_facts(): void
     {
         config(['kol.affiliate_binding_activation_enabled' => true]);
         $admin = $this->admin();
         [$activation, $kol] = $this->activationWithKol($admin, 'apply-bind@example.com');
-        $account = $this->account(701, 'apply-bind@example.com', ['provider_status' => 'pending', 'origin' => 'external_sync']);
+        $account = $this->account(701, 'apply-bind@example.com', ['provider_status' => 'active', 'origin' => 'external_sync']);
         $activation->items()->firstOrFail()->update(['affiliate_evidence' => ['account_ids' => [$account->id]]]);
         $referral = $this->referral(701, 9101, ['commission_amount' => '12.340000', 'currency' => 'USD', 'provider_status' => 'unpaid', 'payout_id' => 77]);
         $providerBefore = $referral->only(['referral_id','affiliate_id','order_reference','description','commission_amount','currency','provider_status','context','payout_id','order_resolution_status','reconciliation_status','sync_status']);
@@ -108,7 +177,7 @@ class KolAffiliateBindingActivationTest extends TestCase
 
         self::assertSame('applied', $applied->status);
         self::assertSame($kol->id, $account->fresh()->kol_id);
-        self::assertSame('pending', $account->fresh()->provider_status);
+        self::assertSame('active', $account->fresh()->provider_status);
         self::assertSame('external_sync', $account->fresh()->origin);
         self::assertSame($kol->id, $referral->fresh()->kol_id);
         self::assertSame('bound', $referral->fresh()->affiliate_resolution_status);

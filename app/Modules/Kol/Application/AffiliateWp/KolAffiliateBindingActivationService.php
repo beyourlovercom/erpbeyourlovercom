@@ -270,6 +270,19 @@ final class KolAffiliateBindingActivationService
                 if ($account->kol_id !== null && (int) $account->kol_id !== (int) $kol->id) $reasons[] = 'affiliate_bound_elsewhere';
                 $kolOtherAccount = $accounts->first(fn (KolAffiliateAccount $row): bool => (int) ($row->kol_id ?? 0) === (int) $kol->id && (int) $row->id !== (int) $account->id);
                 if ($account->kol_id === null && $kolOtherAccount) $reasons[] = 'kol_bound_elsewhere';
+
+                // A new binding must not activate an inactive/missing WWW mirror or
+                // silently resolve a source row that still has multiple owners.
+                // Existing correct bindings remain read-only and idempotent.
+                if ($account->kol_id === null) {
+                    if (mb_strtolower(trim((string) $account->provider_status)) !== 'active') $reasons[] = 'affiliate_not_active';
+                    if ($account->reconciliation_status !== 'present' || $account->sync_status !== 'synced') $reasons[] = 'affiliate_not_current';
+                    $sourceOwners = array_values(array_unique(array_filter(array_map(
+                        static fn ($value): string => mb_strtolower(trim((string) $value)),
+                        (array) (($sourceItem->source_owner_evidence ?? [])['source_values'] ?? []),
+                    ))));
+                    if (count($sourceOwners) > 1) $reasons[] = 'multiple_source_owners';
+                }
             }
             $reasons = array_values(array_unique($reasons));
 
