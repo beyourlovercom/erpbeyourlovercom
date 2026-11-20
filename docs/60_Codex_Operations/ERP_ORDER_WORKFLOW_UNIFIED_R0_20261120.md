@@ -68,14 +68,16 @@
 
 - 新增 `OrderWorkflowStatusPolicy`：同一订单/actor 的 registry 完整选项、逐项 `mutable` / `disabled_reason` 和 `can_edit`；页面不再本地创造可执行解除命令。
 - 各订单入口、总表/归档/国内与海外分仓/天运/财务行载荷接入该策略；统一 `OrderWorkflowStatusPill`（Grid 薄适配）。工作状态可人工调整，真实订单、Shipment、Tracking、签收及付款事实仍分离。
-- 核心 PHP Feature：`OrderWorkflowUnifiedPolicyTest` + `OrderCoreStatusV1Test` + `OrderWorkflowStatusV1Test` PASS（303 assertions；31 framework warnings）；HTTP 含授权/403、版本/history、无 Shipment 伪造和列表/详情权限投影。
-- Vue 状态控件 19/19 PASS；订单/物流页面 222/222 PASS；分仓新工作状态列 1/1 PASS；国内列表 35/35、海外仓 81/81 已包含在页面回归。
+- Rebase 最新 `origin/main@79d09408` 无冲突；核心 PHP Feature + 上游批量待分仓 Feature 复测 PASS（399 assertions；36 framework warnings）。HTTP 含授权/403、版本/history、无 Shipment 伪造和列表/详情权限投影。
+- Vue 状态控件和订单/物流页面合计 244/244 PASS；分仓新工作状态列单测 1/1 PASS；国内列表、海外仓及上游 Global Grid 回归在同一版本通过。
 - `npm run typecheck` PASS；`npm run build` PASS；workspace verifier 输出 `ERP_WORKSPACE_TABS_BUILD_PASS`（30 tabs / 3 pinned 合约保持）；`git diff --check` PASS。
 - 分仓完整 Vitest 仍有 5 个原有分仓决策/礼品断言失败；在未经修改的精确 baseline `297bbd7e` 独立工作树同样复现 5 个失败，不是本次状态列引入。不要误报整仓测试为绿色。
 
 ## R4 实页 UAT 与交付门禁
 
-- 本隔离工作树尚无 `.env`（只有 `.env.example`）；可重复的 PHP test / 前端 build 不等同已启动有会话的 Dev 实页。
-- 必须在不触碰 Production 数据、不重启设备/Chrome、不覆盖其他 UAT 的前提下准备独立 Dev runtime、登录员工会话并打开所有相关页，尤其 KOL `007-1120-k8230` 的列表与详情、Customer/OMS/Master、国内/海外/分仓/归档/财务。
-- Owner 在已打开的真实 Dev 页面检查下拉、权限与保存行为后明确返回 `PASS`，才能标记 R4 complete/merge-ready。Production 仍需独立明确发布授权。
+- 已通过自建 DC 在 US Mac 建立独立 Dev runtime `http://127.0.0.1:18894`；应用通过临时环境变量连接 `/private/tmp/erp-order-workflow-unified-r4-20261120.sqlite`，该库从本机现有**合成 UAT 快照**复制，含 129 条模拟单、Vita/Liang/Dede/Emma/Guts/Hiko 测试角色；未连接 Production DB。
+- 已在独立 Playwright Chrome 实例（不重启或关闭原 Chrome）登录 Vita、Dede、Emma、Owner、Liang、Guts 测试会话，打开总表、客户/KOL 列表与详情、归档、国内/海外仓、待分仓、天运、财务、合作商等实页。Owner 财务页 200 / 50 个状态下拉；Vita 总表 200 / 24 个、客户传统表 200 / 50 个、KOL 详情 200 / 1 个；部分无可见行的 Grid/权限受限角色本来可能是 0，下拉数量不等于页面失败。
+- 客户新版 Global Grid 的状态列遵循个人列显示偏好与 AG Grid 横向虚拟化：Vita 测试账号通过“列设置”启用工作状态并滚动至该列后，真实页面呈现 **21 个**统一可编辑下拉。国内待审核合成数据在正确加载后亦显示统一下拉；不把屏幕外的虚拟列误判为权限只读。
+- **R4 自动交互 PASS（合成订单 `007-1115-00006`）**：Vita 在 KOL 旧列表把 `sending` → `out_of_stock`（PATCH 200），详情页读回同一 29 项目录后改回 `sending`（PATCH 200）；revision 0→2、2 条 history；Shipment 原本已有且仍为 `pending`，`tracking_number`/`shipped_at` 仍为空。没有创建真实发货事实。
+- 用户截图真实订单 `007-1120-k8230` 不在隔离合成数据库中；未对该 Production 单做任何修改。Owner 仍须在已打开的真实 Dev 页面检查视觉与权限，并明确返回 `PASS`；否则 R4 不得标记 complete/merge-ready。Production 仍需独立明确发布授权。
 - 2026-11-20 早期 Claude OAuth 预检失败是历史记录；Owner 随后明确改用自建 DC，故 Claude 登录不再是本工单的前置条件，也不允许使用 Claude。
