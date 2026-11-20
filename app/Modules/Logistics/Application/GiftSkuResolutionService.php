@@ -62,7 +62,7 @@ final class GiftSkuResolutionService
     }
 
     /** @return array<string,mixed>|null */
-    public function resolve(OrderItem $item, string $warehouseCode, ?int $mappingId): ?array
+    public function resolve(OrderItem $item, string $warehouseCode, ?int $mappingId, bool $allowManualStockException = false): ?array
     {
         if (! $this->isGiftSku($item->source_sku ?: $item->sku)) return null;
         abort_unless($mappingId && $mappingId > 0, 422, 'gift 必须选择实际履约礼品 SKU');
@@ -77,16 +77,21 @@ final class GiftSkuResolutionService
             fn (array $candidate): bool => (int) ($candidate['warehouse_id'] ?? 0) === (int) $mapping->warehouse_id
         );
         $available = $row['quantity_available'] ?? null;
-        if (($row['stock_gate_reason'] ?? null) === 'oms_snapshot_blocked') {
-            abort(422, '世迈 OMS 库存快照核验被阻断，暂不能选择该 Gift SKU');
+        $stockReason = $row['stock_gate_reason'] ?? null;
+        if (! $allowManualStockException) {
+            if ($stockReason === 'oms_snapshot_blocked') {
+                abort(422, '世迈 OMS 库存快照核验被阻断，暂不能选择该 Gift SKU');
+            }
+            if ($stockReason === 'oms_snapshot_not_applied') {
+                abort(422, '世迈 OMS 库存快照尚未通过应用核验，暂不能选择该 Gift SKU');
+            }
+            if ($stockReason === 'provider_sku_not_synced') {
+                abort(422, '该商品的海外仓库存尚未同步成功，请同步此 SKU 后重试');
+            }
+            abort_unless($available !== null && (int) $available >= (int) $item->quantity, 422, '所选实际礼品 SKU 在该仓库存不足或库存未知');
         }
-        if (($row['stock_gate_reason'] ?? null) === 'oms_snapshot_not_applied') {
-            abort(422, '世迈 OMS 库存快照尚未通过应用核验，暂不能选择该 Gift SKU');
-        }
-        if (($row['stock_gate_reason'] ?? null) === 'provider_sku_not_synced') {
-            abort(422, '该商品的海外仓库存尚未同步成功，请同步此 SKU 后重试');
-        }
-        abort_unless($available !== null && (int) $available >= (int) $item->quantity, 422, '所选实际礼品 SKU 在该仓库存不足或库存未知');
+        $stockException = $stockReason !== null || $available === null || (int) $available < (int) $item->quantity;
+        $exceptionReason = $stockReason ?? ($available === null ? 'inventory_unknown' : 'inventory_insufficient');
 
         return [
             'gift_mapping_id' => (int) $mapping->id,
@@ -94,7 +99,12 @@ final class GiftSkuResolutionService
             'resolved_product_id' => (int) $mapping->fulfillment_product_id,
             'resolved_fulfillment_sku' => (string) $mapping->product->sku,
             'resolved_product_summary' => (string) $mapping->product->name,
-            'quantity_available' => (int) $available,
+            'quantity_available' => $available === null ? null : (int) $available,
+            'manual_gift_stock_exception' => $allowManualStockException && $stockException ? [
+                'reason' => $exceptionReason,
+                'required_quantity' => (int) $item->quantity,
+                'available_quantity' => $available === null ? null : (int) $available,
+            ] : null,
         ];
     }
 }

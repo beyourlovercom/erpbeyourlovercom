@@ -292,7 +292,7 @@ final class LogisticsController
                 continue;
             }
             try {
-                $this->physicalSkus->resolve($item, $warehouse, isset($row['gift_mapping_id']) ? (int) $row['gift_mapping_id'] : null);
+                $this->physicalSkus->resolve($item, $warehouse, isset($row['gift_mapping_id']) ? (int) $row['gift_mapping_id'] : null, true);
             } catch (HttpException $error) {
                 if ($error->getStatusCode() !== 422) {
                     throw $error;

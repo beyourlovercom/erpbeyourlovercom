@@ -71,7 +71,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
         });
     }
 
-    public function test_blocked_oms_snapshot_rejects_forged_gift_submission_without_mutating_order(): void
+    public function test_blocked_oms_snapshot_allows_manual_gift_but_keeps_strict_resolver_gate(): void
     {
         [$user, $order, $giftItem, , $mapping] = $this->giftScenario(8);
         $sm = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
@@ -81,12 +81,38 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
             'status' => 'blocked', 'fetched_at' => now(), 'summary' => ['v2' => true],
         ]);
 
-        $this->expectGiftError('世迈 OMS 库存快照核验被阻断，暂不能选择该 Gift SKU', function () use ($user, $order, $giftItem, $mapping): void {
-            app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
-                ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id],
-            ], null, $user);
+        $this->expectGiftError('世迈 OMS 库存快照核验被阻断，暂不能选择该 Gift SKU', function () use ($giftItem, $mapping): void {
+            app(\App\Modules\Logistics\Application\GiftSkuResolutionService::class)->resolve($giftItem, 'US-SM', $mapping->id);
         });
-        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
+        $allocation = app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id],
+        ], 'Vita manual gift stock exception', $user);
+        $audit = $allocation->plan_snapshot['gift_stock_exception_acknowledgement'];
+        self::assertTrue($audit['acknowledged']);
+        self::assertSame($user->id, $audit['actor_id']);
+        self::assertSame('oms_snapshot_blocked', $audit['items'][0]['reason']);
+        self::assertSame('US-SM', $order->fresh()->shipment?->warehouse?->code);
+    }
+
+    public function test_oms_unverified_gift_sku_is_manually_selectable_but_not_auto_eligible(): void
+    {
+        [$user, $order, $giftItem, , $mapping] = $this->giftScenario(8);
+        $sm = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        XlwmsInventorySnapshot::query()->create([
+            'warehouse_id' => $sm->id, 'wh_code' => 'OMS-US-SM',
+            'checksum' => hash('sha256', uniqid('unverified-', true)),
+            'status' => 'applied', 'fetched_at' => now(), 'applied_at' => now(),
+            'summary' => ['v2' => true],
+        ]);
+        $options = app(\App\Modules\Logistics\Application\GiftSkuResolutionService::class)->options('gift', 1);
+        self::assertFalse($options['US-SM'][0]['can_fulfill']);
+        self::assertSame('oms_sku_not_confirmed', $options['US-SM'][0]['stock_gate_reason']);
+
+        $allocation = app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id],
+        ], 'OMS identity not yet synced', $user);
+        self::assertSame('oms_sku_not_confirmed',
+            $allocation->plan_snapshot['gift_stock_exception_acknowledgement']['items'][0]['reason']);
     }
 
     public function test_gift_rejects_mapping_from_another_warehouse(): void
@@ -109,15 +135,50 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
         });
     }
 
-    public function test_gift_rejects_insufficient_real_sku_inventory(): void
+    public function test_order_007_1119_c42587_manual_by489a_gift_allows_zero_stock_without_inventory_fabrication(): void
     {
-        [$user, $order, $giftItem, , $mapping] = $this->giftScenario(0);
+        [$user, $order, $giftItem, $actualGift, $mapping] = $this->giftScenario(0);
+        $order->update(['erp_order_id' => '007-1119-c42587']);
+        $actualGift->update(['sku' => 'BY489A', 'name' => 'BEYOURLOVER LUBRICANT 35ML']);
 
-        $this->expectGiftError('所选实际礼品 SKU 在该仓库存不足或库存未知', function () use ($user, $order, $giftItem, $mapping): void {
-            app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
-                ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id],
-            ], null, $user);
+        $this->expectGiftError('所选实际礼品 SKU 在该仓库存不足或库存未知', function () use ($giftItem, $mapping): void {
+            app(\App\Modules\Logistics\Application\GiftSkuResolutionService::class)->resolve($giftItem, 'US-SM', $mapping->id);
         });
+        $allocation = app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id],
+        ], 'BY489A arrives within three days', $user);
+
+        self::assertSame('BY489A', $giftItem->fresh()->resolved_fulfillment_sku);
+        self::assertSame('BY489A', $allocation->plan_snapshot['segments'][0]['items'][0]['resolved_fulfillment_sku']);
+        $audit = $allocation->plan_snapshot['gift_stock_exception_acknowledgement'];
+        self::assertTrue($audit['acknowledged']);
+        self::assertSame($user->id, $audit['actor_id']);
+        self::assertSame('US-SM', $audit['items'][0]['warehouse_code']);
+        self::assertSame('BY489A', $audit['items'][0]['resolved_fulfillment_sku']);
+        self::assertSame(1, $audit['items'][0]['required_quantity']);
+        self::assertSame(0, WarehouseInventory::query()->where('product_id', $actualGift->id)->value('quantity_on_hand'));
+    }
+
+    public function test_unknown_gift_inventory_allows_manual_preflight_and_audited_allocation(): void
+    {
+        [$user, $order, $giftItem, $actualGift, $mapping] = $this->giftScenario(0);
+        WarehouseInventory::query()->where('product_id', $actualGift->id)->delete();
+        $options = app(\App\Modules\Logistics\Application\GiftSkuResolutionService::class)->options('gift', 1);
+        self::assertFalse($options['US-SM'][0]['can_fulfill']);
+
+        $assignment = ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id];
+        $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/preflight', [
+            'assignments' => [$assignment],
+        ])->assertOk()->assertJsonPath('can_submit', true);
+
+        $allocation = app(FulfillmentAllocationSubmissionService::class)->submitManual(
+            $order, [$assignment], 'manual gift stock unknown', $user
+        );
+        $exception = $allocation->plan_snapshot['gift_stock_exception_acknowledgement']['items'][0];
+        self::assertSame('inventory_unknown', $exception['reason']);
+        self::assertNull($exception['available_quantity']);
+        self::assertFalse(WarehouseInventory::query()->where('product_id', $actualGift->id)
+            ->where('warehouse_id', $mapping->warehouse_id)->exists());
     }
 
     public function test_split_derived_order_uses_resolved_gift_sku_while_parent_keeps_source_fact(): void

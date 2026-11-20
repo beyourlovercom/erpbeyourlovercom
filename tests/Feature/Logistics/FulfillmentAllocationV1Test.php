@@ -456,7 +456,7 @@ final class FulfillmentAllocationV1Test extends TestCase
         }
     }
 
-    public function test_physical_sku_preflight_rejects_unverified_moreplus_sku_without_mutating_order(): void
+    public function test_manual_sku_preflight_allows_unverified_moreplus_sku_without_mutating_order(): void
     {
         [$user, $order] = $this->scenario(1);
         $item = $order->items()->firstOrFail();
@@ -469,9 +469,8 @@ final class FulfillmentAllocationV1Test extends TestCase
 
         $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/preflight', [
             'assignments' => [['order_item_id' => $item->id, 'source_code' => 'US-LA']],
-        ])->assertOk()->assertJsonPath('can_submit', false)
-            ->assertJsonPath('issues.0.sku', $item->sku)
-            ->assertJsonPath('issues.0.warehouse', 'US-LA');
+        ])->assertOk()->assertJsonPath('can_submit', true)
+            ->assertJsonCount(0, 'issues');
         $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
         self::assertNull($order->fresh()->shipment);
     }
