@@ -5,6 +5,7 @@ namespace App\Modules\Kol\Application\ImportActivation;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Application\KolService;
 use App\Modules\Kol\Application\OwnerMapping\KolOwnerUserMatcher;
@@ -435,10 +436,13 @@ final class KolImportActivationService
 
     private function eligibleUsers(): EloquentCollection
     {
-        return User::query()->with('roles:id,key')->where('is_active', true)->where(function ($query): void {
-            $query->whereHas('roles.permissions', fn ($permission): mixed => $permission->where('key', 'kol.view'))
-                ->orWhereHas('customPermissions', fn ($permission): mixed => $permission->where('key', 'kol.view'));
-        })->orderBy('name')->orderBy('id')->get(['id', 'name', 'email', 'contact_name', 'is_active', 'permission_mode']);
+        return User::query()->with('roles:id,key')->where('is_active', true)
+            ->whereHas('roles', fn ($role) => $role->whereIn('key', [RolePreset::KolSpecialist->roleKey(), RolePreset::KolManager->roleKey()]))
+            ->where(function ($query): void {
+                $query->whereHas('roles.permissions', fn ($permission): mixed => $permission->where('key', 'kol.view'))
+                    ->orWhereHas('customPermissions', fn ($permission): mixed => $permission->where('key', 'kol.view'));
+            })
+            ->orderBy('name')->orderBy('id')->get(['id', 'name', 'email', 'contact_name', 'is_active', 'permission_mode']);
     }
 
     private function planChecksum(array $items): string

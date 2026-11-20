@@ -5,6 +5,7 @@ namespace Tests\Feature\Kol;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Kol\Application\AffiliateWp\KolAffiliateBindingActivationService;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
 use App\Modules\Kol\Application\ImportActivation\KolImportActivationService;
@@ -128,6 +129,8 @@ class TencentKolImportTest extends TestCase
         config(['kol.canonical_import_enabled' => true, 'kol.affiliate_binding_activation_enabled' => true]);
         $admin = $this->admin();
         $owner = $this->userWithPermissions(['kol.view']);
+        $kolRole = Role::firstOrCreate(['key' => RolePreset::KolSpecialist->roleKey()], ['label' => RolePreset::KolSpecialist->label()]);
+        $owner->roles()->syncWithoutDetaching([$kolRole->id]);
         $account = KolAffiliateAccount::create([
             'connection_key' => (string) $this->app->make(AffiliateWpGateway::class)->descriptor()['connection_key'],
             'affiliate_id' => 2169, 'email' => 'creator@example.test',

@@ -168,7 +168,11 @@ class KolImportActivationTest extends TestCase
 
     private function ownerUser(string $name): User
     {
-        return $this->userWith(['kol.view'], $name);
+        $user = $this->userWith(['kol.view'], $name);
+        $preset = Role::firstOrCreate(['key' => 'role_preset_kol_specialist'], ['label' => '网红专员']);
+        $user->roles()->syncWithoutDetaching([$preset->id]);
+
+        return $user;
     }
 
     private function userWith(array $keys, string $name = 'User'): User

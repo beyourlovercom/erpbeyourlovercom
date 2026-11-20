@@ -135,6 +135,15 @@ class KolOwnerMappingTest extends TestCase
         } catch (\Illuminate\Validation\ValidationException $e) {
             self::assertArrayHasKey('mapped_user_id', $e->errors());
         }
+        $nonKolRole = $this->userWith(['kol.view'], 'Non-KOL Staff');
+        try {
+            $service->saveSourceMapping($preview->id, 'Emma', $nonKolRole->id, $manager);
+            self::fail('A user with kol.view but without a KOL role must be rejected.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            self::assertArrayHasKey('mapped_user_id', $e->errors());
+        }
+        $workspace = $service->workspace($manager, $preview->id);
+        self::assertNotContains($nonKolRole->id, array_column($workspace['eligible_users'], 'id'));
         self::assertSame(0, KolOwnerSourceMapping::count());
     }
 
@@ -172,7 +181,11 @@ class KolOwnerMappingTest extends TestCase
 
     private function ownerUser(string $name, bool $active = true): User
     {
-        return $this->userWith(['kol.view'], $name, $active);
+        $user = $this->userWith(['kol.view'], $name, $active);
+        $preset = Role::firstOrCreate(['key' => 'role_preset_kol_specialist'], ['label' => '网红专员']);
+        $user->roles()->syncWithoutDetaching([$preset->id]);
+
+        return $user;
     }
 
     private function userWith(array $keys, string $name = 'User', bool $active = true): User

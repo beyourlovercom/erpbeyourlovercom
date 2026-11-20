@@ -80,7 +80,7 @@ class KolTencentOwnerAutoMatchTest extends TestCase
     {
         $admin = $this->admin();
         $this->presetUser('Emma', RolePreset::KolSpecialist);
-        $manual = $this->userWith(['kol.view'], 'Confirmed Manual Owner');
+        $manual = $this->presetUser('Confirmed Manual Owner', RolePreset::KolManager);
         $batch = $this->batch();
         $this->row($batch, 2, 'override@example.test', 'Emma');
         $preview = $this->app->make(KolImportPreviewService::class)->generate($batch->id, $admin);
