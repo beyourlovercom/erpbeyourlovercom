@@ -44,13 +44,13 @@ test('R2 real Laravel cookie stays server-side; redirects cannot load dashboard'
     assert.equal(options.redirect,'manual');
     if(url.endsWith('/login')&&options.method==='GET')
       return response('<meta name="csrf-token" content="fixture">',200,'text/html',[
-        'laravel_session=guest-session; Path=/; HttpOnly',
+        'byl-erp-session=guest-session; Path=/; HttpOnly',
         'XSRF-TOKEN=guest-xsrf; Path=/']);
     if(url.endsWith('/login')&&options.method==='POST') {
-      assert.match(options.headers.Cookie,/laravel_session=guest-session/);
+      assert.match(options.headers.Cookie,/byl-erp-session=guest-session/);
       authenticated=true;
       return response('',302,'text/html',[
-        'laravel_session=staff-session; Path=/; HttpOnly',
+        'byl-erp-session=staff-session; Path=/; HttpOnly',
         'XSRF-TOKEN=staff-xsrf; Path=/']);
     }
     if(url.endsWith('/logout')&&options.method==='POST') {
@@ -74,7 +74,7 @@ test('R2 real Laravel cookie stays server-side; redirects cannot load dashboard'
   assert.equal(login.status,200);
   const cookie=login.headers.get('set-cookie').split(';')[0];
   assert.match(cookie,/^ERP2_R2_HANDLE=/);
-  assert.doesNotMatch(login.headers.get('set-cookie'),/laravel_session|XSRF-TOKEN/);
+  assert.doesNotMatch(login.headers.get('set-cookie'),/byl-erp-session|XSRF-TOKEN/);
   const post=await fetch(base+'/login',{method:'POST',headers:{
     Cookie:cookie,'X-CSRF-TOKEN':'fixture','Content-Type':'application/x-www-form-urlencoded'},
     body:'email=liang%40fixture.invalid&password=fixture'});

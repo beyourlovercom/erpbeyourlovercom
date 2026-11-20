@@ -25,7 +25,7 @@ function collectSetCookies(headers, jar) {
   const values=typeof headers.getSetCookie==='function'?headers.getSetCookie():[];
   for(const raw of values) {
     const match=raw.match(/^([^=;]+)=([^;]*)/);
-    if(match && ['laravel_session','XSRF-TOKEN'].includes(match[1]))
+    if(match && ['byl-erp-session','XSRF-TOKEN'].includes(match[1]))
       jar[match[1]]=match[2];
   }
 }

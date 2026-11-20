@@ -5,7 +5,7 @@ This is a **Dev-only, opt-in read-only** migration experiment tracked inside the
 ## 2026-11-19 — R2 original employee identity-only UAT (real sessions pending)
 
 - Source: `runtime/erp2-original-identity-auth-only.cjs` and its Node mocks. This is a loopback-only **Dev gateway**, not an ERP Production service or a source of business records.
-- Gateway allowlist: `GET/POST /login`, `POST /logout`, `GET /_erp2/identity`. An authenticated Laravel session is held only in server memory; the browser gets a separate 15-minute opaque, HttpOnly, SameSite=Strict handle. Login redirects are not followed.
+- Gateway allowlist: `GET/POST /login`, `POST /logout`, `GET /_erp2/identity`. Original ERP uses the `byl-erp-session` Cookie (not Laravel's default `laravel_session`); retain only that original session and `XSRF-TOKEN` upstream. An authenticated Laravel session is held only in server memory; the browser gets a separate 15-minute opaque, HttpOnly, SameSite=Strict handle. Login redirects are not followed.
 - All `/api/*` business paths fail closed with 403. `GET /dashboard` is a synthetic CSRF placeholder only, never a Production dashboard fetch; all other dashboard methods/queries are denied. Logout is verified against identity 401/redirect.
 - 007windows required a **separate** Vite build with `VITE_ERP_IDENTITY_MODE=laravel`; its prior compiled bundle still showed Owner/local-key fixture login. The new compiled output lives outside the existing synthetic dist and must never overwrite the older fixture UAT in place.
 - UAT browser (007windows Chrome CDP, no restart): `http://localhost:18799/auth/login`; displays **原 ERP 员工账号或邮箱** and **原 ERP 密码**. Gateway: `127.0.0.1:18799`; synthetic UAT remains `127.0.0.1:18795`.
