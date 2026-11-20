@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import KolIdentityCombobox from './KolIdentityCombobox.vue'
 
 const fetchMock = vi.fn()
-const linked = { value: 1501, label: 'Mary Creator', account: 'mary_social', hasAffiliate: true }
-const unbound = { value: 1502, label: 'Mary No Affiliate', account: 'mary_unbound', hasAffiliate: false }
+const linked = { value: 1501, label: 'Mary Creator', account: 'mary_social' }
+const unbound = { value: 1502, label: 'Mary No Affiliate', account: 'mary_unbound' }
 const response = (items: unknown[]) => ({ ok: true, json: async () => items })
 
 describe('KolIdentityCombobox', () => {
@@ -19,7 +19,7 @@ describe('KolIdentityCombobox', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders a searchable combobox and preserves an explicitly preselected bound KOL', () => {
+  it('renders a searchable combobox and preserves an explicitly preselected KOL', () => {
     const wrapper = mount(KolIdentityCombobox, { props: { modelValue: 1501, initialOption: linked, required: true } })
     const input = wrapper.get('input')
     expect(input.attributes('role')).toBe('combobox')
@@ -43,7 +43,7 @@ describe('KolIdentityCombobox', () => {
       credentials: 'same-origin',
     }))
     expect(wrapper.findAll('[role="option"]')).toHaveLength(2)
-    expect(wrapper.text()).toContain('AffiliateWP 未绑定')
+    expect(wrapper.text()).not.toContain('AffiliateWP 未绑定')
     expect(wrapper.text()).toContain('@mary_social')
     await wrapper.findAll('[role="option"]')[0].trigger('mousedown')
     expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toBe(1501)
@@ -52,28 +52,26 @@ describe('KolIdentityCombobox', () => {
     wrapper.unmount()
   })
 
-  it('never allows an unbound KOL to be chosen', async () => {
+  it('allows a KOL without AffiliateWP to be chosen', async () => {
     fetchMock.mockResolvedValue(response([unbound]))
     const wrapper = mount(KolIdentityCombobox, { props: { modelValue: null } })
     await wrapper.get('input').trigger('focus')
     await flushPromises()
     const option = wrapper.get('[role="option"]')
-    expect(option.attributes('aria-disabled')).toBe('true')
+    expect(option.attributes('aria-disabled')).toBeUndefined()
     await option.trigger('mousedown')
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
-    await wrapper.get('input').trigger('keydown', { key: 'Enter' })
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toBe(unbound.value)
     wrapper.unmount()
   })
 
-  it('allows keyboard selection of enabled results while skipping unbound entries', async () => {
+  it('allows keyboard selection of the first KOL regardless of AffiliateWP status', async () => {
     fetchMock.mockResolvedValue(response([unbound, linked]))
     const wrapper = mount(KolIdentityCombobox, { props: { modelValue: null } })
     await wrapper.get('input').trigger('focus')
     await flushPromises()
-    expect(wrapper.findAll('[role="option"]')[1].attributes('aria-selected')).toBe('true')
+    expect(wrapper.findAll('[role="option"]')[0].attributes('aria-selected')).toBe('true')
     await wrapper.get('input').trigger('keydown', { key: 'Enter' })
-    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([1501])
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([1502])
     wrapper.unmount()
   })
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue'
 
-type KolOption = { value: number; label: string; account?: string | null; hasAffiliate: boolean }
+type KolOption = { value: number; label: string; account?: string | null }
 const props = defineProps<{
   modelValue: number | null
   initialOption?: KolOption | null
@@ -10,8 +10,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:modelValue': [number | null] }>()
 
-const initial = props.initialOption?.value === props.modelValue && props.initialOption?.hasAffiliate
-  ? props.initialOption : null
+const initial = props.initialOption?.value === props.modelValue ? props.initialOption : null
 const chosen = ref<KolOption | null>(initial)
 const inputValue = ref(initial?.label ?? '')
 const results = ref<KolOption[]>([])
@@ -29,12 +28,12 @@ watch(() => props.modelValue, (value) => {
     chosen.value = null
     inputValue.value = ''
   } else if (value !== null && props.initialOption?.value === value) {
-    chosen.value = props.initialOption.hasAffiliate ? props.initialOption : null
+    chosen.value = props.initialOption
     inputValue.value = chosen.value?.label ?? ''
   }
 })
 watch(() => props.initialOption, (option) => {
-  if (option?.value === props.modelValue && option.hasAffiliate) {
+  if (option?.value === props.modelValue) {
     chosen.value = option
     inputValue.value = option.label
   }
@@ -47,7 +46,6 @@ onUnmounted(() => {
   clearTimeout(blurTimer)
 })
 
-const firstEnabled = (items: KolOption[]) => items.findIndex((item) => item.hasAffiliate)
 
 const search = async (term: string) => {
   const current = ++sequence
@@ -68,7 +66,7 @@ const search = async (term: string) => {
     if (!Array.isArray(data)) throw new Error('网红查询返回的数据无效')
     if (!mounted || current !== sequence) return
     results.value = data as KolOption[]
-    activeIndex.value = firstEnabled(results.value)
+    activeIndex.value = results.value.length > 0 ? 0 : -1
   } catch (error) {
     if (!mounted || current !== sequence) return
     results.value = []
@@ -106,7 +104,6 @@ const onInput = (event: Event) => {
 }
 
 const choose = (option: KolOption) => {
-  if (!option.hasAffiliate) return
   sequence++
   clearTimeout(debounceTimer)
   chosen.value = option
@@ -121,14 +118,8 @@ const onBlur = () => {
 }
 
 const moveActive = (direction: number) => {
-  if (!results.value.some((item) => item.hasAffiliate)) return
-  for (let offset = 1; offset <= results.value.length; offset++) {
-    const index = (activeIndex.value + direction * offset + results.value.length * 2) % results.value.length
-    if (results.value[index]?.hasAffiliate) {
-      activeIndex.value = index
-      return
-    }
-  }
+  if (results.value.length === 0) return
+  activeIndex.value = (activeIndex.value + direction + results.value.length) % results.value.length
 }
 
 const onKeydown = (event: KeyboardEvent) => {
@@ -143,7 +134,7 @@ const onKeydown = (event: KeyboardEvent) => {
     }
   } else if (event.key === 'Enter' && open.value && activeIndex.value >= 0) {
     const option = results.value[activeIndex.value]
-    if (option?.hasAffiliate) {
+    if (option) {
       event.preventDefault()
       choose(option)
     }
@@ -187,17 +178,14 @@ const onKeydown = (event: KeyboardEvent) => {
         :key="item.value"
         role="option"
         :aria-selected="index === activeIndex"
-        :aria-disabled="!item.hasAffiliate"
         class="kol-identity-option"
-        :class="{ active: index === activeIndex, disabled: !item.hasAffiliate }"
-        @mouseenter="item.hasAffiliate && (activeIndex = index)"
+        :class="{ active: index === activeIndex }"
+        @mouseenter="activeIndex = index"
         @mousedown.prevent="choose(item)"
         @click.prevent="choose(item)"
       >
         <strong>{{ item.label }}</strong>
         <small>{{ item.account ? '@' + item.account.replace(/^@/, '') + ' · ' : '' }}ID {{ item.value }}</small>
-        <span v-if="!item.hasAffiliate" class="kol-identity-warning">AffiliateWP 未绑定，暂不可建单</span>
-        <span v-else class="kol-identity-ready">可选择</span>
       </li>
     </ul>
   </div>
@@ -211,10 +199,7 @@ const onKeydown = (event: KeyboardEvent) => {
 .kol-identity-results { position: absolute; z-index: 80; top: calc(100% + 5px); left: 0; right: 0; max-height: 304px; overflow-y: auto; margin: 0; padding: 6px; list-style: none; border: 1px solid #e4eaed; border-radius: 12px; background: #fff; box-shadow: 0 12px 30px rgba(15,23,42,.12); }
 .kol-identity-option { display: grid; gap: 2px; padding: 9px 11px; border-radius: 8px; min-height: 58px; cursor: pointer; }
 .kol-identity-option.active { background: #f1f7f7; }
-.kol-identity-option.disabled { opacity: .6; cursor: not-allowed; }
 .kol-identity-option strong { color: #142126; font-size: 14px; }
 .kol-identity-option small, .kol-identity-state { color: #7a8c94; font-size: 12px; }
-.kol-identity-warning { color: #9a6700; font-size: 11px; }
-.kol-identity-ready { color: #287c69; font-size: 11px; }
 .kol-identity-state { padding: 12px; }
 </style>

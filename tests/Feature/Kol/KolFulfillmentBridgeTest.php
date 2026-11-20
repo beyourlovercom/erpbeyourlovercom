@@ -5,7 +5,6 @@ namespace Tests\Feature\Kol;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
-use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
@@ -79,19 +78,19 @@ class KolFulfillmentBridgeTest extends TestCase
         $this->assertDatabaseCount('orders', 0);
     }
 
-    public function test_r61_bridge_requires_active_affiliate_binding_for_new_fulfillment(): void
+    public function test_collaboration_fulfillment_does_not_require_affiliate_binding(): void
     {
         [$user, $kol, $collaboration] = $this->fixture(true, true);
         KolAffiliateAccount::where('kol_id', $kol->id)->delete();
-        $this->actingAs($user)->postJson("/kol/library/{$kol->id}/collaborations/{$collaboration->id}/fulfillment-order")
-            ->assertStatus(422)->assertJsonPath('message', KolAffiliateIdentity::MISSING_MESSAGE);
-        $this->assertDatabaseCount('orders', 0);
-        $this->assertNull($collaboration->fresh()->order_id);
 
-        $this->bindAffiliate($kol);
-        $this->actingAs($user)->postJson("/kol/library/{$kol->id}/collaborations/{$collaboration->id}/fulfillment-order")
-            ->assertCreated()->assertJsonPath('created', true);
+        $first = $this->actingAs($user)->postJson("/kol/library/{$kol->id}/collaborations/{$collaboration->id}/fulfillment-order");
+        $first->assertCreated()->assertJsonPath('created', true);
         $this->assertDatabaseHas('orders', ['order_kind' => 'kol_fulfillment', 'kol_id' => $kol->id]);
+        $this->assertSame((int) $first->json('order.id'), (int) $collaboration->fresh()->order_id);
+
+        $this->actingAs($user)->postJson("/kol/library/{$kol->id}/collaborations/{$collaboration->id}/fulfillment-order")
+            ->assertOk()->assertJsonPath('created', false);
+        $this->assertDatabaseCount('orders', 1);
     }
 
     private function bindAffiliate(Kol $kol): void

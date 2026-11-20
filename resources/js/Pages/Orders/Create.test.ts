@@ -53,7 +53,7 @@ describe('Orders/Create V2', () => {
     const wrapper = mount(Create, { props: {
       ...kolProps,
       selectedKolId: 42,
-      kolOptions: [{ value: 42, label: 'Synthetic KOL', hasAffiliate: true }, { value: 43, label: 'Other KOL', hasAffiliate: false }],
+      kolOptions: [{ value: 42, label: 'Synthetic KOL' }, { value: 43, label: 'Other KOL' }],
     } })
     const input = wrapper.get('[data-testid="kol-identity-select"]')
     expect(input.attributes('role')).toBe('combobox')
@@ -65,13 +65,13 @@ describe('Orders/Create V2', () => {
     customer.unmount()
   })
 
-  it('disables unbound AffiliateWP options and explains a blocked requested KOL', () => {
+  it('preselects an unbound KOL without blocking ERP logistics orders', () => {
     const wrapper = mount(Create, { props: {
-      ...kolProps, selectedKolId: null, requestedKolUnbound: true,
-      kolOptions: [{ value: 5, label: 'Unbound', hasAffiliate: false }],
+      ...kolProps, selectedKolId: 5,
+      kolOptions: [{ value: 5, label: 'Unbound' }],
     } })
-    expect((wrapper.get('[data-testid="kol-identity-select"]').element as HTMLInputElement).value).toBe('')
-    expect(wrapper.get('[data-testid="kol-affiliate-unbound"]').text()).toContain('AffiliateWP')
+    expect((wrapper.get('[data-testid="kol-identity-select"]').element as HTMLInputElement).value).toBe('Unbound')
+    expect(wrapper.find('[data-testid="kol-affiliate-unbound"]').exists()).toBe(false)
     wrapper.unmount()
   })
 

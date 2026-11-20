@@ -169,14 +169,13 @@ final class OrderController
         return Kol::query()->whereNull('archived_at')
             ->when(! KolScope::isAllScope($request->user()),
                 fn (Builder $query) => $query->where('owner_id', $request->user()->getAuthIdentifier()))
-            ->withExists(['affiliateAccounts as affiliate_ready' => fn ($query) => $query->where('connection_key', KolAffiliateIdentity::CONNECTION_KEY)->where('provider_status', 'active')->where('affiliate_id', '>', 0)])
             ->with([
                 'socialAccounts' => fn ($query) => $query->where('is_active', true)->orderBy('id'),
                 'affiliateAccounts' => fn ($query) => $query->where('connection_key', KolAffiliateIdentity::CONNECTION_KEY)->where('provider_status', 'active')->where('affiliate_id', '>', 0)->orderBy('id'),
             ]);
     }
 
-    /** @return array{value: int, label: string, account: ?string, hasAffiliate: bool} */
+    /** @return array{value: int, label: string, account: ?string} */
     private function kolSelectionData(Kol $kol): array
     {
         return [
@@ -184,7 +183,6 @@ final class OrderController
             'label' => $kol->display_name,
             'account' => $kol->socialAccounts->first()?->handle
                 ?: $kol->affiliateAccounts->first()?->wordpress_user_login,
-            'hasAffiliate' => (bool) $kol->affiliate_ready,
         ];
     }
 
@@ -230,8 +228,7 @@ final class OrderController
             ? $this->scopedKolSelection($request)->find($requestedKolId)
             : null;
         $kolOptions = $requestedKol ? [$this->kolSelectionData($requestedKol)] : [];
-        $selectedKolId = $requestedKol && $kolOptions[0]['hasAffiliate'] ? $requestedKolId : null;
-        $requestedKolUnbound = $requestedKol && ! $kolOptions[0]['hasAffiliate'];
+        $selectedKolId = $requestedKol ? $requestedKolId : null;
 
         return Inertia::render('Orders/Create', [
             'defaultOrderKind' => $kind->value,
@@ -239,7 +236,6 @@ final class OrderController
             'generatedExternalOrderNumber' => $this->orders->generateExternalOrderNumber($kind),
             'kolOptions' => $kolOptions,
             'selectedKolId' => $selectedKolId,
-            'requestedKolUnbound' => (bool) $requestedKolUnbound,
         ]);
     }
 
@@ -265,11 +261,6 @@ final class OrderController
             abort_unless($request->user()->can('kol.view'), 403);
             $kol = Kol::query()->findOrFail($data['kol_id']);
             abort_unless(KolScope::isAllScope($request->user()) || (int) $kol->owner_id === (int) $request->user()->getAuthIdentifier(), 403);
-            if (! KolAffiliateIdentity::isReady((int) $kol->id)) {
-                throw ValidationException::withMessages([
-                    'kol_id' => KolAffiliateIdentity::MISSING_MESSAGE,
-                ]);
-            }
         } else {
             unset($data['kol_id']);
         }
