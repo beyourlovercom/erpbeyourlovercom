@@ -6,6 +6,7 @@ type Column = { colId: string; hide?: boolean; pinned?: string | null; width?: n
 const mock = vi.hoisted(() => ({
   actorId: 71,
   state: [] as Column[],
+  selected: [] as Record<string, unknown>[],
   get: vi.fn(),
   put: vi.fn(),
 }))
@@ -20,7 +21,7 @@ vi.mock('ag-grid-vue3', async () => {
     AgGridVue: vue.defineComponent({
       name: 'AgGridVue',
       props: ['columnDefs', 'maintainColumnOrder', 'rowData'],
-      emits: ['grid-ready', 'column-moved'],
+      emits: ['grid-ready', 'column-moved', 'row-selected'],
       setup(props, { emit }) {
         const api = {
           getColumnState: () => mock.state.map(column => ({ ...column })),
@@ -36,7 +37,7 @@ vi.mock('ag-grid-vue3', async () => {
             }
           },
           getDisplayedRowCount: () => (props.rowData as unknown[]).length,
-          getSelectedRows: () => [],
+          getSelectedRows: () => mock.selected,
           forEachNode: () => undefined,
           setGridOption: () => undefined,
           setColumnsVisible: () => undefined,
@@ -54,7 +55,12 @@ vi.mock('ag-grid-vue3', async () => {
             emit('column-moved')
           }
         })
-        return () => vue.h('div', { class: 'fake-ag-grid' })
+        return () => vue.h('div', { class: 'fake-ag-grid' }, [
+          vue.h('button', { class: 'simulate-grid-select', onClick: () => {
+            mock.selected = [((props.rowData as Record<string, unknown>[])[0])]
+            emit('row-selected', { node: { data: mock.selected[0], isSelected: () => true }, api })
+          } }, 'Select row'),
+        ])
       },
     }),
   }
@@ -91,6 +97,7 @@ const dragBefore = async (wrapper: Awaited<ReturnType<typeof mountReview>>, sour
 beforeEach(() => {
   mock.actorId = 71
   mock.state = []
+  mock.selected = []
   mock.get.mockReset().mockResolvedValue({ data: { value: null } })
   mock.put.mockReset().mockResolvedValue({ data: {} })
   // Node 25 can expose an unusable experimental localStorage global. Use a
@@ -106,6 +113,19 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('account-level Grid column stability', () => {
+  it('emits a real selected row even when selectionChanged uses an unrecognized source', async () => {
+    const wrapper = mount(OmsGrid, { props: {
+      namespace, columns: definitions, rows: [{ id: 41, sku: 'UAT-41' }],
+      serverPagination: { current_page: 1, last_page: 1, per_page: 50, total: 1 },
+      requiredColumnIds: ['order'], enableSelection: true,
+      selectionOrderKey: 'id', selectedOrderIds: [],
+    } })
+    await flushPromises()
+    await wrapper.get('.simulate-grid-select').trigger('click')
+    expect(wrapper.emitted('selection-change')?.at(-1)?.[0]).toEqual([{ id: 41, sku: 'UAT-41' }])
+    wrapper.unmount()
+  })
+
   it('keeps Dede SKU and quantity at the front after batch-review row reload and column definition updates', async () => {
     const wrapper = await mountReview()
     expect(wrapper.find('.oms-grid-layout-loading').exists()).toBe(false)
