@@ -20,11 +20,11 @@ use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
-use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderManualHoldStatus;
 use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowGridOptions;
+use App\Modules\Orders\Application\OrderWorkflowStatusPolicy;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
@@ -191,9 +191,9 @@ final class OverseaWarehouseController
                 ...$this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id), $shipOutAttempts->get($shipment->order_id), $shipOutBatchItems->get($shipment->order_id), $shipOutReadbacks->get($shipment->order_id)),
                 // Logistics access alone is not enough for editing an order's staff workflow progress.
                 'can_edit_workflow_status' => $shipment->order !== null
-                    && app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($shipment->order, $request->user())['can_edit'],
+                    && app(OrderWorkflowStatusPolicy::class)->for($shipment->order, $request->user())['can_edit'],
                 'workflow_status_options' => $shipment->order !== null
-                    ? app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($shipment->order, $request->user())['options'] : [],
+                    ? app(OrderWorkflowStatusPolicy::class)->for($shipment->order, $request->user())['options'] : [],
             ])->toArray(),
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
             'canEditWarehouseRoute' => (bool) $request->user()?->can('orders.edit'),
