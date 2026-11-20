@@ -12,6 +12,7 @@ use App\Modules\Logistics\Infrastructure\Models\ShipmentItemPackagingSnapshot;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderWorkflowStatusHistory;
+use App\Modules\Sync\Application\ManualSyncService;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 
@@ -22,6 +23,7 @@ final class WarehouseBatchReturnAllocationService
         private readonly InventoryReservationRepository $reservations,
         private readonly AuditRecorder $audit,
         private readonly LogisticsStatusSummary $queues,
+        private readonly ManualSyncService $manualSync,
     ) {}
 
     public function returnToAllocation(Order $order, Authenticatable $actor, string $source): void
@@ -113,6 +115,9 @@ final class WarehouseBatchReturnAllocationService
                 'tracking_number' => null,
             ])->save();
         }
+        // Keep the ERP-only manual website-sync flag aligned with the newly
+        // pending shipment. This does not send a WooCommerce request.
+        $this->manualSync->reopen($order, $actor, '批量强退待分仓');
         $order->overseaWarehouseReview?->forceFill([
             'status' => 'pending', 'progress' => 'pending_review',
             'submitted_warehouse_id' => null, 'reviewed_warehouse_id' => null,

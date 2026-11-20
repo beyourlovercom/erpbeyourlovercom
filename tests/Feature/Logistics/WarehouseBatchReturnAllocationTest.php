@@ -89,12 +89,16 @@ final class WarehouseBatchReturnAllocationTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors('order_ids.1');
 
         $order->shipment->forceFill(['shipment_status' => 'shipped', 'shipped_at' => now(), 'tracking_number' => 'REAL-DISPATCH'])->save();
+        $order->manualSync()->create(['website_sync_status' => 'completed',
+            'synced_at' => now(), 'synced_by' => $domestic->id]);
         $this->actingAs($domestic)->postJson($url, ['order_ids' => [$order->id]])
             ->assertOk()->assertJsonPath('success_count', 1)->assertJsonPath('failed_count', 0);
         $this->assertNull($order->fresh()->shipment->tracking_number);
         $this->assertNull($order->fresh()->shipment->warehouse_id);
         $this->assertSame('pending', $order->fresh()->shipment->shipment_status);
         $this->assertNull($order->fresh()->shipment->shipped_at);
+        $this->assertSame('pending', $order->fresh()->manualSync->website_sync_status->value);
+        $this->assertNull($order->fresh()->manualSync->synced_at);
         $this->assertDatabaseHas('shipment_attempts', [
             'order_id' => $order->id, 'shipment_status' => 'shipped', 'tracking_number' => 'REAL-DISPATCH',
         ]);
