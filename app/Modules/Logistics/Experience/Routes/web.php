@@ -15,6 +15,7 @@ use App\Modules\Logistics\Experience\Controllers\ShipOutProductionV1Controller;
 use App\Modules\Logistics\Experience\Controllers\XlwmsReshipmentController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsSingleOrderController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsWarehouseBatchController;
+use App\Modules\Logistics\Experience\Controllers\WarehouseBatchReturnAllocationController;
 use App\Modules\Logistics\Experience\Middleware\RejectXlwmsAutomaticCreate;
 use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsExecution;
@@ -54,6 +55,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/china/{provider}/tracking-import/apply', [DomesticLogisticsController::class, 'applyTrackingReturn'])->middleware($execution)->whereIn('provider', ['4px', 'weship'])->name('logistics.china.tracking-import.apply');
     Route::post('/logistics/china/batch-review', [DomesticLogisticsController::class, 'batchReview'])
         ->middleware(['can:domestic.review', 'throttle:15,1'])->name('logistics.china.batch-review');
+    Route::post('/logistics/china/batch-return-allocation', [WarehouseBatchReturnAllocationController::class, 'domestic'])
+        ->middleware(['can:domestic.review', 'throttle:15,1'])->name('logistics.china.batch-return-allocation');
     Route::post('/logistics/china/orders/{order}/approve', [DomesticLogisticsController::class, 'approve'])->middleware('can:domestic.review')->name('logistics.china.approve');
     Route::post('/logistics/china/orders/{order}/stockout', [DomesticLogisticsController::class, 'stockout'])->middleware('can:domestic.review')->name('logistics.china.stockout');
     Route::post('/logistics/china/orders/{order}/return-allocation', [DomesticLogisticsController::class, 'returnAllocation'])->middleware('can:domestic.review')->name('logistics.china.return-allocation');
@@ -62,6 +65,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/china/orders/{order}/reopen-review', [DomesticLogisticsController::class, 'reopenReview'])->middleware('can:domestic.review')->name('logistics.china.reopen-review');
     Route::post('/logistics/oversea/batch-review', [OverseaWarehouseController::class, 'batchReview'])
         ->middleware([...$review, 'throttle:15,1'])->name('logistics.oversea.batch-review');
+    Route::post('/logistics/oversea/batch-return-allocation', [WarehouseBatchReturnAllocationController::class, 'oversea'])
+        ->middleware([...$review, 'throttle:15,1'])->name('logistics.oversea.batch-return-allocation');
     Route::post('/logistics/oversea/orders/{order}/stockout', [OverseaWarehouseController::class, 'stockout'])
         ->middleware($review)->whereNumber('order')->name('logistics.oversea.stockout');
     Route::post('/logistics/oversea/orders/{order}/restock', [OverseaWarehouseController::class, 'restock'])

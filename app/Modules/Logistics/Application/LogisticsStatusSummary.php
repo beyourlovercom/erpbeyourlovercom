@@ -17,7 +17,9 @@ final class LogisticsStatusSummary
                 app(PendingAllocationEntryPolicy::class)
                     ->constrain(Order::query()->eligibleForOperations())
             )
-            ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'));
+            ->where(fn (Builder $q) => $q
+                ->whereDoesntHave('externalReferences', fn ($refs) => $refs->where('provider', 'historical_logistics'))
+                ->orWhere('workflow_status', 'pending_allocation'));
 
     }
 

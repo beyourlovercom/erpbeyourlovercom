@@ -208,6 +208,10 @@ const onRowSelected = (event: { node: { data?: GridRow; isSelected(): boolean };
       }
     })
   } finally { restoringSelection = false }
+  // Some grid versions emit a selectionChanged source that is not in the
+  // checkbox allowlist. Persist a real row toggle immediately, before a
+  // model refresh can restore the previous controlled selection.
+  emit('selection-change', event.api.getSelectedRows())
 }
 const onSelectionChanged = (event: { api: GridApi<GridRow>; source?: string }) => {
   if (restoringSelection) return

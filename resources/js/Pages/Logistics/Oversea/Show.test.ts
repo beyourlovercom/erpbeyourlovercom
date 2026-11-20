@@ -57,6 +57,8 @@ describe('oversea Global Grid with narrow persistent warehouse rail', () => {
       .toBe('/logistics/oversea/us-moreplus/export?order_ids%5B%5D=99')
     expect(wrapper.find('a[href="/logistics/oversea/us-moreplus/export"]').exists()).toBe(true)
     expect(grid.props('selectedOrderIds')).toEqual([99])
+    // Both workbench actions must survive the merge with selected-only export.
+    expect(wrapper.get('select[aria-label="批量操作"]').text()).toContain('批量到待分仓')
   })
   beforeEach(() => {routerVisit.mockClear()})
   it('uses the new grid without rendering the legacy table until a row is opened', async () => {
@@ -110,6 +112,30 @@ describe('oversea Global Grid with narrow persistent warehouse rail', () => {
 })
 
 describe('oversea domestic-style Global Grid review operation contract', () => {
+  it('uses all checked rows for force-return across review, stockout and pending, without review-state filtering', async () => {
+    for (const view of ['review','stockout','pending']) {
+      const selectedRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],review_status:'approved' as const}]}
+      const wrapper=mountPage({globalGridEnabled:true,view,rows:selectedRows,canReview:true,canArchive:true})
+      await flushPromises()
+      const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+      grid.vm.$emit('selection-change',[{id:99}])
+      await wrapper.vm.$nextTick()
+      expect(grid.props('selectedOrderIds')).toEqual([99])
+      const selection=wrapper.get('select[aria-label="批量操作"]')
+      expect(selection.text()).toContain('批量到待分仓')
+      const fetchSpy=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({results:[{order_id:99,ok:true,message:'OK'}]})})
+      vi.stubGlobal('fetch',fetchSpy)
+      await selection.setValue('force_return_allocation')
+      await wrapper.get('[data-testid="grid-batch-footer"] button.apply-batch').trigger('click')
+      await flushPromises()
+      expect(fetchSpy).toHaveBeenCalledWith('/logistics/oversea/batch-return-allocation',
+        expect.objectContaining({method:'POST',body:JSON.stringify({order_ids:[99]})}))
+      expect(routerReload).toHaveBeenCalledWith({only:['rows','viewCounts']})
+      wrapper.unmount()
+      routerReload.mockClear()
+      vi.unstubAllGlobals()
+    }
+  })
   it('G overseas actions may be unpinned, hidden and reordered without altering workflow callbacks',async()=>{
     const wrapper=mountPage({globalGridEnabled:true,view:'review',rows:usSmPendingRows,canReview:true})
     await flushPromises()
