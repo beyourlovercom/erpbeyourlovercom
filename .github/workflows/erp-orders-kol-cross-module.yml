@@ -6,10 +6,16 @@ on:
     paths:
       - 'app/Modules/Orders/**'
       - 'app/Modules/Logistics/Application/OverseaWarehouseReviewService.php'
+      - 'app/Modules/Logistics/Application/WarehouseBatchReturnAllocationService.php'
       - 'app/Modules/Logistics/Experience/Controllers/OverseaWarehouseController.php'
+      - 'app/Modules/Logistics/Experience/Controllers/WarehouseBatchReturnAllocationController.php'
       - 'app/Modules/Logistics/Experience/Routes/web.php'
+      - 'resources/js/Pages/Logistics/Domestic/**'
       - 'resources/js/Pages/Logistics/Oversea/**'
+      - 'resources/js/Components/DataGrid/OmsGrid.vue'
+      - 'resources/js/Components/DataGrid/OmsGrid.preference-stability.test.ts'
       - 'tests/Feature/Logistics/OverseaWarehouseWorkbenchTest.php'
+      - 'tests/Feature/Logistics/WarehouseBatchReturnAllocationTest.php'
       - 'app/Modules/Kol/**'
       - 'app/Modules/Identity/Application/RolePreset.php'
       - 'resources/js/Pages/Orders/**'
@@ -57,6 +63,8 @@ jobs:
         run: npx vitest run resources/js/Components/Orders/OrderOmsTransfer.test.ts
       - name: Overseas review UI, column filters and bulk action contract (same PR head)
         run: npx vitest run resources/js/Pages/Logistics/Oversea/Show.test.ts resources/js/Components/DataGrid/GlobalGrid.test.ts resources/js/Components/DataGrid/GridBatchFooterControls.test.ts
+      - name: Six-grid force return and controlled selection frontend contract (same PR head)
+        run: npx vitest run resources/js/Pages/Logistics/Domestic/Index.test.ts resources/js/Components/DataGrid/OmsGrid.preference-stability.test.ts
       - name: Build frontend for Inertia HTTP assertions
         run: npm run build
       - name: Prepare isolated SQLite test environment
@@ -69,6 +77,8 @@ jobs:
         run: php artisan test tests/Feature/Orders/OrderItemAmendmentPreflightTest.php
       - name: Overseas review HTTP, permissions, batch and audit readback contract (same PR head)
         run: php artisan test tests/Feature/Logistics/OverseaWarehouseWorkbenchTest.php
+      - name: Six-grid force return HTTP, permissions, warehouse clear and audit readback (same PR head)
+        run: php artisan test tests/Feature/Logistics/WarehouseBatchReturnAllocationTest.php tests/Feature/Logistics/DomesticBusinessReviewTest.php tests/Feature/Logistics/PendingAllocationEntryPolicyTest.php
       - name: Orders and KOL HTTP authorization and identity regression
         run: php artisan test tests/Feature/Orders tests/Feature/Kol
       - name: Diff check
