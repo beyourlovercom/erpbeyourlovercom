@@ -2,11 +2,11 @@
 
 namespace App\Modules\Logistics\Application\Domestic;
 
-use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
+use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
-use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
 use Illuminate\Support\Collection;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -45,6 +45,7 @@ final class DomesticPendingBatchExporter
 
         $eligible = $orders->filter(function (Order $order): bool {
             $order->loadMissing(['address', 'items', 'shipment', 'externalReferences', 'fulfillmentParent.financials', 'shipment.warehouse']);
+
             return $this->eligibility->allows($order);
         })->values();
         if ($requireAll && $eligible->count() !== $orders->count()) {
