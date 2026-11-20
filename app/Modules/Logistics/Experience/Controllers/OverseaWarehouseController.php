@@ -2,13 +2,13 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
-use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\LogisticsReviewAccess;
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\OverseaFiles\OverseaOutboundFileService;
+use App\Modules\Logistics\Application\OverseasShipmentQueue;
 use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutMorePlusVerifiedTrackingCompletion;
@@ -20,15 +20,12 @@ use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
 use App\Modules\Orders\Application\OrderKind;
-use App\Modules\Orders\Application\OrderManualHoldStatus;
-use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowGridOptions;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -58,7 +55,6 @@ final class OverseaWarehouseController
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly OverseaOutboundFileService $outboundFiles,
         private readonly OrderWorkflowStatusProjection $workflowStatusProjection,
-        private readonly OrderProgressQuery $progressQueries,
     ) {}
 
     public function index(Request $request, ?string $warehouse = null): Response
@@ -77,30 +73,15 @@ final class OverseaWarehouseController
         if (! in_array($perPage, self::PER_PAGE_OPTIONS, true)) {
             $perPage = self::DEFAULT_PER_PAGE;
         }
-        $warehouseMap = $this->warehouseMap();
+        $queue = app(OverseasShipmentQueue::class);
+        $warehouseMap = $queue->warehouseMap();
         $selectedWarehouse = $warehouseKey === 'all' ? null : ($warehouseMap[$warehouseKey] ?? null);
         if ($warehouseKey !== 'all') {
             abort_unless($selectedWarehouse, 404, '仓库尚未建立');
         }
 
-        $base = Shipment::query()
-            ->with(['order.address', 'order.items.product', 'order.shipment.warehouse', 'order.manualSync', 'order.fulfillmentParent', 'order.fulfillmentAllocation', 'order.operationalMarkers', 'order.originalFulfillmentChildren.shipment.warehouse', 'order.originalFulfillmentChildren.shipment.overseaReview', 'order.originalFulfillmentChildren.operationalMarkers', 'warehouse', 'overseaReview.reviewer'])
-            // Staff route owns workbench placement; keep real Shipment facts
-            // independent for dispatch and warehouse review.
-            ->where(function ($route) use ($warehouseMap): void {
-                $route->whereHas('order', fn ($o) => $o->whereIn('routing_warehouse_code',
-                    collect($warehouseMap)->pluck('code')->all()))
-                    ->orWhere(function ($physical) use ($warehouseMap): void {
-                        $physical->whereIn('warehouse_id', collect($warehouseMap)->pluck('id')->all())
-                            ->whereHas('order', fn ($o) => $o->whereNull('routing_warehouse_code'));
-                    });
-            })
-            ->whereHas('order', fn ($q) => $q->eligibleForOperations()
-                ->where('order_status', '!=', 'cancelled')
-                ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
-        if ($selectedWarehouse) {
-            OrderWarehouseRouting::shipmentIn($base, $selectedWarehouse['code'], (int) $selectedWarehouse['id']);
-        }
+        $base = $queue->baseQuery($warehouseMap, $selectedWarehouse)
+            ->with(['order.address', 'order.items.product', 'order.shipment.warehouse', 'order.manualSync', 'order.fulfillmentParent', 'order.fulfillmentAllocation', 'order.operationalMarkers', 'order.originalFulfillmentChildren.shipment.warehouse', 'order.originalFulfillmentChildren.shipment.overseaReview', 'order.originalFulfillmentChildren.operationalMarkers', 'warehouse', 'overseaReview.reviewer']);
         $this->applyView($base, $view);
 
         // Global Grid V1: keep queries on canonical Shipment/Order records.
@@ -545,183 +526,20 @@ final class OverseaWarehouseController
 
     private function warehouseMap(): array
     {
-        $byCode = Warehouse::query()
-            ->where('is_active', true)
-            ->get()
-            ->filter(fn (Warehouse $warehouse): bool => OverseaWarehouseReviewService::canonicalWarehouseCode($warehouse->code) !== null)
-            ->keyBy(fn (Warehouse $warehouse): string => (string) OverseaWarehouseReviewService::canonicalWarehouseCode($warehouse->code));
-
-        return collect(OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY)
-            ->mapWithKeys(function (string $code, string $key) use ($byCode): array {
-                $warehouse = $byCode->get($code);
-                if (! $warehouse) {
-                    return [];
-                }
-
-                return [$key => [
-                    'key' => $key,
-                    'id' => $warehouse->id,
-                    'code' => $code,
-                    'label' => $warehouse->name,
-                    'carrier' => OverseaWarehouseReviewService::CARRIER_BY_CODE[$code] ?? null,
-                    'url' => "/logistics/oversea/{$key}",
-                ]];
-            })->all();
+        return app(OverseasShipmentQueue::class)->warehouseMap();
     }
 
     private function applyView($query, string $view): void
     {
-        if ($view === 'review') {
-            $this->progressQueries->overseasReview($query);
-
-            return;
-        }
-        if ($view === 'stockout') {
-            $this->progressQueries->overseasStockout($query);
-
-            return;
-        }
-        if ($view === 'pending') {
-            // Even a manually selected Sending status cannot place an already
-            // shipped/issued shipment back in a pending workbench.
-            $query->where('shipment_status', 'pending')
-                ->whereNull('shipped_at');
-            $query->where(function ($phase): void {
-                $phase->whereHas('order', fn (\Illuminate\Database\Eloquent\Builder $o) => $o->where('workflow_status', 'sending'))
-                    ->orWhere(function ($auto): void {
-                        $this->progressQueries->overseasReady($auto)
-                            ->where(function ($warehouses): void {
-                                $warehouses->whereHas('warehouse', fn ($w) => $w->whereNotIn('code', ['US-LA', 'US-SM']))
-                                    ->orWhere(function ($sm): void {
-                                        $sm->whereHas('warehouse', fn ($w) => $w->where('code', 'US-SM'))
-                                            ->whereNotExists(fn ($q) => $this->scope3smIssued($q))
-                                            ->whereNotExists(fn ($q) => $this->scope3smException($q));
-                                    })->orWhere(function ($moreplus): void {
-                                        $moreplus->whereHas('warehouse', fn ($w) => $w->where('code', 'US-LA'))
-                                            ->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeCreated($sub))
-                                            ->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeOmsException($sub))
-                                            ->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeBatchQuarantined($sub))
-                                            ->whereNotExists(function ($sub): void {
-                                                ShipOutProductionDispatchState::scopeAttempt($sub);
-                                                $sub->where('shipout_attempt.status', '!=', 'acknowledged');
-                                            });
-                                    });
-                            });
-                    });
-            });
-
-            return;
-        }
-        if ($view === 'issued') {
-            $query->whereHas('order', fn (\Illuminate\Database\Eloquent\Builder $o) => $o
-                ->where(fn (\Illuminate\Database\Eloquent\Builder $w) => $w
-                    ->whereNull('workflow_status')
-                    ->orWhereNotIn('workflow_status', OrderManualHoldStatus::PRIMARY_CODES)
-                ));
-            $query->where('shipment_status', 'pending')
-                ->whereHas('overseaReview', fn ($r) => $r
-                    ->where('status', 'approved')
-                    ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'))
-                ->where(function ($byWarehouse): void {
-                    $byWarehouse->where(function ($sm): void {
-                        $sm->whereHas('warehouse', fn ($w) => $w->where('code', 'US-SM'))
-                            ->whereExists(fn ($sub) => $this->scope3smIssued($sub));
-                    })->orWhere(function ($moreplus): void {
-                        $moreplus->whereHas('warehouse', fn ($w) => $w->where('code', 'US-LA'))
-                            ->whereExists(fn ($sub) => ShipOutProductionDispatchState::scopeCreated($sub))
-                            ->whereNotExists(fn ($sub) => ShipOutProductionDispatchState::scopeBatchQuarantined($sub));
-                    });
-                });
-
-            return;
-        }
-        if ($view === 'shipped') {
-            $query->whereHas('order', fn (\Illuminate\Database\Eloquent\Builder $o) => $o
-                ->where(fn (\Illuminate\Database\Eloquent\Builder $w) => $w
-                    ->whereNull('workflow_status')
-                    ->orWhereNotIn('workflow_status', OrderManualHoldStatus::PRIMARY_CODES)
-                ));
-            $query->where('shipment_status', 'shipped');
-
-            return;
-        }
-        if ($view === 'exceptions') {
-            $query->whereHas('order', fn (\Illuminate\Database\Eloquent\Builder $o) => $o
-                ->where(fn (\Illuminate\Database\Eloquent\Builder $w) => $w
-                    ->whereNull('workflow_status')
-                    ->orWhereNotIn('workflow_status', OrderManualHoldStatus::PRIMARY_CODES)
-                    ->orWhereIn('workflow_status', OrderManualHoldStatus::EXCEPTION_CODES)
-                ));
-            $query->where(function ($exceptions): void {
-                // The same canonical exception projection used by Orders must
-                // also own the overseas exception work queue. Preserve OMS /
-                // actual Shipment exception predicates below unchanged.
-                $exceptions->whereHas('order', fn (\Illuminate\Database\Eloquent\Builder $orders) => $this->progressQueries->applyPhase($orders, 'exception'))
-                    ->orWhere('shipment_status', 'exception')
-                    ->orWhere(function ($sm): void {
-                        $sm->where('shipment_status', 'pending')
-                            ->whereHas('warehouse', fn ($w) => $w->where('code', 'US-SM'))
-                            ->whereExists(fn ($q) => $this->scope3smException($q));
-                    })
-                    ->orWhere(function ($unresolved): void {
-                        $unresolved->where('shipment_status', 'pending')
-                            ->whereHas('warehouse', fn ($w) => $w->where('code', 'US-LA'))
-                            ->where(function ($problem): void {
-                                $problem
-                                    ->whereExists(fn ($sub) => ShipOutProductionDispatchState::scopeOmsException($sub))
-                                    ->orWhereExists(function ($sub): void {
-                                        ShipOutProductionDispatchState::scopeAttempt($sub);
-                                        $sub->where(function ($notConfirmed): void {
-                                            $notConfirmed->where('shipout_attempt.status', '!=', 'acknowledged')
-                                                ->orWhereNull('shipout_attempt.provider_order_id')
-                                                ->orWhere('shipout_attempt.provider_order_id', '');
-                                        });
-                                    })
-                                    ->orWhereExists(fn ($sub) => ShipOutProductionDispatchState::scopeBatchQuarantined($sub));
-                            });
-                    });
-            });
-        }
-    }
-
-    /** 3SM: an OMS draft (status 0) is not a warehouse-dispatched order. */
-    private function scope3smIssued(Builder $query): void
-    {
-        $query->selectRaw('1')->from('xlwms_dispatch_attempts as sm_issued')
-            ->whereColumn('sm_issued.order_id', 'shipments.order_id')
-            ->whereNotNull('sm_issued.oms_order_no')
-            ->where('sm_issued.oms_order_no', '!=', '')
-            ->whereIn('sm_issued.oms_status_code', ['2', '3'])
-            ->whereNotIn('sm_issued.state', ['oms_draft_unverified', 'batch_draft_unverified']);
-    }
-
-    private function scope3smException(Builder $query): void
-    {
-        $query->selectRaw('1')->from('xlwms_dispatch_attempts as sm_exception')
-            ->whereColumn('sm_exception.order_id', 'shipments.order_id')
-            ->where(function ($exception): void {
-                $exception->whereIn('sm_exception.oms_status_code', ['4', '5'])
-                    ->orWhereIn('sm_exception.state', ['oms_draft_unverified', 'batch_draft_unverified']);
-            });
+        app(OverseasShipmentQueue::class)->applyView($query, $view);
     }
 
     private function viewCounts(array $warehouseMap, ?array $selectedWarehouse): array
     {
         $counts = [];
+        $queue = app(OverseasShipmentQueue::class);
         foreach (self::VIEWS as $view) {
-            $query = Shipment::query()
-                ->where(function ($route) use ($warehouseMap): void {
-                    $route->whereHas('order', fn ($o) => $o->whereIn('routing_warehouse_code',
-                        collect($warehouseMap)->pluck('code')->all()))
-                        ->orWhere(fn ($fallback) => $fallback
-                            ->whereIn('warehouse_id', collect($warehouseMap)->pluck('id')->all())
-                            ->whereHas('order', fn ($o) => $o->whereNull('routing_warehouse_code')));
-                })
-                ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')
-                    ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
-            if ($selectedWarehouse) {
-                OrderWarehouseRouting::shipmentIn($query, $selectedWarehouse['code'], (int) $selectedWarehouse['id']);
-            }
+            $query = $queue->baseQuery($warehouseMap, $selectedWarehouse);
             $this->applyView($query, $view);
             $counts[$view] = $query->count();
         }

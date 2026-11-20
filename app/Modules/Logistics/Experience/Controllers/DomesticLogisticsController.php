@@ -9,6 +9,7 @@ use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewAccess;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
 use App\Modules\Logistics\Application\Domestic\DomesticTodayOrdersExporter;
+use App\Modules\Logistics\Application\DomesticPendingQueue;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnReader;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
@@ -458,15 +459,7 @@ final class DomesticLogisticsController
 
     private function baseQuery(int $factoryId): Builder
     {
-        return Order::query()->eligibleForOperations()
-            ->where('order_status', '!=', 'cancelled')
-            ->whereDoesntHave('fulfillmentChildren')
-            ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
-            ->where(function (Builder $routes) use ($factoryId): void {
-                $routes->whereIn('routing_warehouse_code', ['FACTORY', 'OUTSOURCE'])
-                    ->orWhere(fn (Builder $fallback) => $fallback->whereNull('routing_warehouse_code')
-                        ->whereHas('shipment', fn ($s) => $s->where('warehouse_id', $factoryId)));
-            });
+        return app(DomesticPendingQueue::class)->base($factoryId);
     }
 
     private function applyView(Builder $query, string $view): void
@@ -491,7 +484,7 @@ final class DomesticLogisticsController
                 }),
             'review' => $this->progressQueries->domesticReview($query),
             'stockout' => $this->progressQueries->domesticStockout($query),
-            'pending' => $this->progressQueries->domesticReady($query),
+            'pending' => app(DomesticPendingQueue::class)->pending($query),
             'today-4px' => $this->progressQueries->domesticTodayProvider($query, '4px'),
             'today-weship' => $this->progressQueries->domesticTodayProvider($query, 'weship'),
             'exceptions' => $query->where(function (Builder $issues): void {

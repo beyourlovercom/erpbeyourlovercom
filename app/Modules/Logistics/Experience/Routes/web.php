@@ -4,6 +4,7 @@ use App\Modules\Logistics\Experience\Controllers\CarrierController;
 use App\Modules\Logistics\Experience\Controllers\ChinaSmallPacketBarcode69Controller;
 use App\Modules\Logistics\Experience\Controllers\DomesticInlineTrackingController;
 use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
+use App\Modules\Logistics\Experience\Controllers\Erp2ReadOnlyProjectionController;
 use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsTrackingPushController;
@@ -17,6 +18,7 @@ use App\Modules\Logistics\Experience\Controllers\XlwmsSingleOrderController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsWarehouseBatchController;
 use App\Modules\Logistics\Experience\Middleware\RejectXlwmsAutomaticCreate;
 use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
+use App\Modules\Logistics\Experience\Middleware\RequireErp2ReadonlyProjection;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsExecution;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsReview;
 use App\Modules\Logistics\Experience\Middleware\RequireShipOutProductionV1Operator;
@@ -29,6 +31,15 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics', fn () => redirect()->route('logistics.wait-stock'))->middleware('can:logistics.view')->name('shell.logistics');
     Route::get('/logistics/pending', fn () => redirect()->route('logistics.wait-stock'))->middleware('can:logistics.view')->name('logistics.pending');
     Route::get('/logistics/wait-stock', [LogisticsController::class, 'waitStock'])->middleware('can:logistics.view')->name('logistics.wait-stock');
+    Route::get('/api/erp2/v1/logistics/pending-allocation', [Erp2ReadOnlyProjectionController::class, 'pendingAllocation'])
+        ->middleware([RequireErp2ReadonlyProjection::class, 'can:logistics.view'])
+        ->name('erp2.readonly.logistics.pending-allocation.v1');
+    Route::get('/api/erp2/v1/logistics/domestic/pending', [Erp2ReadOnlyProjectionController::class, 'pendingDomestic'])
+        ->middleware([RequireErp2ReadonlyProjection::class, 'can:logistics.view'])
+        ->name('erp2.readonly.logistics.domestic.pending.v1');
+    Route::get('/api/erp2/v1/logistics/overseas', [Erp2ReadOnlyProjectionController::class, 'overseas'])
+        ->middleware([RequireErp2ReadonlyProjection::class, 'can:logistics.view'])
+        ->name('erp2.readonly.logistics.overseas.v1');
     Route::get('/logistics/china/orders/{order}/barcode-69', ChinaSmallPacketBarcode69Controller::class)->middleware('can:logistics.view')->whereNumber('order')->name('logistics.china.barcode-69');
     Route::get('/logistics/tingon', [TingonFulfillmentController::class, 'index'])->middleware('can:logistics.view')->name('logistics.tingon');
     Route::post('/logistics/tingon/orders/{order}/save', [TingonFulfillmentController::class, 'save'])->middleware($execution)->whereNumber('order')->name('logistics.tingon.save');
