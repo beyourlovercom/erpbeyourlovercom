@@ -41,6 +41,20 @@ const baseProps = {
 }
 
 describe('Domestic logistics production workbench', () => {
+  it('shows a selected-only pending XLSX link without changing the full export URL', async () => {
+    const wrapper = mount(Index, {props:{...baseProps,trackingImportPreview:null,trackingImportProvider:null,
+      globalGridPilotAvailable:true,globalGridPilotEnabled:true}})
+    expect(wrapper.find('[data-testid="download-domestic-selected"]').exists()).toBe(false)
+    const state = (wrapper.vm as unknown as {$:{setupState:Record<string,unknown>}}).$.setupState
+    const select = state.onBulkSelectionChanged as (rows:{id:number}[])=>void
+    select([{id:1}])
+    await wrapper.vm.$nextTick()
+    const link = wrapper.get('[data-testid="download-domestic-selected"]')
+    expect(link.text()).toContain('下载已选 1 单')
+    expect(link.attributes('href')).toBe('/logistics/china/pending-batch/export?order_ids%5B%5D=1')
+    expect(wrapper.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(true)
+    expect(wrapper.get('select[aria-label="批量操作"]').text()).toContain('批量到待分仓')
+  })
   beforeEach(() => { routerGet.mockClear(); routerPost.mockClear(); routerPatch.mockClear(); routerVisit.mockClear(); routerReload.mockClear(); feedbackSpy.mockClear(); vi.unstubAllGlobals() })
 
   it('offers the same real force-return route in review, stockout and pending grids', async () => {

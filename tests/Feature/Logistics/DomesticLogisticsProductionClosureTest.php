@@ -7,12 +7,8 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
-use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnReader;
-use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
-use App\Modules\Sync\Infrastructure\EloquentSyncOrchestrationRepository;
-use Mockery;
-use Illuminate\Support\Facades\Queue;
+use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Orders\Application\OrderKind;
@@ -20,8 +16,13 @@ use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use App\Modules\Sync\Application\ManualSyncStatus;
+use App\Modules\Sync\Infrastructure\EloquentSyncOrchestrationRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
+use Mockery;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -159,25 +160,25 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
 
         $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&per_page=20')
             ->assertOk()->assertInertia(fn ($page) => $page
-                ->where('view', 'all')->where('rows.total', 3)
-                ->where('globalGridPilotEnabled', true)->where('rows.per_page', 20)
-                ->where('viewCounts.all', 3)->missing('viewCounts.4px')->missing('viewCounts.weship'));
+            ->where('view', 'all')->where('rows.total', 3)
+            ->where('globalGridPilotEnabled', true)->where('rows.per_page', 20)
+            ->where('viewCounts.all', 3)->missing('viewCounts.4px')->missing('viewCounts.weship'));
 
         foreach (['4px' => $speeda->id, 'weship' => $weship->id, 'deppon' => $other->id] as $carrier => $id) {
             $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_carrier='.$carrier)
                 ->assertOk()->assertInertia(fn ($page) => $page
-                    ->where('rows.total', 1)->where('rows.data.0.order_id', $id)
-                    ->where('gridFilters.carrier', $carrier));
+                ->where('rows.total', 1)->where('rows.data.0.order_id', $id)
+                ->where('gridFilters.carrier', $carrier));
         }
         $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_shipment_status=shipped')
             ->assertOk()->assertInertia(fn ($page) => $page
-                ->where('rows.total', 1)->where('rows.data.0.order_id', $weship->id));
+            ->where('rows.total', 1)->where('rows.data.0.order_id', $weship->id));
         $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_review=pending')
             ->assertOk()->assertInertia(fn ($page) => $page
-                ->where('rows.total', 1)->where('rows.data.0.order_id', $other->id));
+            ->where('rows.total', 1)->where('rows.data.0.order_id', $other->id));
         $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_tracking=WESHIP-ALL')
             ->assertOk()->assertInertia(fn ($page) => $page
-                ->where('rows.total', 1)->where('rows.data.0.order_id', $weship->id));
+            ->where('rows.total', 1)->where('rows.data.0.order_id', $weship->id));
         $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_shipment_status=DROP_TABLE')
             ->assertOk()->assertInertia(fn ($page) => $page->where('rows.total', 0));
 
@@ -196,16 +197,16 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         config()->set('inertia.testing.ensure_pages_exist', false);
         $speeda = $this->domesticOrder('007-1029-C-ENUM-4PX', '4PX', true, '13800138001', 1);
         $weship = $this->domesticOrder('007-1029-C-ENUM-WE', 'Weship', true, '13800138002', 1);
-        $speeda->manualSync()->create(['website_sync_status' => \App\Modules\Sync\Application\ManualSyncStatus::Completed]);
-        $weship->manualSync()->create(['website_sync_status' => \App\Modules\Sync\Application\ManualSyncStatus::Pending]);
+        $speeda->manualSync()->create(['website_sync_status' => ManualSyncStatus::Completed]);
+        $weship->manualSync()->create(['website_sync_status' => ManualSyncStatus::Pending]);
         $viewer = $this->logisticsViewer();
 
         foreach (['today-4px' => 1, 'today-weship' => 1, 'today' => 2] as $view => $expected) {
             $this->actingAs($viewer)->get('/logistics/china?view='.$view)
                 ->assertOk()->assertInertia(fn ($page) => $page
-                    ->component('Logistics/Domestic/Index')
-                    ->where('view', $view)
-                    ->where('rows.total', $expected));
+                ->component('Logistics/Domestic/Index')
+                ->where('view', $view)
+                ->where('rows.total', $expected));
         }
     }
 
@@ -275,7 +276,9 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
             self::assertEmpty($sheet->getCell('AA2')->getValue());
             self::assertSame('AA', $sheet->getHighestDataColumn());
             $book->disconnectWorksheets();
-        } finally { @unlink($path); }
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function test_real_4px_download_exports_all_countries_and_ignores_missing_69_barcode(): void
@@ -305,7 +308,9 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
             self::assertEmpty($sheet->getCell('AA2')->getValue());
             self::assertEmpty($sheet->getCell('AA3')->getValue());
             $book->disconnectWorksheets();
-        } finally { @unlink($path); }
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function test_weship_export_reuses_the_24_column_contract_but_remains_provider_isolated(): void
@@ -425,6 +430,39 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         self::assertSame([], $blockers->blockers($unreviewed->fresh()));
         self::assertContains('外采尚未验收到货放行，禁止导出', $blockers->blockers($external->fresh()));
         self::assertContains('该单已离开待发货队列，禁止重复导出', $blockers->blockers($shipped->fresh()));
+    }
+
+    public function test_pending_exports_include_only_selected_order_ids_and_reject_invalid_scope(): void
+    {
+        $first = $this->domesticOrder('007-1120-c53001', '4PX', true, '111', 1);
+        $second = $this->domesticOrder('007-1120-c53002', '4PX', true, '222', 2);
+        $third = $this->domesticOrder('007-1120-c53003', '4PX', true, '333', 3);
+        $viewer = $this->logisticsViewer();
+        $base = '/logistics/china/pending-batch/export';
+
+        $this->actingAs($viewer)->get($base)->assertOk()
+            ->assertHeader('X-BYL-Exported-Orders', '3');
+        foreach ([$base, $base.'-sku-merged'] as $url) {
+            $response = $this->actingAs($viewer)->get($url.'?order_ids[0]='.$third->id.'&order_ids[1]='.$first->id)
+                ->assertOk()->assertHeader('X-BYL-Exported-Orders', '2');
+            $path = tempnam(sys_get_temp_dir(), 'selected-domestic-').'.xlsx';
+            file_put_contents($path, $response->getContent());
+            try {
+                $book = IOFactory::load($path);
+                $sheet = $book->getActiveSheet();
+                self::assertSame(3, $sheet->getHighestDataRow());
+                self::assertSame($first->erp_order_id, $sheet->getCell('A2')->getValue());
+                self::assertSame($third->erp_order_id, $sheet->getCell('A3')->getValue());
+                $book->disconnectWorksheets();
+            } finally {
+                @unlink($path);
+            }
+        }
+        $this->actingAs($viewer)->get($base.'?order_ids=bad')->assertStatus(302);
+        $this->actingAs($viewer)->getJson($base.'?order_ids=bad')->assertUnprocessable();
+        $this->actingAs($viewer)->getJson($base.'?order_ids[0]='.$first->id.'&order_ids[1]='.$first->id)->assertUnprocessable();
+        $this->actingAs($viewer)->get($base.'?order_ids[0]='.$first->id.'&order_ids[1]=999999')->assertStatus(422);
+        self::assertSame('pending', $second->fresh()->shipment->shipment_status);
     }
 
     public function test_pending_batch_export_and_mixed_carrier_tracking_upload_are_carrier_safe(): void

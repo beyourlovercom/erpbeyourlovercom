@@ -18,8 +18,9 @@
 ## Delivery
 
 - One feature branch: `feat/erp-six-grids-bulk-return-allocation-20261120`, based on current `main` (`e7b93bca` at implementation sync).
+- `main` subsequently advanced to `297bbd7e` with PR #817 selected-only pending-order exports. The merge candidate preserves both selected download and **批量到待分仓** actions in each pending Grid, with combined regression assertions.
 - The Orders/KOL mutation-contract workflow is extended to run the added backend/UI regression tests on the exact PR head.
-- Draft PR may be opened for CI. **Do not merge before Owner live-page PASS**; Production requires a separate explicit authorization, exact candidate SHA, rollback and post-release readback.
+- Draft PR #818 is under CI. Owner later requested to continue through release, but **do not merge before Owner live-page UAT PASS**; Production rollout still requires the exact candidate SHA, rollback and post-release readback.
 
 ## Acceptance readback
 

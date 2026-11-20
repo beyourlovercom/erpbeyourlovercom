@@ -64,6 +64,9 @@ const props = withDefaults(defineProps<{
 
 type BulkChoice = {value:string; label:string; reasonRequired?:boolean}
 const selectedBulkOrderIds = ref<number[]>([])
+const selectedExportQuery = computed(() => new URLSearchParams(
+  selectedBulkOrderIds.value.map(id => ['order_ids[]', String(id)]),
+).toString())
 const bulkBusy = ref(false)
 const isDailyProviderView = (view:string)=>['today','today-4px','today-weship'].includes(view)
 const isAllDomesticView = (view:string)=>view==='all'
@@ -790,6 +793,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         </div>
         <div class="actions">
           <a class="secondary" href="/logistics/china/pending-batch/export-sku-merged" data-testid="download-domestic-sku-merged">下载SKU合并版表</a>
+          <a v-if="selectedBulkOrderIds.length" class="secondary" :href="'/logistics/china/pending-batch/export?'+selectedExportQuery" data-testid="download-domestic-selected">下载已选 {{ selectedBulkOrderIds.length }} 单</a>
           <a class="primary" href="/logistics/china/pending-batch/export">下载待发货批量表</a>
           <button v-if="canOperate" type="button" class="secondary" :disabled="uploadBusy || applyBusy" @click="chooseUpload">⏫上传物流单号</button>
         </div>

@@ -16,6 +16,7 @@ use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
+use App\Modules\Logistics\Application\SelectedExportOrderIds;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use App\Modules\Orders\Application\OrderBusinessDateResolver;
@@ -334,18 +335,25 @@ final class DomesticLogisticsController
         ]);
     }
 
-    public function exportPendingBatch(): HttpResponse
+    public function exportPendingBatch(Request $request): HttpResponse
     {
+        $selectedIds = SelectedExportOrderIds::fromRequest($request);
         $factory = $this->factory();
         $query = $this->baseQuery((int) $factory->id);
         $this->applyView($query, 'pending');
+        if ($selectedIds !== null) {
+            $query->whereIn('orders.id', $selectedIds);
+        }
         $orders = $query->with(['address', 'items.product', 'shipment.warehouse', 'externalReferences', 'operationalMarkers', 'procurementOrder'])
             ->orderBy('order_date')
             ->orderBy('id')
             ->get();
+        if ($selectedIds !== null) {
+            abort_unless($orders->count() === count($selectedIds), 422, '所选订单不属于当前国内待发货列表，请刷新后重选。');
+        }
 
         try {
-            $bytes = $this->pendingBatch->export($orders);
+            $bytes = $this->pendingBatch->export($orders, $selectedIds !== null);
         } catch (\DomainException $e) {
             abort(422, $e->getMessage());
         }
@@ -358,17 +366,25 @@ final class DomesticLogisticsController
         ]);
     }
 
-    public function exportPendingBatchSkuMerged(): HttpResponse
+    public function exportPendingBatchSkuMerged(Request $request): HttpResponse
     {
+        $selectedIds = SelectedExportOrderIds::fromRequest($request);
         $factory = $this->factory();
-        $orders = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id))
+        $query = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id));
+        if ($selectedIds !== null) {
+            $query->whereIn('orders.id', $selectedIds);
+        }
+        $orders = $query
             ->with(['address', 'items.product', 'shipment', 'externalReferences', 'operationalMarkers'])
             ->orderBy('order_date')
             ->orderBy('id')
             ->get();
+        if ($selectedIds !== null) {
+            abort_unless($orders->count() === count($selectedIds), 422, '所选订单不属于当前国内待发货列表，请刷新后重选。');
+        }
 
         try {
-            $bytes = $this->pendingBatch->exportSkuMerged($orders);
+            $bytes = $this->pendingBatch->exportSkuMerged($orders, $selectedIds !== null);
         } catch (\DomainException $e) {
             abort(422, $e->getMessage());
         }

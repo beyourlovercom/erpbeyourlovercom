@@ -43,6 +43,23 @@ const mountPage = (overrides: Record<string, unknown> = {}) => mount(Show, { pro
 } })
 
 describe('oversea Global Grid with narrow persistent warehouse rail', () => {
+  it('keeps full warehouse export and displays selected-only export for pending rows', async () => {
+    const wrapper = mountPage({globalGridEnabled:true,rows:usSmPendingRows,canArchive:false,canOperate:false})
+    await flushPromises()
+    const grid = wrapper.findComponent({name:'MockGlobalGrid'})
+    expect(grid.props('enableSelection')).toBe(true)
+    expect(wrapper.find('[data-testid="download-oversea-selected"]').exists()).toBe(false)
+    const state = (wrapper.vm as unknown as {$:{setupState:Record<string,unknown>}}).$.setupState
+    const select = state.onGridSelection as (rows:{id:number}[])=>void
+    select([{id:99}])
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="download-oversea-selected"]').attributes('href'))
+      .toBe('/logistics/oversea/us-moreplus/export?order_ids%5B%5D=99')
+    expect(wrapper.find('a[href="/logistics/oversea/us-moreplus/export"]').exists()).toBe(true)
+    expect(grid.props('selectedOrderIds')).toEqual([99])
+    // Both workbench actions must survive the merge with selected-only export.
+    expect(wrapper.get('select[aria-label="批量操作"]').text()).toContain('批量到待分仓')
+  })
   beforeEach(() => {routerVisit.mockClear()})
   it('uses the new grid without rendering the legacy table until a row is opened', async () => {
     const wrapper=mountPage({globalGridEnabled:true,rows:usSmPendingRows,gridSearch:'',gridSort:{colId:'line',direction:'desc'}})
