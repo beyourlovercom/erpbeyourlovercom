@@ -28,7 +28,8 @@ const pager = ref<Pick<ErpOrderPage, 'page' | 'perPage' | 'total' | 'lastPage'>>
   page: 1, perPage: 50, total: 0, lastPage: 1,
 });
 const currentDevEnabled = !canonicalIdentityMode && import.meta.env.VITE_ERP_CURRENT_DEV_ENABLED === '1';
-const bridgeEnabled = !currentDevEnabled && import.meta.env.VITE_ERP_DEV_BRIDGE_ENABLED === '1';
+const bridgeEnabled = !canonicalIdentityMode && !currentDevEnabled &&
+  import.meta.env.VITE_ERP_DEV_BRIDGE_ENABLED === '1';
 const enabled = canonicalIdentityMode || currentDevEnabled || bridgeEnabled || import.meta.env.VITE_ERP_READONLY_ORDERS_ENABLED === '1';
 const selectedRole = activeDevRole;
 const devOrderScope = ref<'all' | 'customers'>('all');
