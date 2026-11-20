@@ -53,7 +53,7 @@ describe('Domestic logistics production workbench', () => {
     expect(link.text()).toContain('下载已选 1 单')
     expect(link.attributes('href')).toBe('/logistics/china/pending-batch/export?order_ids%5B%5D=1')
     expect(wrapper.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(true)
-    expect(wrapper.get('select[aria-label="批量操作"]').text()).toContain('批量到待分仓')
+    expect((state.bulkOptions as {label:string}[]).map(option=>option.label)).toContain('批量到待分仓')
   })
   beforeEach(() => { routerGet.mockClear(); routerPost.mockClear(); routerPatch.mockClear(); routerVisit.mockClear(); routerReload.mockClear(); feedbackSpy.mockClear(); vi.unstubAllGlobals() })
 
