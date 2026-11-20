@@ -32,3 +32,15 @@
 ## Go/no-go after code review
 - Require Owner review, branch PR, Dev encrypted connection configured via trusted local TTY, Dev read-only snapshot inspection and explicit matching decision.
 - No Production deployment or live outbound authorization in R1–R3 scope.
+
+## Actual isolated Dev R2–R3 live UAT (2026-11-20, subsequent evidence)
+- Operator locally configured encrypted DE/Hannover credentials; `--warehouse=DE --check` returned PRESENT. No plaintext secret or full signature captured.
+- Isolated US Mac mini local-only SQLite: 182 migrations, DE and US-SM each exactly one warehouse row, distinct generated Laravel encryption key; Production and Remote Dev unchanged.
+- Two real signed `xlwms:sync-inventory --warehouse=DE --dry-run` runs succeeded; snapshot ID remained 1, checksum stable, no ERP stock writes.
+- Provider catalog: 64 SKUs; Hannover stock: 34 SKUs; good stock 609, available 602, locked 7.
+- Snapshot: 64 rows (34 `unmatched` and 30 `catalog_only`). Status `blocked` reflects isolated Dev `products` table is empty, NOT an OMS transport/auth failure.
+- Read-only DB evidence: DE inventory rows 0, US-SM inventory rows 0, one DE snapshot recorded. No `--apply`.
+- Real signed `xlwms:inspect-de-channels`: 5 provider channels; all `whCodes: []` (warehouse binding not confirmed); no automatic ERP mapping or dispatch.
+- DE provider DHL codes: `DHL PAKET DOMESTIC`, `DHL PAKET International N` with provider carrier `DE-DHL-TG`. Local ERP seeded carrier DHL offers `paket_domestic` / `paket_international`, but exact provider-to-ERP carrier identity and OMS warehouse binding remain unverified.
+- Next: join actual ERP Product master into isolated Dev (read-only source/authorized fixture) to review 34 SKU mappings; confirm channel binding at Tianyun OMS, then Owner UAT.
+- The prior code-stage-only note above records the original PR snapshot; this section is the subsequent real isolated Dev evidence.
