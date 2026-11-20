@@ -427,6 +427,39 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         self::assertContains('该单已离开待发货队列，禁止重复导出', $blockers->blockers($shipped->fresh()));
     }
 
+    public function test_pending_exports_include_only_selected_order_ids_and_reject_invalid_scope(): void
+    {
+        $first = $this->domesticOrder('007-1120-c53001', '4PX', true, '111', 1);
+        $second = $this->domesticOrder('007-1120-c53002', '4PX', true, '222', 2);
+        $third = $this->domesticOrder('007-1120-c53003', '4PX', true, '333', 3);
+        $viewer = $this->logisticsViewer();
+        $base = '/logistics/china/pending-batch/export';
+
+        $this->actingAs($viewer)->get($base)->assertOk()
+            ->assertHeader('X-BYL-Exported-Orders', '3');
+        foreach ([$base, $base.'-sku-merged'] as $url) {
+            $response = $this->actingAs($viewer)->get($url.'?order_ids[0]='.$third->id.'&order_ids[1]='.$first->id)
+                ->assertOk()->assertHeader('X-BYL-Exported-Orders', '2');
+            $path = tempnam(sys_get_temp_dir(), 'selected-domestic-').'.xlsx';
+            file_put_contents($path, $response->getContent());
+            try {
+                $book = IOFactory::load($path);
+                $sheet = $book->getActiveSheet();
+                self::assertSame(3, $sheet->getHighestDataRow());
+                self::assertSame($first->erp_order_id, $sheet->getCell('A2')->getValue());
+                self::assertSame($third->erp_order_id, $sheet->getCell('A3')->getValue());
+                $book->disconnectWorksheets();
+            } finally {
+                @unlink($path);
+            }
+        }
+        $this->actingAs($viewer)->get($base.'?order_ids=bad')->assertStatus(302);
+        $this->actingAs($viewer)->getJson($base.'?order_ids=bad')->assertUnprocessable();
+        $this->actingAs($viewer)->getJson($base.'?order_ids[0]='.$first->id.'&order_ids[1]='.$first->id)->assertUnprocessable();
+        $this->actingAs($viewer)->get($base.'?order_ids[0]='.$first->id.'&order_ids[1]=999999')->assertStatus(422);
+        self::assertSame('pending', $second->fresh()->shipment->shipment_status);
+    }
+
     public function test_pending_batch_export_and_mixed_carrier_tracking_upload_are_carrier_safe(): void
     {
         $speeda = $this->domesticOrder('007-0923-c50101', '4PX', reviewed: true, phone: '111', quantity: 1);

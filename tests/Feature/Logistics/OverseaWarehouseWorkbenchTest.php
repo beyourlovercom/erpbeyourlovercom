@@ -1034,6 +1034,31 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertSame('3', $rows[2][2]);
     }
 
+    public function test_oversea_selected_export_is_exact_and_warehouse_scoped(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $first = $this->orderAt($warehouses['US-LA'], '007erp-1120-c53011');
+        $second = $this->orderAt($warehouses['US-LA'], '007erp-1120-c53012');
+        $foreign = $this->orderAt($warehouses['US-NY'], '007erp-1120-c53013');
+        foreach ([$first, $second, $foreign] as $order) {
+            $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        }
+        $url = '/logistics/oversea/us-moreplus/export';
+        $full = $this->actingAs($user)->get($url)->assertOk();
+        $this->assertCount(3, $this->xlsxRows($full->getContent()));
+
+        $selected = $this->actingAs($user)->get($url.'?order_ids[0]='.$second->id)
+            ->assertOk();
+        $rows = $this->xlsxRows($selected->getContent());
+        $this->assertCount(2, $rows);
+        $this->assertSame('C53012-007', $rows[1][0]);
+        $this->actingAs($user)->get($url.'?order_ids[0]='.$first->id.'&order_ids[1]='.$foreign->id)->assertStatus(422);
+        $this->actingAs($user)->get($url.'?order_ids[0]=999999')->assertStatus(422);
+        $this->actingAs($user)->getJson($url.'?order_ids=invalid')->assertUnprocessable();
+        $this->assertSame('pending', $second->fresh()->shipment->shipment_status);
+    }
+
     public function test_wms_family_exports_real_usny_us3sm_and_de_profiles(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
