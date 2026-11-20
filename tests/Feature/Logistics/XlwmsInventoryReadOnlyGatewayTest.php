@@ -9,7 +9,7 @@ use Tests\TestCase;
 
 final class XlwmsInventoryReadOnlyGatewayTest extends TestCase
 {
-    public function test_only_the_two_inventory_reads_are_allowlisted_and_no_outbound_request_is_possible(): void
+    public function test_only_three_catalog_reads_are_allowlisted_and_no_outbound_request_is_possible(): void
     {
         Http::fake(fn ($request) => Http::response(['code' => 200, 'data' => ['records' => [], 'total' => 0, 'page' => 1, 'pageSize' => 10, 'pages' => 0]], 200));
         Http::preventStrayRequests();
@@ -22,10 +22,13 @@ final class XlwmsInventoryReadOnlyGatewayTest extends TestCase
 
         $gateway->productPage($connection, ['page' => 1, 'pageSize' => 10]);
         $gateway->integratedInventoryPage($connection, ['page' => 1, 'pageSize' => 10, 'whCode' => 'US-SM']);
+        $gateway->logisticsChannels($connection, 'Hannover');
 
-        Http::assertSentCount(2);
+        Http::assertSentCount(3);
         Http::assertSent(fn ($request): bool => str_contains($request->url(), '/product/pagelist?authcode='));
         Http::assertSent(fn ($request): bool => str_contains($request->url(), '/integratedInventory/pageOpen?authcode='));
+        Http::assertSent(fn ($request): bool => str_contains($request->url(), '/logistics/channel/list?authcode=')
+            && ((array) $request['data'])['whCode'] === 'Hannover');
         Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'outboundOrder'));
     }
 
