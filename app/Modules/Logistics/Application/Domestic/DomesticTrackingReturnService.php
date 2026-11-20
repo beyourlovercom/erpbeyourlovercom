@@ -141,9 +141,6 @@ final class DomesticTrackingReturnService
                 if ((int) $shipment->warehouse_id !== (int) $warehouse->id) {
                     $messages[] = '订单不属于中国工厂';
                 }
-                if (! $order->operationalMarkers->contains('marker', 'domestic_reviewed')) {
-                    $messages[] = '订单尚未完成国内商务审核';
-                }
                 if ($shipment->shipment_status === 'pending'
                     && (! app(DomesticCarrierDefaults::class)->ready($order))) {
                     $messages[] = '请先配置有效的物流商和服务类型';

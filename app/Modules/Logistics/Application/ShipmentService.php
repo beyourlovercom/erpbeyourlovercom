@@ -31,6 +31,7 @@ final class ShipmentService
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly FulfillmentPaymentGate $paymentGate,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     public function saveDraft(Model $order, array $attributes, ?Authenticatable $actor): Model
@@ -45,6 +46,7 @@ final class ShipmentService
 
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
             $before = $this->snapshot($shipment);
+            $originalWarehouseId = (int) $shipment->warehouse_id;
             $warehouseProvided = array_key_exists('warehouse_id', $attributes);
             $carrierProvided = array_key_exists('carrier', $attributes) || array_key_exists('service', $attributes);
             $trackingNumber = array_key_exists('tracking_number', $attributes)
@@ -85,6 +87,7 @@ final class ShipmentService
             ]);
             $changed = $shipment->isDirty();
             $shipment->save();
+            $this->syncFinalSkusForWarehouse($lockedOrder, $originalWarehouseId, (int) $shipment->warehouse_id);
             $this->syncPackagingSnapshots($lockedOrder, $shipment);
 
             if ($changed) {
@@ -133,6 +136,7 @@ final class ShipmentService
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
             $alreadyShipped = $lockedOrder->order_status?->value === 'shipped' && $shipment->shipment_status === 'shipped';
             $before = $this->snapshot($shipment);
+            $originalWarehouseId = (int) $shipment->warehouse_id;
             $trackingNumber = $this->canonicalTrackingNumber($attributes['tracking_number'] ?? null);
             $selectedWarehouseId = $attributes['warehouse_id'] ?? $shipment->warehouse_id;
             if (! $alreadyShipped && $shipment->warehouse_selection_source === 'manual_route_only'
@@ -182,6 +186,7 @@ final class ShipmentService
             $changed = $shipment->isDirty() || $lockedOrder->order_status?->value !== 'shipped';
             $shipment->save();
             if (! $alreadyShipped) {
+                $this->syncFinalSkusForWarehouse($lockedOrder, $originalWarehouseId, (int) $shipment->warehouse_id);
                 $this->syncPackagingSnapshots($lockedOrder, $shipment);
             }
             if ($lockedOrder->order_status?->value !== 'shipped') {
@@ -200,6 +205,51 @@ final class ShipmentService
 
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync', 'financials', 'costEntries']);
         });
+    }
+
+    /**
+     * One physical warehouse selection determines every current order-line SKU.
+     * A previously allocated shipment cannot carry its old physical SKU into
+     * a different warehouse when the new mapping is missing or unverified.
+     */
+    private function syncFinalSkusForWarehouse(Model $order, int $previousWarehouseId, int $selectedWarehouseId): void
+    {
+        if ($selectedWarehouseId < 1) {
+            return;
+        }
+
+        $moved = $previousWarehouseId > 0 && $previousWarehouseId !== $selectedWarehouseId;
+        foreach ($order->items()->lockForUpdate()->get() as $item) {
+            $mapped = $this->finalSkus->mapped((int) $item->product_id, $selectedWarehouseId);
+            if ($mapped === null) {
+                abort_if((bool) config('warehouse_final_sku.require_verified_mapping')
+                    || ($moved && filled($item->final_sku)), 422,
+                    '目标仓库没有经过确认的商品 SKU 映射，不能沿用原仓 SKU');
+                // Transitional legacy orders with no physical SKU assignment
+                // may still be re-routed, but never acquire a false final SKU.
+                if ($moved && filled($item->source_sku)) {
+                    $item->forceFill([
+                        'sku' => $item->source_sku,
+                        'resolved_fulfillment_sku' => $item->source_sku,
+                        'final_sku' => null,
+                    ])->save();
+                }
+                continue;
+            }
+
+            if ($item->final_sku === $mapped) {
+                continue;
+            }
+
+            $item->forceFill([
+                'source_sku' => $item->source_sku ?: $item->sku,
+                'source_product_id' => $item->source_product_id ?: $item->product_id,
+                'source_product_summary' => $item->source_product_summary ?: $item->product_summary,
+                'sku' => $mapped,
+                'resolved_fulfillment_sku' => $mapped,
+                'final_sku' => $mapped,
+            ])->save();
+        }
     }
 
     public function updateTracking(Model $order, string $trackingNumber, ?Authenticatable $actor): Model
@@ -566,7 +616,9 @@ final class ShipmentService
         abort_unless($resolved, 422, '请选择该物流商已启用的运输 / 服务类型');
 
         return [
-            'service' => $serviceText !== '' ? $serviceText : $resolved->service_value,
+            // “默认” is a UI alias for the configured carrier service; do not overwrite
+            // the actual USPS/DHL/etc. service value with a generic label.
+            'service' => $serviceText === '' || $serviceText === '默认' ? $resolved->service_value : $serviceText,
             'carrier_service_id' => (int) $resolved->id,
         ];
     }
@@ -652,19 +704,18 @@ final class ShipmentService
             return;
         }
 
-        // Preserve the Domestic Business confirmation / stockout gate from
-        // current main. Allocation and order-detail actions share this rule.
+        // Domestic stockout remains a shipping gate; Kaven review remains
+        // available as an operational workflow but is not a dispatch prerequisite.
         $isFactory = strtoupper(trim((string) $requestedCode)) === 'FACTORY'
             || strtoupper(trim((string) $assignedCode)) === 'FACTORY';
         if ($isFactory) {
-            abort_unless((int) $shipment->warehouse_id === (int) $warehouseId, 409, '请先重新分仓并完成国内审核');
+            abort_unless((int) $shipment->warehouse_id === (int) $warehouseId, 409, '请先保存正确的中国工厂仓分配');
             $order->loadMissing('operationalMarkers');
             abort_unless(
-                $order->operationalMarkers->contains('marker', 'domestic_reviewed')
-                    && ! $order->operationalMarkers->contains('marker', 'domestic_stockout')
+                ! $order->operationalMarkers->contains('marker', 'domestic_stockout')
                     && $order->workflow_status !== 'out_of_stock',
                 409,
-                '国内订单未经商务确认有货，或已标记缺货，不允许确认发货。',
+                '国内订单已标记缺货，不允许确认发货。',
             );
         }
     }

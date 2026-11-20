@@ -7,6 +7,9 @@ use App\Modules\Audit\Application\AuditService;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderAuxiliaryStatusService;
+use App\Modules\Orders\Application\OrderWorkflowStatus;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
@@ -24,9 +27,13 @@ final class OrderOperationalArchiveController
     public function index(Request $request): Response
     {
         abort_unless($request->user()?->can('orders.view'), 403);
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'per_page' => ['nullable', 'in:20,50,100'],
+        ]);
         // Direct archives and children suppressed by a parent archive are both
         // listed. A child with its own archive flag can be restored separately.
-        $query = Order::query()->with(['owner', 'operationalArchivedByUser', 'fulfillmentParent.operationalArchivedByUser'])
+        $query = Order::query()->with(['owner', 'operationalArchivedByUser', 'fulfillmentParent.operationalArchivedByUser', 'shipment.warehouse', 'operationalMarkers'])
             ->whereNull('archived_at')
             ->where(function ($archived): void {
                 $archived->whereNotNull('operational_archived_at')
@@ -44,7 +51,28 @@ final class OrderOperationalArchiveController
             }
         }
 
-        $orders = $query->orderByRaw('COALESCE(orders.operational_archived_at, (SELECT parent.operational_archived_at FROM orders AS parent WHERE parent.id = orders.fulfillment_parent_id)) DESC')->latest('orders.id')->paginate(50)->withQueryString();
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            if (preg_match('/^dbid:(\d+)$/i', $search, $match) === 1) {
+                $query->whereKey((int) $match[1]);
+            } else {
+                // Search must happen before pagination; a record on page 2 or 3
+                // must still be reachable from the first page's search field.
+                $query->where(function ($matching) use ($search): void {
+                    $like = '%'.addcslashes($search, '\\%_').'%';
+                    $matching->where('erp_order_id', 'like', $like)
+                        ->orWhere('internal_order_number', 'like', $like)
+                        ->orWhere('external_order_number', 'like', $like)
+                        ->orWhereHas('address', fn ($address) => $address
+                            ->where('recipient_name', 'like', $like)->orWhere('email', 'like', $like))
+                        ->orWhereHas('items', fn ($items) => $items->where('sku', 'like', $like))
+                        ->orWhereHas('externalReferences', fn ($refs) => $refs->where('reference', 'like', $like));
+                });
+            }
+        }
+
+        $orders = $query->orderByRaw('COALESCE(orders.operational_archived_at, (SELECT parent.operational_archived_at FROM orders AS parent WHERE parent.id = orders.fulfillment_parent_id)) DESC')->latest('orders.id')
+            ->paginate((int) ($filters['per_page'] ?? 50))->withQueryString();
 
         return Inertia::render('Orders/Archive', [
             'orders' => $orders->through(fn (Order $order): array => [
@@ -52,6 +80,17 @@ final class OrderOperationalArchiveController
                 'erp_order_id' => $order->erp_order_id,
                 'order_kind' => $order->order_kind?->value,
                 'order_status' => $order->order_status?->value,
+                'workflow_revision' => (int) $order->workflow_revision,
+                'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
+                'can_change_status' => $order->operational_archived_at !== null
+                    && $order->fulfillmentParent?->operational_archived_at === null,
+                'workflow_status_options' => collect(OrderWorkflowStatus::registry())
+                    ->filter(fn (array $definition, string $code): bool => $code === 'archived'
+                        || ($definition['mutable'] && ($order->order_kind === OrderKind::KolFulfillment
+                            ? ! in_array($code, ['cancelled', 'pending_allocation'], true)
+                            : in_array($code, ['pending_allocation', 'pending_review', 'sending', 'finished', 'shipped', 'completed', 'out_of_stock', 'exception', 'cancelled', ...OrderAuxiliaryStatusService::CODES], true))))
+                    ->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])
+                    ->values()->all(),
                 'operational_archived_at' => ($order->operational_archived_at ?? $order->fulfillmentParent?->operational_archived_at)?->toIso8601String(),
                 'archived_by' => $order->operationalArchivedByUser?->name ?? $order->fulfillmentParent?->operationalArchivedByUser?->name ?? null,
                 'direct_archive' => $order->operational_archived_at !== null,
@@ -59,6 +98,8 @@ final class OrderOperationalArchiveController
                 'owner' => $order->owner?->name,
             ])->toArray(),
             'canRestore' => (bool) $request->user()?->can('system.permissions.manage'),
+            'canChangeStatus' => (bool) $request->user()?->can('orders.edit'),
+            'filters' => ['search' => $search, 'per_page' => (string) ($filters['per_page'] ?? '50')],
         ]);
     }
 

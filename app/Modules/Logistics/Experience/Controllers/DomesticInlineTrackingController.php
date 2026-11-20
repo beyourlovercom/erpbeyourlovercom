@@ -31,7 +31,7 @@ final class DomesticInlineTrackingController
             'carrier' => ['required', 'string', 'max:120'],
             'service' => ['required', 'string', 'max:255'],
         ]);
-        $this->assertApprovedFactoryOrder($order);
+        $this->assertDomesticPendingOrder($order);
         $services = $this->carrierServices->activeServices($data['carrier']);
         abort_unless($services->contains('service_value', $data['service']), 422, '请选择启用的物流商及对应服务类型。');
         $this->shipments->saveDraft($order, [
@@ -49,7 +49,7 @@ final class DomesticInlineTrackingController
         $data = $request->validate([
             'tracking_number' => ['nullable', 'string', 'max:128', 'regex:/\A[A-Za-z0-9][A-Za-z0-9._:\/+\-]*\z/'],
         ], ['tracking_number.regex' => '发货单号不能包含空格、中文或备注，请只输入单号本体。']);
-        $this->assertApprovedFactoryOrder($order);
+        $this->assertDomesticPendingOrder($order);
         $tracking = trim((string) ($data['tracking_number'] ?? ''));
         $this->assertNotDuplicate($order, $tracking);
         $this->shipments->saveDraft($order, ['tracking_number' => $tracking ?: null], $request->user());
@@ -63,7 +63,7 @@ final class DomesticInlineTrackingController
         $data = $request->validate([
             'tracking_number' => ['required', 'string', 'max:128', 'regex:/\A[A-Za-z0-9][A-Za-z0-9._:\/+\-]*\z/'],
         ], ['tracking_number.regex' => '发货单号不能包含空格、中文或备注，请只输入单号本体。']);
-        $shipment = $this->assertApprovedFactoryOrder($order);
+        $shipment = $this->assertDomesticPendingOrder($order);
         $tracking = trim($data['tracking_number']);
         $this->assertNotDuplicate($order, $tracking);
         abort_unless(
@@ -86,7 +86,7 @@ final class DomesticInlineTrackingController
             : '已确认 ERP 发货，官网物流由同步模块每 30 分钟处理，请查看同步状态。');
     }
 
-    private function assertApprovedFactoryOrder(Order $order): Shipment
+    private function assertDomesticPendingOrder(Order $order): Shipment
     {
         $order->refresh()->load(['shipment', 'operationalMarkers', 'externalReferences']);
         $shipment = $order->shipment;
@@ -100,10 +100,9 @@ final class DomesticInlineTrackingController
         if ($order->order_status?->value !== 'pending_shipment' || $shipment->shipment_status !== 'pending') {
             throw ValidationException::withMessages(['tracking_number' => '只有尚未发货的订单可以在列表录入发货单号。']);
         }
-        if (! $order->operationalMarkers->contains('marker', 'domestic_reviewed')
-            || $order->operationalMarkers->contains('marker', 'domestic_stockout')
+        if ($order->operationalMarkers->contains('marker', 'domestic_stockout')
             || $order->workflow_status === 'out_of_stock') {
-            throw ValidationException::withMessages(['tracking_number' => '请先由 Kaven 确认有货；缺货或未通过审核的订单不能录入或确认发货。']);
+            throw ValidationException::withMessages(['tracking_number' => '缺货订单不能录入或确认发货，请先解除缺货状态。']);
         }
 
         return $shipment;

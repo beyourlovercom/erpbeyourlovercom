@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Cell from './DomesticGridPendingCell.vue'
 
@@ -9,12 +10,12 @@ const source = {
 }
 const params = () => ({
   data: { id: 42, order_number: '007-OLD-42', review_status: 'approved', shipment_status: 'pending' },
-  compactActions: true,
+  compactActions: true, view: 'pending',
   canOperate: true, canReview: true, canTrackingSync: false,
   carrierOptions: [{ value: '4PX', label: '速达', services: [{ value: 'SD经济挂号-带电', label: '带电' }] }],
   source: () => source, carrierBusy: () => false, trackingBusy: () => false,
   feedback: () => '', saveCarrier: vi.fn(), saveTracking: vi.fn(),
-  confirmShip: vi.fn(), reopenPending: vi.fn(),
+  confirmShip: vi.fn(), reopenPending: vi.fn(), rejectPending: vi.fn(), reviewBusy: () => false,
   syncEligible: () => false, syncBusy: () => false, syncTracking: vi.fn(),
 })
 
@@ -43,6 +44,42 @@ describe('G-P1 compact cumulative Speeda history actions', () => {
     expect(document.querySelector('.domestic-pending-popover')).toBeNull()
     view.unmount()
   })
+  it('adds commercial reject in direct and compact pending actions, even before review and with staged Tracking', async () => {
+    for (const compactActions of [false, true]) {
+      for (const review_status of ['pending', 'approved']) {
+        const p = { ...params(), compactActions, source: () => ({ ...source, review_status, tracking_number: 'STAGED-1' }) }
+        const wrapper = mount(Cell, { props: { params: p }, attachTo: document.body })
+        if (compactActions) await wrapper.get('button[aria-label="操作"]').trigger('click')
+        const reject = compactActions
+          ? [...document.querySelectorAll('.domestic-pending-compact-menu button')].find(button => button.textContent === '驳回') as HTMLButtonElement
+          : wrapper.get('button.pending-reject').element as HTMLButtonElement
+        expect(reject, `${review_status} compact=${compactActions}`).toBeTruthy()
+        reject.click()
+        expect(p.rejectPending).toHaveBeenCalledWith(42)
+        expect(p.confirmShip).not.toHaveBeenCalled()
+        wrapper.unmount()
+      }
+    }
+  })
+  it('hides commercial reject without authority or after shipping', () => {
+    for (const options of [
+      { canReview: false, review_status: 'approved', shipment_status: 'pending' },
+      { canReview: true, review_status: 'stockout', shipment_status: 'pending' },
+      { canReview: true, review_status: 'approved', shipment_status: 'shipped' },
+    ]) {
+      const p = { ...params(), canReview: options.canReview,
+        source: () => ({ ...source, review_status: options.review_status, shipment_status: options.shipment_status }) }
+      const wrapper = mount(Cell, { props: { params: p } })
+      expect(wrapper.find('.pending-reject').exists()).toBe(false)
+      wrapper.unmount()
+    }
+  })
+  it('limits the new reject action to the pending view without expanding all-domestic controls', () => {
+    const p = { ...params(), view: 'all' }
+    const wrapper = mount(Cell, { props: { params: p } })
+    expect(wrapper.find('.pending-reject').exists()).toBe(false)
+    wrapper.unmount()
+  })
   it('never bypasses overseas MorePlus proof requirement via compact or direct actions', async () => {
     for(const compactActions of [false,true]){
       const p={...params(),compactActions,source:()=>({...source,tracking_number:'CF123456789DE'}),
@@ -64,6 +101,34 @@ describe('G-P1 compact cumulative Speeda history actions', () => {
       expect(p.confirmShip).not.toHaveBeenCalled()
       view.unmount()
     }
+  })
+  it('opens shared create form from the shipment popover and keeps save/ship explicit', async()=>{
+    const p={...params(),compactActions:false}
+    type TestCarrier={value:string;label:string;services:{value:string;label:string}[]}
+    const catalog=ref<TestCarrier[]>([...p.carrierOptions])
+    const onCreated=vi.fn<(carrier:TestCarrier)=>void>()
+    const openCarrierCreate=vi.fn((callback:(carrier:TestCarrier)=>void)=>{
+      onCreated.mockImplementation(created=>{catalog.value=[...catalog.value,created];callback(created)})
+    })
+    const view=mount(Cell,{props:{params:{...p,getCarrierOptions:()=>catalog.value,openCarrierCreate}},attachTo:document.body})
+    await view.get('button.pending-edit').trigger('click')
+    const selector=document.querySelector('.domestic-pending-popover select[aria-label="物流商"]') as HTMLSelectElement
+    expect(Array.from(selector.options).at(-1)?.text).toContain('添加物流商')
+    selector.value='__add_carrier__'
+    selector.dispatchEvent(new Event('change',{bubbles:true}))
+    await view.vm.$nextTick()
+    expect(openCarrierCreate).toHaveBeenCalledOnce()
+    expect(p.saveCarrier).not.toHaveBeenCalled()
+    expect(p.confirmShip).not.toHaveBeenCalled()
+    onCreated({value:'德邦物流',label:'德邦物流',services:[{value:'默认',label:'默认'}]})
+    await view.vm.$nextTick()
+    expect(selector.value).toBe('德邦物流')
+    expect((document.querySelector('.domestic-pending-popover select[aria-label="服务类型"]') as HTMLSelectElement).value).toBe('默认')
+    const confirm=document.querySelector('.domestic-pending-popover button:not([disabled])') as HTMLButtonElement
+    confirm.click()
+    expect(p.saveCarrier).toHaveBeenCalledWith(42,'德邦物流','默认')
+    expect(p.confirmShip).not.toHaveBeenCalled()
+    view.unmount()
   })
   it('with no permission and no sync-eligible shipment renders only a dash', () => {
     const p = { ...params(), canOperate: false, canReview: false }

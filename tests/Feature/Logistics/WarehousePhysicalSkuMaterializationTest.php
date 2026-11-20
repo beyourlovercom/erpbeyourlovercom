@@ -90,7 +90,33 @@ final class WarehousePhysicalSkuMaterializationTest extends TestCase
         self::assertSame($product->id, $actual->source_product_id);
     }
 
-    public function test_moreplus_missing_physical_sku_fails_closed_and_keeps_order_unchanged(): void
+    public function test_active_erp_alias_materializes_canonical_provider_sku_without_env_pair(): void
+    {
+        [$user, $order, $item, $product] = $this->ordinaryScenario();
+        $product->forceFill(['sku' => 'BY489A'])->save();
+        ProductSkuAlias::query()->forceCreate([
+            'product_id' => $product->id, 'alias_sku' => 'BY489A-Lubes',
+            'match_key' => SkuMatchKey::compute('BY489A-Lubes'),
+            'source_type' => 'woocommerce', 'is_active' => true,
+        ]);
+        config()->set('shipout.production_read_enabled', true);
+        config()->set('shipout.production_warehouse_id', '1265864414750314497');
+        config()->set('shipout.production_verified_alias_pairs', '');
+        $this->mock(MorePlusPhysicalStockReader::class)->shouldReceive('snapshot')->once()->andReturn([
+            'warehouse_id' => '1265864414750314497',
+            'stock_rows' => [[
+                'provider_sku' => 'BY489A', 'available_quantity' => 8,
+                'in_product_catalog' => true, 'product_status' => '1', 'sku_alias_status' => 'verified',
+            ]],
+        ]);
+        app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $item->id, 'source_code' => 'US-LA'],
+        ], null, $user);
+        self::assertSame('BY489A', $item->fresh()->sku);
+        self::assertSame('BY489A-Lubes', $item->fresh()->source_sku);
+    }
+
+    public function test_moreplus_missing_physical_sku_allows_explicit_manual_allocation_as_pending_draft(): void
     {
         [$user, $order, $item] = $this->ordinaryScenario();
         config()->set('shipout.production_read_enabled', true);
@@ -98,17 +124,63 @@ final class WarehousePhysicalSkuMaterializationTest extends TestCase
         $this->mock(MorePlusPhysicalStockReader::class)->shouldReceive('snapshot')->once()->andReturn([
             'warehouse_id' => '1265864414750314497', 'stock_rows' => [],
         ]);
-        try {
-            app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
-                ['order_item_id' => $item->id, 'source_code' => 'US-LA'],
-            ], null, $user);
-            self::fail('Expected hard fail for provider physical SKU');
-        } catch (HttpException $error) {
-            self::assertSame(422, $error->getStatusCode());
-        }
+        $allocation = app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $item->id, 'source_code' => 'US-LA'],
+        ], null, $user);
+        self::assertSame('submitted', $allocation->status);
         self::assertSame('BY489A-Lubes', $item->fresh()->sku);
-        self::assertNull($item->fresh()->source_product_id);
-        self::assertNull($order->fresh()->shipment);
+        self::assertNotNull($item->fresh()->source_product_id);
+        self::assertSame('US-LA', $order->fresh()->shipment?->warehouse?->code);
+        self::assertSame('pending', $order->fresh()->shipment?->shipment_status);
+        self::assertNull($order->fresh()->shipment?->tracking_number);
+    }
+
+    public function test_moreplus_oms_reader_error_does_not_block_manual_allocation(): void
+    {
+        [$user, $order, $item] = $this->ordinaryScenario();
+        config()->set('shipout.production_read_enabled', true);
+        $this->mock(MorePlusPhysicalStockReader::class)->shouldReceive('snapshot')->once()
+            ->andThrow(new \RuntimeException('Synthetic OMS read outage'));
+        $allocation = app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $item->id, 'source_code' => 'US-LA'],
+        ], 'operator decides without OMS', $user);
+
+        self::assertSame('submitted', $allocation->status);
+        self::assertSame('US-LA', $order->fresh()->shipment?->warehouse?->code);
+        self::assertNull($order->fresh()->shipment?->tracking_number);
+    }
+
+    public function test_non_manual_moreplus_resolver_still_rejects_missing_provider_identity(): void
+    {
+        [, , $item] = $this->ordinaryScenario();
+        config()->set('shipout.production_read_enabled', true);
+        config()->set('shipout.production_warehouse_id', '1265864414750314497');
+        $this->mock(MorePlusPhysicalStockReader::class)->shouldReceive('snapshot')->once()->andReturn([
+            'warehouse_id' => '1265864414750314497', 'stock_rows' => [],
+        ]);
+        $this->expectException(HttpException::class);
+        $this->expectExceptionCode(0);
+        app(\App\Modules\Logistics\Application\WarehousePhysicalSkuResolver::class)
+            ->resolve($item, 'US-LA', null, false);
+    }
+
+    public function test_manual_regular_item_allocates_with_zero_stock_without_extra_acknowledgement(): void
+    {
+        [$user, $order, $item, $product, $warehouse] = $this->ordinaryScenario();
+        WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
+            ->where('product_id', $product->id)->update(['quantity_on_hand' => 0]);
+        $allocation = app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $item->id, 'source_code' => 'US-LA'],
+        ], 'operator chose warehouse despite zero stock', $user, false);
+
+        self::assertSame('submitted', $allocation->status);
+        self::assertSame('US-LA', $order->fresh()->shipment?->warehouse?->code);
+        self::assertSame('pending', $order->fresh()->shipment?->shipment_status);
+        $audit = $allocation->plan_snapshot['stock_exception_acknowledgement'];
+        self::assertSame($user->id, $audit['actor_id']);
+        self::assertSame('insufficient', $audit['warnings'][0]['reason']);
+        self::assertSame(0, WarehouseInventory::query()->where('product_id', $product->id)
+            ->where('warehouse_id', $warehouse->id)->value('quantity_on_hand'));
     }
 
     private function giftScenario(): array

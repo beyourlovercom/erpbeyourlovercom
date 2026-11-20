@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import ProductSectionRail from '../../Components/Products/ProductSectionRail.vue'
 
@@ -22,6 +22,8 @@ const form = ref({
   brand: '',
   brand_local_override: false,
   has_battery: true,
+  has_liquid: false,
+  material_full_name: '',
   unit: '',
   is_active: true,
   weight_kg: '',
@@ -40,6 +42,11 @@ const form = ref({
   cost_note: '',
   notes: '',
 })
+// Keep the initial selection aligned with the exact SKU defaults in ProductLiquidSkuPolicy.
+watch(() => form.value.sku, sku => {
+  form.value.has_liquid = ['BY489A', 'BV339A', 'BV339A-P', 'BV339A-Y'].includes(sku.trim().toUpperCase())
+})
+
 const errors = ref<Record<string, string>>({})
 const submitting = ref(false)
 const images = ref<File[]>([])
@@ -193,11 +200,23 @@ const submit = () => {
                 <input id="create-brand" v-model="form.brand" class="erp-input">
               </div>
 
+              <div class="erp-form-field" style="grid-column:1/-1">
+                <label class="erp-form-label" for="create-material-full-name">物料全称（内部采购与物流使用）</label>
+                <textarea id="create-material-full-name" v-model="form.material_full_name" class="erp-textarea" rows="2" maxlength="10000" placeholder="填写与库存表匹配的完整中英文物料名称" />
+                <p v-if="errors.material_full_name" class="erp-field-error">{{ errors.material_full_name }}</p>
+              </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">电池属性</label>
                 <div class="erp-segmented" role="group" aria-label="电池属性">
                   <button type="button" class="erp-segmented-option" :class="{ selected: form.has_battery }" @click="form.has_battery = true">含电池</button>
                   <button type="button" class="erp-segmented-option" :class="{ selected: !form.has_battery }" @click="form.has_battery = false">不含电池</button>
+                </div>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">液体属性</label>
+                <div class="erp-segmented" role="group" aria-label="液体属性">
+                  <button type="button" class="erp-segmented-option" :class="{ selected: form.has_liquid }" @click="form.has_liquid = true">带液体</button>
+                  <button type="button" class="erp-segmented-option" :class="{ selected: !form.has_liquid }" @click="form.has_liquid = false">不带液体</button>
                 </div>
               </div>
 

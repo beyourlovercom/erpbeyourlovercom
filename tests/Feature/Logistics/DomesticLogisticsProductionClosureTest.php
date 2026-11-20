@@ -37,11 +37,11 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
     {
         $formal = collect(config('erp_shell_navigation'))->firstWhere('key', 'logistics');
         self::assertSame(
-            ['待分仓', '国内发货', '海外仓发货', '已发待单号', '运输中', '异常订单', '物流商'],
+            ['待分仓', '国内发货', '海外仓发货', 'Tingon发货', '已发待单号', '运输中', '异常订单', '物流商'],
             collect($formal['children'])->pluck('label')->all(),
         );
         self::assertSame(
-            ['/logistics/wait-stock', '/logistics/china', '/logistics/oversea', '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions', '/logistics/carriers'],
+            ['/logistics/wait-stock', '/logistics/china', '/logistics/oversea', '/logistics/tingon', '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions', '/logistics/carriers'],
             collect($formal['children'])->pluck('path')->all(),
         );
         self::assertNotContains('/logistics/pending', collect($formal['children'])->pluck('path')->all());
@@ -145,6 +145,49 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
                 ->where('globalGridPilotEnabled', false)
                 ->where('rows.per_page', 50)
                 ->where('rows.total', 1));
+    }
+
+    public function test_all_domestic_orders_replaces_provider_history_with_authoritative_second_row_filters(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $speeda = $this->domesticOrder('007-ALL-SPEEDA', '4PX', true, '13800138001', 1);
+        $weship = $this->domesticOrder('007-ALL-WESHIP', 'Weship', true, '13800138002', 1);
+        $other = $this->domesticOrder('007-ALL-OTHER', 'Deppon', false, '13800138003', 1);
+        $weship->shipment->update(['shipment_status' => 'shipped', 'tracking_number' => 'WESHIP-ALL-01', 'shipped_at' => now()]);
+        $viewer = $this->logisticsViewer();
+
+        $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&per_page=20')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('view', 'all')->where('rows.total', 3)
+                ->where('globalGridPilotEnabled', true)->where('rows.per_page', 20)
+                ->where('viewCounts.all', 3)->missing('viewCounts.4px')->missing('viewCounts.weship'));
+
+        foreach (['4px' => $speeda->id, 'weship' => $weship->id, 'deppon' => $other->id] as $carrier => $id) {
+            $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_carrier='.$carrier)
+                ->assertOk()->assertInertia(fn ($page) => $page
+                    ->where('rows.total', 1)->where('rows.data.0.order_id', $id)
+                    ->where('gridFilters.carrier', $carrier));
+        }
+        $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_shipment_status=shipped')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)->where('rows.data.0.order_id', $weship->id));
+        $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_review=pending')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)->where('rows.data.0.order_id', $other->id));
+        $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_tracking=WESHIP-ALL')
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)->where('rows.data.0.order_id', $weship->id));
+        $this->actingAs($viewer)->get('/logistics/china?view=all&global_grid=1&filter_shipment_status=DROP_TABLE')
+            ->assertOk()->assertInertia(fn ($page) => $page->where('rows.total', 0));
+
+        // Legacy provider URLs are retired rather than rendering a second page.
+        foreach (['4px', 'weship'] as $legacy) {
+            $response = $this->actingAs($viewer)->get('/logistics/china?view='.$legacy.'&global_grid=1');
+            $response->assertRedirect();
+            self::assertStringContainsString('view=all', (string) $response->headers->get('Location'));
+            self::assertStringContainsString('filter_carrier='.$legacy, (string) $response->headers->get('Location'));
+        }
     }
 
     public function test_domestic_daily_views_render_rows_with_enum_manual_sync_status(): void
@@ -325,6 +368,65 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         }
     }
 
+    public function test_domestic_pending_and_downloads_allow_unreviewed_but_exclude_shipped_and_unreleased_procurement(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $approved = $this->domesticOrder('007-1111-c52341', '4PX', true, '111', 1);
+        $unreviewed = $this->domesticOrder('007-1111-c52342', '4PX', false, '222', 1);
+        $shipped = $this->domesticOrder('007-1111-c52343', '4PX', true, '333', 1);
+        $external = $this->domesticOrder('007-1111-c52344', '4PX', false, '444', 1);
+        $this->attachBarcode($approved);
+        $this->attachBarcode($unreviewed);
+        $this->attachBarcode($shipped);
+
+        // Reproduce the real 2026-11-14 "out_of_stock -> sending" staff override.
+        $unreviewed->forceFill(['workflow_status' => 'sending'])->save();
+        $external->forceFill(['workflow_status' => 'sending'])->save();
+        $shipped->forceFill(['workflow_status' => 'sending', 'order_status' => OrderStatus::Completed])->save();
+        $shipped->shipment->forceFill([
+            'shipment_status' => 'shipped', 'tracking_number' => '4PX-REAL-TRACK',
+            'shipped_at' => now(),
+        ])->save();
+        $external->procurementOrder()->create([
+            'procurement_number' => 'PURCHASE-TEST-1',
+            'origin' => 'external', 'status' => 'pending',
+        ]);
+
+        $viewer = $this->logisticsViewer();
+        $this->actingAs($viewer)->get('/logistics/china?view=pending')->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('rows.total', 2)
+                ->where('rows.data.0.erp_order_id', $approved->erp_order_id)
+                ->where('rows.data.1.erp_order_id', $unreviewed->erp_order_id));
+        $this->actingAs($viewer)->get('/logistics/china?view=review')->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.erp_order_id', $unreviewed->erp_order_id));
+
+        $batch = $this->actingAs($viewer)->get('/logistics/china/pending-batch/export')->assertOk();
+        self::assertSame('2', $batch->headers->get('X-BYL-Exported-Orders'));
+        $path = tempnam(sys_get_temp_dir(), 'domestic-gate-').'.xlsx';
+        file_put_contents($path, $batch->baseResponse->getContent());
+        try {
+            $book = IOFactory::load($path);
+            self::assertSame(3, $book->getActiveSheet()->getHighestDataRow());
+            self::assertSame($approved->erp_order_id, $book->getActiveSheet()->getCell('A2')->getValue());
+            self::assertSame($unreviewed->erp_order_id, $book->getActiveSheet()->getCell('A3')->getValue());
+            $book->disconnectWorksheets();
+        } finally {
+            @unlink($path);
+        }
+
+        self::assertSame([], app(SpeedaOutboundExporter::class)->blockers($approved->fresh()));
+        $carrier = $this->actingAs($viewer)->get('/logistics/china/export/4px')->assertOk();
+        self::assertSame('2', $carrier->headers->get('X-BYL-Exported-Orders'));
+        $blockers = app(SpeedaOutboundExporter::class);
+        self::assertSame([], $blockers->blockers($unreviewed->fresh()));
+        self::assertContains('外采尚未验收到货放行，禁止导出', $blockers->blockers($external->fresh()));
+        self::assertContains('该单已离开待发货队列，禁止重复导出', $blockers->blockers($shipped->fresh()));
+    }
+
     public function test_pending_batch_export_and_mixed_carrier_tracking_upload_are_carrier_safe(): void
     {
         $speeda = $this->domesticOrder('007-0923-c50101', '4PX', reviewed: true, phone: '111', quantity: 1);
@@ -451,7 +553,61 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         }
     }
 
-    public function test_speeda_legacy_xls_return_preview_and_partial_apply_isolated_by_row(): void
+    public function test_pending_sku_merged_download_includes_unreviewed_factory_orders(): void
+    {
+        $single = $this->domesticOrder('007-0923-c51901', '4PX', reviewed: true, phone: '111', quantity: 1);
+        $multi = $this->domesticOrder('007-0923-c51902', '4PX', reviewed: true, phone: '222', quantity: 2);
+        $multi->items()->create([
+            'product_summary' => 'Second Product',
+            'sku' => 'SECOND-SKU',
+            'quantity' => 3,
+            'unit_price' => '5.00',
+            'line_revenue' => '15.00',
+        ]);
+        $notReviewed = $this->domesticOrder('007-0923-c51903', '4PX', reviewed: false, phone: '333', quantity: 5);
+        $url = '/logistics/china/pending-batch/export-sku-merged';
+
+        $this->actingAs(User::factory()->create(['is_active' => true]))->get($url)->assertForbidden();
+        $response = $this->actingAs($this->logisticsViewer())->get($url)->assertOk();
+        self::assertSame('3', $response->headers->get('X-BYL-Exported-Orders'));
+        self::assertStringContainsString('007-domestic-pending-sku-merged-', $response->headers->get('Content-Disposition'));
+        self::assertSame('pending', $single->fresh()->shipment->shipment_status);
+        self::assertSame('pending', $multi->fresh()->shipment->shipment_status);
+        self::assertSame('pending', $notReviewed->fresh()->shipment->shipment_status);
+
+        $path = tempnam(sys_get_temp_dir(), 'domestic-merged-sku-').'.xlsx';
+        file_put_contents($path, $response->getContent());
+        try {
+            $book = IOFactory::load($path);
+            $sheet = $book->getActiveSheet();
+            $headers = [
+                'ERP订单号', '客户单号', '物流商', '服务', 'Tracking',
+                '收件人', '电话', 'Email', '国家/地区', '州/省', '城市', '邮编', '地址',
+                'SKU', '数量', '金额', '物流备注',
+            ];
+            foreach ($headers as $index => $header) {
+                self::assertSame($header, $sheet->getCell([$index + 1, 1])->getValue());
+            }
+            self::assertSame('Q', $sheet->getHighestDataColumn());
+            self::assertSame(4, $sheet->getHighestDataRow());
+            self::assertSame('007-0923-c51901', $sheet->getCell('A2')->getValue());
+            self::assertSame('007-0923-c51902', $sheet->getCell('A3')->getValue());
+            self::assertSame('007-0923-c51903', $sheet->getCell('A4')->getValue());
+            self::assertSame('TEST-SKU', $sheet->getCell('N2')->getValue());
+            self::assertSame('1', $sheet->getCell('O2')->getValue());
+            self::assertSame("TEST-SKU\nSECOND-SKU", $sheet->getCell('N3')->getValue());
+            self::assertSame("2\n3", $sheet->getCell('O3')->getValue());
+            self::assertSame('s', $sheet->getCell('N3')->getDataType());
+            self::assertTrue($sheet->getStyle('N3')->getAlignment()->getWrapText());
+            self::assertSame('', (string) $sheet->getCell('P3')->getValue());
+            self::assertSame('', (string) $sheet->getCell('Q3')->getValue());
+            $book->disconnectWorksheets();
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_speeda_legacy_xls_return_applies_unreviewed_factory_order(): void
     {
         $safe = $this->domesticOrder('007-0923-c50003', '4PX', reviewed: true, phone: '111', quantity: 1);
         $blocked = $this->domesticOrder('007-0923-c50004', '4PX', reviewed: false, phone: '222', quantity: 1);
@@ -463,23 +619,22 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         $service = app(DomesticTrackingReturnService::class);
         $preview = $service->preview('4px', $file);
 
-        self::assertSame(1, $preview['apply_count']);
+        self::assertSame(2, $preview['apply_count']);
         self::assertSame(0, $preview['noop_count']);
-        self::assertSame(1, $preview['blocked_count']);
+        self::assertSame(0, $preview['blocked_count']);
         self::assertSame('apply', $preview['rows'][0]['status']);
-        self::assertSame('blocked', $preview['rows'][1]['status']);
-        self::assertStringContainsString('尚未完成国内商务审核', $preview['rows'][1]['message']);
+        self::assertSame('apply', $preview['rows'][1]['status']);
 
         $actor = User::factory()->create(['is_active' => true]);
         $result = $service->apply('4px', $preview, $preview['token'], $actor);
 
-        self::assertSame(1, $result['applied_count']);
-        self::assertSame(1, $result['blocked_count']);
+        self::assertSame(2, $result['applied_count']);
+        self::assertSame(0, $result['blocked_count']);
         self::assertSame(0, $result['failed_count']);
         self::assertSame('shipped', $safe->fresh()->shipment->shipment_status);
         self::assertSame('4PX-TRACK-SAFE', $safe->fresh()->shipment->tracking_number);
-        self::assertSame('pending', $blocked->fresh()->shipment->shipment_status);
-        self::assertNull($blocked->fresh()->shipment->tracking_number);
+        self::assertSame('shipped', $blocked->fresh()->shipment->shipment_status);
+        self::assertSame('4PX-TRACK-BLOCKED', $blocked->fresh()->shipment->tracking_number);
     }
 
     public function test_weship_return_conflict_is_blocked_without_guessing(): void

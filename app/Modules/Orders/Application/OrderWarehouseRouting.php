@@ -5,7 +5,12 @@ namespace App\Modules\Orders\Application;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\CarrierRoutingPolicy;
+use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
+use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
+use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
@@ -18,14 +23,23 @@ final class OrderWarehouseRouting
 
     public const OUTSOURCE = 'OUTSOURCE';
 
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(
+        private readonly AuditRecorder $audit,
+        private readonly CarrierRoutingPolicy $carriers,
+    ) {}
 
-    /** Same active choices as Vita's manual allocation, without performing allocation. */
+    /** Same active warehouse choices as Vita's manual allocation. */
     public function options(): array
     {
         $codes = (array) config('warehouse_master.fulfillment_codes', []);
-        $known = Warehouse::query()->where('is_active', true)->whereIn('code', $codes)
-            ->get(['code', 'name'])->keyBy('code');
+        // Production has legacy lowercase codes (notably us-la). The public
+        // route contract remains canonical uppercase, including on SQLite UAT.
+        $lookupCodes = collect($codes)
+            ->flatMap(fn (string $code): array => [$code, strtolower($code)])
+            ->unique()->all();
+        $known = Warehouse::query()->where('is_active', true)->whereIn('code', $lookupCodes)
+            ->get(['code', 'name'])
+            ->keyBy(fn (Warehouse $warehouse): string => strtoupper(trim((string) $warehouse->code)));
 
         $rows = [['code' => self::UNASSIGNED, 'name' => '未分仓']];
         foreach ($codes as $code) {
@@ -69,7 +83,7 @@ final class OrderWarehouseRouting
     /**
      * Exact post-save destination: a warehouse AND the order's effective
      * phase, never a stale list from which the change was initiated.
-     * Route-only drafts remain non-dispatchable until actual fulfillment review.
+     * Physical warehouse selection still respects fulfillment and review gates.
      */
     public function destination(Order $order, ?Authenticatable $actor = null): string
     {
@@ -152,7 +166,7 @@ final class OrderWarehouseRouting
             .'&view='.($view === 'exceptions' ? 'exception' : $phase);
     }
 
-    public function select(Order $order, string $code, int $revision, Authenticatable $actor): array
+    public function select(Order $order, string $code, int $revision, Authenticatable $actor, bool $stockExceptionAcknowledged = false): array
     {
         abort_unless($actor->can('orders.edit'), 403, '没有修改所属分仓的权限。');
         $allowed = collect($this->options())->pluck('code')->all();
@@ -160,7 +174,7 @@ final class OrderWarehouseRouting
             throw new HttpException(422, '所属分仓不在可用选项中。');
         }
 
-        return DB::transaction(function () use ($order, $code, $revision, $actor): array {
+        return DB::transaction(function () use ($order, $code, $revision, $actor, $stockExceptionAcknowledged): array {
             $locked = Order::withTrashed()->with('shipment.warehouse')
                 ->whereKey($order->id)->lockForUpdate()->firstOrFail();
             if ($locked->trashed() || $locked->archived_at !== null || $locked->isOperationallyArchived()) {
@@ -169,22 +183,73 @@ final class OrderWarehouseRouting
             if ((int) $locked->routing_revision !== $revision) {
                 throw new HttpException(409, '所属分仓已被其他人修改，请刷新后重试。');
             }
-            if ($locked->routing_warehouse_code === $code) {
+            // Owner rule: the workbench route and actual pending shipment warehouse
+            // are one atomic change. Repair legacy mismatches even on same-code saves.
+            $warehouse = in_array($code, [self::UNASSIGNED, self::OUTSOURCE], true)
+                ? null : Warehouse::query()->whereIn('code', [$code, strtolower($code)])
+                    ->where('is_active', true)->firstOrFail();
+            $targetWarehouseId = $warehouse?->getKey();
+            $shipment = $locked->shipment;
+            if ($locked->routing_warehouse_code === $code
+                && ($shipment?->warehouse_id === null ? null : (int) $shipment->warehouse_id) === $targetWarehouseId) {
                 return $this->project($locked);
             }
+            $reactivatedUnassignedChild = $locked->fulfillment_parent_id !== null
+                && ($locked->workflow_status === 'pending_allocation'
+                    || ($locked->routing_warehouse_code === self::UNASSIGNED
+                        && ($shipment === null || $shipment->warehouse_id === null)));
+            if ($reactivatedUnassignedChild) {
+                abort_unless($warehouse !== null, 409, '重新运营的拆单请先选择实际发货仓库。');
+                // A/B children retain their parent allocation and must use the
+                // audited single-leg flow; never create a second split plan.
+                $updated = app(PendingFulfillmentReallocationService::class)->reallocate(
+                    $locked, (int) $warehouse->getKey(), $actor, null, $stockExceptionAcknowledged
+                );
+
+                return $this->project($updated->fresh(['shipment.warehouse']));
+            }
+            $this->assertSafeToReassign($locked, $shipment);
+            $this->syncSubmittedAllocation($locked, $warehouse, $code, $actor);
+
             $before = $locked->routing_warehouse_code;
+            $fromWarehouseId = $shipment?->warehouse_id;
+            if (! $shipment) {
+                $targetCode = strtoupper(trim((string) ($warehouse?->code ?? '')));
+                $route = $warehouse
+                    ? $this->carriers->warehouseRoute($locked->address?->country, $targetCode)
+                    : [];
+                $shipment = $locked->shipment()->create([
+                    'warehouse_id' => $targetWarehouseId,
+                    'shipment_status' => 'pending',
+                    'warehouse_selection_source' => $warehouse ? 'manual' : 'manual_route_only',
+                    'carrier' => $route['carrier'] ?? null,
+                    'service' => $route['service'] ?? null,
+                    'carrier_service_id' => $route['carrier_service_id'] ?? null,
+                    'carrier_selection_source' => filled($route['carrier'] ?? null) ? 'automatic' : null,
+                ]);
+            } elseif (($shipment->warehouse_id === null ? null : (int) $shipment->warehouse_id) !== $targetWarehouseId) {
+                $targetCode = strtoupper(trim((string) ($warehouse?->code ?? '')));
+                $route = $warehouse
+                    ? $this->carriers->warehouseRoute($locked->address?->country, $targetCode)
+                    : [];
+                // A carrier/service is bound to its old physical warehouse.
+                // Never carry FACTORY 4PX into US-SM or US-NY into MorePlus.
+                $shipment->forceFill([
+                    'warehouse_id' => $targetWarehouseId,
+                    'warehouse_selection_source' => $warehouse ? 'manual' : 'manual_route_only',
+                    'carrier' => $route['carrier'] ?? null,
+                    'service' => $route['service'] ?? null,
+                    'carrier_service_id' => $route['carrier_service_id'] ?? null,
+                    'carrier_selection_source' => filled($route['carrier'] ?? null) ? 'automatic' : null,
+                    'handled_by' => null,
+                ])->save();
+            }
+            if (($fromWarehouseId === null ? null : (int) $fromWarehouseId) !== $targetWarehouseId) {
+                $this->resetOverseaReview($locked, $targetWarehouseId);
+            }
             $locked->routing_warehouse_code = $code;
             $locked->routing_revision = $revision + 1;
             $locked->save();
-
-            // Empty shipment is an internal unshipped workbench row only:
-            // never assign physical warehouse, inventory, SKU, carrier, tracking or OMS.
-            if (! $locked->shipment && $code !== self::UNASSIGNED) {
-                $locked->shipment()->create([
-                    'warehouse_id' => null, 'shipment_status' => 'pending',
-                    'warehouse_selection_source' => 'manual_route_only',
-                ]);
-            }
             DB::table('order_warehouse_route_histories')->insert([
                 'order_id' => $locked->id, 'actor_id' => $actor->getAuthIdentifier(),
                 'from_code' => $before, 'to_code' => $code,
@@ -193,13 +258,115 @@ final class OrderWarehouseRouting
             $this->audit->record(
                 AuditActor::user($actor, AuditSource::Web), 'order.warehouse_route_changed',
                 Order::class, $locked->id,
-                ['code' => $before, 'revision' => $revision],
-                ['code' => $code, 'revision' => $locked->routing_revision],
-                'staff_order_work_queue_routing',
+                ['code' => $before, 'revision' => $revision, 'warehouse_id' => $fromWarehouseId],
+                ['code' => $code, 'revision' => $locked->routing_revision, 'warehouse_id' => $targetWarehouseId],
+                'staff_order_physical_warehouse_routing',
             );
 
             return $this->project($locked->fresh(['shipment.warehouse']));
         });
+    }
+
+    /**
+     * Never rewrite an in-flight physical dispatch. A split child, warehouse
+     * reservation or already-submitted OMS order requires its dedicated flow.
+     */
+    private function assertSafeToReassign(Order $order, $shipment): void
+    {
+        abort_unless($order->order_status?->value === 'pending_shipment', 409,
+            '只有待发货订单可以直接调整实际发货仓。');
+        abort_if($order->fulfillment_parent_id !== null
+            || $order->fulfillmentChildren()->withTrashed()->exists(), 409,
+            '拆分或补发订单请在履约发货流程中单独调整仓库。');
+        abort_if($shipment && ($shipment->shipment_status !== 'pending'
+            || filled($shipment->tracking_number) || $shipment->shipped_at !== null), 409,
+            '已有真实物流或追踪单号，禁止直接修改发货仓。');
+        abort_if($order->shipmentAttempts()->exists()
+            || DB::table('shipout_dispatch_attempts')->where('order_id', $order->id)->exists(), 409,
+            '存在已提交仓库或历史物流尝试，禁止通过所属分仓直接改仓。');
+        abort_if($order->procurementOrder()->where('origin', 'external')
+            ->whereNull('released_at')->exists(), 409,
+            '外采订单尚未确认到货，不能直接改为普通仓库发货。');
+        abort_if(app(InventoryReservationRepository::class)->activeForOrder((int) $order->id), 409,
+            '订单有已锁定库存，请通过正式分仓流程调整并重新校验库存。');
+    }
+
+    /** Keep one-leg historical allocation metadata consistent without remapping SKU. */
+    private function syncSubmittedAllocation(
+        Order $order, ?Warehouse $warehouse, string $code, Authenticatable $actor,
+    ): void {
+        $allocation = FulfillmentAllocation::query()->where('order_id', $order->id)->lockForUpdate()->first();
+        if (! $allocation || $allocation->status !== 'submitted') {
+            return;
+        }
+        abort_if($warehouse === null, 409, '已有正式分仓方案，请通过待分仓流程撤销分仓。');
+        $snapshot = is_array($allocation->plan_snapshot) ? $allocation->plan_snapshot : [];
+        $segments = array_values((array) ($snapshot['segments'] ?? []));
+        $derived = array_values((array) ($snapshot['derived_orders'] ?? []));
+        abort_unless(count($segments) === 1 && ($snapshot['is_split'] ?? false) === false
+            && (count($derived) === 0 || (count($derived) === 1
+                && (int) ($derived[0]['order_id'] ?? 0) === (int) $order->id)), 409,
+            '分仓方案包含多段履约或衍生订单，请使用履约分仓功能调整。');
+        $segment = &$segments[0];
+        abort_if(($segment['procurement_required'] ?? false) === true, 409,
+            '已生成外采方案，请使用外采流程调整。');
+        $segment['source_code'] = $code;
+        $segment['source_type'] = $code === 'FACTORY' ? 'factory' : 'warehouse';
+        $segment['warehouse_id'] = (int) $warehouse->id;
+        $segment['warehouse_name'] = (string) $warehouse->name;
+        $route = $this->carriers->warehouseRoute($order->address?->country, $code);
+        $segment['carrier'] = $route['carrier'] ?? null;
+        $segment['service'] = $route['service'] ?? null;
+        $segment['carrier_selection_source'] = filled($route['carrier'] ?? null) ? 'automatic' : null;
+        unset($segment);
+        $snapshot['segments'] = $segments;
+        $snapshot['plan_type'] = $code === 'FACTORY' ? 'factory' : 'single';
+        if ($derived !== []) {
+            $derived[0]['warehouse_code'] = $code;
+            $derived[0]['warehouse_id'] = (int) $warehouse->id;
+            $derived[0]['warehouse_name'] = (string) $warehouse->name;
+            $derived[0]['carrier'] = $route['carrier'] ?? null;
+            $derived[0]['service'] = $route['service'] ?? null;
+            $derived[0]['carrier_selection_source'] = filled($route['carrier'] ?? null) ? 'automatic' : null;
+            $snapshot['derived_orders'] = $derived;
+        }
+        $assignments = is_array($allocation->manual_assignments) ? $allocation->manual_assignments : null;
+        if ($assignments !== null) {
+            foreach ($assignments as &$assignment) {
+                $assignment['source_code'] = $code;
+                $assignment['carrier'] = $route['carrier'] ?? null;
+                $assignment['service'] = $route['service'] ?? null;
+                $assignment['carrier_selection_source'] = filled($route['carrier'] ?? null) ? 'automatic' : null;
+            }
+            unset($assignment);
+        }
+        $snapshot['plan_key'] = 'route:'.substr(hash('sha256', json_encode($segments)), 0, 16);
+        $snapshot['execution_status'] = 'manual_route_physical_reassigned';
+        $allocation->forceFill([
+            'decision_source' => 'manual',
+            'selected_plan_key' => $snapshot['plan_key'],
+            'plan_snapshot' => $snapshot,
+            'manual_assignments' => $assignments,
+            'submitted_by' => $actor->getAuthIdentifier(),
+            'submitted_at' => now(),
+        ])->save();
+    }
+
+    private function resetOverseaReview(Order $order, ?int $warehouseId): void
+    {
+        $review = OverseaWarehouseReview::query()
+            ->where('order_id', $order->id)->lockForUpdate()->first();
+        if (! $review) {
+            return;
+        }
+        $review->forceFill([
+            'status' => 'pending',
+            'progress' => 'pending_review',
+            'submitted_warehouse_id' => $warehouseId,
+            'reviewed_warehouse_id' => null,
+            'reviewed_by' => null,
+            'reviewed_at' => null,
+        ])->save();
     }
 
     /** Order-based workbench scope: logical route wins over legacy Shipment warehouse. */

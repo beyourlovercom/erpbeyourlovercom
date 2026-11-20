@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application;
 
 use App\Modules\Orders\Infrastructure\Models\OrderItem;
+use App\Modules\Products\Application\OutboundOrderSkuResolver;
 use App\Modules\Products\Application\SkuMatchKey;
 use App\Modules\Products\Application\VerifiedOmsProductIdentityResolver;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
@@ -19,21 +20,31 @@ final class WarehousePhysicalSkuResolver
         private readonly GiftSkuResolutionService $gifts,
         private readonly MorePlusPhysicalStockReader $morePlus,
         private readonly VerifiedOmsProductIdentityResolver $identity,
+        private readonly OutboundOrderSkuResolver $outboundSkus,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /** @return array<string,mixed> */
-    public function resolve(OrderItem $item, string $warehouseCode, ?int $giftMappingId): array
+    public function resolve(OrderItem $item, string $warehouseCode, ?int $giftMappingId, bool $allowManualGiftStockException = false): array
     {
         $sourceSku = trim((string) ($item->source_sku ?: $item->sku));
         $sourceProductId = (int) ($item->source_product_id ?: $item->product_id);
         abort_if($sourceSku === '' || $sourceProductId < 1, 422, '订单来源商品身份无效，不能分仓发货');
 
-        $gift = $this->gifts->resolve($item, $warehouseCode, $giftMappingId);
+        $gift = $this->gifts->resolve($item, $warehouseCode, $giftMappingId, $allowManualGiftStockException);
         $targetId = (int) ($gift['resolved_product_id'] ?? $sourceProductId);
         $targetSku = trim((string) ($gift['resolved_fulfillment_sku'] ?? $sourceSku));
 
+        $targetSku = $this->finalSkus->resolve($targetId, $warehouseCode, $targetSku);
+
         if (strtoupper($warehouseCode) === 'US-LA' && config('shipout.production_read_enabled', false)) {
-            [$targetId, $targetSku] = $this->morePlusPhysical($sourceSku, $targetId, $targetSku, (int) $item->quantity, $gift !== null);
+            try {
+                [$targetId, $targetSku] = $this->morePlusPhysical($sourceSku, $targetId, $targetSku, (int) $item->quantity, $gift !== null, $allowManualGiftStockException);
+            } catch (\Exception $exception) {
+                if (! $allowManualGiftStockException) throw $exception;
+                // OMS read failure is advisory during an explicit manual allocation.
+                report($exception);
+            }
         }
 
         return [
@@ -41,6 +52,7 @@ final class WarehousePhysicalSkuResolver
             'source_product_id' => $sourceProductId,
             'source_product_summary' => $item->source_product_summary ?: $item->product_summary,
             'gift_mapping_id' => $gift['gift_mapping_id'] ?? null,
+            'manual_gift_stock_exception' => $gift['manual_gift_stock_exception'] ?? null,
             'resolved_product_id' => $targetId,
             'resolved_fulfillment_sku' => $targetSku,
             'resolved_product_summary' => $gift['resolved_product_summary'] ?? null,
@@ -48,26 +60,32 @@ final class WarehousePhysicalSkuResolver
     }
 
     /** @return array{int,string} */
-    private function morePlusPhysical(string $sourceSku, int $productId, string $selectedSku, int $quantity, bool $gift): array
+    private function morePlusPhysical(string $sourceSku, int $productId, string $selectedSku, int $quantity, bool $gift, bool $manualAllocation): array
     {
         $snapshot = $this->morePlusSnapshot ??= $this->morePlus->snapshot();
-        abort_unless((string) ($snapshot['warehouse_id'] ?? '') === trim((string) config('shipout.production_warehouse_id')), 422, 'MorePlus 仓库库存身份不匹配');
+        if ((string) ($snapshot['warehouse_id'] ?? '') !== trim((string) config('shipout.production_warehouse_id'))) {
+            abort_unless($manualAllocation, 422, 'MorePlus 仓库库存身份不匹配');
+            return [$productId, $selectedSku];
+        }
         $options = [];
+        $mapping = $this->finalSkus->resolve($productId, 'US-LA', '');
         foreach ($snapshot['stock_rows'] ?? [] as $row) {
             if (! is_array($row) || ! ($row['in_product_catalog'] ?? false)
-                || (string) ($row['product_status'] ?? '') !== '1'
-                || ($row['sku_alias_status'] ?? '') !== 'verified') {
+                || (string) ($row['product_status'] ?? '') !== '1') {
                 continue;
             }
             $candidateSku = trim((string) ($row['provider_sku'] ?? ''));
             $verified = $this->identity->resolve($candidateSku);
-            if (($verified['status'] ?? '') !== 'resolved' || (int) ($verified['product_id'] ?? 0) !== $productId) {
+            $verifiedIdentity = ($row['sku_alias_status'] ?? '') === 'verified'
+                && ($verified['status'] ?? '') === 'resolved'
+                && (int) ($verified['product_id'] ?? 0) === $productId;
+            if (! $verifiedIdentity && ($mapping === '' || strcasecmp($candidateSku, $mapping) !== 0)) {
                 continue;
             }
-            if (! is_int($row['available_quantity'] ?? null)) {
+            if (! is_int($row['available_quantity'] ?? null) && ! $manualAllocation) {
                 continue;
             }
-            $options[] = ['sku' => $candidateSku, 'available' => $row['available_quantity']];
+            $options[] = ['sku' => $candidateSku, 'available' => $row['available_quantity'] ?? null];
         }
         $exact = array_values(array_filter($options, fn (array $candidate): bool => strcasecmp($candidate['sku'], $selectedSku) === 0
         ));
@@ -77,21 +95,29 @@ final class WarehousePhysicalSkuResolver
         if ($exact !== []) {
             $selected = $exact[0];
         } else {
+            if ($gift && $manualAllocation) return [$productId, $selectedSku];
             abort_if($gift, 422, "已选礼品 {$selectedSku} 不存在于 MorePlus 的有效库存与商品目录");
             $approved = array_values(array_filter($options, fn (array $candidate): bool => $this->approvedAlias($sourceSku, $candidate['sku'], $productId)
             ));
+            if ($manualAllocation && count($approved) !== 1) return [$productId, $selectedSku];
             abort_if(count($approved) !== 1, 422, count($approved) > 1
                 ? "MorePlus 商品 {$sourceSku} 存在多个已批准发货 SKU，需人工确认"
                 : "MorePlus 商品 {$sourceSku} 没有已验证的实际 SKU 映射");
             $selected = $approved[0];
         }
-        abort_if($quantity < 1 || $selected['available'] < $quantity, 422, "MorePlus SKU {$selected['sku']} 库存不足");
+        abort_if(! $manualAllocation && ($quantity < 1 || $selected['available'] < $quantity), 422, "MorePlus SKU {$selected['sku']} 库存不足");
 
         return [$productId, $selected['sku']];
     }
 
     private function approvedAlias(string $sourceSku, string $candidate, int $productId): bool
     {
+        // A registered active ERP alias may use its own canonical Product SKU
+        // only when that exact SKU is independently verified in the MorePlus
+        // provider catalog and actual available stock above.
+        if (strcasecmp($candidate, $this->outboundSkus->canonical($sourceSku, $productId)) === 0) {
+            return true;
+        }
         $key = SkuMatchKey::compute($candidate);
         $alias = $key ? ProductSkuAlias::query()
             ->where('product_id', $productId)->where('match_key', $key)

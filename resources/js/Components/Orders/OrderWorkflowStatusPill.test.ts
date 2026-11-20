@@ -95,14 +95,14 @@ it('replaces the main visible selection instead of appending old tags', async ()
   expect(wrapper.findAll('.auxiliary-tag')).toHaveLength(0)
   expect(patch).toHaveBeenCalledWith('/orders/27/workflow-status', {
     workflow_status: 'renew', expected_workflow_revision: 0,
-  })
+  }, expect.any(Object))
   expect(reload).toHaveBeenCalled()
   patch.mockRestore()
   reload.mockRestore()
 })
 
-it('does not offer manual progress editing for archived and reconciliation statuses', () => {
-  for (const code of ['archived', 'progress_conflict', 'allocated', 'partially_shipped']) {
+it('allows a privileged archived-order status correction but keeps viewer projections read-only', () => {
+  for (const code of ['archived', 'progress_conflict', 'allocated', 'partially_shipped', 'completed']) {
     const wrapper = mount(OrderWorkflowStatusPill, {
       props: {
         orderId: 28, canEdit: true,
@@ -110,8 +110,48 @@ it('does not offer manual progress editing for archived and reconciliation statu
         options: [{ code, en: code, zh: code, color: 'red', mutable: false }],
       },
     })
-    expect(wrapper.find('select').exists()).toBe(false)
+    expect(wrapper.find('select').exists()).toBe(true)
+    wrapper.unmount()
   }
+  const viewer = mount(OrderWorkflowStatusPill, {
+    props: {
+      orderId: 28, canEdit: false,
+      projection: { code: 'archived', en: 'Archived', zh: '已归档', color: 'neutral', source: 'canonical_projection' },
+      options: [{ code: 'sending', en: 'Sending', zh: '待发', color: 'neutral', mutable: true }],
+    },
+  })
+  expect(viewer.find('select').exists()).toBe(false)
+})
+
+it('reactivates an archived order only after confirmation and navigates to its real queue', async () => {
+  const axios = await import('axios')
+  const { router } = await import('@inertiajs/vue3')
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+  const patch = vi.spyOn(axios.default, 'patch').mockResolvedValueOnce({ data: {
+    order: { workflow_revision: 3 }, workflow_status: { code: 'sending', auxiliary: [] },
+    target_url: '/logistics/china?view=pending&global_grid=1',
+  } })
+  const visit = vi.spyOn(router, 'visit').mockImplementation(() => undefined)
+  const wrapper = mount(OrderWorkflowStatusPill, { props: {
+    orderId: 91, canEdit: true, revision: 2,
+    projection: { code: 'archived', en: 'Archived', zh: '已归档', color: 'neutral', source: 'canonical_projection' },
+    options: [
+      { code: 'archived', en: 'Archived', zh: '已归档', color: 'neutral', mutable: false },
+      { code: 'sending', en: 'Sending', zh: '待发', color: 'neutral', mutable: true },
+    ],
+  } })
+  expect(wrapper.find('option[value="archived"]').attributes('disabled')).toBeDefined()
+  await wrapper.find('select').setValue('sending')
+  expect(patch).not.toHaveBeenCalled()
+  expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('archived')
+  await wrapper.find('select').setValue('sending')
+  await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/91/workflow-status', {
+    workflow_status: 'sending', expected_workflow_revision: 2,
+  }, expect.any(Object)))
+  await vi.waitFor(() => expect(visit).toHaveBeenCalledWith('/logistics/china?view=pending&global_grid=1',
+    { replace: true, preserveState: false, preserveScroll: false }))
+  expect(confirm).toHaveBeenCalledTimes(2)
+  confirm.mockRestore();patch.mockRestore();visit.mockRestore()
 })
 
 it('exposes manual exception resolution as a real core command with the same revision', async () => {
@@ -130,7 +170,7 @@ it('exposes manual exception resolution as a real core command with the same rev
   await wrapper.find('select').setValue('resolve_exception')
   await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/71/workflow-status', {
     workflow_status: 'resolve_exception', expected_workflow_revision: 4,
-  }))
+  }, expect.any(Object)))
   patch.mockRestore()
 })
 
@@ -152,12 +192,28 @@ it('requires explicit confirmation and a cancellation reason before sending real
   await wrapper.find('select').setValue('cancelled')
   await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/72/workflow-status', {
     workflow_status: 'cancelled', expected_workflow_revision: 5, reason: '客户要求取消此订单',
-  }))
+  }, expect.any(Object)))
   expect(confirm).toHaveBeenCalled()
   expect(prompt).toHaveBeenCalled()
   patch.mockRestore()
   confirm.mockRestore()
   prompt.mockRestore()
+})
+
+it('offers cancellation from an operator-selected status, not only canonical projections', () => {
+  const wrapper = mount(OrderWorkflowStatusPill, {
+    props: {
+      orderId: 73, canEdit: true, revision: 4,
+      projection: { code: 'exception', en: 'Exception', zh: '异常', color: 'red', source: 'staff_workflow' },
+      options: [
+        { code: 'exception', en: 'Exception', zh: '异常', color: 'red', mutable: true },
+        { code: 'cancelled', en: 'Cancelled', zh: '已取消', color: 'red', mutable: true },
+      ],
+    },
+  })
+  expect(wrapper.find('select').exists()).toBe(true)
+  expect(wrapper.find('option[value="cancelled"]').exists()).toBe(true)
+  expect(wrapper.find('option[value="cancelled"]').attributes('disabled')).toBeUndefined()
 })
 
 it('shows missing info as main status and offers a revision-checked restore option', async () => {
@@ -181,7 +237,7 @@ it('shows missing info as main status and offers a revision-checked restore opti
   await wrapper.find('select').setValue('resolve_manual_hold')
   await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/79/workflow-status', {
     workflow_status: 'resolve_manual_hold', expected_workflow_revision: 1,
-  }))
+  }, expect.any(Object)))
   expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('missing_info')
   patch.mockRestore()
 })
@@ -207,7 +263,7 @@ it('allows selecting 0.0 Pending Allocation to restore an unallocated held order
   await wrapper.find('select').setValue('pending_allocation')
   await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/111/workflow-status', {
     workflow_status: 'pending_allocation', expected_workflow_revision: 7,
-  }))
+  }, expect.any(Object)))
   expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('pending_allocation')
   expect(reload).toHaveBeenCalled()
   patch.mockRestore()

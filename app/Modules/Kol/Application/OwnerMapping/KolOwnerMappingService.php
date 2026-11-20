@@ -5,6 +5,7 @@ namespace App\Modules\Kol\Application\OwnerMapping;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Infrastructure\Models\KolImportPreviewBatch;
 use App\Modules\Kol\Infrastructure\Models\KolImportPreviewCandidate;
@@ -18,7 +19,7 @@ use Illuminate\Validation\ValidationException;
 
 final class KolOwnerMappingService
 {
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(private readonly AuditRecorder $audit, private readonly KolOwnerUserMatcher $matcher) {}
 
     public function workspace(Authenticatable $actor, ?int $previewBatchId = null): array
     {
@@ -27,6 +28,7 @@ final class KolOwnerMappingService
         $eligibleById = $eligibleUsers->keyBy(fn (User $user): int => (int) $user->id);
         $previews = KolImportPreviewBatch::query()
             ->with('reconciliationBatch')
+            ->when(! $actor->can('system.permissions.manage'), fn ($query) => $query->whereHas('reconciliationBatch', fn ($source) => $source->where('source_type', '!=', 'tencent_xlsx')))
             ->latest('id')
             ->limit(20)
             ->get();
@@ -55,7 +57,6 @@ final class KolOwnerMappingService
             ->keyBy('cluster_key');
 
         $sourceOwners = [];
-        $projected = [];
         foreach ($selected->candidates as $candidate) {
             $values = $this->sourceValues($candidate);
             foreach ($values as $value) {
@@ -71,7 +72,19 @@ final class KolOwnerMappingService
                     $sourceOwners[$key]['single_candidate_count']++;
                 }
             }
-            $projected[] = $this->projectCandidate($candidate, $values, $mappings, $decisions, $eligibleById);
+        }
+
+        $autoEnabled = $selected->reconciliationBatch?->source_type === 'tencent_xlsx';
+        $autoMatches = [];
+        foreach ($sourceOwners as $key => $owner) {
+            $autoMatches[$key] = $autoEnabled
+                ? $this->matcher->match($owner['value'], $eligibleUsers)
+                : ['status' => 'not_found', 'user' => null];
+        }
+        $projected = [];
+        foreach ($selected->candidates as $candidate) {
+            $values = $this->sourceValues($candidate);
+            $projected[] = $this->projectCandidate($candidate, $values, $mappings, $decisions, $eligibleById, $autoMatches);
         }
 
         foreach ($sourceOwners as $key => &$owner) {
@@ -82,6 +95,11 @@ final class KolOwnerMappingService
                 'mapped_user_id' => $mapping->mapped_user_id ? (int) $mapping->mapped_user_id : null,
                 'user' => $user ? $this->userOption($user) : null,
                 'status' => $user ? 'mapped' : 'invalid_user',
+            ] : null;
+            $auto = $autoMatches[$key];
+            $owner['auto_match'] = ! $mapping ? [
+                'status' => $auto['status'],
+                'user' => $auto['user'] ? $this->userOption($auto['user']) : null,
             ] : null;
         }
         unset($owner);
@@ -124,7 +142,8 @@ final class KolOwnerMappingService
     public function saveSourceMapping(int $previewBatchId, string $sourceOwnerValue, int $mappedUserId, Authenticatable $actor): array
     {
         $this->authorize($actor);
-        $preview = KolImportPreviewBatch::query()->with('candidates')->findOrFail($previewBatchId);
+        $preview = KolImportPreviewBatch::query()->with(['candidates', 'reconciliationBatch'])->findOrFail($previewBatchId);
+        $this->authorizeTencent($preview, $actor);
         $sourceOwnerValue = trim($sourceOwnerValue);
         if ($sourceOwnerValue === '' || ! $this->previewHasSourceOwner($preview, $sourceOwnerValue)) {
             throw ValidationException::withMessages(['source_owner_value' => '该来源负责人不属于当前 P2 预览。']);
@@ -165,6 +184,7 @@ final class KolOwnerMappingService
     public function deleteSourceMapping(KolOwnerSourceMapping $mapping, int $previewBatchId, Authenticatable $actor): array
     {
         $this->authorize($actor);
+        $this->authorizeTencent(KolImportPreviewBatch::query()->with('reconciliationBatch')->findOrFail($previewBatchId), $actor);
         $before = $this->mappingAudit($mapping);
         $id = (int) $mapping->id;
         $mapping->delete();
@@ -176,13 +196,15 @@ final class KolOwnerMappingService
             $before,
             null,
         );
+
         return $this->workspace($actor, $previewBatchId);
     }
 
     public function saveCandidateDecision(int $previewBatchId, string $clusterKey, int $mappedUserId, ?string $reason, Authenticatable $actor): array
     {
         $this->authorize($actor);
-        $preview = KolImportPreviewBatch::query()->findOrFail($previewBatchId);
+        $preview = KolImportPreviewBatch::query()->with('reconciliationBatch')->findOrFail($previewBatchId);
+        $this->authorizeTencent($preview, $actor);
         $candidate = KolImportPreviewCandidate::query()
             ->where('import_preview_batch_id', $preview->id)
             ->where('cluster_key', $clusterKey)
@@ -233,6 +255,7 @@ final class KolOwnerMappingService
     public function deleteCandidateDecision(KolOwnerCandidateDecision $decision, int $previewBatchId, Authenticatable $actor): array
     {
         $this->authorize($actor);
+        $this->authorizeTencent(KolImportPreviewBatch::query()->with('reconciliationBatch')->findOrFail($previewBatchId), $actor);
         $before = $this->decisionAudit($decision);
         $id = (int) $decision->id;
         $decision->delete();
@@ -244,10 +267,18 @@ final class KolOwnerMappingService
             $before,
             null,
         );
+
         return $this->workspace($actor, $previewBatchId);
     }
 
-    private function projectCandidate(KolImportPreviewCandidate $candidate, array $sourceValues, $mappings, $decisions, $eligibleById): array
+    private function authorizeTencent(KolImportPreviewBatch $preview, Authenticatable $actor): void
+    {
+        if ($preview->reconciliationBatch?->source_type === 'tencent_xlsx' && ! $actor->can('system.permissions.manage')) {
+            throw new AuthorizationException('仅管理员可操作腾讯 KOL 来源。');
+        }
+    }
+
+    private function projectCandidate(KolImportPreviewCandidate $candidate, array $sourceValues, $mappings, $decisions, $eligibleById, array $autoMatches): array
     {
         $mappingRows = [];
         $mappedUserIds = [];
@@ -255,7 +286,10 @@ final class KolOwnerMappingService
         foreach ($sourceValues as $value) {
             $key = $this->ownerKey($value);
             $mapping = $mappings->get($key);
-            $user = $mapping?->mapped_user_id ? $eligibleById->get((int) $mapping->mapped_user_id) : null;
+            $autoUser = $autoMatches[$key]['user'] ?? null;
+            $user = $mapping
+                ? ($mapping->mapped_user_id ? $eligibleById->get((int) $mapping->mapped_user_id) : null)
+                : $autoUser;
             if (! $user) {
                 $allMapped = false;
             } else {
@@ -265,6 +299,7 @@ final class KolOwnerMappingService
                 'source_owner' => $value,
                 'mapping_id' => $mapping ? (int) $mapping->id : null,
                 'user' => $user ? $this->userOption($user) : null,
+                'match_method' => $mapping ? 'manual' : ($user ? 'automatic' : null),
             ];
         }
 
@@ -280,7 +315,7 @@ final class KolOwnerMappingService
             $status = 'no_source_owner';
         } elseif (count($sourceValues) === 1) {
             if ($allMapped && count($mappedUserIds) === 1) {
-                $status = 'mapped';
+                $status = ($mappingRows[0]['match_method'] ?? null) === 'automatic' ? 'auto_matched' : 'mapped';
                 $effectiveUser = $eligibleById->get($mappedUserIds[0]);
             }
         } elseif ($decision && $decisionUser && $decisionSnapshotMatches) {
@@ -296,6 +331,7 @@ final class KolOwnerMappingService
         $identity = $candidate->exact_identity ?? [];
         $proposed = $candidate->proposed_kol ?? [];
         $socials = $candidate->proposed_social_accounts ?? [];
+
         return [
             'id' => (int) $candidate->id,
             'cluster_key' => $candidate->cluster_key,
@@ -306,7 +342,7 @@ final class KolOwnerMappingService
             'source_owner_values' => $sourceValues,
             'source_mappings' => $mappingRows,
             'resolution_status' => $status,
-            'resolved' => in_array($status, ['mapped', 'mapped_converged', 'decided'], true),
+            'resolved' => in_array($status, ['mapped', 'auto_matched', 'mapped_converged', 'decided'], true),
             'effective_owner' => $effectiveUser ? $this->userOption($effectiveUser) : null,
             'decision' => $decision ? [
                 'id' => (int) $decision->id,
@@ -324,9 +360,12 @@ final class KolOwnerMappingService
         $key = $this->ownerKey($needle);
         foreach ($preview->candidates as $candidate) {
             foreach ($this->sourceValues($candidate) as $value) {
-                if ($this->ownerKey($value) === $key) return true;
+                if ($this->ownerKey($value) === $key) {
+                    return true;
+                }
             }
         }
+
         return false;
     }
 
@@ -336,11 +375,14 @@ final class KolOwnerMappingService
         $unique = [];
         foreach ((array) $values as $value) {
             $value = trim((string) $value);
-            if ($value === '') continue;
+            if ($value === '') {
+                continue;
+            }
             $unique[$this->ownerKey($value)] ??= $value;
         }
         $values = array_values($unique);
         usort($values, 'strcasecmp');
+
         return $values;
     }
 
@@ -348,6 +390,7 @@ final class KolOwnerMappingService
     {
         $normalized = array_values(array_unique(array_filter(array_map(fn ($value): string => $this->ownerKey((string) $value), $values))));
         sort($normalized);
+
         return $normalized;
     }
 
@@ -359,14 +402,16 @@ final class KolOwnerMappingService
     private function eligibleUsers(): EloquentCollection
     {
         return User::query()
+            ->with('roles:id,key')
             ->where('is_active', true)
+            ->whereHas('roles', fn ($role) => $role->whereIn('key', [RolePreset::KolSpecialist->roleKey(), RolePreset::KolManager->roleKey()]))
             ->where(function ($query): void {
                 $query->whereHas('roles.permissions', fn ($permission): mixed => $permission->where('key', 'kol.view'))
                     ->orWhereHas('customPermissions', fn ($permission): mixed => $permission->where('key', 'kol.view'));
             })
             ->orderBy('name')
             ->orderBy('id')
-            ->get(['id', 'name', 'email']);
+            ->get(['id', 'name', 'email', 'contact_name', 'is_active', 'permission_mode']);
     }
 
     private function eligibleUser(int $userId): User
@@ -375,6 +420,7 @@ final class KolOwnerMappingService
         if (! $user) {
             throw ValidationException::withMessages(['mapped_user_id' => '所选 ERP 用户当前不可作为 KOL Owner。']);
         }
+
         return $user;
     }
 

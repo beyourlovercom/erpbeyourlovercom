@@ -2,18 +2,27 @@
 
 namespace App\Modules\Logistics\Application;
 
+use App\Modules\Audit\Application\AuditActor;
+use App\Modules\Audit\Application\AuditSource;
+use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
 
 final class FulfillmentDerivedOrderService
 {
     private const MAX_SEGMENTS = 26;
 
-    public function __construct(private readonly ShipmentService $shipments) {}
+    public function __construct(
+        private readonly ShipmentService $shipments,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
+        private readonly AuditRecorder $audit,
+    ) {}
 
     /** @param array<string,mixed> $plan @return list<array<string,mixed>> */
     public function materialize(Order $parent, array $plan, Authenticatable $actor): array
@@ -54,6 +63,11 @@ final class FulfillmentDerivedOrderService
                     'source_product_id' => $item->source_product_id ?: $item->product_id,
                     'source_product_summary' => $item->source_product_summary ?: $item->product_summary,
                     'resolved_fulfillment_sku' => $planned['resolved_fulfillment_sku'] ?? $item->sku,
+                    'final_sku' => $this->finalSkus->resolve(
+                        (int) ($planned['resolved_product_id'] ?? $item->product_id),
+                        $segment['source_code'] === 'OUTSOURCE' ? 'FACTORY' : (string) $segment['source_code'],
+                        (string) ($planned['resolved_fulfillment_sku'] ?? $item->sku),
+                    ),
                 ])->save();
             }
         }
@@ -122,6 +136,11 @@ final class FulfillmentDerivedOrderService
             $resolvedProductId = isset($segmentItem['resolved_product_id']) && $segmentItem['resolved_product_id'] !== null
                 ? (int) $segmentItem['resolved_product_id']
                 : $source->product_id;
+            $resolvedSku = $this->finalSkus->resolve(
+                $resolvedProductId,
+                ($segment['source_code'] ?? '') === 'OUTSOURCE' ? 'FACTORY' : (string) ($segment['source_code'] ?? ''),
+                $resolvedSku !== '' ? $resolvedSku : (string) ($source->final_sku ?: $source->sku),
+            );
             $resolvedSummary = trim((string) ($segmentItem['resolved_product_summary'] ?? ''));
             $child->items()->create([
                 'product_id' => $resolvedProductId,
@@ -132,6 +151,7 @@ final class FulfillmentDerivedOrderService
                 'sku' => $resolvedSku !== '' ? $resolvedSku : $source->sku,
                 'source_sku' => $source->source_sku ?: $source->sku,
                 'resolved_fulfillment_sku' => $resolvedSku !== '' ? $resolvedSku : ($source->resolved_fulfillment_sku ?: $source->sku),
+                'final_sku' => $resolvedSku,
                 'quantity' => $source->quantity,
                 'unit_price' => $source->unit_price,
                 'line_revenue' => $source->line_revenue,
@@ -156,6 +176,11 @@ final class FulfillmentDerivedOrderService
             $sourceProductId = (int) ($item->source_product_id ?: $item->product_id);
             $resolvedSku = trim((string) ($planned['resolved_fulfillment_sku'] ?? ''));
             $resolvedProductId = (int) ($planned['resolved_product_id'] ?? $sourceProductId);
+            $resolvedSku = $this->finalSkus->resolve(
+                $resolvedProductId,
+                ($segment['source_code'] ?? '') === 'OUTSOURCE' ? 'FACTORY' : (string) ($segment['source_code'] ?? ''),
+                $resolvedSku,
+            );
             abort_unless($resolvedSku !== '' && $resolvedProductId > 0, 422, '分仓未得到真实履约 SKU 或商品身份');
             $item->forceFill([
                 'source_sku' => $sourceSku,
@@ -165,6 +190,7 @@ final class FulfillmentDerivedOrderService
                 'product_id' => $resolvedProductId,
                 'product_summary' => $planned['resolved_product_summary'] ?: ($item->source_product_summary ?: $item->product_summary),
                 'resolved_fulfillment_sku' => $resolvedSku,
+                'final_sku' => $resolvedSku,
             ])->save();
         }
     }
@@ -179,6 +205,7 @@ final class FulfillmentDerivedOrderService
                 'product_id' => $item->source_product_id ?: $item->product_id,
                 'product_summary' => $item->source_product_summary ?: $item->product_summary,
                 'resolved_fulfillment_sku' => null,
+                'final_sku' => null,
             ])->save();
         }
     }
@@ -187,6 +214,42 @@ final class FulfillmentDerivedOrderService
     {
         $warehouseId = (int) ($segment['warehouse_id'] ?? 0);
         abort_if($warehouseId <= 0, 422, '履约方案缺少有效仓库');
+        $sourceCode = strtoupper(trim((string) ($segment['source_code'] ?? '')));
+        $physicalCode = $sourceCode === 'OUTSOURCE' ? 'FACTORY' : $sourceCode;
+        $warehouse = Warehouse::query()->whereKey($warehouseId)->first();
+        abort_unless($sourceCode !== '' && $warehouse
+            && strtoupper(trim((string) $warehouse->code)) === $physicalCode,
+            422, '履约方案所属分仓与真实仓库不一致');
+
+        // The plan is the authorized routing change. Persist it before
+        // ShipmentService validates route == physical warehouse. The caller
+        // holds the allocation transaction, so failures roll everything back.
+        if ($order->routing_warehouse_code !== $sourceCode) {
+            $beforeCode = $order->routing_warehouse_code;
+            $beforeRevision = (int) $order->routing_revision;
+            $beforeWarehouseId = $order->shipment?->warehouse_id;
+            $order->forceFill([
+                'routing_warehouse_code' => $sourceCode,
+                'routing_revision' => $beforeRevision + 1,
+            ])->save();
+            DB::table('order_warehouse_route_histories')->insert([
+                'order_id' => $order->id,
+                'actor_id' => $actor->getAuthIdentifier(),
+                'from_code' => $beforeCode,
+                'to_code' => $sourceCode,
+                'revision' => $beforeRevision + 1,
+                'created_at' => now(),
+            ]);
+            $this->audit->record(
+                AuditActor::user($actor, AuditSource::Web),
+                'order.warehouse_route_changed',
+                Order::class,
+                $order->id,
+                ['code' => $beforeCode, 'revision' => $beforeRevision, 'warehouse_id' => $beforeWarehouseId],
+                ['code' => $sourceCode, 'revision' => $beforeRevision + 1, 'warehouse_id' => $warehouseId],
+                'fulfillment_allocation_route_sync',
+            );
+        }
         $attributes = [
             'warehouse_id' => $warehouseId,
             'warehouse_selection_source' => 'allocation',
@@ -248,9 +311,10 @@ final class FulfillmentDerivedOrderService
                 ? $order->shipment?->carrier_selection_source
                 : ($order->shipment?->carrier_selection_source ?? ($segment['carrier_selection_source'] ?? null)),
             'items' => $order->items->map(fn ($item): array => [
-                'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                'sku' => WarehouseSkuPresentation::sku($item),
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'resolved_fulfillment_sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                'final_sku' => $item->final_sku,
                 'product_summary' => $item->product_summary,
                 'quantity' => (int) $item->quantity,
             ])->values()->all(),

@@ -122,7 +122,8 @@ final class OverseaWarehouseController
                     ->where('tracking_number', 'like', $like)
                     ->orWhereHas('order', fn ($orders) => $orders->where('erp_order_id', 'like', $like))
                     ->orWhereHas('order.address', fn ($addresses) => $addresses->where('recipient_name', 'like', $like))
-                    ->orWhereHas('order.items', fn ($items) => $items->where('sku', 'like', $like)));
+                    ->orWhereHas('order.items', fn ($items) => $items->where('sku', 'like', $like)
+                        ->orWhere('source_sku', 'like', $like)->orWhere('final_sku', 'like', $like)));
             }
             foreach (['carrier' => 'carrier', 'tracking' => 'tracking_number'] as $key => $field) {
                 if ($gridFilters[$key] !== '') {
@@ -271,7 +272,9 @@ final class OverseaWarehouseController
                 ? trim((string) config('shipout.sandbox_order_allowlist', '')) : '',
 
             'xlwmsBatchEnabled' => $canRunXlwms && (bool) config('xlwms.warehouse_batch_dispatch_enabled', false) && (int) config('xlwms.live_order_id', 0) > 0,
-            'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
+            // Inertia partial row/filter reloads must not run seven expensive
+            // count subqueries for counts the browser did not request.
+            'viewCounts' => fn () => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
             'canOperate' => ($warehouseKey !== 'all' || $view === 'pending')
@@ -790,8 +793,10 @@ final class OverseaWarehouseController
 
             'items' => $order?->items->map(fn ($item): array => [
                 'sku' => WarehouseSkuPresentation::sku($item),
+                'final_sku' => $item->final_sku,
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'quantity' => (int) $item->quantity,
+                'material_full_name' => $item->product?->material_full_name,
             ])->values()->all() ?? [],
         ];
     }

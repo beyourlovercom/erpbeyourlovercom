@@ -174,24 +174,54 @@ final class DomesticInlineTrackingTest extends TestCase
         self::assertNull($shipment->carrier_selection_source);
     }
 
-    public function test_unreviewed_or_stockout_cannot_save_or_ship_even_by_manual_route(): void
+    public function test_unreviewed_factory_order_stays_in_kaven_queue_but_can_ship_directly(): void
     {
         $actor = $this->userWith(['logistics.view', 'logistics.operate']);
-        foreach (['unreviewed','stockout'] as $state) {
-            $order = $this->factoryOrder($state==='stockout');
-            if ($state==='stockout') {
-                $order->forceFill(['workflow_status' => 'out_of_stock'])->save();
-                $order->operationalMarkers()->create(['marker' => 'domestic_stockout', 'marked_at' => now()]);
-            }
-            $this->actingAs($actor)
-                ->post('/logistics/china/orders/'.$order->id.'/tracking-draft',['tracking_number'=>'TRACKME'])
-                ->assertSessionHasErrors('tracking_number');
-            $this->actingAs($actor)
-                ->post('/logistics/china/orders/'.$order->id.'/quick-ship',['tracking_number'=>'TRACKME'])
-                ->assertSessionHasErrors('tracking_number');
-            self::assertNull($order->fresh()->shipment->tracking_number);
-            self::assertSame('pending', $order->fresh()->shipment->shipment_status);
-        }
+        $order = $this->factoryOrder(false);
+        self::assertFalse($order->operationalMarkers()->where('marker', 'domestic_reviewed')->exists());
+
+        $this->actingAs($actor)->get('/logistics/china?view=review')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('rows.total', 1)
+                ->where('rows.data.0.review_status', 'pending'));
+        $this->actingAs($actor)->get('/logistics/china?view=pending')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('rows.total', 1)
+                ->where('rows.data.0.review_status', 'pending')
+                ->where('canOperate', true));
+
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/carrier-service', [
+            'carrier' => '4PX', 'service' => 'SD经济挂号-带电',
+        ])->assertRedirect();
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/tracking-draft', [
+            'tracking_number' => '4PX-UNREVIEWED-READY',
+        ])->assertRedirect();
+        self::assertSame('pending', $order->fresh()->shipment->shipment_status);
+
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$order->id.'/quick-ship', [
+            'tracking_number' => '4PX-UNREVIEWED-READY',
+        ])->assertRedirect();
+        self::assertSame('shipped', $order->fresh()->shipment->shipment_status);
+        self::assertSame('4PX-UNREVIEWED-READY', $order->fresh()->shipment->tracking_number);
+        self::assertFalse($order->operationalMarkers()->where('marker', 'domestic_reviewed')->exists());
+        $this->actingAs($actor)->get('/logistics/china?view=review')->assertInertia(
+            fn ($page) => $page->where('rows.total', 0)
+        );
+    }
+
+    public function test_stockout_still_cannot_save_or_ship(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $order = $this->factoryOrder(true);
+        $order->forceFill(['workflow_status' => 'out_of_stock'])->save();
+        $order->operationalMarkers()->create(['marker' => 'domestic_stockout', 'marked_at' => now()]);
+
+        $this->actingAs($actor)
+            ->post('/logistics/china/orders/'.$order->id.'/tracking-draft', ['tracking_number' => 'TRACKME'])
+            ->assertSessionHasErrors('tracking_number');
+        $this->actingAs($actor)
+            ->post('/logistics/china/orders/'.$order->id.'/quick-ship', ['tracking_number' => 'TRACKME'])
+            ->assertSessionHasErrors('tracking_number');
+        self::assertNull($order->fresh()->shipment->tracking_number);
+        self::assertSame('pending', $order->fresh()->shipment->shipment_status);
     }
 
     public function test_readonly_permissions_and_validation_block_tracking_mutation(): void

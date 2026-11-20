@@ -1,14 +1,17 @@
 <?php
 
+use App\Modules\Products\Experience\Controllers\MonthlyInventoryCostImportController;
+use App\Modules\Products\Experience\Controllers\ProductBarcode69ImportController;
 use App\Modules\Products\Experience\Controllers\ProductController;
 use App\Modules\Products\Experience\Controllers\ProductInlineParameterController;
-use App\Modules\Products\Experience\Controllers\ProductBarcode69ImportController;
+use App\Modules\Products\Experience\Controllers\ProductMaterialNameImportController;
 use App\Modules\Products\Experience\Controllers\ProductPackagingProfileController;
-use App\Modules\Products\Experience\Controllers\ProductSkuController;
-use App\Modules\Products\Experience\Controllers\ProductSkuAliasController;
-use App\Modules\Products\Experience\Controllers\ProductWeightEvidenceController;
-use App\Modules\Products\Experience\Controllers\ProductParameterFactoryController;
 use App\Modules\Products\Experience\Controllers\ProductParameterBatchController;
+use App\Modules\Products\Experience\Controllers\ProductParameterFactoryController;
+use App\Modules\Products\Experience\Controllers\ProductSkuAliasController;
+use App\Modules\Products\Experience\Controllers\ProductSkuController;
+use App\Modules\Products\Experience\Controllers\ProductWarehouseSkuController;
+use App\Modules\Products\Experience\Controllers\ProductWeightEvidenceController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->get('/products/packaging/media/{media}', [ProductPackagingProfileController::class, 'media'])->whereNumber('media')->name('products.packaging.media');
@@ -28,6 +31,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
 });
 
 Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): void {
+    Route::put('/products/{productId}/warehouse-skus/{warehouseId}', [ProductWarehouseSkuController::class, 'upsert'])
+        ->whereNumber('productId')->whereNumber('warehouseId')->name('products.warehouse-skus.upsert');
+    Route::patch('/products/{productId}/warehouse-skus/{warehouseId}/deactivate', [ProductWarehouseSkuController::class, 'deactivate'])
+        ->whereNumber('productId')->whereNumber('warehouseId')->name('products.warehouse-skus.deactivate');
     Route::post('/products/parameter-tasks/bulk', [ProductParameterBatchController::class, 'update'])->name('products.parameter.tasks.bulk');
     Route::post('/products/parameter-tasks/{product}', [ProductParameterFactoryController::class, 'assign'])->whereNumber('product')->name('products.parameter.task');
     Route::post('/products/parameter-submissions/{product}/{submission}/review', [ProductParameterFactoryController::class, 'review'])->whereNumber('product')->whereNumber('submission')->name('products.parameter.review');
@@ -54,9 +61,19 @@ Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): v
     Route::post('/products/weight-evidence/import/preview', [ProductWeightEvidenceController::class, 'importPreview'])->name('products.weight-evidence.import.preview');
     Route::post('/products/weight-evidence/import/confirm', [ProductWeightEvidenceController::class, 'importConfirm'])->name('products.weight-evidence.import.confirm');
 
+    Route::get('/products/cost-import', [MonthlyInventoryCostImportController::class, 'index'])->name('products.cost-import.index');
+    Route::get('/products/cost-import/catalog', [MonthlyInventoryCostImportController::class, 'catalog'])->name('products.cost-import.catalog');
+    Route::post('/products/cost-import/preview', [MonthlyInventoryCostImportController::class, 'preview'])->name('products.cost-import.preview');
+    Route::post('/products/cost-import/plan', [MonthlyInventoryCostImportController::class, 'plan'])->name('products.cost-import.plan');
+    Route::post('/products/cost-import/confirm', [MonthlyInventoryCostImportController::class, 'confirm'])->name('products.cost-import.confirm');
+
     Route::get('/products/barcode-69/import', [ProductBarcode69ImportController::class, 'index'])->name('products.barcode-69.import');
     Route::post('/products/barcode-69/import/preview', [ProductBarcode69ImportController::class, 'preview'])->name('products.barcode-69.preview');
     Route::post('/products/barcode-69/import/confirm', [ProductBarcode69ImportController::class, 'confirm'])->name('products.barcode-69.confirm');
+    Route::get('/products/material-names/import', [ProductMaterialNameImportController::class, 'index'])->name('products.material-names.import');
+    Route::post('/products/material-names/import/preview', [ProductMaterialNameImportController::class, 'preview'])->name('products.material-names.preview');
+    Route::post('/products/material-names/import/apply', [ProductMaterialNameImportController::class, 'applyReady'])->name('products.material-names.apply');
+    Route::post('/products/material-names/import/resolve', [ProductMaterialNameImportController::class, 'resolve'])->name('products.material-names.resolve');
     Route::get('/products/create', [ProductController::class, 'create'])->name('products.create');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     Route::get('/products/import', [ProductController::class, 'importPage'])->name('products.import');

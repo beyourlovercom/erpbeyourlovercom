@@ -4,11 +4,12 @@ namespace App\Modules\Orders\Infrastructure\Models;
 
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Kol\Infrastructure\Models\Kol;
+use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -20,7 +21,7 @@ class Order extends Model
 
     protected $fillable = [
         'customer_id', 'fulfillment_parent_id', 'fulfillment_suffix', 'fulfillment_role', 'fulfillment_origin_id', 'fulfillment_reason', 'fulfillment_note',
-        'internal_order_number', 'erp_order_id', 'source_type', 'order_kind', 'external_order_number', 'order_date',
+        'internal_order_number', 'erp_order_id', 'source_type', 'order_kind', 'external_order_number', 'collaboration_partner_id', 'order_date',
         'order_note', 'owner_id', 'kol_id', 'order_status', 'currency',
         'workflow_status', 'workflow_revision', 'routing_warehouse_code', 'routing_revision',
         'domestic_reject_reason', 'domestic_rejected_at', 'domestic_rejected_by',
@@ -70,6 +71,11 @@ class Order extends Model
         return $this->belongsTo(self::class, 'fulfillment_origin_id');
     }
 
+    public function collaborationPartner(): BelongsTo
+    {
+        return $this->belongsTo(OrderCollaborationPartner::class, 'collaboration_partner_id');
+    }
+
     public function kol(): BelongsTo
     {
         return $this->belongsTo(Kol::class, 'kol_id');
@@ -77,7 +83,7 @@ class Order extends Model
 
     public function kolCollaboration(): HasOne
     {
-        return $this->hasOne(\App\Modules\Kol\Infrastructure\Models\KolCollaboration::class, 'order_id');
+        return $this->hasOne(KolCollaboration::class, 'order_id');
     }
 
     public function owner(): BelongsTo

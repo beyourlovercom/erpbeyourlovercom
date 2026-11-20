@@ -19,9 +19,23 @@ const save = async (code:string) => {
   saving.value = true
   error.value = ''
   try {
-    const response = await axios.patch('/orders/' + props.orderId + '/warehouse-route', {
+    const url = '/orders/' + props.orderId + '/warehouse-route'
+    const payload = {
       warehouse_code: code, expected_routing_revision: props.projection.revision,
-    })
+    }
+    let response
+    try {
+      response = await axios.patch(url, payload)
+    } catch (initialError:any) {
+      const stockWarning = initialError?.response?.status === 422
+        && initialError?.response?.data?.errors?.stock_exception_acknowledged
+      if (!stockWarning) throw initialError
+      const confirmed = window.confirm(
+        '所选仓库的部分 SKU 库存不足或未知。确认仍要重新分仓吗？这不会自动推送海外仓发货。',
+      )
+      if (!confirmed) throw new Error('已取消分仓：未确认库存异常')
+      response = await axios.patch(url, { ...payload, stock_exception_acknowledged: true })
+    }
     selected.value = response.data.routing_warehouse.code
     // A successful assignment must leave the old workbench, not only repaint
     // the dropdown in a stale AG Grid row. Navigate to its true status + route.
@@ -33,7 +47,7 @@ const save = async (code:string) => {
     }
   } catch (e:any) {
     selected.value = props.projection.code
-    error.value = e?.response?.data?.message ?? '所属分仓保存失败'
+    error.value = e?.response?.data?.message ?? e?.message ?? '所属分仓保存失败'
   } finally {
     saving.value = false
   }

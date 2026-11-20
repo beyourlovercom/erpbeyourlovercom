@@ -5,6 +5,7 @@ namespace Tests\Feature\Logistics;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductWarehouseSku;
 use App\Modules\Logistics\Application\Xlwms\SingleOrderDispatch;
 use App\Modules\Logistics\Application\Xlwms\WarehouseBatchDispatch;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
@@ -1232,7 +1233,17 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
 
     public function test_warehouse_batch_route_requires_logistics_operation_permission(): void
     {
-        $this->postJson('/logistics/oversea/us-3sm/xlwms/sync')->assertRedirect();
+        Http::preventStrayRequests();
+        Http::fake();
+        $route = '/logistics/oversea/us-3sm/xlwms/sync';
+
+        $this->postJson($route)->assertUnauthorized();
+
+        $viewer = \App\Models\User::factory()->create(['is_active' => true]);
+        $this->actingAs($viewer)->postJson($route)->assertForbidden();
+
+        $this->assertDatabaseCount('xlwms_dispatch_attempts', 0);
+        Http::assertNothingSent();
     }
 
     public function test_warehouse_batch_never_selects_a_different_warehouse(): void
@@ -1876,6 +1887,36 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         config()->set('xlwms.reissue_request_id','wrong-uuid');
         $notAuthorized=$service->forOrder($o->id,$uuid,true);
         $this->assertContains('OMS_SNAPSHOT_NOT_RECONCILED',$notAuthorized['blockers']);
+    }
+
+
+    public function test_authorized_reship_scoped_stock_matches_final_sku_instead_of_original_source(): void
+    {
+        [$order, $requestId] = $this->reissueFixture();
+        $item = $order->items()->firstOrFail();
+        $final = 'USSM-FINAL-SKU';
+        ProductWarehouseSku::query()->create([
+            'product_id' => $item->product_id, 'warehouse_id' => $order->shipment->warehouse_id,
+            'sku' => $final, 'is_active' => true,
+            'verified_at' => now(), 'verification_note' => 'Synthetic warehouse stock evidence',
+        ]);
+        $item->forceFill(['final_sku' => $final])->save();
+        $snapshot = XlwmsInventorySnapshot::where('warehouse_id', $order->shipment->warehouse_id)->sole();
+        $snapshot->rows()->where('provider_sku', 'SAME-SKU')->update(['provider_sku' => $final]);
+        $snapshot->forceFill([
+            'status' => 'blocked', 'blocked_sku_count' => 1,
+            'unmatched_sku_count' => 1, 'updated_at' => now(),
+        ])->save();
+        config()->set('xlwms.reissue_create_enabled', true);
+        config()->set('xlwms.reissue_order_id', $order->id);
+        config()->set('xlwms.reissue_request_id', $requestId);
+
+        $preview = app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class)
+            ->forOrder($order->id, $requestId, true);
+        $this->assertSame('USSM-FINAL-SKU', $preview['items'][0]['sku']);
+        $this->assertSame('scoped_fresh_oms_inventory', $preview['stock_evidence_mode']);
+        $this->assertTrue($preview['ready_for_review']);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'outboundOrder/create'));
     }
 
     public function test_target_stock_gate_fails_on_stale_or_insufficient_or_mismatched_oms_sku(): void

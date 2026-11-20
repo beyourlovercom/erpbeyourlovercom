@@ -3,6 +3,7 @@
 namespace App\Modules\Orders\Experience\Controllers;
 
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
+use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderOmsAvailability;
@@ -53,9 +54,10 @@ final class OrderOmsTransferController
             $payload = $request->validate([
                 'file' => ['required', 'file', 'extensions:xlsx', 'max:5120'],
                 'import_type' => ['required', Rule::in(OrderOmsBatchImport::IMPORT_TYPES)],
+                'partner_id' => ['nullable', 'integer', 'min:1'],
             ]);
             KolOrderAccessScope::authorizeCreate($request->user(), OrderOmsBatchImport::importKind($payload['import_type']));
-            $result = $this->import->inspect($payload['file'], $request->user(), $payload['import_type']);
+            $result = $this->import->inspect($payload['file'], $request->user(), $payload['import_type'], isset($payload['partner_id']) ? (int) $payload['partner_id'] : null);
             unset($result['orders']);
 
             return response()->json($result);
@@ -74,11 +76,12 @@ final class OrderOmsTransferController
                 'token' => ['required', 'string', 'max:8000'],
                 'import_type' => ['required', Rule::in(OrderOmsBatchImport::IMPORT_TYPES)],
                 'confirm' => ['required', 'accepted'],
+                'partner_id' => ['nullable', 'integer', 'min:1'],
             ]);
 
             KolOrderAccessScope::authorizeCreate($request->user(), OrderOmsBatchImport::importKind($payload['import_type']));
 
-            return response()->json($this->import->commit($payload['file'], $payload['token'], $request->user(), $payload['import_type']));
+            return response()->json($this->import->commit($payload['file'], $payload['token'], $request->user(), $payload['import_type'], isset($payload['partner_id']) ? (int) $payload['partner_id'] : null));
         } catch (ValidationException $e) {
             return response()->json(['message' => '批量创建失败，请重新预检', 'errors' => $e->errors()], 422);
         }
@@ -180,7 +183,7 @@ final class OrderOmsTransferController
     private function exportRows(Order $order, array $lineFilters = []): array
     {
         $allItems = $order->items->sortBy('id')->values();
-        $all = $allItems->map(fn ($item) => $item->sku.' × '.$item->quantity)->implode('; ');
+        $all = $allItems->map(fn ($item) => WarehouseSkuPresentation::sku($item).' × '.$item->quantity)->implode('; ');
         $totalUnits = $allItems->sum('quantity');
         // Match the same SKU-line filters shown by the grid, while retaining
         // the original order total in each output row.
@@ -188,7 +191,7 @@ final class OrderOmsTransferController
         $name = mb_strtolower((string) ($lineFilters['grid_product_names'] ?? ''));
         $qtyText = (string) ($lineFilters['grid_quantity'] ?? '');
         $items = $allItems->filter(function ($item) use ($sku, $name, $qtyText): bool {
-            if ($sku !== '' && ! str_contains(mb_strtolower((string) $item->sku), $sku)) {
+            if ($sku !== '' && ! str_contains(mb_strtolower(WarehouseSkuPresentation::sku($item)), $sku)) {
                 return false;
             }
             if ($name !== '' && ! str_contains(mb_strtolower((string) $item->product_summary), $name)) {
@@ -206,7 +209,7 @@ final class OrderOmsTransferController
             $rows[] = [
                 $order->erp_order_id, $order->external_order_number, $order->order_date?->toDateString(),
                 $order->source_type->value,
-                $item?->sku, $item?->quantity, $items->isEmpty() ? null : $totalUnits,
+                $item ? WarehouseSkuPresentation::sku($item) : null, $item?->quantity, $items->isEmpty() ? null : $totalUnits,
                 $all, $item?->product_summary,
                 $item?->line_revenue, $order->currency,
                 $order->address?->recipient_name, $order->address?->phone,

@@ -2,9 +2,11 @@
 
 namespace App\Modules\Logistics\Application\ShipOut;
 
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionInventoryAudit;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionReadOnlyGateway;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Application\OutboundOrderSkuResolver;
 use App\Modules\Products\Application\SkuMatchKey;
 use App\Modules\Products\Application\VerifiedOmsProductIdentityResolver;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
@@ -25,8 +27,10 @@ final class ShipOutProductionCanaryPreflight
     public function __construct(
         private readonly ShipOutOutboundPayloadFactory $factory,
         private readonly VerifiedOmsProductIdentityResolver $identity,
+        private readonly OutboundOrderSkuResolver $outboundSkus,
         private readonly ShipOutProductionInventoryAudit $inventory,
         private readonly ShipOutProductionReadOnlyGateway $reader,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /** @return array{order_id:int,order_no:string,warehouse_id:string,shipping_mode:string,items:list<array{omsSku:string,qty:int}>,payload_hash:string,ready:bool} */
@@ -131,15 +135,28 @@ final class ShipOutProductionCanaryPreflight
             throw new RuntimeException('SHIPOUT_R10_STOCK_IDENTITY_UNTRUSTED');
         }
         $eligibleByProductId = [];
+        $eligibleByExactSku = [];
         foreach ($snapshot['stock_rows'] ?? [] as $row) {
             if (! is_array($row) || ! ($row['in_product_catalog'] ?? false)
-                || ($row['sku_alias_status'] ?? '') !== 'verified'
                 || (string) ($row['product_status'] ?? '') !== '1'
                 || ! is_int($row['available_quantity'] ?? null)
                 || $row['available_quantity'] < 1) {
                 continue;
             }
-            $providerSku = (string) ($row['provider_sku'] ?? '');
+            $providerSku = trim((string) ($row['provider_sku'] ?? ''));
+            if ($providerSku === '') {
+                continue;
+            }
+            $eligibleByExactSku[strtoupper($providerSku)][] = [
+                'omsSku' => $providerSku,
+                'available' => $row['available_quantity'],
+            ];
+            // A warehouse-specific product mapping may be verified independently
+            // from the legacy global SKU alias catalog. Only the legacy
+            // product-identity inference still requires a verified alias row.
+            if (($row['sku_alias_status'] ?? '') !== 'verified') {
+                continue;
+            }
             $resolved = $this->identity->resolve($providerSku);
             if (($resolved['status'] ?? '') !== 'resolved') {
                 continue;
@@ -154,70 +171,88 @@ final class ShipOutProductionCanaryPreflight
         $items = [];
         foreach ($order->items as $item) {
             $id = (int) $item->product_id;
-            $erpSku = trim((string) $item->sku);
-            if (filled($item->resolved_fulfillment_sku) && strcasecmp($erpSku, trim((string) $item->resolved_fulfillment_sku)) !== 0) {
-                throw new RuntimeException('SHIPOUT_R10_SKU_NOT_MATERIALIZED');
-            }
-            $verified = $this->identity->resolve($erpSku);
-            if ($id < 1 || ($verified['status'] ?? '') !== 'resolved'
-                || (int) ($verified['product_id'] ?? 0) !== $id) {
-                throw new RuntimeException('SHIPOUT_R10_ERP_SKU_UNVERIFIED');
-            }
-            $options = $eligibleByProductId[$id] ?? [];
-            // Preserve exact physical SKU priority. Alias substitution requires
-            // an exact, Owner-approved ERP=>provider pair plus the existing
-            // independent Product OS physical verification and provider stock.
-            // Never infer variants from shared Product IDs or arbitrary aliases.
-            $exact = array_values(array_filter(
-                $options, fn (array $r) => strcasecmp($r['omsSku'], $erpSku) === 0
-            ));
-            if (count($exact) === 1) {
-                $choice = $exact[0];
-            } elseif (count($exact) > 1) {
-                throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_AMBIGUOUS');
-            } else {
-                // New products need no new .env allowlist entry. Product360's
-                // explicit physical-equivalence approval persists on the alias.
-                // Only verified aliases for the same product AND unchanged
-                // canonical SKU are eligible; catalog + signed stock are
-                // independently checked above. A second candidate blocks.
-                $approved = [];
-                $candidateKeys = ProductSkuAlias::query()
-                    ->where('product_id', $id)
-                    ->where('is_active', true)
-                    ->whereNotNull('oms_verified_at')
-                    ->whereNotNull('oms_dispatch_approved_at')
-                    ->where('oms_dispatch_canonical_sku', (string) $verified['canonical_sku'])
-                    ->whereNotNull('oms_identity_evidence')
-                    ->get()
-                    ->filter(fn ($alias) => trim((string) $alias->oms_identity_evidence) !== '')
-                    ->pluck('match_key')
-                    ->all();
-                foreach ($options as $candidate) {
-                    $key = SkuMatchKey::compute((string) $candidate['omsSku']);
-                    if ($key !== null && in_array($key, $candidateKeys, true)) {
-                        $approved[$candidate['omsSku']] = $candidate;
-                    }
+            if (filled($item->final_sku) || (bool) config('warehouse_final_sku.require_verified_mapping')) {
+                $finalSku = $this->finalSkus->forShipment($order->shipment, $item);
+                $mapping = $this->finalSkus->mapped($id, (int) $order->shipment->warehouse_id);
+                $identity = $this->identity->resolve($finalSku);
+                if ($id < 1 || (($identity['status'] ?? null) !== 'resolved'
+                    || (int) ($identity['product_id'] ?? 0) !== $id)
+                    && ($mapping === null || strcasecmp($mapping, $finalSku) !== 0)) {
+                    throw new RuntimeException('SHIPOUT_R10_ERP_SKU_UNVERIFIED');
                 }
-                // Transitional exact pair for historically approved stock
-                // identities; no wildcard or per-product auto-whitelisting.
-                foreach (explode(',', (string) config('shipout.production_verified_alias_pairs', '')) as $pair) {
-                    $parts = array_map('trim', explode('=>', $pair, 2));
-                    if (count($parts) !== 2 || strcasecmp($parts[0], $erpSku) !== 0 || $parts[1] === '') {
-                        continue;
-                    }
+                $exactRows = $eligibleByExactSku[strtoupper($finalSku)] ?? [];
+                if (count($exactRows) !== 1) {
+                    throw new RuntimeException(count($exactRows) > 1
+                        ? 'SHIPOUT_R10_PHYSICAL_SKU_AMBIGUOUS'
+                        : 'SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE');
+                }
+                $choice = $exactRows[0];
+            } else {
+                $erpSku = trim((string) $item->sku);
+                if (filled($item->resolved_fulfillment_sku) && strcasecmp($erpSku, trim((string) $item->resolved_fulfillment_sku)) !== 0) {
+                    throw new RuntimeException('SHIPOUT_R10_SKU_NOT_MATERIALIZED');
+                }
+                $canonicalSku = $this->outboundSkus->canonical($erpSku, $id);
+                $verified = $this->identity->resolve($canonicalSku);
+                if ($id < 1 || ($verified['status'] ?? '') !== 'resolved'
+                    || (int) ($verified['product_id'] ?? 0) !== $id) {
+                    throw new RuntimeException('SHIPOUT_R10_ERP_SKU_UNVERIFIED');
+                }
+                $options = $eligibleByProductId[$id] ?? [];
+                // Prefer the Product's canonical physical SKU when it exists in
+                // verified OMS inventory. Never infer a variant from Product ID alone.
+                // Non-canonical provider SKUs still require explicit alias approval.
+                $exact = array_values(array_filter(
+                    $options, fn (array $r) => strcasecmp($r['omsSku'], $canonicalSku) === 0
+                ));
+                if (count($exact) === 1) {
+                    $choice = $exact[0];
+                } elseif (count($exact) > 1) {
+                    throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_AMBIGUOUS');
+                } else {
+                    // New products need no new .env allowlist entry. Product360's
+                    // explicit physical-equivalence approval persists on the alias.
+                    // Only verified aliases for the same product AND unchanged
+                    // canonical SKU are eligible; catalog + signed stock are
+                    // independently checked above. A second candidate blocks.
+                    $approved = [];
+                    $candidateKeys = ProductSkuAlias::query()
+                        ->where('product_id', $id)
+                        ->where('is_active', true)
+                        ->whereNotNull('oms_verified_at')
+                        ->whereNotNull('oms_dispatch_approved_at')
+                        ->where('oms_dispatch_canonical_sku', (string) $verified['canonical_sku'])
+                        ->whereNotNull('oms_identity_evidence')
+                        ->get()
+                        ->filter(fn ($alias) => trim((string) $alias->oms_identity_evidence) !== '')
+                        ->pluck('match_key')
+                        ->all();
                     foreach ($options as $candidate) {
-                        if (strcasecmp($candidate['omsSku'], $parts[1]) === 0) {
+                        $key = SkuMatchKey::compute((string) $candidate['omsSku']);
+                        if ($key !== null && in_array($key, $candidateKeys, true)) {
                             $approved[$candidate['omsSku']] = $candidate;
                         }
                     }
-                }
-                if (count($approved) === 1) {
-                    $choice = array_values($approved)[0];
-                } elseif ($approved === []) {
-                    throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE');
-                } else {
-                    throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_AMBIGUOUS');
+                    // Transitional exact pair for historically approved stock
+                    // identities; no wildcard or per-product auto-whitelisting.
+                    foreach (explode(',', (string) config('shipout.production_verified_alias_pairs', '')) as $pair) {
+                        $parts = array_map('trim', explode('=>', $pair, 2));
+                        if (count($parts) !== 2 || strcasecmp($parts[0], $erpSku) !== 0 || $parts[1] === '') {
+                            continue;
+                        }
+                        foreach ($options as $candidate) {
+                            if (strcasecmp($candidate['omsSku'], $parts[1]) === 0) {
+                                $approved[$candidate['omsSku']] = $candidate;
+                            }
+                        }
+                    }
+                    if (count($approved) === 1) {
+                        $choice = array_values($approved)[0];
+                    } elseif ($approved === []) {
+                        throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE');
+                    } else {
+                        throw new RuntimeException('SHIPOUT_R10_PHYSICAL_SKU_AMBIGUOUS');
+                    }
                 }
             }
             $sku = $choice['omsSku'];

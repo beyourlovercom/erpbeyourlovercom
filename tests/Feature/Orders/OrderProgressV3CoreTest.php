@@ -39,7 +39,9 @@ final class OrderProgressV3CoreTest extends TestCase
             'order_id' => $order->id, 'marker' => 'domestic_reviewed',
         ]);
         self::assertSame('sending', $this->phase($order));
+        // Staff's manual label does not grant Kaven approval; physical factory allocation allows dispatch.
         self::assertSame(1, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
+        self::assertSame(1, app(OrderProgressQuery::class)->domesticReview(Order::query())->whereKey($order->id)->count());
         self::assertSame(1, app(OrderProgressQuery::class)->readyForShipment(Order::query())->whereKey($order->id)->count());
 
         $this->actingAs($kaven)->patchJson('/orders/'.$order->id.'/workflow-status', [
@@ -52,6 +54,7 @@ final class OrderProgressV3CoreTest extends TestCase
             'workflow_status' => 'sending', 'expected_workflow_revision' => 2,
         ])->assertOk()->assertJsonPath('workflow_status.code', 'sending');
         self::assertSame(1, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
+        self::assertSame(1, app(OrderProgressQuery::class)->domesticReview(Order::query())->whereKey($order->id)->count());
     }
 
     public function test_nonreviewer_cannot_forge_domestic_approval_or_shipped_phase(): void
@@ -88,7 +91,7 @@ final class OrderProgressV3CoreTest extends TestCase
         self::assertSame(1, app(OrderProgressQuery::class)->readyForShipment(Order::query())->whereKey($order->id)->count());
     }
 
-    public function test_historical_shipped_without_domestic_approval_is_visible_as_conflict_not_exportable(): void
+    public function test_historical_shipped_without_domestic_approval_is_sent_and_not_exportable_again(): void
     {
         $this->withoutVite();
         config()->set('inertia.testing.ensure_pages_exist', false);
@@ -96,9 +99,9 @@ final class OrderProgressV3CoreTest extends TestCase
         $order->shipment->forceFill([
             'shipment_status' => 'shipped', 'shipped_at' => now(), 'tracking_number' => null,
         ])->save();
-        self::assertSame('progress_conflict', $this->phase($order));
+        self::assertSame('sent', $this->phase($order));
         self::assertSame(0, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
-        self::assertSame(1, app(OrderProgressQuery::class)->applyPhase(Order::query(), 'progress_conflict')->whereKey($order->id)->count());
+        self::assertSame(1, app(OrderProgressQuery::class)->applyPhase(Order::query(), 'sent')->whereKey($order->id)->count());
 
         $reviewer = $this->user(['logistics.view', 'orders.view', 'domestic.review']);
         $this->actingAs($reviewer)->get('/logistics/china?view=today-4px')->assertOk()
@@ -107,9 +110,9 @@ final class OrderProgressV3CoreTest extends TestCase
                 ->where('rows.total', 1)
                 ->where('rows.data.0.erp_order_id', $order->erp_order_id)
                 ->where('rows.data.0.export_blockers.0', '该单已离开待发货队列，禁止重复导出')
-                ->where('rows.data.0.review_status', 'conflict'));
+                ->where('rows.data.0.review_status', 'pending'));
         $this->actingAs($reviewer)->get('/logistics/china?view=exceptions')->assertOk()
-            ->assertInertia(fn ($page) => $page->where('rows.total', 1));
+            ->assertInertia(fn ($page) => $page->where('rows.total', 0));
     }
 
     public function test_vita_queue_and_preapproved_order_list_use_same_predicates(): void

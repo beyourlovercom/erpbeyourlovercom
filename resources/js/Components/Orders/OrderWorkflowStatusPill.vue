@@ -2,6 +2,7 @@
 import axios from 'axios'
 import { router } from '@inertiajs/vue3'
 import { computed, nextTick, ref, watch } from 'vue'
+import { currentCsrfHeaders } from '../../lib/csrfHeaders'
 
 type Auxiliary = { code: string; en: string; zh: string; color: string }
 type Option = { code: string; en: string; zh: string; color: string; mutable: boolean; source?: string }
@@ -35,8 +36,7 @@ watch(() => props.projection, (next) => {
 watch(() => props.revision, (next) => { revision.value = next })
 const current = computed(() => props.options.find(option => option.code === code.value) ?? props.projection)
 const visibleOptions = computed<Option[]>(() => [
-  ...props.options.filter(option => (option.code !== 'allocated' || code.value === 'allocated')
-    && (option.code !== 'cancelled' || props.projection.source === 'canonical_projection')),
+  ...props.options.filter(option => option.code !== 'allocated' || code.value === 'allocated'),
   ...(code.value === 'exception'
     ? [{ code:'resolve_exception', en:'Resolve Exception', zh:'解除异常 / 恢复实际进度', color:'amber', mutable:true }] : []),
   ...(['missing_info', 'renew', 'claims', 'returned_follow_up', 'freight_product_cost_follow_up'].includes(code.value)
@@ -46,6 +46,10 @@ const visibleOptions = computed<Option[]>(() => [
 const update = async (next: string) => {
   if (!props.canEdit || saving.value || next === code.value) return
   const previous = code.value
+  if (previous === 'archived' && !window.confirm('修改归档订单状态将同时恢复运营资格，订单会进入新状态对应的业务列表。确认继续？')) {
+    if (select.value) select.value.value = previous
+    return
+  }
   let reason: string | undefined
   if (next === 'cancelled') {
     if (!window.confirm('确认在 ERP 中真正取消此订单？不会自动向 WooCommerce 取消，也不会退款。')) {
@@ -65,7 +69,7 @@ const update = async (next: string) => {
       workflow_status: next,
       expected_workflow_revision: revision.value,
       ...(reason ? { reason } : {}),
-    })
+    }, { headers: currentCsrfHeaders() })
     code.value = response.data.workflow_status.code
     revision.value = response.data.order.workflow_revision
     auxiliary.value = response.data.workflow_status.auxiliary ?? []
@@ -96,7 +100,7 @@ const update = async (next: string) => {
 
 <template>
   <span class="order-workflow-status" :class="`status-color-${current.color}`" :data-color="current.color">
-    <select v-if="canEdit && options.length && !['cancelled', 'archived', 'allocated', 'progress_conflict', 'partially_shipped', 'completed'].includes(current.code)" ref="select" :value="code" :disabled="saving" :aria-label="`订单工作状态 ${current.zh}`" :title="`工作进度选项按编号显示；${current.zh}`" @change="update(($event.target as HTMLSelectElement).value)">
+    <select v-if="canEdit && options.length" ref="select" :value="code" :disabled="saving" :aria-label="`订单工作状态 ${current.zh}`" :title="`工作进度选项按编号显示；${current.zh}`" @change="update(($event.target as HTMLSelectElement).value)">
       <option v-for="option in visibleOptions" :key="option.code" :value="option.code" :disabled="!option.mutable">{{ optionCaption(option) }}</option>
     </select>
     <span v-else class="mvp-status" :title="`${current.en} · ${current.source === 'canonical_projection' ? '来自订单真实状态的只读投影' : '员工工作进度'}`" :aria-label="`订单状态 ${current.zh}`">{{ current.zh }}</span>

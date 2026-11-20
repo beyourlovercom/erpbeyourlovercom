@@ -25,6 +25,7 @@ use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowGridOptions;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Application\ProductOrderItemMetadata;
 use App\Modules\Shell\Application\GlobalGridPilot;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -41,7 +42,11 @@ final class DomesticLogisticsController
 {
     private const REVIEW_MARKER = 'domestic_reviewed';
 
-    private const VIEWS = ['review', 'stockout', 'outsource', 'pending', 'today-4px', 'today-weship', 'exceptions', 'today', '4px', 'weship'];
+    private const VIEWS = ['review', 'stockout', 'outsource', 'pending', 'today-4px', 'today-weship', 'exceptions', 'today', 'all'];
+
+    private const ALL_FILTERS = [
+        'carrier', 'status', 'warehouse_route', 'review', 'shipment_status', 'service', 'tracking', 'recipient', 'sku', 'destination',
+    ];
 
     public function __construct(
         private readonly SpeedaOutboundExporter $speeda,
@@ -63,8 +68,18 @@ final class DomesticLogisticsController
         return $this->index($request);
     }
 
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
+        // Retired cumulative-provider URLs keep their exact carrier scope as
+        // bookmarked links, while only the unified workbench is rendered.
+        $legacy = strtolower((string) $request->query('view', ''));
+        if (in_array($legacy, ['4px', 'weship'], true)) {
+            $parameters = $request->query();
+            $parameters['view'] = 'all';
+            $parameters['filter_carrier'] = $legacy;
+
+            return redirect('/logistics/china?'.http_build_query($parameters));
+        }
         $factory = $this->factory();
         $view = in_array((string) $request->query('view', 'review'), self::VIEWS, true)
             ? (string) $request->query('view', 'review')
@@ -94,10 +109,7 @@ final class DomesticLogisticsController
         ]);
 
         $this->applyView($query, $view);
-        // R4-7A/B: both cumulative carrier-history views use independently
-        // reversible Global Grid, preserving the original provider-only query,
-        // historical/all-state inclusion and existing shipment safety gates.
-        $approvedGridView = in_array($view, ['review', 'stockout', 'outsource', 'pending', 'today', 'today-4px', 'today-weship', 'exceptions', '4px', 'weship'], true);
+        $approvedGridView = in_array($view, self::VIEWS, true);
         $gridSetting = $request->query('global_grid');
         $gridAvailable = $approvedGridView || GlobalGridPilot::available();
         $gridPilot = $approvedGridView
@@ -112,12 +124,21 @@ final class DomesticLogisticsController
                     ->orWhereHas('address', fn (Builder $address) => $address->where('recipient_name', 'like', $term));
             });
         }
+        $gridFilters = [];
+        if ($view === 'all') {
+            foreach (self::ALL_FILTERS as $key) {
+                $gridFilters[$key] = trim(mb_substr((string) $request->query('filter_'.$key, ''), 0, 100));
+            }
+            $this->applyAllFilters($query, $gridFilters);
+        }
         $requestedSize = (int) $request->query('per_page', 50);
         $pageSize = $gridPilot && in_array($requestedSize, [20, 50, 100], true) ? $requestedSize : 50;
         $rows = $query->orderBy('order_date')->orderBy('id')->paginate($pageSize)->withQueryString();
+        $itemMetadata = app(ProductOrderItemMetadata::class);
+        $fallbackProducts = $itemMetadata->fallbackProductsForOrders($rows->getCollection());
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments($rows->getCollection()
             ->map(fn (Order $order): int => (int) $order->shipment?->id)->all());
-        $rows->through(fn (Order $order, int $index): array => $this->row($order, (($rows->currentPage() - 1) * $rows->perPage()) + $index + 1, $trackingStatuses[(int) $order->shipment?->id] ?? null, $view === 'exceptions'));
+        $rows->through(fn (Order $order, int $index): array => $this->row($order, (($rows->currentPage() - 1) * $rows->perPage()) + $index + 1, $trackingStatuses[(int) $order->shipment?->id] ?? null, $view === 'exceptions', $itemMetadata, $fallbackProducts));
 
         // Inertia partial row reloads do not need nine independent view counts.
         // Keep every count identical on full loads and when viewCounts is requested.
@@ -141,6 +162,7 @@ final class DomesticLogisticsController
             'globalGridPilotAvailable' => $gridAvailable,
             'globalGridPilotEnabled' => $gridPilot,
             'gridSearch' => $search,
+            'gridFilters' => $gridFilters,
             'viewCounts' => $loadViewCounts,
             'canOperate' => app(LogisticsExecutionAccess::class)->allows($request->user()),
             'canLogisticsView' => $canLogisticsView,
@@ -238,10 +260,14 @@ final class DomesticLogisticsController
     public function reject(Request $request, Order $order): RedirectResponse
     {
         abort_unless($this->reviewAccess->allows($request->user()), 403);
-        $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:500']]);
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:3', 'max:500'],
+            'return_view' => ['sometimes', 'in:review,pending'],
+        ]);
         $this->decisions->decide($order, 'reject', $data['reason'], $request->user());
 
-        return redirect('/logistics/china?view=review')->with('success', '已驳回并退回 Vita 待分仓，原因已写入订单详情。');
+        return redirect('/logistics/china?view='.($data['return_view'] ?? 'review'))
+            ->with('success', '已驳回并退回 Vita 待分仓，原因已写入订单详情。');
     }
 
     public function reopenReview(Request $request, Order $order): RedirectResponse
@@ -260,8 +286,9 @@ final class DomesticLogisticsController
         $label = $this->providerLabel($provider);
 
         $factory = $this->factory();
-        $orders = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id))
-            ->with(['address', 'shipment', 'items.product', 'externalReferences', 'operationalMarkers'])
+        $query = $this->baseQuery((int) $factory->id);
+        $this->applyView($query, 'pending');
+        $orders = $query->with(['address', 'shipment.warehouse', 'items.product', 'externalReferences', 'operationalMarkers', 'procurementOrder'])
             ->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', [$carrier])
                 ->whereIn('carrier_selection_source', ['manual', 'automatic']))
             ->orderBy('order_date')
@@ -310,9 +337,9 @@ final class DomesticLogisticsController
     public function exportPendingBatch(): HttpResponse
     {
         $factory = $this->factory();
-        $orders = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id))
-            ->with(['address', 'items.product', 'shipment', 'externalReferences', 'operationalMarkers'])
-
+        $query = $this->baseQuery((int) $factory->id);
+        $this->applyView($query, 'pending');
+        $orders = $query->with(['address', 'items.product', 'shipment.warehouse', 'externalReferences', 'operationalMarkers', 'procurementOrder'])
             ->orderBy('order_date')
             ->orderBy('id')
             ->get();
@@ -326,6 +353,29 @@ final class DomesticLogisticsController
         return response($bytes, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="007-domestic-pending-'.now()->format('ymd').'.xlsx"',
+            'Cache-Control' => 'no-store, private',
+            'X-BYL-Exported-Orders' => (string) $orders->count(),
+        ]);
+    }
+
+    public function exportPendingBatchSkuMerged(): HttpResponse
+    {
+        $factory = $this->factory();
+        $orders = $this->progressQueries->domesticReady($this->baseQuery((int) $factory->id))
+            ->with(['address', 'items.product', 'shipment', 'externalReferences', 'operationalMarkers'])
+            ->orderBy('order_date')
+            ->orderBy('id')
+            ->get();
+
+        try {
+            $bytes = $this->pendingBatch->exportSkuMerged($orders);
+        } catch (\DomainException $e) {
+            abort(422, $e->getMessage());
+        }
+
+        return response($bytes, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="007-domestic-pending-sku-merged-'.now()->format('ymd').'.xlsx"',
             'Cache-Control' => 'no-store, private',
             'X-BYL-Exported-Orders' => (string) $orders->count(),
         ]);
@@ -450,13 +500,75 @@ final class DomesticLogisticsController
                     ->orWhere(fn (Builder $conflicts) => $this->progressQueries->applyPhase($conflicts, 'progress_conflict'));
             }),
             'today' => $this->progressQueries->domesticToday($query),
-            '4px' => $query->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', ['4px'])),
-            'weship' => $query->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', ['weship'])),
+            // All domestic carriers and historical fulfillment states share
+            // one paginated list; provider choice is a separate filter.
+            'all' => null,
             default => null,
         };
     }
 
-    private function row(Order $order, int $line, ?array $tracking = null, bool $includeException = false): array
+    /** Explicit allowlisted server filters. No client-only filtering of a 50-row page. */
+    private function applyAllFilters(Builder $query, array $filters): void
+    {
+        if ($filters['carrier'] !== '') {
+            $query->whereHas('shipment', fn ($shipment) => $shipment->whereRaw('LOWER(carrier) = ?', [mb_strtolower($filters['carrier'])]));
+        }
+        if ($filters['status'] !== '') {
+            $allowed = ['pending_review', 'sending', 'out_of_stock', 'sent', 'shipping', 'completed', 'progress_conflict', 'partially_shipped'];
+            in_array($filters['status'], $allowed, true)
+                ? $this->progressQueries->applyPhase($query, $filters['status'])
+                : $query->whereRaw('1=0');
+        }
+        if ($filters['warehouse_route'] !== '') {
+            $code = strtoupper($filters['warehouse_route']);
+            $allowed = collect(app(OrderWarehouseRouting::class)->options())->pluck('code')->all();
+            if (! in_array($code, $allowed, true)) {
+                $query->whereRaw('1=0');
+            } elseif ($code === OrderWarehouseRouting::UNASSIGNED) {
+                $query->whereNull('routing_warehouse_code')->whereDoesntHave('shipment.warehouse');
+            } else {
+                $query->where(fn (Builder $route) => $route->where('routing_warehouse_code', $code)
+                    ->orWhere(fn (Builder $fallback) => $fallback->whereNull('routing_warehouse_code')
+                        ->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('code', $code))));
+            }
+        }
+        if ($filters['review'] !== '') {
+            match ($filters['review']) {
+                'approved' => $query->whereHas('operationalMarkers', fn ($m) => $m->where('marker', self::REVIEW_MARKER))
+                    ->where(fn (Builder $q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
+                    ->whereDoesntHave('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_stockout')),
+                'stockout' => $query->where(fn (Builder $q) => $q->where('workflow_status', 'out_of_stock')
+                    ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_stockout'))),
+                'pending' => $query->whereDoesntHave('operationalMarkers', fn ($m) => $m->whereIn('marker', [self::REVIEW_MARKER, 'domestic_stockout']))
+                    ->where(fn (Builder $q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock')),
+                'conflict' => $this->progressQueries->applyPhase($query, 'progress_conflict'),
+                default => $query->whereRaw('1=0'),
+            };
+        }
+        if ($filters['shipment_status'] !== '') {
+            in_array($filters['shipment_status'], ['pending', 'shipped', 'completed', 'exception'], true)
+                ? $query->whereHas('shipment', fn ($s) => $s->where('shipment_status', $filters['shipment_status']))
+                : $query->whereRaw('1=0');
+        }
+        foreach (['service', 'tracking', 'recipient', 'sku', 'destination'] as $field) {
+            if ($filters[$field] === '') {
+                continue;
+            }
+            $pattern = '%'.addcslashes($filters[$field], '%_\\').'%';
+            match ($field) {
+                'service' => $query->whereHas('shipment', fn ($s) => $s->where('service', 'like', $pattern)),
+                'tracking' => $query->whereHas('shipment', fn ($s) => $s->where('tracking_number', 'like', $pattern)),
+                'recipient' => $query->whereHas('address', fn ($a) => $a->where('recipient_name', 'like', $pattern)),
+                'sku' => $query->whereHas('items', fn ($i) => $i->where('sku', 'like', $pattern)
+                    ->orWhere('source_sku', 'like', $pattern)->orWhere('final_sku', 'like', $pattern)),
+                'destination' => $query->whereHas('address', fn ($a) => $a->where('country', 'like', $pattern)
+                    ->orWhere('province_state', 'like', $pattern)->orWhere('city', 'like', $pattern)),
+                default => null,
+            };
+        }
+    }
+
+    private function row(Order $order, int $line, ?array $tracking, bool $includeException, ProductOrderItemMetadata $metadata, array $fallbackProducts): array
     {
         $shipment = $order->shipment;
         $trackingState = app(LogisticsTrackingListStatus::class)->currentStatus($tracking, $order->manualSync?->website_sync_status);
@@ -472,9 +584,23 @@ final class DomesticLogisticsController
 
         $businessDate = app(OrderBusinessDateResolver::class)->domesticReview($order);
         $amount = app(DomesticReviewAmountResolver::class)->resolve($order);
+        $items = $order->items->map(function ($item) use ($metadata, $fallbackProducts): array {
+            $product = $metadata->productForItem($item, $fallbackProducts);
+
+            return [
+                'sku' => WarehouseSkuPresentation::sku($item),
+                'final_sku' => $item->final_sku,
+                'source_sku' => $item->source_sku ?: $item->sku,
+                'quantity' => (int) $item->quantity,
+                'has_liquid' => (bool) ($product?->has_liquid ?? false),
+                'material_full_name' => $product?->material_full_name,
+            ];
+        })->values();
+        $liquidSkus = $items->filter(fn (array $item): bool => $item['has_liquid'])
+            ->pluck('sku')->filter()->unique()->values()->all();
 
         $exception = $includeException
-            ? $this->exceptionSummary($order, $conflict, $stockout, $approved)
+            ? $this->exceptionSummary($order, $conflict, $stockout)
             : [];
 
         return [
@@ -486,6 +612,8 @@ final class DomesticLogisticsController
             'amount_currency' => $amount['currency'],
             'amount_source' => $amount['source'],
             'order_id' => (int) $order->id,
+            'has_liquid' => count($liquidSkus) > 0,
+            'liquid_skus' => $liquidSkus,
             'source_type' => ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type) instanceof \BackedEnum
                 ? ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type)->value
                 : (string) ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type),
@@ -537,16 +665,12 @@ final class DomesticLogisticsController
             ] : null,
             'export_blockers' => $shipment?->shipment_status !== 'pending'
                 ? ['该单已离开待发货队列，禁止重复导出']
-                : ($stockout ? ['缺货，禁止导出'] : (! $approved ? ['商务尚未审核，禁止导出']
-                    : (! $this->carrierDefaults->ready($order)
+                : ($stockout ? ['缺货，禁止导出'] : (! $this->carrierDefaults->ready($order)
                         ? ['请检查物流商和服务类型']
                         : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
                         ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
-                        : ['未选定速达或纬狮物流商'])))),
-            'items' => $order->items->map(fn ($item) => [
-                'sku' => WarehouseSkuPresentation::sku($item),
-                'quantity' => (int) $item->quantity,
-            ])->values()->all(),
+                        : ['未选定速达或纬狮物流商']))),
+            'items' => $items->all(),
         ];
     }
 
@@ -556,7 +680,7 @@ final class DomesticLogisticsController
      *
      * @return array{exception_type: string, exception_reason: string}
      */
-    private function exceptionSummary(Order $order, bool $conflict, bool $stockout, bool $approved): array
+    private function exceptionSummary(Order $order, bool $conflict, bool $stockout): array
     {
         $shipment = $order->shipment;
         if ($shipment?->shipment_status === 'exception') {
@@ -571,7 +695,6 @@ final class DomesticLogisticsController
         $reason = match (true) {
             $stockout && in_array($shipment?->shipment_status, ['shipped', 'completed'], true) => '订单标记缺货，但物流已发货',
             $shipment?->shipment_status === 'shipped' && $shipment->shipped_at === null => '物流已发货，但缺少发货时间',
-            $shipment?->shipment_status === 'shipped' && ! $approved && blank($shipment->tracking_number) => '物流已发货，但缺少商务审核和追踪单号',
             $order->order_status?->value === 'shipped' && $shipment?->shipment_status === 'pending' => '订单已标记发货，但物流仍为待发货',
             default => '履约状态不一致，请打开订单详情核对',
         };

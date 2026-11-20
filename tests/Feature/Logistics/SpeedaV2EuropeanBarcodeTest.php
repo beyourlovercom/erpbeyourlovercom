@@ -1,6 +1,7 @@
 <?php
 namespace Tests\Feature\Logistics;
 
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
@@ -32,7 +33,13 @@ final class SpeedaV2EuropeanBarcodeTest extends TestCase
             'sku' => $sku, 'product_summary' => 'Synthetic product', 'product_id' => $product?->id,
             'quantity' => 1, 'unit_price' => 1, 'line_revenue' => 1,
         ]);
-        return $order->fresh(['address','items.product','externalReferences']);
+        $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
+        $order->shipment()->create([
+            'warehouse_id' => $factory->id,
+            'shipment_status' => 'pending',
+        ]);
+        $order->operationalMarkers()->create(['marker' => 'domestic_reviewed', 'marked_at' => now()]);
+        return $order->fresh(['address','items.product','externalReferences', 'shipment', 'operationalMarkers']);
     }
     private function rows(array $orders, string $carrier = '速达'): array
     {
@@ -69,6 +76,25 @@ final class SpeedaV2EuropeanBarcodeTest extends TestCase
         $this->assertSame(['TEST-SKU-FR','6977291390537',null], array_slice($rows[2], 24, 3));
         $this->assertSame(['TEST-SKU-US','6977291390285',null], array_slice($rows[3], 24, 3));
     }
+    public function test_verified_factory_final_sku_exports_manufacturer_barcode_from_linked_product(): void
+    {
+        $order = $this->order('UAT-SOURCE-4PX', 'FR', '0697729139053', 912);
+        $item = $order->items()->firstOrFail();
+        $warehouseId = (int) $order->shipment->warehouse_id;
+        \App\Modules\Products\Infrastructure\Models\ProductWarehouseSku::create([
+            'product_id' => $item->product_id, 'warehouse_id' => $warehouseId,
+            'sku' => 'UAT-FACTORY-4PX', 'verified_at' => now(),
+            'verification_note' => 'Factory physical SKU matched to product and barcode',
+        ]);
+        $item->update([
+            'source_sku' => 'UAT-SOURCE-4PX',
+            'resolved_fulfillment_sku' => 'UAT-FACTORY-4PX',
+            'final_sku' => 'UAT-FACTORY-4PX',
+        ]);
+        $rows = $this->rows([$order->fresh()]);
+        $this->assertSame(['UAT-FACTORY-4PX', '0697729139053', null], array_slice($rows[2], 24, 3));
+    }
+
     public function test_missing_barcode_leaves_z_blank_without_blocking_any_orders(): void
     {
         $good = $this->order('GOOD-DE', 'DE', '6977291390537', 904);
@@ -103,21 +129,17 @@ final class SpeedaV2EuropeanBarcodeTest extends TestCase
         $this->assertEquals(4, $rows[2][16], 'Q quantity totals both matching SKU lines');
     }
 
-    public function test_mismatched_resolved_sku_is_not_given_an_unrelated_barcode(): void
+    public function test_mismatched_resolved_sku_is_blocked_from_export(): void
     {
         $order = $this->order('REAL-DE', 'DE', '6977291390537', 909);
         $order->items()->update(['resolved_fulfillment_sku' => 'OTHER-DE']);
-        $this->assertSame([], app(SpeedaOutboundExporter::class)->blockers($order->fresh(), '速达'));
-        $rows = $this->rows([$order->fresh()]);
-        $this->assertSame(['OTHER-DE', null, null], array_slice($rows[2], 24, 3));
+        $this->assertContains('实际发货 SKU 未登记或与分仓结果不一致', app(SpeedaOutboundExporter::class)->blockers($order->fresh(), '速达'));
     }
 
-    public function test_unknown_sku_leaves_y_and_z_blank_without_blocking(): void
+    public function test_unknown_sku_is_blocked_from_export(): void
     {
         $order = $this->order('', 'JP', null, 910);
-        $this->assertSame([], app(SpeedaOutboundExporter::class)->blockers($order, '速达'));
-        $rows = $this->rows([$order]);
-        $this->assertSame([null, null, null], array_slice($rows[2], 24, 3));
+        $this->assertContains('实际发货 SKU 未登记或与分仓结果不一致', app(SpeedaOutboundExporter::class)->blockers($order, '速达'));
     }
 
     public function test_product_record_with_blank_barcode_still_exports_sku(): void

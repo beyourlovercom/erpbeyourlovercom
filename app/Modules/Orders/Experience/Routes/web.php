@@ -2,14 +2,17 @@
 
 use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
 use App\Modules\Orders\Experience\Controllers\KolOrderLinkPreviewController;
+use App\Modules\Orders\Experience\Controllers\OrderCollaborationPartnerController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
-use App\Modules\Orders\Experience\Controllers\OrderWarehouseRouteController;
+use App\Modules\Orders\Experience\Controllers\OrderMasterController;
 use App\Modules\Orders\Experience\Controllers\OrderNoteController;
 use App\Modules\Orders\Experience\Controllers\OrderOmsTransferController;
 use App\Modules\Orders\Experience\Controllers\OrderOperationalArchiveController;
 use App\Modules\Orders\Experience\Controllers\OrderSavedViewController;
 use App\Modules\Orders\Experience\Controllers\OrderTrashController;
+use App\Modules\Orders\Experience\Controllers\OrderWarehouseRouteController;
 use App\Modules\Orders\Experience\Controllers\WooCommerceInboundController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->group(function (): void {
@@ -21,6 +24,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/sync/woocommerce/historical', [WooCommerceInboundController::class, 'historical'])->middleware('can:sync.operate')->name('woocommerce.inbound.historical');
     Route::get('/orders/trash', [OrderTrashController::class, 'index'])->middleware('can:system.permissions.manage')->name('orders.trash.index');
     Route::get('/orders/archive', [OrderOperationalArchiveController::class, 'index'])->middleware('can:orders.view')->name('orders.archive.index');
+    Route::get('/orders/master', fn (Request $request) => redirect()->route('orders.index', $request->query()))->middleware('can:orders.view')->name('orders.master.index');
     Route::post('/orders/archive/batch', [OrderOperationalArchiveController::class, 'batch'])
         ->middleware(['can:orders.view', 'can:orders.archive', 'throttle:15,1'])->name('orders.archive.batch');
     Route::post('/orders/{order}/archive', [OrderOperationalArchiveController::class, 'archive'])->middleware(['can:orders.view', 'can:orders.archive'])->whereNumber('order')->name('orders.archive');
@@ -32,7 +36,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/orders/oms/import/template', [OrderOmsTransferController::class, 'template'])->middleware(['can:orders.view', 'can:orders.create'])->name('orders.oms.import.template');
     Route::post('/orders/oms/import/preview', [OrderOmsTransferController::class, 'preview'])->middleware(['can:orders.view', 'can:orders.create'])->name('orders.oms.import.preview');
     Route::post('/orders/oms/import/confirm', [OrderOmsTransferController::class, 'confirm'])->middleware(['can:orders.view', 'can:orders.create'])->name('orders.oms.import.confirm');
-    Route::get('/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.index')->defaults('order_kind', 'all');
+    Route::get('/orders', [OrderMasterController::class, 'index'])->middleware('can:orders.view')->name('orders.index');
     Route::get('/orders/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.all')->defaults('order_kind', 'all');
     Route::post('/orders/views', [OrderSavedViewController::class, 'store'])->middleware('can:orders.view')->name('orders.views.store');
     Route::patch('/orders/views/{savedView}', [OrderSavedViewController::class, 'update'])->middleware('can:orders.view')->name('orders.views.update');
@@ -43,8 +47,11 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::patch('/orders/{order}/workflow-status', [OrderController::class, 'updateWorkflowStatus'])->middleware('can:orders.view')->whereNumber('order')->name('orders.workflow-status.update');
     Route::delete('/orders/{order}/auxiliary-status/{code}', [OrderController::class, 'removeAuxiliaryStatus'])
         ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->where('code', '[a-z_]+')->name('orders.auxiliary-status.remove');
-    Route::get('/orders/collaboration', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'tingon_partner');
-    Route::get('/orders/collaboration/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'tingon_partner');
+    Route::get('/orders/collaboration', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'collaboration');
+    Route::get('/orders/collaboration/partners', [OrderCollaborationPartnerController::class, 'index'])->middleware('can:orders.view')->name('orders.collaboration.partners');
+    Route::post('/orders/collaboration/partners', [OrderCollaborationPartnerController::class, 'store'])->middleware('can:system.permissions.manage')->name('orders.collaboration.partners.store');
+    Route::patch('/orders/collaboration/partners/{partner}', [OrderCollaborationPartnerController::class, 'update'])->middleware('can:system.permissions.manage')->name('orders.collaboration.partners.update');
+    Route::get('/orders/collaboration/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'collaboration');
     Route::get('/orders/procurement', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
     Route::get('/orders/{order}', [OrderController::class, 'showAny'])->middleware('can:orders.view')->whereNumber('order')->name('orders.show');
     Route::get('/orders/procurement/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
@@ -60,6 +67,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/kol/logistics', [KolLogisticsController::class, 'index'])->middleware('can:kol.view')->name('kol.logistics');
     Route::get('/kol/orders/link-preview', KolOrderLinkPreviewController::class)->middleware(['can:orders.view', 'can:kol.views.manage'])->name('kol.orders.link-preview');
     Route::get('/kol/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('kol.orders')->defaults('order_kind', 'kol_fulfillment');
+    Route::get('/kol/orders/kol-search', [OrderController::class, 'searchKolOptions'])->middleware(['can:orders.create', 'can:kol.view', 'throttle:60,1'])->name('kol.orders.kol-search');
     Route::get('/kol/orders/create', [OrderController::class, 'create'])->middleware('can:orders.create')->name('kol.orders.create')->defaults('order_kind', 'kol_fulfillment');
     Route::post('/kol/orders', [OrderController::class, 'store'])->middleware('can:orders.create')->name('orders.store')->defaults('order_kind', 'kol_fulfillment');
     Route::get('/kol/orders/{order}', [OrderController::class, 'show'])->middleware('can:orders.view')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|KOL[0-9]{8}-[0-9]{3}|[0-9]+')->name('kol.orders.show')->defaults('order_kind', 'kol_fulfillment');

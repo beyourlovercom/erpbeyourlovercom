@@ -27,6 +27,8 @@ type Product = {
   brand_local_override?: boolean
   woocommerce_brand?: string | null
   has_battery?: boolean
+  has_liquid?: boolean
+  material_full_name?: string | null
   name: string
   unit: string | null
   is_active: boolean
@@ -86,6 +88,8 @@ const form = ref({
   brand: props.product.brand ?? '',
   brand_local_override: props.product.brand_local_override ?? false,
   has_battery: props.product.has_battery ?? true,
+  has_liquid: props.product.has_liquid ?? false,
+  material_full_name: props.product.material_full_name ?? '',
   unit: props.product.unit ?? '',
   is_active: props.product.is_active,
   weight_kg: props.product.weight_kg ?? '',
@@ -342,11 +346,23 @@ const doDelete = () => {
                 <p v-if="product.woocommerce_brand" class="erp-field-help">WordPress 原始品牌：{{ product.woocommerce_brand }}</p>
               </div>
 
+              <div class="erp-form-field" style="grid-column:1/-1">
+                <label class="erp-form-label" for="edit-material-full-name">物料全称（内部采购与物流使用）</label>
+                <textarea id="edit-material-full-name" v-model="form.material_full_name" class="erp-textarea" rows="2" maxlength="10000" placeholder="填写与库存表匹配的完整中英文物料名称" />
+                <p v-if="errors.material_full_name" class="erp-field-error">{{ errors.material_full_name }}</p>
+              </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">电池属性</label>
                 <div class="erp-segmented" role="group" aria-label="电池属性">
                   <button type="button" class="erp-segmented-option" :class="{ selected: form.has_battery }" @click="form.has_battery = true">含电池</button>
                   <button type="button" class="erp-segmented-option" :class="{ selected: !form.has_battery }" @click="form.has_battery = false">不含电池</button>
+                </div>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">液体属性</label>
+                <div class="erp-segmented" role="group" aria-label="液体属性">
+                  <button type="button" class="erp-segmented-option" :class="{ selected: form.has_liquid }" @click="form.has_liquid = true">带液体</button>
+                  <button type="button" class="erp-segmented-option" :class="{ selected: !form.has_liquid }" @click="form.has_liquid = false">不带液体</button>
                 </div>
               </div>
 

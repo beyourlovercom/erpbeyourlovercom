@@ -2,46 +2,53 @@
 
 namespace App\Modules\Products\Experience\Controllers;
 
-use App\Modules\Identity\Application\AuthorizationKeys;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Audit\Application\ProductActivityProjection;
+use App\Modules\Identity\Application\AuthorizationKeys;
+use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Kol\Application\ProductKolProjection;
 use App\Modules\Logistics\Application\ProductShipmentProjection;
 use App\Modules\Orders\Application\ProductOrderProjection;
 use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
 use App\Modules\Products\Application\Contracts\SkuAliasRepository;
-use App\Modules\Products\Application\ProductService;
 use App\Modules\Products\Application\ProductAttentionFilters;
 use App\Modules\Products\Application\ProductPackagingPresentation;
+use App\Modules\Products\Application\ProductService;
 use App\Modules\Products\Application\ProductWeightEvidenceService;
 use App\Modules\Products\Application\WooCommerceProductInboundService;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductExternalReference;
 use App\Modules\Products\Infrastructure\Models\ProductMedia;
-use App\Modules\Products\Infrastructure\Models\ProductProviderSnapshot;
-use App\Modules\Products\Infrastructure\Models\ProductParameterTask;
 use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
-use App\Modules\Products\Infrastructure\Models\ProductParameterSubmission;
 use App\Modules\Products\Infrastructure\Models\ProductParameterAccessory;
-use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Products\Infrastructure\Models\ProductParameterSubmission;
+use App\Modules\Products\Infrastructure\Models\ProductParameterTask;
+use App\Modules\Products\Infrastructure\Models\ProductProviderSnapshot;
+use App\Modules\Products\Infrastructure\Models\ProductWarehouseSku;
 use App\Modules\Shell\Application\GlobalGridPilot;
+use App\Modules\Sync\Infrastructure\Models\SyncRunItem;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Cell\DataType;
-use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class ProductController
 {
@@ -101,22 +108,26 @@ final class ProductController
     public function index(Request $request): Response
     {
         $filters = $request->only(['search', 'sort', 'direction', 'attention']);
-        $view = in_array($request->query('view'), ['standard','measurements','accessories'], true)
+        $view = in_array($request->query('view'), ['standard', 'measurements', 'accessories'], true)
             ? $request->query('view') : 'standard';
         $parameterStatus = (string) $request->query('parameter_status', '');
-        if ($view !== 'standard') $filters += ['view' => $view, 'parameter_status' => $parameterStatus];
+        if ($view !== 'standard') {
+            $filters += ['view' => $view, 'parameter_status' => $parameterStatus];
+        }
         $perPage = $this->productListPageSize($request);
         $products = $this->products->list($filters, $perPage);
         $this->loadGridRelations($products->getCollection());
         $searchTerm = trim((string) ($filters['search'] ?? ''));
-        if ($searchTerm !== '') $products->getCollection()->load('skuAliases');
+        if ($searchTerm !== '') {
+            $products->getCollection()->load('skuAliases');
+        }
         $stock = $this->inventory->forProductIds($products->getCollection()->pluck('id')->all());
         $parameterRows = [];
         if ($view !== 'standard') {
             $ids = $products->getCollection()->pluck('id')->all();
             $tasks = ProductParameterTask::query()->whereIn('product_id', $ids)->get()->keyBy('product_id');
             $submissions = ProductParameterSubmission::query()->whereIn('product_id', $ids)
-                ->whereIn('status', ['submitted','approved'])->orderByDesc('id')->get()->groupBy('product_id');
+                ->whereIn('status', ['submitted', 'approved'])->orderByDesc('id')->get()->groupBy('product_id');
             $parts = ProductParameterAccessory::query()->whereIn('product_id', $ids)
                 ->get()->groupBy('product_id');
             foreach ($ids as $id) {
@@ -125,7 +136,7 @@ final class ProductController
                 $measures = [];
                 foreach ($approved as $record) {
                     foreach ($record->measurements ?? [] as $key => $value) {
-                        if (!array_key_exists($key, $measures) && $value !== null && $value !== '') {
+                        if (! array_key_exists($key, $measures) && $value !== null && $value !== '') {
                             $measures[$key] = $value;
                         }
                     }
@@ -150,8 +161,7 @@ final class ProductController
                     'carton_dimensions' => $this->measurementDimension($measures, 'carton'),
                     'carton_gross_weight_kg' => $measures['carton_gross_weight_kg'] ?? null,
                     'accessories_count' => $accessories->count(),
-                    'accessories_summary' => $accessories->map(fn ($a) =>
-                        $a->name.' × '.$a->quantity.' '.$a->unit)->join('、'),
+                    'accessories_summary' => $accessories->map(fn ($a) => $a->name.' × '.$a->quantity.' '.$a->unit)->join('、'),
                 ];
             }
         }
@@ -195,14 +205,18 @@ final class ProductController
         $requested = array_filter(explode(',', (string) $request->query('columns', '')));
         $columns = [];
         foreach ($requested as $key) {
-            if (isset($fields[$key]) && ! isset($columns[$key])) $columns[$key] = $fields[$key];
+            if (isset($fields[$key]) && ! isset($columns[$key])) {
+                $columns[$key] = $fields[$key];
+            }
         }
-        if (! $columns) $columns = $fields;
+        if (! $columns) {
+            $columns = $fields;
+        }
 
         $rows = $products->getCollection()->map(fn (Product $p): array => $this->gridRow($p, $stock[(int) $p->id] ?? []))->all();
 
         return response()->streamDownload(static function () use ($rows, $columns): void {
-            $spreadsheet = new Spreadsheet();
+            $spreadsheet = new Spreadsheet;
             $sheet = $spreadsheet->getActiveSheet();
             $sheet->setTitle('产品列表');
             $col = 1;
@@ -213,6 +227,9 @@ final class ProductController
                 $col = 1;
                 foreach ($columns as $key => $label) {
                     $value = $row[$key] ?? null;
+                    if ($key === 'has_liquid') {
+                        $value = $value ? '带液体' : '不带液体';
+                    }
                     $sheet->setCellValueExplicit(
                         Coordinate::stringFromColumnIndex($col++).($offset + 2),
                         $value === null || $value === '' ? '—' : (string) $value,
@@ -238,11 +255,14 @@ final class ProductController
     private function productListPageSize(Request $request): int
     {
         $requested = (string) $request->query('per_page', '50');
-        if ($requested === 'all') return max(1, $this->products->totalCount());
+        if ($requested === 'all') {
+            return max(1, $this->products->totalCount());
+        }
+
         return in_array($requested, ['20', '50', '100'], true) ? (int) $requested : 50;
     }
 
-    private function loadGridRelations(\Illuminate\Database\Eloquent\Collection $products): void
+    private function loadGridRelations(Collection $products): void
     {
         $connection = (string) config('services.woocommerce.connection_key', 'beyourlover.com');
         $products->load([
@@ -272,6 +292,8 @@ final class ProductController
             'id' => (int) $p->id,
             'sku' => $p->sku,
             'name' => $p->name,
+            'has_liquid' => (bool) $p->has_liquid,
+            'material_full_name' => $p->material_full_name,
             'source_type' => $p->source_type,
             'source' => $p->source_type === 'manual' ? '手动' : 'Woo',
             'is_active' => (bool) $p->is_active,
@@ -294,7 +316,7 @@ final class ProductController
             'available_stock' => $stockKnown ? array_sum(array_column($warehouses, 'quantity_available')) : null,
             // Tencent sheet-only fields lack canonical mappings in Product OS.
             'cnf' => null,
-            'material_name' => null,
+            'material_name' => $p->material_full_name,
             'packaging_dimensions' => null,
             'brand' => $p->brand,
         ];
@@ -303,7 +325,9 @@ final class ProductController
     /** Use canonical local media only when present; otherwise show the recorded Woo image. */
     private function gridImageUrl(?ProductMedia $media): ?string
     {
-        if ($media === null) return null;
+        if ($media === null) {
+            return null;
+        }
         if ($media->storage_path && Storage::disk('local')->exists($media->storage_path)) {
             return route('products.media.show', $media->id);
         }
@@ -314,12 +338,21 @@ final class ProductController
             static fn (array $match): string => rawurlencode($match[0]),
             trim((string) $media->source_url)
         );
-        if ($source === null || ! filter_var($source, FILTER_VALIDATE_URL)) return null;
+        if ($source === null || ! filter_var($source, FILTER_VALIDATE_URL)) {
+            return null;
+        }
         $parts = parse_url($source);
-        if (! is_array($parts) || strtolower((string) ($parts['scheme'] ?? '')) !== 'https') return null;
-        if (isset($parts['user']) || isset($parts['pass']) || isset($parts['port'])) return null;
+        if (! is_array($parts) || strtolower((string) ($parts['scheme'] ?? '')) !== 'https') {
+            return null;
+        }
+        if (isset($parts['user']) || isset($parts['pass']) || isset($parts['port'])) {
+            return null;
+        }
         $host = strtolower((string) ($parts['host'] ?? ''));
-        if ($host !== 'beyourlover.com' && ! str_ends_with($host, '.beyourlover.com')) return null;
+        if ($host !== 'beyourlover.com' && ! str_ends_with($host, '.beyourlover.com')) {
+            return null;
+        }
+
         return $source;
     }
 
@@ -327,32 +360,36 @@ final class ProductController
     private function measurementDimension(array $m, string $prefix): ?string
     {
         $keys = [$prefix.'_length_cm', $prefix.'_width_cm', $prefix.'_height_cm'];
-        if (!collect($keys)->every(fn ($key) => is_numeric($m[$key] ?? null)
-            && (float) $m[$key] > 0)) return null;
+        if (! collect($keys)->every(fn ($key) => is_numeric($m[$key] ?? null)
+            && (float) $m[$key] > 0)) {
+            return null;
+        }
+
         return implode(' × ', array_map(fn ($key) => (string) $m[$key], $keys)).' cm';
     }
 
     private function measurementVolume(array $m, string $prefix): ?float
     {
         $keys = [$prefix.'_length_cm', $prefix.'_width_cm', $prefix.'_height_cm'];
-        if (!collect($keys)->every(fn ($key) => is_numeric($m[$key] ?? null)
-            && (float) $m[$key] > 0)) return null;
+        if (! collect($keys)->every(fn ($key) => is_numeric($m[$key] ?? null)
+            && (float) $m[$key] > 0)) {
+            return null;
+        }
+
         return round(array_product(array_map(fn ($key) => (float) $m[$key], $keys)) / 1000, 3);
     }
 
     private function parameterCoverageCounts(): array
     {
-        $accepted = fn ($q) => $q->whereIn('status', ['submitted','approved']);
+        $accepted = fn ($q) => $q->whereIn('status', ['submitted', 'approved']);
         $unfilled = Product::query()->whereDoesntHave('parameterSubmissions', $accepted);
+
         return [
             '全部' => Product::query()->count(),
             '已填' => Product::query()->whereHas('parameterSubmissions', $accepted)->count(),
-            '必填' => (clone $unfilled)->whereHas('parameterTask', fn ($q) =>
-                $q->where('enabled', true)->where('is_required', true))->count(),
-            '待填' => (clone $unfilled)->whereHas('parameterTask', fn ($q) =>
-                $q->where('enabled', true)->where('is_required', false))->count(),
-            '其他' => (clone $unfilled)->whereDoesntHave('parameterTask', fn ($q) =>
-                $q->where('enabled', true))->count(),
+            '必填' => (clone $unfilled)->whereHas('parameterTask', fn ($q) => $q->where('enabled', true)->where('is_required', true))->count(),
+            '待填' => (clone $unfilled)->whereHas('parameterTask', fn ($q) => $q->where('enabled', true)->where('is_required', false))->count(),
+            '其他' => (clone $unfilled)->whereDoesntHave('parameterTask', fn ($q) => $q->where('enabled', true))->count(),
         ];
     }
 
@@ -360,7 +397,7 @@ final class ProductController
     {
         return [
             'status' => '状态', 'sku' => 'SKU', 'cnf' => 'CNF（待接入）',
-            'material_name' => '物料名称（待接入）', 'name' => '产品名称',
+            'material_name' => '物料全称', 'has_liquid' => '是否带液体', 'name' => '产品名称',
             'image_url' => '图片链接', 'woo_url' => '官网链接',
             'units_per_carton' => '标准装箱数', 'packaging_dimensions' => '包装尺寸（待接入）',
             'weight_kg' => '商品重量 kg', 'regular_price' => '原价',
@@ -401,7 +438,7 @@ final class ProductController
             ?? $media->firstWhere('provider', 'erp_manual')
             ?? $media->firstWhere('is_primary', true)
             ?? $media->first();
-        $recentProductRuns = \App\Modules\Sync\Infrastructure\Models\SyncRunItem::query()->with('run')->where('product_id', $id)->where('operation', 'woocommerce.product_inbound')->latest('id')->limit(10)->get()->map(fn ($item): array => ['status' => $item->status?->value ?? $item->status, 'result_code' => $item->result_code, 'error_message' => $item->error_message, 'completed_at' => $item->completed_at?->toIso8601String(), 'run_id' => $item->sync_run_id])->all();
+        $recentProductRuns = SyncRunItem::query()->with('run')->where('product_id', $id)->where('operation', 'woocommerce.product_inbound')->latest('id')->limit(10)->get()->map(fn ($item): array => ['status' => $item->status?->value ?? $item->status, 'result_code' => $item->result_code, 'error_message' => $item->error_message, 'completed_at' => $item->completed_at?->toIso8601String(), 'run_id' => $item->sync_run_id])->all();
 
         $canManageProduct = Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false;
         $parameterTask = ProductParameterTask::query()->where('product_id', $id)->first();
@@ -415,7 +452,7 @@ final class ProductController
             ->where('status', 'approved')->orderByDesc('reviewed_at')->orderByDesc('id')
             ->get(['measurements'])->each(function ($record) use (&$approvedParameterMeasurements): void {
                 foreach ($record->measurements ?? [] as $key => $value) {
-                    if (!array_key_exists($key, $approvedParameterMeasurements) && $value !== null && $value !== '') {
+                    if (! array_key_exists($key, $approvedParameterMeasurements) && $value !== null && $value !== '') {
                         $approvedParameterMeasurements[$key] = $value;
                     }
                 }
@@ -428,6 +465,8 @@ final class ProductController
                 'sku' => $product->sku,
                 'brand' => $product->brand,
                 'has_battery' => (bool) $product->has_battery,
+                'has_liquid' => (bool) $product->has_liquid,
+                'material_full_name' => $product->material_full_name,
                 'barcode_69' => $product->barcode_69,
                 'source_type' => $product->source_type,
                 'status' => $product->is_active ? 'active' : 'inactive',
@@ -456,12 +495,28 @@ final class ProductController
                 'hs_code' => $product->hs_code,
             ],
             'externalReferences' => $this->externalRefs->forProduct($id),
+            'warehouseSkus' => Warehouse::query()->whereIn('code', (array) config('warehouse_master.fulfillment_codes', []))
+                ->where('is_active', true)->orderBy('priority')->get()->map(function (Warehouse $warehouse) use ($id): array {
+                    $mapping = ProductWarehouseSku::query()->where('product_id', $id)
+                        ->where('warehouse_id', $warehouse->id)->first();
+
+                    return [
+                        'warehouse_id' => $warehouse->id,
+                        'warehouse_code' => $warehouse->code,
+                        'warehouse_name' => $warehouse->name,
+                        'sku' => $mapping?->sku,
+                        'is_active' => (bool) $mapping?->is_active,
+                        'verified_at' => $mapping?->verified_at?->toIso8601String(),
+                        'verification_note' => $mapping?->verification_note,
+                    ];
+                })->values()->all(),
             'woo' => $snapshot ? ['provider_status' => $snapshot->provider_status, 'categories' => $snapshot->category_names ?? [], 'description' => $snapshot->description_text, 'short_description' => $snapshot->short_description_text, 'variation_count' => $snapshot->variation_count, 'provider_created_at' => $snapshot->provider_created_at?->toIso8601String(), 'provider_modified_at' => $snapshot->provider_modified_at?->toIso8601String(), 'last_synced_at' => $snapshot->last_synced_at?->toIso8601String(), 'connection_key' => $snapshot->connection_key] : null,
             'media' => $media->map(fn (ProductMedia $item): array => ['id' => $item->id, 'url' => $this->gridImageUrl($item), 'alt_text' => $item->alt_text, 'position' => $item->position, 'is_primary' => $item->is_primary])->filter(fn (array $item): bool => $item['url'] !== null)->values()->all(),
             'wooSyncHistory' => $recentProductRuns,
             'skuAliases' => collect($this->skuAliases->listForProduct($id))->map(function (array $alias): array {
                 $editorId = $alias['updated_by_user_id'] ?? $alias['created_by_user_id'] ?? null;
-                $editor = $editorId ? \App\Modules\Identity\Infrastructure\Models\User::find($editorId) : null;
+                $editor = $editorId ? User::find($editorId) : null;
+
                 return [
                     'id' => $alias['id'],
                     'alias_sku' => $alias['alias_sku'],
@@ -504,7 +559,7 @@ final class ProductController
                     'url' => route('products.parameter.media', $m->id)])->all(),
             ])->all(),
             'packagingProfile' => $canManageProduct
-                ? (($packaging=ProductPackagingProfile::query()->with('media')->where('product_id', $id)->first())
+                ? (($packaging = ProductPackagingProfile::query()->with('media')->where('product_id', $id)->first())
                     ? $this->packagingPresentation->serialize($packaging) : null)
                 : null,
             'packagingPresets' => $canManageProduct ? $this->packagingPresentation->presets() : [],
@@ -524,10 +579,13 @@ final class ProductController
         ]);
     }
 
-    public function media(int $media): \Symfony\Component\HttpFoundation\StreamedResponse|JsonResponse
+    public function media(int $media): StreamedResponse|JsonResponse
     {
         $item = ProductMedia::query()->whereKey($media)->first();
-        if ($item === null || ! $item->product()->exists() || ! Storage::disk('local')->exists($item->storage_path)) abort(404);
+        if ($item === null || ! $item->product()->exists() || ! Storage::disk('local')->exists($item->storage_path)) {
+            abort(404);
+        }
+
         return Storage::disk('local')->response($item->storage_path, null, ['Content-Type' => $item->mime_type, 'Cache-Control' => 'private, no-store']);
     }
 
@@ -545,15 +603,18 @@ final class ProductController
             after: ['source' => 'erp_manual', 'count' => count($request->file('images', []))],
             reason: 'product_editor_v3_manual_media_upload'
         );
+
         return back()->with('success', '产品图片已上传');
     }
 
-    /** @param array<int, \Illuminate\Http\UploadedFile> $files */
+    /** @param array<int, UploadedFile> $files */
     private function persistManualMedia(int $id, array $files, int $primaryIndex = 0): void
     {
         $position = (int) ProductMedia::query()->where('product_id', $id)->max('position') + 1;
         $hasPrimary = ProductMedia::query()->where(['product_id' => $id, 'provider' => 'erp_manual', 'connection_key' => 'local'])->where('is_primary', true)->exists();
-        if ($primaryIndex < 0 || $primaryIndex >= count($files)) $primaryIndex = 0;
+        if ($primaryIndex < 0 || $primaryIndex >= count($files)) {
+            $primaryIndex = 0;
+        }
         $paths = [];
         try {
             foreach ($files as $fileIndex => $file) {
@@ -569,7 +630,8 @@ final class ProductController
                 $hasPrimary = $hasPrimary || $isPrimary;
             }
         } catch (\Throwable $e) {
-            Storage::disk('local')->delete($paths); throw $e;
+            Storage::disk('local')->delete($paths);
+            throw $e;
         }
     }
 
@@ -590,7 +652,7 @@ final class ProductController
         $positions = collect($data['media'])->pluck('position')->map(fn ($value) => (int) $value)->sort()->values()->all();
         if ($ids !== $allowedIds || ! in_array((int) $data['primary_id'], $ids, true)
             || $positions !== range(0, count($data['media']) - 1)) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
+            throw ValidationException::withMessages([
                 'media' => '图片列表、顺序或主图不匹配，请刷新页面后重试。',
             ]);
         }
@@ -612,6 +674,7 @@ final class ProductController
             after: ['media' => $data['media'], 'primary_id' => (int) $data['primary_id']],
             reason: 'product_editor_v3_manual_media_reorder'
         );
+
         return back()->with('success', '产品图片顺序已保存');
     }
 
@@ -628,7 +691,9 @@ final class ProductController
                 $first = ProductMedia::query()->where([
                     'product_id' => $id, 'provider' => 'erp_manual', 'connection_key' => 'local',
                 ])->orderBy('position')->first();
-                if ($first) $first->update(['is_primary' => true]);
+                if ($first) {
+                    $first->update(['is_primary' => true]);
+                }
             }
         });
         Storage::disk('local')->delete($path);
@@ -638,20 +703,26 @@ final class ProductController
             before: ['media_id' => $media, 'source' => 'erp_manual'],
             reason: 'product_editor_v3_manual_media_delete'
         );
+
         return back()->with('success', '产品图片已删除');
     }
 
     public function syncWooCommerce(Request $request, int $id): RedirectResponse
     {
-        $reference = \App\Modules\Products\Infrastructure\Models\ProductExternalReference::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => config('services.woocommerce.connection_key')])->where('reference_type', 'product')->first();
-        if ($reference === null) return back()->with('error', '当前产品没有配置 WooCommerce 产品引用。');
+        $reference = ProductExternalReference::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => config('services.woocommerce.connection_key')])->where('reference_type', 'product')->first();
+        if ($reference === null) {
+            return back()->with('error', '当前产品没有配置 WooCommerce 产品引用。');
+        }
         try {
             $result = $this->wooInbound->sync($request->user(), false, (int) $reference->reference);
             $status = $result['run']->status instanceof \BackedEnum ? $result['run']->status->value : (string) $result['run']->status;
-            if ($status !== 'completed') return back()->with('error', 'WooCommerce 产品同步未完成，请查看同步历史。');
+            if ($status !== 'completed') {
+                return back()->with('error', 'WooCommerce 产品同步未完成，请查看同步历史。');
+            }
         } catch (\Throwable $e) {
             return back()->with('error', 'WooCommerce 产品同步失败：'.$e->getMessage());
         }
+
         return back()->with('success', 'WooCommerce 产品已刷新。');
     }
 
@@ -668,6 +739,8 @@ final class ProductController
             'brand' => ['nullable', 'string', 'max:255'],
             'brand_local_override' => ['sometimes', 'boolean'],
             'has_battery' => ['sometimes', 'boolean'],
+            'has_liquid' => ['sometimes', 'boolean'],
+            'material_full_name' => ['nullable', 'string', 'max:10000'],
             'unit' => ['nullable', 'string', 'max:32'],
             'is_active' => ['sometimes', 'boolean'],
             'weight_kg' => ['nullable', 'numeric', 'min:0'],
@@ -694,10 +767,12 @@ final class ProductController
             $product = DB::transaction(function () use ($data, $request) {
                 $product = $this->products->createManual($data);
                 $this->persistManualMedia((int) $product->id, $request->file('images', []), (int) $request->input('primary_index', 0));
+
                 return $product;
             });
         } catch (\RuntimeException $e) {
             $field = str_contains($e->getMessage(), '蓝标') ? 'label_sku' : 'sku';
+
             return back()->withErrors([$field => $e->getMessage()])->withInput();
         }
 
@@ -709,6 +784,7 @@ final class ProductController
                 reason: 'product_editor_v3_create_with_media'
             );
         }
+
         return redirect()->route('products.edit', $product->id)->with('success', '产品已创建');
     }
 
@@ -733,7 +809,7 @@ final class ProductController
             ->orderByDesc('reviewed_at')->orderByDesc('id')->get(['measurements'])
             ->each(function ($record) use (&$approvedMeasurements): void {
                 foreach ($record->measurements ?? [] as $key => $value) {
-                    if (!array_key_exists($key, $approvedMeasurements) && $value !== null && $value !== '') {
+                    if (! array_key_exists($key, $approvedMeasurements) && $value !== null && $value !== '') {
                         $approvedMeasurements[$key] = $value;
                     }
                 }
@@ -760,6 +836,8 @@ final class ProductController
                 'brand_local_override' => (bool) $product->brand_local_override,
                 'woocommerce_brand' => $product->woocommerce_brand,
                 'has_battery' => (bool) $product->has_battery,
+                'has_liquid' => (bool) $product->has_liquid,
+                'material_full_name' => $product->material_full_name,
                 'name' => $product->name,
                 'unit' => $product->unit,
                 'is_active' => $product->is_active,
@@ -815,6 +893,8 @@ final class ProductController
             'brand' => ['nullable', 'string', 'max:255'],
             'brand_local_override' => ['sometimes', 'boolean'],
             'has_battery' => ['sometimes', 'boolean'],
+            'has_liquid' => ['sometimes', 'boolean'],
+            'material_full_name' => ['nullable', 'string', 'max:10000'],
             'unit' => ['nullable', 'string', 'max:32'],
             'is_active' => ['sometimes', 'boolean'],
             'weight_kg' => ['nullable', 'numeric', 'min:0'],
@@ -838,6 +918,7 @@ final class ProductController
             $this->products->updateProduct($product, $data);
         } catch (\RuntimeException $e) {
             $field = str_contains($e->getMessage(), '蓝标') ? 'label_sku' : 'sku';
+
             return back()->withErrors([$field => $e->getMessage()])->withInput();
         }
 
@@ -887,6 +968,7 @@ final class ProductController
                 return Inertia::render('Products/Import', ['result' => ['invalid' => 0, 'identityConflicts' => 1, 'errors' => [$exception->getMessage()], 'canConfirm' => false], 'previewToken' => $token]);
             }
             $request->session()->forget("products.import.{$token}");
+
             return Inertia::render('Products/Import', ['result' => $result->toArray(), 'confirmed' => true]);
         }
 

@@ -15,6 +15,7 @@ use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductWarehouseSku;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -181,6 +182,80 @@ final class FulfillmentAllocationV1Test extends TestCase
         $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
     }
 
+    public function test_legacy_unassigned_route_with_rejected_allocation_can_submit_one_us_sm_shipment(): void
+    {
+        [$user, $order] = $this->scenario(2);
+        $items = $order->items()->orderBy('id')->get();
+        $usSm = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        $order->forceFill([
+            'routing_warehouse_code' => 'UNASSIGNED',
+            'routing_revision' => 1,
+            'workflow_status' => 'pending_allocation',
+        ])->save();
+        $order->shipment()->create([
+            'warehouse_id' => null,
+            'shipment_status' => 'pending',
+        ]);
+        FulfillmentAllocation::query()->create([
+            'order_id' => $order->id,
+            'status' => 'rejected',
+            'decision_source' => 'manual',
+        ]);
+
+        $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/manual', [
+            'assignments' => [
+                ['order_item_id' => $items[0]->id, 'source_code' => 'US-SM'],
+                ['order_item_id' => $items[1]->id, 'source_code' => 'US-SM'],
+            ],
+            'decision_note' => 'Legacy routing fix UAT: preserve source SKU and select actual warehouse',
+            'stock_exception_acknowledged' => true,
+        ])->assertOk()->assertJsonPath('status', 'submitted');
+
+        $fresh = $order->fresh(['shipment', 'items']);
+        self::assertSame('US-SM', $fresh->routing_warehouse_code);
+        self::assertSame(2, $fresh->routing_revision);
+        self::assertSame((int) $usSm->id, (int) $fresh->shipment->warehouse_id);
+        self::assertSame('allocation', $fresh->shipment->warehouse_selection_source);
+        self::assertCount(0, $fresh->originalFulfillmentChildren);
+        self::assertSame($items->pluck('sku')->all(), $fresh->items->sortBy('id')->pluck('source_sku')->values()->all());
+        $this->assertDatabaseHas('order_warehouse_route_histories', [
+            'order_id' => $order->id,
+            'actor_id' => $user->id,
+            'from_code' => 'UNASSIGNED',
+            'to_code' => 'US-SM',
+            'revision' => 2,
+        ]);
+        $this->assertDatabaseHas('fulfillment_allocations', [
+            'order_id' => $order->id,
+            'status' => 'submitted',
+        ]);
+    }
+
+    public function test_direct_shipment_draft_still_forbids_real_warehouse_mismatch(): void
+    {
+        [$user, $order] = $this->scenario(1);
+        $usSm = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        $order->forceFill([
+            'routing_warehouse_code' => 'US-NY',
+            'routing_revision' => 3,
+        ])->save();
+
+        try {
+            app(ShipmentService::class)->saveDraft($order, [
+                'warehouse_id' => $usSm->id,
+                'warehouse_selection_source' => 'manual',
+            ], $user);
+            self::fail('A direct cross-warehouse shipment draft must remain blocked');
+        } catch (HttpException $exception) {
+            self::assertSame(409, $exception->getStatusCode());
+        }
+
+        $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
+        self::assertSame('US-NY', $order->fresh()->routing_warehouse_code);
+        self::assertSame(3, $order->fresh()->routing_revision);
+        $this->assertDatabaseMissing('order_warehouse_route_histories', ['order_id' => $order->id]);
+    }
+
     public function test_manual_split_materializes_a_b_derived_orders_and_downstream_logistics_only_sees_children(): void
     {
         [$user, $order] = $this->scenario(2);
@@ -211,6 +286,8 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame([$order->owner_id, $order->owner_id], $children->pluck('owner_id')->all());
         self::assertSame(['fulfillment_derived', 'fulfillment_derived'], $children->map(fn ($child) => $child->order_kind?->value)->all());
         self::assertSame(['US-LA', 'FACTORY'], $children->map(fn ($child) => $child->shipment?->warehouse?->code)->all());
+        self::assertSame(['US-LA', 'FACTORY'], $children->pluck('routing_warehouse_code')->all());
+        self::assertSame([1, 1], $children->pluck('routing_revision')->all());
         self::assertSame(['USPS', null], $children->map(fn ($child) => $child->shipment?->carrier)->all());
         self::assertSame(['automatic', null], $children->map(fn ($child) => $child->shipment?->carrier_selection_source)->all());
         self::assertNull($children[1]->shipment?->service);
@@ -219,6 +296,33 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame([$order->erp_order_id.'A', $order->erp_order_id.'B'], collect($allocation->fresh()->plan_snapshot['derived_orders'])->pluck('erp_order_id')->all());
 
         $this->actingAs($user)->get('/logistics/pending')->assertRedirect('/logistics/wait-stock');
+    }
+
+    public function test_verified_mapping_materializes_distinct_final_skus_for_each_split_shipping_warehouse(): void
+    {
+        [$user, $order] = $this->scenario(2);
+        $items = $order->items()->orderBy('id')->get();
+        config()->set('warehouse_final_sku.require_verified_mapping', true);
+        foreach ([0 => ['US-LA', 'MP-PHYSICAL'], 1 => ['FACTORY', 'CN-PHYSICAL']] as $index => [$code, $sku]) {
+            $warehouse = Warehouse::query()->where('code', $code)->firstOrFail();
+            ProductWarehouseSku::query()->create([
+                'product_id' => $items[$index]->product_id,
+                'warehouse_id' => $warehouse->id,
+                'sku' => $sku, 'is_active' => true, 'verified_at' => now(),
+                'verification_note' => 'Physical warehouse identity verified for split order',
+            ]);
+        }
+
+        app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $items[0]->id, 'source_code' => 'US-LA'],
+            ['order_item_id' => $items[1]->id, 'source_code' => 'FACTORY'],
+        ], 'Independent per-line fulfillment SKU verification', $user, true);
+
+        $children = $order->fresh()->originalFulfillmentChildren()
+            ->with(['items', 'shipment.warehouse'])->orderBy('fulfillment_suffix')->get();
+        self::assertSame(['US-LA', 'FACTORY'], $children->map(fn ($c) => $c->shipment->warehouse->code)->all());
+        self::assertSame(['MP-PHYSICAL', 'CN-PHYSICAL'], $children->map(fn ($c) => $c->items->first()->final_sku)->all());
+        self::assertSame($items->pluck('sku')->all(), $children->map(fn ($c) => $c->items->first()->source_sku)->all());
     }
 
     public function test_split_children_inherit_woo_line_item_identity_from_parent_items(): void
@@ -270,7 +374,7 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame(['A', 'B', 'C'], collect($allocation->fresh()->plan_snapshot['derived_orders'])->pluck('suffix')->all());
     }
 
-    public function test_split_source_shows_allocated_and_children_cannot_ship_before_warehouse_review(): void
+    public function test_split_source_shows_allocated_and_only_overseas_child_requires_warehouse_review(): void
     {
         [$user, $root] = $this->scenario(2);
         $items = $root->items()->orderBy('id')->get();
@@ -295,14 +399,24 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame(['pending', 'pending'], $children->map(fn ($child) => $child->shipment->shipment_status)->all());
 
         foreach ($children as $child) {
+            $attributes = [
+                'warehouse_id' => (int) $child->shipment->warehouse_id,
+                'carrier' => $child->shipment->carrier,
+                'service' => $child->shipment->service,
+                'tracking_number' => 'UAT-SPLIT-'.$child->fulfillment_suffix,
+                'shipped_at' => now()->toIso8601String(),
+            ];
+            if ($child->shipment->warehouse->code === 'FACTORY') {
+                app(ShipmentService::class)->markShipped($child, $attributes, $user);
+                self::assertSame('shipped', $child->fresh()->order_status->value);
+                self::assertSame('shipped', $child->fresh()->shipment->shipment_status);
+                self::assertSame('UAT-SPLIT-'.$child->fulfillment_suffix, $child->fresh()->shipment->tracking_number);
+                self::assertFalse($child->fresh()->operationalMarkers()->where('marker', 'domestic_reviewed')->exists());
+                continue;
+            }
             try {
-                app(ShipmentService::class)->markShipped($child, [
-                    'warehouse_id' => (int) $child->shipment->warehouse_id,
-                    'carrier' => $child->shipment->carrier,
-                    'service' => $child->shipment->service,
-                    'shipped_at' => now()->toIso8601String(),
-                ], $user);
-                self::fail('A split segment bypassed warehouse review.');
+                app(ShipmentService::class)->markShipped($child, $attributes, $user);
+                self::fail('An overseas split segment bypassed warehouse review.');
             } catch (HttpException $exception) {
                 self::assertSame(409, $exception->getStatusCode());
                 self::assertMatchesRegularExpression('/审核|商务确认/u', $exception->getMessage());
@@ -311,7 +425,7 @@ final class FulfillmentAllocationV1Test extends TestCase
             self::assertSame('pending', $child->fresh()->shipment->shipment_status);
             self::assertNull($child->fresh()->shipment->shipped_at);
         }
-        $this->assertDatabaseMissing('audit_records', ['action' => 'shipment.marked_shipped']);
+        $this->assertDatabaseHas('audit_records', ['action' => 'shipment.marked_shipped']);
     }
 
     public function test_manual_v1_requires_every_order_item_and_forbids_duplicate_item_split(): void
@@ -342,7 +456,7 @@ final class FulfillmentAllocationV1Test extends TestCase
         }
     }
 
-    public function test_physical_sku_preflight_rejects_unverified_moreplus_sku_without_mutating_order(): void
+    public function test_manual_sku_preflight_allows_unverified_moreplus_sku_without_mutating_order(): void
     {
         [$user, $order] = $this->scenario(1);
         $item = $order->items()->firstOrFail();
@@ -355,9 +469,8 @@ final class FulfillmentAllocationV1Test extends TestCase
 
         $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/preflight', [
             'assignments' => [['order_item_id' => $item->id, 'source_code' => 'US-LA']],
-        ])->assertOk()->assertJsonPath('can_submit', false)
-            ->assertJsonPath('issues.0.sku', $item->sku)
-            ->assertJsonPath('issues.0.warehouse', 'US-LA');
+        ])->assertOk()->assertJsonPath('can_submit', true)
+            ->assertJsonCount(0, 'issues');
         $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
         self::assertNull($order->fresh()->shipment);
     }

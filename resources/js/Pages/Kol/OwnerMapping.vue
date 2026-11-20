@@ -7,7 +7,7 @@ import KolModuleGrid, { type KolModuleColumn } from './Shared/KolModuleGrid.vue'
 
 type UserOption = { id: number; name: string; email: string }
 type Mapping = { id: number; mapped_user_id: number | null; user: UserOption | null; status: string }
-type SourceOwner = { key: string; value: string; single_candidate_count: number; mention_candidate_count: number; mapping: Mapping | null }
+type SourceOwner = { key: string; value: string; single_candidate_count: number; mention_candidate_count: number; mapping: Mapping | null; auto_match?: { status: string; user: UserOption | null } | null }
 type Candidate = {
   id: number
   cluster_key: string
@@ -16,7 +16,7 @@ type Candidate = {
   social_accounts: Array<Record<string, any>>
   source_row_count: number
   source_owner_values: string[]
-  source_mappings: Array<{ source_owner: string; mapping_id: number | null; user: UserOption | null }>
+  source_mappings: Array<{ source_owner: string; mapping_id: number | null; user: UserOption | null; match_method?: 'manual' | 'automatic' | null }>
   resolution_status: string
   resolved: boolean
   effective_owner: UserOption | null
@@ -48,10 +48,14 @@ const activeSourceKey = ref<string|null>(null)
 const activeCandidateKey = ref<string|null>(null)
 const activeSource = computed(() => state.value.source_owners.find(o=>o.key===activeSourceKey.value) ?? null)
 const activeCandidate = computed(() => state.value.multi_candidates.find(c=>c.cluster_key===activeCandidateKey.value) ?? null)
+const ownerDisplayName = (o: SourceOwner) => o.mapping?.user?.name ?? (!o.mapping ? o.auto_match?.user?.name : null) ?? '未指定'
+const ownerDisplayStatus = (o: SourceOwner) => o.mapping
+  ? (o.mapping.status === 'mapped' ? '已人工映射' : '映射用户失效')
+  : o.auto_match?.status === 'matched' ? '自动精确匹配' : o.auto_match?.status === 'ambiguous' ? '重名需人工审核' : '未映射'
 const sourceGridRows = computed(() => state.value.source_owners.map((o,i)=>({
   id:i+1, owner_key:o.key, source:o.value, single:o.single_candidate_count,
-  mentions:o.mention_candidate_count, erp_owner:o.mapping?.user?.name ?? '未指定',
-  status:o.mapping?.status === 'mapped' ? '已映射' : o.mapping ? '映射用户失效' : '未映射',
+  mentions:o.mention_candidate_count, erp_owner:ownerDisplayName(o),
+  status:ownerDisplayStatus(o),
 })))
 const sourceGridColumns:KolModuleColumn[]=[
   {key:'source',label:'来源 Owner',width:215},
@@ -85,7 +89,7 @@ const candidateGridColumns:KolModuleColumn[]=[
 
 const hydrate = () => {
   const mappings: Record<string, string> = {}
-  for (const owner of state.value.source_owners) mappings[owner.key] = owner.mapping?.mapped_user_id ? String(owner.mapping.mapped_user_id) : ''
+  for (const owner of state.value.source_owners) mappings[owner.key] = owner.mapping?.mapped_user_id ? String(owner.mapping.mapped_user_id) : (!owner.mapping && owner.auto_match?.user?.id ? String(owner.auto_match.user.id) : '')
   mappingSelections.value = mappings
   const decisions: Record<string, string> = {}
   const reasons: Record<string, string> = {}
@@ -176,13 +180,14 @@ const resetDecision = async (candidate: Candidate) => {
 
 const statusLabel = (status: string) => ({
   mapped: '已映射',
+  auto_matched: '自动精确匹配',
   mapped_converged: '映射已收敛',
   decided: '已人工裁决',
   unmapped: '未映射',
   needs_decision: '需人工裁决',
   no_source_owner: '无来源 Owner',
 }[status] ?? status)
-const statusTone = (status: string) => ['mapped', 'mapped_converged', 'decided'].includes(status) ? 'green' : status === 'needs_decision' ? 'amber' : 'gray'
+const statusTone = (status: string) => ['mapped', 'auto_matched', 'mapped_converged', 'decided'].includes(status) ? 'green' : status === 'needs_decision' ? 'amber' : 'gray'
 const socialText = (candidate: Candidate) => {
   const social = candidate.social_accounts?.[0]
   if (!social) return '—'
@@ -190,7 +195,7 @@ const socialText = (candidate: Candidate) => {
   const handle = social.handle ? `@${String(social.handle).replace(/^@/, '')}` : String(social.profile_url ?? '')
   return `${platform} · ${handle}`
 }
-const mappingChain = (candidate: Candidate) => candidate.source_mappings.map((item) => `${item.source_owner} → ${item.user?.name ?? '未映射'}`)
+const mappingChain = (candidate: Candidate) => candidate.source_mappings.map((item) => `${item.source_owner} → ${item.user?.name ?? '未映射'}${item.match_method === 'automatic' ? '（自动）' : ''}`)
 const filteredCandidates = computed(() => {
   const needle = search.value.trim().toLowerCase()
   return state.value.multi_candidates.filter((candidate) => {
@@ -242,7 +247,7 @@ const completionRate = computed(() => state.value.summary.total_candidates ? Mat
 
       <section class="workspace-card">
         <div class="section-head">
-          <div><p class="eyebrow">STEP 1</p><h2>来源 Owner 全局映射</h2><p>7 个来源负责人值只需映射一次；所有单一 Owner 候选会立即重新计算准备度。</p></div>
+          <div><p class="eyebrow">STEP 1</p><h2>来源 Owner 全局映射</h2><p>腾讯 Belongs to 匹配在职 ERP 网红专员/网红经理的姓名、联系人姓名或邮箱，忽略大小写和多余空格；仅唯一账号自动匹配。物流人员排除，真正重名才需人工核对。显式映射优先。</p></div>
           <span class="count-pill">{{ state.summary.source_owner_count }} 个来源 Owner</span>
         </div>
         <div class="kol-grid-switch"><strong>来源 Owner · {{ state.source_owners.length }} 条</strong>
@@ -274,7 +279,7 @@ const completionRate = computed(() => state.value.summary.total_candidates ? Mat
                     <option v-for="user in state.eligible_users" :key="user.id" :value="String(user.id)">{{ user.name }} · {{ user.email }}</option>
                   </select>
                 </td>
-                <td><span class="status-badge" :class="owner.mapping?.status === 'mapped' ? 'tone-green' : 'tone-gray'">{{ owner.mapping?.status === 'mapped' ? '已映射' : owner.mapping ? '映射用户已失效' : '未映射' }}</span></td>
+                <td><span class="status-badge" :class="owner.mapping?.status === 'mapped' || (!owner.mapping && owner.auto_match?.status === 'matched') ? 'tone-green' : 'tone-gray'">{{ ownerDisplayStatus(owner) }}</span></td>
                 <td class="action-cell">
                   <button class="mini-btn primary" type="button" :disabled="!mappingSelections[owner.key] || busyKey === `source:${owner.key}`" @click="saveSourceMapping(owner)">{{ busyKey === `source:${owner.key}` ? '保存中…' : '保存' }}</button>
                   <button v-if="owner.mapping" class="mini-btn" type="button" :disabled="busyKey === `source:${owner.key}`" @click="resetSourceMapping(owner)">重置</button>

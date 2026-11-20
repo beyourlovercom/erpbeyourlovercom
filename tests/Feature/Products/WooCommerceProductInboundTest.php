@@ -105,6 +105,7 @@ final class WooCommerceProductInboundTest extends TestCase
         $product = Product::create([
             'source_type' => 'manual', 'sku' => 'BRAND-001',
             'name' => 'Existing', 'has_battery' => false,
+            'has_liquid' => true, 'material_full_name' => 'ERP 原始中文 / English material',
         ]);
         $first = $this->payload(13183, 'BRAND-001', [], [
             'meta_data' => [['key' => 'brand', 'value' => 'BeYourLover']],
@@ -131,6 +132,22 @@ final class WooCommerceProductInboundTest extends TestCase
         app(WooCommerceProductInboundService::class)->sync(null, false, 13183);
         $this->assertSame('Fallback Brand', $product->fresh()->brand);
         $this->assertFalse($product->fresh()->has_battery);
+        $this->assertTrue($product->fresh()->has_liquid);
+        $this->assertSame('ERP 原始中文 / English material', $product->fresh()->material_full_name);
+    }
+
+    public function test_new_woo_products_default_only_approved_bv339a_variants_to_liquid(): void
+    {
+        foreach (['BV339A-P' => 9311, 'BV339A-Y' => 9312, 'BV339A-Z' => 9313] as $sku => $id) {
+            $this->fakeSingle($this->payload($id, $sku));
+            app(WooCommerceProductInboundService::class)->sync(null, false, $id);
+            $this->assertSame(in_array($sku, ['BV339A-P', 'BV339A-Y'], true),
+                (bool) Product::where('sku', $sku)->value('has_liquid'), $sku);
+        }
+        Product::where('sku', 'BV339A-P')->update(['has_liquid' => false]);
+        $this->fakeSingle($this->payload(9311, 'BV339A-P', [], ['name' => 'Woo refreshed']));
+        app(WooCommerceProductInboundService::class)->sync(null, false, 9311);
+        $this->assertFalse((bool) Product::where('sku', 'BV339A-P')->value('has_liquid'));
     }
 
     public function test_media_failure_preserves_last_known_good_gallery(): void
@@ -143,7 +160,10 @@ final class WooCommerceProductInboundTest extends TestCase
             if ($request->url() === 'https://shop.test/wp-json/wc/v3/products/201') {
                 return Http::response($calls++ === 0 ? $good : $bad, 200);
             }
-            if ($request->url() === 'https://shop.test/media/good.png') return Http::response($this->png(), 200, ['Content-Type' => 'image/png']);
+            if ($request->url() === 'https://shop.test/media/good.png') {
+                return Http::response($this->png(), 200, ['Content-Type' => 'image/png']);
+            }
+
             return Http::response([], 404);
         });
         app(WooCommerceProductInboundService::class)->sync(null, false, 201);
@@ -169,8 +189,13 @@ final class WooCommerceProductInboundTest extends TestCase
         $second = $this->payload(202, 'MEDIA-002', [['id' => 702, 'src' => 'https://shop.test/media/two.png']]);
         $calls = 0;
         Http::fake(function (Request $request) use (&$calls, $first, $second) {
-            if ($request->url() === 'https://shop.test/wp-json/wc/v3/products/202') return Http::response($calls++ === 0 ? $first : $second, 200);
-            if (in_array($request->url(), ['https://shop.test/media/one.png', 'https://shop.test/media/two.png'], true)) return Http::response($this->png(), 200, ['Content-Type' => 'image/png']);
+            if ($request->url() === 'https://shop.test/wp-json/wc/v3/products/202') {
+                return Http::response($calls++ === 0 ? $first : $second, 200);
+            }
+            if (in_array($request->url(), ['https://shop.test/media/one.png', 'https://shop.test/media/two.png'], true)) {
+                return Http::response($this->png(), 200, ['Content-Type' => 'image/png']);
+            }
+
             return Http::response([], 404);
         });
         app(WooCommerceProductInboundService::class)->sync(null, false, 202);
@@ -258,7 +283,6 @@ final class WooCommerceProductInboundTest extends TestCase
         Http::assertNotSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://evil.test/'));
     }
 
-
     public function test_media_size_limit_can_be_increased_without_changing_the_default(): void
     {
         $product = Product::create(['source_type' => 'manual', 'product_type' => 'simple', 'sku' => 'SIZE-CONFIG', 'name' => 'Size Config']);
@@ -336,8 +360,11 @@ final class WooCommerceProductInboundTest extends TestCase
 
         app(WooCommerceProductInboundService::class)->sync(null, false, null);
         Http::assertSent(function (Request $request): bool {
-            if (! str_starts_with($request->url(), 'https://shop.test/wp-json/wc/v3/products')) return false;
+            if (! str_starts_with($request->url(), 'https://shop.test/wp-json/wc/v3/products')) {
+                return false;
+            }
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
             return isset($query['modified_after']) && str_contains((string) $query['modified_after'], '07:55:00');
         });
     }
@@ -346,11 +373,13 @@ final class WooCommerceProductInboundTest extends TestCase
     {
         $user = User::factory()->create(['is_active' => true]);
         $role = Role::create(['key' => 'woo-product-'.uniqid(), 'label' => 'Woo Product']);
-        foreach ($permissions as $permission) $role->permissions()->firstOrCreate(['key' => $permission], ['label' => $permission]);
+        foreach ($permissions as $permission) {
+            $role->permissions()->firstOrCreate(['key' => $permission], ['label' => $permission]);
+        }
         $user->roles()->attach($role);
+
         return $user;
     }
-
 
     public function test_product360_distinguishes_mapped_not_synced_from_unconfigured(): void
     {
@@ -386,5 +415,4 @@ final class WooCommerceProductInboundTest extends TestCase
         $this->actingAs($both)->post("/products/{$product->id}/sync-woocommerce")->assertRedirect();
         $this->actingAs($both)->get("/products/{$product->id}")->assertInertia(fn ($page) => $page->where('canSync', true)->where('canOperate', true));
     }
-
 }

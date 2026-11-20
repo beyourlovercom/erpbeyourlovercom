@@ -81,6 +81,43 @@ it('shows server conflict and restores the previous warehouse after a rejected e
   patch.mockRestore()
 })
 
+it('requires explicit confirmation for unknown warehouse stock before rerouting',async()=>{
+  const patch=vi.spyOn(axios,'patch')
+    .mockRejectedValueOnce({response:{status:422,data:{
+      message:'所选仓库存在库存不足或库存未知的 SKU',
+      errors:{stock_exception_acknowledged:['确认库存异常']},
+    }}})
+    .mockResolvedValueOnce({data:{routing_warehouse:{code:'US-LA',name:'美西 MorePlus 仓',revision:3}}})
+  const confirm=vi.spyOn(window,'confirm').mockReturnValueOnce(true)
+  const reload=vi.spyOn(router,'reload').mockImplementation(()=>undefined)
+  const wrapper=mount(OrderWarehouseRouteSelect,{props:{
+    orderId:8050,projection,options,canEdit:true,
+  }})
+  await wrapper.find('select').setValue('US-LA')
+  await vi.waitFor(()=>expect(patch).toHaveBeenCalledTimes(2))
+  expect(confirm).toHaveBeenCalledTimes(1)
+  expect(patch).toHaveBeenNthCalledWith(2,'/orders/8050/warehouse-route',{
+    warehouse_code:'US-LA',expected_routing_revision:2,stock_exception_acknowledged:true,
+  })
+  expect(reload).toHaveBeenCalled()
+  patch.mockRestore();confirm.mockRestore();reload.mockRestore()
+})
+
+it('does not bypass a stock warning when confirmation is declined',async()=>{
+  const patch=vi.spyOn(axios,'patch').mockRejectedValueOnce({response:{status:422,data:{
+    errors:{stock_exception_acknowledged:['确认库存异常']},
+  }}})
+  const confirm=vi.spyOn(window,'confirm').mockReturnValueOnce(false)
+  const wrapper=mount(OrderWarehouseRouteSelect,{props:{
+    orderId:8050,projection,options,canEdit:true,
+  }})
+  await wrapper.find('select').setValue('US-LA')
+  await vi.waitFor(()=>expect(wrapper.text()).toContain('已取消分仓'))
+  expect(patch).toHaveBeenCalledTimes(1)
+  expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('UNASSIGNED')
+  patch.mockRestore();confirm.mockRestore()
+})
+
 it('uses the canonical order_id rather than the shipment row identifier',async()=>{
   const patch=vi.spyOn(axios,'patch').mockResolvedValueOnce({
     data:{routing_warehouse:{code:'TINGON',name:'合作-Tingon',source:'manual',revision:3}},

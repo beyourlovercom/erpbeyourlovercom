@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\ShipOut;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Application\VerifiedOmsProductIdentityResolver;
 use RuntimeException;
@@ -16,6 +17,7 @@ final class ShipOutOutboundPayloadFactory
     public function __construct(
         private readonly WarehouseOrderReference $references,
         private readonly VerifiedOmsProductIdentityResolver $identity,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /** @return array<string,mixed> */
@@ -62,17 +64,16 @@ final class ShipOutOutboundPayloadFactory
         $seen = [];
         $productList = [];
         foreach ($items as $item) {
-            $sku = trim((string) $item->sku);
-            if (filled($item->resolved_fulfillment_sku) && strcasecmp($sku, trim((string) $item->resolved_fulfillment_sku)) !== 0) {
-                throw new RuntimeException('SHIPOUT_SKU_NOT_MATERIALIZED');
-            }
+            $sku = $this->finalSkus->forShipment($shipment, $item, legacyCanonical: true);
             $qty = (int) $item->quantity;
             if ($sku === '' || $qty <= 0 || ! $item->product_id) {
                 throw new RuntimeException('SHIPOUT_ITEM_INVALID');
             }
             $identity = $this->identity->resolve($sku);
-            if (($identity['status'] ?? null) !== 'resolved'
-                || (int) ($identity['product_id'] ?? 0) !== (int) $item->product_id) {
+            $mapped = $this->finalSkus->mapped((int) $item->product_id, (int) $shipment->warehouse_id);
+            $verifiedIdentity = ($identity['status'] ?? null) === 'resolved'
+                && (int) ($identity['product_id'] ?? 0) === (int) $item->product_id;
+            if (! $verifiedIdentity && ($mapped === null || strcasecmp($mapped, $sku) !== 0)) {
                 throw new RuntimeException('SHIPOUT_SKU_NOT_VERIFIED');
             }
             if (isset($seen[$sku])) {

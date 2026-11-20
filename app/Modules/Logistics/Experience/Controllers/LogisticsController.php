@@ -292,7 +292,7 @@ final class LogisticsController
                 continue;
             }
             try {
-                $this->physicalSkus->resolve($item, $warehouse, isset($row['gift_mapping_id']) ? (int) $row['gift_mapping_id'] : null);
+                $this->physicalSkus->resolve($item, $warehouse, isset($row['gift_mapping_id']) ? (int) $row['gift_mapping_id'] : null, true);
             } catch (HttpException $error) {
                 if ($error->getStatusCode() !== 422) {
                     throw $error;
@@ -996,9 +996,10 @@ final class LogisticsController
                 'id' => $item->id,
                 'product_id' => $item->product_id,
                 'product_url' => $item->product ? "/products/{$item->product_id}" : null,
-                'sku' => $item->sku,
+                'sku' => WarehouseSkuPresentation::sku($item),
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'resolved_fulfillment_sku' => $item->resolved_fulfillment_sku,
+                'final_sku' => $item->final_sku,
                 'product_summary' => $item->product_summary,
                 'quantity' => $item->quantity,
                 'availability' => $context['availability'][$item->product_id] ?? [],

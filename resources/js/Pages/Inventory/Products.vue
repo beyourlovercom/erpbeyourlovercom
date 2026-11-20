@@ -9,7 +9,7 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 type Row = {
   id:number
   warehouse:{slug:string;public_slug:string;name:string}
-  product:{id:number;sku:string;name:string}
+  product:{id:number;sku:string;name:string;material_full_name?:string|null}
   inbound_at:string|null
   stay_days:number|null
   location:string|null
@@ -82,6 +82,7 @@ const globalRows = computed<GridRow[]>(() => props.rows.data.map(r => ({
   warehouse_slug:r.warehouse.public_slug || r.warehouse.slug,
   sku:r.product.sku || '—',
   product_name:r.product.name,
+  material_full_name:r.product.material_full_name || '—',
   product_id:r.product.id,
   inbound_at:r.inbound_at || '—',
   stay_days:r.stay_days===null?'—':r.stay_days+' 天',
@@ -106,6 +107,7 @@ const inventoryColumns:ColDef<GridRow>[] = [
   {colId:'sku',field:'sku',headerName:'SKU',width:160,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridRow)=>'/products/'+r.product_id}},
   {colId:'name',field:'product_name',headerName:'产品名称',width:230},
+  {colId:'material_full_name',field:'material_full_name',headerName:'物料全称',width:340,hide:true,tooltipField:'material_full_name'},
   {colId:'inbound_at',field:'inbound_at',headerName:'上架时间',width:134},
   {colId:'stay_days',field:'stay_days',headerName:'停留时间',width:110},
   {colId:'location',field:'location',headerName:'Location',width:130},

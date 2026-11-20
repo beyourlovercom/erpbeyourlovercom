@@ -5,7 +5,6 @@ namespace App\Modules\Products\Application;
 use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
 use App\Modules\Products\Application\Contracts\ProductRepository;
 use App\Modules\Products\Application\Contracts\SkuAliasRepository;
-use App\Modules\Products\Application\SkuMatchKey;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
@@ -33,14 +32,24 @@ final class ProductService
         $usesLegacyWooId = $this->usesLegacyWooId($connectionKey);
 
         $handle = fopen($csvPath, 'r');
-        if ($handle === false) return ['result' => new ProductImportResult(invalid: 1, errors: ["Cannot open file: {$csvPath}"]), 'candidates' => []];
+        if ($handle === false) {
+            return ['result' => new ProductImportResult(invalid: 1, errors: ["Cannot open file: {$csvPath}"]), 'candidates' => []];
+        }
         $headerLine = fgets($handle);
-        if ($headerLine === false) { fclose($handle); return ['result' => new ProductImportResult(invalid: 1, errors: ['Empty or unreadable CSV']), 'candidates' => []]; }
+        if ($headerLine === false) {
+            fclose($handle);
+
+            return ['result' => new ProductImportResult(invalid: 1, errors: ['Empty or unreadable CSV']), 'candidates' => []];
+        }
         $headerLine = (string) preg_replace('/^\xEF\xBB\xBF/', '', $headerLine);
         $headers = str_getcsv($headerLine);
         $headerMap = array_flip(array_map(static fn ($header): string => trim((string) $header), $headers));
         foreach (['ID', 'Type', 'SKU', 'Name', 'Published'] as $required) {
-            if (! isset($headerMap[$required])) { fclose($handle); return ['result' => new ProductImportResult(invalid: 1, errors: ["Missing required column: {$required}"]), 'candidates' => []]; }
+            if (! isset($headerMap[$required])) {
+                fclose($handle);
+
+                return ['result' => new ProductImportResult(invalid: 1, errors: ["Missing required column: {$required}"]), 'candidates' => []];
+            }
         }
 
         $total = $candidates = $active = $inactive = $invalid = $skippedVariations = $reconciliation = 0;
@@ -52,7 +61,9 @@ final class ProductService
         $rowNum = 1;
         while (($row = fgetcsv($handle)) !== false) {
             $rowNum++;
-            if ($this->rowIsEmpty($row)) continue;
+            if ($this->rowIsEmpty($row)) {
+                continue;
+            }
             $allRows[] = ['row' => $row, 'rowNum' => $rowNum];
         }
         fclose($handle);
@@ -67,11 +78,17 @@ final class ProductService
             ['row' => $row] = $entry;
             $bwooIdRaw = $cell($row, $headerMap, 'ID');
             $bwooId = ctype_digit((string) $bwooIdRaw) ? (int) $bwooIdRaw : 0;
-            if ($bwooId <= 0) continue;
+            if ($bwooId <= 0) {
+                continue;
+            }
             $btype = strtolower((string) ($cell($row, $headerMap, 'Type') ?? ''));
-            if ($btype === 'variation') continue;
+            if ($btype === 'variation') {
+                continue;
+            }
             $bsku = $cell($row, $headerMap, 'SKU');
-            if ($bsku === null) continue;
+            if ($bsku === null) {
+                continue;
+            }
             $batchSkuToWooId[$bsku] = $bwooId;
             $batchWooIdToSku[$bwooId] = $bsku;
         }
@@ -87,7 +104,12 @@ final class ProductService
             $sku = $cell($row, $headerMap, 'SKU');
             $name = $cell($row, $headerMap, 'Name');
 
-            if ($wooId <= 0 || $name === null) { $invalid++; $errors[] = "Row {$rowNum}: invalid or missing ID/Name"; continue; }
+            if ($wooId <= 0 || $name === null) {
+                $invalid++;
+                $errors[] = "Row {$rowNum}: invalid or missing ID/Name";
+
+                continue;
+            }
 
             if ($sku === null) {
                 if ($type === 'variation') {
@@ -96,12 +118,18 @@ final class ProductService
                 } else {
                     $reconciliation++;
                 }
+
                 continue;
             }
 
             // SKU-bearing row.
             $values = $this->parseValues($row, $headerMap, $wooId, $type, $sku, $name);
-            if ($values === null) { $invalid++; $errors[] = "Row {$rowNum}: invalid numeric value"; continue; }
+            if ($values === null) {
+                $invalid++;
+                $errors[] = "Row {$rowNum}: invalid numeric value";
+
+                continue;
+            }
 
             $refType = ($type === 'variation') ? 'variation' : 'product';
             $values['_ref_type'] = $refType;
@@ -113,9 +141,23 @@ final class ProductService
             }
 
             $candidates++;
-            if ($values['is_active']) $active++; else $inactive++;
-            if (isset($seenSkus[$sku])) { $duplicateSku++; $errors[] = "Row {$rowNum}: duplicate SKU conflict: {$sku}"; continue; }
-            if (isset($seenWooIds[$wooId])) { $identity++; $errors[] = "Row {$rowNum}: duplicate Woo Product ID conflict: {$wooId}"; continue; }
+            if ($values['is_active']) {
+                $active++;
+            } else {
+                $inactive++;
+            }
+            if (isset($seenSkus[$sku])) {
+                $duplicateSku++;
+                $errors[] = "Row {$rowNum}: duplicate SKU conflict: {$sku}";
+
+                continue;
+            }
+            if (isset($seenWooIds[$wooId])) {
+                $identity++;
+                $errors[] = "Row {$rowNum}: duplicate Woo Product ID conflict: {$wooId}";
+
+                continue;
+            }
             $seenSkus[$sku] = true;
             $seenWooIds[$wooId] = true;
 
@@ -124,23 +166,35 @@ final class ProductService
             $extProduct = $this->externalRefs->findProduct('woocommerce', $connectionKey, (string) $wooId);
 
             if ($extProduct !== null && $extProduct->getAttribute('sku') !== $sku) {
-                $identity++; $errors[] = "Row {$rowNum}: external reference {$wooId} already mapped to SKU '{$extProduct->getAttribute('sku')}'"; continue;
+                $identity++;
+                $errors[] = "Row {$rowNum}: external reference {$wooId} already mapped to SKU '{$extProduct->getAttribute('sku')}'";
+
+                continue;
             }
 
             if ($extProduct === null && $usesLegacyWooId) {
                 if (($existingByWoo !== null && $existingByWoo->getAttribute('sku') !== $sku) || ($existingBySku !== null && $existingBySku->getAttribute('woocommerce_product_id') !== null && (int) $existingBySku->getAttribute('woocommerce_product_id') !== $wooId)) {
-                    $identity++; $errors[] = "Row {$rowNum}: Woo-ID/SKU identity conflict for {$sku}"; continue;
+                    $identity++;
+                    $errors[] = "Row {$rowNum}: Woo-ID/SKU identity conflict for {$sku}";
+
+                    continue;
                 }
             }
 
             if ($existingByWoo === null && $existingBySku === null && $extProduct === null) {
                 $skuMatchKey = SkuMatchKey::compute($sku);
                 if ($skuMatchKey !== null && $this->skuAliases->existsMatchKey($skuMatchKey)) {
-                    $identity++; $errors[] = "Row {$rowNum}: SKU '{$sku}' match key is already registered as a SKU alias"; continue;
+                    $identity++;
+                    $errors[] = "Row {$rowNum}: SKU '{$sku}' match key is already registered as a SKU alias";
+
+                    continue;
                 }
                 $new++;
-            } elseif ($this->sameBootstrapValues($existingByWoo ?? $existingBySku ?? $extProduct, $values)) $unchanged++;
-            else $updates++;
+            } elseif ($this->sameBootstrapValues($existingByWoo ?? $existingBySku ?? $extProduct, $values)) {
+                $unchanged++;
+            } else {
+                $updates++;
+            }
 
             $candidateRows[] = $values;
         }
@@ -152,7 +206,12 @@ final class ProductService
             $wooIdRaw = $cell($row, $headerMap, 'ID');
             $wooId = ctype_digit((string) $wooIdRaw) ? (int) $wooIdRaw : 0;
             $name = $cell($row, $headerMap, 'Name');
-            if ($wooId <= 0 || $name === null) { $invalid++; $errors[] = "Row {$rowNum}: invalid or missing ID/Name"; continue; }
+            if ($wooId <= 0 || $name === null) {
+                $invalid++;
+                $errors[] = "Row {$rowNum}: invalid or missing ID/Name";
+
+                continue;
+            }
 
             $parentRaw = $cell($row, $headerMap, 'Parent');
             $parentProduct = $this->resolveParent($parentRaw, $connectionKey);
@@ -193,40 +252,53 @@ final class ProductService
      * $batchSkuToWooId and $batchWooIdToSku allow resolving parents that appear in the same CSV batch
      * but are not yet persisted to the DB.
      *
-     * @param array<string,int> $batchSkuToWooId
-     * @param array<int,string> $batchWooIdToSku
+     * @param  array<string,int>  $batchSkuToWooId
+     * @param  array<int,string>  $batchWooIdToSku
      */
-    private function resolveParent(?string $parentRaw, string $connectionKey, array $batchSkuToWooId = [], array $batchWooIdToSku = []): ?\Illuminate\Database\Eloquent\Model
+    private function resolveParent(?string $parentRaw, string $connectionKey, array $batchSkuToWooId = [], array $batchWooIdToSku = []): ?Model
     {
-        if ($parentRaw === null || $parentRaw === '') return null;
+        if ($parentRaw === null || $parentRaw === '') {
+            return null;
+        }
 
         if (str_starts_with($parentRaw, 'id:')) {
             $wooId = (int) substr($parentRaw, 3);
-            if ($wooId <= 0) return null;
+            if ($wooId <= 0) {
+                return null;
+            }
             // Try external reference first (proven Woo product reference).
             $product = $this->externalRefs->findProduct('woocommerce', $connectionKey, (string) $wooId);
-            if ($product !== null) return $product;
+            if ($product !== null) {
+                return $product;
+            }
             // Legacy woocommerce_product_id belongs only to the configured primary Woo connection.
             if ($this->usesLegacyWooId($connectionKey)) {
                 $product = $this->products->findByWooId($wooId);
-                if ($product !== null) return $product;
+                if ($product !== null) {
+                    return $product;
+                }
             }
             // In-batch: if this wooId appears as a parent candidate in the same CSV.
             if (isset($batchWooIdToSku[$wooId])) {
                 return $this->products->findBySku($batchWooIdToSku[$wooId]);
             }
+
             return null;
         }
 
         // Exact canonical SKU (DB first, then batch).
         $product = $this->products->findBySku($parentRaw);
-        if ($product !== null) return $product;
+        if ($product !== null) {
+            return $product;
+        }
 
         // SKU Alias.
         $matchKey = SkuMatchKey::compute($parentRaw);
         if ($matchKey !== null) {
             $product = $this->products->findBySkuMatchKey($matchKey);
-            if ($product !== null) return $product;
+            if ($product !== null) {
+                return $product;
+            }
         }
 
         return null;
@@ -237,15 +309,17 @@ final class ProductService
      * current CSV batch (exact SKU match or exact id:<wooId> match).
      * No fuzzy/name/attribute inference allowed.
      *
-     * @param array<string,int> $batchSkuToWooId
-     * @param array<int,string> $batchWooIdToSku
+     * @param  array<string,int>  $batchSkuToWooId
+     * @param  array<int,string>  $batchWooIdToSku
      */
     private function parentIsInBatch(string $parentRaw, array $batchSkuToWooId, array $batchWooIdToSku): bool
     {
         if (str_starts_with($parentRaw, 'id:')) {
             $wooId = (int) substr($parentRaw, 3);
+
             return $wooId > 0 && isset($batchWooIdToSku[$wooId]);
         }
+
         return isset($batchSkuToWooId[$parentRaw]);
     }
 
@@ -257,7 +331,9 @@ final class ProductService
             // Phase 1: create/update canonical Products and write their external references.
             // External-ref-only rows are skipped here and handled in phase 2.
             foreach ($candidates as $values) {
-                if ($values['_external_ref_only'] ?? false) continue;
+                if ($values['_external_ref_only'] ?? false) {
+                    continue;
+                }
 
                 $sku = (string) $values['sku'];
                 $connectionKey = (string) ($values['_connection_key'] ?? config('services.woocommerce.connection_key', 'beyourlover.com'));
@@ -287,13 +363,20 @@ final class ProductService
                         throw new \RuntimeException("Confirm blocked: SKU '{$sku}' match key is already registered as a SKU alias");
                     }
                     $cleanValues = $this->stripInternalKeys($values);
+                    $cleanValues['has_liquid'] = ProductLiquidSkuPolicy::defaultsToLiquid($sku);
                     $product = $this->products->create($cleanValues);
                     $inserted++;
                 } else {
                     $attributes = $this->bootstrapAttributes($values);
-                    if ($product->getAttribute('weight_kg') === null && $values['weight_kg'] !== null) $attributes['weight_kg'] = $values['weight_kg'];
-                    if ($this->sameBootstrapValues($product, $values)) $unchanged++;
-                    else { $this->products->update($product, $attributes); $updated++; }
+                    if ($product->getAttribute('weight_kg') === null && $values['weight_kg'] !== null) {
+                        $attributes['weight_kg'] = $values['weight_kg'];
+                    }
+                    if ($this->sameBootstrapValues($product, $values)) {
+                        $unchanged++;
+                    } else {
+                        $this->products->update($product, $attributes);
+                        $updated++;
+                    }
                 }
 
                 $this->externalRefs->upsert((int) $product->getKey(), 'woocommerce', $connectionKey, (string) $wooId, $refType);
@@ -302,7 +385,9 @@ final class ProductService
             // Phase 2: write external references for blank-SKU variation rows.
             // Parents created in phase 1 are now available in the DB.
             foreach ($candidates as $values) {
-                if (! ($values['_external_ref_only'] ?? false)) continue;
+                if (! ($values['_external_ref_only'] ?? false)) {
+                    continue;
+                }
 
                 $variationWooId = (string) $values['_variation_woo_id'];
                 $connectionKey = (string) $values['_connection_key'];
@@ -341,18 +426,36 @@ final class ProductService
     public function import(string $csvPath): ProductImportResult
     {
         $preview = $this->preview($csvPath);
-        if (! $preview['result']->toArray()['canConfirm']) return $preview['result'];
+        if (! $preview['result']->toArray()['canConfirm']) {
+            return $preview['result'];
+        }
+
         return $this->confirm($preview['candidates']);
     }
 
     private function parseValues(array $row, array $map, int $wooId, string $type, string $sku, string $name): ?array
     {
         $cell = static fn (string $column): ?string => isset($map[$column]) ? (($value = trim((string) ($row[$map[$column]] ?? ''))) === '' ? null : $value) : null;
-        $number = static function (?string $value): ?float { if ($value === null) return null; return is_numeric($value) && (float) $value >= 0 ? (float) $value : null; };
-        $rawWeight = $cell('Weight (kg)'); $rawSale = $cell('Sale price'); $rawRegular = $cell('Regular price');
-        $weight = $number($rawWeight); $sale = $number($rawSale); $regular = $number($rawRegular);
-        foreach ([[$rawWeight, $weight], [$rawSale, $sale], [$rawRegular, $regular]] as [$raw, $parsed]) if ($raw !== null && $parsed === null) return null;
+        $number = static function (?string $value): ?float {
+            if ($value === null) {
+                return null;
+            }
+
+            return is_numeric($value) && (float) $value >= 0 ? (float) $value : null;
+        };
+        $rawWeight = $cell('Weight (kg)');
+        $rawSale = $cell('Sale price');
+        $rawRegular = $cell('Regular price');
+        $weight = $number($rawWeight);
+        $sale = $number($rawSale);
+        $regular = $number($rawRegular);
+        foreach ([[$rawWeight, $weight], [$rawSale, $sale], [$rawRegular, $regular]] as [$raw, $parsed]) {
+            if ($raw !== null && $parsed === null) {
+                return null;
+            }
+        }
         $published = $cell('Published');
+
         return ['woocommerce_product_id' => $wooId, 'source_type' => 'woocommerce', 'product_type' => $type ?: 'simple', 'sku' => $sku, 'gtin' => $cell('GTIN, UPC, EAN, or ISBN'), 'name' => $name, 'sale_price' => $sale, 'regular_price' => $regular, 'is_active' => $published === null ? true : $published === '1', 'weight_kg' => $weight];
     }
 
@@ -362,22 +465,32 @@ final class ProductService
         if (($values['_write_legacy_woo_id'] ?? true) === true) {
             $attributes['woocommerce_product_id'] = $values['woocommerce_product_id'];
         }
+
         return $attributes;
     }
 
     private function usesLegacyWooId(string $connectionKey): bool
     {
         $primaryConnectionKey = (string) config('services.woocommerce.connection_key', 'beyourlover.com');
+
         return $connectionKey !== '' && $connectionKey === $primaryConnectionKey;
     }
 
     private function sameBootstrapValues(Model $product, array $values): bool
     {
-        foreach ($this->bootstrapAttributes($values) as $key => $value) if ($product->getAttribute($key) != $value) return false;
+        foreach ($this->bootstrapAttributes($values) as $key => $value) {
+            if ($product->getAttribute($key) != $value) {
+                return false;
+            }
+        }
+
         return $values['weight_kg'] === null || $product->getAttribute('weight_kg') !== null || $product->getAttribute('weight_kg') == $values['weight_kg'];
     }
 
-    private function rowIsEmpty(array $row): bool { return count(array_filter($row, static fn ($value): bool => trim((string) $value) !== '')) === 0; }
+    private function rowIsEmpty(array $row): bool
+    {
+        return count(array_filter($row, static fn ($value): bool => trim((string) $value) !== '')) === 0;
+    }
 
     public function searchSkus(string $query, int $limit = 20): array
     {
@@ -419,8 +532,12 @@ final class ProductService
     {
         $matchKey = SkuMatchKey::compute($rawSku);
         $alias = $matchKey === null ? null : $this->skuAliases->findByMatchKeyIncludingInactive($matchKey);
-        if ($alias === null) return false;
-        if ($excludeProductId !== null && (int) $alias->getAttribute('product_id') === $excludeProductId) return true;
+        if ($alias === null) {
+            return false;
+        }
+        if ($excludeProductId !== null && (int) $alias->getAttribute('product_id') === $excludeProductId) {
+            return true;
+        }
         throw new \RuntimeException("SKU '{$rawSku}' is already an alias of product #{$alias->getAttribute('product_id')}.");
     }
 
@@ -454,6 +571,9 @@ final class ProductService
             'brand' => $nullable('brand'),
             'brand_local_override' => (bool) ($attributes['brand_local_override'] ?? false),
             'has_battery' => array_key_exists('has_battery', $attributes) ? (bool) $attributes['has_battery'] : true,
+            'has_liquid' => array_key_exists('has_liquid', $attributes) ? (bool) $attributes['has_liquid']
+                : ProductLiquidSkuPolicy::defaultsToLiquid((string) ($attributes['sku'] ?? '')),
+            'material_full_name' => $nullable('material_full_name'),
             'name' => $attributes['name'],
             'unit' => $nullable('unit'),
             'is_active' => isset($attributes['is_active']) ? (bool) $attributes['is_active'] : true,
@@ -526,47 +646,49 @@ final class ProductService
 
         DB::transaction(function () use ($product, $attributes, $newLabelSku, $pick, $pickFloat,
             $currentWeightKg, $currentShippingWeightKg, $oldSku, $newSku, $promotedOwnAlias): void {
-        $this->products->update($product, [
-            'product_type' => $attributes['product_type'] ?? $product->getAttribute('product_type'),
-            'sku' => array_key_exists('sku', $attributes) ? ($attributes['sku'] ?: null) : $product->getAttribute('sku'),
-            'label_sku' => $newLabelSku,
-            'label_description' => $pick('label_description', $product->getAttribute('label_description')),
-            'gtin' => $pick('gtin', $product->getAttribute('gtin')),
-            'barcode_69' => $pick('barcode_69', $product->getAttribute('barcode_69')),
-            'name' => $attributes['name'] ?? $product->getAttribute('name'),
-            'brand' => $pick('brand', $product->getAttribute('brand')),
-            'brand_local_override' => array_key_exists('brand_local_override', $attributes)
-                ? (bool) $attributes['brand_local_override'] : (bool) $product->getAttribute('brand_local_override'),
-            'has_battery' => array_key_exists('has_battery', $attributes) ? (bool) $attributes['has_battery'] : $product->getAttribute('has_battery'),
-            'unit' => $pick('unit', $product->getAttribute('unit')),
-            'is_active' => array_key_exists('is_active', $attributes) ? (bool) $attributes['is_active'] : $product->getAttribute('is_active'),
-            // Weight fields written only by evidence adopt/clear below; generic update always keeps current DB value.
-            'weight_kg' => $currentWeightKg,
-            'sale_price' => $pickFloat('sale_price', $product->getAttribute('sale_price')),
-            'regular_price' => $pickFloat('regular_price', $product->getAttribute('regular_price')),
-            'shipping_weight_kg' => $currentShippingWeightKg,
-            'length_cm' => $pickFloat('length_cm', $product->getAttribute('length_cm')),
-            'width_cm' => $pickFloat('width_cm', $product->getAttribute('width_cm')),
-            'height_cm' => $pickFloat('height_cm', $product->getAttribute('height_cm')),
-            'country_of_origin' => $pick('country_of_origin', $product->getAttribute('country_of_origin')),
-            'hs_code' => $pick('hs_code', $product->getAttribute('hs_code')),
-            'standard_production_cost' => $pickFloat('standard_production_cost', $product->getAttribute('standard_production_cost')),
-            'standard_packaging_cost' => $pickFloat('standard_packaging_cost', $product->getAttribute('standard_packaging_cost')),
-            'standard_purchase_cost' => $pickFloat('standard_purchase_cost', $product->getAttribute('standard_purchase_cost')),
-            'cost_currency' => $pick('cost_currency', $product->getAttribute('cost_currency')),
-            'cost_note' => $pick('cost_note', $product->getAttribute('cost_note')),
-            'notes' => $pick('notes', $product->getAttribute('notes')),
-        ]);
+            $this->products->update($product, [
+                'product_type' => $attributes['product_type'] ?? $product->getAttribute('product_type'),
+                'sku' => array_key_exists('sku', $attributes) ? ($attributes['sku'] ?: null) : $product->getAttribute('sku'),
+                'label_sku' => $newLabelSku,
+                'label_description' => $pick('label_description', $product->getAttribute('label_description')),
+                'gtin' => $pick('gtin', $product->getAttribute('gtin')),
+                'barcode_69' => $pick('barcode_69', $product->getAttribute('barcode_69')),
+                'name' => $attributes['name'] ?? $product->getAttribute('name'),
+                'brand' => $pick('brand', $product->getAttribute('brand')),
+                'brand_local_override' => array_key_exists('brand_local_override', $attributes)
+                    ? (bool) $attributes['brand_local_override'] : (bool) $product->getAttribute('brand_local_override'),
+                'has_battery' => array_key_exists('has_battery', $attributes) ? (bool) $attributes['has_battery'] : $product->getAttribute('has_battery'),
+                'has_liquid' => array_key_exists('has_liquid', $attributes) ? (bool) $attributes['has_liquid'] : $product->getAttribute('has_liquid'),
+                'material_full_name' => $pick('material_full_name', $product->getAttribute('material_full_name')),
+                'unit' => $pick('unit', $product->getAttribute('unit')),
+                'is_active' => array_key_exists('is_active', $attributes) ? (bool) $attributes['is_active'] : $product->getAttribute('is_active'),
+                // Weight fields written only by evidence adopt/clear below; generic update always keeps current DB value.
+                'weight_kg' => $currentWeightKg,
+                'sale_price' => $pickFloat('sale_price', $product->getAttribute('sale_price')),
+                'regular_price' => $pickFloat('regular_price', $product->getAttribute('regular_price')),
+                'shipping_weight_kg' => $currentShippingWeightKg,
+                'length_cm' => $pickFloat('length_cm', $product->getAttribute('length_cm')),
+                'width_cm' => $pickFloat('width_cm', $product->getAttribute('width_cm')),
+                'height_cm' => $pickFloat('height_cm', $product->getAttribute('height_cm')),
+                'country_of_origin' => $pick('country_of_origin', $product->getAttribute('country_of_origin')),
+                'hs_code' => $pick('hs_code', $product->getAttribute('hs_code')),
+                'standard_production_cost' => $pickFloat('standard_production_cost', $product->getAttribute('standard_production_cost')),
+                'standard_packaging_cost' => $pickFloat('standard_packaging_cost', $product->getAttribute('standard_packaging_cost')),
+                'standard_purchase_cost' => $pickFloat('standard_purchase_cost', $product->getAttribute('standard_purchase_cost')),
+                'cost_currency' => $pick('cost_currency', $product->getAttribute('cost_currency')),
+                'cost_note' => $pick('cost_note', $product->getAttribute('cost_note')),
+                'notes' => $pick('notes', $product->getAttribute('notes')),
+            ]);
 
-        // Preserve historical SKU resolution when a product adopts its own alias.
-        // The promoted alias record is retained for traceability; no other product can claim it.
-        if ($promotedOwnAlias && $oldSku !== null && SkuMatchKey::compute((string) $oldSku) !== SkuMatchKey::compute((string) $newSku)) {
-            $oldKey = SkuMatchKey::compute((string) $oldSku);
-            if ($oldKey !== null && $this->skuAliases->findByMatchKeyIncludingInactive($oldKey) === null) {
-                $this->aliasService->createAlias((int) $product->getKey(), (string) $oldSku, 'sku_rename',
-                    'previous_canonical', 'Historical SKU retained after own-alias promotion.', Auth::user());
+            // Preserve historical SKU resolution when a product adopts its own alias.
+            // The promoted alias record is retained for traceability; no other product can claim it.
+            if ($promotedOwnAlias && $oldSku !== null && SkuMatchKey::compute((string) $oldSku) !== SkuMatchKey::compute((string) $newSku)) {
+                $oldKey = SkuMatchKey::compute((string) $oldSku);
+                if ($oldKey !== null && $this->skuAliases->findByMatchKeyIncludingInactive($oldKey) === null) {
+                    $this->aliasService->createAlias((int) $product->getKey(), (string) $oldSku, 'sku_rename',
+                        'previous_canonical', 'Historical SKU retained after own-alias promotion.', Auth::user());
+                }
             }
-        }
         });
 
         $product->refresh();

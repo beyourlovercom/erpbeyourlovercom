@@ -104,7 +104,23 @@ describe('KOL Owner Mapping', () => {
       mapped_user_id: 3,
     })
     expect(wrapper.text()).toContain('199')
-    expect(wrapper.text()).toContain('已映射')
+    expect(wrapper.text()).toContain('已人工映射')
+  })
+
+  it('shows unique Tencent Belongs to staff matches without saving a mapping', async () => {
+    const autoWorkspace: any = structuredClone(workspace)
+    autoWorkspace.source_owners[1].auto_match = { status: 'matched', user: users[1] }
+    autoWorkspace.multi_candidates[0].source_mappings[0] = {
+      source_owner: 'Emma', mapping_id: null, user: users[1], match_method: 'automatic',
+    }
+    const wrapper = mount(OwnerMapping, { props: { workspace: autoWorkspace } })
+    await wrapper.get('[data-testid="kol-owner-source-grid-toggle"]').trigger('click')
+    const emmaRow = wrapper.findAll('tbody tr').find((row) => row.text().includes('Emma'))!
+    expect(emmaRow.text()).toContain('自动精确匹配')
+    expect((emmaRow.get('select').element as HTMLSelectElement).value).toBe('3')
+    await wrapper.get('[data-testid="kol-owner-candidate-grid-toggle"]').trigger('click')
+    expect(wrapper.text()).toContain('Emma → UAT Owner/Admin（自动）')
+    expect(axios.post).not.toHaveBeenCalled()
   })
 
   it('saves an explicit multi-owner decision without exposing canonical import actions', async () => {

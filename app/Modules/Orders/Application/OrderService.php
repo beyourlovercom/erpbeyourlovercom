@@ -78,6 +78,9 @@ final class OrderService
                 $order->items()->create([
                     ...$item,
                     'sku' => $resolved['sku'],
+                    'source_sku' => $resolved['sku'],
+                    'source_product_id' => $item['product_id'],
+                    'source_product_summary' => $resolved['product_summary'],
                     'product_summary' => $resolved['product_summary'],
                     'line_revenue' => $this->lineRevenue($item['unit_price'], (int) $item['quantity']),
                 ]);
@@ -239,6 +242,14 @@ final class OrderService
                         'product_summary' => $resolved['product_summary'],
                         'line_revenue' => $this->lineRevenue($item['unit_price'], (int) $item['quantity']),
                     ];
+                    if (! $existingItem || (int) $existingItem->product_id !== (int) $item['product_id']
+                        || strcasecmp((string) ($existingItem->source_sku ?: $existingItem->sku), $resolved['sku']) !== 0) {
+                        $payload['source_sku'] = $resolved['sku'];
+                        $payload['source_product_id'] = $item['product_id'];
+                        $payload['source_product_summary'] = $resolved['product_summary'];
+                        $payload['resolved_fulfillment_sku'] = null;
+                        $payload['final_sku'] = null;
+                    }
                     if ($existingItem) {
                         $existingItem->update($payload);
                         $retainedItemIds[] = $existingItem->id;
@@ -288,6 +299,9 @@ final class OrderService
                 'product_id' => $resolved['product_id'],
                 'woocommerce_line_item_id' => $lineId,
                 'sku' => $resolved['sku'],
+                'source_sku' => $resolved['sku'],
+                'source_product_id' => $resolved['product_id'],
+                'source_product_summary' => $resolved['product_summary'],
                 'product_summary' => $resolved['product_summary'],
                 'quantity' => (int) $item['quantity'],
                 'unit_price' => (string) $item['unit_price'],
@@ -419,14 +433,20 @@ final class OrderService
                         ->whereNull('routing_warehouse_code')
                         ->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('code', $code))));
             })
-            ->when($filters['partner_warehouse_code'] ?? null, fn ($query, string $code) => $query
+            ->when($filters['collaboration_scope'] ?? false, fn ($query) => $query
                 ->where('order_kind', '!=', 'fulfillment_derived')
-                ->where(fn ($q) => $q->where('routing_warehouse_code', $code)
-                    ->orWhere(fn ($fallback) => $fallback->whereNull('routing_warehouse_code')
-                        ->where(fn ($physical) => $physical
-                            ->whereHas('shipment.warehouse', fn ($w) => $w->where('code', $code))
-                            ->orWhereHas('originalFulfillmentChildren.shipment.warehouse',
-                                fn ($w) => $w->where('code', $code))))))
+                ->where(fn ($scope) => $scope->whereNotNull('collaboration_partner_id')
+                    // Keep historical TINGON rows visible as unassigned. Never infer a real partner from a warehouse.
+                    ->orWhere(fn ($legacy) => $legacy->whereNull('collaboration_partner_id')
+                        ->where(fn ($route) => $route->where('routing_warehouse_code', 'TINGON')
+                            ->orWhere(fn ($fallback) => $fallback->whereNull('routing_warehouse_code')
+                                ->where(fn ($physical) => $physical
+                                    ->whereHas('shipment.warehouse', fn ($w) => $w->where('code', 'TINGON'))
+                                    ->orWhereHas('originalFulfillmentChildren.shipment.warehouse',
+                                        fn ($w) => $w->where('code', 'TINGON'))))))))
+            ->when($filters['collaboration_partner_filter'] ?? null, fn ($query, string $partner) => $partner === 'unassigned'
+                ? $query->whereNull('collaboration_partner_id')
+                : $query->where('collaboration_partner_id', (int) $partner))
             ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query
                 ->where(fn ($scope) => $scope
                     ->where('routing_warehouse_code', $ownership === 'external' ? 'OUTSOURCE' : '__NONE__')

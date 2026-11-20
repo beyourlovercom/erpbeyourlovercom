@@ -76,13 +76,15 @@ final class ProductInlineParameterController
         $rules = [
             'barcode_69' => ['present', 'nullable', 'string', 'regex:/^[0-9]{8,14}$/'],
             'has_battery' => ['sometimes', 'required', 'boolean'],
+            'has_liquid' => ['sometimes', 'required', 'boolean'],
+            'material_full_name' => ['sometimes', 'nullable', 'string', 'max:10000'],
             'measurements' => ['sometimes', 'array:'.implode(',', self::REVIEW_FIELDS)],
         ];
         foreach (self::MASTER_FIELDS as $field) {
             $rules[$field] = ['present', 'nullable', 'numeric', 'gt:0', 'max:1000000'];
         }
         foreach (self::REVIEW_FIELDS as $field) {
-            $rules['measurements.'.$field] = in_array($field, ['material','weight_composition'], true)
+            $rules['measurements.'.$field] = in_array($field, ['material', 'weight_composition'], true)
                 ? ['sometimes', 'required', 'string', 'max:1000']
                 : ['sometimes', 'required', 'numeric', 'gt:0', 'max:1000000'];
         }
@@ -98,6 +100,12 @@ final class ProductInlineParameterController
         }
         if (array_key_exists('has_battery', $data) && (bool) $data['has_battery'] !== (bool) $product->has_battery) {
             $masterChanges['has_battery'] = (bool) $data['has_battery'];
+        }
+        if (array_key_exists('has_liquid', $data) && (bool) $data['has_liquid'] !== (bool) $product->has_liquid) {
+            $masterChanges['has_liquid'] = (bool) $data['has_liquid'];
+        }
+        if (array_key_exists('material_full_name', $data) && $data['material_full_name'] !== $product->material_full_name) {
+            $masterChanges['material_full_name'] = $data['material_full_name'];
         }
         $barcode = $data['barcode_69'] ?: null;
         $barcodeChanged = $barcode !== $product->barcode_69;

@@ -176,7 +176,9 @@ const props = withDefaults(defineProps<{
 }>(), { canAppendOrderNote: false, canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canForceTrackingSync: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
 
 
-const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
+const inlineCarrierOptions = ref<CarrierOption[]>([])
+const shipmentCarrierOptions = computed(() => [...(props.carrierOptions ?? []), ...inlineCarrierOptions.value])
+const carrierOption = (name:string) => shipmentCarrierOptions.value.find(row => row.value === name)
 const carrierDisplay = (name:string|null|undefined) => name ? (carrierOption(name)?.label ?? name) : '—'
 const contextualDefaultService = (name:string, country?:string|null) => {
   const carrier = carrierOption(name)
@@ -186,7 +188,13 @@ const contextualDefaultService = (name:string, country?:string|null) => {
   }
   return carrier.default_service_value ?? ''
 }
-const shipmentServiceOptions = computed(() => carrierOption(shipmentEditor.value.carrier)?.services ?? [])
+const shipmentServiceOptions = computed(() => {
+  const carrier = carrierOption(shipmentEditor.value.carrier)
+  if (!carrier) return []
+  if (carrier.services.some(service => service.value === '默认')) return carrier.services
+  // “默认” is a supported alias for the provider's actual default service.
+  return [{ id: -1, key: 'default_alias', value: '默认', label: '默认', name_en: 'Default', name_zh: '默认' }, ...carrier.services]
+})
 const routeForWarehouse = (warehouseId:number|null) => warehouseId ? props.warehouseRouting?.[warehouseId] : undefined
 const applyShipmentWarehouseDefault = () => {
   const route = routeForWarehouse(shipmentEditor.value.warehouse_id)
@@ -843,6 +851,59 @@ const shipmentEditorError = ref('')
 const shipmentFieldErrors = ref<Record<string,string>>({})
 const shipmentTrackingErrorText = 'Tracking 只能填写英文字母、数字及 . _ : / + -，不能包含中文、空格或备注。'
 const shipmentTrackingPattern = /^[A-Za-z0-9][A-Za-z0-9._:\/+\-]*$/
+const inlineCarrierForm = ref({ name: '', name_en: '' })
+const inlineCarrierOpen = ref(false)
+const inlineCarrierSaving = ref(false)
+const inlineCarrierError = ref('')
+const previousShipmentCarrier = ref('')
+const openInlineCarrier = () => {
+  inlineCarrierForm.value = { name: '', name_en: '' }
+  inlineCarrierError.value = ''
+  inlineCarrierOpen.value = true
+}
+const closeInlineCarrier = () => {
+  if (!inlineCarrierSaving.value) inlineCarrierOpen.value = false
+}
+const onShipmentCarrierChanged = () => {
+  if (shipmentEditor.value.carrier === '__add_carrier__') {
+    shipmentEditor.value.carrier = previousShipmentCarrier.value
+    openInlineCarrier()
+    return
+  }
+  applyShipmentCarrierDefault()
+  clearShipmentFieldError('carrier')
+}
+const submitInlineCarrier = async () => {
+  if (inlineCarrierSaving.value || !props.canOperateLogistics) return
+  inlineCarrierError.value = ''
+  const name = inlineCarrierForm.value.name.trim()
+  if (!name) { inlineCarrierError.value = '请填写物流商名称。'; return }
+  inlineCarrierSaving.value = true
+  try {
+    const response = await axios.post<{ carrier: CarrierOption }>('/logistics/carriers', {
+      name, name_en: inlineCarrierForm.value.name_en.trim() || null,
+    }, { headers: { Accept: 'application/json' } })
+    const created = response.data.carrier
+    if (!created?.value || !created.services?.some(service => service.value === '默认')) {
+      throw new Error('新增结果缺少默认服务，请刷新后检查物流商配置。')
+    }
+    inlineCarrierOptions.value = [...inlineCarrierOptions.value.filter(row => row.value !== created.value), created]
+    shipmentEditor.value.carrier = created.value
+    applyShipmentCarrierDefault()
+    clearShipmentFieldError('carrier')
+    clearShipmentFieldError('service')
+    inlineCarrierOpen.value = false
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const details = error.response?.data as { message?: string; errors?: Record<string, string[]> } | undefined
+      inlineCarrierError.value = details?.errors?.name?.[0] ?? details?.errors?.name_en?.[0] ?? details?.message ?? '添加失败，请重试。'
+    } else {
+      inlineCarrierError.value = error instanceof Error ? error.message : '添加失败，请重试。'
+    }
+  } finally {
+    inlineCarrierSaving.value = false
+  }
+}
 const clearShipmentFieldError = (field:string) => {
   if (!shipmentFieldErrors.value[field]) return
   const next = { ...shipmentFieldErrors.value }
@@ -922,6 +983,8 @@ const openShipmentEditor = (target: {
   }
   shipmentEditorError.value = ''
   shipmentFieldErrors.value = {}
+  inlineCarrierOpen.value = false
+  previousShipmentCarrier.value = initialCarrier
   shipmentEditorOpen.value = true
 }
 const closeShipmentEditor = () => { if (!shipmentEditorSaving.value) shipmentEditorOpen.value = false }
@@ -1910,9 +1973,9 @@ onBeforeUnmount(() => {
             <select v-model="shipmentEditor.warehouse_id" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.warehouse_id }" :aria-invalid="Boolean(shipmentFieldErrors.warehouse_id)" :disabled="!canOperateLogistics" @change="applyShipmentWarehouseDefault(); clearShipmentFieldError('warehouse_id')"><option :value="null">请选择仓库</option><option v-for="warehouse in warehouses ?? []" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} · {{ warehouse.code }}</option></select><small v-if="shipmentFieldErrors.warehouse_id" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.warehouse_id }}</small>
           </label>
           <label>物流商
-            <select v-model="shipmentEditor.carrier" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.carrier }" :aria-invalid="Boolean(shipmentFieldErrors.carrier)" :disabled="!canOperateLogistics" @change="applyShipmentCarrierDefault(); clearShipmentFieldError('carrier')"><option value="">请选择物流商</option><option v-for="carrier in carrierOptions ?? []" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="shipmentFieldErrors.carrier" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.carrier }}</small>
+            <select v-model="shipmentEditor.carrier" data-testid="shipment-carrier-select" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.carrier }" :aria-invalid="Boolean(shipmentFieldErrors.carrier)" :disabled="!canOperateLogistics" @focus="previousShipmentCarrier = shipmentEditor.carrier" @change="onShipmentCarrierChanged"><option value="">请选择物流商</option><option v-for="carrier in shipmentCarrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option><option v-if="canOperateLogistics" value="__add_carrier__">＋ 添加物流商…</option></select><small v-if="shipmentFieldErrors.carrier" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.carrier }}</small>
           </label>
-          <label>运输 / 服务类型<select v-model="shipmentEditor.service" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.service }" :aria-invalid="Boolean(shipmentFieldErrors.service)" :disabled="!canOperateLogistics || !shipmentEditor.carrier" @change="clearShipmentFieldError('service')"><option value="">请选择服务类型</option><option v-for="service in shipmentServiceOptions" :key="service.id" :value="service.value">{{ service.label }}</option></select><small v-if="shipmentFieldErrors.service" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.service }}</small></label>
+          <label>运输 / 服务类型<select v-model="shipmentEditor.service" data-testid="shipment-service-select" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.service }" :aria-invalid="Boolean(shipmentFieldErrors.service)" :disabled="!canOperateLogistics || !shipmentEditor.carrier" @change="clearShipmentFieldError('service')"><option value="">请选择服务类型</option><option v-for="service in shipmentServiceOptions" :key="service.id" :value="service.value">{{ service.label }}</option></select><small v-if="shipmentFieldErrors.service" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.service }}</small></label>
           <label>Tracking<input v-model="shipmentEditor.tracking_number" class="erp-input" :class="{ 'ord-field-invalid': shipmentFieldErrors.tracking_number }" :aria-invalid="Boolean(shipmentFieldErrors.tracking_number)" :disabled="!canOperateLogistics" placeholder="追踪号，可稍后补录" @input="clearShipmentFieldError('tracking_number')"><small v-if="shipmentFieldErrors.tracking_number" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.tracking_number }}</small></label>
           <label>发货时间<input v-model="shipmentEditor.shipped_at" class="erp-input" :class="{ 'ord-field-invalid': shipmentFieldErrors.shipped_at }" :aria-invalid="Boolean(shipmentFieldErrors.shipped_at)" :disabled="!canOperateLogistics" type="datetime-local" @change="clearShipmentFieldError('shipped_at')"><small v-if="shipmentFieldErrors.shipped_at" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.shipped_at }}</small></label>
           <label class="ord-shipment-note">物流备注<textarea v-model="shipmentEditor.logistics_note" rows="3" class="erp-textarea" :class="{ 'ord-field-invalid': shipmentFieldErrors.logistics_note }" :aria-invalid="Boolean(shipmentFieldErrors.logistics_note)" :disabled="!canOperateLogistics" placeholder="可填写包裹、异常或操作备注" @input="clearShipmentFieldError('logistics_note')"></textarea><small v-if="shipmentFieldErrors.logistics_note" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.logistics_note }}</small></label>
@@ -1926,6 +1989,26 @@ onBeforeUnmount(() => {
           <button v-else type="button" class="erp-btn erp-btn-secondary" @click="closeShipmentEditor">关闭</button>
         </footer>
       </section>
+      <div v-if="inlineCarrierOpen" class="ord-inline-carrier-backdrop" @click.self="closeInlineCarrier">
+        <section class="ord-inline-carrier-dialog" role="dialog" aria-modal="true" aria-label="添加物流商">
+          <header class="ord-replacement-header">
+            <div><small>CARRIER MASTER</small><h2>添加物流商</h2><p>添加后立即用于当前订单，其他订单也可选择。</p></div>
+            <button type="button" class="ord-replacement-close" :disabled="inlineCarrierSaving" @click="closeInlineCarrier">×</button>
+          </header>
+          <form @submit.prevent="submitInlineCarrier">
+            <div class="ord-inline-carrier-fields">
+              <label>物流商名称 <span class="ord-required">*</span><input v-model="inlineCarrierForm.name" class="erp-input" maxlength="128" required :disabled="inlineCarrierSaving" placeholder="例如：德邦物流" autocomplete="off"></label>
+              <label>英文名称（选填）<input v-model="inlineCarrierForm.name_en" class="erp-input" maxlength="128" :disabled="inlineCarrierSaving" placeholder="Deppon Logistics" autocomplete="off"></label>
+              <label class="ord-inline-carrier-default">默认服务<input class="erp-input" value="默认" readonly aria-label="默认服务：默认"></label>
+            </div>
+            <p v-if="inlineCarrierError" class="ord-shipment-error" role="alert">{{ inlineCarrierError }}</p>
+            <footer class="ord-replacement-actions">
+              <button type="button" class="erp-btn erp-btn-secondary" :disabled="inlineCarrierSaving" @click="closeInlineCarrier">取消</button>
+              <button type="submit" class="erp-btn erp-btn-primary" :disabled="inlineCarrierSaving || !inlineCarrierForm.name.trim()">{{ inlineCarrierSaving ? '添加中…' : '添加并选中' }}</button>
+            </footer>
+          </form>
+        </section>
+      </div>
     </div>
 
     <div v-if="replacementOpen" class="ord-replacement-backdrop" @click.self="closeReplacement">
@@ -2453,6 +2536,13 @@ onBeforeUnmount(() => {
 .ord-replacement-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e4eaed; }
 .ord-shipment-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-top: 16px; }
 .ord-shipment-form label { display: grid; gap: 6px; color: #52656d; font-size: 11px; font-weight: 700; }
+.ord-inline-carrier-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(12, 24, 24, .33); }
+.ord-inline-carrier-dialog { width: min(540px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; padding: 20px; border: 1px solid #e1e9e6; border-radius: 16px; background: white; box-shadow: 0 25px 80px rgba(18, 48, 44, .27); }
+.ord-inline-carrier-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+.ord-inline-carrier-fields label { display: grid; gap: 6px; color: #52656d; font-size: 12px; font-weight: 700; }
+.ord-inline-carrier-fields .ord-required { display: inline; color: #c74a4a; }
+.ord-inline-carrier-default { grid-column: 1 / -1; }
+.ord-inline-carrier-default input[readonly] { background: #f7faf9; color: #2d5550; cursor: default; }
 .ord-shipment-note { grid-column: 1 / -1; }
 .ord-shipment-error { margin: 12px 0 0; color: #b44949; font-size: 12px; font-weight: 700; }
 .ord-shipment-form .ord-field-invalid { border-color: #cf303a; box-shadow: 0 0 0 1px rgba(207,48,58,.14); }
@@ -2493,6 +2583,7 @@ onBeforeUnmount(() => {
   .ord-replacement-modal { max-height: calc(100vh - 20px); padding: 16px; border-radius: 14px; }
   .ord-replacement-grid,.ord-replacement-address { grid-template-columns: 1fr; }
   .ord-shipment-form { grid-template-columns: 1fr; }
+  .ord-inline-carrier-fields { grid-template-columns: 1fr; }
   .ord-shipment-note { grid-column: auto; }
   .ord-address-wide { grid-column: auto; }
   .ord-item-row,

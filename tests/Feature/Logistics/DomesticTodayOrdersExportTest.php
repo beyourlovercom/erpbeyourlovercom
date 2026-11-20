@@ -43,12 +43,12 @@ final class DomesticTodayOrdersExportTest extends TestCase
         $excludedOld->items()->create(['sku' => 'OLD', 'product_summary' => 'Old item', 'quantity' => 1, 'unit_price' => '1.00', 'line_revenue' => '1.00']);
 
         $this->actingAs($this->viewer())->get('/logistics/china?view=today')
-            ->assertOk()->assertInertia(fn ($page) => $page->where('viewCounts.today', 2));
+            ->assertOk()->assertInertia(fn ($page) => $page->where('viewCounts.today', 3));
 
         $response = $this->actingAs($this->viewer())->get('/logistics/china/today/export');
         $response->assertOk();
-        self::assertSame('2', $response->headers->get('X-BYL-Exported-Orders'));
-        self::assertSame('3', $response->headers->get('X-BYL-Exported-Lines'));
+        self::assertSame('3', $response->headers->get('X-BYL-Exported-Orders'));
+        self::assertSame('4', $response->headers->get('X-BYL-Exported-Lines'));
         self::assertStringContainsString('007-domestic-today-', (string) $response->headers->get('Content-Disposition'));
 
         $path = tempnam(sys_get_temp_dir(), 'today-export-test-');
@@ -58,7 +58,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
             $sheet = $book->getActiveSheet();
             self::assertSame(['订单号','SKU','数量','单价','物流商','物流商单号','币种','商品名称','发货状态'],
                 array_map(fn (string $col) => $sheet->getCell($col.'1')->getValue(), range('A','I')));
-            self::assertSame(4, $sheet->getHighestDataRow());
+            self::assertSame(5, $sheet->getHighestDataRow());
             self::assertSame('007-TEST-TODAY-1', $sheet->getCell('A2')->getValue());
             self::assertSame('MF414A', $sheet->getCell('B2')->getValue());
             self::assertSame(2, $sheet->getCell('C2')->getValue());
@@ -78,6 +78,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
             self::assertSame(18.0, $sheet->getCell('D4')->getValue());
             self::assertSame('纬狮', $sheet->getCell('E4')->getValue());
             self::assertSame('shipped', $sheet->getCell('I4')->getValue());
+            self::assertSame('007-NOT-REVIEWED', $sheet->getCell('A5')->getValue());
             $book->disconnectWorksheets();
         } finally {
             @unlink($path);
@@ -107,7 +108,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
             ->assertOk()->assertInertia(fn ($page) => $page
                 ->where('globalGridPilotAvailable',true)
                 ->where('globalGridPilotEnabled',true)
-                ->where('rows.total',2)
+                ->where('rows.total',3)
                 ->where('rows.data.0.erp_order_id','007-R4-4-TODAY-1')
                 ->where('rows.data.0.items.0.quantity',2)
                 ->where('rows.data.1.erp_order_id','007-R4-4-TODAY-2'));
@@ -115,7 +116,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
         $this->actingAs($user)->get('/logistics/china?view=today&global_grid=0')
             ->assertOk()->assertInertia(fn ($page) => $page
                 ->where('globalGridPilotEnabled',false)
-                ->where('rows.total',2)
+                ->where('rows.total',3)
                 ->where('rows.data.0.erp_order_id','007-R4-4-TODAY-1')
                 ->where('rows.data.1.erp_order_id','007-R4-4-TODAY-2'));
 
@@ -137,11 +138,11 @@ final class DomesticTodayOrdersExportTest extends TestCase
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',false));
         $this->actingAs($user)->get('/logistics/china?view=exceptions')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
-        $this->actingAs($user)->get('/logistics/china?view=4px')
+        $this->actingAs($user)->get('/logistics/china?view=all&filter_carrier=4px')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
-        $this->actingAs($user)->get('/logistics/china?view=weship')
+        $this->actingAs($user)->get('/logistics/china?view=all&filter_carrier=weship')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
-        $this->actingAs($user)->get('/logistics/china?view=weship&global_grid=0')
+        $this->actingAs($user)->get('/logistics/china?view=all&filter_carrier=weship&global_grid=0')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',false));
         self::assertSame('pending', $reviewed->fresh()->shipment->shipment_status);
         self::assertSame('shipped', $shipped->fresh()->shipment->shipment_status);
@@ -165,7 +166,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
         foreach (['','&global_grid=1','&global_grid=0'] as $extra) {
             $this->actingAs($actor)->get('/logistics/china?view=today-4px'.$extra)
                 ->assertOk()->assertInertia(fn ($page) => $page
-                    ->where('rows.total',2)
+                    ->where('rows.total',3)
                     ->where('rows.data.0.erp_order_id','007-R45-4PX-PEND')
                     ->where('rows.data.0.items.0.quantity',2)
                     ->where('rows.data.1.erp_order_id','007-R45-4PX-SHIP')
@@ -240,9 +241,9 @@ final class DomesticTodayOrdersExportTest extends TestCase
                 ->where('rows.total',1)->where('rows.per_page',20)
                 ->where('rows.data.0.erp_order_id','007-R46-TIME-CONFLICT'));
 
-        $this->actingAs($viewer)->get('/logistics/china?view=4px')
+        $this->actingAs($viewer)->get('/logistics/china?view=all&filter_carrier=4px')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
-        $this->actingAs($viewer)->get('/logistics/china?view=weship')
+        $this->actingAs($viewer)->get('/logistics/china?view=all&filter_carrier=weship')
             ->assertOk()->assertInertia(fn ($page) => $page->where('globalGridPilotEnabled',true));
 
         self::assertSame('exception',$carrierException->fresh()->shipment->shipment_status);
@@ -272,10 +273,10 @@ final class DomesticTodayOrdersExportTest extends TestCase
         $viewer=$this->viewer();
 
         foreach (['','&global_grid=1','&global_grid=0'] as $suffix) {
-            $this->actingAs($viewer)->get('/logistics/china?view=weship'.$suffix)
+            $this->actingAs($viewer)->get('/logistics/china?view=all&filter_carrier=weship'.$suffix)
                 ->assertOk()->assertInertia(fn ($page) => $page
                     ->component('Logistics/Domestic/Index')
-                    ->where('view','weship')
+                    ->where('view','all')
                     ->where('globalGridPilotAvailable',true)
                     ->where('globalGridPilotEnabled',$suffix!=='&global_grid=0')
                     ->where('rows.total',4)
@@ -285,14 +286,14 @@ final class DomesticTodayOrdersExportTest extends TestCase
                     ->where('rows.data.2.erp_order_id','007-R47B-WES-UNREVIEWED')
                     ->where('rows.data.3.erp_order_id','007-R47B-WES-EXCEPTION'));
         }
-        $this->actingAs($viewer)->get('/logistics/china?view=weship&search=R47B-WES-OLD-SHIPPED&per_page=20')
+        $this->actingAs($viewer)->get('/logistics/china?view=all&filter_carrier=weship&search=R47B-WES-OLD-SHIPPED&per_page=20')
             ->assertOk()->assertInertia(fn ($page) => $page
                 ->where('globalGridPilotEnabled',true)
                 ->where('rows.per_page',20)
                 ->where('rows.total',1)
                 ->where('rows.data.0.erp_order_id','007-R47B-WES-OLD-SHIPPED'));
 
-        $this->actingAs($viewer)->get('/logistics/china?view=4px')
+        $this->actingAs($viewer)->get('/logistics/china?view=all&filter_carrier=4px')
             ->assertOk()->assertInertia(fn ($page) => $page
                 ->where('rows.total',1)
                 ->where('rows.data.0.erp_order_id','007-R47B-4PX-OTHER'));
@@ -321,7 +322,7 @@ final class DomesticTodayOrdersExportTest extends TestCase
         $actor=$this->viewer();
 
         foreach (['','&global_grid=1','&global_grid=0'] as $params) {
-            $this->actingAs($actor)->get('/logistics/china?view=4px'.$params)
+            $this->actingAs($actor)->get('/logistics/china?view=all&filter_carrier=4px'.$params)
                 ->assertOk()->assertInertia(fn ($page) => $page
                     ->where('globalGridPilotEnabled',$params !== '&global_grid=0')
                     ->where('rows.total',4)
@@ -332,11 +333,11 @@ final class DomesticTodayOrdersExportTest extends TestCase
                     ->where('rows.data.3.erp_order_id','007-R47-4PX-EXCEPTION'));
         }
 
-        $this->actingAs($actor)->get('/logistics/china?view=4px&search=R47-4PX-OLD-SHIPPED&per_page=20')
+        $this->actingAs($actor)->get('/logistics/china?view=all&filter_carrier=4px&search=R47-4PX-OLD-SHIPPED&per_page=20')
             ->assertOk()->assertInertia(fn ($page) => $page
                 ->where('rows.total',1)->where('rows.per_page',20)
                 ->where('rows.data.0.erp_order_id','007-R47-4PX-OLD-SHIPPED'));
-        $this->actingAs($actor)->get('/logistics/china?view=weship')
+        $this->actingAs($actor)->get('/logistics/china?view=all&filter_carrier=weship')
             ->assertOk()->assertInertia(fn ($page) => $page
                 ->where('globalGridPilotEnabled',true)
                 ->where('rows.total',1)

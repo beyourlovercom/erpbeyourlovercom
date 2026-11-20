@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\OverseaFiles;
 
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 
 final class MorePlusOutboundExporter
 {
@@ -16,6 +17,7 @@ final class MorePlusOutboundExporter
     public function __construct(
         private readonly ProviderXlsxWriter $xlsx,
         private readonly WarehouseOrderReference $references,
+        private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
     /** @param iterable<Shipment> $shipments */
@@ -42,12 +44,7 @@ final class MorePlusOutboundExporter
         $a = $order->address;
         $rows = [];
         foreach ($items as $index => $item) {
-            $sku = trim((string) $item->sku);
-            abort_if(strcasecmp($sku, 'gift') === 0, 422, '该订单礼品实际 SKU 未登记，禁止生成仓库发货文件');
-            abort_if(filled($item->resolved_fulfillment_sku)
-                && strcasecmp($sku, trim((string) $item->resolved_fulfillment_sku)) !== 0,
-                422, "订单 {$order->erp_order_id} 履约 SKU 未实际写入，禁止导出仓库文件");
-            abort_if($sku === '', 422, "订单 {$order->erp_order_id} 存在空 SKU。");
+            $sku = $this->finalSkus->forShipment($shipment, $item, legacyCanonical: true);
             $row = array_fill(0, count(self::HEADERS), null);
             if ($index === 0) {
                 $row[0] = $this->references->warehouse($order);

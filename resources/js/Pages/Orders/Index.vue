@@ -11,12 +11,13 @@ import { useAccountGridPreferences, type GridColumnDefinition } from '../../Comp
 import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatusPill.vue'
 import OrderWarehouseRouteSelect from '../../Components/Orders/OrderWarehouseRouteSelect.vue'
 import OrderWarehouseRouteGridCell from '../../Components/Orders/OrderWarehouseRouteGridCell.vue'
+import OrderOmsTransfer from '../../Components/Orders/OrderOmsTransfer.vue'
 const OrderOmsGrid = defineAsyncComponent(() => import('../../Components/Orders/OrderOmsGrid.vue'))
 
-type Order = { id: number; tracking_sync_status?: string | null; tracking_sync_reason?: string | null; tracking_sync_label?: string | null; tracking_sync_verified_at?: string | null; erp_order_id: string | null; external_order_number: string; internal_order_number: string; source_label: string; order_kind?: string; order_date: string; order_status_label: string; workflow_status_projection?: { code:string; en:string; zh:string; color:string; source:string; mutable?:boolean }; workflow_revision?: number; routing_warehouse?:{code:string;name:string;source:string;revision:number}; latest_order_note?: string | null; customer_email?: string | null; address?: { recipient_name: string; country: string; city?: string; postal_code?: string }; items?: { sku?: string | null; product_summary?: string | null; quantity?: number }[]; shipment?: { warehouse_name?: string | null; carrier?: string | null; tracking_number?: string | null } | null; owner?: { name: string }; owner_label?: string | null }
+type Order = { id: number; tracking_sync_status?: string | null; tracking_sync_reason?: string | null; tracking_sync_label?: string | null; tracking_sync_verified_at?: string | null; erp_order_id: string | null; external_order_number: string; internal_order_number: string; source_label: string; collaboration_partner?: { id: number; code: string; name: string } | null; order_kind?: string; order_date: string; order_status_label: string; workflow_status_projection?: { code:string; en:string; zh:string; color:string; source:string; mutable?:boolean }; workflow_revision?: number; routing_warehouse?:{code:string;name:string;source:string;revision:number}; latest_order_note?: string | null; customer_email?: string | null; address?: { recipient_name: string; country: string; city?: string; postal_code?: string }; items?: { sku?: string | null; product_summary?: string | null; quantity?: number }[]; shipment?: { warehouse_name?: string | null; carrier?: string | null; tracking_number?: string | null } | null; owner?: { name: string }; owner_label?: string | null }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 type SavedView = { id: number; name: string; filters_json: Record<string, string>; is_pinned: boolean; created_by: number }
-type ColumnKey = 'order_number' | 'warehouse_route' | 'note' | 'source' | 'date' | 'recipient' | 'country' | 'status' | 'owner'
+type ColumnKey = 'order_number' | 'warehouse_route' | 'note' | 'partner' | 'source' | 'date' | 'recipient' | 'country' | 'status' | 'owner'
 
 const props = defineProps<{
   orderKind: string
@@ -25,6 +26,7 @@ const props = defineProps<{
   orders: Paginated<Order>
   filters: Record<string, string>
   sourceTypes: { value: string; label: string }[]
+  collaborationPartners?: { id: number; code: string; name: string }[]
   savedViews: SavedView[]
   canExport: boolean
   omsGridAvailable?: boolean
@@ -44,6 +46,7 @@ const props = defineProps<{
 const filters = reactive({
   search: props.filters.search ?? '',
   source_type: props.filters.source_type ?? '',
+  partner_id: props.filters.partner_id ?? '',
   order_status: props.filters.order_status ?? '',
   workflow_status: props.filters.workflow_status ?? '',
   view: props.filters.view ?? 'all',
@@ -68,8 +71,8 @@ const filters = reactive({
 const showNewView = ref(false)
 const newViewName = ref('')
 
-const basePath = computed(() => props.orderScope === 'tingon_partner' ? '/orders/collaboration' : (props.orderScope === 'external_warehouse' ? '/orders/procurement' : (props.orderKind === 'all' ? '/orders' : (props.orderKind === 'kol_fulfillment' ? '/kol/orders' : '/customers/orders'))))
-const heading = computed(() => props.orderScope === 'tingon_partner' ? '合作订单' : (props.orderScope === 'external_warehouse' ? '外采订单' : (props.orderKind === 'all' ? '全部订单' : (props.orderKind === 'kol_fulfillment' ? '网红履约订单' : '客户订单'))))
+const basePath = computed(() => props.orderScope === 'collaboration' ? '/orders/collaboration' : (props.orderScope === 'external_warehouse' ? '/orders/procurement' : (props.orderKind === 'all' ? '/orders' : (props.orderKind === 'kol_fulfillment' ? '/kol/orders' : '/customers/orders'))))
+const heading = computed(() => props.orderScope === 'collaboration' ? '合作订单' : (props.orderScope === 'external_warehouse' ? '外采订单' : (props.orderKind === 'all' ? '全部订单' : (props.orderKind === 'kol_fulfillment' ? '网红履约订单' : '客户订单'))))
 const systemViews = [
   { key: 'all', label: '全部订单' },
   { key: 'pending', label: '待发订单' },
@@ -83,7 +86,7 @@ const systemViews = [
   { key: 'cancelled', label: '已取消' },
 ]
 
-const modernCustomerGrid = computed(() => !!props.customerGlobalGridEnabled && (props.orderKind === 'customer' || props.orderScope === 'tingon_partner'))
+const modernCustomerGrid = computed(() => !!props.customerGlobalGridEnabled && (props.orderKind === 'customer' || props.orderScope === 'collaboration'))
 const modernGridEnabled = computed(() => !!props.omsGridEnabled || modernCustomerGrid.value)
 const gridParams = () => modernGridEnabled.value ? {
   ...(props.omsGridEnabled ? { oms_grid: '1' } : {}),
@@ -138,6 +141,7 @@ const applySystemView = (view: string) => {
 const applySavedView = (saved: SavedView) => {
   filters.search = saved.filters_json.search ?? ''
   filters.source_type = saved.filters_json.source_type ?? ''
+  filters.partner_id = saved.filters_json.partner_id ?? ''
   filters.order_status = saved.filters_json.order_status ?? ''
   filters.workflow_status = saved.filters_json.workflow_status ?? ''
   filters.view = saved.filters_json.view ?? 'all'
@@ -172,6 +176,7 @@ const customerRows = computed<GridListRow[]>(() => props.orders.data.map(order =
   external_number: order.external_order_number ?? '—',
   email: order.customer_email ?? '—',
   source: order.source_label,
+  partner: order.collaboration_partner?.name ?? (props.orderScope === 'collaboration' ? '待确认' : '—'),
   date: order.order_date ?? '—',
   recipient: order.address?.recipient_name ?? '—',
   country: order.address?.country ?? '—',
@@ -195,6 +200,7 @@ const customerColumns: ColDef<GridListRow>[] = [
     cellStyle: params => params.value && params.value !== '—' ? { color:'#c62828', fontWeight:'600' } : null }),
   gridColumn({ colId:'external_number', field:'external_number', headerName:'来源单号', width:175 }),
   gridColumn({ colId:'email', field:'email', headerName:'客户邮箱', width:235 }),
+  ...(props.orderScope === 'collaboration' ? [gridColumn({ colId:'partner', field:'partner', headerName:'合作商', width:150 })] : []),
   gridColumn({ colId:'source', field:'source', headerName:'来源', width:120, sortable:true }),
   gridColumn({ colId:'date', field:'date', headerName:'订单日期', width:145, sortable:true }),
   gridColumn({ colId:'recipient', field:'recipient', headerName:'收件人', width:150 }),
@@ -232,6 +238,7 @@ const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'order_number', label: 'ERP订单号' },
   { key:'warehouse_route', label:'所属分仓' },
   { key: 'note', label: '备注' },
+  ...(props.orderScope === 'collaboration' ? [{ key: 'partner' as const, label: '合作商' }] : []),
   { key: 'source', label: '来源' }, { key: 'date', label: '订单日期' }, { key: 'recipient', label: '收件人' },
   { key: 'country', label: '国家' }, { key: 'status', label: '订单状态' }, { key: 'owner', label: '负责人' },
 ]
@@ -247,6 +254,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         <div class="mvp-actions page-header-actions">
           <Link v-if="orderKind === 'customer'" class="mvp-button" :href="gridToggleUrl(!modernCustomerGrid)">{{ modernCustomerGrid ? '返回原表' : '切换新版表' }}</Link>
           <Link v-else-if="omsGridAvailable" class="mvp-button" :href="gridToggleUrl(!omsGridEnabled)">{{ omsGridEnabled ? '返回原列表' : '体验 OMS Grid' }}</Link>
+          <OrderOmsTransfer v-if="orderScope === 'collaboration'" export-url="" :can-import="canImportOmsOrders ?? false" :can-confirm-import="canConfirmOmsOrders ?? false" :can-export="false" :total="orders.total" :selected-order-ids="[]" />
           <Link v-if="canManageTrash" class="mvp-button" href="/orders/trash">回收站（管理员）</Link>
           <Link class="mvp-button" href="/orders/archive">归档清单</Link>
           <a v-if="canExport && !omsGridEnabled" class="mvp-button" :href="exportUrl()">导出 CSV</a>
@@ -276,16 +284,17 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
 
       <form class="mvp-toolbar" @submit.prevent="submit">
         <input v-if="!modernGridEnabled" v-model="filters.search" aria-label="搜索订单" placeholder="ERP订单号 / 客户邮箱 / 来源单号 / 收件人；数据库ID请用 dbid:7008">
+        <select v-if="orderScope === 'collaboration'" v-model="filters.partner_id" aria-label="合作商"><option value="">全部合作商</option><option v-for="partner in collaborationPartners ?? []" :key="partner.id" :value="String(partner.id)">{{ partner.name }}</option><option value="unassigned">待确认（历史）</option></select>
         <select v-model="filters.source_type" aria-label="来源"><option value="">全部来源</option><option v-for="source in sourceTypes" :key="source.value" :value="source.value">{{ source.label }}</option></select>
           <select v-model="filters.order_status" aria-label="真实订单状态"><option value="">全部真实状态</option><option value="pending_shipment">待发货</option><option value="shipped">已发货</option><option value="completed">已完结</option><option value="completed_delivered">完结&送达</option><option value="cancelled">已取消</option></select><select v-model="filters.workflow_status" aria-label="员工工作进度"><option value="">全部工作进度</option><option v-for="option in workflowStatusOptions" :key="option.code" :value="option.code">{{ option.zh }}</option></select>
         <button class="mvp-button" type="submit">筛选</button>
       </form>
 
-      <div v-if="!modernGridEnabled" class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>官网同步</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number','warehouse_route']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.source_label === 'WooCommerce' && order.external_order_number" class="order-source-reference">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'note'"><span class="orders-latest-note" :title="order.latest_order_note || ''">{{ order.latest_order_note || '—' }}</span></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ order.address?.country ?? '—' }}</template><template v-else-if="column.key === 'warehouse_route'"><OrderWarehouseRouteSelect v-if="order.routing_warehouse" :order-id="order.id" :projection="order.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute)" :options="warehouseRouteOptions??[]" /><span v-else>—</span></template><template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :options="workflowStatusOptions" /><span v-else>—</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><span v-if="order.tracking_sync_status !== null && order.tracking_sync_status !== undefined" class="orders-sync-pill" :class="order.tracking_sync_status ?? 'pending'" :title="[order.tracking_sync_reason, order.tracking_sync_verified_at ? '最近官网验证：' + new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '尚无官网验证记录'].filter(Boolean).join('；')">{{ order.tracking_sync_label ?? '待同步' }}</span><span v-else>—</span></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 3" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
+      <div v-if="!modernGridEnabled" class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>官网同步</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number','warehouse_route']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.source_label === 'WooCommerce' && order.external_order_number" class="order-source-reference">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'note'"><span class="orders-latest-note" :title="order.latest_order_note || ''">{{ order.latest_order_note || '—' }}</span></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'partner'">{{ order.collaboration_partner?.name ?? '待确认' }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ order.address?.country ?? '—' }}</template><template v-else-if="column.key === 'warehouse_route'"><OrderWarehouseRouteSelect v-if="order.routing_warehouse" :order-id="order.id" :projection="order.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute)" :options="warehouseRouteOptions??[]" /><span v-else>—</span></template><template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :options="workflowStatusOptions" /><span v-else>—</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><span v-if="order.tracking_sync_status !== null && order.tracking_sync_status !== undefined" class="orders-sync-pill" :class="order.tracking_sync_status ?? 'pending'" :title="[order.tracking_sync_reason, order.tracking_sync_verified_at ? '最近官网验证：' + new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '尚无官网验证记录'].filter(Boolean).join('；')">{{ order.tracking_sync_label ?? '待同步' }}</span><span v-else>—</span></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 3" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
       <Suspense v-if="modernCustomerGrid">
         <GlobalGrid
-        namespace="grid.orders.customer.global.v1"
-        title="客户订单"
+        :namespace="orderScope === 'collaboration' ? 'grid.orders.collaboration.global.v1' : 'grid.orders.customer.global.v1'"
+        :title="heading"
         :rows="customerRows"
         :columns="customerColumns"
         :required-column-ids="['order_number','warehouse']"

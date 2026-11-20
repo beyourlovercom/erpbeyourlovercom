@@ -25,6 +25,10 @@ describe('ERP V4 bounded workspace tabs', () => {
     expect(next.tabs[0].href).toContain('search=two')
     expect(next.tabs[0].title).toContain('待审核')
     expect(workspaceTitle('国内发货', '/logistics/china?view=stockout')).toContain('缺货')
+    expect(workspaceKey('/logistics/china?view=4px')).toBe('/logistics/china?view=all')
+    expect(safeWorkspaceHref('/logistics/china?view=weship&global_grid=1'))
+      .toBe('/logistics/china?view=all&global_grid=1&filter_carrier=weship')
+    expect(workspaceTitle('国内发货', '/logistics/china?view=weship')).toContain('全部国内订单')
   })
 
   it('limits history to 30 lightweight entries, evicting only least-used background bookmark', () => {

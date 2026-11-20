@@ -14,8 +14,15 @@ final class OrderProgressQuery
 {
     public function domesticReview(Builder $orders): Builder
     {
-        return $this->withoutManualPrimary($orders)
-            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereNotNull('warehouse_id'))
+        // Manual "sending" is a work label, never a business approval.
+        // Unreviewed factory orders must remain reviewable even after staff
+        // changed that label. Exception/stockout holds still take precedence.
+        return $this->withoutManualException($orders)
+            ->where('order_status', 'pending_shipment')
+            ->where(fn (Builder $q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
+            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')
+                ->whereNull('shipped_at')
+                ->whereHas('warehouse', fn ($w) => $w->where('code', 'FACTORY')))
             ->whereDoesntHave('procurementOrder', fn ($q) => $q->where('origin', 'external')->whereNull('released_at'))
             ->whereDoesntHave('operationalMarkers', fn ($q) => $q->whereIn('marker', ['domestic_reviewed', 'domestic_stockout']));
     }
@@ -34,16 +41,16 @@ final class OrderProgressQuery
 
     public function domesticReady(Builder $orders): Builder
     {
-        return $orders->where(function (Builder $q): void {
-            $q->where('workflow_status', 'sending')
-                ->orWhere(function (Builder $auto): void {
-                    $this->withoutManualPrimary($auto)
-                        ->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending'))
-                        ->whereDoesntHave('procurementOrder', fn ($p) => $p->where('origin', 'external')->whereNull('released_at'))
-                        ->whereHas('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_reviewed'))
-                        ->whereDoesntHave('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_stockout'));
-                });
-        });
+        // A manually selected "sending" status cannot bypass real factory
+        // allocation, procurement release, stockout or shipment status.
+        return $this->withoutManualException($orders)
+            ->where('order_status', 'pending_shipment')
+            ->where(fn (Builder $q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
+            ->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending')
+                ->whereNull('shipped_at')
+                ->whereHas('warehouse', fn ($w) => $w->where('code', 'FACTORY')))
+            ->whereDoesntHave('procurementOrder', fn ($p) => $p->where('origin', 'external')->whereNull('released_at'))
+            ->whereDoesntHave('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_stockout'));
     }
 
     public function domesticTodayProvider(Builder $orders, string $carrier): Builder
@@ -102,7 +109,7 @@ final class OrderProgressQuery
     {
         return $orders->where(function (Builder $q): void {
             // Manual classification is not a shipping authorization:
-            // actual dispatch endpoints still check warehouse and review.
+            // actual dispatch endpoints still check warehouse and stockout.
             $q->where('workflow_status', 'sending')
                 ->orWhere(function (Builder $auto): void {
                     $this->withoutManualPrimary($auto)->where('order_status', 'pending_shipment')
@@ -111,6 +118,9 @@ final class OrderProgressQuery
                             $channels->where(function (Builder $factory): void {
                                 $factory->whereHas('shipment.warehouse', fn ($w) => $w->whereRaw('UPPER(code) = ?', ['FACTORY']));
                                 $this->domesticReady($factory);
+                                // Keep Kaven's existing Sending-stage classification;
+                                // this is display-only, never a logistics dispatch gate.
+                                $factory->whereHas('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_reviewed'));
                             })->orWhereHas('shipment', fn ($shipment) => $this->overseasReady($shipment)
                                 ->whereHas('warehouse', fn ($warehouse) => $warehouse->whereIn('code', ['US-NY', 'US-LA', 'US-SM', 'DE', 'CA'])));
                         });
@@ -206,10 +216,8 @@ final class OrderProgressQuery
                 ->where('shipment_status', 'shipped')->whereNotNull('shipped_at')
                 ->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', '')))
                 ->where(fn (Builder $approval) => $approval
-                    ->where(function (Builder $factory): void {
-                        $factory->whereHas('shipment.warehouse', fn ($w) => $w->where('code', 'FACTORY'))
-                            ->whereHas('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_reviewed'));
-                    })->orWhereHas('shipment', fn ($shipment) => $shipment
+                    ->whereHas('shipment.warehouse', fn ($w) => $w->where('code', 'FACTORY'))
+                    ->orWhereHas('shipment', fn ($shipment) => $shipment
                     ->whereHas('overseaReview', fn ($r) => $r->where('status', 'approved')
                         ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id')))),
             'progress_conflict' => $orders->where(function (Builder $q): void {
@@ -263,12 +271,6 @@ final class OrderProgressQuery
         return $orders->where(function (Builder $bad): void {
             $bad->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'shipped')
                 ->whereNull('shipped_at'))
-                ->orWhere(function (Builder $factory): void {
-                    $factory->whereHas('shipment', fn ($s) => $s
-                        ->where('shipment_status', 'shipped')->whereHas('warehouse', fn ($w) => $w->where('code', 'FACTORY'))
-                        ->where(fn ($t) => $t->whereNull('tracking_number')->orWhere('tracking_number', '')))
-                        ->whereDoesntHave('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_reviewed'));
-                })
                 ->orWhere(function (Builder $stale): void {
                     $stale->where('order_status', 'shipped')->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending'));
                 })

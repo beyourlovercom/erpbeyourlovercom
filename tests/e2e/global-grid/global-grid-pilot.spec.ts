@@ -928,25 +928,23 @@ test('R4-6 exceptions Grid has factual reasons and view-only actions with native
   await expect(original).toContainText('007-1111-c99983')
   await expect(original).not.toContainText('007-1111-c99985')
   await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toHaveCount(0)
-  // R4-7A/B: both cumulative carrier-history views are Owner-authorized
-  // Global Grid; each retains its own one-click native fallback.
+  // Unified cumulative history replaces both provider-only tabs. The
+  // second header row now filters the entire server-side domestic ledger.
   await page.getByRole('navigation',{name:'国内发货业务视图'})
-    .getByRole('button',{name:/速达订单/}).click()
-  await expect(page).toHaveURL(/view=4px/)
+    .getByRole('button',{name:/全部国内订单/}).click()
+  await expect(page).toHaveURL(/view=all/)
   await expect(page).toHaveURL(/global_grid=1/)
-  await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toBeVisible()
-  await page.getByRole('navigation',{name:'国内发货业务视图'})
-    .getByRole('button',{name:/纬狮订单/}).click()
-  await expect(page).toHaveURL(/view=weship/)
-  await expect(page).toHaveURL(/global_grid=1/)
-  await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toBeVisible()
+  const allGrid=page.locator('[data-testid="erp-global-grid-v1"]')
+  await expect(allGrid).toBeVisible()
+  await allGrid.getByRole('combobox',{name:'筛选列 物流商'}).selectOption('Weship')
+  await expect(page).toHaveURL(/filter_carrier=Weship/)
   console.log('R4_6_EXCEPTION_REASON_VIEW_ONLY_FALLBACK_PASS')
 })
 
 test('R4-7A 速达历史 Global Grid all-state scope and direct authorized inline shipping, native fallback',async({page})=>{
   await page.setViewportSize({width:1440,height:900})
   await loginThroughUi(page,syntheticUsers().logisticsOperator)
-  await page.goto('/logistics/china?view=4px',{waitUntil:'domcontentloaded'})
+  await page.goto('/logistics/china?view=all&filter_carrier=4px',{waitUntil:'domcontentloaded'})
   const grid=page.locator('[data-testid="erp-global-grid-v1"]')
   await expect(grid).toBeVisible({timeout:18000})
   await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
@@ -991,18 +989,16 @@ test('R4-7A 速达历史 Global Grid all-state scope and direct authorized inlin
   await expect(grid.getByTestId('grid-batch-footer')).toBeVisible()
   await expect(grid.getByTestId('grid-batch-footer').getByRole('combobox',{name:'批量操作'})).toBeVisible()
   await page.getByRole('button',{name:'返回原表'}).click()
-  await expect(page).toHaveURL(/view=4px/)
+  await expect(page).toHaveURL(/view=all/)
   await expect(page).toHaveURL(/global_grid=0/)
   const legacy=page.locator('.table-wrap.orders')
   await expect(legacy).toContainText('007-1111-c99986')
   await expect(legacy).toContainText('007-1111-c99984')
   await expect(legacy).toContainText('007-1111-c99982')
   await expect(legacy).not.toContainText('007-1111-c99985')
-  // R4-7B has its own authorized cumulative Grid. Switching preserves
-  // each provider's separate per-account column layout namespace.
-  await page.getByRole('navigation',{name:'国内发货业务视图'})
-    .getByRole('button',{name:/纬狮订单/}).click()
-  await expect(page).toHaveURL(/view=weship/)
+  // A dropdown switches the server-wide provider while staying on one Grid.
+  await page.goto('/logistics/china?view=all&filter_carrier=weship',{waitUntil:'domcontentloaded'})
+  await expect(page).toHaveURL(/view=all/)
   await expect(page).toHaveURL(/global_grid=1/)
   await expect(page.locator('[data-testid="erp-global-grid-v1"]')).toBeVisible()
   console.log('R4_7A_SPEEDA_HISTORY_DIRECT_INLINE_ACTION_AND_NATIVE_FALLBACK_PASS')
@@ -1012,7 +1008,7 @@ test('R4-7A 速达历史 Global Grid all-state scope and direct authorized inlin
 test('R4-7B Weship cumulative Grid keeps old shipments, guarded menu, 0-pin, native escape and 24-col contract',async({page})=>{
   await page.setViewportSize({width:1440,height:900})
   await loginThroughUi(page,syntheticUsers().logisticsOperator)
-  await page.goto('/logistics/china?view=weship',{waitUntil:'domcontentloaded'})
+  await page.goto('/logistics/china?view=all&filter_carrier=weship',{waitUntil:'domcontentloaded'})
   const grid=page.locator('[data-testid="erp-global-grid-v1"]')
   await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
   await expect(grid.getByText('007-1111-c99985',{exact:true})).toBeVisible()
@@ -1045,7 +1041,7 @@ test('R4-7B Weship cumulative Grid keeps old shipments, guarded menu, 0-pin, nat
   await grid.locator('.ag-selection-checkbox').first().click()
   await expect(grid.getByTestId('grid-batch-footer')).toBeVisible()
   await page.getByRole('button',{name:'返回原表'}).click()
-  await expect(page).toHaveURL(/view=weship/)
+  await expect(page).toHaveURL(/view=all/)
   await expect(page).toHaveURL(/global_grid=0/)
   const legacy=page.locator('.table-wrap.orders')
   await expect(legacy).toContainText('007-1111-c99985')
@@ -1058,7 +1054,7 @@ test('R4-7B Weship cumulative Grid keeps old shipments, guarded menu, 0-pin, nat
 test('G-P0/G-P2 operator can unpin and hide Action, legacy width migrates and layout survives reload',async({page})=>{
   await page.setViewportSize({width:1440,height:900})
   await loginThroughUi(page,syntheticUsers().logisticsOperator)
-  await page.goto('/logistics/china?view=4px',{waitUntil:'domcontentloaded'})
+  await page.goto('/logistics/china?view=all&filter_carrier=4px',{waitUntil:'domcontentloaded'})
   const grid=page.locator('[data-testid="erp-global-grid-v1"]')
   await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility','visible',{timeout:18000})
   await grid.getByRole('button',{name:'⚙ 列设置'}).click()
@@ -1306,4 +1302,41 @@ test('R5-L2 all three logistics pilot Grids preserve native workflows, roles and
   }
   expect(pendingMutationRequests).toEqual([])
   console.log('R5_L2_THREE_QUEUES_ZERO_SHIPMENT_WRITES_PASS')
+})
+
+test('only domestic and overseas pending Global Grids allow native double-click copy without mutations', async ({ context, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await loginThroughUi(page, syntheticUsers().logisticsOperator)
+  const cases = [
+    ['/logistics/china?view=pending&global_grid=1', '国内待发货', 'review'],
+    ['/logistics/oversea?view=pending&global_grid=1', '海外仓待发货', 'review'],
+  ] as const
+  const mutations: string[] = []
+  await page.route(/\/logistics\/(china|oversea|orders)\//, async route => {
+    if (route.request().method() !== 'GET') {
+      mutations.push(route.request().url())
+      await route.abort()
+      return
+    }
+    await route.continue()
+  })
+  for (const [path, label, column] of cases) {
+    await page.goto(path, { waitUntil: 'domcontentloaded' })
+    const grid = page.getByTestId('erp-global-grid-v1')
+    await expect(grid.locator('.oms-ag-grid')).toHaveCSS('visibility', 'visible', { timeout: 18000 })
+    const textCell = grid.locator('.ag-cell[col-id="' + column + '"]').filter({ hasText: /\S/ }).first()
+    await expect(textCell).toBeVisible({ timeout: 12000 })
+    const text = (await textCell.textContent())?.trim() ?? ''
+    expect(text.length).toBeGreaterThan(1)
+    await textCell.dblclick({ position: { x: 24, y: 14 } })
+    const selected = await page.evaluate(() => window.getSelection()?.toString().trim() ?? '')
+    expect(selected.length).toBeGreaterThan(0)
+    expect(text.includes(selected)).toBe(true)
+    await page.keyboard.press('ControlOrMeta+C')
+    const copied = await page.evaluate(() => navigator.clipboard.readText())
+    expect(copied.trim()).toBe(selected)
+    console.log('PENDING_GRID_TEXT_SELECTION_BROWSER_PASS', label, selected)
+  }
+  expect(mutations).toEqual([])
 })
