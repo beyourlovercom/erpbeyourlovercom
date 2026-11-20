@@ -124,6 +124,10 @@ watch(() => props.viewCounts, next => Object.assign(liveViewCounts,next))
 const inlineSaveBusy = reactive<Record<number,boolean>>({})
 const inlineSaveFeedback = reactive<Record<number,string>>({})
 const trackingSelection = ref<number[]>([])
+const exportSelection = ref<number[]>([])
+const selectedExportQuery = computed(() => new URLSearchParams(
+  exportSelection.value.map(id => ['order_ids[]', String(id)]),
+).toString())
 const reviewSelection = ref<number[]>([])
 // All visible eligible rows may be operationally archived, independently of
 // review/shipout/tracking eligibility. This does not grant archive permission.
@@ -1249,12 +1253,14 @@ watch(()=>[props.view,props.warehouseKey,props.rows.current_page,props.rows.per_
   if(!bulkShipBusy.value)closeBulkShip()
   reviewSelection.value=[]
   archiveSelection.value=[]
+  exportSelection.value=[]
   archivePending.value=null
 })
 watch(()=>visibleRows.value,rows=>{
   const present=new Set(rows.map(row=>row.order_id))
   reviewSelection.value=reviewSelection.value.filter(id=>present.has(id))
   archiveSelection.value=archiveSelection.value.filter(id=>present.has(id))
+  exportSelection.value=exportSelection.value.filter(id=>present.has(id))
   bulkShipSelection.value=bulkShipSelection.value.filter(id=>present.has(id))
   archivePending.value=null
 })
@@ -1439,6 +1445,8 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
 ])
 const onGridSelection = (rows:GridListRow[]) => {
   const ids=new Set(rows.map(row=>Number(row.id)).filter(id=>Number.isSafeInteger(id)&&id>0))
+  exportSelection.value=props.view==='pending'
+    ?visibleRows.value.filter(row=>ids.has(row.order_id)).map(row=>row.order_id):[]
   bulkShipSelection.value=bulkShipPreviewScope.value
     ?visibleRows.value.filter(row=>ids.has(row.order_id)&&row.shipment_status==='pending').map(row=>row.order_id):[]
   archiveSelection.value=props.canArchive && props.view!=='stockout'
@@ -1497,6 +1505,8 @@ const compactPages = computed<(number|string)[]>(() => {
           <template v-if="warehouse && view === 'pending'">
           <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button" :disabled="refreshBusy" @click="refreshOmsStatuses">{{refreshBusy?'查询中…':'刷新仓库状态'}}</button>
           <a v-if="warehouseKey === 'us-3sm'" class="file-button file-link" href="https://oms.xlwms.com/warehouse/packet" target="_blank" rel="noopener noreferrer">查看仓库草稿箱</a>
+          <a v-if="gridEnabled && exportSelection.length" class="file-button file-link"
+            :href="`${basePath}/export?${selectedExportQuery}`" data-testid="download-oversea-selected">⇩ 下载已选 {{ exportSelection.length }} 单</a>
           <a v-if="warehouseKey==='us-3sm' && canOperate" class="file-button file-link"
             :href="`${basePath}/export`">⇩ 批量下载订单文件</a>
           <a v-else class="file-button file-link" :href="`${basePath}/export`">⇩ 下载仓库下单表</a>
@@ -1591,8 +1601,8 @@ const compactPages = computed<(number|string)[]>(() => {
           :search="gridSearch??''" :sort="gridSort??undefined"
           :filter-columns="[]" :filter-values="gridFilters??{}"
           :cell-text-selection="view==='pending'"
-          :enable-selection="Boolean((canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || bulkShipPreviewScope || canTrackingSync || showShipoutSelection)"
-          :selected-order-ids="(canArchive && view!=='stockout')?archiveSelection:bulkShipPreviewScope?bulkShipSelection:(canReview && ['review','stockout'].includes(view))?reviewSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
+          :enable-selection="Boolean(view==='pending' || (canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || bulkShipPreviewScope || canTrackingSync || showShipoutSelection)"
+          :selected-order-ids="view==='pending'?exportSelection:(canArchive && view!=='stockout')?archiveSelection:bulkShipPreviewScope?bulkShipSelection:(canReview && ['review','stockout'].includes(view))?reviewSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
           search-placeholder="搜索全部订单号 / Tracking / 收件人 / SKU..."
           @search-change="searchGrid" @sort-change="sortGrid"
           @selection-change="onGridSelection" @page-change="gridNavigate({page:$event})"

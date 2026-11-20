@@ -2,11 +2,11 @@
 
 namespace App\Modules\Logistics\Application\Domestic;
 
-use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
+use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
-use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
 use Illuminate\Support\Collection;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -25,19 +25,19 @@ final class DomesticPendingBatchExporter
     ) {}
 
     /** @param Collection<int,Order> $orders */
-    public function export(Collection $orders): string
+    public function export(Collection $orders, bool $requireAll = false): string
     {
-        return $this->build($orders, false);
+        return $this->build($orders, false, $requireAll);
     }
 
     /** @param Collection<int,Order> $orders */
-    public function exportSkuMerged(Collection $orders): string
+    public function exportSkuMerged(Collection $orders, bool $requireAll = false): string
     {
-        return $this->build($orders, true);
+        return $this->build($orders, true, $requireAll);
     }
 
     /** @param Collection<int,Order> $orders */
-    private function build(Collection $orders, bool $skuMerged): string
+    private function build(Collection $orders, bool $skuMerged, bool $requireAll): string
     {
         if ($orders->isEmpty()) {
             throw new DomainException('当前没有可导出的国内待发货订单。');
@@ -45,8 +45,12 @@ final class DomesticPendingBatchExporter
 
         $eligible = $orders->filter(function (Order $order): bool {
             $order->loadMissing(['address', 'items', 'shipment', 'externalReferences', 'fulfillmentParent.financials', 'shipment.warehouse']);
+
             return $this->eligibility->allows($order);
         })->values();
+        if ($requireAll && $eligible->count() !== $orders->count()) {
+            throw new DomainException('所选订单中包含不可导出的待发货订单，请检查“导出状态”后重新选择。');
+        }
         if ($eligible->isEmpty()) {
             throw new DomainException('当前没有可导出的国内待发货订单。');
         }

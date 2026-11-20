@@ -11,6 +11,7 @@ use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\OverseaFiles\OverseaOutboundFileService;
 use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
+use App\Modules\Logistics\Application\SelectedExportOrderIds;
 use App\Modules\Logistics\Application\ShipOut\ShipOutMorePlusVerifiedTrackingCompletion;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
@@ -318,6 +319,7 @@ final class OverseaWarehouseController
 
     public function export(Request $request, string $warehouse): HttpResponse
     {
+        $selectedIds = SelectedExportOrderIds::fromRequest($request);
         $warehouse = in_array($warehouse, ['us-sm', 'us-sj', 'usa-sj'], true) ? 'us-3sm' : $warehouse;
         $warehouseMap = $this->warehouseMap();
         $selectedWarehouse = $warehouseMap[$warehouse] ?? null;
@@ -332,8 +334,15 @@ final class OverseaWarehouseController
                 ->where('order_status', '!=', 'cancelled')
                 ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
         $this->applyView($shipments, 'pending');
+        if ($selectedIds !== null) {
+            $shipments->whereIn('order_id', $selectedIds);
+        }
+        $exportShipments = $shipments->latest('id')->get();
+        if ($selectedIds !== null) {
+            abort_unless($exportShipments->count() === count($selectedIds), 422, '所选订单不属于该仓库待发货列表，请刷新后重选。');
+        }
         try {
-            $file = $this->outboundFiles->export($warehouse, $shipments->latest('id')->get());
+            $file = $this->outboundFiles->export($warehouse, $exportShipments);
         } catch (DomainException|InvalidArgumentException $e) {
             abort(422, $e->getMessage());
         }
