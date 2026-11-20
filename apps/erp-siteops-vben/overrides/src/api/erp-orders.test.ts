@@ -75,7 +75,7 @@ describe('BYL ERP authoritative existing orders GET projection', () => {
     }));
   });
   it('routes dedicated customer and KOL reads to original Laravel GET scopes', async () => {
-    const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify(inertia),{
+    const fetcher=vi.fn().mockImplementation(async () => new Response(JSON.stringify(inertia),{
       status:200,headers:{'content-type':'application/json'},
     }));
     await getExistingErpOrders({scope:'customers'},fetcher);
