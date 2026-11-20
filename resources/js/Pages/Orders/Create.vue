@@ -22,9 +22,8 @@ const props = defineProps<{
   defaultOrderKind: string
   orderKindLabel: string
   generatedExternalOrderNumber: string
-  kolOptions?: { value: number; label: string; account?: string | null; hasAffiliate: boolean }[]
+  kolOptions?: { value: number; label: string; account?: string | null }[]
   selectedKolId?: number | null
-  requestedKolUnbound?: boolean
 }>()
 
 type OrderItem = {
@@ -172,7 +171,6 @@ const submit = () => {
                   :has-error="Boolean(form.errors.kol_id)"
                   required
                 />
-                <p v-if="requestedKolUnbound" role="status" data-testid="kol-affiliate-unbound">此网红尚未绑定有效 AffiliateWP 账号。请先在网红详情完成绑定，暂不能创建订单。</p>
                 <p v-if="form.errors.kol_id" class="erp-field-error">{{ form.errors.kol_id }}</p>
               </div>
               <div class="erp-form-field">

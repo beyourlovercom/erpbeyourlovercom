@@ -165,7 +165,7 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $this->assertNotSame($first->erp_order_id, $second->erp_order_id);
     }
 
-    public function test_r61_unbound_or_inactive_affiliate_blocks_all_manual_kol_orders(): void
+    public function test_manual_kol_orders_are_allowed_without_affiliate_binding_or_wordpress_order(): void
     {
         $staff = $this->viewer(['orders.view', 'orders.create', 'kol.view']);
         $legacyRole = $this->viewer(['orders.view', 'orders.create']);
@@ -178,31 +178,28 @@ final class KolTwoHopNavigationV1Test extends TestCase
             'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => 'Sample',
             'items' => [['product_id' => $product->id, 'product_summary' => 'R61', 'quantity' => 1, 'unit_price' => '0.00']],
         ];
+
         $this->actingAs($staff)->get('/kol/library/'.$kol->id)->assertOk()
             ->assertInertia(fn ($page) => $page->where('affiliateAdminUrl', null));
         $this->actingAs($staff)->get('/kol/orders/create?kol_id='.$kol->id)->assertOk()
-            ->assertInertia(fn ($page) => $page->where('selectedKolId', null)
-                ->where('requestedKolUnbound', true)
-                ->where('kolOptions.0.hasAffiliate', false));
-        $this->actingAs($staff)->post('/kol/orders', $payload)->assertSessionHasErrors('kol_id');
+            ->assertInertia(fn ($page) => $page->where('selectedKolId', $kol->id)
+                ->where('kolOptions.0.value', $kol->id)
+                ->missing('requestedKolUnbound'));
         $this->actingAs($legacyRole)->post('/kol/orders', $payload)->assertForbidden();
         $this->assertDatabaseCount('orders', 0);
 
-        $this->bindAffiliate($kol, 'inactive');
-        $this->actingAs($staff)->post('/kol/orders', $payload)->assertSessionHasErrors('kol_id');
-        $this->actingAs($staff)->get('/kol/library/'.$kol->id)->assertOk()
-            ->assertInertia(fn ($page) => $page
-                ->where('affiliateReady', false)
-                ->where('affiliateAdminUrl', 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&affiliate_id='.(20000 + $kol->id).'&action=edit_affiliate'));
-        $this->assertDatabaseCount('orders', 0);
-
-        KolAffiliateAccount::where('kol_id', $kol->id)->update(['provider_status' => 'active']);
-        $this->actingAs($staff)->get('/kol/orders/create?kol_id='.$kol->id)->assertOk()
-            ->assertInertia(fn ($page) => $page->where('selectedKolId', $kol->id)
-                ->where('requestedKolUnbound', false)
-                ->where('kolOptions.0.hasAffiliate', true));
         $this->actingAs($staff)->post('/kol/orders', $payload)->assertRedirect();
         $this->assertDatabaseHas('orders', ['order_kind' => 'kol_fulfillment', 'kol_id' => $kol->id]);
+        $this->assertDatabaseCount('orders', 1);
+
+        $this->bindAffiliate($kol, 'inactive');
+        $this->actingAs($staff)->post('/kol/orders', [...$payload, 'external_order_number' => 'R61-INACTIVE'])->assertRedirect();
+        $this->actingAs($staff)->get('/kol/library/'.$kol->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('affiliateReady', false));
+
+        KolAffiliateAccount::where('kol_id', $kol->id)->update(['provider_status' => 'active']);
+        $this->actingAs($staff)->post('/kol/orders', [...$payload, 'external_order_number' => 'R61-ACTIVE'])->assertRedirect();
+        $this->assertDatabaseCount('orders', 3);
     }
 
     private function bindAffiliate(Kol $kol, string $status = 'active'): void

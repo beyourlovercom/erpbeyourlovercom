@@ -23,9 +23,9 @@ describe('KOL Show formal collaboration projection', () => {
 describe('R6 profile-to-order entry contract', () => {
   it('only shows the new order action for users with create access and a non-archived KOL', () => {
     expect(source).toContain('data-testid="kol-create-order"')
-    expect(source).toContain('canCreateOrders && !kol.archived_at && affiliateReady')
+    expect(source).toContain('canCreateOrders && !kol.archived_at')
     expect(source).toContain('/kol/orders/create?kol_id=')
-    expect(source).toContain('data-testid="affiliatewp-unbound-warning"')
+    expect(source).not.toContain('data-testid="affiliatewp-unbound-warning"')
   })
 })
 
@@ -39,7 +39,7 @@ describe('KOL two-hop AffiliateWP account action', () => {
 })
 
 describe('P0: failed AffiliateWP creation remains actionable', () => {
-  it('keeps the WordPress check link available for failed/pending accounts without enabling orders', () => {
+  it('keeps the WordPress diagnostic link available without using status as an order gate', () => {
     expect(source).toContain('data-testid="kol-provision-alert"')
     expect(source).toContain('data-testid="kol-provision-wp-check"')
     expect(source).toContain('role="alert" aria-live="assertive"')

@@ -39,7 +39,6 @@ final class KolOrderIdentitySearchTest extends TestCase
                 ->assertOk()
                 ->assertJsonCount(1)
                 ->assertJsonPath('0.value', $kol->id)
-                ->assertJsonPath('0.hasAffiliate', true)
                 ->assertJsonPath('0.account', 'mary_social');
         }
     }
@@ -79,7 +78,7 @@ final class KolOrderIdentitySearchTest extends TestCase
         $this->actingAs($noOrderCreate)->getJson('/kol/orders/kol-search?q=Target')->assertForbidden();
     }
 
-    public function test_unbound_kol_is_visible_but_not_selectable_and_query_is_bounded(): void
+    public function test_unbound_kol_is_visible_and_selectable_and_query_is_bounded(): void
     {
         $staff = $this->userWith(['orders.create', 'kol.view']);
         $unbound = $this->kol($staff, 'Unbound Influencer');
@@ -88,8 +87,11 @@ final class KolOrderIdentitySearchTest extends TestCase
         }
 
         $this->actingAs($staff)->getJson('/kol/orders/kol-search?q=Unbound')
-            ->assertOk()->assertJsonPath('0.value', $unbound->id)
-            ->assertJsonPath('0.hasAffiliate', false);
+            ->assertOk()->assertJsonPath('0.value', $unbound->id);
+        $this->actingAs($staff)->get('/kol/orders/create?kol_id='.$unbound->id)
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('selectedKolId', $unbound->id)
+                ->where('kolOptions.0.value', $unbound->id));
         $this->actingAs($staff)->getJson('/kol/orders/kol-search')
             ->assertOk()->assertJsonCount(20);
         $this->actingAs($staff)->getJson('/kol/orders/kol-search?q='.str_repeat('a', 101))
@@ -130,7 +132,7 @@ final class KolOrderIdentitySearchTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->where('selectedKolId', $late->id)
                 ->where('kolOptions.0.value', $late->id)
-                ->where('kolOptions.0.hasAffiliate', true));
+                ->missing('requestedKolUnbound'));
     }
 
     private function kol(User $owner, string $name): Kol
