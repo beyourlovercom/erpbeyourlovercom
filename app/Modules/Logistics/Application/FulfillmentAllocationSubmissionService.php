@@ -109,7 +109,7 @@ final class FulfillmentAllocationSubmissionService
                 $outsource = $row['source_code'] === ExternalProcurementWorkflow::SOURCE_CODE;
                 abort_if($outsource && strcasecmp(trim((string) ($item->source_sku ?: $item->sku)), 'gift') === 0,
                     422, '外采礼品需先指定实际商品 SKU；不可采购未确认的 gift 占位符');
-                $resolution = $this->physicalSkus->resolve($item, $outsource ? 'FACTORY' : $row['source_code'], $row['gift_mapping_id']);
+                $resolution = $this->physicalSkus->resolve($item, $outsource ? 'FACTORY' : $row['source_code'], $row['gift_mapping_id'], true);
 
                 // Warehouse allocation must not preselect domestic dispatch logistics.
                 // Overseas allocation retains its existing recommended routing.
@@ -138,6 +138,19 @@ final class FulfillmentAllocationSubmissionService
                 ];
             })->values();
             $measure('physical_sku_and_carrier');
+
+            // Manual Gift stock exceptions are allocation facts, not inventory adjustments.
+            $giftStockExceptions = $resolvedAssignments->filter(
+                fn (array $row): bool => is_array($row['resolution']['manual_gift_stock_exception'] ?? null)
+            )->map(function (array $row): array {
+                return [
+                    'order_item_id' => $row['order_item_id'],
+                    'warehouse_code' => $row['source_code'],
+                    'gift_mapping_id' => $row['gift_mapping_id'],
+                    'resolved_fulfillment_sku' => $row['resolution']['resolved_fulfillment_sku'],
+                    ...$row['resolution']['manual_gift_stock_exception'],
+                ];
+            })->values()->all();
 
             $sources = $resolvedAssignments->pluck('source_code')->unique()->values();
             abort_if($sources->count() > self::MAX_SEGMENTS, 422, '单订单最多允许 26 个履约来源');
@@ -207,6 +220,12 @@ final class FulfillmentAllocationSubmissionService
                     'actor_id' => $actor->getAuthIdentifier(),
                     'acknowledged_at' => now()->toIso8601String(),
                     'warnings' => $stockWarnings,
+                ],
+                'gift_stock_exception_acknowledgement' => $giftStockExceptions === [] ? null : [
+                    'acknowledged' => true,
+                    'actor_id' => $actor->getAuthIdentifier(),
+                    'acknowledged_at' => now()->toIso8601String(),
+                    'items' => $giftStockExceptions,
                 ],
                 'execution_status' => count($segments) > 1 ? 'pending_multi_leg_execution_gate' : 'pending_single_leg_bridge',
                 'destination_zone' => strtoupper((string) $locked->address?->country) === 'US'

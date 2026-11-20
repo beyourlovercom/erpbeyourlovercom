@@ -439,13 +439,13 @@ function giftEmptyLabel(item:Item,source:string){
   if(!opts.length)return '该仓未配置有效的清仓 Gift SKU'
   if(opts.some(o=>o.can_fulfill))return ''
   const blocked=opts.find(o=>o.stock_gate_reason==='oms_snapshot_blocked')
-  if(blocked)return '世迈 OMS 库存待核验：ERP 清仓有货，但 OMS 快照被阻断；禁止分仓，请先修复库存同步'
-  if(opts.some(o=>o.stock_gate_reason==='oms_snapshot_not_applied'))return 'OMS 库存快照尚未完成应用核验，暂不能分仓'
-  if(opts.some(o=>o.stock_gate_reason==='provider_sku_not_synced'))return '该礼品的海外仓库存尚未成功读取，其他 SKU 不受影响'
+  if(blocked)return '世迈 OMS 库存待核验：快照被阻断；可人工选择有效礼品 SKU，实际发货仍须仓库确认'
+  if(opts.some(o=>o.stock_gate_reason==='oms_snapshot_not_applied'))return 'OMS 库存快照尚未核验；可人工选择有效礼品 SKU'
+  if(opts.some(o=>o.stock_gate_reason==='provider_sku_not_synced'))return '该礼品的海外仓库存尚未成功读取；可人工选择有效礼品 SKU'
   const unverified=opts.find(o=>o.stock_gate_reason==='oms_sku_not_confirmed')
-  if(unverified)return 'OMS 未验证该 SKU，暂不能分仓'
-  if(opts.some(o=>o.quantity_available===null))return 'Gift 库存未知，请核实库存'
-  return 'Gift 当前可出库库存不足'
+  if(unverified)return 'OMS 未验证该 SKU；可人工选择有效礼品 SKU'
+  if(opts.some(o=>o.quantity_available===null))return 'Gift 库存未知；可人工选择，发货前须核实库存'
+  return 'Gift 当前可出库库存不足；可人工选择，发货前须核实库存'
 }
 function chosenGift(item:Item,order:Order){ const id=Number(manualGiftMappings[order.id]?.[item.id]||0); return Object.values(item.gift_options_by_warehouse||{}).flat().find(o=>o.mapping_id===id) }
 function giftStockLabel(item:Item,w:Warehouse){ const opts=giftOptions(item,w.code); if(!opts.length)return '无清仓礼品'; const available=availableGiftOptions(item,w.code); if(available.length)return `有货 ${available[0].quantity_available ?? '未知'}`; return opts.some(o=>o.stock_gate_reason==='oms_snapshot_blocked')?'OMS 核验阻断':opts.some(o=>o.stock_gate_reason==='provider_sku_not_synced')?'此 SKU 待同步':opts.some(o=>o.stock_gate_reason==='oms_sku_not_confirmed')?'此 SKU 未验证':'Gift 可出库不足' }
@@ -488,7 +488,8 @@ function splitConstraintError(order:Order){
     if(!selected)return 'gift 必须选择实际履约礼品 SKU'
     const option=giftOptions(item,source).find(o=>String(o.mapping_id)===selected)
     if(!option)return '所选礼品 SKU 不属于当前发货仓'
-    if(!option.can_fulfill)return '所选实际礼品 SKU 库存不足或库存未知'
+    // Explicitly chosen Gift mappings may bypass stock synchronisation in manual allocation.
+    // Automatic recommendation continues to use option.can_fulfill.
   }
   return null
 }
@@ -741,7 +742,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
             <td><div class="warehouse-advice" :class="warehouseAdvice(selectedOrder,item).kind"><strong>{{ warehouseAdvice(selectedOrder,item).label }}</strong><small>{{ warehouseAdvice(selectedOrder,item).detail }}</small></div></td>
             <td><select v-model="manualAssignments[selectedOrder.id][item.id]" @change="onWarehouseChanged(selectedOrder,item)"><option value="">请选择</option><option v-for="warehouse in warehouseOptions" :key="warehouse.code" :value="canonicalWarehouseCode(warehouse.code)">{{ warehouse.name }}</option></select><small v-if="canonicalWarehouseCode(manualAssignments[selectedOrder.id][item.id])==='US-LA'" class="mapping-missing">提交前核验 MorePlus 实际 SKU；ERP 库存仅供参考</small></td>
             <td><div class="carrier-cell"><span v-if="['FACTORY','OUTSOURCE'].includes(manualAssignments[selectedOrder.id][item.id])" class="manual-route">{{ manualAssignments[selectedOrder.id][item.id]==='OUTSOURCE' ? '待采购到货 · Vita 放行后选物流商' : '待发货阶段人工确认' }}</span><select v-else :value="carrierForItem(selectedOrder,item)" :disabled="!manualAssignments[selectedOrder.id][item.id]" @change="onCarrierChanged(selectedOrder,item,$event)"><option value="">请选择物流商</option><option v-for="carrier in props.carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="manualAssignments[selectedOrder.id][item.id] && carrierForItem(selectedOrder,item)" :class="carrierIsDefault(selectedOrder,item)?'auto-route':'manual-route'">{{ carrierIsDefault(selectedOrder,item)?'系统默认':'人工覆盖' }}</small></div></td>
-            <td><template v-if="item.is_gift"><select v-model="manualGiftMappings[selectedOrder.id][item.id]" :disabled="!manualAssignments[selectedOrder.id][item.id]"><option value="">请选择实际礼品</option><option v-for="option in giftOptions(item,manualAssignments[selectedOrder.id][item.id])" :key="option.mapping_id" :value="String(option.mapping_id)" :disabled="!option.can_fulfill">{{ option.fulfillment_sku }} · {{ option.fulfillment_name }} · {{option.can_fulfill ? '可出库 '+option.quantity_available : giftBlockReason(option)}}</option></select><small v-if="chosenGift(item,selectedOrder)" class="resolved-note">{{ chosenGift(item,selectedOrder)?.fulfillment_sku }} · {{ sourceLabel(manualAssignments[selectedOrder.id][item.id]) }}</small><small v-else-if="manualAssignments[selectedOrder.id][item.id]&&giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])" class="mapping-missing">{{giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])}}</small></template><span v-else>—</span></td>
+            <td><template v-if="item.is_gift"><select v-model="manualGiftMappings[selectedOrder.id][item.id]" :disabled="!manualAssignments[selectedOrder.id][item.id]"><option value="">请选择实际礼品</option><option v-for="option in giftOptions(item,manualAssignments[selectedOrder.id][item.id])" :key="option.mapping_id" :value="String(option.mapping_id)">{{ option.fulfillment_sku }} · {{ option.fulfillment_name }} · {{option.can_fulfill ? '可出库 '+option.quantity_available : '人工可选 · '+giftBlockReason(option)}}</option></select><small v-if="chosenGift(item,selectedOrder)" class="resolved-note">{{ chosenGift(item,selectedOrder)?.fulfillment_sku }} · {{ sourceLabel(manualAssignments[selectedOrder.id][item.id]) }}</small><small v-if="chosenGift(item,selectedOrder) && !chosenGift(item,selectedOrder)?.can_fulfill" class="mapping-missing">人工库存例外：{{giftBlockReason(chosenGift(item,selectedOrder)!)}}；仅确认分仓，不代表已发货</small><small v-else-if="manualAssignments[selectedOrder.id][item.id]&&giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])" class="mapping-missing">{{giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])}}</small></template><span v-else>—</span></td>
           </tr>
         </tbody></table></div>
         <div v-if="fulfillmentGroups(selectedOrder).length" class="group-preview"><div class="group-heading"><strong>当前将生成 {{ fulfillmentGroups(selectedOrder).length }} 个履约订单</strong><span>系统按发货仓自动归组，不需要 Vita 手工创建 A/B。</span></div><div class="group-grid"><article v-for="group in fulfillmentGroups(selectedOrder)" :key="group.source" class="group-card"><header><div><small>{{ group.suffix?`履约组 ${group.suffix}`:'单仓履约' }}</small><strong>{{ group.erpOrderId }}</strong></div><div class="group-route"><b>{{ group.warehouse }}</b><span>{{ carrierLabel(group.carrier) }}</span></div></header><div class="group-items"><span v-for="item in group.items" :key="item.id">{{ resolvedSkuLabel(selectedOrder,item) }} × {{ item.quantity }}</span></div></article></div></div>

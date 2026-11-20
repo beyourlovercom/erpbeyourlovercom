@@ -25,13 +25,13 @@ final class WarehousePhysicalSkuResolver
     ) {}
 
     /** @return array<string,mixed> */
-    public function resolve(OrderItem $item, string $warehouseCode, ?int $giftMappingId): array
+    public function resolve(OrderItem $item, string $warehouseCode, ?int $giftMappingId, bool $allowManualGiftStockException = false): array
     {
         $sourceSku = trim((string) ($item->source_sku ?: $item->sku));
         $sourceProductId = (int) ($item->source_product_id ?: $item->product_id);
         abort_if($sourceSku === '' || $sourceProductId < 1, 422, '订单来源商品身份无效，不能分仓发货');
 
-        $gift = $this->gifts->resolve($item, $warehouseCode, $giftMappingId);
+        $gift = $this->gifts->resolve($item, $warehouseCode, $giftMappingId, $allowManualGiftStockException);
         $targetId = (int) ($gift['resolved_product_id'] ?? $sourceProductId);
         $targetSku = trim((string) ($gift['resolved_fulfillment_sku'] ?? $sourceSku));
 
@@ -46,6 +46,7 @@ final class WarehousePhysicalSkuResolver
             'source_product_id' => $sourceProductId,
             'source_product_summary' => $item->source_product_summary ?: $item->product_summary,
             'gift_mapping_id' => $gift['gift_mapping_id'] ?? null,
+            'manual_gift_stock_exception' => $gift['manual_gift_stock_exception'] ?? null,
             'resolved_product_id' => $targetId,
             'resolved_fulfillment_sku' => $targetSku,
             'resolved_product_summary' => $gift['resolved_product_summary'] ?? null,
