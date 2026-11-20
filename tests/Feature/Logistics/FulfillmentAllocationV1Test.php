@@ -25,6 +25,13 @@ final class FulfillmentAllocationV1Test extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+    }
+
     public function test_wait_stock_page_is_vita_assisted_allocation_surface_and_excludes_007(): void
     {
         [$user, $order] = $this->scenario(1);
@@ -216,6 +223,8 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame(2, $fresh->routing_revision);
         self::assertSame((int) $usSm->id, (int) $fresh->shipment->warehouse_id);
         self::assertSame('allocation', $fresh->shipment->warehouse_selection_source);
+        self::assertSame('pending_review', $fresh->workflow_status);
+        self::assertSame(1, $fresh->workflow_revision);
         self::assertCount(0, $fresh->originalFulfillmentChildren);
         self::assertSame($items->pluck('sku')->all(), $fresh->items->sortBy('id')->pluck('source_sku')->values()->all());
         $this->assertDatabaseHas('order_warehouse_route_histories', [
@@ -228,6 +237,67 @@ final class FulfillmentAllocationV1Test extends TestCase
         $this->assertDatabaseHas('fulfillment_allocations', [
             'order_id' => $order->id,
             'status' => 'submitted',
+        ]);
+    }
+
+    public function test_factory_allocation_waits_for_liang_review_before_ready_queue(): void
+    {
+        [$user, $order] = $this->scenario(1);
+        $item = $order->items()->firstOrFail();
+        app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $item->id, 'source_code' => 'FACTORY'],
+        ], null, $user, true);
+
+        $fresh = $order->fresh();
+        self::assertSame('pending_shipment', $fresh->order_status->value);
+        self::assertSame('pending_review', $fresh->workflow_status);
+        $progress = app(\App\Modules\Orders\Application\OrderProgressQuery::class);
+        self::assertSame(1, $progress->domesticReview(Order::query())->whereKey($order->id)->count());
+        self::assertSame(0, $progress->domesticReady(Order::query())->whereKey($order->id)->count());
+        $this->assertDatabaseMissing('order_operational_markers', ['order_id' => $order->id, 'marker' => 'domestic_reviewed']);
+
+        app(\App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService::class)
+            ->decide($fresh, 'approve', null, $user);
+        self::assertSame('sending', $order->fresh()->workflow_status);
+        self::assertSame(0, $progress->domesticReview(Order::query())->whereKey($order->id)->count());
+        self::assertSame(1, $progress->domesticReady(Order::query())->whereKey($order->id)->count());
+    }
+
+    public function test_overseas_allocation_waits_for_dede_review_before_sending(): void
+    {
+        [$user, $order] = $this->scenario(1);
+        $item = $order->items()->firstOrFail();
+        app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $item->id, 'source_code' => 'US-SM'],
+        ], null, $user, true);
+
+        $fresh = $order->fresh();
+        self::assertSame('pending_review', $fresh->workflow_status);
+        $progress = app(\App\Modules\Orders\Application\OrderProgressQuery::class);
+        self::assertSame(1, $progress->applyPhase(Order::query(), 'pending_review')->whereKey($order->id)->count());
+        self::assertSame(0, $progress->readyForShipment(Order::query())->whereKey($order->id)->count());
+
+        app(\App\Modules\Logistics\Application\OverseaWarehouseReviewService::class)->approve($fresh, $user);
+        self::assertSame('sending', $order->fresh()->workflow_status);
+        self::assertSame(0, $progress->applyPhase(Order::query(), 'pending_review')->whereKey($order->id)->count());
+        self::assertSame(1, $progress->readyForShipment(Order::query())->whereKey($order->id)->count());
+    }
+
+    public function test_explicit_manual_sending_override_is_still_available_after_allocation(): void
+    {
+        [$user, $order] = $this->scenario(1);
+        app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $order->items()->firstOrFail()->id, 'source_code' => 'FACTORY'],
+        ], null, $user, true);
+        self::assertSame('pending_review', $order->fresh()->workflow_status);
+        app(\App\Modules\Orders\Application\OrderWorkflowStatusService::class)
+            ->set($order->fresh(), 'sending', (int) $order->fresh()->workflow_revision, $user);
+
+        self::assertSame('sending', $order->fresh()->workflow_status);
+        self::assertSame(1, app(\App\Modules\Orders\Application\OrderProgressQuery::class)
+            ->domesticReady(Order::query())->whereKey($order->id)->count());
+        $this->assertDatabaseMissing('order_operational_markers', [
+            'order_id' => $order->id, 'marker' => 'domestic_reviewed',
         ]);
     }
 
@@ -260,6 +330,8 @@ final class FulfillmentAllocationV1Test extends TestCase
     {
         [$user, $order] = $this->scenario(2);
         $items = $order->items()->orderBy('id')->get();
+        app(\App\Modules\Orders\Application\OrderWorkflowStatusService::class)
+            ->set($order, 'pending_allocation', (int) $order->workflow_revision, $user);
 
         $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/manual', [
             'assignments' => [
@@ -276,6 +348,8 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertTrue((bool) ($allocation->plan_snapshot['is_split'] ?? false));
         self::assertSame(2, $allocation->plan_snapshot['shipment_count']);
         self::assertSame(['FACTORY', 'US-LA'], collect($allocation->plan_snapshot['segments'])->pluck('source_code')->sort()->values()->all());
+        self::assertNull($order->fresh()->workflow_status);
+        self::assertSame(2, $order->fresh()->workflow_revision);
         $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
 
         $children = $order->fresh()->fulfillmentChildren()->with(['items', 'shipment.warehouse'])->orderBy('fulfillment_suffix')->get();
@@ -287,6 +361,8 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame(['fulfillment_derived', 'fulfillment_derived'], $children->map(fn ($child) => $child->order_kind?->value)->all());
         self::assertSame(['US-LA', 'FACTORY'], $children->map(fn ($child) => $child->shipment?->warehouse?->code)->all());
         self::assertSame(['US-LA', 'FACTORY'], $children->pluck('routing_warehouse_code')->all());
+        self::assertSame(['pending_review', 'pending_review'], $children->pluck('workflow_status')->all());
+        self::assertSame([1, 1], $children->pluck('workflow_revision')->all());
         self::assertSame([1, 1], $children->pluck('routing_revision')->all());
         self::assertSame(['USPS', null], $children->map(fn ($child) => $child->shipment?->carrier)->all());
         self::assertSame(['automatic', null], $children->map(fn ($child) => $child->shipment?->carrier_selection_source)->all());
@@ -370,6 +446,7 @@ final class FulfillmentAllocationV1Test extends TestCase
             $order->erp_order_id.'C',
         ], $children->pluck('erp_order_id')->all());
         self::assertSame(['US-LA', 'US-NY', 'US-SM'], $children->map(fn ($child) => $child->shipment?->warehouse?->code)->all());
+        self::assertSame(['pending_review', 'pending_review', 'pending_review'], $children->pluck('workflow_status')->all());
         self::assertSame(['USPS', 'USPS', 'USPS'], $children->map(fn ($child) => $child->shipment?->carrier)->all());
         self::assertSame(['A', 'B', 'C'], collect($allocation->fresh()->plan_snapshot['derived_orders'])->pluck('suffix')->all());
     }

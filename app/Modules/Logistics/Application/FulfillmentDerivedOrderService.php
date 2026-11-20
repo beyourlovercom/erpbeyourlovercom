@@ -6,10 +6,13 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
+use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Infrastructure\Models\OrderWorkflowStatusHistory;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
@@ -21,6 +24,7 @@ final class FulfillmentDerivedOrderService
     public function __construct(
         private readonly ShipmentService $shipments,
         private readonly WarehouseFinalSkuResolver $finalSkus,
+        private readonly OrderWorkflowStatusService $workflow,
         private readonly AuditRecorder $audit,
     ) {}
 
@@ -36,6 +40,7 @@ final class FulfillmentDerivedOrderService
             $this->clearPendingChildren($parent);
             $this->materializeSingleOrderItems($parent, $segment);
             $this->assignShipment($parent, $segment, $actor);
+            $this->resetForAllocationReview($parent, $actor);
 
             return [$this->summary($parent->fresh(['items', 'shipment.warehouse']), $segment, false)];
         }
@@ -72,6 +77,9 @@ final class FulfillmentDerivedOrderService
             }
         }
 
+        // The source parent is not a shipping segment. Let its visible phase
+        // follow the children instead of retaining a stale staff work label.
+        $this->clearSplitParentWorkflowStatus($parent, $actor);
         $keepSuffixes = $children->pluck('fulfillment_suffix')->all();
         $parent->originalFulfillmentChildren()->whereNotIn('fulfillment_suffix', $keepSuffixes)->get()->each(fn (Order $child) => $this->deletePendingChild($child));
 
@@ -159,6 +167,7 @@ final class FulfillmentDerivedOrderService
         }
 
         $this->assignShipment($child->fresh(['items', 'shipment']), $segment, $actor);
+        $this->resetForAllocationReview($child, $actor);
         return $child->fresh(['items', 'shipment.warehouse']);
     }
 
@@ -208,6 +217,66 @@ final class FulfillmentDerivedOrderService
                 'final_sku' => null,
             ])->save();
         }
+    }
+
+    /** A new allocation starts review afresh; an earlier approval must not carry over. */
+    private function resetForAllocationReview(Order $order, Authenticatable $actor): void
+    {
+        $order->operationalMarkers()->whereIn('marker', ['domestic_reviewed', 'domestic_stockout'])->delete();
+
+        $review = OverseaWarehouseReview::query()->where('order_id', $order->id)->first();
+        if ($review) {
+            $before = ['status' => $review->status, 'reviewed_warehouse_id' => $review->reviewed_warehouse_id];
+            $review->forceFill([
+                'status' => 'pending',
+                'progress' => 'pending_review',
+                'note' => null,
+                'submitted_warehouse_id' => $order->fresh('shipment')->shipment?->warehouse_id,
+                'reviewed_warehouse_id' => null,
+                'reviewed_by' => null,
+                'reviewed_at' => null,
+            ])->save();
+            $this->audit->record(
+                AuditActor::user($actor, AuditSource::Web),
+                'oversea.review_reset',
+                OverseaWarehouseReview::class,
+                $review->id,
+                $before,
+                ['status' => 'pending', 'reviewed_warehouse_id' => null],
+                'fulfillment_allocation_requires_review',
+            );
+        }
+
+        $this->workflow->set($order, 'pending_review', (int) $order->workflow_revision, $actor);
+    }
+
+    /** A split parent is a non-shipping aggregate, so children own the review phase. */
+    private function clearSplitParentWorkflowStatus(Order $parent, Authenticatable $actor): void
+    {
+        if ($parent->workflow_status === null) {
+            return;
+        }
+        $before = $parent->workflow_status;
+        $revision = (int) $parent->workflow_revision + 1;
+        $parent->forceFill(['workflow_status' => null, 'workflow_revision' => $revision])->save();
+        // The history destination is non-nullable. Record the effective
+        // aggregate phase while the persisted override is cleared to null.
+        OrderWorkflowStatusHistory::query()->create([
+            'order_id' => $parent->id,
+            'actor_id' => $actor->getAuthIdentifier(),
+            'from_status' => $before,
+            'to_status' => 'allocated',
+            'revision' => $revision,
+        ]);
+        $this->audit->record(
+            AuditActor::user($actor, AuditSource::Web),
+            'order.workflow_status_changed',
+            Order::class,
+            $parent->id,
+            ['workflow_status' => $before],
+            ['workflow_status' => null, 'workflow_revision' => $revision],
+            'fulfillment_split_parent_aggregation',
+        );
     }
 
     private function assignShipment(Order $order, array $segment, Authenticatable $actor): void
