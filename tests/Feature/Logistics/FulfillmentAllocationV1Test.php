@@ -301,6 +301,20 @@ final class FulfillmentAllocationV1Test extends TestCase
         ]);
     }
 
+    public function test_non_review_warehouses_are_not_reclassified_by_allocation(): void
+    {
+        foreach (['TINGON', 'US-AMZ'] as $warehouseCode) {
+            [$user, $order] = $this->scenario(1);
+            app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+                ['order_item_id' => $order->items()->firstOrFail()->id, 'source_code' => $warehouseCode],
+            ], null, $user, true);
+
+            self::assertSame($warehouseCode, $order->fresh('shipment.warehouse')->shipment?->warehouse?->code);
+            self::assertNull($order->fresh()->workflow_status);
+            self::assertSame(0, (int) $order->fresh()->workflow_revision);
+        }
+    }
+
     public function test_direct_shipment_draft_still_forbids_real_warehouse_mismatch(): void
     {
         [$user, $order] = $this->scenario(1);

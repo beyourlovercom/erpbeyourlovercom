@@ -219,9 +219,16 @@ final class FulfillmentDerivedOrderService
         }
     }
 
-    /** A new allocation starts review afresh; an earlier approval must not carry over. */
+    /** Factory and five overseas allocations restart review; partner routes stay untouched. */
     private function resetForAllocationReview(Order $order, Authenticatable $actor): void
     {
+        // This approval gate belongs only to the domestic factory and the
+        // five overseas shipping warehouses. Partner/Amazon flows are separate.
+        $warehouseCode = strtoupper(trim((string) $order->fresh('shipment.warehouse')->shipment?->warehouse?->code));
+        if (! in_array($warehouseCode, ['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'DE', 'CA'], true)) {
+            return;
+        }
+
         $order->operationalMarkers()->whereIn('marker', ['domestic_reviewed', 'domestic_stockout'])->delete();
 
         $review = OverseaWarehouseReview::query()->where('order_id', $order->id)->first();
@@ -247,12 +254,7 @@ final class FulfillmentDerivedOrderService
             );
         }
 
-        // Tingon has its own partner dispatch workflow, with no review queue.
-        // Preserve that deliberate manual-partner path rather than leaving its
-        // orders in a review phase that no staff screen can approve.
-        $warehouseCode = strtoupper(trim((string) $order->fresh('shipment.warehouse')->shipment?->warehouse?->code));
-        $next = $warehouseCode === 'TINGON' ? 'sending' : 'pending_review';
-        $this->workflow->set($order, $next, (int) $order->workflow_revision, $actor);
+        $this->workflow->set($order, 'pending_review', (int) $order->workflow_revision, $actor);
     }
 
     /** A split parent is a non-shipping aggregate, so children own the review phase. */
