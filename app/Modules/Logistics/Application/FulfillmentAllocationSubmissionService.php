@@ -100,7 +100,9 @@ final class FulfillmentAllocationSubmissionService
             $orderItemIds = $locked->items->pluck('id')->map(fn ($id) => (int) $id)->sort()->values();
             abort_unless($normalized->pluck('order_item_id')->sort()->values()->all() === $orderItemIds->all(), 422, '必须为订单中的每个 SKU 完成分仓');
 
-            $stockWarnings = $this->stockGate->assertAcknowledged($locked, $normalized->all(), $stockExceptionAcknowledged);
+            // A manual allocation is the operator's final routing decision. Stock is advisory;
+            // preserve the shortage/unknown evidence without requiring a second approval.
+            $stockWarnings = $this->stockGate->warnings($locked, $normalized->all());
             $measure('stock_eligibility');
 
             $resolvedAssignments = $normalized->map(function (array $row) use ($locked): array {
@@ -118,7 +120,7 @@ final class FulfillmentAllocationSubmissionService
                 $defaultCarrier = trim((string) ($route['carrier'] ?? ''));
                 $providedCarrier = $isFactory ? '' : trim((string) ($row['carrier'] ?? ''));
                 $carrier = $providedCarrier !== '' ? $providedCarrier : $defaultCarrier;
-                abort_if($carrier === '' && ! $isFactory && $row['source_code'] !== 'TINGON', 422, "发货仓 {$row['source_code']} 无法自动确定物流商，请 Vita 人工选择");
+                // A missing carrier is resolved in the later shipping workflow, not at allocation.
                 if ($providedCarrier !== '') {
                     abort_unless(Carrier::query()->where('name', $providedCarrier)->where('is_active', true)->exists(), 422, "物流商 {$providedCarrier} 未启用");
                 }

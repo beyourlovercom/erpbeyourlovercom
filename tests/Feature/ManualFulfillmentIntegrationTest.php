@@ -287,7 +287,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
     }
 
-    public function test_short_stock_quick_allocation_requires_confirmation_then_records_real_pending_allocation(): void
+    public function test_short_stock_quick_allocation_records_real_pending_allocation_without_extra_confirmation(): void
     {
         [$user, $order, $product] = $this->scenario();
         $item = $order->items()->firstOrFail();
@@ -297,12 +297,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         $payload = ['assignments' => [['order_item_id' => $item->id, 'warehouse_id' => $warehouse->id]]];
 
         $this->actingAs($user)->from('/customers/orders/'.$order->id)->post($url, $payload)
-            ->assertRedirect('/customers/orders/'.$order->id)
-            ->assertSessionHasErrors('stock_exception_acknowledged');
-        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
-
-        $this->actingAs($user)->post($url, [...$payload, 'stock_exception_acknowledged' => true])
-            ->assertRedirect()->assertSessionHasNoErrors();
+            ->assertRedirect('/customers/orders/'.$order->id)->assertSessionHasNoErrors();
         $allocation = \App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation::query()
             ->where('order_id', $order->id)->firstOrFail();
         $ack = $allocation->plan_snapshot['stock_exception_acknowledgement'];
@@ -358,7 +353,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         $this->assertSame('pending', DB::table('order_financials')->where('order_id', $order->id)->value('provider_order_status'));
     }
 
-    public function test_unknown_warehouse_inventory_can_be_allocated_only_after_confirmation(): void
+    public function test_unknown_warehouse_inventory_can_be_manually_allocated_without_extra_confirmation(): void
     {
         [$user, $order] = $this->scenario();
         $item = $order->items()->firstOrFail();
@@ -367,8 +362,6 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         $payload = ['assignments' => [['order_item_id' => $item->id, 'warehouse_id' => $warehouse->id]]];
 
         $this->actingAs($user)->from('/customers/orders/'.$order->id)->post($url, $payload)
-            ->assertRedirect()->assertSessionHasErrors('stock_exception_acknowledged');
-        $this->actingAs($user)->post($url, [...$payload, 'stock_exception_acknowledged' => true])
             ->assertRedirect()->assertSessionHasNoErrors();
 
         $allocation = \App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation::query()

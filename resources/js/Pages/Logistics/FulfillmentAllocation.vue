@@ -479,7 +479,7 @@ function splitConstraintError(order:Order){
   const sources=[...new Set(values)]
   const maxSources=order.allocation_decision.policy.max_sources || 26
   if(sources.length>maxSources)return `最多允许 ${maxSources} 个履约来源`
-  for(const source of sources){ if(!['FACTORY','OUTSOURCE','TINGON'].includes(source) && !(manualCarriers[order.id]?.[source] || defaultCarrier(order,source))) return `发货仓 ${sourceLabel(source)} 需要选择物流商` }
+  // Carrier may be selected during shipment; manual allocation only needs the warehouse.
   for(const item of order.items){
     if(!item.is_gift)continue
     const source=manualAssignments[order.id][item.id]
@@ -561,11 +561,7 @@ async function submitManual(stockExceptionAcknowledged = false) {
   if (!order || !props.canOperate || submitting.value) return
   const validation = splitConstraintError(order)
   if (validation) { submitError.value = validation; return }
-  if (selectedStockWarnings.value.length && !stockExceptionAcknowledged) {
-    stockServerWarning.value = ''
-    stockConfirmOpen.value = true
-    return
-  }
+  // Stock availability is displayed as advice; no extra confirmation blocks manual choice.
   const assignments:AllocationAssignment[] = order.items.map(item => {
     const source = manualAssignments[order.id][item.id]
     const carrier = ['FACTORY','OUTSOURCE'].includes(source) ? null : (manualCarriers[order.id]?.[source] || defaultCarrier(order, source))

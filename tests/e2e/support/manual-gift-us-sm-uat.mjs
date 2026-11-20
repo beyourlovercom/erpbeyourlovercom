@@ -16,7 +16,7 @@ const seed = [
     "\\App\\Modules\\Logistics\\Infrastructure\\Xlwms\\XlwmsInventorySnapshot::query()->create(['warehouse_id'=>$w->id,'wh_code'=>'OMS-US-SM','checksum'=>hash('sha256','synthetic-unverified'),'status'=>'applied','fetched_at'=>now(),'applied_at'=>now(),'summary'=>['v2'=>true]]);",
     "$s=\\App\\Modules\\Products\\Infrastructure\\Models\\Product::query()->create(['sku'=>'GIFT-UAT-PLACEHOLDER','name'=>'Gift Placeholder','product_type'=>'simple','source_type'=>'manual','is_active'=>true]);",
     "$v=\\App\\Modules\\Products\\Infrastructure\\Models\\Product::query()->create(['sku'=>'VA617A-GREEN','name'=>'VA617A-GREEN','product_type'=>'simple','source_type'=>'manual','is_active'=>true]);",
-    "\\App\\Modules\\Inventory\\Infrastructure\\Models\\WarehouseInventory::query()->create(['warehouse_id'=>$w->id,'product_id'=>$v->id,'quantity_on_hand'=>5,'quantity_reserved'=>0]);",
+    "\\App\\Modules\\Inventory\\Infrastructure\\Models\\WarehouseInventory::query()->create(['warehouse_id'=>$w->id,'product_id'=>$v->id,'quantity_on_hand'=>0,'quantity_reserved'=>0]);",
     "$u=\\App\\Modules\\Identity\\Infrastructure\\Models\\User::query()->where('email','admin@local.test')->firstOrFail();",
     "$o=\\App\\Modules\\Orders\\Infrastructure\\Models\\Order::query()->create(['internal_order_number'=>'UAT-US-SM-BY489A','erp_order_id'=>'007-1119-c42587','source_type'=>'manual','order_kind'=>'customer','external_order_number'=>'SYNTHETIC-GIFT-UAT','order_date'=>now()->toDateString(),'order_status'=>'pending_shipment','currency'=>'USD','owner_id'=>$u->id,'order_note'=>'Synthetic US-SM gift UAT']);",
     "$o->address()->create(['recipient_name'=>'Synthetic Gift UAT','phone'=>'10000000000','country'=>'US','province_state'=>'CA','city'=>'Los Angeles','address_line_1'=>'123 Test Ave','postal_code'=>'90001']);",
@@ -71,8 +71,28 @@ try {
     assert.equal(await option.isDisabled(), false, 'BY489A should be enabled');
     await select.selectOption(value);
     assert.match(await row.innerText(), /人工库存例外/);
+    const regular = page.locator('.plan-modal .manual-table-wrap tbody tr').filter({ hasText: 'VA617A-GREEN' }).first();
+    await regular.locator('td').nth(4).locator('select').selectOption('US-SM');
     assert.deepEqual(failures, []);
-    process.stdout.write('US_SM_GIFT_DEV_PASS order=007-1119-c42587 sku=BY489A mapping=' + value + ' port=' + port + '\n');
+    process.stdout.write('US_SM_GIFT_DEV_SELECTION_PASS order=007-1119-c42587 sku=BY489A mapping=' + value + ' regular=VA617A-GREEN port=' + port + '\n');
+    if (!hold) {
+        const [submitted] = await Promise.all([
+            page.waitForResponse(r => r.url().includes('/fulfillment-allocation/manual') && r.request().method() === 'POST'),
+            page.getByRole('button', { name: '确认人工分配并提交' }).click(),
+        ]);
+        assert.equal(submitted.status(), 200, 'Manual allocation must submit even with zero regular stock');
+        assert.equal((await submitted.json()).status, 'submitted');
+        const id = submitted.url().match(/\/orders\/(\d+)\/fulfillment-allocation\/manual$/)?.[1];
+        assert(id, 'Missing submitted order ID');
+        const status = await page.request.get(base + '/logistics/orders/' + id + '/fulfillment-allocation/status');
+        assert.equal(status.status(), 200);
+        const saved = await status.json();
+        assert.equal(saved.status, 'submitted');
+        assert.equal(saved.decision_source, 'manual');
+        assert.equal(saved.assignments?.length, 2);
+        assert(saved.assignments.every(a => a.source_code === 'US-SM'));
+        process.stdout.write('US_SM_GIFT_FULL_ORDER_DEV_PASS order=007-1119-c42587 items=2 warehouse=US-SM zero_regular_stock=true\n');
+    }
     if (hold) {
         await page.bringToFront();
         process.stdout.write('US_SM_GIFT_OWNER_UAT_READY url=' + base + '/logistics/wait-stock?search=007-1119-c42587&global_grid=0 synthetic=true\n');
