@@ -16,7 +16,7 @@ describe('OrderWorkflowStatusPill', () => {
     })
     const captions = wrapper.findAll('option').map(node => node.text())
     expect(captions.slice(0,3)).toEqual(['3.3 Cost · 需跟进成本','3.4 Out of stock · 缺货','3.5 Renew · 问题订单'])
-    expect(captions).toContain('Resume · 解除当前状态 / 恢复实际进度')
+    expect(captions).not.toContain('Resume · 解除当前状态 / 恢复实际进度') // KOL has no core resolve command
   })
 
   it('keeps a read-only projection non-editable and explains its source', () => {
@@ -163,6 +163,7 @@ it('exposes manual exception resolution as a real core command with the same rev
       projection: { code: 'exception', en: 'Exception', zh: '异常', color: 'red', source: 'canonical_projection' },
       options: [
         { code: 'exception', en: 'Exception', zh: '异常', color: 'red', mutable: true },
+        { code: 'resolve_exception', en: 'Resolve Exception', zh: '解除异常 / 恢复实际进度', color: 'amber', mutable: true },
       ],
     },
   })
@@ -228,6 +229,7 @@ it('shows missing info as main status and offers a revision-checked restore opti
       options: [
         { code: 'missing_info', en: 'Missing Info', zh: '信息缺失', color: 'amber', mutable: true },
         { code: 'renew', en: 'Renew', zh: '问题订单', color: 'amber', mutable: true },
+        { code: 'resolve_manual_hold', en: 'Resume', zh: '解除当前状态 / 恢复实际进度', color: 'amber', mutable: true },
       ],
     },
   })

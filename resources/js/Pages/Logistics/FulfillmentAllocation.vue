@@ -30,7 +30,7 @@ type DerivedOrderRecord = { order_id:number; erp_order_id:string|null; derived:b
 type ExistingAllocation = { status:string; decision_source:'system_recommendation'|'manual'; selected_plan_key:string|null; decision_note:string|null; plan_snapshot:(Plan & { derived_orders?:DerivedOrderRecord[] })|null; submitted_at:string|null }
 type CarrierRoute = { carrier:string|null; carrier_label:string|null; service:string|null; automatic:boolean }
 type AllocationRejection = { source:string; reason:string; by:string|null; at:string|null }
-type Order = { order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
+type Order = { order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
 type Warehouse = { id:number; slug:string; code:string; name:string; country_code:string|null; can_auto_allocate:boolean }
 type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
@@ -109,6 +109,7 @@ const allocationGridRows = computed<GridListRow[]>(() => filteredOrders.value.ma
   can_edit_warehouse_route:Boolean(props.canEditWarehouseRoute),
   warehouse_route_name:order.routing_warehouse?.name??'未分仓',
   can_edit_workflow_status: Boolean(order.can_edit_workflow_status),
+  workflow_status_options: order.workflow_status_options,
   order_kind:order.order_kind,
   original_number: order.external_order_number ?? '—',
   order_date: order.order_date ?? '—',
@@ -680,8 +681,8 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
           <td><Link v-if="order.order_url" class="order-link" :href="order.order_url">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.allocation_rejection" class="domestic-rejection">⚠ {{ order.allocation_rejection.source }}驳回：{{ order.allocation_rejection.reason }}</small></td>
           <td><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id"
             :projection="order.workflow_status_projection" :revision="order.workflow_revision"
-            :can-edit="Boolean(canEditWorkflowStatus && order.can_edit_workflow_status)"
-            :options="workflowStatusOptions??[]" /><span v-else>—</span></td>
+            :can-edit="Boolean(order.can_edit_workflow_status)"
+            :options="order.workflow_status_options ?? workflowStatusOptions ?? []" /><span v-else>—</span></td>
           <td><OrderWarehouseRouteSelect v-if="order.routing_warehouse" :order-id="order.id"
             :projection="order.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute)"
             :options="warehouseRouteOptions??[]" /><span v-else>—</span></td>

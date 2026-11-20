@@ -4,6 +4,7 @@ import type { ColDef } from 'ag-grid-community'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
 import OrderOmsTransfer from '../../Components/Orders/OrderOmsTransfer.vue'
+import OrderWorkflowGridCell from '../../Components/Orders/OrderWorkflowGridCell.vue'
 import { gridColumn, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
@@ -11,6 +12,9 @@ const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/
 type MasterOrder = {
   id: number; number: string; external_number: string | null; kind: string | null
   source: string | null; collaboration_partner: string | null; status: string | null; archive_state: string
+  workflow_status_projection?: { code: string; en: string; zh: string; color: string; source: string }
+  workflow_revision?: number; can_edit_workflow_status?: boolean
+  workflow_status_options?: { code: string; en: string; zh: string; color: string; mutable: boolean }[]
   warehouse: string | null; recipient: string | null; email: string | null
   skus: string; material_full_name: string; date: string | null; owner: string | null; detail_url: string
 }
@@ -86,6 +90,10 @@ const rows = computed<GridListRow[]>(() => props.orders.data.map(order => ({
   source: order.source ?? '—',
   collaboration_partner: order.collaboration_partner ?? '—',
   status: statusZh[order.status ?? ''] ?? order.status ?? '—',
+  workflow_status_projection: order.workflow_status_projection,
+  workflow_revision: order.workflow_revision,
+  can_edit_workflow_status: order.can_edit_workflow_status,
+  workflow_status_options: order.workflow_status_options,
   archive_state: archiveZh[order.archive_state] ?? '—',
   warehouse: order.warehouse ?? '未分仓',
   recipient: order.recipient ?? '—',
@@ -104,6 +112,8 @@ const columns: ColDef<GridListRow>[] = [
   gridColumn({ colId: 'collaboration_partner', field: 'collaboration_partner', headerName: '合作商', width: 160 }),
   gridColumn({ colId: 'status', field: 'status', headerName: '真实订单状态', width: 154,
     cellRenderer: GlobalGridCell, cellRendererParams: { mode: 'badge' } }),
+  gridColumn({ colId: 'workflow_status', field: 'workflow_status_projection', headerName: '工作状态', width: 184,
+    cellRenderer: OrderWorkflowGridCell }),
   gridColumn({ colId: 'archive_state', field: 'archive_state', headerName: '归档状态', width: 130,
     cellRenderer: GlobalGridCell, cellRendererParams: { mode: 'badge' } }),
   gridColumn({ colId: 'warehouse', field: 'warehouse', headerName: '所属分仓', width: 155 }),
@@ -165,7 +175,7 @@ const changeSort = ({ colId, direction }: { colId: string; direction: 'asc' | 'd
         </GlobalGrid>
         <template #fallback><div class="master-loading" role="status">正在加载订单总表…</div></template>
       </Suspense>
-      <p class="master-help">说明：总表只读展示真实订单记录，不改变订单状态或履约队列。运营归档保留历史；回收站记录仅管理员可查看。表格筛选和分页均在服务端覆盖全部可见记录。</p>
+      <p class="master-help">说明：真实订单状态始终只读；“工作状态”下拉统一使用订单权限和审计接口，不能凭显示名称生成发货或签收记录。运营归档保留历史；回收站仅管理员可查看。</p>
     </section>
   </AuthenticatedLayout>
 </template>

@@ -5,7 +5,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { currentCsrfHeaders } from '../../lib/csrfHeaders'
 
 type Auxiliary = { code: string; en: string; zh: string; color: string }
-type Option = { code: string; en: string; zh: string; color: string; mutable: boolean; source?: string }
+type Option = { code: string; en: string; zh: string; color: string; mutable: boolean; source?: string; disabled_reason?: string | null }
 const props = withDefaults(defineProps<{
   orderId: number
   projection: { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean; auxiliary?: Auxiliary[] }
@@ -27,7 +27,7 @@ const stageNumber: Record<string, string> = {
   returned_follow_up: '3.1', claims: '3.2',
   freight_product_cost_follow_up: '3.3', out_of_stock: '3.4', renew: '3.5', exception: '3.6', cancelled: '2.8',
 }
-const optionCaption = (option: Option) => `${stageNumber[option.code] ? stageNumber[option.code] + ' ' : ''}${option.en} · ${option.zh}`
+const optionCaption = (option: Option) => `${stageNumber[option.code] ? stageNumber[option.code] + ' ' : ''}${option.en} · ${option.zh}${!option.mutable && option.disabled_reason ? '（' + option.disabled_reason + '）' : ''}`
 watch(() => props.projection, (next) => {
   code.value = next.code
   auxiliary.value = next.auxiliary ?? []
@@ -35,16 +35,12 @@ watch(() => props.projection, (next) => {
 }, { deep: true })
 watch(() => props.revision, (next) => { revision.value = next })
 const current = computed(() => props.options.find(option => option.code === code.value) ?? props.projection)
-const visibleOptions = computed<Option[]>(() => [
-  ...props.options.filter(option => option.code !== 'allocated' || code.value === 'allocated'),
-  ...(code.value === 'exception'
-    ? [{ code:'resolve_exception', en:'Resolve Exception', zh:'解除异常 / 恢复实际进度', color:'amber', mutable:true }] : []),
-  ...(['missing_info', 'renew', 'claims', 'returned_follow_up', 'freight_product_cost_follow_up'].includes(code.value)
-    ? [{ code:'resolve_manual_hold', en:'Resume', zh:'解除当前状态 / 恢复实际进度', color:'amber', mutable:true }] : []),
-  ...(code.value === 'out_of_stock' ? [{ code:'resolve_stockout', en:'Restock', zh:'解除缺货', color:'amber', mutable:true }] : []),
-])
+// The server supplies the complete order/actor command catalog, including
+// any permitted resolve action. Never synthesize an executable option in a view.
+const visibleOptions = computed<Option[]>(() =>
+  props.options.filter(option => option.code !== 'allocated' || code.value === 'allocated'))
 const update = async (next: string) => {
-  if (!props.canEdit || saving.value || next === code.value) return
+  if (!props.canEdit || saving.value || next === code.value || !props.options.some(option => option.code === next && option.mutable)) return
   const previous = code.value
   if (previous === 'archived' && !window.confirm('修改归档订单状态将同时恢复运营资格，订单会进入新状态对应的业务列表。确认继续？')) {
     if (select.value) select.value.value = previous

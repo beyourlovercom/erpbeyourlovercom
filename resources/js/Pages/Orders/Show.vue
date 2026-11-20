@@ -110,6 +110,8 @@ type Order = {
   workflow_status_projection?: { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean }
   routing_warehouse?: {code:string;name:string;source:string;revision:number}
   workflow_revision?: number
+  can_edit_workflow_status?: boolean
+  workflow_status_options?: { code:string; en:string; zh:string; color:string; mutable:boolean }[]
   order_note: string | null
   domestic_reject_reason?: string | null
   domestic_rejected_at?: string | null
@@ -1293,7 +1295,7 @@ onBeforeUnmount(() => {
         <!-- Identity strip -->
         <div class="ord-identity-strip">
           <div class="ord-identity-main">
-            <span class="ord-identity-number">{{ order.erp_order_id ?? '—' }}</span><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditWorkflowStatus" :can-manage-auxiliary="canManageAuxiliary" :options="workflowStatusOptions" />
+            <span class="ord-identity-number">{{ order.erp_order_id ?? '—' }}</span><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="Boolean(order.can_edit_workflow_status)" :can-manage-auxiliary="canManageAuxiliary" :options="order.workflow_status_options ?? workflowStatusOptions" />
             <span class="ord-identity-badge ord-source-order-number" data-testid="source-order-number">源订单号：{{ order.external_order_number || '未记录' }}</span>
             <span v-if="order.source_order_status || order.source_type === 'woocommerce'" class="ord-identity-badge ord-source-order-status" :title="order.source_order_status_modified_at ? `网站状态更新时间：${order.source_order_status_modified_at}` : '尚无网站状态同步记录'" data-testid="source-order-status">网站真实状态：{{ order.source_order_status || '未同步' }}</span>
             <span class="ord-identity-badge">{{ displayedOrderKind }}</span>

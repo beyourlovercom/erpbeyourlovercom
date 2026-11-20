@@ -5,8 +5,8 @@
 - GitHub baseline: `beyourlovercom/erpbeyourlovercom@297bbd7e1cb43db1002648bff5703da05f798083`。
 - Isolated US Mac worktree: `feat/erp-order-workflow-unified-control-20261120`。
 - R0 execution provider: GPT Web + US Desktop Commander（只读源码盘点/本文档）。
-- R1–R4 provider status: US Claude Code 登录预检 `loggedIn=false`；须 Owner 手动 OAuth；US Codex CLI 受独立 Owner rewrite-only 规则限制，不用于本工单编程。
-- Current status: R0 inventory captured; R1–R4 NOT STARTED; no UI/backend implementation, tests, PR, merge, deployment or live order mutation.
+- R1–R4 execution provider: Owner 于 2026-11-20 明确禁止 Claude，要求自建 DC；实际使用 GPT Web + 正式 OAuth US Desktop Commander，仅在隔离工作树编辑、构建、测试。未使用 Claude / Codex CLI。
+- Current status: R0–R3 implementation and focused verification completed in isolated branch; R4 real US Mac Dev page preparation and Owner UAT **PENDING**. No Production deployment or live order mutation; no Owner UAT PASS claimed.
 
 ## R0 已证实的不统一根因
 
@@ -64,9 +64,18 @@
 - 验证刷新、跨页保存后更新、失败回滚、保存中禁用、CSRF、目标工作台跳转和实时权限降级；前端禁用不取代后端 403/409/422。
 - Owner Dev UAT 不操作 Production、不使用真实发货或签收接口制造测试事实；Production 部署须单独明确 PASS。
 
-## 阻塞与恢复条件
+## R1–R3 隔离实施与验证证据（2026-11-20）
 
-- 2026-11-20：`/opt/homebrew/bin/claude` 实测 `CLAUDE_AUTH_PREFLIGHT_FAILED: loggedIn=false`，强制要求真人完成 OAuth。
-- US Codex CLI 虽显示已登录，但执行时依据 Owner `OWNER_CODEX_REWRITE_ONLY_2026_11_13` 拒绝编程；不得用重复请求绕开该限制。
-- Owner 在美国 Mac mini 终端自行运行 `claude auth login` 并完成 OAuth，回复“Claude 登录 PASS”，即可在这个已隔离的 worktree 从 R1 继续；不得把验证码/密钥发给 GPT。
-- 若无 Owner 登录，保持 R1–R4 BLOCKED；不得报告通过测试、UAT、PR、merge 或 Production。
+- 新增 `OrderWorkflowStatusPolicy`：同一订单/actor 的 registry 完整选项、逐项 `mutable` / `disabled_reason` 和 `can_edit`；页面不再本地创造可执行解除命令。
+- 各订单入口、总表/归档/国内与海外分仓/天运/财务行载荷接入该策略；统一 `OrderWorkflowStatusPill`（Grid 薄适配）。工作状态可人工调整，真实订单、Shipment、Tracking、签收及付款事实仍分离。
+- 核心 PHP Feature：`OrderWorkflowUnifiedPolicyTest` + `OrderCoreStatusV1Test` + `OrderWorkflowStatusV1Test` PASS（303 assertions；31 framework warnings）；HTTP 含授权/403、版本/history、无 Shipment 伪造和列表/详情权限投影。
+- Vue 状态控件 19/19 PASS；订单/物流页面 222/222 PASS；分仓新工作状态列 1/1 PASS；国内列表 35/35、海外仓 81/81 已包含在页面回归。
+- `npm run typecheck` PASS；`npm run build` PASS；workspace verifier 输出 `ERP_WORKSPACE_TABS_BUILD_PASS`（30 tabs / 3 pinned 合约保持）；`git diff --check` PASS。
+- 分仓完整 Vitest 仍有 5 个原有分仓决策/礼品断言失败；在未经修改的精确 baseline `297bbd7e` 独立工作树同样复现 5 个失败，不是本次状态列引入。不要误报整仓测试为绿色。
+
+## R4 实页 UAT 与交付门禁
+
+- 本隔离工作树尚无 `.env`（只有 `.env.example`）；可重复的 PHP test / 前端 build 不等同已启动有会话的 Dev 实页。
+- 必须在不触碰 Production 数据、不重启设备/Chrome、不覆盖其他 UAT 的前提下准备独立 Dev runtime、登录员工会话并打开所有相关页，尤其 KOL `007-1120-k8230` 的列表与详情、Customer/OMS/Master、国内/海外/分仓/归档/财务。
+- Owner 在已打开的真实 Dev 页面检查下拉、权限与保存行为后明确返回 `PASS`，才能标记 R4 complete/merge-ready。Production 仍需独立明确发布授权。
+- 2026-11-20 早期 Claude OAuth 预检失败是历史记录；Owner 随后明确改用自建 DC，故 Claude 登录不再是本工单的前置条件，也不允许使用 Claude。

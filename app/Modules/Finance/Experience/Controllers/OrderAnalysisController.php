@@ -275,6 +275,9 @@ final class OrderAnalysisController
             'revenue_provenance' => $order->financials?->revenue_provenance,
             'provider_order_status' => $order->financials?->provider_order_status,
             'workflow_status_projection' => $this->workflowProjection($order),
+            'workflow_revision' => (int) $order->workflow_revision,
+            'can_edit_workflow_status' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
+            'workflow_status_options' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             'provider_reconciliation_status' => $order->financials?->reconciliation_status,
             'paid_at' => $order->financials?->paid_at?->toIso8601String(),
             'summary' => array_merge($summary, [

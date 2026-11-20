@@ -641,8 +641,8 @@ final class DomesticLogisticsController
             'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
             'workflow_revision' => (int) $order->workflow_revision,
             'order_kind' => $order->order_kind?->value,
-            'can_edit_workflow_status' => in_array($order->order_kind, [OrderKind::Customer, OrderKind::FulfillmentDerived], true)
-                && ! $order->isOperationallyArchived(),
+            'can_edit_workflow_status' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
+            'workflow_status_options' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             'provider_reference' => $reference,
             // Generic details route redirects by order kind (customer, KOL, derived).
             'order_url' => '/orders/'.$order->id,

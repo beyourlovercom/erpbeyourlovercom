@@ -190,11 +190,10 @@ final class OverseaWarehouseController
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => [
                 ...$this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id), $shipOutAttempts->get($shipment->order_id), $shipOutBatchItems->get($shipment->order_id), $shipOutReadbacks->get($shipment->order_id)),
                 // Logistics access alone is not enough for editing an order's staff workflow progress.
-                'can_edit_workflow_status' => in_array($shipment->order?->order_kind, [OrderKind::Customer, OrderKind::FulfillmentDerived], true)
-                    && $request->user()->can('orders.view')
-                    && $request->user()->can('orders.edit')
-                    && $shipment->order !== null
-                    && $shipment->order->archived_at === null && ! $shipment->order->isOperationallyArchived(),
+                'can_edit_workflow_status' => $shipment->order !== null
+                    && app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($shipment->order, $request->user())['can_edit'],
+                'workflow_status_options' => $shipment->order !== null
+                    ? app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($shipment->order, $request->user())['options'] : [],
             ])->toArray(),
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
             'canEditWarehouseRoute' => (bool) $request->user()?->can('orders.edit'),

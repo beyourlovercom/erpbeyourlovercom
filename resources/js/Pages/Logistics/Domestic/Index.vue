@@ -29,7 +29,7 @@ type PurchaseLine = { id:number; sku:string; quantity:number; purchase_quantity:
 type PurchaseInfo = { id:number; number:string; status:string; carrier:string|null; tracking_number:string|null; received_at:string|null; released_at:string|null; items:PurchaseLine[] }
 type Row = {
   line:number; order_id:number; paid_date:string|null; paid_date_source?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
-  workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }; workflow_revision?:number; can_edit_workflow_status?:boolean; order_kind?:string; routing_warehouse?:{code:string;name:string;source:string;revision:number}
+  workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; order_kind?:string; routing_warehouse?:{code:string;name:string;source:string;revision:number}
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; carrier_selection_source?:string|null; carrier_ready?:boolean; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
   procurement?:PurchaseInfo|null
@@ -192,6 +192,7 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   workflow_status_projection:row.workflow_status_projection,
   workflow_revision:row.workflow_revision??0,
   can_edit_workflow_status:Boolean(row.can_edit_workflow_status),
+  workflow_status_options:row.workflow_status_options,
   order_kind:row.order_kind,
   exception_type:row.exception_type??'—',
   exception_reason:row.exception_reason??'—',
@@ -864,8 +865,8 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                   <td><a :href="row.order_url">{{ row.erp_order_id }}</a></td>
                   <td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id"
                     :projection="row.workflow_status_projection" :revision="row.workflow_revision"
-                    :can-edit="Boolean(canEditWorkflowStatus && row.can_edit_workflow_status)"
-                    :options="workflowStatusOptions??[]" /><span v-else>—</span></td>
+                    :can-edit="Boolean(row.can_edit_workflow_status)"
+                    :options="row.workflow_status_options ?? workflowStatusOptions ?? []" /><span v-else>—</span></td>
                   <td><OrderWarehouseRouteSelect v-if="row.routing_warehouse"
                     :order-id="row.order_id" :projection="row.routing_warehouse"
                     :can-edit="Boolean(canEditWarehouseRoute)" :options="warehouseRouteOptions??[]" /></td>
@@ -971,7 +972,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                 <div v-else-if="row.review_status==='approved'" class="approved">已通过 <button v-if="canReview && row.shipment_status==='pending'" type="button" @click="reopen(row)">重新审核</button></div>
                 <span v-else :class="row.review_status==='conflict' ? 'danger' : ''">{{ row.review_status==='conflict' ? '状态待对账' : row.review_status==='stockout' ? '缺货' : '待审核' }}</span>
               </td>
-              <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a><span v-if="view==='pending' && row.has_liquid" class="domestic-liquid-inline" role="note" :title="'含液体 SKU：'+(row.liquid_skus??[]).join('、')">⚠ 含液体</span></td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(canEditWorkflowStatus && row.can_edit_workflow_status)" :options="workflowStatusOptions??[]" /><span v-else>—</span></td>
+              <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a><span v-if="view==='pending' && row.has_liquid" class="domestic-liquid-inline" role="note" :title="'含液体 SKU：'+(row.liquid_skus??[]).join('、')">⚠ 含液体</span></td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(row.can_edit_workflow_status)" :options="row.workflow_status_options ?? workflowStatusOptions ?? []" /><span v-else>—</span></td>
               <td><OrderWarehouseRouteSelect v-if="row.routing_warehouse" :order-id="row.order_id"
                 :projection="row.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute)"
                 :options="warehouseRouteOptions??[]" /></td>
