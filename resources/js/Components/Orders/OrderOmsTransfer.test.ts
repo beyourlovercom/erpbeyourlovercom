@@ -4,7 +4,7 @@ import { router } from '@inertiajs/vue3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OrderOmsTransfer from './OrderOmsTransfer.vue'
 
-vi.mock('axios', () => ({ default: { post: vi.fn(), isAxiosError: vi.fn(() => false) } }))
+vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn(), isAxiosError: vi.fn(() => false) } }))
 vi.mock('@inertiajs/vue3', () => ({ router: { reload: vi.fn() } }))
 
 const props = {
@@ -19,6 +19,8 @@ const props = {
 beforeEach(() => {
   vi.restoreAllMocks()
   vi.mocked(axios.post).mockReset()
+  vi.mocked(axios.get).mockReset()
+  vi.mocked(axios.get).mockResolvedValue({ data: { partners: [{ id: 1, code: 'CHUNYI', name: '春意' }, { id: 2, code: 'AMAZON_JENNY', name: '亚马逊 Jenny' }], can_manage: false } } as never)
   vi.mocked(router.reload).mockReset()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
@@ -130,6 +132,41 @@ describe('OMS P3 preview and confirm production gates', () => {
     expect((vi.mocked(axios.post).mock.calls[0]?.[1] as FormData).get('import_type')).toBe('kol')
     expect(wrapper.get('button.oms-import-commit').attributes('disabled')).toBeUndefined()
     await wrapper.get('#oms-import-type').setValue('manual_other')
+    expect(wrapper.get('button.oms-import-commit').attributes('disabled')).toBeDefined()
+    expect(axios.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('requires partner selection and binds the preview/confirm to the selected collaborator', async () => {
+    const wrapper = mount(OrderOmsTransfer, {
+      props: { ...props, canConfirmImport: true },
+      global: { stubs: { Teleport: true } },
+    })
+    await wrapper.get('.oms-transfer-actions button').trigger('click')
+    await flushPromises()
+    await wrapper.get('#oms-import-type').setValue('collaboration')
+    expect(wrapper.find('#oms-import-partner').exists()).toBe(true)
+    const fileInput = wrapper.get('input[type="file"]')
+    const file = new File(['xlsx'], 'chunyi.xlsx')
+    Object.defineProperty(fileInput.element, 'files', { configurable: true, value: [file] })
+    await fileInput.trigger('change')
+    const upload = wrapper.findAll('button').find(button => button.text().includes('上传并预检'))
+    expect(upload?.attributes('disabled')).toBeDefined()
+    await wrapper.get('#oms-import-partner').setValue('1')
+    await flushPromises()
+    expect((wrapper.get('#oms-import-partner').element as HTMLSelectElement).value).toBe('1')
+    expect(wrapper.findAll('button').find(button => button.text().includes('上传并预检'))?.attributes('disabled')).toBeUndefined()
+    vi.mocked(axios.post).mockResolvedValueOnce({ data: {
+      count: 1, row_count: 1, valid_count: 1, errors: [], token: 'token-bound-to-chunyi', preview: [],
+    } } as never)
+    await wrapper.findAll('button').find(button => button.text().includes('上传并预检'))?.trigger('click')
+    await flushPromises()
+    const previewPayload = vi.mocked(axios.post).mock.calls[0]?.[1] as FormData
+    expect(previewPayload.get('partner_id')).toBe('1')
+    expect(previewPayload.get('import_type')).toBe('collaboration')
+    expect(wrapper.get('button.oms-import-commit').attributes('disabled')).toBeUndefined()
+    await wrapper.get('#oms-import-partner').setValue('2')
+    expect(wrapper.get('button.oms-import-commit').attributes('disabled')).toBeDefined()
+    await wrapper.get('#oms-import-partner').setValue('1')
     expect(wrapper.get('button.oms-import-commit').attributes('disabled')).toBeDefined()
     expect(axios.post).toHaveBeenCalledTimes(1)
   })

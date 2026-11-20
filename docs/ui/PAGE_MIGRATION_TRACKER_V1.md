@@ -42,6 +42,9 @@
 **2026-11-16 国内历史订单导航变更（新 Work Package；不抹除上表历史验收）：**
 Owner 已对统一列表 + 第二行筛选的交互预览明确 PASS。`速达订单` 与 `纬狮订单` 两个累计历史 Tab 在新版本退出导航，统一替换为 `全部国内订单`（`view=all`），保留 `今日速达`、`今日纬狮`。旧累计书签 `view=4px` / `view=weship` 转向 `view=all&filter_carrier=4px|weship`；原 Shipment、Tracking、模板下载/回传与业务状态不迁移、不删除。筛选在服务器查询级执行，保留分页与 Global Grid 账户偏好。当前此项：**DESIGN_PASS；开发/自动测试进行中；真实 Local/UAT Owner PASS、合并、生产读回分别待核验**。此变更覆盖旧 R4-7A/B 的双累计历史入口设计，不改变其历史实施证据。
 
+**2026-11-19 产品液体/物料全称独立 Work Package（不改变旧 P0 视觉验收）：**
+`ERP-PRODUCT-LIQUID-MATERIAL-20261119` 在隔离分支开发 Product360 物料全称/带液体字段、国内待发货固定含液体标识、产品/订单/库存/海外/外采表格可选物料全称。仍复用现有 Compact Workspace 和账户级列偏好；Owner 已在美国 Mac mini 本地隔离 UAT 实页检查后于 2026-11-19 回复 PASS；PR #806 自动测试 11/11 PASS（该版本前一提交），等待最终文档提交后 CI 和合并，尚未发布 Production。具体证据和门禁见 `docs/60_Codex_Operations/ERP_PRODUCT_LIQUID_MATERIAL_V1_20261119.md`。
+
 **Global Grid 独立发布门禁（与九视图 Compact Workspace 视觉门禁分开）：**
 2026-11-11 R4-6「异常订单」PR #723 已合并并受控发布，
 Owner 正式站六项视觉验收 PASS，Global Grid 7/9 个视图完成。
@@ -136,6 +139,13 @@ R4-7B「纬狮订单」累计视图继续旧表默认 OFF；
 | P4 | 设置 | 备份与迁移 | /settings/backup | 0% / 待盘点 | G0 页面基线 |
 | P4 | 仪表盘 | 仪表盘 | /dashboard | 0% / 待盘点 | G0 页面基线 |
 
+### X · 非菜单工作区增量（2026-11-19）
+
+- 页面：`/kol/affiliatewp/tencent-import`（管理员专属、AffiliateWP 页右上角入口；不更改 67 项菜单基线）。
+- Compact Workspace：采用已有 `erp-form-page`/卡片密度与页面右上角 Action Zone；安全提醒和校验错误留在表单附近，帮助说明放在主体下方。
+- Owner 视觉方案：此前腾讯表格管理员导入预览已获得 Owner 方案确认；代码现处独立 worktree，`npm run build` 与 KOL 自动回归 PASS。**真实 Local/UAT Owner PASS 待完成，未合并、未上线。**
+- 非回归：AffiliateWP 原有立即同步／转换／绑定按钮、网红可见范围、订单规则、Global Grid/Workspace Tabs 均保留。
+
 ## 3. 里程碑状态定义
 
 | 字段 | 必须记录的内容 |
@@ -173,3 +183,4 @@ R4-7B「纬狮订单」累计视图继续旧表默认 OFF；
 | 2026-11-11 | CW-P0-CHINA PR #712 合并、全员顶部 Tab 参数保留、九视图正式发布 | 已部署；公网登录/静态资源/未登录路径健康检查 PASS；生产登录后实际视觉待复核 |
 | 2026-11-16 | PR #764 双击选中文字与复制，Owner 缩限至国内发货 `pending` 新表、各海外仓 `pending` 新表；共享 Grid 默认关闭，仅两处显式启用 | Dev 隔离 Chrome 两处复制/剪贴板回读 PASS、零物流写入；Owner 真实 Dev 页面 UAT 待验收；不得据此合并或发布 Production |
 | 2026-11-17 | 国内发货 `pending` 操作列新增商务「驳回」；沿用理由弹窗与权限，允许尚未实际发货订单撤销 ERP 暂存 Tracking；拆单需全段未发货 | Owner 预览 PASS，独立分支实施与自动测试中；007windows 真实 Dev UAT 待验收；Production 未授权 |
+| 2026-11-19 | ERP 合作订单导入 /orders/collaboration：按合作商动态归属、筛选、列表展示；保留原 15 列模板与历史 TINGON 订单 | Owner 方案 PASS、真实 Local/UAT PASS（2026-11-19）；PR #807 已提交并通过自动回归，待合并；Production 未授权 |

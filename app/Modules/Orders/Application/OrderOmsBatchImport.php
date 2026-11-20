@@ -4,6 +4,7 @@ namespace App\Modules\Orders\Application;
 
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxTableReader;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Infrastructure\Models\OrderCollaborationPartner;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\UploadedFile;
@@ -19,7 +20,7 @@ use Throwable;
 
 final class OrderOmsBatchImport
 {
-    public const IMPORT_TYPES = ['website', 'kol', 'manual_other'];
+    public const IMPORT_TYPES = ['website', 'kol', 'manual_other', 'collaboration'];
 
     public const MAX_ORDERS = 200;
 
@@ -92,7 +93,7 @@ final class OrderOmsBatchImport
             ['recipient_name / province_state / city / address_line_1', '批量建单要求完整收件信息'],
             ['currency', '默认为 USD，支持三位大写货币代码'],
             ['批次限制', '最多 200 个订单、2000 行商品、每单最多 100 行商品；文件上限 5MB'],
-            ['导入方式', '先选择网站／网红／外采订单类型，再选择文件 → 预检 → 确认创建；预检不会创建任何订单'],
+            ['导入方式', '先选择订单类型；合作订单需指定合作商，再选择文件 → 预检 → 确认创建；预检不会创建任何订单'],
             ['安全', '保留 Excel 原始订单号与独立 ERP 编号；不触发 WooCommerce 同步、仓库分配或自动发货'],
         ];
         foreach ($tips as $n => [$key, $value]) {
@@ -187,7 +188,20 @@ final class OrderOmsBatchImport
         return null;
     }
 
-    /** @return array{count:int,row_count:int,valid_count:int,errors:list<array{row:int,message:string}>,preview:list<array<string,mixed>>,token:string|null,orders:list<array<string,mixed>>} */
+    private static function assertPartner(string $importType, ?int $partnerId): void
+    {
+        if ($importType !== OrderSourceType::Collaboration->value) {
+            if ($partnerId !== null) {
+                throw ValidationException::withMessages(['partner_id' => '只有合作订单可以指定合作商。']);
+            }
+
+            return;
+        }
+        if ($partnerId === null || ! OrderCollaborationPartner::query()->whereKey($partnerId)->where('is_active', true)->exists()) {
+            throw ValidationException::withMessages(['partner_id' => '请选择有效且启用中的合作商，再进行预检。']);
+        }
+    }
+
     public static function importKind(string $importType): OrderKind
     {
         if (! in_array($importType, self::IMPORT_TYPES, true)) {
@@ -197,9 +211,10 @@ final class OrderOmsBatchImport
         return $importType === OrderSourceType::Kol->value ? OrderKind::KolFulfillment : OrderKind::Customer;
     }
 
-    public function inspect(UploadedFile $file, Authenticatable $actor, string $importType = 'website'): array
+    public function inspect(UploadedFile $file, Authenticatable $actor, string $importType = 'website', ?int $partnerId = null): array
     {
         self::importKind($importType);
+        self::assertPartner($importType, $partnerId);
         try {
             $parsed = $this->reader->read($file);
         } catch (Throwable $e) {
@@ -379,6 +394,7 @@ final class OrderOmsBatchImport
             'sha' => hash_file('sha256', $file->getRealPath()),
             'actor' => (string) $actor->getAuthIdentifier(),
             'import_type' => $importType,
+            'partner_id' => $partnerId,
             'expires' => now()->addMinutes(15)->timestamp,
             'count' => count($orders), 'row_count' => $rowCount,
         ], JSON_THROW_ON_ERROR)) : null;
@@ -392,9 +408,10 @@ final class OrderOmsBatchImport
     }
 
     /** @return array{created:int,orders:list<array{id:int,erp_order_id:string|null}>} */
-    public function commit(UploadedFile $file, string $token, Authenticatable $actor, string $importType): array
+    public function commit(UploadedFile $file, string $token, Authenticatable $actor, string $importType, ?int $partnerId = null): array
     {
         self::importKind($importType);
+        self::assertPartner($importType, $partnerId);
         try {
             $proof = json_decode(Crypt::decryptString($token), true, 512, JSON_THROW_ON_ERROR);
         } catch (Throwable) {
@@ -403,13 +420,14 @@ final class OrderOmsBatchImport
         if (! is_array($proof)
             || ($proof['actor'] ?? '') !== (string) $actor->getAuthIdentifier()
             || ($proof['import_type'] ?? null) !== $importType
+            || ($proof['partner_id'] ?? null) !== $partnerId
             || ($proof['expires'] ?? 0) < now()->timestamp
             || ! hash_equals((string) ($proof['sha'] ?? ''), (string) hash_file('sha256', $file->getRealPath()))) {
             throw ValidationException::withMessages(['token' => '文件已变化或预检已过期，请重新预检。']);
         }
 
-        return DB::transaction(function () use ($file, $proof, $actor, $importType): array {
-            $data = $this->inspect($file, $actor, $importType);
+        return DB::transaction(function () use ($file, $proof, $actor, $importType, $partnerId): array {
+            $data = $this->inspect($file, $actor, $importType, $partnerId);
             if ($data['errors'] !== [] || $data['count'] !== (int) $proof['count']
                 || $data['row_count'] !== (int) ($proof['row_count'] ?? 0)) {
                 throw ValidationException::withMessages(['file' => '文件数据存在问题或已被导入，请重新预检。']);
@@ -444,6 +462,7 @@ final class OrderOmsBatchImport
                 unset($order['items'], $order['row']);
                 $order['order_kind'] = self::importKind($importType)->value;
                 $order['source_type'] = OrderSourceType::from($importType)->value;
+                $order['collaboration_partner_id'] = $partnerId;
                 $order['owner_id'] = $actor->getAuthIdentifier();
                 $result = $this->orders->create($order, $items, $actor);
                 DB::table('oms_order_import_claims')->where('source_number_normalized', $normalized)

@@ -38,6 +38,7 @@ use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Application\WooCommerceAdminOrderLink;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Infrastructure\Models\OrderCollaborationPartner;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -78,8 +79,9 @@ final class OrderController
         $kind = $this->kindOrNull($request);
         $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view', 'warehouse_route_code']);
         $scope = (string) $request->route('order_scope');
-        if ($scope === 'tingon_partner') {
-            $filters['partner_warehouse_code'] = 'TINGON';
+        if ($scope === 'collaboration') {
+            $filters['collaboration_scope'] = true;
+            $filters['collaboration_partner_filter'] = $this->partnerFilter($request);
         }
         if ($scope === 'external_warehouse') {
             $filters['warehouse_ownership'] = 'external';
@@ -93,10 +95,10 @@ final class OrderController
         $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
         // A Production canary must be explicitly enabled and individually allowlisted;
         // all other users retain the existing Orders list unconditionally.
-        $omsGridAvailable = $kind === null && $scope !== 'external_warehouse' && $scope !== 'tingon_partner'
+        $omsGridAvailable = $kind === null && $scope !== 'external_warehouse' && $scope !== 'collaboration'
             && OrderOmsAvailability::grid($request->user());
         $omsGridEnabled = $omsGridAvailable && $request->boolean('oms_grid');
-        $customerGlobalGridEnabled = ($kind === OrderKind::Customer || $scope === 'tingon_partner') && $request->query('legacy_grid') !== '1';
+        $customerGlobalGridEnabled = ($kind === OrderKind::Customer || $scope === 'collaboration') && $request->query('legacy_grid') !== '1';
         $serverGridEnabled = $omsGridEnabled || $customerGlobalGridEnabled;
         $requestedPageSize = $serverGridEnabled ? (string) $request->query('per_page', '50') : '50';
         $perPage = in_array($requestedPageSize, ['20', '50', '100'], true) ? (int) $requestedPageSize : 50;
@@ -122,26 +124,28 @@ final class OrderController
             ? ($request->user()->can('customers.export') && $request->user()->can('system.permissions.manage'))
             : $request->user()->can('orders.view');
 
-        $orders->getCollection()->loadMissing(['shipment.warehouse', 'manualSync', 'fulfillmentParent', 'latestNoteEntry', ...($customerGlobalGridEnabled ? ['customer'] : [])]);
+        $orders->getCollection()->loadMissing(['shipment.warehouse', 'manualSync', 'fulfillmentParent', 'latestNoteEntry', 'collaborationPartner', ...($customerGlobalGridEnabled ? ['customer'] : [])]);
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments(
             $orders->getCollection()->map(fn (Order $order): int => (int) $order->shipment?->id)->all()
         );
 
         return Inertia::render('Orders/Index', [
             'orderKind' => $kind?->value ?? 'all',
-            'orderScope' => in_array($scope, ['external_warehouse', 'tingon_partner'], true) ? $scope : 'all',
+            'orderScope' => in_array($scope, ['external_warehouse', 'collaboration'], true) ? $scope : 'all',
             'carrierLabels' => collect($this->carrierServices->options())->mapWithKeys(fn (array $row): array => [$row['value'] => $row['label']])->all(),
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order, $trackingStatuses[(int) $order->shipment?->id] ?? null, $customerGlobalGridEnabled))->toArray(),
             'filters' => [
                 ...$request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view', 'warehouse_route_code']),
+                ...($scope === 'collaboration' ? ['partner_id' => $this->partnerFilter($request) ?? ''] : []),
                 ...($serverGridEnabled ? ['sort' => $sort, 'direction' => $direction, 'per_page' => $allRowsAllowed ? 'all' : (string) $orders->perPage(), ...($omsGridEnabled ? ['oms_grid' => '1'] : []), ...$gridColumnFilters] : []),
             ],
             'omsGridAvailable' => $omsGridAvailable,
             'omsGridEnabled' => $omsGridEnabled,
             'customerGlobalGridEnabled' => $customerGlobalGridEnabled,
             'canExportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::export($request->user()),
-            'canConfirmOmsOrders' => $omsGridEnabled && OrderOmsAvailability::import($request->user()),
-            'canImportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::importPreview($request->user())
+            'canConfirmOmsOrders' => ($omsGridEnabled || $scope === 'collaboration') && OrderOmsAvailability::import($request->user())
+                && $request->user()->can('orders.create') && ! KolOrderAccessScope::isKolOnly($request->user()),
+            'canImportOmsOrders' => ($omsGridEnabled || $scope === 'collaboration') && OrderOmsAvailability::importPreview($request->user())
                 && $request->user()->can('orders.create') && ! KolOrderAccessScope::isKolOnly($request->user()),
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => [
                 'code' => $code, ...$definition,
@@ -150,6 +154,7 @@ final class OrderController
             ])->values()->all(),
             'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
+            'collaborationPartners' => $scope === 'collaboration' ? OrderCollaborationPartner::query()->orderBy('name')->get(['id', 'code', 'name']) : [],
             'canExport' => $canExport,
             'canEditWorkflowStatus' => $request->user()->can('orders.edit'),
             'canEditWarehouseRoute' => $request->user()->can('orders.edit'),
@@ -685,7 +690,9 @@ final class OrderController
         KolOrderAccessScope::authorize($request->user(), $order);
         abort_if($order->trashed() || $order->archived_at !== null, 422, '回收站订单不能直接修改状态。');
         $reactivating = $order->isOperationallyArchived();
-        if ($reactivating) abort_unless($request->user()?->can('orders.edit'), 403);
+        if ($reactivating) {
+            abort_unless($request->user()?->can('orders.edit'), 403);
+        }
         abort_unless($request->user()?->can('orders.edit') || $request->user()?->can('domestic.review')
             || app(LogisticsReviewAccess::class)->allows($request->user()), 403);
 
@@ -731,8 +738,9 @@ final class OrderController
         $kind = $this->kindOrNull($request);
         $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view', 'warehouse_route_code']);
         $scope = (string) $request->route('order_scope');
-        if ($scope === 'tingon_partner') {
-            $filters['partner_warehouse_code'] = 'TINGON';
+        if ($scope === 'collaboration') {
+            $filters['collaboration_scope'] = true;
+            $filters['collaboration_partner_filter'] = $this->partnerFilter($request);
         }
         if ($scope === 'external_warehouse') {
             $filters['warehouse_ownership'] = 'external';
@@ -753,16 +761,19 @@ final class OrderController
         }
         $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
         $orders = $includeCustomerEmail ? $this->orders->exportBatched($filters) : $this->orders->exportCursor($filters);
+        $includePartner = $scope === 'collaboration';
+        $partnerNames = $includePartner ? OrderCollaborationPartner::query()->pluck('name', 'id')->all() : [];
 
-        return response()->streamDownload(function () use ($orders, $includeCustomerEmail): void {
+        return response()->streamDownload(function () use ($orders, $includeCustomerEmail, $includePartner, $partnerNames): void {
             $handle = fopen('php://output', 'w');
             fputcsv($handle, [
-                'ERP订单号', '来源订单号', '来源', '订单日期', '收件人',
+                'ERP订单号', '来源订单号', '来源', ...($includePartner ? ['合作商'] : []), '订单日期', '收件人',
                 ...($includeCustomerEmail ? ['客户邮箱'] : []), '国家', '状态', '负责人',
             ]);
             foreach ($orders as $order) {
                 fputcsv($handle, [
                     $order->erp_order_id, $order->external_order_number, $this->sourceLabel($order->source_type),
+                    ...($includePartner ? [$partnerNames[$order->collaboration_partner_id] ?? '待确认'] : []),
                     $order->order_date?->toDateString(), $order->address?->recipient_name,
                     ...($includeCustomerEmail ? [$order->address?->email ?: $order->customer?->email] : []),
                     $order->address?->country, $order->order_status->value, $order->owner?->name,
@@ -787,6 +798,20 @@ final class OrderController
         }
 
         return $columns;
+    }
+
+    private function partnerFilter(Request $request): ?string
+    {
+        $filter = $request->query('partner_id');
+        if (! is_string($filter) || $filter === '') {
+            return null;
+        }
+        if ($filter === 'unassigned') {
+            return $filter;
+        }
+        abort_unless(ctype_digit($filter) && (int) $filter > 0, 422, '合作商筛选参数无效');
+
+        return $filter;
     }
 
     private function kind(Request $request): OrderKind
@@ -841,6 +866,7 @@ final class OrderController
             'source_order_status_modified_at' => $order->relationLoaded('financials') ? $order->financials?->provider_modified_at?->toIso8601String() : null,
             'source_type' => $order->source_type->value,
             'source_label' => $this->sourceLabel($order->source_type),
+            'collaboration_partner' => $order->collaborationPartner?->only(['id', 'code', 'name']),
             'order_kind' => $order->order_kind?->value,
             'order_kind_label' => $order->order_kind ? $this->kindLabel($order->order_kind) : null,
             'fulfillment_parent' => $order->fulfillmentParent ? [
@@ -1128,6 +1154,7 @@ final class OrderController
             OrderSourceType::Website => 'Website',
             OrderSourceType::Kol => 'KOL',
             OrderSourceType::ManualOther => 'Manual Other',
+            OrderSourceType::Collaboration => '合作订单',
             OrderSourceType::Manual => '手动创建',
             OrderSourceType::WooCommerce => 'WooCommerce',
         };

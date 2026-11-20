@@ -26,6 +26,7 @@ use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowGridOptions;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Application\ProductOrderItemMetadata;
 use App\Modules\Shell\Application\GlobalGridPilot;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -134,9 +135,11 @@ final class DomesticLogisticsController
         $requestedSize = (int) $request->query('per_page', 50);
         $pageSize = $gridPilot && in_array($requestedSize, [20, 50, 100], true) ? $requestedSize : 50;
         $rows = $query->orderBy('order_date')->orderBy('id')->paginate($pageSize)->withQueryString();
+        $itemMetadata = app(ProductOrderItemMetadata::class);
+        $fallbackProducts = $itemMetadata->fallbackProductsForOrders($rows->getCollection());
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments($rows->getCollection()
             ->map(fn (Order $order): int => (int) $order->shipment?->id)->all());
-        $rows->through(fn (Order $order, int $index): array => $this->row($order, (($rows->currentPage() - 1) * $rows->perPage()) + $index + 1, $trackingStatuses[(int) $order->shipment?->id] ?? null, $view === 'exceptions'));
+        $rows->through(fn (Order $order, int $index): array => $this->row($order, (($rows->currentPage() - 1) * $rows->perPage()) + $index + 1, $trackingStatuses[(int) $order->shipment?->id] ?? null, $view === 'exceptions', $itemMetadata, $fallbackProducts));
 
         // Inertia partial row reloads do not need nine independent view counts.
         // Keep every count identical on full loads and when viewCounts is requested.
@@ -541,7 +544,9 @@ final class DomesticLogisticsController
                 : $query->whereRaw('1=0');
         }
         foreach (['service', 'tracking', 'recipient', 'sku', 'destination'] as $field) {
-            if ($filters[$field] === '') continue;
+            if ($filters[$field] === '') {
+                continue;
+            }
             $pattern = '%'.addcslashes($filters[$field], '%_\\').'%';
             match ($field) {
                 'service' => $query->whereHas('shipment', fn ($s) => $s->where('service', 'like', $pattern)),
@@ -556,7 +561,7 @@ final class DomesticLogisticsController
         }
     }
 
-    private function row(Order $order, int $line, ?array $tracking = null, bool $includeException = false): array
+    private function row(Order $order, int $line, ?array $tracking, bool $includeException, ProductOrderItemMetadata $metadata, array $fallbackProducts): array
     {
         $shipment = $order->shipment;
         $trackingState = app(LogisticsTrackingListStatus::class)->currentStatus($tracking, $order->manualSync?->website_sync_status);
@@ -572,6 +577,20 @@ final class DomesticLogisticsController
 
         $businessDate = app(OrderBusinessDateResolver::class)->domesticReview($order);
         $amount = app(DomesticReviewAmountResolver::class)->resolve($order);
+        $items = $order->items->map(function ($item) use ($metadata, $fallbackProducts): array {
+            $product = $metadata->productForItem($item, $fallbackProducts);
+
+            return [
+                'sku' => WarehouseSkuPresentation::sku($item),
+                'final_sku' => $item->final_sku,
+                'source_sku' => $item->source_sku ?: $item->sku,
+                'quantity' => (int) $item->quantity,
+                'has_liquid' => (bool) ($product?->has_liquid ?? false),
+                'material_full_name' => $product?->material_full_name,
+            ];
+        })->values();
+        $liquidSkus = $items->filter(fn (array $item): bool => $item['has_liquid'])
+            ->pluck('sku')->filter()->unique()->values()->all();
 
         $exception = $includeException
             ? $this->exceptionSummary($order, $conflict, $stockout)
@@ -586,6 +605,8 @@ final class DomesticLogisticsController
             'amount_currency' => $amount['currency'],
             'amount_source' => $amount['source'],
             'order_id' => (int) $order->id,
+            'has_liquid' => count($liquidSkus) > 0,
+            'liquid_skus' => $liquidSkus,
             'source_type' => ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type) instanceof \BackedEnum
                 ? ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type)->value
                 : (string) ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type),
@@ -642,12 +663,7 @@ final class DomesticLogisticsController
                         : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
                         ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
                         : ['未选定速达或纬狮物流商']))),
-            'items' => $order->items->map(fn ($item) => [
-                'sku' => WarehouseSkuPresentation::sku($item),
-                'final_sku' => $item->final_sku,
-                'source_sku' => $item->source_sku ?: $item->sku,
-                'quantity' => (int) $item->quantity,
-            ])->values()->all(),
+            'items' => $items->all(),
         ];
     }
 

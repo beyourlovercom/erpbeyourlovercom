@@ -10,9 +10,9 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 type MasterOrder = {
   id: number; number: string; external_number: string | null; kind: string | null
-  source: string | null; status: string | null; archive_state: string
+  source: string | null; collaboration_partner: string | null; status: string | null; archive_state: string
   warehouse: string | null; recipient: string | null; email: string | null
-  skus: string; date: string | null; owner: string | null; detail_url: string
+  skus: string; material_full_name: string; date: string | null; owner: string | null; detail_url: string
 }
 type Pager = { data: MasterOrder[]; current_page: number; last_page: number; per_page: number; total: number }
 type MasterFilters = Record<string, string>
@@ -48,6 +48,7 @@ const sources = [
   { key: 'website', label: '网站' },
   { key: 'manual', label: '手工' },
   { key: 'manual_other', label: '其他手工' },
+  { key: 'collaboration', label: '合作订单' },
   { key: 'kol', label: '网红' },
 ]
 const params = (overrides: Record<string, string | number> = {}) => ({
@@ -83,12 +84,14 @@ const rows = computed<GridListRow[]>(() => props.orders.data.map(order => ({
   external_number: order.external_number ?? '—',
   kind: kindsZh[order.kind ?? ''] ?? order.kind ?? '—',
   source: order.source ?? '—',
+  collaboration_partner: order.collaboration_partner ?? '—',
   status: statusZh[order.status ?? ''] ?? order.status ?? '—',
   archive_state: archiveZh[order.archive_state] ?? '—',
   warehouse: order.warehouse ?? '未分仓',
   recipient: order.recipient ?? '—',
   email: order.email ?? '—',
   sku: order.skus || '—',
+  material_full_name: order.material_full_name || '—',
   date: order.date ?? '—',
   owner: order.owner ?? '—',
   order_url: order.detail_url,
@@ -98,6 +101,7 @@ const columns: ColDef<GridListRow>[] = [
     cellRenderer: GlobalGridCell, cellRendererParams: { mode: 'link', hrefFor: (row: GridListRow) => String(row.order_url) } }),
   gridColumn({ colId: 'external_number', field: 'external_number', headerName: '来源单号', width: 188 }),
   gridColumn({ colId: 'kind', field: 'kind', headerName: '订单类型', width: 140 }),
+  gridColumn({ colId: 'collaboration_partner', field: 'collaboration_partner', headerName: '合作商', width: 160 }),
   gridColumn({ colId: 'status', field: 'status', headerName: '真实订单状态', width: 154,
     cellRenderer: GlobalGridCell, cellRendererParams: { mode: 'badge' } }),
   gridColumn({ colId: 'archive_state', field: 'archive_state', headerName: '归档状态', width: 130,
@@ -108,6 +112,7 @@ const columns: ColDef<GridListRow>[] = [
   gridColumn({ colId: 'recipient', field: 'recipient', headerName: '收件人', width: 152 }),
   gridColumn({ colId: 'email', field: 'email', headerName: '客户邮箱', width: 210 }),
   gridColumn({ colId: 'sku', field: 'sku', headerName: 'SKU', width: 225 }),
+  gridColumn({ colId: 'material_full_name', field: 'material_full_name', headerName: '物料全称', width: 350, hide: true, tooltipField: 'material_full_name' }),
   gridColumn({ colId: 'owner', field: 'owner', headerName: '负责人', width: 120 }),
   gridColumn({ colId: 'actions', field: 'id', headerName: '操作', width: 116,
     cellRenderer: GlobalGridCell, cellRendererParams: { mode: 'actions',

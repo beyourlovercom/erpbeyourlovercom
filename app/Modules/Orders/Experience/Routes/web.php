@@ -2,14 +2,15 @@
 
 use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
 use App\Modules\Orders\Experience\Controllers\KolOrderLinkPreviewController;
+use App\Modules\Orders\Experience\Controllers\OrderCollaborationPartnerController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
 use App\Modules\Orders\Experience\Controllers\OrderMasterController;
-use App\Modules\Orders\Experience\Controllers\OrderWarehouseRouteController;
 use App\Modules\Orders\Experience\Controllers\OrderNoteController;
 use App\Modules\Orders\Experience\Controllers\OrderOmsTransferController;
 use App\Modules\Orders\Experience\Controllers\OrderOperationalArchiveController;
 use App\Modules\Orders\Experience\Controllers\OrderSavedViewController;
 use App\Modules\Orders\Experience\Controllers\OrderTrashController;
+use App\Modules\Orders\Experience\Controllers\OrderWarehouseRouteController;
 use App\Modules\Orders\Experience\Controllers\WooCommerceInboundController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -46,8 +47,11 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::patch('/orders/{order}/workflow-status', [OrderController::class, 'updateWorkflowStatus'])->middleware('can:orders.view')->whereNumber('order')->name('orders.workflow-status.update');
     Route::delete('/orders/{order}/auxiliary-status/{code}', [OrderController::class, 'removeAuxiliaryStatus'])
         ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->where('code', '[a-z_]+')->name('orders.auxiliary-status.remove');
-    Route::get('/orders/collaboration', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'tingon_partner');
-    Route::get('/orders/collaboration/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'tingon_partner');
+    Route::get('/orders/collaboration', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'collaboration');
+    Route::get('/orders/collaboration/partners', [OrderCollaborationPartnerController::class, 'index'])->middleware('can:orders.view')->name('orders.collaboration.partners');
+    Route::post('/orders/collaboration/partners', [OrderCollaborationPartnerController::class, 'store'])->middleware('can:system.permissions.manage')->name('orders.collaboration.partners.store');
+    Route::patch('/orders/collaboration/partners/{partner}', [OrderCollaborationPartnerController::class, 'update'])->middleware('can:system.permissions.manage')->name('orders.collaboration.partners.update');
+    Route::get('/orders/collaboration/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'collaboration');
     Route::get('/orders/procurement', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
     Route::get('/orders/{order}', [OrderController::class, 'showAny'])->middleware('can:orders.view')->whereNumber('order')->name('orders.show');
     Route::get('/orders/procurement/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');

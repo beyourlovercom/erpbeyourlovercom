@@ -22,7 +22,7 @@ import { publishGlobalFeedback } from '../../../lib/globalFeedback'
 import { resolveWarehousePortal } from '../../../lib/warehousePortal'
 
 type WarehouseOption = { key:string; id:number; code:string; label:string; carrier:string|null; url:string }
-type Item = { sku:string|null; quantity:number }
+type Item = { sku:string|null; quantity:number; material_full_name?:string|null }
 type CarrierServiceOption = { id:number; key:string; value:string; label:string; name_en:string|null; name_zh:string|null }
 type CarrierOption = { value:string; label:string; default_service_id:number|null; default_service_value:string|null; services:CarrierServiceOption[] }
 type DispatchProjection = {status:string;label:string;detail:string;oms_order_no:string|null;last_checked_at:string|null;failure_code:string|null;can_retry_local_block:boolean}
@@ -59,7 +59,7 @@ type Row = {
   shipout_production?:ShipOutDispatchState|null
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page:number; total:number; from:number|null; to:number|null; links?:{url:string|null;label:string;active:boolean}[] }
-type ColumnKey = 'line'|'order'|'order_date'|'status'|'route'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'
+type ColumnKey = 'line'|'order'|'order_date'|'status'|'route'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'|'material_full_name'
 const columnDefinitions: GridColumnDefinition<ColumnKey>[] = [
   { key:'line', label:'#', defaultVisible:true },
   { key:'order', label:'订单号', defaultVisible:true },
@@ -74,6 +74,7 @@ const columnDefinitions: GridColumnDefinition<ColumnKey>[] = [
   { key:'recipient', label:'收件人', defaultVisible:true },
   { key:'country', label:'国家', defaultVisible:true },
   { key:'items', label:'SKU / 数量', defaultVisible:true },
+  { key:'material_full_name', label:'物料全称', defaultVisible:false },
 ]
 type TrackingImportRow = { row:number; order_id:number|null; order_number:string; tracking_number:string; carrier:string|null; shipped_at:string; shipped_time_source:'provider'|'apply'; provider_order_reference:string|null; provider_service:string|null; provider_status:string|null; status:'apply'|'noop'|'blocked'; message:string }
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
@@ -1217,6 +1218,7 @@ const reject = (row:Row) => {
   router.post(`/logistics/oversea/orders/${row.order_id}/reject`, { note }, { preserveScroll:true, preserveState:true })
 }
 const itemText = (row:Row) => row.items.map(item => `${item.sku ?? '无SKU'} × ${item.quantity}`).join(' / ') || '—'
+const materialText = (row:Row) => row.items.map(item => item.material_full_name ? `${item.sku??'无SKU'}：${item.material_full_name}` : null).filter(Boolean).join('；') || '—'
 const pageUrl = (page:number, perPage:number = props.rows.per_page || 50) => {
   if(!gridEnabled.value)return `${basePath.value}?view=${encodeURIComponent(props.view)}&page=${page}&per_page=${perPage}`
   const q=new URLSearchParams({view:props.view,page:String(page),per_page:String(perPage),global_grid:gridEnabled.value?'1':'0'})
@@ -1346,6 +1348,7 @@ const overseaGridRows = computed<GridListRow[]>(()=>visibleRows.value.map(row=>(
   tracking_number:row.tracking_number??'',note:row.note??'',
   recipient_name:row.recipient_name??'—',country:row.country??'—',
   sku:row.items.map(item=>item.sku??'无SKU').join(' / ')||'—',
+  material_full_name:materialText(row),
   quantity:row.items.map(item=>item.quantity).join(' / ')||'—',
   tracking_sync_status:row.source_type==='woocommerce'?trackingLabel(row.tracking_sync_status):'—',
   dispatch_status:row.warehouse_dispatch?.label??'—',
@@ -1400,6 +1403,7 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'recipient',field:'recipient_name',headerName:'收件人',width:140}),
   gridColumn({colId:'country',field:'country',headerName:'国家',width:106}),
   gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:210,tooltipField:'sku'}),
+  gridColumn({colId:'material_full_name',field:'material_full_name',headerName:'物料全称',width:300,hide:true,tooltipField:'material_full_name'}),
   gridColumn({colId:'quantity',field:'quantity',headerName:'数量',width:95}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:126}),
   gridColumn({colId:'shipped_at',field:'shipped_at',headerName:'发货时间',width:188,sortable:true}),
@@ -1864,6 +1868,7 @@ const compactPages = computed<(number|string)[]>(() => {
                 <template v-else-if="column.key === 'note'"><div class="note-cell"><input v-model="draft(row).note" :disabled="!canEditRow || inlineSaveBusy[row.order_id]" class="note-input" :class="{ error: !!rowErrors[row.order_id] }"  :placeholder="warehouseKey==='us-moreplus'?'仅填备注；USPS单号自动转入Tracking':'等海运 / 等空运 / 缺货 / 太贵 / 送不到…'" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></template>
                 <template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template>
                 <template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template>
+                <template v-else-if="column.key === 'material_full_name'"><span :title="materialText(row)">{{ materialText(row) }}</span></template>
                 <template v-else>{{ itemText(row) }}</template>
               </td>
               <td><span v-if="row.source_type==='woocommerce'" class="tracking-sync-status" :title="[row.tracking_sync_reason, row.tracking_sync_verified_at ? '最近官网验证：' + new Date(row.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12:false }) : '尚无官网验证记录'].filter(Boolean).join('；')" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="tracking-sync-failure">{{ row.tracking_sync_reason }}</small></td>

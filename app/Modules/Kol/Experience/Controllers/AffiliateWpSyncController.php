@@ -8,16 +8,16 @@ use App\Modules\Kol\Application\AffiliateWp\AffiliateSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\CouponProvisioningService;
 use App\Modules\Kol\Application\AffiliateWp\CouponSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\KolProvisioningService;
-use App\Modules\Kol\Application\Reconciliation\KolReconciliationService;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
 use App\Modules\Kol\Application\KolScope;
+use App\Modules\Kol\Application\Reconciliation\KolReconciliationService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use Carbon\CarbonImmutable;
 use DomainException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\UploadedFile;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
@@ -67,6 +67,7 @@ final class AffiliateWpSyncController
         return Inertia::render('Kol/AffiliateWp/Index', [
             'canManageApprovals' => $request->user()->can('kol.approvals.manage'),
             'canManageAffiliates' => $canManageAffiliates,
+            'canManageTencentImport' => $canManageAffiliates && $request->user()->can('kol.operate') && $request->user()->can('system.permissions.manage'),
             'canOpenBindingActivation' => $request->user()->can('system.permissions.manage') && $request->user()->can('kol.operate') && $canManageAffiliates,
             'affiliates' => $this->syncService->workspaceRows($connectionKey),
             'coupons' => $this->couponSyncService->workspaceRows($connectionKey),
@@ -80,6 +81,7 @@ final class AffiliateWpSyncController
     public function reconciliation(Request $request): Response
     {
         $connectionKey = (string) ($this->gateway->descriptor()['connection_key'] ?? '');
+
         return Inertia::render('Kol/AffiliateWp/Reconciliation', [
             'connectionKey' => $connectionKey,
             'batches' => $this->reconciliationService->workspace($connectionKey),
@@ -87,11 +89,12 @@ final class AffiliateWpSyncController
         ]);
     }
 
-    public function previewReconciliation(Request $request): \Illuminate\Http\JsonResponse
+    public function previewReconciliation(Request $request): JsonResponse
     {
         $request->validate(['file' => 'required|file|mimes:csv,txt,xlsx|max:65536']);
         $connectionKey = (string) ($this->gateway->descriptor()['connection_key'] ?? '');
         $batch = $this->reconciliationService->preview($request->file('file'), $connectionKey, $request->user());
+
         return response()->json(['batch' => [
             'id' => $batch->id, 'source_type' => $batch->source_type, 'original_filename' => $batch->original_filename,
             'checksum' => $batch->checksum, 'total_rows' => $batch->total_rows, 'distinct_source_identities' => $batch->distinct_source_identities,
@@ -175,7 +178,6 @@ final class AffiliateWpSyncController
             : 'KOL Provision 请求已提交（当前状态：'.$status.'）。');
     }
 
-
     public function syncCoupons(Request $request): RedirectResponse
     {
         $connectionKey = (string) ($this->gateway->descriptor()['connection_key'] ?? '');
@@ -183,6 +185,7 @@ final class AffiliateWpSyncController
             $result = $this->couponSyncService->sync($connectionKey, $request->user());
         } catch (RuntimeException $exception) {
             report($exception);
+
             return back()->withErrors(['coupon_sync' => 'Coupon 同步失败。请检查 Connector / WooCommerce 状态后重试。']);
         }
 
@@ -219,6 +222,7 @@ final class AffiliateWpSyncController
             return back()->withErrors(['coupon_provision' => $exception->getMessage()]);
         } catch (RuntimeException $exception) {
             report($exception);
+
             return back()->withErrors(['coupon_provision' => 'Coupon Provider 请求失败，未报告成功。']);
         }
 

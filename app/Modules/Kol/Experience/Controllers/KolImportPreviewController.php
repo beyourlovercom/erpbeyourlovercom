@@ -15,7 +15,7 @@ final class KolImportPreviewController
     public function index(Request $request): Response
     {
         return Inertia::render('Kol/ImportPreview', [
-            'batches' => $this->service->workspace(),
+            'batches' => $this->service->workspace($request->user()),
             'canManageOwnerMapping' => $request->user()->can('kol.approvals.manage') && $request->user()->can('kol.affiliates.manage'),
             'canOpenImportActivation' => $request->user()->can('system.permissions.manage') && $request->user()->can('kol.operate') && $request->user()->can('kol.affiliates.manage'),
         ]);
@@ -25,6 +25,7 @@ final class KolImportPreviewController
     {
         $data = $request->validate(['reconciliation_batch_id' => 'required|integer|exists:kol_reconciliation_batches,id']);
         $batch = $this->service->generate((int) $data['reconciliation_batch_id'], $request->user());
+
         return response()->json(['batch' => $this->service->batchView($batch)]);
     }
 }

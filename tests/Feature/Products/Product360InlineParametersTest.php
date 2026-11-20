@@ -4,6 +4,7 @@ namespace Tests\Feature\Products;
 
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Products\Application\ProductService;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductParameterSubmission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -21,6 +22,7 @@ final class Product360InlineParametersTest extends TestCase
             $role->permissions()->firstOrCreate(['key' => $permission], ['label' => $permission]);
         }
         $user->roles()->attach($role);
+
         return $user;
     }
 
@@ -69,10 +71,9 @@ final class Product360InlineParametersTest extends TestCase
         $this->actingAs($operator)->put('/products/'.$product->id.'/inline-parameters',
             $this->payload(['has_battery' => false]))->assertRedirect();
         $this->assertFalse($product->fresh()->has_battery);
-        $this->get('/products/'.$product->id)->assertInertia(fn ($page) =>
-            $page->where('product.has_battery', false)
-                ->where('product.brand', null)
-                ->where('product.sku', $product->sku));
+        $this->get('/products/'.$product->id)->assertInertia(fn ($page) => $page->where('product.has_battery', false)
+            ->where('product.brand', null)
+            ->where('product.sku', $product->sku));
 
         $this->actingAs($operator)->put('/products/'.$product->id.'/inline-parameters',
             $this->payload(['has_battery' => true]))->assertRedirect();
@@ -82,6 +83,66 @@ final class Product360InlineParametersTest extends TestCase
             $this->payload(['has_battery' => 'maybe', 'length_cm' => 26]))
             ->assertSessionHasErrors('has_battery');
         $this->assertEquals(10, $product->fresh()->length_cm);
+    }
+
+    public function test_new_manual_products_default_only_exact_approved_liquid_skus_to_true(): void
+    {
+        $service = app(ProductService::class);
+        foreach (['BY489A', 'BV339A', 'BV339A-P', 'BV339A-Y'] as $sku) {
+            $product = $service->createManual(['sku' => $sku, 'name' => $sku.' UAT']);
+            $this->assertTrue($product->fresh()->has_liquid, $sku);
+            $this->assertNull($product->fresh()->material_full_name);
+        }
+        foreach (['MF414A', 'BV339A-Z', 'BY489A-P'] as $sku) {
+            $product = $service->createManual(['sku' => $sku, 'name' => $sku.' UAT']);
+            $this->assertFalse($product->fresh()->has_liquid, $sku);
+        }
+    }
+
+    public function test_variant_backfill_migration_marks_only_existing_approved_skus(): void
+    {
+        foreach (['BY489A', 'BV339A-P', 'BV339A-Y', 'BV339A-Z'] as $sku) {
+            Product::create(['sku' => $sku, 'name' => $sku, 'has_liquid' => false]);
+        }
+        $migration = require database_path('migrations/2026_11_19_150000_mark_bv339a_variants_as_liquid.php');
+        $migration->up();
+        $this->assertTrue((bool) Product::where('sku', 'BV339A-P')->value('has_liquid'));
+        $this->assertTrue((bool) Product::where('sku', 'BV339A-Y')->value('has_liquid'));
+        $this->assertFalse((bool) Product::where('sku', 'BV339A-Z')->value('has_liquid'));
+        $this->assertFalse((bool) Product::where('sku', 'BY489A')->value('has_liquid'));
+        $migration->down();
+        $this->assertTrue((bool) Product::where('sku', 'BV339A-P')->value('has_liquid'));
+    }
+
+    public function test_manual_liquid_override_remains_permitted(): void
+    {
+        $product = app(ProductService::class)->createManual(['sku' => 'BV339A-P', 'name' => 'Override', 'has_liquid' => false]);
+        $this->assertFalse($product->fresh()->has_liquid);
+    }
+
+    public function test_liquid_and_full_material_name_are_erp_owned_editable_master_fields(): void
+    {
+        $product = $this->product();
+        $operator = $this->userWith(['products.view', 'products.operate']);
+        $this->assertFalse($product->fresh()->has_liquid);
+        $this->assertNull($product->fresh()->material_full_name);
+        $fullName = 'BV339A 胸部按摩仪成品 紫色 / BEYOURLOVER';
+
+        $this->actingAs($operator)->put('/products/'.$product->id.'/inline-parameters',
+            $this->payload(['has_liquid' => true, 'material_full_name' => $fullName]))->assertRedirect();
+        $this->assertTrue($product->fresh()->has_liquid);
+        $this->assertSame($fullName, $product->fresh()->material_full_name);
+        $this->get('/products/'.$product->id)->assertInertia(fn ($page) => $page
+            ->where('product.has_liquid', true)->where('product.material_full_name', $fullName));
+
+        $this->put('/products/'.$product->id.'/inline-parameters',
+            $this->payload(['has_liquid' => 'maybe', 'material_full_name' => 'Cannot save']))
+            ->assertSessionHasErrors('has_liquid');
+        $this->assertSame($fullName, $product->fresh()->material_full_name);
+        $this->actingAs($this->userWith(['products.view']))
+            ->put('/products/'.$product->id.'/inline-parameters',
+                $this->payload(['has_liquid' => false, 'material_full_name' => 'Viewer edit']))->assertForbidden();
+        $this->assertTrue($product->fresh()->has_liquid);
     }
 
     public function test_inline_weight_update_preserves_canonical_weight_evidence(): void
@@ -114,8 +175,7 @@ final class Product360InlineParametersTest extends TestCase
         $this->assertSame((int) $operator->id, (int) $pending->created_by);
         $this->assertNull($pending->reviewed_at);
         $this->assertSame('New pending', $pending->measurements['material']);
-        $this->get('/products/'.$product->id)->assertInertia(fn ($page) =>
-            $page->where('approvedParameterMeasurements.material', 'Old approved'));
+        $this->get('/products/'.$product->id)->assertInertia(fn ($page) => $page->where('approvedParameterMeasurements.material', 'Old approved'));
     }
 
     public function test_viewer_and_unassigned_factory_account_cannot_save(): void

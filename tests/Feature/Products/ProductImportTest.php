@@ -17,8 +17,10 @@ final class ProductImportTest extends TestCase
     {
         parent::setUp();
         $directory = storage_path('framework/testing');
-        if (! is_dir($directory)) mkdir($directory, 0777, true);
-        $this->csvPath = tempnam($directory, 'woo_test_') . '.csv';
+        if (! is_dir($directory)) {
+            mkdir($directory, 0777, true);
+        }
+        $this->csvPath = tempnam($directory, 'woo_test_').'.csv';
     }
 
     protected function tearDown(): void
@@ -73,6 +75,23 @@ final class ProductImportTest extends TestCase
         $this->assertSame(0, $result->invalid);
         $this->assertDatabaseCount('products', 2);
         $this->assertDatabaseHas('products', ['woocommerce_product_id' => 1001, 'sku' => 'SKU-A', 'name' => 'Product A']);
+    }
+
+    public function test_csv_new_products_receive_exact_liquid_defaults_without_overwriting_manual_edits(): void
+    {
+        $this->writeCsv([
+            [1101, 'simple', 'BV339A-P', '', 'Pink', '', 59, 89],
+            [1102, 'simple', 'BV339A-Y', '', 'Yellow', '', 59, 89],
+            [1103, 'simple', 'BV339A-Z', '', 'Unapproved variant', '', 59, 89],
+        ]);
+        $service = app(ProductService::class);
+        $this->assertSame(3, $service->import($this->csvPath)->inserted);
+        $this->assertTrue((bool) Product::where('sku', 'BV339A-P')->value('has_liquid'));
+        $this->assertTrue((bool) Product::where('sku', 'BV339A-Y')->value('has_liquid'));
+        $this->assertFalse((bool) Product::where('sku', 'BV339A-Z')->value('has_liquid'));
+        Product::where('sku', 'BV339A-P')->update(['has_liquid' => false]);
+        $this->assertSame(3, $service->import($this->csvPath)->skipped);
+        $this->assertFalse((bool) Product::where('sku', 'BV339A-P')->value('has_liquid'));
     }
 
     public function test_import_is_idempotent(): void
