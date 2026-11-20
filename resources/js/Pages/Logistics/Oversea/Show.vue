@@ -125,6 +125,7 @@ const inlineSaveBusy = reactive<Record<number,boolean>>({})
 const inlineSaveFeedback = reactive<Record<number,string>>({})
 const trackingSelection = ref<number[]>([])
 const reviewSelection = ref<number[]>([])
+const returnAllocationSelection = ref<number[]>([])
 // All visible eligible rows may be operationally archived, independently of
 // review/shipout/tracking eligibility. This does not grant archive permission.
 const archiveSelection = ref<number[]>([])
@@ -1055,6 +1056,9 @@ const reviewBulkOptions = computed(()=> {
     {value:'reject',label:'批量驳回',reasonRequired:true},
   )
   if(props.canReview && props.view==='stockout')result.push({value:'restock',label:'批量已到货-可发货'})
+  if(props.canReview && ['review','stockout','pending'].includes(props.view))result.push(
+    {value:'force_return_allocation',label:'批量到待分仓'},
+  )
   // Same audited operational archive endpoint and permission as domestic grids.
   if(props.canArchive && props.view!=='stockout')result.push({value:'archive',label:'批量归档'})
   if(bulkShipPreviewScope.value)result.push({value:'bulk_ship',label:'批量确认发货'})
@@ -1138,6 +1142,36 @@ const closeBulkShip = () => {
 }
 const applyReviewBulk = async (payload:{action:string;reason:string}) => {
   if(bulkBusy.value||!reviewBulkOptions.value.some(opt=>opt.value===payload.action))return
+  if(payload.action==='force_return_allocation'){
+    const ids=[...returnAllocationSelection.value]
+    if(!props.canReview||!ids.length)return
+    if(ids.length>50){
+      publishGlobalFeedback({state:'BLOCKED',title:'每批最多退回 50 单',message:'请减少勾选后重试。'})
+      return
+    }
+    bulkBusy.value=true
+    try{
+      const response=await fetch('/logistics/oversea/batch-return-allocation',{
+        method:'POST',credentials:'same-origin',cache:'no-store',
+        headers:{Accept:'application/json','Content-Type':'application/json','X-Requested-With':'XMLHttpRequest',...currentCsrfHeaders()},
+        body:JSON.stringify({order_ids:ids}),
+      })
+      const data=await response.json().catch(()=>({})) as {message?:string;results?:{order_id:number;ok:boolean;message:string}[]}
+      if(!response.ok)throw new Error(response.status===419?'登录会话已过期，请刷新后重试。':data.message||'批量退回未完成')
+      const results=data.results??[]
+      const failed=results.filter(row=>!row.ok)
+      returnAllocationSelection.value=failed.map(row=>row.order_id)
+      publishGlobalFeedback({state:failed.length?'BLOCKED':'SUCCESS',
+        title:'批量到待分仓：成功 '+(results.length-failed.length)+' 条，失败 '+failed.length+' 条',
+        message:failed.length?failed.slice(0,8).map(row=>row.order_id+'：'+row.message).join('；')
+          :'已退回待分仓，当前发货仓库已清空。'})
+      router.reload({only:['rows','viewCounts']})
+    }catch(error){
+      publishGlobalFeedback({state:'ERROR',title:'批量到待分仓未完成',
+        message:error instanceof Error?error.message:'请刷新核对订单状态。'})
+    }finally{bulkBusy.value=false}
+    return
+  }
   if(payload.action==='bulk_ship'){
     await previewBulkShip()
     return
@@ -1248,12 +1282,14 @@ watch(()=>[props.view,props.warehouseKey,props.rows.current_page,props.rows.per_
   bulkShipSelection.value=[]
   if(!bulkShipBusy.value)closeBulkShip()
   reviewSelection.value=[]
+  returnAllocationSelection.value=[]
   archiveSelection.value=[]
   archivePending.value=null
 })
 watch(()=>visibleRows.value,rows=>{
   const present=new Set(rows.map(row=>row.order_id))
   reviewSelection.value=reviewSelection.value.filter(id=>present.has(id))
+  returnAllocationSelection.value=returnAllocationSelection.value.filter(id=>present.has(id))
   archiveSelection.value=archiveSelection.value.filter(id=>present.has(id))
   bulkShipSelection.value=bulkShipSelection.value.filter(id=>present.has(id))
   archivePending.value=null
@@ -1439,6 +1475,8 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
 ])
 const onGridSelection = (rows:GridListRow[]) => {
   const ids=new Set(rows.map(row=>Number(row.id)).filter(id=>Number.isSafeInteger(id)&&id>0))
+  returnAllocationSelection.value=['review','stockout','pending'].includes(props.view)
+    ?visibleRows.value.filter(row=>ids.has(row.order_id)).map(row=>row.order_id):[]
   bulkShipSelection.value=bulkShipPreviewScope.value
     ?visibleRows.value.filter(row=>ids.has(row.order_id)&&row.shipment_status==='pending').map(row=>row.order_id):[]
   archiveSelection.value=props.canArchive && props.view!=='stockout'
@@ -1592,7 +1630,7 @@ const compactPages = computed<(number|string)[]>(() => {
           :filter-columns="[]" :filter-values="gridFilters??{}"
           :cell-text-selection="view==='pending'"
           :enable-selection="Boolean((canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || bulkShipPreviewScope || canTrackingSync || showShipoutSelection)"
-          :selected-order-ids="(canArchive && view!=='stockout')?archiveSelection:bulkShipPreviewScope?bulkShipSelection:(canReview && ['review','stockout'].includes(view))?reviewSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
+          :selected-order-ids="(canReview && ['review','stockout','pending'].includes(view))?returnAllocationSelection:(canArchive && view!=='stockout')?archiveSelection:bulkShipPreviewScope?bulkShipSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
           search-placeholder="搜索全部订单号 / Tracking / 收件人 / SKU..."
           @search-change="searchGrid" @sort-change="sortGrid"
           @selection-change="onGridSelection" @page-change="gridNavigate({page:$event})"
@@ -1618,7 +1656,7 @@ const compactPages = computed<(number|string)[]>(() => {
             </div>
           </template>
           <template #footer-left>
-            <GridBatchFooterControls :selected-count="bulkShipPreviewScope?bulkShipSelectedCount:(canArchive && view!=='stockout')?archiveSelection.length:reviewSelection.length"
+            <GridBatchFooterControls :selected-count="(canReview && ['review','stockout','pending'].includes(view))?returnAllocationSelection.length:bulkShipPreviewScope?bulkShipSelectedCount:(canArchive && view!=='stockout')?archiveSelection.length:reviewSelection.length"
               :options="reviewBulkOptions" :busy="bulkBusy || bulkShipBusy" @apply="applyReviewBulk" />
           </template>
         </GlobalGrid>

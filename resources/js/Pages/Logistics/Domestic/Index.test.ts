@@ -43,6 +43,32 @@ const baseProps = {
 describe('Domestic logistics production workbench', () => {
   beforeEach(() => { routerGet.mockClear(); routerPost.mockClear(); routerPatch.mockClear(); routerVisit.mockClear(); routerReload.mockClear(); feedbackSpy.mockClear(); vi.unstubAllGlobals() })
 
+  it('offers the same real force-return route in review, stockout and pending grids', async () => {
+    for (const view of ['review','stockout','pending']) {
+      const wrapper=mount(Index,{props:{...baseProps,view,globalGridPilotEnabled:true,trackingImportPreview:null}})
+      const state=(wrapper.vm as unknown as {$:{setupState:Record<string,any>}}).$.setupState
+      expect(state.bulkOptions.map((option:{label:string})=>option.label)).toContain('批量到待分仓')
+      state.onBulkSelectionChanged([{id:1}])
+      const response={ok:true,status:200,headers:{get:()=>null},json:async()=>({
+        results:[{order_id:1,ok:true,message:'已进入待分仓'}],success_count:1,failed_count:0,
+      })}
+      const fetchSpy=vi.fn().mockResolvedValue(response)
+      vi.stubGlobal('fetch',fetchSpy)
+      await state.applyGridBatch({action:'force_return_allocation',reason:''})
+      expect(fetchSpy).toHaveBeenCalledWith('/logistics/china/batch-return-allocation',
+        expect.objectContaining({method:'POST',body:JSON.stringify({order_ids:[1]})}))
+      expect(routerReload).toHaveBeenCalledWith({only:['rows','viewCounts']})
+      wrapper.unmount()
+      routerReload.mockClear()
+    }
+  })
+
+  it('does not offer force allocation to domestic viewers without review permission', () => {
+    const wrapper=mount(Index,{props:{...baseProps,view:'pending',canReview:false,globalGridPilotEnabled:true}})
+    const state=(wrapper.vm as unknown as {$:{setupState:Record<string,any>}}).$.setupState
+    expect(state.bulkOptions.map((option:{label:string})=>option.label)).not.toContain('批量到待分仓')
+  })
+
   it('uses one compact toolbar and bottom help for all nine domestic views', () => {
     const views=['review','stockout','outsource','pending','today','today-4px','today-weship','exceptions','all']
     for (const view of views) {

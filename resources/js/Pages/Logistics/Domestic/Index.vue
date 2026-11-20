@@ -74,7 +74,10 @@ const bulkOptions = computed<BulkChoice[]>(()=>{
     result.push({value:'approve',label:'批量通过'},{value:'stockout',label:'批量缺货'},
       {value:'reject',label:'批量驳回',reasonRequired:true})
   }
-  if (props.canReview && props.view==='stockout') result.push({value:'restock',label:'批量已到货-可发货'}, {value:'return_allocation',label:'进待分仓'})
+  if (props.canReview && props.view==='stockout') result.push({value:'restock',label:'批量已到货-可发货'})
+  if (props.canReview && ['review','stockout','pending'].includes(props.view)) {
+    result.push({value:'force_return_allocation',label:'批量到待分仓'})
+  }
   // Reuse the existing single footer; only previously eligible shipped Woo
   // orders may be sent to the existing tracking-sync endpoint.
   if (props.canTrackingSync && isProviderWorkView(props.view) && props.rows.data.some(row=>
@@ -657,12 +660,11 @@ const applyGridBatch = async (payload:{action:string;reason:string}) => {
   const ids=[...selectedBulkOrderIds.value]
   bulkBusy.value=true
   try {
-    if (payload.action==='return_allocation' && ids.some(id=>!props.rows.data.some(row=>row.order_id===id && row.review_status==='stockout' && row.shipment_status==='pending'))) {
-      throw new Error('包含非缺货或已发货订单，请刷新页面重试。')
-    }
     const archive=payload.action==='archive'
-    const result=await importPost(archive?'/orders/archive/batch':'/logistics/china/batch-review',
-      JSON.stringify({order_ids:ids,...(!archive?{action:payload.action,reason:payload.reason}:{})}),true)
+    const forced=payload.action==='force_return_allocation'
+    const result=await importPost(archive?'/orders/archive/batch':forced
+      ?'/logistics/china/batch-return-allocation':'/logistics/china/batch-review',
+      JSON.stringify({order_ids:ids,...(!archive&&!forced?{action:payload.action,reason:payload.reason}:{})}),true)
     const results=(result.results??[]) as {order_id:number;ok:boolean;message:string}[]
     const success=results.filter(row=>row.ok)
     const errors=results.filter(row=>!row.ok)
@@ -670,7 +672,8 @@ const applyGridBatch = async (payload:{action:string;reason:string}) => {
     publishGlobalFeedback({
       state:errors.length?'BLOCKED':'SUCCESS',
       title:'批量操作：成功 '+success.length+' 条，失败 '+errors.length+' 条',
-      message:errors.length?errors.slice(0,8).map(row=>row.order_id+'：'+row.message).join('；'):'按原业务规则保存。',
+      message:errors.length?errors.slice(0,8).map(row=>row.order_id+'：'+row.message).join('；')
+        :forced?'已退回待分仓，当前发货仓库已清空。':'按原业务规则保存。',
     })
     router.reload({only:['rows','viewCounts']})
   } catch (error) {
