@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 final class SyncXlwmsInventoryCommand extends Command
 {
     protected $signature = 'xlwms:sync-inventory {--dry-run : Fetch and persist a read-only snapshot (default)} {--apply : Apply only a fully verified, safe matched snapshot} {--warehouse=US-SM : ERP warehouse code (US-SM or DE)}';
-    protected $description = 'Read XLWMS inventory per warehouse; DE remains read-only';
+    protected $description = 'Read XLWMS inventory per warehouse; DE apply requires isolated Dev and separate gates';
 
     public function handle(XlwmsInventorySyncService $service): int
     {

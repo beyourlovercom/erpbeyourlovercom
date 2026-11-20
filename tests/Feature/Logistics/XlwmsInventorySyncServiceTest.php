@@ -920,6 +920,101 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         $service->sync(false, 'DE');
     }
 
+    public function test_de_apply_requires_independent_dev_gate_and_v2_sku_isolation(): void
+    {
+        [$de, , $products] = $this->fixture(['DE-EXISTING'], 'DE', 'Hannover');
+        WarehouseInventory::query()->create(['warehouse_id' => $de->id,
+            'product_id' => $products[0]->id, 'quantity_on_hand' => 7, 'quantity_reserved' => 0]);
+        $service = $this->service($products, ['DE-EXISTING'], omsWarehouseCode: 'Hannover');
+        config()->set('xlwms.inventory_apply_enabled', true);
+
+        try {
+            $service->sync(true, 'DE');
+            self::fail('DE apply must require its own flag');
+        } catch (\RuntimeException $e) {
+            self::assertSame('XLWMS_DE_INVENTORY_APPLY_NOT_AUTHORIZED', $e->getMessage());
+        }
+        config()->set('xlwms.de_inventory_dev_apply_enabled', true);
+        self::assertTrue(app()->environment('local', 'testing'), 'Current test environment: '.app()->environment());
+        self::assertTrue((bool) config('xlwms.de_inventory_dev_apply_enabled'), 'DE flag failed to set');
+        try {
+            $service->sync(true, 'DE');
+            self::fail('V2 and SKU isolation must be mandatory');
+        } catch (\RuntimeException $e) {
+            self::assertSame('XLWMS_DE_REQUIRES_V2_SKU_ISOLATION', $e->getMessage());
+        }
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        try {
+            $service->sync(true, 'DE');
+            self::fail('SKU quarantine must be mandatory');
+        } catch (\RuntimeException $e) {
+            self::assertSame('XLWMS_DE_REQUIRES_V2_SKU_ISOLATION', $e->getMessage());
+        }
+        self::assertSame(7, (int) WarehouseInventory::query()->where('warehouse_id', $de->id)
+            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+    }
+
+    public function test_de_dev_first_approved_snapshot_syncs_existing_sku_only_and_never_us_sm(): void
+    {
+        [$de, , $products] = $this->fixture(['DE-MATCHED'], 'DE', 'Hannover');
+        $us = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        WarehouseInventory::query()->create(['warehouse_id' => $de->id,
+            'product_id' => $products[0]->id, 'quantity_on_hand' => 7, 'quantity_reserved' => 0]);
+        WarehouseInventory::query()->create(['warehouse_id' => $us->id,
+            'product_id' => $products[0]->id, 'quantity_on_hand' => 80, 'quantity_reserved' => 0]);
+        config()->set('xlwms.de_inventory_dev_apply_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('inventory_sku_gate.enabled', true);
+        $service = $this->service($products, ['DE-MATCHED', 'DE-UNKNOWN'],
+            ['DE-MATCHED'], ['DE-MATCHED', 'DE-UNKNOWN'], 0,
+            ['DE-MATCHED' => 10, 'DE-UNKNOWN' => 4], 'Hannover');
+        $preview = $service->sync(false, 'DE');
+        self::assertSame('blocked', $preview['status']);
+        self::assertSame(1, $preview['unmatched_sku_count']);
+        self::assertSame(7, (int) WarehouseInventory::where('warehouse_id', $de->id)
+            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+
+        self::assertSame('blocked', $service->sync(true, 'DE')['status']);
+        // A US-SM approval cannot authorize DE/Hannover, even for the same digest.
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $preview['checksum']);
+        self::assertSame('blocked', $service->sync(true, 'DE')['status']);
+        config()->set('xlwms.de_inventory_first_apply_approved_checksum', $preview['checksum']);
+        $applied = $service->sync(true, 'DE');
+        self::assertSame('partial_applied', $applied['status']);
+        self::assertSame(10, (int) WarehouseInventory::where('warehouse_id', $de->id)
+            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(80, (int) WarehouseInventory::where('warehouse_id', $us->id)
+            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(1, WarehouseInventory::where('warehouse_id', $de->id)->count());
+        self::assertSame('unmatched', XlwmsInventorySnapshot::findOrFail($applied['snapshot_id'])->rows()
+            ->where('provider_sku', 'DE-UNKNOWN')->value('resolution_status'));
+        // The first post-apply observation has a new ERP baseline in its checksum.
+        $stable = $service->sync(true, 'DE');
+        self::assertSame('partial_applied', $stable['status']);
+        self::assertSame($stable['snapshot_id'], $service->sync(true, 'DE')['snapshot_id']);
+    }
+
+    public function test_de_flag_never_allows_production_inventory_apply(): void
+    {
+        [, , $products] = $this->fixture(['DE-PROD-GUARD'], 'DE', 'Hannover');
+        config()->set('xlwms.de_inventory_dev_apply_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('inventory_sku_gate.enabled', true);
+        $service = $this->service($products, ['DE-PROD-GUARD'], omsWarehouseCode: 'Hannover');
+        $this->app->detectEnvironment(static fn (): string => 'production');
+        try {
+            $service->sync(true, 'DE');
+            self::fail('Production must never use the Dev apply gate');
+        } catch (\RuntimeException $e) {
+            self::assertSame('XLWMS_DE_INVENTORY_APPLY_NOT_AUTHORIZED', $e->getMessage());
+        } finally {
+            $this->app->detectEnvironment(static fn (): string => 'testing');
+        }
+        self::assertSame(0, WarehouseInventory::query()->where('product_id', $products[0]->id)->count());
+    }
+
     /** @return array{0:Warehouse,1:WarehouseOpenApiConnection,2:list<Product>} */
     private function fixture(array $skus, string $warehouseCode = 'US-SM', string $omsWarehouseCode = 'US-SM'): array
     {

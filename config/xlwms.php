@@ -49,6 +49,13 @@ return [
     'inventory_sync_schedule_minutes' => in_array((int) env('XLWMS_INVENTORY_SYNC_SCHEDULE_MINUTES', 30), [10, 30], true)
         ? (int) env('XLWMS_INVENTORY_SYNC_SCHEDULE_MINUTES', 30) : 30,
     'inventory_apply_enabled' => filter_var(env('XLWMS_INVENTORY_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    // DE/Hannover R4: fail closed on all servers, including Production.
+    // Runtime also enforces Local/Testing, V2, SKU isolation and checksum approval.
+    'de_inventory_dev_apply_enabled' => filter_var(env('XLWMS_DE_INVENTORY_DEV_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'de_inventory_first_apply_approved_checksum' => (string) env('XLWMS_DE_INVENTORY_FIRST_APPLY_APPROVED_CHECKSUM', ''),
+    'de_inventory_sync_schedule_enabled' => filter_var(env('XLWMS_DE_INVENTORY_SYNC_SCHEDULE_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'de_inventory_sync_schedule_minutes' => in_array((int) env('XLWMS_DE_INVENTORY_SYNC_SCHEDULE_MINUTES', 30), [10, 30], true)
+        ? (int) env('XLWMS_DE_INVENTORY_SYNC_SCHEDULE_MINUTES', 30) : 30,
     'lot_reconciliation_v2_enabled' => filter_var(env('XLWMS_LOT_RECONCILIATION_V2_ENABLED', false), FILTER_VALIDATE_BOOL),
     'inventory_first_apply_approved_checksum' => (string) env('XLWMS_INVENTORY_FIRST_APPLY_APPROVED_CHECKSUM', ''),
     'inventory_auto_max_sku_delta_units' => max(0, (int) env('XLWMS_INVENTORY_AUTO_MAX_SKU_DELTA_UNITS', 5)),
