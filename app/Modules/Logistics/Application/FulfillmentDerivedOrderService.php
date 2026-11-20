@@ -247,7 +247,12 @@ final class FulfillmentDerivedOrderService
             );
         }
 
-        $this->workflow->set($order, 'pending_review', (int) $order->workflow_revision, $actor);
+        // Tingon has its own partner dispatch workflow, with no review queue.
+        // Preserve that deliberate manual-partner path rather than leaving its
+        // orders in a review phase that no staff screen can approve.
+        $warehouseCode = strtoupper(trim((string) $order->fresh('shipment.warehouse')->shipment?->warehouse?->code));
+        $next = $warehouseCode === 'TINGON' ? 'sending' : 'pending_review';
+        $this->workflow->set($order, $next, (int) $order->workflow_revision, $actor);
     }
 
     /** A split parent is a non-shipping aggregate, so children own the review phase. */
