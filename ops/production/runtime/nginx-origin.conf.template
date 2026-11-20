@@ -35,6 +35,16 @@ http {
         real_ip_header CF-Connecting-IP;
         real_ip_recursive on;
 
+        # Missing hashed frontend assets must fail fast. Never send stale
+        # /assets/ or /build/assets/ requests into Laravel/PHP-FPM.
+        location ^~ /assets/ {
+            try_files $uri =404;
+        }
+
+        location ^~ /build/assets/ {
+            try_files $uri =404;
+        }
+
         location / {
             try_files $uri $uri/ /index.php?$query_string;
         }

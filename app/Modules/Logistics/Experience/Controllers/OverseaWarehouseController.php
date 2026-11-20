@@ -272,7 +272,9 @@ final class OverseaWarehouseController
                 ? trim((string) config('shipout.sandbox_order_allowlist', '')) : '',
 
             'xlwmsBatchEnabled' => $canRunXlwms && (bool) config('xlwms.warehouse_batch_dispatch_enabled', false) && (int) config('xlwms.live_order_id', 0) > 0,
-            'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
+            // Inertia partial row/filter reloads must not run seven expensive
+            // count subqueries for counts the browser did not request.
+            'viewCounts' => fn () => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
             'canOperate' => ($warehouseKey !== 'all' || $view === 'pending')
