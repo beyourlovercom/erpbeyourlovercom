@@ -1,20 +1,21 @@
 <?php
 
 use App\Modules\Kol\Experience\Controllers\AffiliateWpSyncController;
+use App\Modules\Kol\Experience\Controllers\KolAffiliateBindingActivationController;
 use App\Modules\Kol\Experience\Controllers\KolApprovalCenterController;
 use App\Modules\Kol\Experience\Controllers\KolCollaborationController;
 use App\Modules\Kol\Experience\Controllers\KolCommunicationController;
 use App\Modules\Kol\Experience\Controllers\KolContentController;
 use App\Modules\Kol\Experience\Controllers\KolController;
-use App\Modules\Kol\Experience\Controllers\KolImportPreviewController;
 use App\Modules\Kol\Experience\Controllers\KolImportActivationController;
-use App\Modules\Kol\Experience\Controllers\KolAffiliateBindingActivationController;
+use App\Modules\Kol\Experience\Controllers\KolImportPreviewController;
 use App\Modules\Kol\Experience\Controllers\KolOpportunityController;
-use App\Modules\Kol\Experience\Controllers\KolOwnerMappingController;
 use App\Modules\Kol\Experience\Controllers\KolOverviewController;
-use App\Modules\Kol\Experience\Controllers\ReferralCommissionController;
+use App\Modules\Kol\Experience\Controllers\KolOwnerMappingController;
 use App\Modules\Kol\Experience\Controllers\PayoutWorkflowController;
+use App\Modules\Kol\Experience\Controllers\ReferralCommissionController;
 use App\Modules\Kol\Experience\Controllers\SavedViewController;
+use App\Modules\Kol\Experience\Controllers\TencentKolImportController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -80,6 +81,10 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
         ->middleware('can:kol.affiliates.manage')
         ->name('kol.commissions.sync');
     Route::get('/kol/affiliatewp', [AffiliateWpSyncController::class, 'index'])->name('kol.affiliatewp');
+    Route::middleware(['can:system.permissions.manage', 'can:kol.operate', 'can:kol.affiliates.manage'])->group(function (): void {
+        Route::get('/kol/affiliatewp/tencent-import', [TencentKolImportController::class, 'index'])->name('kol.affiliatewp.tencent-import');
+        Route::post('/kol/affiliatewp/tencent-import/preview', [TencentKolImportController::class, 'preview'])->name('kol.affiliatewp.tencent-import.preview');
+    });
     Route::get('/kol/affiliatewp/reconciliation', [AffiliateWpSyncController::class, 'reconciliation'])
         ->middleware('can:kol.affiliates.manage')->name('kol.affiliatewp.reconciliation');
     Route::post('/kol/affiliatewp/reconciliation/preview', [AffiliateWpSyncController::class, 'previewReconciliation'])
@@ -130,7 +135,6 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
         ->name('kol.affiliatewp.coupons.provision');
     Route::get('/kol/affiliate', fn () => redirect()->route('kol.affiliatewp'))->name('kol.affiliate');
 });
-
 
 Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/kol/payouts', [PayoutWorkflowController::class, 'index'])->name('kol.payouts');

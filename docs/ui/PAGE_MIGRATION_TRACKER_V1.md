@@ -139,6 +139,13 @@ R4-7B「纬狮订单」累计视图继续旧表默认 OFF；
 | P4 | 设置 | 备份与迁移 | /settings/backup | 0% / 待盘点 | G0 页面基线 |
 | P4 | 仪表盘 | 仪表盘 | /dashboard | 0% / 待盘点 | G0 页面基线 |
 
+### X · 非菜单工作区增量（2026-11-19）
+
+- 页面：`/kol/affiliatewp/tencent-import`（管理员专属、AffiliateWP 页右上角入口；不更改 67 项菜单基线）。
+- Compact Workspace：采用已有 `erp-form-page`/卡片密度与页面右上角 Action Zone；安全提醒和校验错误留在表单附近，帮助说明放在主体下方。
+- Owner 视觉方案：此前腾讯表格管理员导入预览已获得 Owner 方案确认；代码现处独立 worktree，`npm run build` 与 KOL 自动回归 PASS。**真实 Local/UAT Owner PASS 待完成，未合并、未上线。**
+- 非回归：AffiliateWP 原有立即同步／转换／绑定按钮、网红可见范围、订单规则、Global Grid/Workspace Tabs 均保留。
+
 ## 3. 里程碑状态定义
 
 | 字段 | 必须记录的内容 |
