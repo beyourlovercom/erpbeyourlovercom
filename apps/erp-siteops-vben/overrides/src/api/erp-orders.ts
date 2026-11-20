@@ -32,25 +32,42 @@ const safeInt = (v: unknown, fallback: number): number => {
   return Number.isSafeInteger(n) && n >= 0 ? n : fallback;
 };
 const allowedSizes = [20, 50, 100];
-export const orderReadOnlyPath = (input: { search?: string; page?: number; perPage?: number; view?: string }) => {
+export const orderReadOnlyPath = (input: {
+  search?: string; page?: number; perPage?: number; view?: string;
+  scope?: 'all' | 'customers' | 'kol';
+}) => {
   const params = new URLSearchParams();
   if (input.search?.trim()) params.set('search', input.search.trim());
-  if (input.view && ['all', 'pending', 'exception', 'in_transit', 'shipped', 'return', 'loss', 'overweight', 'stockout'].includes(input.view))
+  // The current Orders/Master controller only accepts these exact view values.
+  if ((input.scope ?? 'all') === 'all' && input.view &&
+      ['all', 'normal', 'operational', 'trash', 'pending'].includes(input.view))
     params.set('view', input.view);
   params.set('page', String(Math.max(1, input.page ?? 1)));
-  // Original /orders has a canary-gated server Grid. Do NOT force oms_grid=1.
   if (allowedSizes.includes(input.perPage ?? 50)) params.set('per_page', String(input.perPage));
-  return '/orders?' + params.toString();
+  const path = input.scope === 'customers' ? '/customers/orders' :
+    input.scope === 'kol' ? '/kol/orders' : '/orders';
+  return path + '?' + params.toString();
 };
 export function normalizeExistingInertiaOrders(value: unknown): ErpOrderPage {
   const page = asObject(value);
-  if (page.component !== 'Orders/Index') throw new Error('ERP_INERTIA_COMPONENT_MISMATCH');
+  const isMaster = page.component === 'Orders/Master';
+  if (!isMaster && page.component !== 'Orders/Index') throw new Error('ERP_INERTIA_COMPONENT_MISMATCH');
   const props = asObject(page.props);
   const pager = asObject(props.orders);
   if (!Array.isArray(pager.data)) throw new Error('ERP_ORDERS_PAYLOAD_INVALID');
   const raw = pager.data as unknown[];
   const rows = raw.map((entry): ErpOrderRow => {
     const row = asObject(entry), shipment = asObject(row.shipment);
+    if (isMaster) {
+      if (!safeInt(row.id, 0) || !asText(row.number).trim())
+        throw new Error('ERP_MASTER_ROW_CONTRACT_INVALID');
+      return {
+        id: safeInt(row.id, 0), order_number: asText(row.number),
+        order_kind: asText(row.kind), order_date: asText(row.date),
+        status: asText(row.status), warehouse: asText(row.warehouse),
+        sku: asText(row.skus), tracking_number: '', latest_note: '',
+      };
+    }
     const workflow = asObject(row.workflow_status_projection);
     const items = Array.isArray(row.items) ? row.items.map(asObject) : [];
     const number = asText(row.erp_order_id).trim() ||
@@ -77,7 +94,7 @@ export function normalizeExistingInertiaOrders(value: unknown): ErpOrderPage {
   };
 }
 export async function getExistingErpOrders(
-  input: { search?:string; page?:number; perPage?:number; view?:string },
+  input: { search?:string; page?:number; perPage?:number; view?:string; scope?:'all'|'customers'|'kol' },
   fetcher: typeof fetch = fetch,
 ): Promise<ErpOrderPage> {
   const response = await fetcher(orderReadOnlyPath(input), {

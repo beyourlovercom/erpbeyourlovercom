@@ -22,6 +22,8 @@ const logistics=new Set([
  '/api/erp2/v1/logistics/domestic/pending',
  '/api/erp2/v1/logistics/overseas',
 ]);
+// Canonical Laravel Orders routes, never route substrings or business mutations.
+const inertiaOrders=new Set(['/orders','/customers/orders','/kol/orders']);
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
  '.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml',
  '.png':'image/png','.ico':'image/x-icon','.woff':'font/woff','.woff2':'font/woff2'};
@@ -30,6 +32,8 @@ function json(res,status,data){
  res.end(JSON.stringify(data));
 }
 function allowed(req,url){
+ if(inertiaOrders.has(url.pathname))
+  return req.method==='GET' && req.headers['x-inertia']==='true';
  if(logistics.has(url.pathname))return req.method==='GET';
  if(url.pathname==='/_erp2/identity')return req.method==='GET';
  if(url.pathname==='/login')return ['GET','POST'].includes(req.method);
@@ -39,6 +43,7 @@ function allowed(req,url){
 }
 async function proxy(req,res,url){
  const headers={Accept:req.headers.accept||'text/html','X-Requested-With':req.headers['x-requested-with']||'XMLHttpRequest'};
+ if(inertiaOrders.has(url.pathname))headers['X-Inertia']='true';
  if(req.headers.cookie)headers.Cookie=req.headers.cookie;
  if(req.headers['content-type'])headers['Content-Type']=req.headers['content-type'];
  if(req.headers['x-csrf-token'])headers['X-CSRF-TOKEN']=req.headers['x-csrf-token'];
@@ -84,7 +89,11 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname==='/api/health'&&req.method==='GET')return json(res,200,{
     source:'ISOLATED_MAC_DEV_SQLITE',production_connected:false,write_enabled:false,
     mode:'laravel-session',app:'ERP2 Vben Logistics Dev'});
-  if(url.pathname.startsWith('/api/')||['/_erp2/identity','/login','/dashboard','/logout'].includes(url.pathname)){
+  // Never let nested Laravel business URLs fall through to a misleading SPA 200.
+  if(/^\/(orders|customers\/orders|kol\/orders)\/.+/.test(url.pathname))
+    return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
+  if(url.pathname.startsWith('/api/')||inertiaOrders.has(url.pathname)||
+     ['/_erp2/identity','/login','/dashboard','/logout'].includes(url.pathname)){
     if(!allowed(req,url))return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
     return await proxy(req,res,url);
   }

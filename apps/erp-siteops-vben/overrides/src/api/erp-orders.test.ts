@@ -24,8 +24,12 @@ describe('BYL ERP authoritative existing orders GET projection', () => {
     expect(orderReadOnlyPath({search:'C42203-007',page:3,perPage:100}))
       .toBe('/orders?search=C42203-007&page=3&per_page=100');
     expect(orderReadOnlyPath({perPage:999})).not.toContain('per_page');
-    expect(orderReadOnlyPath({view:'stockout'})).toContain('view=stockout');
+    expect(orderReadOnlyPath({view:'pending'})).toContain('view=pending');
+    expect(orderReadOnlyPath({view:'stockout'})).not.toContain('view=');
     expect(orderReadOnlyPath({view:'arbitrary'})).not.toContain('view=');
+    expect(orderReadOnlyPath({scope:'customers'})).toMatch(/^\/customers\/orders\?/);
+    expect(orderReadOnlyPath({scope:'kol'})).toMatch(/^\/kol\/orders\?/);
+    expect(orderReadOnlyPath({scope:'customers',view:'trash'})).not.toContain('view=');
     expect(orderReadOnlyPath({})).not.toContain('oms_grid');
   });
   it('preserves front office order number, status projection and shipping SKU without rewriting identity', () => {
@@ -36,6 +40,23 @@ describe('BYL ERP authoritative existing orders GET projection', () => {
     expect(page.rows[0]!.tracking_number).toBe('DEMO-TRACK-123');
     expect(page.rows[0]!.warehouse).toBe('us-moreplus');
     expect(page.total).toBe(1);
+  });
+  it('supports current Laravel main Orders/Master field contract without inventing tracking or notes', () => {
+    const page = normalizeExistingInertiaOrders({
+      component:'Orders/Master', props:{
+        orders:{data:[{id:7963,number:'007-0910-40414',kind:'customer',
+          status:'pending_shipment',warehouse:'us-moreplus',skus:'SKU-A / GIFT-B',
+          date:'2026-11-20'}],current_page:1,last_page:1,per_page:50,total:1},
+        filters:{view:'all',search:''},
+      },
+    });
+    expect(page.rows[0]).toMatchObject({order_number:'007-0910-40414',
+      order_kind:'customer',status:'pending_shipment',sku:'SKU-A / GIFT-B',
+      tracking_number:'',latest_note:''});
+    expect(page.rows[0]!.warehouse).toBe('us-moreplus');
+    expect(page.total).toBe(1);
+    expect(() => normalizeExistingInertiaOrders({component:'Orders/Master',
+      props:{orders:{data:[{id:10}]}}})).toThrow('ERP_MASTER_ROW_CONTRACT_INVALID');
   });
   it('rejects non-Orders Inertia pages and invalid collections instead of fake successful data', () => {
     expect(() => normalizeExistingInertiaOrders({ component:'Other',props:{} }))
@@ -52,6 +73,15 @@ describe('BYL ERP authoritative existing orders GET projection', () => {
       method:'GET',credentials:'same-origin',
       headers:expect.objectContaining({'X-Inertia':'true'}),
     }));
+  });
+  it('routes dedicated customer and KOL reads to original Laravel GET scopes', async () => {
+    const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify(inertia),{
+      status:200,headers:{'content-type':'application/json'},
+    }));
+    await getExistingErpOrders({scope:'customers'},fetcher);
+    await getExistingErpOrders({scope:'kol'},fetcher);
+    expect(fetcher.mock.calls[0]?.[0]).toMatch(/^\/customers\/orders\?/);
+    expect(fetcher.mock.calls[1]?.[0]).toMatch(/^\/kol\/orders\?/);
   });
   it('does not silently switch to fixtures on permission or session failures', async () => {
     const fail = vi.fn().mockResolvedValue(new Response('Forbidden',{status:403}));

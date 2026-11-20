@@ -130,7 +130,8 @@ async function loadExisting(page = 1, perPage = pager.value.perPage) {
           role:roleForRequest, scope:devOrderScope.value })
       : bridgeEnabled
         ? await getMacDevReadOnlyOrders({ search:search.value, page, perPage })
-        : await getExistingErpOrders({ search:search.value, page, perPage });
+        : await getExistingErpOrders({ search:search.value, page, perPage,
+            scope:isCustomerOrders.value ? 'customers' : isKolOrders.value ? 'kol' : 'all' });
     if (ticket !== requestSequence || roleForRequest !== selectedRole.value) return;
     if ('role' in data && data.role !== roleForRequest) throw new Error('DEV_ROLE_RESPONSE_MISMATCH');
     if ('navigation' in data && Array.isArray(data.navigation)) {
