@@ -31,7 +31,7 @@ CURRENT_WORK_PACKAGE: DE_TIANYUN_XLWMS_R5_R6_ORDER_PUSH_WP_20261121.
 PACKAGE_STATUS: IMPLEMENTED / AUTOMATED_VERIFICATION_PASS / OWNER_REAL_PAGE_UAT_PENDING.
 WAITING_PHASES: R7; real create and Production release separately gated.
 BASELINE: feat/de-tianyun-xlwms-r4-sku-sync-20261120@9c0575db.
-GITHUB_STATE: New isolated worktree branch, stacked Draft PR to follow.
+GITHUB_STATE: Draft PR #826 OPEN, base R4 Draft PR #824, head feat/de-tianyun-xlwms-r5-r6-order-push-20261121; initial required GitHub checks not yet reported, Owner UAT pending.
 SOURCE_CONFLICTS: No tracked edits in new worktree prior to WP.
 GLOBAL_GATE: Owner-provided target screenshot approved layout; Owner real Local/UAT PASS still outstanding. Real OMS CREATE and Production release remain separately gated.
 PRODUCTION_DEPLOYMENT_STATUS: NO — code only in isolated unmerged Dev branch, no real CREATE and no Production release.
