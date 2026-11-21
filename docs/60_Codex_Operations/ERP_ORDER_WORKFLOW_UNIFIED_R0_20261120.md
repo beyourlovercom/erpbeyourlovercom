@@ -58,7 +58,7 @@
 ## 必测的服务端事实与安全边界
 
 - HTTP 正向：被授权 actor 修改可人工编辑的工作状态后，响应投影、DB 持久化、revision+1、history/audit 记录一致。
-- HTTP 反向：viewer / KOL scope outsider / 错仓 review / 受限状态 / archived 或 trashed / 旧 revision / 无效状态，拒绝且 DB、Shipment、Tracking、order_status、Woo/OMS 无半写入。
+- HTTP 反向：viewer / KOL scope outsider / 错仓 review / 受限状态 / 无权恢复的归档或已删除订单 / 旧 revision / 无效状态，拒绝且 DB、Shipment、Tracking、order_status、Woo/OMS 无半写入。获授权的归档恢复例外参见 R4.1。
 - 手工选择物流/签收/退款类名称，不得建立 Shipment、Tracking、签收、付款、退款、Woo/OMS 成功的虚假证据；需要真实业务操作时只展示或指引对应流程。
 - 同一订单在 `Orders/Index`、`Orders/Show`、物流列表中的 `code`、选项可执行性、actor 权限及刷新后值一致；必须测 `sending`（待发）和 `out_of_stock`（缺货），并覆盖全部 registry 代码。
 - 验证刷新、跨页保存后更新、失败回滚、保存中禁用、CSRF、目标工作台跳转和实时权限降级；前端禁用不取代后端 403/409/422。
@@ -90,3 +90,12 @@
 - 实施：新增仅存覆盖值的 `order_workflow_status_display_settings` 表，`OrderWorkflowStatusDisplayCatalog` 在请求内一次性读取并统一排序；所有 Registry 投影、列表/详情/物流/财务选项自然共用；`OrderWorkflowStatusPill` 不再硬编码阶段号和冗长禁用文本。
 - 技术边界：新表不存 Order/Shipment/Tracking/Payment 等业务真相；状态修改 PATCH/API/权限、业务审核工作流、既有 audit/status histories 均不被此显示设置替换。创建迁移并仅对 **US Mac 合成 UAT SQLite** 执行；Production 迁移/发布仍需 Owner 明确授权。
 - R4-UX 验收应覆盖：admin 管理页 GET/保存/禁用重复序号/默认恢复/错误回滚/越权 403；同一账号跨列表与详情新名称和序号一致、全部订单状态组件没有多余「…」、权限只读状态不能成为可选操作；订单及 Shipment 表内容前后保持不变。自动 Dev 浏览器回归通过。2026-11-21 Owner 在 US Mac mini 隔离 Dev 实页确认 **PASS**，包含仅设计页保留「…」的最终修订；本次签收覆盖此前 R4 真实 Dev UAT 待验收记录，但**不包含合并或 Production 发布授权**。
+
+## R4.1：回收站归档订单的工作状态可编辑兼容（2026-11-21，隔离 Dev）
+
+- Production 只读根因：`007erp-1217-k101` 与 `007erp-1217-k82` 均为 KOL 根订单，`archived_at=2026-10-27 05:30:05`、`deleted_at=NULL`；原状态策略直接将 `archived_at` 视为禁止操作。订单总表「全部」允许管理员看见它们，故表现为无下拉箭头。Production 仍保留原样。
+- 同一 `OrderWorkflowStatusPolicy` 为拥有 `orders.edit` **且** `system.permissions.manage` 的管理员开放未删除、无归档上级的回收站归档记录；普通编辑者、软删除记录、上级仍归档的履约子单不会因本功能越权恢复。
+- 既有 `PATCH /orders/{order}/workflow-status` 在锁行事务内同时清除 `archived_at/archived_by`、执行原工作状态变更、记录 status history 和 `order.restored` audit；版本冲突/受限目标时事务回滚，归档原样保留。保留旧运营归档的 `order.operational_archive_restored` 审计流程，不修改真实 Shipment/Tracking/Woo/OMS 记录。
+- US Mac mini 独立分支 `fix/erp-archived-status-edit-r41-20261121` 来自已发布主线 `a8a9139a`；本次没有迁移，不修改 Production 数据库。浏览器 Dev `http://127.0.0.1:18895` 使用独立复制的合成 SQLite `/private/tmp/erp-order-archive-r41-20261121.sqlite`，与原 R4 Dev/Production 均隔离。
+- 自动真实浏览器确认：模拟「已发货」归档 KOL `007-1115-00027` 和「待发」归档 KOL `007-1115-00015` 均能显示 18 项下拉；第三条模拟归档 KOL `007-1115-00021` 点击「缺货」PATCH 200、revision 0→1、解除归档、记录 audit/history，未创建 Shipment；30 工作区标签页构建与前端状态组件 15/15 测试通过。
+- 本阶段仍待 Owner 对隔离 Dev 页面实看确认；**没有授权 R4.1 合并、Production 发布，也没有修改任何真实订单状态。**
