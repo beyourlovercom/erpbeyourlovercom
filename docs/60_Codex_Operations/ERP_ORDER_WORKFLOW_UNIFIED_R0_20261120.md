@@ -81,3 +81,12 @@
 - **R4 自动交互 PASS（合成订单 `007-1115-00006`）**：Vita 在 KOL 旧列表把 `sending` → `out_of_stock`（PATCH 200），详情页读回同一 29 项目录后改回 `sending`（PATCH 200）；revision 0→2、2 条 history；Shipment 原本已有且仍为 `pending`，`tracking_number`/`shipped_at` 仍为空。没有创建真实发货事实。
 - 用户截图真实订单 `007-1120-k8230` 不在隔离合成数据库中；未对该 Production 单做任何修改。Owner 仍须在已打开的真实 Dev 页面检查视觉与权限，并明确返回 `PASS`；否则 R4 不得标记 complete/merge-ready。Production 仍需独立明确发布授权。
 - 2026-11-20 早期 Claude OAuth 预检失败是历史记录；Owner 随后明确改用自建 DC，故 Claude 登录不再是本工单的前置条件，也不允许使用 Claude。
+
+## R4-UX 补充：Owner 视觉 PASS（2026-11-21）
+
+- Owner 指出完整 29+ 项且附长禁用原因的下拉过长，批准默认只列当前可操作状态及当前状态。2026-11-21 实页复核进一步明确：所有订单列表、订单详情、物流页全部移除状态旁「…」，不再展示额外只读项；只有「设置 → 状态设置」设计页保留「…」。绝不伪造真实发货/签收/付款事实。
+- Owner 批准「设置 → 状态设置」可统一修改全部状态的中文/英文名称与数字序号，序号按分段整数比较（如 1.2 在 1.10 前），不允许重复序号、不改变内部 code、不可动态创建业务状态。
+- Owner 补充视觉 PASS：状态设置默认仅展示「数字序号」「状态名称」，「…」临时展开功能、适用页面、英文名称及内部代码；刷新后自动折叠。复用现有设置导航，权限限定 `system.permissions.manage`。序号修改离开输入框重新排序，保存为整批审计变更，可恢复默认。
+- 实施：新增仅存覆盖值的 `order_workflow_status_display_settings` 表，`OrderWorkflowStatusDisplayCatalog` 在请求内一次性读取并统一排序；所有 Registry 投影、列表/详情/物流/财务选项自然共用；`OrderWorkflowStatusPill` 不再硬编码阶段号和冗长禁用文本。
+- 技术边界：新表不存 Order/Shipment/Tracking/Payment 等业务真相；状态修改 PATCH/API/权限、业务审核工作流、既有 audit/status histories 均不被此显示设置替换。创建迁移并仅对 **US Mac 合成 UAT SQLite** 执行；Production 迁移/发布仍需 Owner 明确授权。
+- R4-UX 验收应覆盖：admin 管理页 GET/保存/禁用重复序号/默认恢复/错误回滚/越权 403；同一账号跨列表与详情新名称和序号一致、全部订单状态组件没有多余「…」、权限只读状态不能成为可选操作；订单及 Shipment 表内容前后保持不变。自动 Dev 浏览器回归通过，Owner 实页最终 PASS 仍待签收。

@@ -5,9 +5,9 @@ import OrderWorkflowStatusPill from './OrderWorkflowStatusPill.vue'
 describe('OrderWorkflowStatusPill', () => {
   it('uses compact approved 3.3–3.5 captions without changing workflow codes', () => {
     const options = [
-      { code: 'freight_product_cost_follow_up', en: 'Cost', zh: '需跟进成本', color: 'amber', mutable: true },
-      { code: 'out_of_stock', en: 'Out of stock', zh: '缺货', color: 'red', mutable: true },
-      { code: 'renew', en: 'Renew', zh: '问题订单', color: 'amber', mutable: true },
+      { code: 'freight_product_cost_follow_up', sequence: '3.3', en: 'Cost', zh: '需跟进成本', color: 'amber', mutable: true },
+      { code: 'out_of_stock', sequence: '3.4', en: 'Out of stock', zh: '缺货', color: 'red', mutable: true },
+      { code: 'renew', sequence: '3.5', en: 'Renew', zh: '问题订单', color: 'amber', mutable: true },
     ]
     const wrapper = mount(OrderWorkflowStatusPill, {
       props: { orderId: 7, canEdit: true, revision: 0,
@@ -15,7 +15,7 @@ describe('OrderWorkflowStatusPill', () => {
         options },
     })
     const captions = wrapper.findAll('option').map(node => node.text())
-    expect(captions.slice(0,3)).toEqual(['3.3 Cost · 需跟进成本','3.4 Out of stock · 缺货','3.5 Renew · 问题订单'])
+    expect(captions.slice(0,3)).toEqual(['3.3 · 需跟进成本','3.4 · 缺货','3.5 · 问题订单'])
     expect(captions).not.toContain('Resume · 解除当前状态 / 恢复实际进度') // KOL has no core resolve command
   })
 
@@ -41,7 +41,7 @@ describe('OrderWorkflowStatusPill', () => {
         options: [{ code: 'sending', en: 'Sending', zh: '待发', color: 'neutral', mutable: true }, { code: 'missing_info', en: 'Missing Info', zh: '信息缺失', color: 'amber', mutable: true }],
       },
     })
-    expect(wrapper.findAll('option').map(option => option.text())).toContain('1.5 Missing Info · 信息缺失')
+    expect(wrapper.findAll('option').map(option => option.text())).toContain('信息缺失')
     const axios = await import('axios')
     const request = vi.spyOn(axios.default, 'patch').mockRejectedValueOnce({ response: { status: 409, data: { message: '订单进度已变化，请刷新后重试。' } } })
     const select = wrapper.find('select')
@@ -70,7 +70,7 @@ it('renders selected cost follow-up as the one primary status, not an extra chip
   })
   expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('freight_product_cost_follow_up')
   expect(wrapper.findAll('.auxiliary-tag')).toHaveLength(0)
-  expect(wrapper.text()).toContain('3.3 Cost · 需跟进成本')
+  expect(wrapper.text()).toContain('需跟进成本')
 })
 
 it('replaces the main visible selection instead of appending old tags', async () => {
@@ -167,7 +167,7 @@ it('exposes manual exception resolution as a real core command with the same rev
       ],
     },
   })
-  expect(wrapper.findAll('option').map(o => o.text())).toContain('Resolve Exception · 解除异常 / 恢复实际进度')
+  expect(wrapper.findAll('option').map(o => o.text())).toContain('解除异常 / 恢复实际进度')
   await wrapper.find('select').setValue('resolve_exception')
   await vi.waitFor(() => expect(patch).toHaveBeenCalledWith('/orders/71/workflow-status', {
     workflow_status: 'resolve_exception', expected_workflow_revision: 4,
@@ -317,4 +317,33 @@ it('changes the real status workbench instead of leaving a stale row in the old 
   ))
   expect(reload).not.toHaveBeenCalled()
   patch.mockRestore();visit.mockRestore();reload.mockRestore()
+})
+
+it('shows only actionable statuses and the current projection, without any ellipsis', () => {
+  const wrapper = mount(OrderWorkflowStatusPill, { props: {
+    orderId: 116, canEdit: true, revision: 2,
+    projection: { code: 'sending', sequence: '1.1', en: 'Sending', zh: '待发', color: 'neutral', source: 'staff_workflow' },
+    options: [
+      { code: 'sending', sequence: '1.1', en: 'Sending', zh: '准备发货', color: 'neutral', mutable: true },
+      { code: 'out_of_stock', sequence: '1.2', en: 'Out of stock', zh: '暂时缺货', color: 'red', mutable: true },
+      { code: 'arrived', sequence: '2.3', en: 'Arrived', zh: '已收货', color: 'green', mutable: false, disabled_reason: '需真实签收记录' },
+    ],
+  } })
+  expect(wrapper.findAll('option').map(option => option.text())).toEqual(['1.1 · 准备发货', '1.2 · 暂时缺货'])
+  expect(wrapper.find('.status-more').exists()).toBe(false)
+  expect(wrapper.find('[aria-label="查看全部状态"]').exists()).toBe(false)
+  expect(wrapper.text()).not.toContain('需真实签收记录')
+  wrapper.unmount()
+
+  const systemCurrent = mount(OrderWorkflowStatusPill, { props: {
+    orderId: 117, canEdit: true,
+    projection: { code: 'arrived', sequence: '2.3', en: 'Arrived', zh: '已收货', color: 'green', source: 'canonical_projection' },
+    options: [
+      { code: 'sending', sequence: '1.1', en: 'Sending', zh: '待发', color: 'neutral', mutable: true },
+      { code: 'arrived', sequence: '2.3', en: 'Arrived', zh: '已收货', color: 'green', mutable: false },
+    ],
+  } })
+  expect(systemCurrent.findAll('option').map(option => option.text())).toEqual(['1.1 · 待发', '2.3 · 已收货'])
+  expect(systemCurrent.find('option[value="arrived"]').attributes('disabled')).toBeDefined()
+  expect(systemCurrent.find('.status-more').exists()).toBe(false)
 })

@@ -129,7 +129,7 @@ R4-7B「纬狮订单」累计视图继续旧表默认 OFF；
 | P4 | 指南 | 全部教程 | /guides | 0% / 待盘点 | G0 页面基线 |
 | P4 | 指南 | 视频教程 | /guides/videos | 0% / 待盘点 | G0 页面基线 |
 | P4 | 指南 | 操作手册 | /guides/manuals | 0% / 待盘点 | G0 页面基线 |
-| P4 | 设置 | 状态设置 | /settings/statuses | 0% / 待盘点 | G0 页面基线 |
+| P4 | 设置 | 状态设置 | /settings/statuses | Owner 视觉 PASS（2026-11-21）；共享状态配置/序号/名称已在 PR #823 隔离分支实施；仅设置页保留「…」折叠详情，所有订单/物流状态栏移除「…」；R4 Owner 实页 UAT 待验收，未发布 | R4 Dev 浏览器回归 → Owner 实页 PASS → 后续发布门禁 |
 | P4 | 设置 | 仓库设置 | /settings/warehouses | 0% / 待盘点 | G0 页面基线 |
 | P4 | 设置 | 用户 | /settings/users | 0% / 待盘点 | G0 页面基线 |
 | P4 | 设置 | 角色与权限 | /settings/roles-permissions | 0% / 待盘点 | G0 页面基线 |

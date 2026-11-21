@@ -7,6 +7,7 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 final class OrderWorkflowStatusProjection
 {
     public function __construct(private readonly OrderProgressResolver $progress, private readonly OrderAuxiliaryStatusService $auxiliary) {}
+
     /** @return array{code:string,en:string,zh:string,color:string,source:string,mutable:bool} */
     public function for(Order $order): array
     {
@@ -22,6 +23,7 @@ final class OrderWorkflowStatusProjection
 
         return [
             'code' => $code,
+            'sequence' => $definition['sequence'],
             'en' => $definition['en'],
             'zh' => $definition['zh'],
             'color' => $definition['color'],

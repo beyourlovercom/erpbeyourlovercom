@@ -1126,11 +1126,11 @@
       "slug": "statuses",
       "url": "/settings/statuses",
       "route": "settings.statuses",
-      "permission": "prototype.view",
+      "permission": "system.permissions.manage",
       "emoji": null,
-      "function_zh": "管理状态设置。",
-      "status": "planned",
-      "progress": 0,
+      "function_zh": "管理员统一维护订单工作状态的数字序号、中文及英文显示名称，按数字序号排序，其他功能和适用页面可折叠查看；不会变更业务状态代码或发货、签收、支付事实。",
+      "status": "in_progress",
+      "progress": 90,
       "sort": 10
     },
     {

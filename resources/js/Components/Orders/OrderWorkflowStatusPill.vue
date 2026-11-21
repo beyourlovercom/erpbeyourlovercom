@@ -5,10 +5,10 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { currentCsrfHeaders } from '../../lib/csrfHeaders'
 
 type Auxiliary = { code: string; en: string; zh: string; color: string }
-type Option = { code: string; en: string; zh: string; color: string; mutable: boolean; source?: string; disabled_reason?: string | null }
+type Option = { code: string; en: string; zh: string; color: string; sequence?: string; mutable: boolean; source?: string; disabled_reason?: string | null }
 const props = withDefaults(defineProps<{
   orderId: number
-  projection: { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean; auxiliary?: Auxiliary[] }
+  projection: { code: string; en: string; zh: string; color: string; sequence?: string; source: string; mutable?: boolean; auxiliary?: Auxiliary[] }
   revision?: number
   canEdit?: boolean
   canManageAuxiliary?: boolean
@@ -20,14 +20,7 @@ const auxiliary = ref<Auxiliary[]>(props.projection.auxiliary ?? [])
 const saving = ref(false)
 const error = ref('')
 const select = ref<HTMLSelectElement | null>(null)
-const stageNumber: Record<string, string> = {
-  pending_allocation: '0.0', pending_review: '0.1', partially_shipped: '1.4', sending: '1.1', sent: '1.2', resent: '1.3', missing_info: '1.5', returned: '1.6',
-  shipping: '2.1', shared: '2.2', arrived: '2.3', creating: '2.4', published: '2.5',
-  paying: '2.6', paid: '2.7', cancel: '2.8', refunded: '2.9', finished: '3.0',
-  returned_follow_up: '3.1', claims: '3.2',
-  freight_product_cost_follow_up: '3.3', out_of_stock: '3.4', renew: '3.5', exception: '3.6', cancelled: '2.8',
-}
-const optionCaption = (option: Option) => `${stageNumber[option.code] ? stageNumber[option.code] + ' ' : ''}${option.en} · ${option.zh}${!option.mutable && option.disabled_reason ? '（' + option.disabled_reason + '）' : ''}`
+const optionCaption = (option: Option) => `${option.sequence ? option.sequence + ' · ' : ''}${option.zh}`
 watch(() => props.projection, (next) => {
   code.value = next.code
   auxiliary.value = next.auxiliary ?? []
@@ -35,10 +28,15 @@ watch(() => props.projection, (next) => {
 }, { deep: true })
 watch(() => props.revision, (next) => { revision.value = next })
 const current = computed(() => props.options.find(option => option.code === code.value) ?? props.projection)
-// The server supplies the complete order/actor command catalog, including
-// any permitted resolve action. Never synthesize an executable option in a view.
-const visibleOptions = computed<Option[]>(() =>
-  props.options.filter(option => option.code !== 'allocated' || code.value === 'allocated'))
+// Keep the current projection visible even if it reflects a read-only business fact.
+// Every order surface shows only the current value and authorized commands.
+const visibleOptions = computed<Option[]>(() => {
+  const options = props.options.filter(option => option.mutable || option.code === code.value)
+  if (!options.some(option => option.code === code.value)) {
+    options.unshift({ ...props.projection, mutable: false })
+  }
+  return options
+})
 const update = async (next: string) => {
   if (!props.canEdit || saving.value || next === code.value || !props.options.some(option => option.code === next && option.mutable)) return
   const previous = code.value
@@ -96,10 +94,10 @@ const update = async (next: string) => {
 
 <template>
   <span class="order-workflow-status" :class="`status-color-${current.color}`" :data-color="current.color">
-    <select v-if="canEdit && options.length" ref="select" :value="code" :disabled="saving" :aria-label="`订单工作状态 ${current.zh}`" :title="`工作进度选项按编号显示；${current.zh}`" @change="update(($event.target as HTMLSelectElement).value)">
-      <option v-for="option in visibleOptions" :key="option.code" :value="option.code" :disabled="!option.mutable">{{ optionCaption(option) }}</option>
+    <select v-if="canEdit && options.length" ref="select" :value="code" :disabled="saving" :aria-label="`订单工作状态 ${current.zh}`" :title="`按数字序号排序；${current.zh}`" @change="update(($event.target as HTMLSelectElement).value)">
+      <option v-for="option in visibleOptions" :key="option.code" :value="option.code" :disabled="!option.mutable" :title="!option.mutable ? (option.disabled_reason ?? '系统只读状态') : undefined">{{ optionCaption(option) }}</option>
     </select>
-    <span v-else class="mvp-status" :title="`${current.en} · ${current.source === 'canonical_projection' ? '来自订单真实状态的只读投影' : '员工工作进度'}`" :aria-label="`订单状态 ${current.zh}`">{{ current.zh }}</span>
+    <span v-if="!(canEdit && options.length)" class="mvp-status" :title="`${current.en} · ${current.source === 'canonical_projection' ? '来自订单真实状态的只读投影' : '员工工作进度'}`" :aria-label="`订单状态 ${current.zh}`">{{ optionCaption({ ...current, mutable: false }) }}</span>
     <small v-if="error" role="alert">{{ error }}</small>
   </span>
 </template>
