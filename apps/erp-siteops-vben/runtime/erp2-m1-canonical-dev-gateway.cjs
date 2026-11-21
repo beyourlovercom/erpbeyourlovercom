@@ -1,6 +1,6 @@
 'use strict';
 // ERP2 Vben Dev-only canonical Laravel Session gateway. Loopback only.
-// Strict path allowlist: synthetic Mac SQLite, no Production access or business writes.
+// Strict path allowlist: isolated Dev SQLite; only CSRF-protected order-note POSTs are enabled.
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const HOST='127.0.0.1';
 const PORT=Number(process.env.ERP2_LOGISTICS_DEV_PORT || '18795');
@@ -22,9 +22,10 @@ const logistics=new Set([
  '/api/erp2/v1/logistics/domestic/pending',
  '/api/erp2/v1/logistics/overseas',
 ]);
-// Canonical Laravel Orders routes, never route substrings or business mutations.
+// Canonical Laravel routes: exact GET scopes plus one narrow note-write family.
 const inertiaOrders=new Set(['/orders','/customers/orders','/kol/orders','/orders/collaboration','/orders/procurement','/orders/archive']);
 const inertiaDetail=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*$/.test(pathname);
+const noteWrite=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*\/notes$/.test(pathname);
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
  '.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml',
  '.png':'image/png','.ico':'image/x-icon','.woff':'font/woff','.woff2':'font/woff2'};
@@ -35,6 +36,7 @@ function json(res,status,data){
 function allowed(req,url){
  if(inertiaOrders.has(url.pathname)||inertiaDetail(url.pathname))
   return req.method==='GET' && req.headers['x-inertia']==='true';
+ if(noteWrite(url.pathname))return req.method==='POST'&&req.headers['content-type']?.startsWith('application/json')&&Boolean(req.headers['x-xsrf-token']);
  if(logistics.has(url.pathname))return req.method==='GET';
  if(url.pathname==='/_erp2/identity')return req.method==='GET';
  if(url.pathname==='/login')return ['GET','POST'].includes(req.method);
@@ -50,6 +52,7 @@ async function proxy(req,res,url){
  if((inertiaOrders.has(url.pathname)||inertiaDetail(url.pathname))&&req.headers['x-inertia-version'])
   headers['X-Inertia-Version']=String(req.headers['x-inertia-version']).slice(0,128);
  if(req.headers['x-csrf-token'])headers['X-CSRF-TOKEN']=req.headers['x-csrf-token'];
+ if(noteWrite(url.pathname)&&req.headers['x-xsrf-token'])headers['X-XSRF-TOKEN']=req.headers['x-xsrf-token'];
  const payload=[];
  if(req.method==='POST')for await(const c of req){payload.push(c);if(payload.reduce((n,x)=>n+x.length,0)>16384)throw Error('LOGIN_BODY_TOO_LARGE');}
 
@@ -64,7 +67,9 @@ async function proxy(req,res,url){
  const cookies=upstream.headers.getSetCookie();
  if(cookies.length)responseHeaders['set-cookie']=cookies;
  const location=upstream.headers.get('location');
- if(location){
+ // Notes POST uses redirect:manual and a separate authorized GET readback.
+ // Do not forward Laravel's app-URL redirect into the independent Vben origin.
+ if(location&&!noteWrite(url.pathname)){
   const localOrigin='http://'+HOST+':'+PORT;
   if (location.startsWith(MAC+'/')) responseHeaders.location=localOrigin+location.slice(MAC.length);
   else if (location.startsWith('/')&&!location.startsWith('//')) responseHeaders.location=location;
@@ -90,12 +95,12 @@ const server=http.createServer(async(req,res)=>{
  try{
   const url=new URL(req.url||'/','http://'+HOST+':'+PORT);
   if(url.pathname==='/api/health'&&req.method==='GET')return json(res,200,{
-    source:'ISOLATED_MAC_DEV_SQLITE',production_connected:false,write_enabled:false,
+    source:'ISOLATED_MAC_DEV_SQLITE',production_connected:false,write_enabled:'notes-only-dev',
     mode:'laravel-session',app:'ERP2 Vben Logistics Dev'});
   // Never let nested Laravel business URLs fall through to a misleading SPA 200.
-  if(/^\/(orders|customers\/orders|kol\/orders)\/.+/.test(url.pathname)&&!inertiaOrders.has(url.pathname)&&!inertiaDetail(url.pathname))
+  if(/^\/(orders|customers\/orders|kol\/orders)\/.+/.test(url.pathname)&&!inertiaOrders.has(url.pathname)&&!inertiaDetail(url.pathname)&&!noteWrite(url.pathname))
     return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
-  if(url.pathname.startsWith('/api/')||inertiaOrders.has(url.pathname)||inertiaDetail(url.pathname)||
+  if(url.pathname.startsWith('/api/')||inertiaOrders.has(url.pathname)||inertiaDetail(url.pathname)||noteWrite(url.pathname)||
      ['/_erp2/identity','/login','/dashboard','/logout'].includes(url.pathname)){
     if(!allowed(req,url))return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
     return await proxy(req,res,url);
