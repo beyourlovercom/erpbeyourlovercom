@@ -51,6 +51,8 @@ return [
     'inventory_apply_enabled' => filter_var(env('XLWMS_INVENTORY_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     // DE/Hannover R4: fail closed on all servers, including Production.
     // Runtime also enforces Local/Testing, V2, SKU isolation and checksum approval.
+    // R4 manual DE sync is separately enabled in isolated Dev; Production remains OFF.
+    'de_manual_sync_enabled' => filter_var(env('XLWMS_DE_MANUAL_SYNC_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_inventory_dev_apply_enabled' => filter_var(env('XLWMS_DE_INVENTORY_DEV_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_inventory_first_apply_approved_checksum' => (string) env('XLWMS_DE_INVENTORY_FIRST_APPLY_APPROVED_CHECKSUM', ''),
     'de_inventory_sync_schedule_enabled' => filter_var(env('XLWMS_DE_INVENTORY_SYNC_SCHEDULE_ENABLED', false), FILTER_VALIDATE_BOOL),
