@@ -55,6 +55,8 @@ return [
     // Empty by default; never infer a carrier channel from the DHL display name.
     'de_verified_channel_codes' => array_values(array_filter(array_map('trim',
         explode(',', (string) env('XLWMS_DE_VERIFIED_CHANNEL_CODES', ''))))),
+    // R4 manual DE inventory sync is independently enabled only in isolated Dev.
+    'de_manual_sync_enabled' => filter_var(env('XLWMS_DE_MANUAL_SYNC_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_inventory_dev_apply_enabled' => filter_var(env('XLWMS_DE_INVENTORY_DEV_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_inventory_first_apply_approved_checksum' => (string) env('XLWMS_DE_INVENTORY_FIRST_APPLY_APPROVED_CHECKSUM', ''),
     'de_inventory_sync_schedule_enabled' => filter_var(env('XLWMS_DE_INVENTORY_SYNC_SCHEDULE_ENABLED', false), FILTER_VALIDATE_BOOL),
