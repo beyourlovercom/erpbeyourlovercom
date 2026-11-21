@@ -30,8 +30,18 @@ final class XlwmsInventorySyncService
     public function sync(bool $apply = false, string $warehouseCode = 'US-SM'): array
     {
         if (! in_array($warehouseCode, ['US-SM', 'DE'], true)) throw new RuntimeException('XLWMS_WAREHOUSE_UNSUPPORTED');
-        // Germany is read-only in R1-R3, even when the US-SM inventory gate is enabled.
-        if ($warehouseCode === 'DE' && $apply) throw new RuntimeException('XLWMS_DE_INVENTORY_APPLY_NOT_AUTHORIZED');
+        // R4 permits DE inventory writes ONLY in isolated Local/Testing, with a
+        // separate DE gate. V2 + per-SKU quarantine and first-checksum approval
+        // remain mandatory; this cannot enable Production or US-SM dispatch.
+        if ($warehouseCode === 'DE' && $apply) {
+            if (! app()->environment('local', 'testing')
+                || ! (bool) config('xlwms.de_inventory_dev_apply_enabled', false)) {
+                throw new RuntimeException('XLWMS_DE_INVENTORY_APPLY_NOT_AUTHORIZED');
+            }
+            if (! $this->v2Enabled() || ! $this->skuIsolationEnabled()) {
+                throw new RuntimeException('XLWMS_DE_REQUIRES_V2_SKU_ISOLATION');
+            }
+        }
         if ($apply && ! (bool) config('xlwms.inventory_apply_enabled', false)) throw new RuntimeException('XLWMS_INVENTORY_APPLY_DISABLED');
         $warehouse = Warehouse::query()->where('code', $warehouseCode)->firstOrFail();
         $connection = WarehouseOpenApiConnection::query()->where('warehouse_id', $warehouse->id)->where('provider', 'xlwms')->firstOrFail();
@@ -349,7 +359,12 @@ final class XlwmsInventorySyncService
         // The first V2 apply still requires the exact full OMS checksum and
         // Owner-approved config. Never use a prior V1 snapshot as approval.
         if ($last === null || ! (bool) ($last->summary['v2'] ?? false)) {
-            $approved = trim((string) config('xlwms.inventory_first_apply_approved_checksum', ''));
+            // DE approval is warehouse-specific: its Owner-reviewed checksum can
+            // never replace or accidentally inherit the US-SM first-apply gate.
+            $approvedConfigKey = $warehouse->code === 'DE'
+                ? 'xlwms.de_inventory_first_apply_approved_checksum'
+                : 'xlwms.inventory_first_apply_approved_checksum';
+            $approved = trim((string) config($approvedConfigKey, ''));
             if (strlen($approved) !== 64 || ! ctype_xdigit($approved)
                 || ! hash_equals(strtolower($approved), strtolower($checksum))) {
                 $issues[] = ['reason' => 'FIRST_V2_APPLY_EXACT_SNAPSHOT_APPROVAL_REQUIRED'];

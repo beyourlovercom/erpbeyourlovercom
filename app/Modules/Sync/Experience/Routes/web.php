@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Sync\Experience\Controllers\DeTianyunWarehouseSyncController;
 use App\Modules\Sync\Experience\Controllers\ManualSyncController;
 use App\Modules\Sync\Experience\Controllers\SyncOrchestrationController;
 use App\Modules\Sync\Experience\Controllers\SyncWorkspaceController;
@@ -17,6 +18,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/sync/wpapi/payouts', [SyncWorkspaceController::class, 'syncWordPressPayouts'])->middleware(['can:sync.operate', 'can:kol.payouts.manage']);
     Route::get('/sync/orders', [ManualSyncController::class, 'index'])->middleware('can:sync.view')->name('sync.orders');
     Route::get('/sync/warehouses', [SyncWorkspaceController::class, 'warehouses'])->middleware('can:sync.view')->name('sync.warehouses');
+    Route::post('/sync/warehouses/{warehouse}/sync', [DeTianyunWarehouseSyncController::class, 'start'])
+        ->middleware(['can:sync.operate', 'throttle:3,1'])->whereNumber('warehouse')->name('sync.warehouses.de.start');
+    Route::get('/sync/warehouses/{warehouse}/sync/{runId}', [DeTianyunWarehouseSyncController::class, 'status'])
+        ->middleware(['can:sync.view', 'throttle:30,1'])->whereNumber('warehouse')->whereNumber('runId')->name('sync.warehouses.de.status');
     Route::get('/sync/kol', [SyncWorkspaceController::class, 'kol'])->middleware('can:sync.view')->name('sync.kol');
     Route::get('/sync/exports', [SyncWorkspaceController::class, 'exports'])->middleware('can:sync.view')->name('sync.exports');
     Route::get('/sync/orders/{order}/payload', [ManualSyncController::class, 'payload'])->middleware('can:sync.view')->name('sync.payload');
