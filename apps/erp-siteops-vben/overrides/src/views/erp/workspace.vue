@@ -7,7 +7,7 @@ import { activeDevRole, applyAuthorizedDevNavigation, clearAuthorizedDevNavigati
   canonicalDevIdentity, devBootstrapError, takeInitialDevOrders, type DevRole } from '#/router/erp-live-navigation';
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from 'ag-grid-community';
 import { AgGridVue } from 'ag-grid-vue3';
-import { getExistingErpOrders, getExistingErpOrderDetail, getMacDevReadOnlyOrders, getCurrentDevReadOnlyOrders, type ErpOrderDetail, type ErpCurrentDevPage, type ErpOrderPage, type ErpDevMenuNode } from '#/api/erp-orders';
+import { getExistingErpOrders, getExistingErpOrderDetail, appendExistingErpOrderNote, getMacDevReadOnlyOrders, getCurrentDevReadOnlyOrders, type ErpOrderDetail, type ErpCurrentDevPage, type ErpOrderPage, type ErpDevMenuNode } from '#/api/erp-orders';
 
 defineOptions({ name: 'ERPWorkspacePreview' });
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -56,17 +56,37 @@ const sampleRows: Row[] = [
   { id: 0, kind: 'customer', order_no: 'UAT-ORDER-004', type: '客户订单', warehouse: 'de-tianyun', sku: 'DEMO-SKU-C', status: '异常订单', tracking: '—', updated_at: '合成记录' },
 ];
 const rows = ref<Row[]>(currentDevEnabled || canonicalIdentityMode ? [] : [...sampleRows]);
+const noteWriteEnabled = canonicalIdentityMode && import.meta.env.VITE_ERP_M1_NOTE_WRITE_ENABLED === '1';
+const noteBody = ref('');
+const noteSaving = ref(false);
+const noteResult = ref('');
+const orderDetailKind = ref<'customer' | 'kol'>('customer');
 const orderDetail = ref<ErpOrderDetail | null>(null);
 const detailError = ref('');
 const detailLoading = ref(false);
 async function openOrderDetail(row: Row) {
   if (!canonicalIdentityMode || row.id < 1) return;
   detailLoading.value = true; detailError.value = ''; orderDetail.value = null;
+  noteBody.value = ''; noteResult.value = '';
   try {
     const kind = isKolOrders.value || /kol|网红/i.test(row.kind) ? 'kol' : 'customer';
+    orderDetailKind.value = kind;
     orderDetail.value = await getExistingErpOrderDetail(row.id, kind);
   } catch (reason) { detailError.value = reason instanceof Error ? reason.message : '订单详情读取失败'; }
   finally { detailLoading.value = false; }
+}
+async function saveOrderNote() {
+  if (!noteWriteEnabled || noteSaving.value || !orderDetail.value?.canAppendOrderNote) return;
+  const detail = orderDetail.value;
+  noteSaving.value = true; detailError.value = ''; noteResult.value = '';
+  try {
+    orderDetail.value = await appendExistingErpOrderNote({
+      id: detail.id, kind: orderDetailKind.value, body: noteBody.value,
+    });
+    noteBody.value = ''; noteResult.value = '备注已由 Laravel 保存并从订单详情回读。';
+  } catch (reason) {
+    detailError.value = reason instanceof Error ? reason.message : '备注写入失败';
+  } finally { noteSaving.value = false; }
 }
 let requestSequence = 0;
 let initialOrdersLoaded = false;
@@ -220,7 +240,7 @@ onActivated(() => {
   if (!initialOrdersLoaded) { initCurrentDevOrders(); return; }
   // Returning to an inactive page always revalidates server-side. The cached
   // response can render immediately but does not permit interaction.
-  if (Date.now() - lastFetchStartedAt > 750) void loadExisting(pager.value.page,pager.value.perPage);
+  if (!fetching.value && Date.now() - lastFetchStartedAt > 750) void loadExisting(pager.value.page,pager.value.perPage);
 });
 </script>
 
@@ -236,13 +256,13 @@ onActivated(() => {
         </p>
       </div>
       <span class="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
-        007 本地 UAT · 所有业务写入关闭
+        {{ noteWriteEnabled ? '007 隔离 Dev · 仅开放订单备注写入 UAT' : '007 本地 UAT · 所有业务写入关闭' }}
       </span>
     </header>
     <section v-if="detailLoading || detailError || orderDetail" role="dialog" aria-label="订单详情"
       class="rounded border border-indigo-200 bg-white p-4 text-sm shadow-sm">
       <div class="mb-3 flex items-center justify-between">
-        <strong>订单详情（Laravel 授权只读）</strong>
+        <strong>订单详情（Laravel 授权读取）</strong>
         <button type="button" class="rounded border px-2 py-1" @click="orderDetail = null; detailError = ''; detailLoading = false">关闭</button>
       </div>
       <p v-if="detailLoading">正在读取订单详情…</p>
@@ -257,6 +277,20 @@ onActivated(() => {
           <div>发货仓：{{ orderDetail.shipment.warehouse_name || '—' }}</div>
           <div>承运商：{{ orderDetail.shipment.carrier || '—' }}</div>
           <div>物流单号：{{ orderDetail.shipment.tracking_number || '—' }}</div>
+        </div>
+        <div class="mt-3 rounded border border-slate-200 p-2">
+          <h3 class="font-semibold">原 ERP 订单备注 · {{ orderDetail.orderNotes.length }} 条</h3>
+          <div v-for="note in orderDetail.orderNotes" :key="note.id" class="border-b py-1">
+            {{ note.author_name }} · {{ note.created_at }}：{{ note.body }}
+          </div>
+          <form v-if="noteWriteEnabled && orderDetail.canAppendOrderNote" class="mt-2 flex flex-col gap-2" @submit.prevent="saveOrderNote">
+            <label for="erp-order-note">追加备注（原 Laravel 控制器，限 2000 字）</label>
+            <textarea id="erp-order-note" v-model="noteBody" maxlength="2000" rows="2"
+              class="rounded border p-2" :disabled="noteSaving" />
+            <button type="submit" class="self-start rounded bg-indigo-600 px-3 py-1 text-white"
+              :disabled="noteSaving || !noteBody.trim()">{{ noteSaving ? '保存中…' : '保存备注' }}</button>
+          </form>
+          <p v-if="noteResult" role="status" class="text-green-700">{{ noteResult }}</p>
         </div>
         <h3 class="mt-3 font-semibold">商品明细</h3>
         <div v-for="(item, index) in orderDetail.items" :key="index" class="border-b py-1">
@@ -310,9 +344,10 @@ onActivated(() => {
         <button v-if="enabled" type="button" class="rounded border px-2 py-1 text-xs"
           :disabled="fetching" @click="loadExisting(1)">{{ currentDevEnabled ? '读取当前 Laravel Dev（按角色授权）' : bridgeEnabled ? '读取 Mac mini 的旧 Dev 订单' : '读取 ERP Dev /orders（只读）' }}</button>
         <span class="text-xs text-slate-500">
-          {{ mode === 'synthetic' ? '合成演示，非真实订单' : currentDevEnabled ? 'Laravel Dev b07885e3 · 隔离 UAT 数据（非 Production）' : bridgeEnabled ? '旧 Mac Dev SQLite' : 'Laravel Dev 已授权订单' }} · {{ mode === 'synthetic' ? rows.length : pager.total }} 条
+          {{ mode === 'synthetic' ? '合成演示，非真实订单' : currentDevEnabled ? 'Laravel Dev b07885e3 · 隔离 UAT 数据（非 Production）' : bridgeEnabled ? '旧 Mac Dev SQLite' : 'Laravel Dev 已授权订单' }} · {{ fetching && !rows.length ? '加载中' : String(mode === 'synthetic' ? rows.length : pager.total) + ' 条' }}
         </span>
       </div>
+      <p v-if="fetching" role="status" class="rounded bg-indigo-50 p-2 text-sm text-indigo-700">正在从 Laravel Dev 读取授权订单，首次加载可能需要约 20 秒…</p>
       <p v-if="error" role="alert" class="rounded bg-amber-50 p-2 text-sm text-amber-700">{{ error }}</p>
       <div class="relative min-h-[420px] flex-1 overflow-hidden rounded border border-slate-200"
         :class="fetching ? 'pointer-events-none opacity-60' : ''" :aria-busy="fetching">
@@ -332,7 +367,7 @@ onActivated(() => {
         </select>
       </div>
       <p class="text-xs text-slate-400">
-        {{ canonicalIdentityMode ? 'ERP2 P0：真实员工 Laravel Session + 原 ERP 服务端权限；/orders 仅 GET，禁止假角色与业务写入。' : currentDevEnabled ? 'R2-B：通过原 Laravel Dev 登录 Session 和订单控制器授权；这里是隔离 UAT 角色，不是正式员工登录。全订单 /orders 未开启 OMS Grid Canary 时后端固定 50 条/页。业务写入关闭。' : bridgeEnabled ? '旧 R2 Dev 通道仅用于回归；生产写入关闭。' : '真实连接调用 Laravel 原有授权 GET /orders；业务写入关闭。' }}
+        {{ canonicalIdentityMode ? 'ERP2：Laravel Session + 原 ERP 服务端权限；订单读取 GET；备注写入仅在隔离 Dev 开关开启时允许。' : currentDevEnabled ? 'R2-B：通过原 Laravel Dev 登录 Session 和订单控制器授权；这里是隔离 UAT 角色，不是正式员工登录。全订单 /orders 未开启 OMS Grid Canary 时后端固定 50 条/页。业务写入关闭。' : bridgeEnabled ? '旧 R2 Dev 通道仅用于回归；生产写入关闭。' : '真实连接调用 Laravel 原有授权 GET /orders；业务写入关闭。' }}
       </p>
       <div v-if="currentDevEnabled" class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
         <span v-if="hotRefreshing" role="status" class="font-semibold text-amber-700">热快照待服务器校验 · 表格暂不可操作</span>
