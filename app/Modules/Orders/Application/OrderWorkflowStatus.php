@@ -9,7 +9,19 @@ final class OrderWorkflowStatus
     /** @return array<string,array{en:string,zh:string,color:string,mutable:bool,sequence:string}> */
     public static function registry(): array
     {
-        return app(OrderWorkflowStatusDisplayCatalog::class)->all();
+        $container = app();
+        // Pure PHPUnit contract tests may call the status registry without
+        // booting Laravel's config/database providers. Keep those canonical
+        // definitions available without querying a nonexistent application.
+        if (! $container->bound('config') || ! $container->bound('db')
+            || ! $container->bound(OrderWorkflowStatusDisplayCatalog::class)) {
+            $defaults = self::defaults();
+            uasort($defaults, static fn (array $left, array $right): int => OrderWorkflowStatusDisplayCatalog::compareSequence($left['sequence'], $right['sequence']));
+
+            return $defaults;
+        }
+
+        return $container->make(OrderWorkflowStatusDisplayCatalog::class)->all();
     }
 
     /** Canonical codes and business mutability live in code, never in admin settings. */

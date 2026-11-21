@@ -89,4 +89,4 @@
 - Owner 补充视觉 PASS：状态设置默认仅展示「数字序号」「状态名称」，「…」临时展开功能、适用页面、英文名称及内部代码；刷新后自动折叠。复用现有设置导航，权限限定 `system.permissions.manage`。序号修改离开输入框重新排序，保存为整批审计变更，可恢复默认。
 - 实施：新增仅存覆盖值的 `order_workflow_status_display_settings` 表，`OrderWorkflowStatusDisplayCatalog` 在请求内一次性读取并统一排序；所有 Registry 投影、列表/详情/物流/财务选项自然共用；`OrderWorkflowStatusPill` 不再硬编码阶段号和冗长禁用文本。
 - 技术边界：新表不存 Order/Shipment/Tracking/Payment 等业务真相；状态修改 PATCH/API/权限、业务审核工作流、既有 audit/status histories 均不被此显示设置替换。创建迁移并仅对 **US Mac 合成 UAT SQLite** 执行；Production 迁移/发布仍需 Owner 明确授权。
-- R4-UX 验收应覆盖：admin 管理页 GET/保存/禁用重复序号/默认恢复/错误回滚/越权 403；同一账号跨列表与详情新名称和序号一致、全部订单状态组件没有多余「…」、权限只读状态不能成为可选操作；订单及 Shipment 表内容前后保持不变。自动 Dev 浏览器回归通过，Owner 实页最终 PASS 仍待签收。
+- R4-UX 验收应覆盖：admin 管理页 GET/保存/禁用重复序号/默认恢复/错误回滚/越权 403；同一账号跨列表与详情新名称和序号一致、全部订单状态组件没有多余「…」、权限只读状态不能成为可选操作；订单及 Shipment 表内容前后保持不变。自动 Dev 浏览器回归通过。2026-11-21 Owner 在 US Mac mini 隔离 Dev 实页确认 **PASS**，包含仅设计页保留「…」的最终修订；本次签收覆盖此前 R4 真实 Dev UAT 待验收记录，但**不包含合并或 Production 发布授权**。
