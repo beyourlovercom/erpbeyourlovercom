@@ -237,6 +237,98 @@ final class DeTianyunWarehouseManualSyncTest extends TestCase
             ->where('product_id', $product->id)->value('quantity_on_hand'));
     }
 
+    public function test_read_only_detail_lists_all_34_unmatched_skus_and_retry_errors_without_inventory_mutation(): void
+    {
+        $warehouse = $this->warehouse();
+        $this->connection($warehouse);
+        $actor = $this->actor(['sync.view']);
+        $snapshotId = DB::table('xlwms_inventory_snapshots')->insertGetId([
+            'warehouse_id' => $warehouse->id, 'wh_code' => 'Hannover',
+            'checksum' => str_repeat('d', 64), 'status' => 'blocked',
+            'fetched_at' => now(), 'provider_sku_count' => 64,
+            'mapped_sku_count' => 0, 'unmatched_sku_count' => 34,
+            'blocked_sku_count' => 0, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $rows = [];
+        for ($i = 1; $i <= 34; $i++) {
+            $rows[] = [
+                'snapshot_id' => $snapshotId, 'provider_sku' => sprintf('DE-STOCK-%03d', $i),
+                'resolution_status' => 'unmatched', 'oms_total' => 5,
+                'oms_available' => 5, 'oms_locked' => 0, 'oms_in_transit' => 0,
+                'mismatch_reason' => 'OMS_SKU_NOT_VERIFIED_ERP_IDENTITY',
+                'created_at' => now(), 'updated_at' => now(),
+            ];
+        }
+        for ($i = 1; $i <= 30; $i++) {
+            $rows[] = [
+                'snapshot_id' => $snapshotId, 'provider_sku' => sprintf('DE-CATALOG-%03d', $i),
+                'resolution_status' => 'catalog_only', 'oms_total' => null,
+                'oms_available' => null, 'oms_locked' => null, 'oms_in_transit' => null,
+                'mismatch_reason' => 'ABSENT_WAREHOUSE_STOCK_LEDGER',
+                'created_at' => now(), 'updated_at' => now(),
+            ];
+        }
+        DB::table('xlwms_inventory_snapshot_rows')->insert($rows);
+        DB::table('xlwms_inventory_manual_runs')->insert([
+            'warehouse_id' => $warehouse->id, 'operator_user_id' => $actor->id,
+            'status' => 'failed', 'apply_requested' => false,
+            'error_code' => 'XLWMS_DE_SYNC_TIMEOUT', 'created_at' => now()->subMinute(),
+            'finished_at' => now()->subMinute(), 'updated_at' => now()->subMinute(),
+        ]);
+        DB::table('xlwms_inventory_manual_runs')->insert([
+            'warehouse_id' => $warehouse->id, 'operator_user_id' => $actor->id,
+            'status' => 'blocked', 'apply_requested' => false,
+            'snapshot_id' => $snapshotId, 'provider_sku_count' => 64,
+            'unmatched_sku_count' => 34,
+            'created_at' => now(), 'finished_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $url = "/sync/warehouses/{$warehouse->id}/sync-details";
+        $this->actingAs($actor)->getJson($url)->assertOk()
+            ->assertJsonPath('snapshot.id', $snapshotId)
+            ->assertJsonPath('snapshot.erp_stock_updated', false)
+            ->assertJsonPath('counts.unmatched', 34)
+            ->assertJsonPath('counts.catalog_only', 30)
+            ->assertJsonCount(34, 'rows')
+            ->assertJsonPath('rows.0.provider_sku', 'DE-STOCK-001')
+            ->assertJsonPath('rows.0.resolution_status', 'unmatched')
+            ->assertJsonPath('rows.0.erp_sku', null)
+            ->assertJsonPath('rows.0.mismatch_reason', 'OMS_SKU_NOT_VERIFIED_ERP_IDENTITY')
+            ->assertJsonPath('pagination.total', 34)
+            ->assertJsonCount(2, 'runs')
+            ->assertJsonPath('runs.0.status', 'blocked')
+            ->assertJsonPath('runs.1.error_code', 'XLWMS_DE_SYNC_TIMEOUT')
+            ->assertJsonMissingPath('app_secret_encrypted')
+            ->assertDontSee('TEST_SECRET_ONLY');
+        $this->getJson($url.'?status=catalog_only')->assertOk()
+            ->assertJsonPath('pagination.total', 30)->assertJsonCount(30, 'rows');
+        $this->getJson($url.'?status=all&page=2')->assertOk()
+            ->assertJsonPath('pagination.total', 64)->assertJsonCount(14, 'rows');
+        $this->getJson($url.'?search=DE-STOCK-001')->assertOk()
+            ->assertJsonPath('pagination.total', 1)->assertJsonCount(1, 'rows');
+        self::assertSame(0, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->count());
+        self::assertSame(2, DB::table('xlwms_inventory_manual_runs')->where('warehouse_id', $warehouse->id)->count());
+    }
+
+    public function test_detail_requires_view_permission_and_is_dev_only_de_scoped(): void
+    {
+        $warehouse = $this->warehouse();
+        $url = "/sync/warehouses/{$warehouse->id}/sync-details";
+        $this->actingAs($this->actor([]))->getJson($url)->assertForbidden();
+        $this->actingAs($this->actor(['sync.view']))->getJson($url)
+            ->assertOk()->assertJsonPath('snapshot', null)
+            ->assertJsonCount(0, 'rows');
+        $other = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        $this->getJson("/sync/warehouses/{$other->id}/sync-details")->assertNotFound();
+
+        $this->app->detectEnvironment(static fn (): string => 'production');
+        try {
+            $this->getJson($url)->assertNotFound();
+        } finally {
+            $this->app->detectEnvironment(static fn (): string => 'testing');
+        }
+    }
+
     private function warehouse(): Warehouse
     {
         return Warehouse::query()->where('code', 'DE')->firstOrFail();

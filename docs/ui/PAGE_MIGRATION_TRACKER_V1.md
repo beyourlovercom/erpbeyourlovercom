@@ -79,7 +79,7 @@ R4-7B「纬狮订单」累计视图继续旧表默认 OFF；
 | P1 | 物流 | 异常订单 | /logistics/exceptions | 0% / 待盘点 | G0 页面基线 |
 | P1 | 物流 | 承运商 | /logistics/carriers | 0% / 待盘点 | G0 页面基线 |
 | P2 | 同步 | 同步订单 | /sync/orders | 0% / 待盘点 | G0 页面基线 |
-| P2 | 同步 | 同步仓库 | /sync/warehouses | 0% / 待盘点 | G0 页面基线 |
+| P2 | 同步 | 同步仓库 | /sync/warehouses | 德国天运只读明细增量：G0/G2/G3 PASS（Laravel 56、Vue 7、Typecheck/Build PASS），等待 G4 Owner 实页 UAT；整页 Compact 迁移未验收，Production 未发布 | DE 明细 G3 → G4 Owner 实页 UAT；整页另行 G0 |
 | P2 | 同步 | 同步网红 | /sync/kol | 0% / 待盘点 | G0 页面基线 |
 | P2 | 同步 | 客户导入 | /sync/customers/import | 0% / 待盘点 | G0 页面基线 |
 | P2 | 同步 | 导出平台订单 | /sync/exports | 0% / 待盘点 | G0 页面基线 |
