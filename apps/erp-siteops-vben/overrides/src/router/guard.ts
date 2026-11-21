@@ -1,0 +1,200 @@
+import type { Router } from 'vue-router';
+
+import { LOGIN_PATH } from '@vben/constants';
+import { preferences } from '@vben/preferences';
+import { useAccessStore, useUserStore } from '@vben/stores';
+import { startProgress, stopProgress } from '@vben/utils';
+
+import { accessRoutes, coreRouteNames } from '#/router/routes';
+import { useAuthStore } from '#/store';
+
+import { generateAccess } from './access';
+import {
+  bootstrapAuthorizedDevNavigation, bootstrapCanonicalDevNavigation,
+  isCanonicalErpPathAllowed, setApprovedMenuSource, devBootstrapError,
+  canonicalDevIdentity,
+} from './erp-live-navigation';
+import { installDevPinLimit } from './erp-workspace-tab-policy';
+import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
+
+/**
+ * 通用守卫配置
+ * @param router
+ */
+function setupCommonGuard(router: Router) {
+  // 记录已经加载的页面
+  const loadedPaths = new Set<string>();
+
+  router.beforeEach((to) => {
+    to.meta.loaded = loadedPaths.has(to.path);
+
+    // 页面加载进度条
+    if (!to.meta.loaded && preferences.transition.progress) {
+      void startProgress();
+    }
+    return true;
+  });
+
+  router.afterEach((to) => {
+    // 记录页面是否加载,如果已经加载，后续的页面切换动画等效果不在重复执行
+
+    loadedPaths.add(to.path);
+
+    // 关闭页面加载进度条
+    if (preferences.transition.progress) {
+      void stopProgress();
+    }
+  });
+}
+
+/**
+ * 权限访问守卫配置
+ * @param router
+ */
+function setupAccessGuard(router: Router) {
+  // Not persisted: canonical routes must be registered once in THIS Vben runtime,
+  // even if the prior local fixture login left isAccessChecked in store state.
+  let canonicalRoutesReady = false;
+  if (import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel' &&
+      typeof window !== 'undefined') {
+    const revalidate = () => {
+      if (!canonicalRoutesReady || !canonicalDevIdentity.value) return;
+      void bootstrapCanonicalDevNavigation(router, true).then((valid) => {
+        if (!valid && devBootstrapError.value === 'ERP2_CANONICAL_SESSION_REQUIRED')
+          void router.replace({path: LOGIN_PATH, replace: true});
+        else if (!valid) void router.replace({path:'/403', replace:true});
+      });
+    };
+    // Revalidate in the background and when resuming a stale 007 browser tab.
+    // The sidebar and saved workspaces remain mounted while a request is pending.
+    window.setInterval(() => { if (!document.hidden) revalidate(); }, 60_000);
+    window.addEventListener('focus', revalidate);
+  }
+  router.beforeEach(async (to, from) => {
+    const accessStore = useAccessStore();
+    const userStore = useUserStore();
+    const authStore = useAuthStore();
+    installDevPinLimit();
+    if (!accessStore.accessToken) clearHotOrderSnapshots();
+
+    // Opt-in ERP2 staff mode: Laravel web session and persisted effective ACL are
+    // the ONLY authority. Ignore Vben's local JWT and synthetic role selectors.
+    // Routes reuse the verified scope; background checks detect live revocation.
+    if (import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel') {
+      if (to.path === '/403' || coreRouteNames.includes(to.name)) return true;
+      const firstCanonicalNavigation = !canonicalRoutesReady;
+      if (firstCanonicalNavigation) {
+        const { accessibleMenus, accessibleRoutes } = await generateAccess({
+          roles: [], router, routes: accessRoutes,
+        });
+        setApprovedMenuSource(accessibleMenus);
+        accessStore.setAccessRoutes(accessibleRoutes);
+        accessStore.setAccessMenus([]);
+        accessStore.setIsAccessChecked(true);
+        canonicalRoutesReady = true;
+      }
+      if (!await bootstrapCanonicalDevNavigation(router)) {
+        // Missing or expired Laravel session must present the genuine employee
+        // login, while endpoint/contract failures stay denied rather than fake.
+        return devBootstrapError.value === 'ERP2_CANONICAL_SESSION_REQUIRED'
+          ? { path: LOGIN_PATH, replace: true }
+          : { path: '/403', replace: true };
+      }
+      if (!isCanonicalErpPathAllowed(to.path)) {
+        return { path: '/403', replace: true };
+      }
+      // generateAccess dynamically registers route records; resolve the very
+      // first route a second time so the new component is mounted correctly.
+      return firstCanonicalNavigation
+        ? {...router.resolve(to.fullPath), replace:true}
+        : true;
+    }
+
+    // 基本路由，这些路由不需要进入权限拦截
+    if (coreRouteNames.includes(to.name)) {
+      if (to.path === LOGIN_PATH && accessStore.accessToken) {
+        return decodeURIComponent(
+          (to.query?.redirect as string) ||
+            userStore.userInfo?.homePath ||
+            preferences.app.defaultHomePath,
+        );
+      }
+      return true;
+    }
+
+    // accessToken 检查
+    if (!accessStore.accessToken) {
+      // 明确声明忽略权限访问权限，则可以访问
+      if (to.meta.ignoreAccess) {
+        return true;
+      }
+
+      // 没有访问权限，跳转登录页面
+      if (to.fullPath !== LOGIN_PATH) {
+        return {
+          path: LOGIN_PATH,
+          // 如不需要，直接删除 query
+          query:
+            to.fullPath === preferences.app.defaultHomePath
+              ? {}
+              : { redirect: encodeURIComponent(to.fullPath) },
+          // 携带当前跳转的页面，登录后重新跳转该页面
+          replace: true,
+        };
+      }
+      return to;
+    }
+
+    // 是否已经生成过动态路由
+    if (accessStore.isAccessChecked) {
+      return true;
+    }
+
+    // 生成路由表
+    // 当前登录用户拥有的角色标识列表
+    const userInfo = userStore.userInfo || (await authStore.fetchUserInfo());
+    const userRoles = userInfo.roles ?? [];
+
+    // 生成菜单和路由
+    const { accessibleMenus, accessibleRoutes } = await generateAccess({
+      roles: userRoles,
+      router,
+      // 则会在菜单中显示，但是访问会被重定向到403
+      routes: accessRoutes,
+    });
+
+    // Current Dev UAT: fail closed and fetch Laravel's real per-role menu before
+    // showing any sidebar item. Static routes remain for local navigation only.
+    accessStore.setAccessRoutes(accessibleRoutes);
+    if (import.meta.env.VITE_ERP_CURRENT_DEV_ENABLED === '1') {
+      setApprovedMenuSource(accessibleMenus);
+      accessStore.setAccessMenus([]);
+      await bootstrapAuthorizedDevNavigation(router);
+    } else {
+      accessStore.setAccessMenus(accessibleMenus);
+    }
+    accessStore.setIsAccessChecked(true);
+    const redirectPath = (from.query.redirect ??
+      (to.path === preferences.app.defaultHomePath
+        ? userInfo.homePath || preferences.app.defaultHomePath
+        : to.fullPath)) as string;
+
+    return {
+      ...router.resolve(decodeURIComponent(redirectPath)),
+      replace: true,
+    };
+  });
+}
+
+/**
+ * 项目守卫配置
+ * @param router
+ */
+function createRouterGuard(router: Router) {
+  /** 通用 */
+  setupCommonGuard(router);
+  /** 权限访问 */
+  setupAccessGuard(router);
+}
+
+export { createRouterGuard };
