@@ -7,12 +7,12 @@ import { activeDevRole, applyAuthorizedDevNavigation, clearAuthorizedDevNavigati
   canonicalDevIdentity, devBootstrapError, takeInitialDevOrders, type DevRole } from '#/router/erp-live-navigation';
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from 'ag-grid-community';
 import { AgGridVue } from 'ag-grid-vue3';
-import { getExistingErpOrders, getMacDevReadOnlyOrders, getCurrentDevReadOnlyOrders, type ErpCurrentDevPage, type ErpOrderPage, type ErpDevMenuNode } from '#/api/erp-orders';
+import { getExistingErpOrders, getExistingErpOrderDetail, getMacDevReadOnlyOrders, getCurrentDevReadOnlyOrders, type ErpOrderDetail, type ErpCurrentDevPage, type ErpOrderPage, type ErpDevMenuNode } from '#/api/erp-orders';
 
 defineOptions({ name: 'ERPWorkspacePreview' });
 ModuleRegistry.registerModules([AllCommunityModule]);
 interface Row {
-  order_no: string; type: string; warehouse: string;
+  id: number; kind: string; order_no: string; type: string; warehouse: string;
   sku: string; status: string; tracking: string; updated_at: string;
 }
 const route = useRoute();
@@ -28,8 +28,7 @@ const pager = ref<Pick<ErpOrderPage, 'page' | 'perPage' | 'total' | 'lastPage'>>
   page: 1, perPage: 50, total: 0, lastPage: 1,
 });
 const currentDevEnabled = !canonicalIdentityMode && import.meta.env.VITE_ERP_CURRENT_DEV_ENABLED === '1';
-const bridgeEnabled = !canonicalIdentityMode && !currentDevEnabled &&
-  import.meta.env.VITE_ERP_DEV_BRIDGE_ENABLED === '1';
+const bridgeEnabled = !currentDevEnabled && import.meta.env.VITE_ERP_DEV_BRIDGE_ENABLED === '1';
 const enabled = canonicalIdentityMode || currentDevEnabled || bridgeEnabled || import.meta.env.VITE_ERP_READONLY_ORDERS_ENABLED === '1';
 const selectedRole = activeDevRole;
 const devOrderScope = ref<'all' | 'customers'>('all');
@@ -46,14 +45,29 @@ const sourceStatus = computed(() => String(route.meta.erpSourceStatus ?? ''));
 const isOrdersMaster = computed(() => route.meta.erpMenuKey === 'orders-master');
 const isCustomerOrders = computed(() => ['orders-customers', 'customers-orders'].includes(String(route.meta.erpMenuKey)));
 const isKolOrders = computed(() => ['orders-kol', 'kol-orders'].includes(String(route.meta.erpMenuKey)));
-const isOrders = computed(() => isOrdersMaster.value || isCustomerOrders.value || isKolOrders.value);
+const isCollaborationOrders = computed(() => route.meta.erpMenuKey === 'orders-collaboration');
+const isProcurementOrders = computed(() => route.meta.erpMenuKey === 'orders-procurement');
+const isArchiveOrders = computed(() => route.meta.erpMenuKey === 'orders-archive');
+const isOrders = computed(() => isOrdersMaster.value || isCustomerOrders.value || isKolOrders.value || isCollaborationOrders.value || isProcurementOrders.value || isArchiveOrders.value);
 const sampleRows: Row[] = [
-  { order_no: 'UAT-ORDER-001', type: '客户订单', warehouse: '中国工厂', sku: 'DEMO-SKU-A', status: '待分仓', tracking: '—', updated_at: '合成记录' },
-  { order_no: 'UAT-ORDER-002', type: '客户订单', warehouse: 'us-ny', sku: 'DEMO-SKU-B', status: '待审核', tracking: '—', updated_at: '合成记录' },
-  { order_no: 'UAT-ORDER-003', type: '网红订单', warehouse: 'us-moreplus', sku: 'DEMO-GIFT', status: '待发货', tracking: '—', updated_at: '合成记录' },
-  { order_no: 'UAT-ORDER-004', type: '客户订单', warehouse: 'de-tianyun', sku: 'DEMO-SKU-C', status: '异常订单', tracking: '—', updated_at: '合成记录' },
+  { id: 0, kind: 'customer', order_no: 'UAT-ORDER-001', type: '客户订单', warehouse: '中国工厂', sku: 'DEMO-SKU-A', status: '待分仓', tracking: '—', updated_at: '合成记录' },
+  { id: 0, kind: 'customer', order_no: 'UAT-ORDER-002', type: '客户订单', warehouse: 'us-ny', sku: 'DEMO-SKU-B', status: '待审核', tracking: '—', updated_at: '合成记录' },
+  { id: 0, kind: 'kol', order_no: 'UAT-ORDER-003', type: '网红订单', warehouse: 'us-moreplus', sku: 'DEMO-GIFT', status: '待发货', tracking: '—', updated_at: '合成记录' },
+  { id: 0, kind: 'customer', order_no: 'UAT-ORDER-004', type: '客户订单', warehouse: 'de-tianyun', sku: 'DEMO-SKU-C', status: '异常订单', tracking: '—', updated_at: '合成记录' },
 ];
 const rows = ref<Row[]>(currentDevEnabled || canonicalIdentityMode ? [] : [...sampleRows]);
+const orderDetail = ref<ErpOrderDetail | null>(null);
+const detailError = ref('');
+const detailLoading = ref(false);
+async function openOrderDetail(row: Row) {
+  if (!canonicalIdentityMode || row.id < 1) return;
+  detailLoading.value = true; detailError.value = ''; orderDetail.value = null;
+  try {
+    const kind = isKolOrders.value || /kol|网红/i.test(row.kind) ? 'kol' : 'customer';
+    orderDetail.value = await getExistingErpOrderDetail(row.id, kind);
+  } catch (reason) { detailError.value = reason instanceof Error ? reason.message : '订单详情读取失败'; }
+  finally { detailLoading.value = false; }
+}
 let requestSequence = 0;
 let initialOrdersLoaded = false;
 let lastFetchStartedAt = 0;
@@ -68,7 +82,7 @@ function sleepOtherDevPages() {
 }
 function toGridRows(data: ErpOrderPage): Row[] {
   return data.rows.map(row=>({
-    order_no:row.order_number,type:row.order_kind,warehouse:row.warehouse||'—',
+    id:row.id,kind:row.order_kind,order_no:row.order_number,type:row.order_kind,warehouse:row.warehouse||'—',
     sku:row.sku||'—',status:row.status||'—',
     tracking:row.tracking_number||'—',updated_at:row.order_date||'—',
   }));
@@ -132,7 +146,7 @@ async function loadExisting(page = 1, perPage = pager.value.perPage) {
       : bridgeEnabled
         ? await getMacDevReadOnlyOrders({ search:search.value, page, perPage })
         : await getExistingErpOrders({ search:search.value, page, perPage,
-            scope:isCustomerOrders.value ? 'customers' : isKolOrders.value ? 'kol' : 'all' });
+            scope: isKolOrders.value ? 'kol' : isCustomerOrders.value ? 'customers' : isCollaborationOrders.value ? 'collaboration' : isProcurementOrders.value ? 'procurement' : isArchiveOrders.value ? 'archive' : 'all' });
     if (ticket !== requestSequence || roleForRequest !== selectedRole.value) return;
     if ('role' in data && data.role !== roleForRequest) throw new Error('DEV_ROLE_RESPONSE_MISMATCH');
     if ('navigation' in data && Array.isArray(data.navigation)) {
@@ -225,6 +239,45 @@ onActivated(() => {
         007 本地 UAT · 所有业务写入关闭
       </span>
     </header>
+    <section v-if="detailLoading || detailError || orderDetail" role="dialog" aria-label="订单详情"
+      class="rounded border border-indigo-200 bg-white p-4 text-sm shadow-sm">
+      <div class="mb-3 flex items-center justify-between">
+        <strong>订单详情（Laravel 授权只读）</strong>
+        <button type="button" class="rounded border px-2 py-1" @click="orderDetail = null; detailError = ''; detailLoading = false">关闭</button>
+      </div>
+      <p v-if="detailLoading">正在读取订单详情…</p>
+      <p v-if="detailError" role="alert" class="text-red-700">{{ detailError }}</p>
+      <template v-if="orderDetail">
+        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div>订单号：{{ orderDetail.order_number }}</div>
+          <div>类型：{{ orderDetail.order_kind }}</div>
+          <div>状态：{{ orderDetail.status }}</div>
+          <div>日期：{{ orderDetail.order_date }}</div>
+          <div>负责人：{{ orderDetail.owner }}</div>
+          <div>发货仓：{{ orderDetail.shipment.warehouse_name || '—' }}</div>
+          <div>承运商：{{ orderDetail.shipment.carrier || '—' }}</div>
+          <div>物流单号：{{ orderDetail.shipment.tracking_number || '—' }}</div>
+        </div>
+        <h3 class="mt-3 font-semibold">商品明细</h3>
+        <div v-for="(item, index) in orderDetail.items" :key="index" class="border-b py-1">
+          {{ item.sku }} × {{ item.quantity }} · {{ item.product_summary }}
+        </div>
+        <div v-if="orderDetail.fulfillment" class="mt-3">
+          <h3 class="font-semibold">拆单／补发履约明细 · {{ orderDetail.fulfillment.aggregate_status_label }}</h3>
+          <div v-for="segment in orderDetail.fulfillment.segments" :key="segment.order_id"
+            class="mt-2 rounded border border-slate-200 p-2">
+            <div class="font-medium">{{ segment.erp_order_id || segment.suffix }} · {{ segment.role_label }} · {{ segment.reason_label }}</div>
+            <div class="text-xs text-slate-600">
+              {{ segment.shipment.warehouse_name || '未分仓' }} ·
+              {{ segment.shipment.status_label }} ·
+              {{ segment.shipment.carrier || '—' }} / {{ segment.shipment.service || '—' }} ·
+              {{ segment.shipment.tracking_number || '无物流单号' }}
+            </div>
+            <div v-for="item in segment.items" :key="item.sku" class="text-xs">{{ item.sku }} × {{ item.quantity }}</div>
+          </div>
+        </div>
+      </template>
+    </section>
     <template v-if="isOrders">
       <p v-if="currentDevEnabled && !isOrdersMaster"
         class="rounded border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
@@ -264,6 +317,7 @@ onActivated(() => {
       <div class="relative min-h-[420px] flex-1 overflow-hidden rounded border border-slate-200"
         :class="fetching ? 'pointer-events-none opacity-60' : ''" :aria-busy="fetching">
         <AgGridVue class="h-full w-full" :theme="gridTheme" :row-data="rows"
+          @row-clicked="(event: { data?: Row }) => event.data && openOrderDetail(event.data)"
           :column-defs="columns" :quick-filter-text="mode === 'synthetic' ? search : undefined"
           :pagination="mode === 'synthetic'" :pagination-page-size="20"
           :default-col-def="{ sortable: mode === 'synthetic', resizable: true }" />
