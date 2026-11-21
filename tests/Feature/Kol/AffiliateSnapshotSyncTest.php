@@ -79,12 +79,20 @@ class AffiliateSnapshotSyncTest extends TestCase
     {
         $path = database_path('migrations/2026_09_05_130000_add_wordpress_user_login_to_kol_affiliate_accounts.php');
         $migration = require $path;
+        $indexMigration = require database_path('migrations/2026_11_21_000100_index_kol_exact_usernames.php');
 
-        self::assertTrue(Schema::hasColumn('kol_affiliate_accounts', 'wordpress_user_login'));
-        $migration->down();
-        self::assertFalse(Schema::hasColumn('kol_affiliate_accounts', 'wordpress_user_login'));
-        $migration->up();
-        self::assertTrue(Schema::hasColumn('kol_affiliate_accounts', 'wordpress_user_login'));
+        // Roll back dependent indexes first, exactly as chronological migration
+        // rollback does, before removing the indexed WordPress login column.
+        $indexMigration->down();
+        try {
+            self::assertTrue(Schema::hasColumn('kol_affiliate_accounts', 'wordpress_user_login'));
+            $migration->down();
+            self::assertFalse(Schema::hasColumn('kol_affiliate_accounts', 'wordpress_user_login'));
+            $migration->up();
+            self::assertTrue(Schema::hasColumn('kol_affiliate_accounts', 'wordpress_user_login'));
+        } finally {
+            $indexMigration->up();
+        }
     }
 
     public function test_sync_reads_canonical_items_and_maps_wordpress_user_facts(): void
