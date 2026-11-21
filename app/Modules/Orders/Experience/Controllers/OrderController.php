@@ -697,8 +697,15 @@ final class OrderController
     public function updateWorkflowStatus(Request $request, Order $order): JsonResponse
     {
         KolOrderAccessScope::authorize($request->user(), $order);
-        abort_if($order->trashed() || $order->archived_at !== null, 422, '回收站订单不能直接修改状态。');
-        $reactivating = $order->isOperationallyArchived();
+        abort_if($order->trashed(), 422, '已删除的订单请先从回收站恢复。');
+        $trashArchived = $order->archived_at !== null;
+        if ($trashArchived) {
+            // Match the existing trash-restore authority; a status edit must not
+            // silently give ordinary editors permission to recover trash records.
+            abort_unless($request->user()?->can('orders.edit')
+                && $request->user()?->can('system.permissions.manage'), 403);
+        }
+        $reactivating = $trashArchived || $order->isOperationallyArchived();
         if ($reactivating) {
             abort_unless($request->user()?->can('orders.edit'), 403);
         }

@@ -30,20 +30,25 @@ final class OrderProgressTransitionService
     ) {}
 
     /**
-     * Changing an operationally archived order's state is also an audited,
-     * atomic reactivation. A failed transition must leave it archived.
+     * Changing an independently archived order's state is also an audited,
+     * atomic restoration. A failed transition must preserve its archive flags.
      */
     public function reactivateAndTransition(Order $order, string $next, int $revision, Authenticatable $actor, ?string $reason = null): Order
     {
         abort_unless($actor->can('orders.edit'), 403, '仅运营或管理员可以恢复归档订单并修改状态。');
 
         return DB::transaction(function () use ($order, $next, $revision, $actor, $reason): Order {
-            $locked = Order::withTrashed()->with('fulfillmentParent')
+            $locked = Order::withTrashed()->with(['fulfillmentParent' => fn ($query) => $query->withTrashed()])
                 ->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
-            if ($locked->trashed() || $locked->archived_at !== null || $locked->operational_archived_at === null) {
-                throw new HttpException(409, '只有独立运营归档订单能通过修改状态恢复；回收站订单不能直接操作。');
+            $trashArchived = $locked->archived_at !== null;
+            if ($locked->trashed() || (! $trashArchived && $locked->operational_archived_at === null)) {
+                throw new HttpException(409, '仅归档订单可通过修改状态恢复；已删除订单请先从回收站恢复。');
             }
-            if ($locked->fulfillmentParent?->operational_archived_at !== null
+            if ($trashArchived && ! $actor->can('system.permissions.manage')) {
+                throw new HttpException(403, '仅管理员可以恢复回收站归档订单并修改状态。');
+            }
+            if ($locked->fulfillmentParent?->trashed()
+                || $locked->fulfillmentParent?->operational_archived_at !== null
                 || $locked->fulfillmentParent?->archived_at !== null) {
                 throw new HttpException(409, '请先恢复已归档的主订单，再调整子订单状态。');
             }
@@ -60,10 +65,15 @@ final class OrderProgressTransitionService
                 throw new HttpException(409, '订单已有真实物流单号或发货记录，不可通过修改状态重新发货；请从履约发货创建补发/重发子单。');
             }
             $before = [
+                'archived_at' => $locked->archived_at?->toIso8601String(),
+                'archived_by' => $locked->archived_by,
                 'operational_archived_at' => $locked->operational_archived_at?->toIso8601String(),
                 'operational_archived_by' => $locked->operational_archived_by,
             ];
-            $locked->forceFill(['operational_archived_at' => null, 'operational_archived_by' => null])->save();
+            $locked->forceFill([
+                'archived_at' => null, 'archived_by' => null,
+                'operational_archived_at' => null, 'operational_archived_by' => null,
+            ])->save();
             $updated = $this->transition($locked, $next, $revision, $actor, $reason);
 
             // Never claim an already-shipped parcel has re-entered an exportable
@@ -75,11 +85,13 @@ final class OrderProgressTransitionService
             }
 
             $this->audit->record(
-                AuditActor::user($actor, AuditSource::Web), 'order.operational_archive_restored',
+                AuditActor::user($actor, AuditSource::Web),
+                $trashArchived ? 'order.restored' : 'order.operational_archive_restored',
                 Order::class, $locked->id, $before,
-                ['operational_archived_at' => null, 'operational_archived_by' => null,
+                ['archived_at' => null, 'archived_by' => null,
+                    'operational_archived_at' => null, 'operational_archived_by' => null,
                     'target_status' => $next, 'workflow_revision' => (int) $updated->workflow_revision],
-                'order_status_reactivation_v1',
+                $trashArchived ? 'order_archive_status_reactivation_r41' : 'order_status_reactivation_v1',
             );
 
             return $updated->fresh(['shipment.warehouse', 'operationalMarkers']);

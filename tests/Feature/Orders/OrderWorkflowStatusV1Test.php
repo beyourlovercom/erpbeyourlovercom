@@ -97,7 +97,7 @@ final class OrderWorkflowStatusV1Test extends TestCase
         $this->actingAs($outsider)->patchJson('/orders/'.$kolOrder->id.'/workflow-status', ['workflow_status' => 'renew'])->assertForbidden();
     }
 
-    public function test_archived_orders_reject_state_changes_without_modifying_canonical_or_history(): void
+    public function test_non_admin_editor_cannot_restore_trash_archive_by_changing_status(): void
     {
         $editor = $this->userWith(['orders.view', 'orders.edit']);
         $order = $this->order($editor);
@@ -105,7 +105,7 @@ final class OrderWorkflowStatusV1Test extends TestCase
 
         $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'renew', 'expected_workflow_revision' => 0,
-        ])->assertStatus(422);
+        ])->assertForbidden();
 
         $this->assertDatabaseHas('orders', [
             'id' => $order->id, 'order_status' => 'pending_shipment',

@@ -22,13 +22,19 @@ final class OrderWorkflowStatusPolicy
     /** @return array{can_edit:bool,options:list<array<string,mixed>>} */
     public function for(Order $order, ?Authenticatable $actor): array
     {
-        $order->loadMissing(['shipment.warehouse', 'fulfillmentParent']);
+        $order->loadMissing(['shipment.warehouse', 'fulfillmentParent' => fn ($query) => $query->withTrashed()]);
         $editor = (bool) $actor?->can('orders.edit');
         $customer = in_array($order->order_kind, [OrderKind::Customer, OrderKind::FulfillmentDerived], true);
-        $parentArchived = $order->fulfillmentParent?->isOperationallyArchived() ?? false;
-        $blocked = $order->trashed() || $order->archived_at !== null
+        $parent = $order->fulfillmentParent;
+        $parentArchived = $parent !== null && ($parent->trashed() || $parent->archived_at !== null
+            || $parent->isOperationallyArchived());
+        // Trash-archived records retain their real fulfillment evidence. A status
+        // change may restore one only for an administrator who can also edit orders.
+        $mayRestoreArchive = $editor && (bool) $actor?->can('system.permissions.manage');
+        $blocked = $order->trashed() || $parentArchived
+            || ($order->archived_at !== null && ! $mayRestoreArchive)
             || ($order->isOperationallyArchived()
-                && (! $editor || $order->operational_archived_at === null || $parentArchived));
+                && (! $editor || $order->operational_archived_at === null));
         $warehouse = strtoupper(trim((string) $order->shipment?->warehouse?->code));
         $domestic = (bool) $actor?->can('domestic.review') && $warehouse === 'FACTORY';
         $oversea = $actor !== null
