@@ -41,9 +41,11 @@ it('renders read-only for unauthorized staff and never sends a mutation', () => 
   expect(wrapper.text()).toContain('待分仓')
 })
 
-it('allows derived fulfillment status selection but prevents direct reallocation from its dropdown', () => {
+it('honors server-authorized options for derived fulfillment rows, ignoring page fallback', () => {
   const wrapper = mount(OrderWorkflowGridCell, { props: { params: {
-    data: { ...row, order_kind: 'fulfillment_derived' }, workflowStatusOptions: options,
+    data: { ...row, order_kind: 'fulfillment_derived', workflow_status_options: options.map(option => ({
+      ...option, mutable: option.code !== 'pending_allocation',
+    })) }, workflowStatusOptions: options,
   } } })
   expect(wrapper.find('select').exists()).toBe(true)
   expect(wrapper.find('option[value="pending_allocation"]').attributes('disabled')).toBeDefined()
@@ -58,4 +60,23 @@ it('does not allow host grid row selection to consume status interactions', asyn
   wrapper.element.parentElement?.addEventListener('click', click)
   await wrapper.find('select').trigger('click')
   expect(click).not.toHaveBeenCalled()
+})
+
+it('targets the order, never a shipment row ID, in logistics grids', async () => {
+  const patch = vi.spyOn(axios, 'patch').mockResolvedValueOnce({
+    data: { order: { workflow_revision: 4 }, workflow_status: { code: 'sending', auxiliary: [] } },
+  })
+  const reload = vi.spyOn(router, 'reload').mockImplementation(() => undefined)
+  const wrapper = mount(OrderWorkflowGridCell, { props: { params: {
+    data: { ...row, id: 9001, order_id: 107, workflow_status_options: options },
+    workflowStatusOptions: options,
+  } } })
+  await wrapper.find('select').setValue('sending')
+  await vi.waitFor(() => expect(patch).toHaveBeenCalledWith(
+    '/orders/107/workflow-status',
+    { workflow_status: 'sending', expected_workflow_revision: 3 },
+    expect.any(Object),
+  ))
+  patch.mockRestore()
+  reload.mockRestore()
 })

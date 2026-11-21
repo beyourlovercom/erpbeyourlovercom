@@ -10,7 +10,7 @@ type Order = {
   _is_additional_item?: boolean;
   id: number; erp_order_id: string | null; display_order_number?: string; order_kind?: string;
   source_label?: string; external_order_number?: string;
-  workflow_status_projection?: Workflow; workflow_revision?: number; tracking_sync_status?: string | null; tracking_sync_label?: string | null; tracking_sync_reason?: string | null
+  workflow_status_projection?: Workflow; workflow_revision?: number; can_edit_workflow_status?: boolean; workflow_status_options?: Option[]; tracking_sync_status?: string | null; tracking_sync_label?: string | null; tracking_sync_reason?: string | null
 }
 type Params = ICellRendererParams & { mode?: 'number' | 'status' | 'action' | 'sync'; options?: Option[]; canEdit?: boolean }
 const props = defineProps<{ params: Params }>()
@@ -31,8 +31,8 @@ const sourceTitle = computed(() => order.value?.source_label === 'WooCommerce' &
         :order-id="order.id"
         :projection="order.workflow_status_projection"
         :revision="order.workflow_revision"
-        :can-edit="params.canEdit === true"
-        :options="params.options ?? []"
+        :can-edit="Boolean(order.can_edit_workflow_status)"
+        :options="order.workflow_status_options ?? params.options ?? []"
       />
       <span v-else>—</span>
     </template>

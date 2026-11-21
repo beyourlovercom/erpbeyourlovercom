@@ -77,6 +77,7 @@ type Row = {
     revenue_provenance: string | null
     provider_order_status: string | null
     workflow_status_projection: { code: string; zh: string; en: string; color: string; source: string; mutable?: boolean }
+    workflow_revision?: number; can_edit_workflow_status?: boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[];
     provider_reconciliation_status: string | null
     paid_at: string | null
     summary: Summary
@@ -356,7 +357,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                             <tr>
                                 <td v-for="column in visibleColumns" :key="column.key">
                                     <template v-if="column.key === 'order_number'"><Link class="record-link" :href="orderPath(row)">{{ orderNumber(row) }}</Link></template>
-                                    <template v-else-if="column.key === 'order_workflow_status'"><OrderWorkflowStatusPill :order-id="row.id" :projection="row.workflow_status_projection" :can-edit="false" /></template>
+                                    <template v-else-if="column.key === 'order_workflow_status'"><OrderWorkflowStatusPill :order-id="row.id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(row.can_edit_workflow_status)" :options="row.workflow_status_options ?? []" /></template>
                                     <template v-else-if="column.key === 'products'">
                                         <div v-if="row.products.length" class="product-links">
                                             <template v-for="product in row.products" :key="`${product.product_id}-${product.sku}-${product.name}`">

@@ -54,7 +54,7 @@ type ShipOutStatus = {
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; order_date?:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_code?:string|null; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
-  progress:string; note:string|null; reviewer_name?:string|null; reviewed_at?:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'|'stockout'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; order_kind?:string; routing_warehouse?:{code:string;name:string;source:string;revision:number}; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
+  progress:string; note:string|null; reviewer_name?:string|null; reviewed_at?:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'|'stockout'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; order_kind?:string; routing_warehouse?:{code:string;name:string;source:string;revision:number}; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
   web_draft?:WebDraft|null
   shipout_production?:ShipOutDispatchState|null
 }
@@ -1382,6 +1382,7 @@ const overseaGridRows = computed<GridListRow[]>(()=>visibleRows.value.map(row=>(
   routing_warehouse_name:row.routing_warehouse?.name??'未分仓',
   can_edit_warehouse_route:Boolean(props.canEditWarehouseRoute),
   can_edit_workflow_status:Boolean(row.can_edit_workflow_status),
+  workflow_status_options:row.workflow_status_options,
   order_kind:row.order_kind,
   review_status:row.review_status==='approved'?'已通过':row.review_status==='stockout'?'缺货':'待审核',
   reviewer_name:row.reviewer_name??'—',reviewed_at:row.reviewed_at??'—',
@@ -1893,7 +1894,7 @@ const compactPages = computed<(number|string)[]>(() => {
                 <template v-if="column.key === 'line'">{{ row.line }}</template>
                 <template v-else-if="column.key === 'order'"><a class="order-link" :href="row.order_url ?? `/orders/${row.order_id}`">{{ row.erp_order_id ?? '—' }}</a></template>
                 <template v-else-if="column.key === 'order_date'">{{row.order_date??'—'}}</template>
-                <template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(row.can_edit_workflow_status)" :options="workflowStatusOptions ?? []" /><span v-else>—</span></template>
+                <template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(row.can_edit_workflow_status)" :options="row.workflow_status_options ?? workflowStatusOptions ?? []" /><span v-else>—</span></template>
                 <template v-else-if="column.key === 'route'"><OrderWarehouseRouteSelect v-if="row.routing_warehouse"
                   :order-id="row.order_id" :projection="row.routing_warehouse"
                   :can-edit="Boolean(canEditWarehouseRoute)" :options="warehouseRouteOptions??[]" /></template>

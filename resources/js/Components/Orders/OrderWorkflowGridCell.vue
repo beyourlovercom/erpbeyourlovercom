@@ -6,9 +6,11 @@ type Option = { code: string; en: string; zh: string; color: string; mutable: bo
 type Projection = { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean }
 type GridRow = {
   id?: number
+  order_id?: number
   workflow_status_projection?: Projection | null
   workflow_revision?: number
   can_edit_workflow_status?: boolean
+  workflow_status_options?: Option[]
   order_kind?: string
 }
 type CellParams = {
@@ -18,13 +20,10 @@ type CellParams = {
 }
 const props = defineProps<{ params: CellParams }>()
 const row = computed(() => props.params.data)
-const id = computed(() => Number(row.value?.id ?? 0))
+const id = computed(() => Number(row.value?.order_id ?? row.value?.id ?? 0))
 const projection = computed(() => row.value?.workflow_status_projection ?? null)
-const canEdit = computed(() => Boolean(id.value && row.value?.can_edit_workflow_status && props.params.canEditWorkflowStatus !== false))
-const availableOptions = computed(() => (props.params.workflowStatusOptions ?? []).map(option => ({
-  ...option,
-  mutable: option.mutable && (!['pending_allocation', 'cancelled'].includes(option.code) || row.value?.order_kind === 'customer'),
-})))
+const canEdit = computed(() => Boolean(id.value && row.value?.can_edit_workflow_status))
+const availableOptions = computed(() => row.value?.workflow_status_options ?? props.params.workflowStatusOptions ?? [])
 </script>
 
 <template>

@@ -6,10 +6,28 @@ use InvalidArgumentException;
 
 final class OrderWorkflowStatus
 {
-    /** @return array<string,array{en:string,zh:string,color:string,mutable:bool}> */
+    /** @return array<string,array{en:string,zh:string,color:string,mutable:bool,sequence:string}> */
     public static function registry(): array
     {
-        return [
+        $container = app();
+        // Pure PHPUnit contract tests may call the status registry without
+        // booting Laravel's config/database providers. Keep those canonical
+        // definitions available without querying a nonexistent application.
+        if (! $container->bound('config') || ! $container->bound('db')
+            || ! $container->bound(OrderWorkflowStatusDisplayCatalog::class)) {
+            $defaults = self::defaults();
+            uasort($defaults, static fn (array $left, array $right): int => OrderWorkflowStatusDisplayCatalog::compareSequence($left['sequence'], $right['sequence']));
+
+            return $defaults;
+        }
+
+        return $container->make(OrderWorkflowStatusDisplayCatalog::class)->all();
+    }
+
+    /** Canonical codes and business mutability live in code, never in admin settings. */
+    public static function defaults(): array
+    {
+        $registry = [
             'pending_allocation' => ['en' => 'Pending Allocation', 'zh' => '待分仓', 'color' => 'neutral', 'mutable' => true],
             'pending_review' => ['en' => 'Pending Review', 'zh' => '待审核', 'color' => 'amber', 'mutable' => true],
             'partially_shipped' => ['en' => 'Partially Shipped', 'zh' => '部分已发货', 'color' => 'blue', 'mutable' => false],
@@ -41,6 +59,24 @@ final class OrderWorkflowStatus
             'freight_product_cost_follow_up' => ['en' => 'Cost', 'zh' => '需跟进成本', 'color' => 'amber', 'mutable' => true],
             'out_of_stock' => ['en' => 'Out of stock', 'zh' => '缺货', 'color' => 'red', 'mutable' => true],
         ];
+        $sequence = [
+            'pending_allocation' => '0.0', 'pending_review' => '0.1', 'allocated' => '0.2',
+            'sending' => '1.1', 'sent' => '1.2', 'resent' => '1.3', 'partially_shipped' => '1.4',
+            'missing_info' => '1.5', 'returned' => '1.6', 'shipped' => '1.7',
+            'shipping' => '2.1', 'shared' => '2.2', 'arrived' => '2.3', 'creating' => '2.4',
+            'published' => '2.5', 'paying' => '2.6', 'paid' => '2.7', 'cancelled' => '2.8',
+            'refunded' => '2.9', 'cancel' => '2.10', 'finished' => '3.0',
+            'returned_follow_up' => '3.1', 'claims' => '3.2',
+            'freight_product_cost_follow_up' => '3.3', 'out_of_stock' => '3.4',
+            'renew' => '3.5', 'exception' => '3.6', 'completed' => '3.7',
+            'archived' => '4.0', 'progress_conflict' => '4.1',
+        ];
+        foreach ($registry as $code => &$definition) {
+            $definition['sequence'] = $sequence[$code];
+        }
+        unset($definition);
+
+        return $registry;
     }
 
     public static function definition(?string $code): ?array

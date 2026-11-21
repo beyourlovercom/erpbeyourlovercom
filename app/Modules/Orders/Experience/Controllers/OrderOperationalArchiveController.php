@@ -82,15 +82,8 @@ final class OrderOperationalArchiveController
                 'order_status' => $order->order_status?->value,
                 'workflow_revision' => (int) $order->workflow_revision,
                 'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
-                'can_change_status' => $order->operational_archived_at !== null
-                    && $order->fulfillmentParent?->operational_archived_at === null,
-                'workflow_status_options' => collect(OrderWorkflowStatus::registry())
-                    ->filter(fn (array $definition, string $code): bool => $code === 'archived'
-                        || ($definition['mutable'] && ($order->order_kind === OrderKind::KolFulfillment
-                            ? ! in_array($code, ['cancelled', 'pending_allocation'], true)
-                            : in_array($code, ['pending_allocation', 'pending_review', 'sending', 'finished', 'shipped', 'completed', 'out_of_stock', 'exception', 'cancelled', ...OrderAuxiliaryStatusService::CODES], true))))
-                    ->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])
-                    ->values()->all(),
+                'can_change_status' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, $request->user())['can_edit'],
+                'workflow_status_options' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, $request->user())['options'],
                 'operational_archived_at' => ($order->operational_archived_at ?? $order->fulfillmentParent?->operational_archived_at)?->toIso8601String(),
                 'archived_by' => $order->operationalArchivedByUser?->name ?? $order->fulfillmentParent?->operationalArchivedByUser?->name ?? null,
                 'direct_archive' => $order->operational_archived_at !== null,

@@ -35,6 +35,7 @@ use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowStatus;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
+use App\Modules\Orders\Application\OrderWorkflowStatusPolicy;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Application\WooCommerceAdminOrderLink;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -386,26 +387,9 @@ final class OrderController
                 && $order->shipment?->shipment_status === 'pending'
                 && blank($order->shipment?->tracking_number)
                 && $order->shipment?->shipped_at === null,
-            'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())
-                ->map(fn (array $definition, string $code): array => [
-                    'code' => $code, ...$definition,
-                    'mutable' => ($definition['mutable'] || ($code === 'pending_allocation' && $order->order_kind === OrderKind::Customer))
-                        && ($order->order_kind === OrderKind::KolFulfillment
-                            ? $code !== 'cancelled'
-                            : (($code !== 'cancelled' || ! $isDerived)
-                                && in_array($code, ['pending_allocation', 'pending_review', 'sending', 'finished', 'shipped', 'completed', 'out_of_stock', 'exception', 'cancelled', ...OrderAuxiliaryStatusService::CODES], true)))
-                        && (($request->user()?->can('orders.edit') ?? false)
-                            || ($request->user()?->can('domestic.review') && in_array($code, ['sending', 'out_of_stock'], true))
-                            || (app(LogisticsReviewAccess::class)->allows($request->user()) && $code === 'out_of_stock')),
-                ])->values()->all(),
+            'workflowStatusOptions' => app(OrderWorkflowStatusPolicy::class)->for($order, $request->user())['options'],
             'canEditOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
-            'canEditWorkflowStatus' => ($order->operational_archived_at !== null && $order->archived_at === null
-                && $order->fulfillmentParent?->operational_archived_at === null
-                && ($request->user()?->can('orders.edit') ?? false))
-                || (! $order->isOperationallyArchived()
-                && (($request->user()?->can('orders.edit') ?? false)
-                    || ($request->user()?->can('domestic.review') && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY')
-                    || app(LogisticsReviewAccess::class)->allows($request->user()))),
+            'canEditWorkflowStatus' => app(OrderWorkflowStatusPolicy::class)->for($order, $request->user())['can_edit'],
             'canManageAuxiliary' => ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canTrashOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canArchiveOrder' => ! $order->trashed() && $order->archived_at === null && $order->operational_archived_at === null && ($request->user()?->can('orders.archive') ?? false),
@@ -876,6 +860,7 @@ final class OrderController
     private function orderData(Order $order, ?array $trackingOutbox = null, bool $includeCustomerEmail = false): array
     {
         $workflowProjection = $this->workflowProjection($order);
+        $workflowPolicy = app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user());
         $trackingSource = $order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type;
         $trackingSourceValue = $trackingSource instanceof \BackedEnum ? $trackingSource->value : (string) $trackingSource;
         $trackingSync = $order->shipment && $trackingSourceValue === 'woocommerce'
@@ -912,6 +897,8 @@ final class OrderController
             'workflow_status' => $order->workflow_status,
             'workflow_revision' => (int) ($order->workflow_revision ?? 0),
             'workflow_status_projection' => $workflowProjection,
+            'can_edit_workflow_status' => $workflowPolicy['can_edit'],
+            'workflow_status_options' => $workflowPolicy['options'],
             'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
             'order_note' => $order->order_note,
             // One latest visible note; collaborative entries win over the legacy/source note.

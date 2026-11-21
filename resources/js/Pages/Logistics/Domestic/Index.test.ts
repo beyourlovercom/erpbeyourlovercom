@@ -745,14 +745,14 @@ it('keeps the status dropdown editable across domestic review, pending, stockout
     }} : active
     const page = mount(Index, { props:{
       ...baseProps, view, globalGridPilotEnabled:false,
-      rows:{...baseProps.rows,data:[row]},canEditWorkflowStatus:true,workflowStatusOptions:options,
+      rows:{...baseProps.rows,data:[row]},canEditWorkflowStatus:false,workflowStatusOptions:options,
     } })
     expect(page.find('select[aria-label^="订单工作状态"]').exists(),view).toBe(true)
   }
   const readonly = mount(Index,{props:{
     ...baseProps, view:'pending',globalGridPilotEnabled:false,
     canEditWorkflowStatus:false,workflowStatusOptions:options,
-    rows:{...baseProps.rows,data:[active]},
+    rows:{...baseProps.rows,data:[{...active,can_edit_workflow_status:false}]},
   }})
   expect(readonly.find('select[aria-label^="订单工作状态"]').exists()).toBe(false)
   expect(readonly.find('.order-workflow-status').text()).toContain('待发')

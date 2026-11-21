@@ -16,7 +16,7 @@ type TingonRow = {
   tracking_number:string|null;logistics_note:string|null
   shipment_status:string;can_edit:boolean
   routing_warehouse?:{code:string;name:string;source:string;revision:number};can_edit_warehouse_route?:boolean
-  workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean};workflow_revision?:number;order_kind?:string;can_edit_workflow_status?:boolean
+  workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean};workflow_revision?:number;order_kind?:string;can_edit_workflow_status?:boolean;workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[];
 }
 type Pager={data:TingonRow[];current_page:number;last_page:number;per_page:number;total:number}
 const props=defineProps<{orders:Pager;view:string;search:string;canOperate:boolean;carrierOptions:{value:string;label:string}[];canEditWarehouseRoute?:boolean;warehouseRouteOptions?:{code:string;name:string}[];canEditWorkflowStatus?:boolean;workflowStatusOptions?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]}>()
@@ -48,6 +48,7 @@ const rows=computed<GridListRow[]>(()=>props.orders.data.map(r=>({
   workflow_revision:r.workflow_revision??0,
   order_kind:r.order_kind,
   can_edit_workflow_status:Boolean(r.can_edit_workflow_status),
+  workflow_status_options:r.workflow_status_options,
   can_edit_warehouse_route:Boolean(r.can_edit_warehouse_route),
   tracking:r.tracking_number??'—',
   status:r.shipment_status==='pending'?'待发货':r.shipment_status==='shipped'?'已发货':r.shipment_status,

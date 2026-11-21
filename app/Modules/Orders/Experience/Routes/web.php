@@ -11,11 +11,14 @@ use App\Modules\Orders\Experience\Controllers\OrderOperationalArchiveController;
 use App\Modules\Orders\Experience\Controllers\OrderSavedViewController;
 use App\Modules\Orders\Experience\Controllers\OrderTrashController;
 use App\Modules\Orders\Experience\Controllers\OrderWarehouseRouteController;
+use App\Modules\Orders\Experience\Controllers\OrderWorkflowStatusSettingsController;
 use App\Modules\Orders\Experience\Controllers\WooCommerceInboundController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->group(function (): void {
+    Route::get('/settings/statuses', [OrderWorkflowStatusSettingsController::class, 'index'])->middleware('can:system.permissions.manage')->name('settings.statuses');
+    Route::put('/settings/statuses', [OrderWorkflowStatusSettingsController::class, 'update'])->middleware(['can:system.permissions.manage', 'throttle:10,1'])->name('settings.statuses.update');
     Route::get('/sync/woocommerce', [WooCommerceInboundController::class, 'index'])->middleware('can:sync.view')->name('woocommerce.inbound.index');
     Route::post('/sync/woocommerce/probe', [WooCommerceInboundController::class, 'probe'])->middleware('can:sync.operate')->name('woocommerce.inbound.probe');
     Route::post('/sync/woocommerce/single', [WooCommerceInboundController::class, 'single'])->middleware('can:sync.operate')->name('woocommerce.inbound.single');

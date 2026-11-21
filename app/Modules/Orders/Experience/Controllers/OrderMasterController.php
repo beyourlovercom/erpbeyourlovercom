@@ -7,6 +7,8 @@ use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderOmsAvailability;
 use App\Modules\Orders\Application\OrderSourceType;
+use App\Modules\Orders\Application\OrderWorkflowStatusPolicy;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Application\ProductOrderItemMetadata;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,8 +18,9 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Read-only discovery of canonical orders, including operationally archived,
- * soft-deleted, legacy-trash and derived rows. Never feeds fulfillment queues.
+ * Discovery of canonical orders, including operationally archived,
+ * soft-deleted, legacy-trash and derived rows. The real status stays read-only;
+ * staff workflow actions use the existing audited order-status endpoint.
  */
 final class OrderMasterController
 {
@@ -132,6 +135,7 @@ final class OrderMasterController
         return Inertia::render('Orders/Master', [
             'orders' => $orders->through(function (Order $order) use ($metadata, $fallback): array {
                 $parent = $order->fulfillmentParent;
+                $workflowPolicy = app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user());
                 $isTrash = $order->deleted_at !== null || $order->archived_at !== null
                     || $parent?->deleted_at !== null || $parent?->archived_at !== null;
                 $isOperational = $order->operational_archived_at !== null || $parent?->operational_archived_at !== null;
@@ -144,6 +148,10 @@ final class OrderMasterController
                     'source' => $order->source_type?->value,
                     'collaboration_partner' => $order->collaborationPartner?->name,
                     'status' => $order->order_status?->value,
+                    'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
+                    'workflow_revision' => (int) $order->workflow_revision,
+                    'can_edit_workflow_status' => $workflowPolicy['can_edit'],
+                    'workflow_status_options' => $workflowPolicy['options'],
                     'archive_state' => $isTrash ? 'trash' : ($isOperational ? 'operational' : 'normal'),
                     'warehouse' => $order->routing_warehouse_code ?: $order->shipment?->warehouse?->name,
                     'recipient' => $order->address?->recipient_name,

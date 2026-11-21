@@ -4,6 +4,11 @@ namespace App\Modules\Orders\Providers;
 
 use App\Modules\Orders\Application\Contracts\WooCommerceFinancialEvidenceReader;
 use App\Modules\Orders\Application\Contracts\WooCommerceOrderGateway;
+use App\Modules\Orders\Application\OrderWorkflowStatusDisplayCatalog;
+use App\Modules\Orders\Experience\Console\PaymentHealthPreviewCommand;
+use App\Modules\Orders\Experience\Console\PreviewStalePaymentsCommand;
+use App\Modules\Orders\Experience\Console\RepairWooOrderIdentitiesCommand;
+use App\Modules\Orders\Experience\Console\SyncWooCommerceOrdersCommand;
 use App\Modules\Orders\Infrastructure\WooCommerce\EloquentWooCommerceFinancialEvidenceReader;
 use App\Modules\Orders\Infrastructure\WooCommerce\HttpWooCommerceOrderGateway;
 use Illuminate\Support\ServiceProvider;
@@ -14,6 +19,7 @@ final class OrdersServiceProvider extends ServiceProvider
     {
         $this->app->bind(WooCommerceOrderGateway::class, HttpWooCommerceOrderGateway::class);
         $this->app->bind(WooCommerceFinancialEvidenceReader::class, EloquentWooCommerceFinancialEvidenceReader::class);
+        $this->app->scoped(OrderWorkflowStatusDisplayCatalog::class);
     }
 
     public function boot(): void
@@ -22,10 +28,10 @@ final class OrdersServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
-                \App\Modules\Orders\Experience\Console\SyncWooCommerceOrdersCommand::class,
-                \App\Modules\Orders\Experience\Console\PreviewStalePaymentsCommand::class,
-                \App\Modules\Orders\Experience\Console\PaymentHealthPreviewCommand::class,
-                \App\Modules\Orders\Experience\Console\RepairWooOrderIdentitiesCommand::class,
+                SyncWooCommerceOrdersCommand::class,
+                PreviewStalePaymentsCommand::class,
+                PaymentHealthPreviewCommand::class,
+                RepairWooOrderIdentitiesCommand::class,
             ]);
         }
     }

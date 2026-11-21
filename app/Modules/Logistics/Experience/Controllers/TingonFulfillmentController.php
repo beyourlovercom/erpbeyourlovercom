@@ -173,7 +173,8 @@ final class TingonFulfillmentController
             'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
             'workflow_revision' => (int) $order->workflow_revision,
             'order_kind' => $order->order_kind?->value,
-            'can_edit_workflow_status' => ! $order->isOperationallyArchived(),
+            'can_edit_workflow_status' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
+            'workflow_status_options' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             'can_edit_warehouse_route' => ! $order->isOperationallyArchived(),
         ];
     }
@@ -201,7 +202,8 @@ final class TingonFulfillmentController
             'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
             'workflow_revision' => (int) $order->workflow_revision,
             'order_kind' => $order->order_kind?->value,
-            'can_edit_workflow_status' => ! $order->isOperationallyArchived(),
+            'can_edit_workflow_status' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
+            'workflow_status_options' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             'can_edit_warehouse_route' => ! $order->isOperationallyArchived(),
         ];
     }
