@@ -70,7 +70,7 @@ final class DomesticReviewDecisionService
                 // route. Existing staff overrides are never overwritten.
                 $this->carrierDefaults->fill($locked);
                 $locked->operationalMarkers()->where('marker', 'domestic_stockout')->delete();
-                if ($locked->workflow_status === 'out_of_stock') {
+                if (in_array($locked->workflow_status, ['out_of_stock', 'pending_review'], true)) {
                     $this->workflow->set($locked, 'sending', (int) $locked->workflow_revision, $actor);
                 }
                 $locked->operationalMarkers()->updateOrCreate(
@@ -208,7 +208,9 @@ final class DomesticReviewDecisionService
             'tracking_number' => $clearStagedTracking ? null : $shipment->tracking_number,
         ])->save();
         $order->operationalMarkers()->whereIn('marker', ['domestic_stockout', 'domestic_reviewed'])->delete();
-        if ($order->workflow_status === 'out_of_stock') {
+        if ($order->workflow_status === 'pending_review') {
+            $this->workflow->set($order, 'pending_allocation', (int) $order->workflow_revision, $actor);
+        } elseif ($order->workflow_status === 'out_of_stock') {
             $this->workflow->set($order, 'sending', (int) $order->workflow_revision, $actor);
         }
         return $staged;

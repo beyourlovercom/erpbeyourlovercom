@@ -59,6 +59,7 @@ final class TingonCooperationTest extends TestCase
         ])->assertOk();
 
         self::assertSame('TINGON',$order->fresh()->shipment?->warehouse?->code);
+        self::assertNull($order->fresh()->workflow_status);
         self::assertNull($order->fresh()->shipment?->carrier);
         self::assertSame('pending',$order->fresh()->shipment?->shipment_status);
         $this->assertDatabaseCount('orders',1);
@@ -122,6 +123,10 @@ final class TingonCooperationTest extends TestCase
         ]);
         $result->assertOk();
         self::assertSame(2,$order->fresh()->fulfillmentChildren()->count());
+        $childPhases = $order->fresh()->fulfillmentChildren()->with('shipment.warehouse')->get()
+            ->mapWithKeys(fn (Order $child) => [$child->shipment->warehouse->code => $child->workflow_status]);
+        self::assertSame('pending_review', $childPhases['FACTORY']);
+        self::assertNull($childPhases['TINGON']);
         $this->actingAs($operator)->get('/orders/collaboration')->assertOk()->assertInertia(
             fn (Assert $page) => $page->where('orders.total',1)
                 ->where('orders.data.0.id',$order->id)

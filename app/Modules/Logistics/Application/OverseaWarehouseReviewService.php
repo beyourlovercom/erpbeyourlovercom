@@ -10,6 +10,7 @@ use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\NotificationCenter\Application\NotificationPublisher;
+use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
@@ -51,6 +52,7 @@ final class OverseaWarehouseReviewService
     public function __construct(
         private readonly AssistedFulfillmentService $fulfillment,
         private readonly ShipmentService $shipments,
+        private readonly OrderWorkflowStatusService $workflow,
         private readonly NotificationPublisher $notifications,
         private readonly AuditRecorder $audit,
     ) {}
@@ -142,6 +144,9 @@ final class OverseaWarehouseReviewService
                 'reviewed_by' => $actor->getAuthIdentifier(),
                 'reviewed_at' => now(),
             ])->save();
+            if (in_array($locked->workflow_status, ['pending_review', 'out_of_stock'], true)) {
+                $this->workflow->set($locked, 'sending', (int) $locked->workflow_revision, $actor);
+            }
             $this->audit->record(
                 AuditActor::user($actor, AuditSource::Web), 'oversea.review_approve',
                 OverseaWarehouseReview::class, $review->getKey(), $before,
@@ -177,6 +182,9 @@ final class OverseaWarehouseReviewService
                 'reviewed_by' => $actor->getAuthIdentifier(),
                 'reviewed_at' => now(),
             ])->save();
+            if ($locked->workflow_status === 'pending_review') {
+                $this->workflow->set($locked, 'out_of_stock', (int) $locked->workflow_revision, $actor);
+            }
             $this->audit->record(
                 AuditActor::user($actor, AuditSource::Web), 'oversea.review_stockout',
                 OverseaWarehouseReview::class, $review->getKey(), $before,
@@ -228,6 +236,9 @@ final class OverseaWarehouseReviewService
                 'reviewed_by' => null,
                 'reviewed_at' => null,
             ])->save();
+            if ($locked->workflow_status === 'sending') {
+                $this->workflow->set($locked, 'pending_review', (int) $locked->workflow_revision, $actor);
+            }
             $this->audit->record(
                 AuditActor::user($actor, AuditSource::Web), 'oversea.review_reopen',
                 OverseaWarehouseReview::class, $review->getKey(), $before,
@@ -275,6 +286,9 @@ final class OverseaWarehouseReviewService
                 'warehouse_selection_source' => null,
                 'carrier_selection_source' => null,
             ])->save();
+            if ($locked->workflow_status === 'pending_review') {
+                $this->workflow->set($locked, 'pending_allocation', (int) $locked->workflow_revision, $actor);
+            }
 
             User::query()->where('is_active', true)
                 ->whereHas('roles', fn ($q) => $q->where('key', RolePreset::Operations->roleKey()))

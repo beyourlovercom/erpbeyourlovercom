@@ -41,6 +41,10 @@ final class OrderProgressQuery
 
     public function domesticReady(Builder $orders): Builder
     {
+        // Newly allocated orders stay in review; an explicit staff "sending"
+        // selection remains available for exceptional manual bypasses.
+        $orders->where(fn (Builder $q) => $q->whereNull('workflow_status')
+            ->orWhere('workflow_status', '!=', 'pending_review'));
         // A manually selected "sending" status cannot bypass real factory
         // allocation, procurement release, stockout or shipment status.
         return $this->withoutManualException($orders)
