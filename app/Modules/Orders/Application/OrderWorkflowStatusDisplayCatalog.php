@@ -2,8 +2,8 @@
 
 namespace App\Modules\Orders\Application;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * One request-scoped display catalog. Names and sequence may be customized;
@@ -21,15 +21,28 @@ final class OrderWorkflowStatusDisplayCatalog
         }
 
         $registry = OrderWorkflowStatus::defaults();
-        if (Schema::hasTable('order_workflow_status_display_settings')) {
-            foreach (DB::table('order_workflow_status_display_settings')->get() as $setting) {
-                if (! isset($registry[$setting->code])) {
-                    continue;
-                }
-                $registry[$setting->code]['sequence'] = $setting->sequence;
-                $registry[$setting->code]['zh'] = $setting->name_zh;
-                $registry[$setting->code]['en'] = $setting->name_en;
+        // One catalog query per request; a second Schema::hasTable query would
+        // exceed the frozen wait-stock HTTP query budget by one.
+        try {
+            $settings = DB::table('order_workflow_status_display_settings')->get();
+        } catch (QueryException $exception) {
+            // During a code-before-migrate Dev bootstrap, fall back to canonical
+            // labels only for the explicitly missing table. Other DB errors fail.
+            $message = $exception->getMessage();
+            if (! str_contains($message, 'no such table: order_workflow_status_display_settings')
+                && ! (str_contains($message, 'order_workflow_status_display_settings')
+                    && str_contains($message, "doesn't exist"))) {
+                throw $exception;
             }
+            $settings = [];
+        }
+        foreach ($settings as $setting) {
+            if (! isset($registry[$setting->code])) {
+                continue;
+            }
+            $registry[$setting->code]['sequence'] = $setting->sequence;
+            $registry[$setting->code]['zh'] = $setting->name_zh;
+            $registry[$setting->code]['en'] = $setting->name_en;
         }
         uasort($registry, static fn (array $left, array $right): int => self::compareSequence($left['sequence'], $right['sequence']));
 

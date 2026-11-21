@@ -513,12 +513,12 @@ describe('Oversea Dede file exchange workbench', () => {
     const editable = { ...usSmPendingRows.data[0], workflow_revision: 0, can_edit_workflow_status: true,
       workflow_status_projection: {code:'sending',en:'Sending',zh:'待发',color:'neutral',source:'canonical_projection',mutable:true} }
     const options = [
-      {code:'sending',en:'Sending',zh:'待发',color:'neutral',mutable:true},
-      {code:'creating',en:'Creating',zh:'创作沟通',color:'neutral',mutable:true},
+      {code:'sending',sequence:'1.1',en:'Sending',zh:'待发',color:'neutral',mutable:true},
+      {code:'creating',sequence:'2.4',en:'Creating',zh:'创作沟通',color:'neutral',mutable:true},
     ]
     const page = mountPage({ rows: {...usSmPendingRows,data:[editable]}, workflowStatusOptions: options })
     expect(page.find('select[aria-label^="订单工作状态"]').exists()).toBe(true)
-    expect(page.find('select[aria-label^="订单工作状态"] option').text()).toContain('1.1 Sending')
+    expect(page.find('select[aria-label^="订单工作状态"] option').text()).toContain('1.1 · 待发')
     expect(page.text()).toContain('下载仓库下单表')
     const restricted = mountPage({ rows: {...usSmPendingRows,data:[{...editable,can_edit_workflow_status:false}]}, workflowStatusOptions: options })
     expect(restricted.find('select[aria-label^="订单工作状态"]').exists()).toBe(false)
