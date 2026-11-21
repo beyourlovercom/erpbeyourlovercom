@@ -160,6 +160,8 @@ export interface ErpOrderDetail {
   order_date: string; owner: string; currency: string;
   items: { sku: string; quantity: number; product_summary: string }[];
   shipment: { warehouse_name: string; carrier: string; service: string; tracking_number: string };
+  orderNotes: { id: number; author_name: string; body: string; created_at: string }[];
+  canAppendOrderNote: boolean;
   fulfillment: {
     aggregate_status_label: string;
     segments: { order_id: number; erp_order_id: string; suffix: string;
@@ -189,12 +191,19 @@ export async function getExistingErpOrderDetail(
     if (payload.component !== 'Orders/Show') throw new Error('ERP_ORDER_DETAIL_COMPONENT_MISMATCH');
     const order = asObject(asObject(payload.props).order);
     if (safeInt(order.id, 0) !== id) throw new Error('ERP_ORDER_DETAIL_ID_MISMATCH');
+    const props = asObject(payload.props);
     const shipment = asObject(order.shipment), owner = asObject(order.owner);
     return {
       id, order_number: asText(order.erp_order_id || order.external_order_number || order.internal_order_number),
       order_kind: asText(order.order_kind_label || order.order_kind),
       status: asText(asObject(order.workflow_status_projection).zh || order.order_status_label),
       order_date: asText(order.order_date), owner: asText(owner.name), currency: asText(order.currency),
+      canAppendOrderNote: props.canAppendOrderNote === true,
+      orderNotes: (Array.isArray(props.orderNotes) ? props.orderNotes : []).map(note => {
+        const n = asObject(note);
+        return { id: safeInt(n.id, 0), author_name: asText(n.author_name),
+          body: asText(n.body), created_at: asText(n.created_at) };
+      }),
       items: (Array.isArray(order.items) ? order.items : []).map(item => {
         const row = asObject(item);
         return { sku: asText(row.sku), quantity: safeInt(row.quantity, 0),
@@ -227,6 +236,47 @@ export async function getExistingErpOrderDetail(
     };
   }
   throw new Error('ERP_ORDER_DETAIL_VERSION_RETRY_EXHAUSTED');
+}
+
+/** Opt-in isolated Dev write. Laravel owns CSRF, ACL, validation, transaction and audit. */
+export async function appendExistingErpOrderNote(
+  input: { id: number; kind: 'customer' | 'kol'; body: string },
+  fetcher: typeof fetch = fetch,
+  cookieSource: string = typeof document === 'undefined' ? '' : document.cookie,
+): Promise<ErpOrderDetail> {
+  if (!Number.isSafeInteger(input.id) || input.id < 1) throw new Error('ERP_NOTE_ORDER_ID_INVALID');
+  const body = input.body.trim();
+  if (!body || body.length > 2000) throw new Error('ERP_NOTE_BODY_INVALID');
+  const before = await getExistingErpOrderDetail(input.id, input.kind, fetcher);
+  if (!before.canAppendOrderNote) throw new Error('ERP_NOTE_SERVER_DISALLOWED');
+  const cookie = cookieSource.split(';').map(s => s.trim()).find(s => s.startsWith('XSRF-TOKEN='));
+  if (!cookie) throw new Error('ERP_NOTE_CSRF_COOKIE_REQUIRED');
+  let xsrf: string;
+  try { xsrf = decodeURIComponent(cookie.slice('XSRF-TOKEN='.length)); }
+  catch { throw new Error('ERP_NOTE_CSRF_COOKIE_INVALID'); }
+  const path = (input.kind === 'kol' ? '/kol/orders/' : '/customers/orders/') + input.id + '/notes';
+  const response = await fetcher(path, {
+    method: 'POST', credentials: 'same-origin', redirect: 'manual',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/html, application/xhtml+xml',
+      'X-Requested-With': 'XMLHttpRequest', 'X-XSRF-TOKEN': xsrf },
+    body: JSON.stringify({ body }),
+  });
+  if ([401, 403, 404, 419].includes(response.status)) throw new Error('ERP_NOTE_NOT_AUTHORIZED_' + response.status);
+  if (response.status === 409 || response.status === 422) throw new Error('ERP_NOTE_SERVER_REJECTED_' + response.status);
+  // Browsers intentionally mask redirect:manual as status 0 / opaqueredirect.
+  // Never retry the POST: an apparent gateway error can follow a committed write.
+  const redirectAccepted = [302, 303].includes(response.status) ||
+    (response.status === 0 && response.type === 'opaqueredirect');
+  const location = response.headers.get('location') || '';
+  if (location && !location.startsWith('/') && !location.startsWith(globalThis.location?.origin + '/'))
+    throw new Error('ERP_NOTE_EXTERNAL_REDIRECT_DENIED');
+  // Readback is the source of truth, even after an ambiguous 502 from the Dev gateway.
+  const after = await getExistingErpOrderDetail(input.id, input.kind, fetcher);
+  const persisted = after.orderNotes.some(note =>
+    note.body === body && !before.orderNotes.some(prev => prev.id === note.id));
+  if (!persisted) throw new Error(redirectAccepted
+    ? 'ERP_NOTE_POST_NOT_CONFIRMED_BY_SERVER' : 'ERP_NOTE_POST_FAILED_' + response.status);
+  return after;
 }
 
 export async function getMacDevReadOnlyOrders(input: {
