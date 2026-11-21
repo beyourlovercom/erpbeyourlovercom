@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 final class SingleOrderPreview
 {
     /** @return array<string,mixed> */
-    public function forOrder(Order $order, bool $requireFreshSnapshot = true, bool $webDraft = false): array
+    public function forOrder(Order $order, bool $requireFreshSnapshot = true, bool $webDraft = false, string $warehouseCode = 'US-SM'): array
     {
         $order->loadMissing(['address', 'items', 'shipment.warehouse', 'shipment.carrierService', 'shipment.overseaReview']);
         $shipment = $order->shipment;
@@ -26,7 +26,7 @@ final class SingleOrderPreview
         $add = static function (bool $condition, string $reason) use (&$blocking): void {
             if ($condition) $blocking[] = $reason;
         };
-        $add(! $shipment || $shipment->warehouse?->code !== 'US-SM', 'wrong_warehouse');
+        $add(! $shipment || $shipment->warehouse?->code !== $warehouseCode, 'wrong_warehouse');
         $add(! $webDraft && $order->order_status?->value !== 'pending_shipment', 'order_not_pending_shipment');
         $add(! $webDraft && (! $shipment || $shipment->shipment_status !== 'pending'), 'shipment_not_pending');
         $add(! $webDraft && (! $review || $review->status !== 'approved'
@@ -34,6 +34,7 @@ final class SingleOrderPreview
         $add(! $webDraft && filled($shipment?->tracking_number), 'tracking_already_assigned');
         $add(! $webDraft && (! $connection || ! filled($connection->app_key_encrypted) || ! filled($connection->app_secret_encrypted)), 'api_credentials_missing');
         $add(! $connection || ! filled($connection->oms_warehouse_code), 'oms_warehouse_not_bound');
+        $add($warehouseCode === 'DE' && $connection?->oms_warehouse_code !== 'Hannover', 'DE_OMS_WAREHOUSE_MISMATCH');
         $add(! $address || ! filled($address->recipient_name), 'recipient_missing');
         $add(! $address || ! filled($address->address_line_1), 'address_missing');
         $add(! $address || ! filled($address->city), 'city_missing');
@@ -41,7 +42,7 @@ final class SingleOrderPreview
         $country = strtoupper(trim((string) ($address?->country ?? '')));
         $add(strlen($country) !== 2, 'country_iso2_missing');
         $state = strtoupper(trim((string) ($address?->province_state ?? '')));
-        $add(! $state, 'province_missing');
+        $add(! $state && $warehouseCode !== 'DE', 'province_missing');
         $add(in_array($country, ['US', 'CA', 'AU'], true) && ! preg_match('/^[A-Z]{2,3}$/', $state), 'province_code_not_confirmed');
 
         // Owner 2026-10-29: US-SM needs NO shipping service / NO label.
@@ -51,6 +52,12 @@ final class SingleOrderPreview
             ? trim((string) ($webDraft ? 'Upload_Shipping_Label' : config('xlwms.us_sm_oms_logistics_channel', '')))
             : trim((string) ($shipment?->carrierService?->service_value ?: $shipment?->service ?: ''));
         $add($channel === '', 'native_logistics_channel_missing');
+        // R3 DE catalog channels are provider IDs, not the ERP carrier label.
+        // Never fall back to US-SM's special service or an unverified DHL alias.
+        if ($warehouseCode === 'DE') {
+            $add(! in_array($channel, (array) config('xlwms.de_verified_channel_codes', []), true),
+                'DE_OMS_CHANNEL_NOT_VERIFIED');
+        }
         $add(! $webDraft && $usSm && (bool) config('xlwms.us_sm_require_no_shipping_service', true)
             && $channel !== 'No_Shipping_Service',
             'US_SM_NO_SHIPPING_CHANNEL_REQUIRED');

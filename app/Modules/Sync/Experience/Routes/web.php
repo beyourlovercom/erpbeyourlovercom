@@ -22,6 +22,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         ->middleware(['can:sync.operate', 'throttle:3,1'])->whereNumber('warehouse')->name('sync.warehouses.de.start');
     Route::get('/sync/warehouses/{warehouse}/sync/{runId}', [DeTianyunWarehouseSyncController::class, 'status'])
         ->middleware(['can:sync.view', 'throttle:30,1'])->whereNumber('warehouse')->whereNumber('runId')->name('sync.warehouses.de.status');
+    Route::get('/sync/warehouses/{warehouse}/sync-details', [DeTianyunWarehouseSyncController::class, 'details'])
+        ->middleware(['can:sync.view', 'throttle:60,1'])->whereNumber('warehouse')->name('sync.warehouses.de.details');
     Route::get('/sync/kol', [SyncWorkspaceController::class, 'kol'])->middleware('can:sync.view')->name('sync.kol');
     Route::get('/sync/exports', [SyncWorkspaceController::class, 'exports'])->middleware('can:sync.view')->name('sync.exports');
     Route::get('/sync/orders/{order}/payload', [ManualSyncController::class, 'payload'])->middleware('can:sync.view')->name('sync.payload');

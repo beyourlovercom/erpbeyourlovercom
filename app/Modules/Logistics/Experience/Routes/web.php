@@ -3,6 +3,7 @@
 use App\Modules\Logistics\Experience\Controllers\CarrierController;
 use App\Modules\Logistics\Experience\Controllers\ChinaSmallPacketBarcode69Controller;
 use App\Modules\Logistics\Experience\Controllers\DomesticInlineTrackingController;
+use App\Modules\Logistics\Experience\Controllers\DeTianyunOutboundBatchController;
 use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
@@ -130,6 +131,19 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         [XlwmsSingleOrderController::class, 'reconcile'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:5,1'])
         ->whereNumber('order')->name('logistics.xlwms.order.reconcile');
+    // DE/Hannover reuses the MorePlus selected-order preview/queue UX.
+    // These isolated-Dev endpoints do not contain any OMS CREATE path.
+    Route::get('/logistics/oversea/de-tianyun/xlwms/batch/preview',
+        [DeTianyunOutboundBatchController::class, 'preview'])
+        ->middleware(['can:logistics.view', 'throttle:10,1'])->name('logistics.xlwms.de.batch.preview');
+    Route::post('/logistics/oversea/de-tianyun/xlwms/batch/start',
+        [DeTianyunOutboundBatchController::class, 'start'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:3,1'])
+        ->name('logistics.xlwms.de.batch.start');
+    Route::get('/logistics/oversea/de-tianyun/xlwms/batch/{batchId}/status',
+        [DeTianyunOutboundBatchController::class, 'status'])
+        ->middleware(['can:logistics.view', 'throttle:20,1'])
+        ->whereUuid('batchId')->name('logistics.xlwms.de.batch.status');
     // MorePlus / ShipOut: sandbox-only preview/dispatch/readback, strictly
     // scoped to the existing US-LA overseas workbench and ERP order identity.
     Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/label-stage',
