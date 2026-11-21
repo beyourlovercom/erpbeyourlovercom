@@ -54,6 +54,38 @@ final class ConfigureXlwmsInventoryApiTest extends TestCase
             ->assertExitCode(0);
     }
 
+    public function test_de_configuration_is_independent_and_never_discloses_credentials(): void
+    {
+        $de = Warehouse::query()->where('code', 'DE')->firstOrFail();
+        $this->artisan('xlwms:configure-inventory-api --warehouse=DE --check')
+            ->expectsOutput('XLWMS DE credential configuration: MISSING')
+            ->assertExitCode(1);
+
+        WarehouseOpenApiConnection::query()->create([
+            'warehouse_id' => $de->id, 'provider' => 'xlwms',
+            'app_key_encrypted' => 'FAKE_DE_TEST_KEY',
+            'app_secret_encrypted' => 'FAKE_DE_TEST_SECRET',
+            'oms_warehouse_code' => 'Hannover',
+        ]);
+        $this->artisan('xlwms:configure-inventory-api --warehouse=DE --check')
+            ->expectsOutput('XLWMS DE credential configuration: PRESENT')
+            ->assertExitCode(0);
+        $this->artisan('xlwms:configure-inventory-api --warehouse=US-SM --check')
+            ->expectsOutput('XLWMS US-SM credential configuration: MISSING')
+            ->assertExitCode(1);
+        WarehouseOpenApiConnection::query()->where('warehouse_id', $de->id)->update(['oms_warehouse_code' => 'US-SM']);
+        $this->artisan('xlwms:configure-inventory-api --warehouse=DE --check')
+            ->expectsOutput('XLWMS DE credential configuration: MISSING')
+            ->assertExitCode(1);
+    }
+
+    public function test_unsupported_warehouse_is_rejected_before_any_credential_lookup(): void
+    {
+        $this->artisan('xlwms:configure-inventory-api --warehouse=US-LA --check')
+            ->expectsOutput('Unsupported XLWMS warehouse. Allowed: US-SM, DE.')
+            ->assertExitCode(2);
+    }
+
     public function test_conflicting_arguments_rejected_before_prompting_for_secrets(): void
     {
         $this->artisan('xlwms:configure-inventory-api --check --configure')

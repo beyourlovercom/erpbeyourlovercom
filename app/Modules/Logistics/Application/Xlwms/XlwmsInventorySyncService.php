@@ -27,13 +27,17 @@ final class XlwmsInventorySyncService
     }
 
     /** @return array<string,mixed> */
-    public function sync(bool $apply = false): array
+    public function sync(bool $apply = false, string $warehouseCode = 'US-SM'): array
     {
+        if (! in_array($warehouseCode, ['US-SM', 'DE'], true)) throw new RuntimeException('XLWMS_WAREHOUSE_UNSUPPORTED');
+        // Germany is read-only in R1-R3, even when the US-SM inventory gate is enabled.
+        if ($warehouseCode === 'DE' && $apply) throw new RuntimeException('XLWMS_DE_INVENTORY_APPLY_NOT_AUTHORIZED');
         if ($apply && ! (bool) config('xlwms.inventory_apply_enabled', false)) throw new RuntimeException('XLWMS_INVENTORY_APPLY_DISABLED');
-        $warehouse = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        $warehouse = Warehouse::query()->where('code', $warehouseCode)->firstOrFail();
         $connection = WarehouseOpenApiConnection::query()->where('warehouse_id', $warehouse->id)->where('provider', 'xlwms')->firstOrFail();
         $whCode = trim((string) $connection->oms_warehouse_code);
         if ($whCode === '') throw new RuntimeException('OMS_WAREHOUSE_CODE_NOT_CONFIGURED');
+        if ($warehouseCode === 'DE' && $whCode !== 'Hannover') throw new RuntimeException('OMS_DE_WAREHOUSE_CODE_MISMATCH');
         $pageSize = 10;
 
         // Product pages are account-level; a product row is not required to carry whCode.
@@ -94,7 +98,7 @@ final class XlwmsInventorySyncService
             if ($reason !== null) { $blocked++; $mismatches[] = ['sku' => $sku, 'reason' => $reason]; }
             $rows[] = ['sku' => $sku, 'status' => $reason ? 'blocked' : 'matched', 'product_id' => (int) $resolved, 'stock' => $stock, 'reason' => $reason];
         }
-        // Persist all OMS catalog SKUs, including SKUs with no ledger in US-SM.
+        // Persist all OMS catalog SKUs, including SKUs with no ledger in this warehouse.
         // Catalog-only is deliberately not "unmatched" and never means stock zero.
         foreach (array_keys($providerSkus) as $sku) {
             if (isset($normalized[$sku])) continue;
