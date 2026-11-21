@@ -43,6 +43,82 @@ final class KolOrderIdentitySearchTest extends TestCase
         }
     }
 
+    public function test_exact_handle_with_leading_and_trailing_underscores_takes_priority_over_partial_name(): void
+    {
+        $staff = $this->userWith(['orders.create', 'kol.view']);
+        $exact = $this->kol($staff, 'Z Dolor Creator');
+        $exact->socialAccounts()->create([
+            'platform' => 'instagram', 'handle' => '_dolordemuelas_', 'is_active' => true,
+        ]);
+        $this->kol($staff, 'A Review of _dolordemuelas_');
+
+        foreach (['_dolordemuelas_', '@_dolordemuelas_'] as $term) {
+            $this->actingAs($staff)->getJson('/kol/orders/kol-search?q='.urlencode($term))
+                ->assertOk()->assertJsonCount(1)
+                ->assertJsonPath('0.value', $exact->id)
+                ->assertJsonPath('0.account', '_dolordemuelas_');
+        }
+    }
+
+    public function test_fuzzy_search_treats_underscores_and_percent_signs_as_literal_characters(): void
+    {
+        $staff = $this->userWith(['orders.create', 'kol.view']);
+        $underscore = $this->kol($staff, 'Z A_B Creator');
+        $this->kol($staff, 'Z Axb Creator');
+        $percent = $this->kol($staff, 'Z 50%off Creator');
+        $this->kol($staff, 'Z 50xoff Creator');
+
+        $this->actingAs($staff)->getJson('/kol/orders/kol-search?q='.urlencode('A_B'))
+            ->assertOk()->assertJsonCount(1)->assertJsonPath('0.value', $underscore->id);
+        $this->actingAs($staff)->getJson('/kol/orders/kol-search?q='.urlencode('50%off'))
+            ->assertOk()->assertJsonCount(1)->assertJsonPath('0.value', $percent->id);
+    }
+
+    public function test_exact_handle_uses_union_lookup_without_fuzzy_like_query(): void
+    {
+        $staff = $this->userWith(['orders.create', 'kol.view']);
+        $kol = $this->kol($staff, 'Exact Union KOL');
+        $kol->socialAccounts()->create([
+            'platform' => 'instagram', 'handle' => '_exact_union_', 'is_active' => true,
+        ]);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->actingAs($staff)->getJson('/kol/orders/kol-search?q='.urlencode('_exact_union_'))
+            ->assertOk()->assertJsonCount(1)->assertJsonPath('0.value', $kol->id);
+        $sql = strtolower(implode(' ', array_column(DB::getQueryLog(), 'query')));
+        DB::disableQueryLog();
+
+        $this->assertStringContainsString(' union ', $sql);
+        $this->assertStringNotContainsString(' like ', $sql);
+    }
+
+    public function test_exact_handle_respects_owner_archived_and_active_social_scope(): void
+    {
+        $specialist = $this->userWith(['orders.create', 'kol.view']);
+        $manager = $this->userWith(['orders.create', 'kol.view', 'kol.views.manage']);
+        $own = $this->kol($specialist, 'Own Full Handle');
+        $foreign = $this->kol($manager, 'Foreign Full Handle');
+        $archived = $this->kol($manager, 'Archived Full Handle');
+        foreach ([$own, $foreign, $archived] as $kol) {
+            $kol->socialAccounts()->create([
+                'platform' => 'instagram', 'handle' => '_same_handle_', 'is_active' => true,
+            ]);
+        }
+        $archived->forceFill(['archived_at' => now()])->save();
+        $inactive = $this->kol($specialist, 'Inactive Handle');
+        $inactive->socialAccounts()->create([
+            'platform' => 'instagram', 'handle' => '_inactive_only_', 'is_active' => false,
+        ]);
+
+        $this->actingAs($specialist)->getJson('/kol/orders/kol-search?q='.urlencode('_same_handle_'))
+            ->assertOk()->assertJsonCount(1)->assertJsonPath('0.value', $own->id);
+        $this->actingAs($manager)->getJson('/kol/orders/kol-search?q='.urlencode('_same_handle_'))
+            ->assertOk()->assertJsonCount(2);
+        $this->actingAs($specialist)->getJson('/kol/orders/kol-search?q='.urlencode('_inactive_only_'))
+            ->assertOk()->assertJsonCount(0);
+    }
+
     public function test_exact_numeric_id_ranks_before_twenty_partial_text_matches(): void
     {
         $staff = $this->userWith(['orders.create', 'kol.view']);

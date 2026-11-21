@@ -192,17 +192,51 @@ final class OrderController
         abort_unless($request->user()->can('kol.view'), 403);
         $validated = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
         $term = trim((string) ($validated['q'] ?? ''));
+        $accountTerm = ltrim($term, '@');
+
+        // A pasted full IG/WordPress handle should not wait for the broad multi-table
+        // substring scan. Preserve the stored spelling, symbols and underscores.
+        // Numeric queries retain the existing ID-first + fuzzy-results contract.
+        if ($term !== '' && ! ctype_digit($term)) {
+            // Use independent handle lookups so ordinary indexes can be used.
+            // A correlated OR/EXISTS over all KOLs costs more even for an exact match.
+            $accountKolIds = DB::table('kol_social_accounts')->select('kol_id')
+                ->where('is_active', true)->where('handle', $accountTerm)
+                ->union(DB::table('kol_affiliate_accounts')->select('kol_id')
+                    ->where('wordpress_user_login', $accountTerm))
+                ->pluck('kol_id')->all();
+
+            $exactOptions = $this->scopedKolSelection($request)
+                ->where(function (Builder $builder) use ($term, $accountKolIds): void {
+                    $builder->where('display_name', $term)->orWhere('contact_email', $term);
+                    if ($accountKolIds !== []) {
+                        $builder->orWhereIn('id', $accountKolIds);
+                    }
+                })
+                ->orderBy('display_name')->orderBy('id')->limit(20)->get(['id', 'display_name'])
+                ->map(fn (Kol $kol): array => $this->kolSelectionData($kol))->all();
+
+            if ($exactOptions !== []) {
+                return response()->json($exactOptions);
+            }
+        }
+
         $query = $this->scopedKolSelection($request);
         if ($term !== '') {
-            $pattern = '%'.mb_strtolower($term).'%';
-            $accountPattern = '%'.mb_strtolower(ltrim($term, '@')).'%';
+            // A username may contain '_' or '%': treat them as literal characters,
+            // not SQL LIKE wildcards. '!' is portable to MySQL and SQLite as ESCAPE.
+            $escapeLike = static fn (string $value): string => str_replace(
+                ['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($value)
+            );
+            $pattern = '%'.$escapeLike($term).'%';
+            $accountPattern = '%'.$escapeLike($accountTerm).'%';
             $query->where(function (Builder $builder) use ($term, $pattern, $accountPattern): void {
-                $builder->whereRaw('LOWER(display_name) LIKE ?', [$pattern])
-                    ->orWhereRaw('LOWER(contact_email) LIKE ?', [$pattern])
+                $builder->whereRaw("display_name LIKE ? ESCAPE '!'", [$pattern])
+                    ->orWhereRaw("contact_email LIKE ? ESCAPE '!'", [$pattern])
                     ->orWhereHas('socialAccounts', fn (Builder $accounts) => $accounts
-                        ->where('is_active', true)->whereRaw('LOWER(handle) LIKE ?', [$accountPattern]))
+                        ->where('is_active', true)->whereRaw("handle LIKE ? ESCAPE '!'", [$accountPattern]))
                     ->orWhereHas('affiliateAccounts', fn (Builder $accounts) => $accounts
-                        ->whereRaw('LOWER(wordpress_user_login) LIKE ?', [$accountPattern]));
+                        ->whereRaw("wordpress_user_login LIKE ? ESCAPE '!'", [$accountPattern]));
                 if (ctype_digit($term)) {
                     $builder->orWhere('id', (int) $term);
                 }

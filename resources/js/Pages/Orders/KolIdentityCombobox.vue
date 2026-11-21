@@ -22,6 +22,12 @@ let debounceTimer: ReturnType<typeof setTimeout> | undefined
 let blurTimer: ReturnType<typeof setTimeout> | undefined
 let sequence = 0
 let mounted = true
+let activeSearch: AbortController | null = null
+
+const cancelActiveSearch = () => {
+  activeSearch?.abort()
+  activeSearch = null
+}
 
 watch(() => props.modelValue, (value) => {
   if (value === null && chosen.value) {
@@ -44,11 +50,15 @@ onUnmounted(() => {
   sequence++
   clearTimeout(debounceTimer)
   clearTimeout(blurTimer)
+  cancelActiveSearch()
 })
 
 
 const search = async (term: string) => {
   const current = ++sequence
+  cancelActiveSearch()
+  const controller = new AbortController()
+  activeSearch = controller
   loading.value = true
   errorMessage.value = ''
   open.value = true
@@ -56,6 +66,7 @@ const search = async (term: string) => {
     const response = await fetch('/kol/orders/kol-search?q=' + encodeURIComponent(term.trim()), {
       headers: { Accept: 'application/json' },
       credentials: 'same-origin',
+      signal: controller.signal,
     })
     if (!response.ok) {
       throw new Error(response.status === 401 ? '登录已失效，请重新登录'
@@ -68,12 +79,13 @@ const search = async (term: string) => {
     results.value = data as KolOption[]
     activeIndex.value = results.value.length > 0 ? 0 : -1
   } catch (error) {
-    if (!mounted || current !== sequence) return
+    if (controller.signal.aborted || !mounted || current !== sequence) return
     results.value = []
     activeIndex.value = -1
     errorMessage.value = error instanceof Error && /登录已失效|没有网红搜索权限/.test(error.message)
       ? error.message : '网红查询暂时失败，请重试'
   } finally {
+    if (activeSearch === controller) activeSearch = null
     if (mounted && current === sequence) loading.value = false
   }
 }
@@ -93,6 +105,7 @@ const onInput = (event: Event) => {
   inputValue.value = (event.target as HTMLInputElement).value
   // Invalidate even an in-flight focus lookup before the debounce timer fires.
   sequence++
+  cancelActiveSearch()
   loading.value = true
   errorMessage.value = ''
   chosen.value = null
@@ -106,6 +119,7 @@ const onInput = (event: Event) => {
 const choose = (option: KolOption) => {
   sequence++
   clearTimeout(debounceTimer)
+  cancelActiveSearch()
   chosen.value = option
   inputValue.value = option.label
   results.value = []

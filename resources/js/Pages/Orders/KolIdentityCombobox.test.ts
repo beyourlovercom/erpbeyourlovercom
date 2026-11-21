@@ -93,6 +93,27 @@ describe('KolIdentityCombobox', () => {
     wrapper.unmount()
   })
 
+  it('cancels in-flight HTTP requests when typing a new handle and when unmounting', async () => {
+    fetchMock.mockImplementation(() => new Promise(() => {}))
+    const wrapper = mount(KolIdentityCombobox, { props: { modelValue: null } })
+    const input = wrapper.get('input')
+
+    await input.trigger('focus')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const firstSignal = fetchMock.mock.calls[0][1].signal as AbortSignal
+    expect(firstSignal.aborted).toBe(false)
+
+    await input.setValue('_dolordemuelas_')
+    expect(firstSignal.aborted).toBe(true)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const secondSignal = fetchMock.mock.calls[1][1].signal as AbortSignal
+    expect(secondSignal.aborted).toBe(false)
+
+    wrapper.unmount()
+    expect(secondSignal.aborted).toBe(true)
+  })
+
   it('shows authorization errors without exposing unrelated records', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 403 })
     const wrapper = mount(KolIdentityCombobox, { props: { modelValue: null } })
