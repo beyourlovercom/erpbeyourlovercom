@@ -17,6 +17,7 @@ use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
@@ -37,6 +38,8 @@ return Application::configure(basePath: dirname(__DIR__))
         RepairWarehousePhysicalSkuCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
+        // Preserve operator-supplied account identifiers exactly; do not trim them.
+        TrimStrings::except(['wordpress_username', 'affiliate_name', 'affiliate_url_slug']);
         $middleware->web(append: [
             ApplyLocalAdminBypass::class,
             EnsureActiveAuthenticatedUser::class,
