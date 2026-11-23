@@ -4,6 +4,7 @@ use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
 use App\Modules\Orders\Experience\Controllers\KolOrderLinkPreviewController;
 use App\Modules\Orders\Experience\Controllers\OrderCollaborationPartnerController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
+use App\Modules\Orders\Experience\Controllers\OrderAddressController;
 use App\Modules\Orders\Experience\Controllers\OrderMasterController;
 use App\Modules\Orders\Experience\Controllers\OrderNoteController;
 use App\Modules\Orders\Experience\Controllers\OrderOmsTransferController;
@@ -56,6 +57,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::patch('/orders/collaboration/partners/{partner}', [OrderCollaborationPartnerController::class, 'update'])->middleware('can:system.permissions.manage')->name('orders.collaboration.partners.update');
     Route::get('/orders/collaboration/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'collaboration');
     Route::get('/orders/procurement', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
+    Route::patch('/orders/{order}/address', [OrderAddressController::class, 'updateDerived'])
+        ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.derived.address.update');
+    Route::post('/orders/{order}/address/sync-children', [OrderAddressController::class, 'syncOriginalChildren'])
+        ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.address.sync-children');
     Route::get('/orders/{order}', [OrderController::class, 'showAny'])->middleware('can:orders.view')->whereNumber('order')->name('orders.show');
     Route::get('/orders/procurement/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
     Route::get('/customers/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('customers.orders')->defaults('order_kind', 'customer');
