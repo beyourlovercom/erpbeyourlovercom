@@ -7,6 +7,7 @@ const PORT=Number(process.env.ERP2_LOGISTICS_DEV_PORT || '18795');
 const MAC=(process.env.ERP2_LOGISTICS_DEV_UPSTREAM || '').replace(/\/+$/,'');
 const DIST=process.env.ERP2_LOGISTICS_VBEN_DIST || '';
 const REVIEW_DEV_WRITE=process.env.ERP2_M2_DEV_REVIEW_ENABLED==='1';
+const SHIPPING_DEV_WRITE=process.env.ERP2_M2_DEV_SHIPPING_ENABLED==='1';
 // Require explicit isolated Dev endpoints: no accidental Production routing.
 let upstream;
 try { upstream=new URL(MAC); } catch { throw Error('ERP2_DEV_UPSTREAM_REQUIRED'); }
@@ -31,6 +32,8 @@ const logisticsDetail=(pathname)=>/^\/logistics\/oversea\/(us-ny|us-moreplus|us-
 const inertiaDetail=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*$/.test(pathname);
 const noteWrite=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*\/notes$/.test(pathname);
 const reviewWrite=new Set(['/logistics/china/batch-review','/logistics/oversea/batch-review']);
+const shippingWrite=pathname=>/^\/logistics\/china\/orders\/[1-9][0-9]*\/(carrier-service|tracking-draft|quick-ship)$/.test(pathname)||
+  /^\/logistics\/oversea\/(orders|us-3sm\/orders|us-moreplus\/orders)\/[1-9][0-9]*\/manual-ship$/.test(pathname);
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
  '.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml',
  '.png':'image/png','.ico':'image/x-icon','.woff':'font/woff','.woff2':'font/woff2'};
@@ -48,6 +51,8 @@ function allowed(req,url){
   req.headers['content-type']?.startsWith('application/json') && Boolean(req.headers['x-xsrf-token']);
  if(reviewWrite.has(url.pathname))return REVIEW_DEV_WRITE && req.method==='POST' &&
   req.headers['content-type']?.startsWith('application/json') && Boolean(req.headers['x-xsrf-token']);
+ if(shippingWrite(url.pathname))return SHIPPING_DEV_WRITE && req.method==='POST' &&
+  req.headers['content-type']?.startsWith('application/json') && Boolean(req.headers['x-xsrf-token']);
  if(logistics.has(url.pathname))return req.method==='GET';
  if(url.pathname==='/_erp2/identity')return req.method==='GET';
  if(url.pathname==='/login')return ['GET','POST'].includes(req.method);
@@ -63,7 +68,7 @@ async function proxy(req,res,url){
  if(req.headers.cookie)headers.Cookie=req.headers.cookie;
  if(req.headers['content-type'])headers['Content-Type']=req.headers['content-type'];
  if(req.headers['x-csrf-token'])headers['X-CSRF-TOKEN']=req.headers['x-csrf-token'];
- if((noteWrite(url.pathname)||reviewWrite.has(url.pathname))&&req.headers['x-xsrf-token'])
+ if((noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname))&&req.headers['x-xsrf-token'])
   headers['X-XSRF-TOKEN']=req.headers['x-xsrf-token'];
  const payload=[];
  if(req.method==='POST')for await(const c of req){payload.push(c);if(payload.reduce((n,x)=>n+x.length,0)>16384)throw Error('LOGIN_BODY_TOO_LARGE');}
@@ -106,17 +111,17 @@ const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url||'/','http://'+HOST+':'+PORT);
   if(url.pathname==='/api/health'&&req.method==='GET')return json(res,200,{
     source:'ISOLATED_MAC_DEV_SQLITE',production_connected:false,
-    write_enabled:REVIEW_DEV_WRITE?'notes-and-original-review-dev':'notes-only-dev',
+    write_enabled:SHIPPING_DEV_WRITE?'notes-review-and-manual-shipping-dev':REVIEW_DEV_WRITE?'notes-and-original-review-dev':'notes-only-dev',
     mode:'laravel-session',app:'ERP2 Vben Logistics Dev'});
   // Never let nested Laravel business URLs fall through to a misleading SPA 200.
   if(url.pathname.startsWith('/logistics/')&&!isInertia(url.pathname)&&
-     !reviewWrite.has(url.pathname))
+     !reviewWrite.has(url.pathname)&&!shippingWrite(url.pathname))
     return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
   if(/^\/(orders|customers\/orders|kol\/orders)\/.+/.test(url.pathname)&&
      !isInertia(url.pathname)&&!noteWrite(url.pathname))
     return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
   if(url.pathname.startsWith('/api/')||isInertia(url.pathname)||
-     noteWrite(url.pathname)||reviewWrite.has(url.pathname)||
+     noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname)||
      ['/_erp2/identity','/login','/dashboard','/logout'].includes(url.pathname)){
     if(!allowed(req,url))return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
     return await proxy(req,res,url);

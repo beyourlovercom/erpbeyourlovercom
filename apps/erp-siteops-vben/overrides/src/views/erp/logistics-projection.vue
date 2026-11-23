@@ -3,7 +3,8 @@ import { computed, ref, watch } from 'vue';
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type CellClickedEvent, type ColDef } from 'ag-grid-community';
 import { AgGridVue } from 'ag-grid-vue3';
 import { canonicalDevIdentity } from '#/router/erp-live-navigation';
-import { getLogisticsPage, submitOriginalErpReview, type DomesticView, type DomesticReviewAction,
+import { getLogisticsPage, submitOriginalErpReview, submitOriginalErpShipment,
+  type LogisticsCarrierOption, type OriginalShippingAction, type DomesticView, type DomesticReviewAction,
   type LogisticsRow, type LogisticsScope, type OverseasView, type OverseasReviewAction } from '#/api/erp-logistics';
 
 defineOptions({ name: 'ERP2LogisticsProjection' });
@@ -40,6 +41,12 @@ const pager = ref({page:1,perPage:20 as 20|50|100,total:0,lastPage:1});
 const detail = ref<LogisticsRow|null>(null);
 const capabilities = ref({canReview:false,canOperate:false});
 const reviewBusy=ref(false),reviewError=ref(''),reviewSuccess=ref(''),reviewReason=ref('');
+const shippingBusy=ref(false),shippingError=ref(''),shippingSuccess=ref('');
+const trackingDraft=ref(''),outboundReference=ref(''),carrierSelection=ref(''),serviceSelection=ref('');
+const carrierOptions=ref<LogisticsCarrierOption[]>([]);
+const shippingEnabled=import.meta.env.VITE_ERP_IDENTITY_MODE==='laravel' &&
+  import.meta.env.VITE_ERP_M2_ORIGINAL_INERTIA_ENABLED==='1' &&
+  import.meta.env.VITE_ERP_M2_SHIPPING_WRITE_ENABLED==='1';
 const reviewEnabled=import.meta.env.VITE_ERP_IDENTITY_MODE==='laravel' &&
   import.meta.env.VITE_ERP_M2_ORIGINAL_INERTIA_ENABLED==='1' &&
   import.meta.env.VITE_ERP_M2_REVIEW_WRITE_ENABLED==='1';
@@ -50,6 +57,17 @@ const authorizedReview = computed(() => reviewEnabled && allowed.value && capabi
 const reviewActionLabels:Record<DomesticReviewAction,string>={
   approve:'审核通过',stockout:'标记缺货',reject:'驳回',restock:'确认到货',return_allocation:'退回待分仓',
 };
+const selectedCarrier=computed(()=>carrierOptions.value.find(c=>c.value===carrierSelection.value));
+const availableServices=computed(()=>selectedCarrier.value?.services||[]);
+const shippingSupported=computed(()=>{
+  if(props.scope!=='overseas')return true;
+  return ['US-NY','DE','CA','US-SM','US-3SM','US-LA'].includes(detail.value?.warehouse_code?.toUpperCase()||'');
+});
+const authorizedShipping=computed(()=>shippingEnabled && allowed.value && capabilities.value.canOperate &&
+  !!canonicalDevIdentity.value?.effectivePermissionKeys.includes('logistics.operate') &&
+  props.scope!=='allocation' && view.value==='pending' && detail.value?.shipment_status==='pending' &&
+  shippingSupported.value &&
+  (props.scope==='domestic'||detail.value?.review_status==='approved'));
 const reviewActions=computed<DomesticReviewAction[]>(()=>{
   if(!authorizedReview.value || !detail.value)return [];
   if(view.value==='review' && detail.value.review_status==='pending')
@@ -118,6 +136,7 @@ const gridColumns = computed<ColDef<LogisticsRow>[]>(() => [
 function clearData(){
   ++sequence; rows.value=[];detail.value=null;
   capabilities.value={canReview:false,canOperate:false};reviewError.value='';
+  shippingError.value='';carrierOptions.value=[];
   pager.value={page:1,perPage:pager.value.perPage,total:0,lastPage:1};
 }
 async function load(page=1){
@@ -133,11 +152,12 @@ async function load(page=1){
     if(ticket!==sequence || !allowed.value)return;
     rows.value=result.rows;
     capabilities.value={canReview:result.canReview===true,canOperate:result.canOperate===true};
+    carrierOptions.value=result.carrierOptions||[];
     pager.value={page:result.page,perPage:result.perPage as 20|50|100,
       total:result.total,lastPage:result.lastPage};
   }catch(reason){
     if(ticket!==sequence)return;
-    rows.value=[];capabilities.value={canReview:false,canOperate:false};
+    rows.value=[];capabilities.value={canReview:false,canOperate:false};carrierOptions.value=[];
     pager.value={...pager.value,page:1,total:0,lastPage:1};
     error.value=reason instanceof Error?reason.message:'隔离 Dev 物流读取失败';
   }finally{if(ticket===sequence)loading.value=false;}
@@ -149,6 +169,9 @@ function switchView(next:DomesticView|OverseasView){
 function onCellClick(event:CellClickedEvent<LogisticsRow>){
   if(event.column.getColId()==='action' && event.data && !loading.value){
     detail.value=event.data;reviewError.value='';reviewReason.value='';
+    shippingError.value='';trackingDraft.value=event.data.tracking||'';
+    carrierSelection.value=event.data.carrier||'';serviceSelection.value=event.data.service||'';
+    outboundReference.value='';
   }
 }
 async function decideReview(action:DomesticReviewAction){
@@ -177,6 +200,59 @@ async function decideReview(action:DomesticReviewAction){
     reviewError.value=cause instanceof Error?cause.message:'原 Laravel 审核失败';
   }finally{reviewBusy.value=false;}
 }
+function onCarrierChange(){
+  const selected=selectedCarrier.value;
+  serviceSelection.value=selected?.default_service_value || selected?.services[0]?.value || '';
+}
+/** One single POST, then a fresh original Laravel GET as proof. No automatic POST retry. */
+async function confirmShipping(action:'carrier-service'|'tracking-draft'|'quick-ship'|'manual-ship'){
+  const row=detail.value;
+  if(!row||!authorizedShipping.value||shippingBusy.value)return;
+  const tracking=trackingDraft.value.trim();
+  const outbound=outboundReference.value.trim();
+  if(action==='carrier-service' &&
+    (!selectedCarrier.value||!availableServices.value.some(s=>s.value===serviceSelection.value))){
+    shippingError.value='请在原 ERP 已启用的物流商及服务类型中选择。';return;
+  }
+  if(action==='manual-ship' && row.warehouse_code.toUpperCase()==='US-LA' && !outbound){
+    shippingError.value='MorePlus 人工发货必须填写真实出库凭证号。';return;
+  }
+  if((action==='quick-ship'||action==='manual-ship') &&
+    !window.confirm('确认 '+row.order_number+' 已实际出库，Tracking 为 '+tracking+'？这将写入原 ERP 发货记录。'))return;
+  let input:OriginalShippingAction;
+  if(props.scope==='domestic'){
+    input=action==='carrier-service'
+      ?{scope:'domestic',action,orderId:row.order_id,carrier:carrierSelection.value,service:serviceSelection.value}
+      :{scope:'domestic',action:action as 'tracking-draft'|'quick-ship',orderId:row.order_id,tracking};
+  }else{
+    input={scope:'overseas',action:'manual-ship',orderId:row.order_id,
+      warehouse:row.warehouse_code,tracking,outboundReference:outbound};
+  }
+  shippingBusy.value=true;shippingError.value='';shippingSuccess.value='';
+  try{
+    await submitOriginalErpShipment(input);
+    // All-queue must include shipped rows that have left the pending queue.
+    const checked=await getLogisticsPage({scope:props.scope,view:'all',
+      warehouse:props.scope==='overseas'?warehouse.value:'',
+      search:row.order_number,perPage:20});
+    const fresh=checked.rows.find(r=>r.order_id===row.order_id);
+    if(!fresh)throw Error('ERP2_SHIPPING_READBACK_MISSING_DO_NOT_RETRY');
+    const confirmed=action==='carrier-service'
+      ?fresh.carrier===carrierSelection.value && fresh.service===serviceSelection.value
+      :action==='tracking-draft'
+        ?fresh.tracking===tracking
+        :fresh.tracking===tracking && fresh.shipment_status==='shipped';
+    if(!confirmed)throw Error('ERP2_SHIPPING_READBACK_UNCONFIRMED_DO_NOT_RETRY');
+    shippingSuccess.value=row.order_number+' · '+(
+      action==='carrier-service'?'物流商/服务已保存（未发货）':
+      action==='tracking-draft'?'Tracking 草稿已保存（未发货）':
+      'ERP 发货确认已落库；官网同步请以原同步模块回执为准');
+    detail.value=null;
+    await load(1);
+  }catch(e){
+    shippingError.value=e instanceof Error?e.message:'ERP2_SHIPPING_UNKNOWN';
+  }finally{shippingBusy.value=false;}
+}
 watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
   canonicalDevIdentity.value?.effectivePermissionKeys.join('|')],()=>{
   clearData();search.value='';warehouse.value='';view.value='review';
@@ -193,7 +269,7 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
         <button type="button" class="rounded border border-slate-200 bg-white px-3 py-2 text-xs"
           :disabled="loading || !allowed" @click="load(pager.page)">↻ 刷新数据</button>
         <span class="rounded bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
-          {{ reviewEnabled && props.scope!=='allocation'?'隔离 Dev · 原 Laravel 审核':'隔离 Dev · 只读' }}</span>
+          {{ shippingEnabled && props.scope!=='allocation'?'隔离 Dev · 审核 / 发货':reviewEnabled && props.scope!=='allocation'?'隔离 Dev · 原 Laravel 审核':'隔离 Dev · 只读' }}</span>
       </div>
     </header>
 
@@ -251,6 +327,8 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
           </div>
         </div>
       </div>
+      <p v-if="shippingSuccess" role="status"
+        class="mx-3 mt-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{{ shippingSuccess }}</p>
       <p v-if="reviewSuccess" role="status"
         class="mx-3 mt-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
         {{ reviewSuccess }}</p>
@@ -319,9 +397,39 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
         </section>
         <p v-else-if="reviewError" role="alert" class="mt-3 rounded bg-red-50 p-3 text-xs text-red-700">
           {{ reviewError }}</p>
-        <p v-if="view==='pending' && capabilities.canOperate" class="mt-3 rounded bg-amber-50 p-3 text-xs text-amber-800">
-          发货信息已读取。确认发货需真实物理出库、有效物流商/服务与 Tracking；
-          ERP2 发货写入将在独立隔离验证后开放。
+        <section v-if="authorizedShipping" class="mt-6 space-y-3 rounded border border-indigo-200 p-3">
+          <h3 class="text-sm font-semibold">原 ERP 物流履约 · 当前订单</h3>
+          <p class="text-xs text-slate-500">仅对隔离 Dev 订单操作；每次仅提交一次，提交后从 Laravel 重新读取验证。</p>
+          <template v-if="props.scope==='domestic'">
+            <label class="block text-xs">物流商
+              <select v-model="carrierSelection" aria-label="国内物流商" class="mt-1 w-full rounded border p-2" :disabled="shippingBusy" @change="onCarrierChange">
+                <option value="">选择原 ERP 启用的物流商</option>
+                <option v-for="c in carrierOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
+              </select>
+            </label>
+            <label class="block text-xs">运输 / 服务类型
+              <select v-model="serviceSelection" aria-label="国内服务类型" class="mt-1 w-full rounded border p-2" :disabled="shippingBusy">
+                <option value="">选择服务类型</option>
+                <option v-for="s in availableServices" :key="s.value" :value="s.value">{{ s.label }}</option>
+              </select>
+            </label>
+            <button type="button" class="rounded border border-indigo-500 px-3 py-2 text-xs text-indigo-700" :disabled="shippingBusy||!selectedCarrier||!serviceSelection" @click="confirmShipping('carrier-service')">保存物流商 / 服务（未发货）</button>
+          </template>
+          <p v-else class="rounded bg-slate-50 p-2 text-xs">当前物流商：{{ detail.carrier||'未配置' }} · {{ detail.service||'未配置服务' }}。海外仓使用原仓库默认渠道。</p>
+          <label class="block text-xs">Tracking / 物流单号
+            <input v-model="trackingDraft" aria-label="发货 Tracking" maxlength="128" class="mt-1 w-full rounded border p-2" placeholder="填写真实 Tracking" :disabled="shippingBusy" />
+          </label>
+          <label v-if="props.scope==='overseas' && detail.warehouse_code.toUpperCase()==='US-LA'" class="block text-xs">MorePlus 真实出库参考号
+            <input v-model="outboundReference" aria-label="MorePlus 出库号" maxlength="90" class="mt-1 w-full rounded border p-2" :disabled="shippingBusy" />
+          </label>
+          <div class="flex flex-wrap gap-2">
+            <button v-if="props.scope==='domestic'" type="button" class="rounded border border-indigo-500 px-3 py-2 text-xs text-indigo-700" :disabled="shippingBusy" @click="confirmShipping('tracking-draft')">仅保存 Tracking 草稿</button>
+            <button type="button" class="rounded bg-indigo-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" :disabled="shippingBusy||!trackingDraft.trim()" @click="confirmShipping(props.scope==='domestic'?'quick-ship':'manual-ship')">确认实际发货…</button>
+          </div>
+          <p v-if="shippingError" role="alert" class="rounded bg-red-50 p-2 text-xs text-red-700">{{ shippingError }}。请核对原 ERP 状态，勿重复提交发货。</p>
+        </section>
+        <p v-else-if="view==='pending' && capabilities.canOperate" class="mt-3 rounded bg-amber-50 p-3 text-xs text-amber-800">
+          当前订单未满足此仓库的人工履约条件，或隔离 Dev 发货写入开关尚未开放。发货须沿用原 ERP 专属流程。
         </p>
         <p class="mt-4 text-xs text-slate-500">受 Laravel 会话权限及当前订单状态约束；不能操作的状态不显示审核按钮。</p>
       </aside>

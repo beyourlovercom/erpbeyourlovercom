@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getLogisticsPage, parseLogisticsPage, parseOriginalLogisticsInertiaPage,
-  submitOriginalErpReview } from './erp-logistics';
+  submitOriginalErpReview, submitOriginalErpShipment, originalShippingPath } from './erp-logistics';
 
 const pagination = {current_page:1,per_page:20,total:1,last_page:1};
 const order = {id:11,order_number:'UAT-CN-101',order_date:'2026-11-19',
@@ -146,5 +146,61 @@ describe('M2 original Laravel workbench and review contracts',()=>{
       action:'approve'},fetcher,'XSRF-TOKEN=abc');
     expect(denied.failed_count).toBe(1);
     expect(denied.results[0]?.message).toBe('无操作权限');
+  });
+});
+
+describe('M2 original ERP shipping with fail-closed Dev adapter',()=>{
+  it('uses only original domestic and warehouse-specific routes',()=>{
+    expect(originalShippingPath({scope:'domestic',action:'tracking-draft',orderId:12,tracking:'TEST123'}))
+      .toBe('/logistics/china/orders/12/tracking-draft');
+    expect(originalShippingPath({scope:'overseas',action:'manual-ship',orderId:12,
+      warehouse:'US-NY',tracking:'TEST123'}))
+      .toBe('/logistics/oversea/orders/12/manual-ship');
+    expect(originalShippingPath({scope:'overseas',action:'manual-ship',orderId:12,
+      warehouse:'US-SM',tracking:'TEST123'}))
+      .toBe('/logistics/oversea/us-3sm/orders/12/manual-ship');
+    expect(originalShippingPath({scope:'overseas',action:'manual-ship',orderId:12,
+      warehouse:'US-LA',tracking:'TEST123'}))
+      .toBe('/logistics/oversea/us-moreplus/orders/12/manual-ship');
+    expect(()=>originalShippingPath({scope:'overseas',action:'manual-ship',orderId:12,
+      warehouse:'UNKNOWN',tracking:'TEST123'})).toThrow('ERP2_SHIPPING_WAREHOUSE_UNSUPPORTED');
+  });
+  it('blocks disabled writes and invalid carrier / Tracking before HTTP',async()=>{
+    const fetcher=vi.fn();
+    await expect(submitOriginalErpShipment({scope:'domestic',action:'quick-ship',
+      orderId:12,tracking:'TEST123'},fetcher,'XSRF-TOKEN=abc')).rejects.toThrow('ERP2_M2_SHIPPING_WRITE_DISABLED');
+    vi.stubEnv('VITE_ERP_IDENTITY_MODE','laravel');
+    vi.stubEnv('VITE_ERP_M2_SHIPPING_WRITE_ENABLED','1');
+    await expect(submitOriginalErpShipment({scope:'domestic',action:'quick-ship',
+      orderId:12,tracking:'contains spaces'},fetcher,'XSRF-TOKEN=abc'))
+      .rejects.toThrow('ERP2_SHIPPING_TRACKING_INVALID');
+    await expect(submitOriginalErpShipment({scope:'domestic',action:'carrier-service',
+      orderId:12,carrier:'',service:''},fetcher,'XSRF-TOKEN=abc'))
+      .rejects.toThrow('ERP2_SHIPPING_CARRIER_SERVICE_REQUIRED');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it('submits a single warehouse manual POST and requires fresh state readback',async()=>{
+    vi.stubEnv('VITE_ERP_IDENTITY_MODE','laravel');
+    vi.stubEnv('VITE_ERP_M2_SHIPPING_WRITE_ENABLED','1');
+    const fetcher=vi.fn().mockResolvedValue(new Response(null,{status:302,
+      headers:{location:'/logistics/oversea/us-moreplus?view=shipped'}}));
+    await expect(submitOriginalErpShipment({scope:'overseas',action:'manual-ship',
+      orderId:42,warehouse:'US-LA',tracking:'DEVTEST123',outboundReference:'DEV-UAT-REF-42'},
+      fetcher,'XSRF-TOKEN=test%3Dabc')).resolves.toBe('readback-required');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/logistics/oversea/us-moreplus/orders/42/manual-ship');
+    expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body)).toMatchObject({
+      tracking_number:'DEVTEST123',outbound_reference:'DEV-UAT-REF-42',
+      confirmation:'CONFIRM_MOREPLUS_MANUAL_SHIPPED_42'});
+    expect(fetcher.mock.calls[0]?.[1]?.headers['X-XSRF-TOKEN']).toBe('test=abc');
+  });
+  it('rejects HTTP failure without retrying or claiming shipment success',async()=>{
+    vi.stubEnv('VITE_ERP_IDENTITY_MODE','laravel');
+    vi.stubEnv('VITE_ERP_M2_SHIPPING_WRITE_ENABLED','1');
+    const fetcher=vi.fn().mockResolvedValue(new Response('Denied',{status:409}));
+    await expect(submitOriginalErpShipment({scope:'domestic',action:'quick-ship',
+      orderId:12,tracking:'UAT123'},fetcher,'XSRF-TOKEN=abc'))
+      .rejects.toThrow('ERP2_SHIPPING_REJECTED_409');
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });

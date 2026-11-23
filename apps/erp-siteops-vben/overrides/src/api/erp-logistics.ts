@@ -16,13 +16,14 @@ export interface LogisticsRow {
   key: string; order_id: number; shipment_id: null | number;
   order_number: string; order_date: string; status: string;
   fulfillment_suffix: string; fulfillment_parent_id: null | number;
-  warehouse_code: string; carrier: string; service: string; tracking: string;
+  warehouse_code: string; carrier: string; service: string; tracking: string; shipment_status: string;
   review_status: string; oms_status: string; oms_order_number: string;
   items: LogisticsItem[]; sku: string; actual_sku: string; qty: number;
 }
+export interface LogisticsCarrierOption {value:string;label:string;default_service_value:string;services:{value:string;label:string}[]}
 export interface LogisticsPage {
   rows: LogisticsRow[]; page: number; perPage: number; total: number; lastPage: number;
-  canReview?: boolean; canOperate?: boolean;
+  canReview?: boolean; canOperate?: boolean; carrierOptions?:LogisticsCarrierOption[];
 }
 const ENDPOINT: Record<LogisticsScope, string> = {
   allocation: '/api/erp2/v1/logistics/pending-allocation',
@@ -69,7 +70,7 @@ export function parseLogisticsPage(scope: LogisticsScope, input: unknown): Logis
       fulfillment_suffix: str(r.fulfillment_suffix),
       fulfillment_parent_id: optionalId(r.fulfillment_parent_id),
       warehouse_code: str(r.warehouse_code), carrier: str(r.carrier),service: str(r.service),
-      tracking: str(r.tracking), review_status: str(r.review_status),
+      tracking: str(r.tracking), shipment_status:str(r.shipment_status), review_status: str(r.review_status),
       oms_status: str(oms.status_code || oms.state), oms_order_number: str(oms.order_number),
       items, sku: items.map(i => i.sku).filter(Boolean).join(' / '),
       actual_sku: items.map(i => i.final_sku || i.resolved_sku || i.sku).filter(Boolean).join(' / '),
@@ -103,7 +104,7 @@ export function parseOriginalLogisticsInertiaPage(
       fulfillment_parent_id:optionalId(r.fulfillment_parent_id),
       warehouse_code:str(r.warehouse_code || route.code || (scope==='domestic'?'FACTORY':'')),
       carrier:str(r.carrier),service:str(r.service),tracking:str(r.tracking_number),
-      review_status:str(r.review_status),oms_status:str(oms.oms_status_code || oms.state),
+      shipment_status:str(r.shipment_status),review_status:str(r.review_status),oms_status:str(oms.oms_status_code || oms.state),
       oms_order_number:str(oms.oms_order_no),
       items,sku:items.map(i=>i.sku).filter(Boolean).join(' / '),
       actual_sku:items.map(i=>i.final_sku || i.resolved_sku || i.sku)
@@ -113,7 +114,12 @@ export function parseOriginalLogisticsInertiaPage(
   });
   return {rows,page:integer(pagination.current_page,1),perPage:integer(pagination.per_page,20),
     total:integer(pagination.total),lastPage:integer(pagination.last_page,1),
-    canReview:props.canReview===true,canOperate:props.canOperate===true};
+    canReview:props.canReview===true,canOperate:props.canOperate===true,
+    carrierOptions:Array.isArray(props.carrierOptions)?props.carrierOptions.map(raw=>{
+      const c=obj(raw);return {value:str(c.value),label:str(c.label),
+        default_service_value:str(c.default_service_value),
+        services:Array.isArray(c.services)?c.services.map(s=>({value:str(obj(s).value),label:str(obj(s).label)})):[]};
+    }).filter(c=>c.value):[]};
 }
 export interface LogisticsQuery {
   scope: LogisticsScope; page?: number; perPage?: 20 | 50 | 100;
@@ -217,4 +223,69 @@ export async function submitOriginalErpReview(
   if (success_count!==raw.success_count || failed_count!==raw.failed_count)
     throw new Error('ERP2_REVIEW_LARAVEL_COUNTS_MISMATCH');
   return {results,success_count,failed_count};
+}
+
+/** Only the ORIGINAL Laravel shipping actions; never OMS/Woo push or provider API. */
+export type OriginalShippingAction =
+  | {scope:'domestic'; action:'carrier-service'; orderId:number; carrier:string; service:string}
+  | {scope:'domestic'; action:'tracking-draft'|'quick-ship'; orderId:number; tracking:string}
+  | {scope:'overseas'; action:'manual-ship'; orderId:number; warehouse:string;
+      tracking:string; outboundReference?:string};
+
+export function originalShippingPath(input:OriginalShippingAction):string {
+  if(!Number.isSafeInteger(input.orderId)||input.orderId<1)throw Error('ERP2_SHIPPING_ORDER_INVALID');
+  if(input.scope==='domestic')return '/logistics/china/orders/'+input.orderId+'/'+input.action;
+  const w=input.warehouse.trim().toUpperCase();
+  if(['US-NY','DE','CA'].includes(w))
+    return '/logistics/oversea/orders/'+input.orderId+'/manual-ship';
+  if(w==='US-SM'||w==='US-3SM')
+    return '/logistics/oversea/us-3sm/orders/'+input.orderId+'/manual-ship';
+  if(w==='US-LA')
+    return '/logistics/oversea/us-moreplus/orders/'+input.orderId+'/manual-ship';
+  throw Error('ERP2_SHIPPING_WAREHOUSE_UNSUPPORTED');
+}
+
+/** A 302 / opaque redirect is only an ACK. The UI must GET and verify the persisted
+ * shipment state before claiming success; NEVER auto-replay a shipping action. */
+export async function submitOriginalErpShipment(
+  input:OriginalShippingAction,fetcher:typeof fetch=fetch,
+  cookieSource:string=typeof document==='undefined'?'':document.cookie,
+):Promise<'readback-required'>{
+  if(import.meta.env.VITE_ERP_IDENTITY_MODE!=='laravel' ||
+      import.meta.env.VITE_ERP_M2_SHIPPING_WRITE_ENABLED!=='1')
+    throw Error('ERP2_M2_SHIPPING_WRITE_DISABLED');
+  const endpoint=originalShippingPath(input);
+  let payload:Record<string,string>;
+  if(input.action==='carrier-service'){
+    if(!input.carrier.trim()||!input.service.trim()||
+      input.carrier.length>120||input.service.length>255)
+      throw Error('ERP2_SHIPPING_CARRIER_SERVICE_REQUIRED');
+    payload={carrier:input.carrier.trim(),service:input.service.trim()};
+  }else{
+    const tracking=input.tracking.trim();
+    if((input.action!=='tracking-draft'||tracking!=='') &&
+      (tracking.length>128||!/^[A-Za-z0-9][A-Za-z0-9._:/+\-]*$/.test(tracking)))
+      throw Error('ERP2_SHIPPING_TRACKING_INVALID');
+    payload={tracking_number:tracking};
+    if(input.scope==='overseas'&&input.warehouse.trim().toUpperCase()==='US-LA'){
+      const outbound=(input.outboundReference||'').trim();
+      if(!outbound||outbound.length>90)throw Error('ERP2_MOREPLUS_OUTBOUND_PROOF_REQUIRED');
+      payload.outbound_reference=outbound;
+      payload.confirmation='CONFIRM_MOREPLUS_MANUAL_SHIPPED_'+input.orderId;
+    }
+  }
+  const csrf=cookieSource.split(';').map(s=>s.trim()).find(s=>s.startsWith('XSRF-TOKEN='));
+  if(!csrf)throw Error('ERP2_SHIPPING_CSRF_REQUIRED');
+  let token:string;
+  try{token=decodeURIComponent(csrf.slice(11));}
+  catch{throw Error('ERP2_SHIPPING_CSRF_INVALID');}
+  const response=await fetcher(endpoint,{method:'POST',credentials:'same-origin',redirect:'manual',
+    headers:{'Content-Type':'application/json',Accept:'text/html, application/xhtml+xml',
+      'X-Requested-With':'XMLHttpRequest','X-XSRF-TOKEN':token},
+    body:JSON.stringify(payload)});
+  if(response.status===0||[301,302,303,307,308].includes(response.status))
+    return 'readback-required';
+  if(!response.ok)throw Error('ERP2_SHIPPING_REJECTED_'+response.status);
+  // The old controllers are redirect-only, not JSON-confirming.
+  throw Error('ERP2_SHIPPING_UNEXPECTED_SUCCESS_RESPONSE_RECHECK_MANUALLY');
 }

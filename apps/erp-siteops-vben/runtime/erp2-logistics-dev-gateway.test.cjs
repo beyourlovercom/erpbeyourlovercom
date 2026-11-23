@@ -127,3 +127,52 @@ test('M2 only permits exact original review POST under explicit isolated Dev fla
   assert.equal(observed.filter(row=>row.method==='POST').length,2);
   assert.ok(observed.filter(row=>row.method==='POST').every(row=>row.xsrf==='test-dev-token'));
 });
+
+test('M2 Dev shipping permits only original manual/draft paths, never OMS or Woo',async t=>{
+  const observed=[];
+  const upstream=http.createServer((req,res)=>{
+    observed.push({path:req.url,method:req.method,xsrf:req.headers['x-xsrf-token']});
+    res.writeHead(302,{location:'/logistics/china?view=pending'});res.end();
+  });
+  const upstreamPort=await listen(upstream);
+  t.after(()=>close(upstream));
+  const reserved=http.createServer(),gatewayPort=await listen(reserved);
+  await close(reserved);
+  const child=spawn(process.execPath,[gateway],{env:{...process.env,
+    ERP2_LOGISTICS_DEV_UPSTREAM:'http://127.0.0.1:'+upstreamPort,
+    ERP2_LOGISTICS_DEV_PORT:String(gatewayPort),ERP2_LOGISTICS_VBEN_DIST:'/tmp',
+    ERP2_M2_DEV_REVIEW_ENABLED:'1',ERP2_M2_DEV_SHIPPING_ENABLED:'1'},stdio:'ignore'});
+  t.after(()=>{if(!child.killed)child.kill();});
+  const base='http://127.0.0.1:'+gatewayPort;
+  let ready=false;
+  for(let i=0;i<60;i++){
+    try{const r=await fetch(base+'/api/health');if(r.ok){ready=true;break;}}catch{}
+    await delay(50);
+  }
+  assert.ok(ready);
+  const accepted=[
+    '/logistics/china/orders/10/carrier-service',
+    '/logistics/china/orders/10/tracking-draft',
+    '/logistics/china/orders/10/quick-ship',
+    '/logistics/oversea/orders/10/manual-ship',
+    '/logistics/oversea/us-3sm/orders/10/manual-ship',
+    '/logistics/oversea/us-moreplus/orders/10/manual-ship',
+  ];
+  for(const target of accepted){
+    assert.equal((await fetch(base+target,{method:'POST',redirect:'manual',
+      headers:{'Content-Type':'application/json','X-XSRF-TOKEN':'token'},
+      body:'{}'})).status,302);
+    assert.equal((await fetch(base+target,{method:'POST',
+      headers:{'Content-Type':'application/json'},body:'{}'})).status,405);
+    assert.equal((await fetch(base+target,{method:'GET'})).status,405);
+  }
+  for(const target of ['/logistics/oversea/us-3sm/orders/10/xlwms/send',
+    '/logistics/oversea/bulk-ship/apply','/logistics/oversea/us-moreplus/orders/10/oms/create',
+    '/api/woocommerce/ship','/logistics/china/orders/0/quick-ship',
+    '/logistics/china/orders/10/quick-ship/extra']){
+    assert.equal((await fetch(base+target,{method:'POST',headers:{
+      'Content-Type':'application/json','X-XSRF-TOKEN':'token'},body:'{}'})).status,405);
+  }
+  assert.equal(observed.length,accepted.length);
+  assert.ok(observed.every(r=>r.method==='POST'&&r.xsrf==='token'));
+});
