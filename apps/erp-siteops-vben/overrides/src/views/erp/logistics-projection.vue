@@ -32,7 +32,7 @@ const overseasViews: {key:OverseasView;label:string}[] = [
 const views = computed(() => props.scope==='domestic'?domesticViews:overseasViews);
 const warehouses = [
   {value:'',label:'全部海外仓'}, {value:'us-ny',label:'美国 NY'},
-  {value:'us-sm',label:'美国 3SM'}, {value:'us-moreplus',label:'美国 MorePlus'},
+  {value:'us-moreplus',label:'美国 MorePlus'}, {value:'us-sm',label:'美国 3SM'},
   {value:'de-tianyun',label:'德国天运'}, {value:'ca',label:'加拿大'},
 ];
 const search = ref(''),warehouse = ref(''),view = ref<DomesticView|OverseasView>('review');
@@ -159,12 +159,19 @@ async function load(page=1){
     if(ticket!==sequence)return;
     rows.value=[];capabilities.value={canReview:false,canOperate:false};carrierOptions.value=[];
     pager.value={...pager.value,page:1,total:0,lastPage:1};
-    error.value=reason instanceof Error?reason.message:'隔离 Dev 物流读取失败';
+    const message=reason instanceof Error?reason.message:'';
+    error.value=/Failed to fetch|NetworkError|fetch failed/i.test(message)
+      ?'隔离 Dev 网关连接失败，请检查本机预览服务后点击「刷新数据」。订单数据未被修改。'
+      :message || '隔离 Dev 物流读取失败';
   }finally{if(ticket===sequence)loading.value=false;}
 }
 function filter(){void load(1);}
 function switchView(next:DomesticView|OverseasView){
   view.value=next;reviewSuccess.value='';void load(1);
+}
+function switchWarehouse(next:string){
+  if(props.scope!=='overseas' || !warehouses.some(w=>w.value===next))return;
+  warehouse.value=next;reviewSuccess.value='';shippingSuccess.value='';void load(1);
 }
 function onCellClick(event:CellClickedEvent<LogisticsRow>){
   if(event.column.getColId()==='action' && event.data && !loading.value){
@@ -277,19 +284,6 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
       class="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
       原 Laravel 审核按钮尚未在此隔离构建启用；发货与 Tracking 上传仍由原 ERP 流程负责。
     </div>
-    <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
-      <div class="rounded border border-slate-200 bg-white px-4 py-3">
-        <p class="text-xs text-slate-500">当前队列订单 / 物流单</p>
-        <strong class="mt-1 block text-2xl">{{ pager.total }}</strong>
-      </div>
-      <div class="rounded border border-slate-200 bg-white px-4 py-3">
-        <p class="text-xs text-slate-500">总页数</p><strong class="mt-1 block text-2xl">{{ pager.lastPage }}</strong>
-      </div>
-      <div class="rounded border border-slate-200 bg-white px-4 py-3">
-        <p class="text-xs text-slate-500">数据链路</p>
-        <strong class="mt-2 block text-sm text-emerald-700">Laravel Dev · 已鉴权</strong>
-      </div>
-    </div>
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-slate-200 bg-white">
       <div class="flex min-h-[40px] gap-1 overflow-x-auto border-b border-slate-200 px-3">
         <template v-if="props.scope!=='allocation'">
@@ -301,15 +295,19 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
         <span v-else class="border-b-2 border-indigo-500 px-4 py-2 text-xs font-semibold text-indigo-600">
           待分配</span>
       </div>
+      <nav v-if="props.scope==='overseas'" aria-label="海外仓切换"
+        class="flex flex-wrap items-center gap-1 border-b border-slate-200 px-3 py-2">
+        <span class="mr-2 text-xs font-medium text-slate-500">发货仓：</span>
+        <button v-for="w in warehouses" :key="w.value" type="button"
+          class="rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors"
+          :class="warehouse===w.value?'border-indigo-600 bg-indigo-50 text-indigo-700':'border-slate-200 bg-white text-slate-600 hover:border-indigo-300'"
+          :disabled="loading" :aria-pressed="warehouse===w.value"
+          @click="switchWarehouse(w.value)">{{ w.label }}</button>
+      </nav>
       <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3">
         <input v-model="search" class="min-w-[200px] max-w-full rounded border border-slate-300 px-3 py-2 text-xs"
           aria-label="物流搜索" placeholder="搜索订单号 / SKU" :disabled="loading"
           @keydown.enter="filter" />
-        <select v-if="props.scope==='overseas'" v-model="warehouse"
-          aria-label="海外仓筛选" class="rounded border border-slate-300 px-2 py-2 text-xs"
-          :disabled="loading" @change="filter">
-          <option v-for="w in warehouses" :key="w.value" :value="w.value">{{ w.label }}</option>
-        </select>
         <button type="button" class="rounded border border-indigo-500 bg-indigo-600 px-3 py-2 text-xs text-white"
           :disabled="loading || !allowed" @click="filter">查询</button>
         <div class="flex-1"></div>

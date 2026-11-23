@@ -29,6 +29,8 @@ export const overridesPreferences = defineOverridesPreferences({
   // Keep ERP's approved 30-workspace-tab upper bound in the new Vben shell.
   // Three pin + three hot-snapshot behavior still requires a separate parity gate.
   tabbar: { maxCount: 30, persist: true, enable: true },
+  // ERP2 default is light; users can still switch to dark explicitly.
+  theme: { mode: 'light' },
   copyright: { ...appCopyrightPreferences, enable: false },
   logo: {
     source: '/siteops-logo.svg',
