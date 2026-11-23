@@ -229,20 +229,74 @@ final class SyncWorkspaceController
         );
     }
 
-    public function warehouses(): Response
+    public function warehouses(Request $request): Response
     {
         $warehouses = Warehouse::query()->orderBy('priority')->orderBy('id')->get();
+        $ids = $warehouses->pluck('id')->all();
+
+        // Never serialize XLWMS credentials; report only the existence of an
+        // explicitly configured connection. Avoid per-row provider I/O.
+        $connections = DB::table('warehouse_openapi_connections')
+            ->whereIn('warehouse_id', $ids)->where('provider', 'xlwms')
+            ->whereNotNull('app_key_encrypted')->whereNotNull('app_secret_encrypted')
+            ->get(['warehouse_id', 'oms_warehouse_code', 'last_verified_at'])
+            ->keyBy('warehouse_id');
+        $snapshots = DB::table('xlwms_inventory_snapshots')
+            ->whereIn('warehouse_id', $ids)
+            ->orderByDesc('updated_at')->orderByDesc('id')
+            ->get(['warehouse_id', 'status', 'provider_sku_count', 'mapped_sku_count',
+                'unmatched_sku_count', 'blocked_sku_count', 'applied_at', 'updated_at'])
+            ->unique('warehouse_id')->keyBy('warehouse_id');
+        $runs = \Illuminate\Support\Facades\Schema::hasTable('xlwms_inventory_manual_runs')
+            ? DB::table('xlwms_inventory_manual_runs')
+                ->whereIn('warehouse_id', $ids)->orderByDesc('id')->get()
+                ->unique('warehouse_id')->keyBy('warehouse_id')
+            : collect();
+        $manualEnabled = app()->environment('local', 'testing')
+            && (bool) config('xlwms.de_manual_sync_enabled', false)
+            && (bool) $request->user()?->can('sync.operate');
 
         return Inertia::render('Sync/Warehouses', [
-            'warehouses' => $warehouses->map(fn (Warehouse $warehouse): array => [
-                'id' => $warehouse->id,
-                'code' => $warehouse->code,
-                'name' => $warehouse->name,
-                'country_code' => $warehouse->country_code,
-                'is_active' => $warehouse->is_active,
-                'connector_status' => 'not_configured',
-                'last_sync_at' => null,
-            ])->values()->all(),
+            'can_map_sku' => (bool) ($request->user()?->can('products.view')
+                && $request->user()?->can('products.operate')),
+            'warehouses' => $warehouses->map(static function (Warehouse $warehouse) use ($connections, $snapshots, $runs, $manualEnabled): array {
+                $connection = $connections->get($warehouse->id);
+                $snapshot = $snapshots->get($warehouse->id);
+                $run = $runs->get($warehouse->id);
+                $runTime = $run ? strtotime((string) $run->updated_at) : 0;
+                $snapshotTime = $snapshot ? strtotime((string) $snapshot->updated_at) : 0;
+                $displayRun = $run && $runTime >= $snapshotTime;
+
+                return [
+                    'id' => $warehouse->id,
+                    'code' => $warehouse->code,
+                    'name' => $warehouse->name,
+                    'country_code' => $warehouse->country_code,
+                    'is_active' => $warehouse->is_active,
+                    'connector_status' => $connection ? 'configured' : 'not_configured',
+                    'can_sync' => $warehouse->code === 'DE' && $warehouse->is_active
+                        && $manualEnabled && $connection?->oms_warehouse_code === 'Hannover',
+                    'last_sync_at' => $snapshot?->updated_at,
+                    'last_applied_at' => $snapshot?->applied_at,
+                    'last_status_at' => $displayRun ? $run->updated_at : $snapshot?->updated_at,
+                    'last_sync_status' => $displayRun ? $run->status : ($snapshot?->status ?? 'never'),
+                    'last_error_code' => $displayRun ? $run->error_code : null,
+                    'active_run_id' => $run && in_array($run->status, ['queued', 'running'], true) ? $run->id : null,
+                'last_run_id' => $run?->id,
+                'last_outcome' => $run?->outcome ?? 'never',
+                'successful_sku_count' => (int) ($run?->successful_sku_count ?? 0),
+                'updated_sku_count' => (int) ($run?->updated_sku_count ?? 0),
+                'unchanged_sku_count' => (int) ($run?->unchanged_sku_count ?? 0),
+                'failed_sku_count' => (int) ($run?->failed_sku_count ?? 0),
+                'missing_sku_count' => (int) ($run?->missing_sku_count ?? 0),
+                    'sync_counts' => [
+                        'provider' => (int) ($displayRun ? $run->provider_sku_count : ($snapshot?->provider_sku_count ?? 0)),
+                        'matched' => (int) ($displayRun ? $run->mapped_sku_count : ($snapshot?->mapped_sku_count ?? 0)),
+                        'unmatched' => (int) ($displayRun ? $run->unmatched_sku_count : ($snapshot?->unmatched_sku_count ?? 0)),
+                        'blocked' => (int) ($displayRun ? $run->blocked_sku_count : ($snapshot?->blocked_sku_count ?? 0)),
+                    ],
+                ];
+            })->values()->all(),
         ]);
     }
 

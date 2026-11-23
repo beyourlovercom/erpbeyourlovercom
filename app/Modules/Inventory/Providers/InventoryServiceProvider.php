@@ -26,6 +26,7 @@ use App\Modules\Inventory\Experience\Console\AccrueWarehouseStorageAgingCostComm
 use App\Modules\Inventory\Experience\Console\RunWarehouseStorageAgingMonthlyCommand;
 use App\Modules\Inventory\Experience\Console\SyncXlwmsInventoryCommand;
 use App\Modules\Inventory\Experience\Console\ConfigureXlwmsInventoryApiCommand;
+use App\Modules\Inventory\Experience\Console\InspectXlwmsDeChannelsCommand;
 
 final class InventoryServiceProvider extends ServiceProvider
 {
@@ -44,6 +45,6 @@ final class InventoryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
-        if ($this->app->runningInConsole()) $this->commands([PackagingScanPreviewCommand::class, ImportWarehouseStorageCostCommand::class, BridgeMorePlusCostsCommand::class, AccrueWarehouseStorageAgingCostCommand::class, RunWarehouseStorageAgingMonthlyCommand::class, SyncXlwmsInventoryCommand::class, ConfigureXlwmsInventoryApiCommand::class]);
+        if ($this->app->runningInConsole()) $this->commands([PackagingScanPreviewCommand::class, ImportWarehouseStorageCostCommand::class, BridgeMorePlusCostsCommand::class, AccrueWarehouseStorageAgingCostCommand::class, RunWarehouseStorageAgingMonthlyCommand::class, SyncXlwmsInventoryCommand::class, ConfigureXlwmsInventoryApiCommand::class, InspectXlwmsDeChannelsCommand::class]);
     }
 }

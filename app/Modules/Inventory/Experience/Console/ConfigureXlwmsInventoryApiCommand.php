@@ -22,9 +22,10 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
 {
     protected $signature = 'xlwms:configure-inventory-api
         {--check : Check connection presence without exposing secret material (default)}
-        {--configure : Securely bind warehouse credentials through hidden local terminal prompts}';
+        {--configure : Securely bind warehouse credentials through hidden local terminal prompts}
+        {--warehouse=US-SM : ERP warehouse code (US-SM or DE)}';
 
-    protected $description = 'Check or configure encrypted US-SM OMS inventory API credentials (local TTY only)';
+    protected $description = 'Check or configure encrypted warehouse-scoped XLWMS credentials (local TTY only)';
 
     public function handle(AuditRecorder $audit): int
     {
@@ -33,9 +34,14 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
             return self::INVALID;
         }
 
-        $warehouse = Warehouse::query()->where('code', 'US-SM')->first();
+        $warehouseCode = strtoupper(trim((string) $this->option('warehouse')));
+        if (! in_array($warehouseCode, ['US-SM', 'DE'], true)) {
+            $this->error('Unsupported XLWMS warehouse. Allowed: US-SM, DE.');
+            return self::INVALID;
+        }
+        $warehouse = Warehouse::query()->where('code', $warehouseCode)->first();
         if (! $warehouse) {
-            $this->error('US-SM warehouse is not configured.');
+            $this->error($warehouseCode.' warehouse is not configured.');
             return self::FAILURE;
         }
 
@@ -45,10 +51,11 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
         if (! $this->option('configure')) {
             $configured = $existing !== null
                 && filled($existing->oms_warehouse_code)
+                && ($warehouseCode !== 'DE' || $existing->oms_warehouse_code === 'Hannover')
                 && filled($existing->app_key_encrypted)
                 && filled($existing->app_secret_encrypted);
-            $this->line($configured ? 'XLWMS US-SM credential configuration: PRESENT'
-                : 'XLWMS US-SM credential configuration: MISSING');
+            $this->line($configured ? 'XLWMS '.$warehouseCode.' credential configuration: PRESENT'
+                : 'XLWMS '.$warehouseCode.' credential configuration: MISSING');
             return $configured ? self::SUCCESS : self::FAILURE;
         }
 
@@ -57,8 +64,8 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
             return self::FAILURE;
         }
 
-        $this->warn('US-SM OMS API setup; App Key and Secret will be hidden and encrypted in ERP MySQL.');
-        if (! $this->confirm('Are you the authorized operator for the US-SM warehouse?', false)) {
+        $this->warn($warehouseCode.' OMS API setup; App Key and Secret will be hidden and encrypted in ERP MySQL.');
+        if (! $this->confirm('Are you the authorized operator for the '.$warehouseCode.' warehouse?', false)) {
             return self::INVALID;
         }
 
@@ -67,7 +74,8 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
         $appSecret = trim((string) $this->secret('OMS App Secret (hidden)'));
 
         if (strlen($omsWarehouse) < 1 || strlen($omsWarehouse) > 128
-            || strlen($appKey) < 6 || strlen($appSecret) < 6) {
+            || strlen($appKey) < 6 || strlen($appSecret) < 6
+            || ($warehouseCode === 'DE' && $omsWarehouse !== 'Hannover')) {
             $this->error('One or more required configuration values were missing or invalid.');
             return self::INVALID;
         }
@@ -96,8 +104,8 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
             unset($appSecret, $appKey);
         }
 
-        $this->info('XLWMS US-SM: encrypted credential configuration saved (API not yet verified).');
-        $this->line('Next: php artisan xlwms:sync-inventory --dry-run');
+        $this->info('XLWMS '.$warehouseCode.': encrypted credential configuration saved (API not yet verified).');
+        $this->line('Next: php artisan xlwms:sync-inventory --warehouse='.$warehouseCode.' --dry-run');
         return self::SUCCESS;
     }
 }

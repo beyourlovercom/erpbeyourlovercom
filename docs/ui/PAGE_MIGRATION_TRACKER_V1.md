@@ -73,13 +73,13 @@ R4-7B「纬狮订单」累计视图继续旧表默认 OFF；
 
 | P1 | 物流 | 待分仓 | /logistics/wait-stock | G0 完成 / G2 代码分支实施中；未验收、未发布 | G3 自动回归 → G4 Owner 真实 UAT → G5 生产单独批准 |
 | P0 | 物流 | 国内发货 | /logistics/china | **已部署 · 公共健康 PASS** | 生产登录后九视图视觉复核 |
-| P1 | 物流 | 海外仓发货 | /logistics/oversea | 0% / 待盘点 | G0 页面基线 |
+| P1 | 物流 | 海外仓发货 | /logistics/oversea | 0% / 完整紧凑迁移待盘点；德国天运 R5–R6 仅在既有右上页头操作区复用推单按钮，独立 Dev UAT 待审 | G0 完整布局基线；DE 子功能 G3 → G4 |
 | P1 | 物流 | 已发待单号 | /logistics/awaiting-tracking | 0% / 待盘点 | G0 页面基线 |
 | P1 | 物流 | 运输中 | /logistics/in-transit | 0% / 待盘点 | G0 页面基线 |
 | P1 | 物流 | 异常订单 | /logistics/exceptions | 0% / 待盘点 | G0 页面基线 |
 | P1 | 物流 | 承运商 | /logistics/carriers | 0% / 待盘点 | G0 页面基线 |
 | P2 | 同步 | 同步订单 | /sync/orders | 0% / 待盘点 | G0 页面基线 |
-| P2 | 同步 | 同步仓库 | /sync/warehouses | 0% / 待盘点 | G0 页面基线 |
+| P2 | 同步 | 同步仓库 | /sync/warehouses | 德国天运只读明细增量：G0/G2/G3 PASS（Laravel 56、Vue 7、Typecheck/Build PASS），等待 G4 Owner 实页 UAT；整页 Compact 迁移未验收，Production 未发布 | DE 明细 G3 → G4 Owner 实页 UAT；整页另行 G0 |
 | P2 | 同步 | 同步网红 | /sync/kol | 0% / 待盘点 | G0 页面基线 |
 | P2 | 同步 | 客户导入 | /sync/customers/import | 0% / 待盘点 | G0 页面基线 |
 | P2 | 同步 | 导出平台订单 | /sync/exports | 0% / 待盘点 | G0 页面基线 |
