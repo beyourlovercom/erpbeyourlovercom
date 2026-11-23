@@ -84,7 +84,7 @@ describe('Kol/Edit VI contract', () => {
     expect(wrapper.text()).toContain('现居国家（收件地址）')
     await nationality.setValue('Mexico')
     expect((nationality.element as HTMLInputElement).value).toBe('Mexico')
-    expect((wrapper.get('input[placeholder="例如：MX、US"]').element as HTMLInputElement).value).toBe('US')
+    expect((wrapper.get('input[data-testid="kol-shipping-country"]').element as HTMLInputElement).value).toBe('US')
     wrapper.unmount()
   })
 

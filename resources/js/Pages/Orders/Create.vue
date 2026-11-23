@@ -17,9 +17,10 @@ const currencyOptions = [
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 import KolIdentityCombobox from './KolIdentityCombobox.vue'
+import RecipientCustomsField from '../../Components/RecipientCustomsField.vue'
 import { publishGlobalFeedback } from '../../lib/globalFeedback'
 
-type KolAddress = { recipient_name: string | null; phone: string | null; email: string | null; country: string | null; province_state: string | null; city: string | null; address_line_1: string | null; address_line_2: string | null; postal_code: string | null }
+type KolAddress = { recipient_customs_id?: string | null; recipient_name: string | null; phone: string | null; email: string | null; country: string | null; province_state: string | null; city: string | null; address_line_1: string | null; address_line_2: string | null; postal_code: string | null }
 
 const props = defineProps<{
   defaultOrderKind: string
@@ -48,6 +49,7 @@ const form = useForm<{
   phone: string
   email: string
   country: string
+  recipient_customs_id: string
   province_state: string
   city: string
   address_line_1: string
@@ -64,6 +66,7 @@ const form = useForm<{
   phone: '',
   email: '',
   country: '',
+  recipient_customs_id: '',
   province_state: '',
   city: '',
   address_line_1: '',
@@ -75,11 +78,19 @@ const form = useForm<{
 // Every KOL selection uses its saved shipping/contact details; never reuse the former KOL address.
 const addressLoading = ref(false)
 const addressWarning = ref('')
-const addressFields = ['recipient_name', 'phone', 'email', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code'] as const
+const addressFields = ['recipient_name', 'phone', 'email', 'country', 'recipient_customs_id', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code'] as const
 let addressRequestId = 0
+let lastKolShippingCountry = ''
 const fillKolAddress = (address: KolAddress | null) => {
   for (const field of addressFields) form[field] = address?.[field] ?? ''
+  lastKolShippingCountry = form.country
 }
+// A changed destination requires a new recipient ID; never carry another country's number.
+watch(() => form.country, country => {
+  if (isKol.value && country !== lastKolShippingCountry) {
+    form.recipient_customs_id = ''
+  }
+})
 watch(() => form.kol_id, async kolId => {
   if (props.defaultOrderKind !== 'kol_fulfillment') return
   const requestId = ++addressRequestId
@@ -277,6 +288,12 @@ const submit = () => {
                 <input v-model="form.country" data-testid="order-country" class="erp-input" placeholder="可选">
                 <p v-if="form.errors.country" class="erp-field-error">{{ form.errors.country }}</p>
               </div>
+              <RecipientCustomsField
+                v-if="isKol"
+                :country="form.country"
+                v-model="form.recipient_customs_id"
+                :error="form.errors.recipient_customs_id"
+              />
               <div class="erp-form-field">
                 <label class="erp-form-label">省/州</label>
                 <input v-model="form.province_state" class="erp-input" placeholder="可选">

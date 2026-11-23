@@ -5,6 +5,7 @@ import axios from 'axios'
 import { useWorkspaceDraftGuard } from '../../Composables/useWorkspaceDraftGuard'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
+import RecipientCustomsField from '../../Components/RecipientCustomsField.vue'
 import { plusThreeYears, localTodayDate } from './couponExpiryDate'
 
 type OwnerOption = { value: number; label: string }
@@ -57,6 +58,7 @@ const form = useForm({
   payout_account: '',
   shipping_recipient_name: '',
   shipping_country: '',
+  shipping_customs_id: '',
   shipping_province_state: '',
   shipping_city: '',
   shipping_postal_code: '',
@@ -333,9 +335,23 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">现居国家（收件地址）</label>
-                <input v-model="form.shipping_country" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_country }" maxlength="8" placeholder="例如：MX、US">
+                <input v-model="form.shipping_country" data-testid="kol-shipping-country" list="kol-shipping-country-suggestions" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_country }" maxlength="128" placeholder="例如：MX、Mexico、Brazil">
+                <datalist id="kol-shipping-country-suggestions">
+                  <option value="CL">智利 Chile</option>
+                  <option value="PE">秘鲁 Peru</option>
+                  <option value="AR">阿根廷 Argentina</option>
+                  <option value="BR">巴西 Brazil</option>
+                  <option value="MX">墨西哥 Mexico</option>
+                  <option value="KR">韩国 Korea</option>
+                  <option value="NO">挪威 Norway</option>
+                </datalist>
                 <p v-if="form.errors.shipping_country" class="erp-field-error">{{ form.errors.shipping_country }}</p>
               </div>
+              <RecipientCustomsField
+                :country="form.shipping_country"
+                v-model="form.shipping_customs_id"
+                :error="form.errors.shipping_customs_id"
+              />
               <div class="erp-form-field">
                 <label class="erp-form-label">省/州</label>
                 <input v-model="form.shipping_province_state" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_province_state }" maxlength="128" placeholder="可选">

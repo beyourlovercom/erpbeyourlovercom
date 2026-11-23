@@ -7,6 +7,7 @@ use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolScope;
+use App\Modules\Kol\Application\RecipientCustomsPolicy;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
@@ -194,7 +195,8 @@ final class OrderController
             'recipient_name' => $kol->shipping_recipient_name ?: $kol->legal_name ?: $kol->display_name,
             'phone' => $kol->contact_phone ?: $kol->contact_whatsapp,
             'email' => $kol->contact_email,
-            'country' => $kol->shipping_country ?: ($kol->country_code !== 'OTHER' ? $kol->country_code : null),
+            'recipient_customs_id' => RecipientCustomsPolicy::showsRecipientId($kol->shipping_country) ? $kol->shipping_customs_id : null,
+            'country' => $kol->shipping_country,
             'province_state' => $kol->shipping_province_state,
             'city' => $kol->shipping_city,
             'address_line_1' => $kol->shipping_address_line_1,
@@ -325,12 +327,26 @@ final class OrderController
             abort_unless(KolScope::isAllScope($request->user()) || (int) $kol->owner_id === (int) $request->user()->getAuthIdentifier(), 403);
             // Reuse canonical KOL shipping/contact data when not explicitly supplied on the order.
             foreach ($this->kolShippingData($kol) as $field => $value) {
+                // A saved personal ID must never be copied to an order for a different country.
+                if ($field === 'recipient_customs_id' && filled($data['country'] ?? null)
+                    && RecipientCustomsPolicy::code($data['country']) !== RecipientCustomsPolicy::code($kol->shipping_country)) {
+                    continue;
+                }
                 if (blank($data[$field] ?? null) && filled($value)) {
                     $data[$field] = $value;
                 }
             }
+            if (! RecipientCustomsPolicy::showsRecipientId($data['country'] ?? null)) {
+                $data['recipient_customs_id'] = null;
+            }
         } else {
             unset($data['kol_id']);
+        }
+        if ($kind === OrderKind::KolFulfillment && RecipientCustomsPolicy::requiresRecipientId($data['country'] ?? null)
+            && blank($data['recipient_customs_id'] ?? null)) {
+            throw ValidationException::withMessages([
+                'recipient_customs_id' => '该收件国家需要收件人清关税号或身份证号码，请填写后创建订单。',
+            ]);
         }
         if ($kind === OrderKind::KolFulfillment && blank($data['order_date'] ?? null)) {
             $data['order_date'] = now()->toDateString();
@@ -1155,6 +1171,7 @@ final class OrderController
             'recipient_name' => ['nullable', 'string', 'max:255'], 'phone' => ['nullable', 'string', 'max:64'], 'email' => ['nullable', 'email', 'max:255'],
             'country' => ['nullable', 'string', 'max:128'], 'province_state' => ['nullable', 'string', 'max:128'],
             'city' => ['nullable', 'string', 'max:128'], 'address_line_1' => ['nullable', 'string', 'max:255'],
+            'recipient_customs_id' => ['nullable', 'string', 'max:128'],
             'address_line_2' => ['nullable', 'string', 'max:255'], 'postal_code' => ['nullable', 'string', 'max:32'],
             'items' => ['required', 'array', 'min:1'], 'items.*.product_summary' => ['nullable', 'string', 'max:255'],
             'items.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->whereNotNull('sku')->where('sku', '!=', '')],

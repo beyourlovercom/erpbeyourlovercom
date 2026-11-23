@@ -74,6 +74,28 @@ describe('Orders/Create V2', () => {
     customer.unmount()
   })
 
+  it('autofills the recipient customs ID and shows it only for the supported KOL destination', async () => {
+    const wrapper = mount(Create, { props: {
+      ...kolProps, selectedKolId: 55, kolOptions: [{ value: 55, label: 'Mexican Creator' }],
+      selectedKolAddress: {
+        recipient_name: 'Synthetic Name', phone: '111', email: 'synthetic@example.test',
+        country: 'MX', recipient_customs_id: 'SYNTHETIC-RFC-MX',
+        province_state: 'Nuevo Leon', city: 'Monterrey',
+        address_line_1: 'Synthetic Street', address_line_2: '', postal_code: '64000',
+      },
+    } })
+    await nextTick()
+    expect((wrapper.get('[data-testid="recipient-customs-input"]').element as HTMLInputElement).value).toBe('SYNTHETIC-RFC-MX')
+    expect(wrapper.get('[data-testid="recipient-customs-input"]').attributes('required')).toBeDefined()
+    await wrapper.get('[data-testid="order-country"]').setValue('BR')
+    await nextTick()
+    expect((wrapper.get('[data-testid="recipient-customs-input"]').element as HTMLInputElement).value).toBe('')
+    await wrapper.get('[data-testid="order-country"]').setValue('US')
+    await nextTick()
+    expect(wrapper.find('[data-testid="recipient-customs-field"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('preselects an unbound KOL without blocking ERP logistics orders', () => {
     const wrapper = mount(Create, { props: {
       ...kolProps, selectedKolId: 5,

@@ -93,7 +93,7 @@ final class KolDuplicateIdentityCountryTest extends TestCase
     {
         $actor = $this->staff();
         $kol = $this->existing($actor, 'Synthetic Nationality Edit');
-        $kol->forceFill(['country_code' => 'US', 'shipping_country' => 'MX'])->save();
+        $kol->forceFill(['country_code' => 'US', 'shipping_country' => 'MX', 'shipping_customs_id' => 'SYNTHETIC-MX-ID'])->save();
 
         $this->actingAs($actor)->patch('/kol/library/'.$kol->id, [
             'display_name' => 'Synthetic Nationality Edit',
@@ -101,12 +101,49 @@ final class KolDuplicateIdentityCountryTest extends TestCase
             'relationship_stage' => 'cooperating',
             'country_code' => 'New Zealand',
             'shipping_country' => 'MX',
+            'shipping_customs_id' => 'SYNTHETIC-MX-ID',
             'social_accounts' => [],
         ])->assertRedirect(route('kol.library.show', $kol))->assertSessionDoesntHaveErrors();
 
         $kol->refresh();
         self::assertSame('New Zealand', $kol->country_code);
         self::assertSame('MX', $kol->shipping_country);
+    }
+
+    public function test_mexico_shipping_id_is_required_on_profile_save_and_encrypted_when_saved(): void
+    {
+        $actor = $this->staff();
+        $kol = $this->existing($actor, 'Customs Mexican Recipient');
+        $payload = [
+            'display_name' => 'Customs Mexican Recipient', 'status' => 'active',
+            'relationship_stage' => 'cooperating', 'country_code' => 'United States',
+            'shipping_country' => 'Mexico', 'social_accounts' => [],
+        ];
+        $this->actingAs($actor)->patch('/kol/library/'.$kol->id, $payload)
+            ->assertSessionHasErrors('shipping_customs_id');
+        self::assertNull($kol->refresh()->shipping_customs_id);
+        $this->actingAs($actor)->patch('/kol/library/'.$kol->id, [
+            ...$payload,
+            'shipping_customs_id' => 'SYNTHETIC-RFC-MX-ABCD',
+        ])->assertRedirect(route('kol.library.show', $kol));
+        $kol->refresh();
+        self::assertSame('Mexico', $kol->shipping_country);
+        self::assertSame('United States', $kol->country_code);
+        self::assertSame('SYNTHETIC-RFC-MX-ABCD', $kol->shipping_customs_id);
+        self::assertNotSame('SYNTHETIC-RFC-MX-ABCD', $kol->getRawOriginal('shipping_customs_id'));
+    }
+
+    public function test_norway_profile_does_not_require_a_personal_voec_number(): void
+    {
+        $actor = $this->staff();
+        $kol = $this->existing($actor, 'Norway Customs Info');
+        $this->actingAs($actor)->patch('/kol/library/'.$kol->id, [
+            'display_name' => 'Norway Customs Info', 'status' => 'active',
+            'relationship_stage' => 'cooperating', 'country_code' => 'Argentina',
+            'shipping_country' => 'Norway', 'social_accounts' => [],
+        ])->assertRedirect(route('kol.library.show', $kol));
+        self::assertSame('Norway', $kol->fresh()->shipping_country);
+        self::assertNull($kol->fresh()->shipping_customs_id);
     }
 
     public function test_custom_country_is_not_rejected_by_fixed_country_list(): void

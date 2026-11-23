@@ -9,6 +9,7 @@ use App\Modules\Kol\Application\KolDuplicateIdentity;
 use App\Modules\Kol\Application\AffiliateWp\CouponProvisioningService;
 use App\Modules\Kol\Application\KolEditAccountService;
 use App\Modules\Kol\Application\KolScope;
+use App\Modules\Kol\Application\RecipientCustomsPolicy;
 use App\Modules\Kol\Application\KolService;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
@@ -21,6 +22,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -146,7 +148,8 @@ final class KolController
             'payout_method' => 'nullable|string|in:paypal,bank,other',
             'payout_account' => 'nullable|string|max:512',
             'shipping_recipient_name' => 'nullable|string|max:255',
-            'shipping_country' => 'nullable|string|max:8',
+            'shipping_country' => 'nullable|string|max:128',
+            'shipping_customs_id' => [Rule::requiredIf(fn (): bool => RecipientCustomsPolicy::requiresRecipientId($request->input('shipping_country'))), 'nullable', 'string', 'max:128'],
             'shipping_province_state' => 'nullable|string|max:128',
             'shipping_city' => 'nullable|string|max:128',
             'shipping_postal_code' => 'nullable|string|max:32',
@@ -179,6 +182,10 @@ final class KolController
             'wordpress_password.min' => 'Password 要求：英文字母开头，长度大于 6 个字符。',
             'wordpress_password.regex' => 'Password 要求：英文字母开头，长度大于 6 个字符。',
         ]);
+
+        if (! RecipientCustomsPolicy::showsRecipientId($data['shipping_country'] ?? null)) {
+            $data['shipping_customs_id'] = null;
+        }
 
         $user = $request->user();
 
@@ -368,7 +375,8 @@ final class KolController
             'payout_method' => 'nullable|string|in:paypal,bank,other',
             'payout_account' => 'nullable|string|max:512',
             'shipping_recipient_name' => 'nullable|string|max:255',
-            'shipping_country' => 'nullable|string|max:8',
+            'shipping_country' => 'nullable|string|max:128',
+            'shipping_customs_id' => [Rule::requiredIf(fn (): bool => RecipientCustomsPolicy::requiresRecipientId($request->input('shipping_country'))), 'nullable', 'string', 'max:128'],
             'shipping_province_state' => 'nullable|string|max:128',
             'shipping_city' => 'nullable|string|max:128',
             'shipping_postal_code' => 'nullable|string|max:32',
@@ -399,6 +407,10 @@ final class KolController
             'sales_performance_entries.*.source' => 'nullable|string|max:64',
             'sales_performance_entries.*.note' => 'nullable|string|max:1000',
         ]);
+
+        if (! RecipientCustomsPolicy::showsRecipientId($data['shipping_country'] ?? null)) {
+            $data['shipping_customs_id'] = null;
+        }
 
         $user = $request->user();
 
@@ -701,6 +713,7 @@ final class KolController
             'payout_account' => $kol->payout_account,
             'shipping_recipient_name' => $kol->shipping_recipient_name,
             'shipping_country' => $kol->shipping_country,
+            'shipping_customs_id' => $kol->shipping_customs_id,
             'shipping_province_state' => $kol->shipping_province_state,
             'shipping_city' => $kol->shipping_city,
             'shipping_postal_code' => $kol->shipping_postal_code,

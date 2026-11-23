@@ -9,7 +9,11 @@ class OrderAddress extends Model
 {
     protected $fillable = [
         'recipient_name', 'phone', 'email', 'company', 'country', 'province_state', 'city',
-        'address_line_1', 'address_line_2', 'postal_code',
+        'address_line_1', 'address_line_2', 'postal_code', 'recipient_customs_id',
+    ];
+
+    protected $casts = [
+        'recipient_customs_id' => 'encrypted',
     ];
 
     public function order(): BelongsTo

@@ -21,7 +21,7 @@ type KolDetail = {
   contact_email: string | null; contact_phone: string | null; contact_whatsapp: string | null; other_contact: string | null
   preferred_contact_method: string
   tax_id: string | null; payout_method: string | null; payout_account: string | null
-  shipping_recipient_name: string | null; shipping_country: string | null; shipping_province_state: string | null
+  shipping_recipient_name: string | null; shipping_country: string | null; shipping_customs_id?: string | null; shipping_province_state: string | null
   shipping_city: string | null; shipping_postal_code: string | null
   shipping_address_line_1: string | null; shipping_address_line_2: string | null
   level: string | null; gender: string | null; categories: string[]; products: string[]
@@ -439,6 +439,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <dl class="detail-list">
               <div><dt>收件人</dt><dd>{{ kol.shipping_recipient_name ?? '—' }}</dd></div>
               <div><dt>现居国家（收件地址）</dt><dd>{{ kol.shipping_country ?? '—' }}</dd></div>
+              <div v-if="kol.shipping_customs_id"><dt>收件清关税号／身份号码</dt><dd data-testid="kol-customs-id">{{ kol.shipping_customs_id }}</dd></div>
               <div><dt>省/州</dt><dd>{{ kol.shipping_province_state ?? '—' }}</dd></div>
               <div><dt>城市</dt><dd>{{ kol.shipping_city ?? '—' }}</dd></div>
               <div><dt>邮编</dt><dd>{{ kol.shipping_postal_code ?? '—' }}</dd></div>
