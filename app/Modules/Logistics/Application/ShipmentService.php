@@ -122,11 +122,19 @@ final class ShipmentService
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertOperationallyEligible($lockedOrder);
-            // Exception is a real operational hold: preserve facts and block new dispatch.
+            // A physically allocated FACTORY child may ship independently while
+            // its parent still appears in the staff pending-allocation queue.
+            // Other parent holds (exception, stockout, etc.) remain blocking.
+            $allocatedDomesticChild = $lockedOrder->fulfillment_parent_id !== null
+                && strtoupper((string) ($lockedOrder->shipment?->warehouse?->code ?? '')) === 'FACTORY';
+            $parentBlockingStatuses = [...OrderManualHoldStatus::CODES, 'out_of_stock'];
+            if (! $allocatedDomesticChild) {
+                $parentBlockingStatuses[] = 'pending_allocation';
+            }
             abort_if(in_array($lockedOrder->workflow_status, [...OrderManualHoldStatus::CODES, 'out_of_stock', 'pending_allocation'], true)
                 || $lockedOrder->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->exists()
-                || $lockedOrder->fulfillmentParent()->where(function ($parent): void {
-                    $parent->whereIn('workflow_status', [...OrderManualHoldStatus::CODES, 'out_of_stock', 'pending_allocation'])
+                || $lockedOrder->fulfillmentParent()->where(function ($parent) use ($parentBlockingStatuses): void {
+                    $parent->whereIn('workflow_status', $parentBlockingStatuses)
                         ->orWhereHas('operationalMarkers', fn ($m) => $m
                             ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS));
                 })->exists(),
