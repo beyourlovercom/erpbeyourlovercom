@@ -119,6 +119,122 @@ final class DeTianyunWarehouseManualSyncTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_production_read_only_web_task_ignores_all_inventory_apply_gates(): void
+    {
+        Queue::fake();
+        $warehouse = $this->warehouse();
+        $this->connection($warehouse);
+        $actor = $this->actor(['sync.view', 'sync.operate']);
+        $this->withoutMiddleware(PreventRequestForgery::class);
+        config()->set('xlwms.de_production_read_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.de_inventory_dev_apply_enabled', true);
+        config()->set('xlwms.de_inventory_production_apply_enabled', true);
+        $this->app->detectEnvironment(static fn (): string => 'production');
+        try {
+            $this->actingAs($actor)->get('/sync/warehouses')->assertOk()
+                ->assertInertia(fn (Assert $page) => $page->where(
+                    'warehouses', fn ($rows): bool => $rows->contains(
+                        fn (array $row): bool => $row['code'] === 'DE' && $row['can_sync']
+                    )
+                ));
+            $response = $this->postJson("/sync/warehouses/{$warehouse->id}/sync")
+                ->assertStatus(202)->assertJsonPath('mode', 'read_only')
+                ->assertJsonPath('erp_stock_updated', false);
+            $runId = (int) $response->json('run_id');
+            self::assertSame(0, (int) DB::table('xlwms_inventory_manual_runs')
+                ->where('id', $runId)->value('apply_requested'));
+            $this->getJson("/sync/warehouses/{$warehouse->id}/sync-details")
+                ->assertOk()->assertJsonPath('snapshot', null);
+            Queue::assertPushed(RunDeTianyunWarehouseSync::class, 1);
+        } finally {
+            $this->app->detectEnvironment(static fn (): string => 'testing');
+        }
+    }
+
+    public function test_production_worker_rejects_manually_tampered_apply_task(): void
+    {
+        Queue::fake();
+        $warehouse = $this->warehouse();
+        $this->connection($warehouse);
+        $actor = $this->actor(['sync.view', 'sync.operate']);
+        $this->withoutMiddleware(PreventRequestForgery::class);
+        config()->set('xlwms.de_production_read_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.de_inventory_production_apply_enabled', true);
+        $this->app->detectEnvironment(static fn (): string => 'production');
+        try {
+            $start = $this->actingAs($actor)
+                ->postJson("/sync/warehouses/{$warehouse->id}/sync")->assertStatus(202);
+            $id = (int) $start->json('run_id');
+            DB::table('xlwms_inventory_manual_runs')->where('id', $id)
+                ->update(['apply_requested' => true]);
+            $this->app->call([new RunDeTianyunWarehouseSync($id), 'handle']);
+            $this->getJson("/sync/warehouses/{$warehouse->id}/sync/{$id}")
+                ->assertOk()->assertJsonPath('status', 'failed')
+                ->assertJsonPath('error_code', 'XLWMS_DE_SYNC_APPLY_GATES_CHANGED');
+            self::assertSame(0, WarehouseInventory::query()
+                ->where('warehouse_id', $warehouse->id)->count());
+        } finally {
+            $this->app->detectEnvironment(static fn (): string => 'testing');
+        }
+    }
+
+    public function test_production_read_only_worker_captures_real_shape_without_stock_apply(): void
+    {
+        Queue::fake();
+        $warehouse = $this->warehouse();
+        $this->connection($warehouse);
+        $actor = $this->actor(['sync.view', 'sync.operate']);
+        $this->withoutMiddleware(PreventRequestForgery::class);
+        config()->set('xlwms.de_production_read_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.de_inventory_production_apply_enabled', true);
+        $gateway = \Mockery::mock(XlwmsInventoryGateway::class);
+        $gateway->shouldReceive('productPage')->once()->andReturn([
+            'code' => 200, 'data' => ['records' => [['sku' => 'DE-PROD-READ-ONLY-TEST']],
+                'total' => 1, 'page' => 1, 'pageSize' => 10, 'pages' => 1], 'msg' => 'OK',
+        ]);
+        $gateway->shouldReceive('integratedInventoryPage')->once()->andReturn([
+            'code' => 200, 'data' => ['records' => [['sku' => 'DE-PROD-READ-ONLY-TEST',
+                'whCode' => 'Hannover', 'stockType' => 0, 'productTotalAmount' => 9,
+                'productStockDtl' => ['availableAmount' => 9, 'lockAmount' => 0,
+                    'transportAmount' => 0]]], 'total' => 1,
+                'page' => 1, 'pageSize' => 10, 'pages' => 1], 'msg' => 'OK',
+        ]);
+        $this->app->instance(XlwmsInventoryGateway::class, $gateway);
+        $this->app->detectEnvironment(static fn (): string => 'production');
+        try {
+            $response = $this->actingAs($actor)
+                ->postJson("/sync/warehouses/{$warehouse->id}/sync")->assertStatus(202);
+            $id = (int) $response->json('run_id');
+            $this->app->call([new RunDeTianyunWarehouseSync($id), 'handle']);
+            $this->getJson("/sync/warehouses/{$warehouse->id}/sync/{$id}")
+                ->assertOk()->assertJsonPath('mode', 'read_only')
+                ->assertJsonPath('erp_stock_updated', false)
+                ->assertJsonPath('provider_sku_count', 1);
+            self::assertSame(0, WarehouseInventory::query()
+                ->where('warehouse_id', $warehouse->id)->count());
+        } finally {
+            $this->app->detectEnvironment(static fn (): string => 'testing');
+        }
+    }
+
+    public function test_production_de_inventory_apply_denied_without_independent_gate(): void
+    {
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.de_inventory_dev_apply_enabled', true);
+        config()->set('xlwms.de_inventory_production_apply_enabled', false);
+        $this->app->detectEnvironment(static fn (): string => 'production');
+        try {
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('XLWMS_DE_INVENTORY_APPLY_NOT_AUTHORIZED');
+            app(XlwmsInventorySyncService::class)->sync(true, 'DE');
+        } finally {
+            $this->app->detectEnvironment(static fn (): string => 'testing');
+        }
+    }
+
     public function test_missing_connector_returns_safe_error_and_no_job(): void
     {
         Queue::fake();

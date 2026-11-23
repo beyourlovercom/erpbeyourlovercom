@@ -19,6 +19,17 @@ final class SyncXlwmsInventoryCommand extends Command
             $this->error('Unsupported XLWMS warehouse. Allowed: US-SM, DE.');
             return self::INVALID;
         }
+        if ($warehouseCode === 'DE' && $this->option('apply') && app()->environment('production')) {
+            // Real stock changes must be initiated from an authorized local TTY,
+            // never from a web button, cron, queue, remote pipe or automation.
+            if (! defined('STDIN') || ! function_exists('stream_isatty') || ! stream_isatty(STDIN)) {
+                $this->error('Production DE apply requires a trusted interactive local terminal.');
+                return self::FAILURE;
+            }
+            if (! $this->confirm('Apply verified DE/Hannover inventory to Production ERP using the approved exact snapshot checksum?', false)) {
+                return self::INVALID;
+            }
+        }
         try { $result = $service->sync((bool) $this->option('apply'), $warehouseCode); $this->line(json_encode($result, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT)); if (! $this->option('apply')) {
             // A successfully recorded read-only mismatch snapshot is expected
             // evidence, not a failed API read or failed scheduled collection.

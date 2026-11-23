@@ -30,8 +30,11 @@ final class DeTianyunWarehouseSyncController
 
     private function queue(Request $request, Warehouse $warehouse, bool $resume): JsonResponse
     {
-        abort_unless(app()->environment('local', 'testing')
-            && (bool) config('xlwms.de_manual_sync_enabled', false), 403);
+        $dev = app()->environment('local', 'testing')
+            && (bool) config('xlwms.de_manual_sync_enabled', false);
+        $prodRead = app()->environment('production')
+            && (bool) config('xlwms.de_production_read_enabled', false);
+        abort_unless($dev || $prodRead, 403);
         abort_unless($warehouse->code === 'DE' && $warehouse->is_active, 404);
 
         $connectionReady = DB::table('warehouse_openapi_connections')
@@ -77,7 +80,10 @@ final class DeTianyunWarehouseSyncController
                 return $this->error('XLWMS_DE_SYNC_ALREADY_RUNNING', 409);
             }
 
-            $apply = (bool) config('xlwms.de_inventory_dev_apply_enabled', false)
+            // Production UI can only capture fresh provider snapshots. Stock
+            // apply remains an independent one-time, interactive CLI operation.
+            $apply = $dev
+                && (bool) config('xlwms.de_inventory_dev_apply_enabled', false)
                 && (bool) config('xlwms.inventory_apply_enabled', false);
             $runId = DB::table('xlwms_inventory_manual_runs')->insertGetId([
                 'warehouse_id' => $warehouse->id,
@@ -150,7 +156,14 @@ final class DeTianyunWarehouseSyncController
      */
     public function details(Request $request, Warehouse $warehouse): JsonResponse
     {
-        abort_unless(app()->environment('local', 'testing') && $warehouse->code === 'DE', 404);
+        abort_unless(
+            $warehouse->code === 'DE'
+            && ((app()->environment('local', 'testing')
+                    && (bool) config('xlwms.de_manual_sync_enabled', false))
+                || (app()->environment('production')
+                    && (bool) config('xlwms.de_production_read_enabled', false))),
+            404
+        );
 
         $input = $request->validate([
             'status' => ['nullable', Rule::in(['all', 'unmatched', 'matched', 'blocked', 'catalog_only'])],
