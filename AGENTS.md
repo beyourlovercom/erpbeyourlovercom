@@ -1,3 +1,15 @@
+# HIGHEST OWNER-FROZEN ERP2 FRONTEND-ONLY ARCHITECTURE V1 (2026-11-23)
+
+**Rule ID: `ERP2_OWNER_FROZEN_FRONTEND_ONLY_V1` · Owner approved · ERP2 highest priority.** This is the canonical ERP2 upgrade architecture, superseding earlier ERP2 parallel-system / rebuilding roadmap assumptions. **ERP2 is a Vben/Vue/AG Grid FRONTEND replacement for ERP1, NOT a second ERP.** Reuse the existing ERP1 Laravel Controllers/Services, business rules, user authentication and permissions, products/SKUs, KOL, orders, inventory, warehouse mapping, shipment and accounting models unchanged. For Dev, restore a matching-schema copy of the existing ERP1 database into a **separate isolated ERP2 Dev database**; never write from Dev to ERP1 Production DB. Do not rebuild a second SKU, auth, warehouse, logistics or order service. JSON transport adapters are allowed; extra business engines are not.
+
+**Domains / sequence:** ERP1 Production remains `https://erp.beyourlover.com` and active; ERP2 Dev/UAT target is `https://erp2.beyourlover.com`, gated by actual DNS + TLS + authentication + isolated data + outbound-write blocking tests. Only after all target functions are stable, real workflow UAT and separate Owner release authorization may ERP2 replace the ERP1 frontend at `erp.beyourlover.com`. Do not present localhost/Tailscale as a verified public domain.
+
+**Execution defaults:** `007windows` is the **primary ERP2 Dev host** for direct editing, building and local browser UAT. Prefer same-LAN or Tailscale tailnet access to approximate LAN speed, instead of ephemeral loopback-only links. GitHub remains the only code source of truth. Dev can be edited and reset rapidly; one scheduled ERP2 DB/config/commit snapshot per day is sufficient for ordinary development (with additional recovery point before destructive schema changes). External OMS/Woo/WMS/payment/email/webhook writes must stay disabled or simulated in Dev, and ERP1 Production release gates remain unchanged. READY devices and existing Chrome sessions must not be restarted.
+
+**Authoritative roadmap and explicit prohibitions:** `docs/10_Planning_Roadmap/ERP2_OWNER_FROZEN_FRONTEND_ONLY_20261123.md`. Never plan hundreds of hours as a second-ERP rebuild, treat synthetic SQLite `products=0` as real ERP1 source, reconstruct warehouse SKUs/users manually, claim full shipment PASS from interface tests alone, or change ERP1 Production while delivering isolated ERP2 Dev. This rule applies to all future ERP2 tasks and supersedes conflicting older ERP2 plans; it does not supersede the already frozen ERP1 Production business/tab mutation contracts below.
+
+---
+
 # HIGHEST OWNER-FROZEN ERP WORKSPACE TABS P0 (2026-11-12)
 
 **Rule ID: `BYL_ERP_WORKSPACE_TABS_P0_FROZEN` / OWNER APPROVED.** ERP V4 navigation tabs are a permanent, all-authenticated-user default-on Production feature. Preserve **30 navigation tabs, 3 pinned tabs**, the existing hot-cache behavior and per-user `?erp_v4_tabs=0` emergency session opt-out. Subsequent Grid, ERP, KOL, logistics, frontend styling or asset-only releases MUST NOT disable/replace the workspace tab system.
