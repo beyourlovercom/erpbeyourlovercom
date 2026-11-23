@@ -1622,6 +1622,9 @@ onBeforeUnmount(() => {
             <div class="ord-summary-field"><dt>收件人</dt><dd>{{ order.address?.recipient_name || '—' }}</dd></div>
             <div class="ord-summary-field"><dt>联系电话</dt><dd>{{ order.address?.phone || '—' }}</dd></div>
             <div class="ord-summary-field"><dt>国家</dt><dd>{{ order.address?.country || '—' }}</dd></div>
+            <div v-if="order.order_kind === 'kol_fulfillment' && order.address?.recipient_customs_id" data-testid="kol-order-customs-id" class="ord-summary-field">
+              <dt>收件清关税号／身份号码</dt><dd>{{ order.address.recipient_customs_id }}</dd>
+            </div>
             <div class="ord-summary-field"><dt>州 / 省</dt><dd>{{ order.address?.province_state || '—' }}</dd></div>
             <div class="ord-summary-field"><dt>城市</dt><dd>{{ order.address?.city || '—' }}</dd></div>
             <div class="ord-summary-field"><dt>邮政编码</dt><dd>{{ order.address?.postal_code || '—' }}</dd></div>
@@ -1647,6 +1650,9 @@ onBeforeUnmount(() => {
             <div class="erp-form-field">
               <label class="erp-form-label">国家</label>
               <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.country || '—' }}</div>
+              <div v-if="editMode && order.order_kind === 'kol_fulfillment' && order.address?.recipient_customs_id" class="erp-readonly-input" data-testid="kol-order-customs-id-edit">
+                收件清关号码：{{ order.address.recipient_customs_id }}
+              </div>
               <template v-else>
                 <input v-model="form.country" class="erp-input" placeholder="可选">
                 <p v-if="form.errors.country" class="erp-field-error">{{ form.errors.country }}</p>

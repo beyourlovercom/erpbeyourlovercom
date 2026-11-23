@@ -1,26 +1,15 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
+import axios from 'axios'
 import { useWorkspaceDraftGuard } from '../../Composables/useWorkspaceDraftGuard'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
-import SearchableSelect from '../../Components/SearchableSelect.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
+import RecipientCustomsField from '../../Components/RecipientCustomsField.vue'
 import { plusThreeYears, localTodayDate } from './couponExpiryDate'
 
 type OwnerOption = { value: number; label: string }
 
-const countryOptions = [
-  { value: 'US', label: 'United States' },
-  { value: 'GB', label: 'United Kingdom' },
-  { value: 'DE', label: 'Germany' },
-  { value: 'FR', label: 'France' },
-  { value: 'CA', label: 'Canada' },
-  { value: 'EU', label: 'Europe' },
-  { value: 'AU', label: 'Australia' },
-  { value: 'ASIA', label: '东南亚' },
-  { value: 'PH', label: 'Philippines' },
-  { value: 'OTHER', label: '其他' },
-]
 const languageOptions = [
   { value: 'en', label: 'English' },
   { value: 'es', label: 'Spanish' },
@@ -41,7 +30,7 @@ const props = withDefaults(defineProps<{
 
 const form = useForm({
   display_name: '',
-  country_code: 'US',
+  country_code: '',
   language: 'en',
   status: 'active',
   owner_id: String(props.currentUserId),
@@ -69,6 +58,7 @@ const form = useForm({
   payout_account: '',
   shipping_recipient_name: '',
   shipping_country: '',
+  shipping_customs_id: '',
   shipping_province_state: '',
   shipping_city: '',
   shipping_postal_code: '',
@@ -105,6 +95,46 @@ const form = useForm({
 // Only publish the unsaved boolean; no KOL or payment details are stored.
 useWorkspaceDraftGuard(() => form.isDirty)
 
+type DuplicateResult = { exists: boolean; message?: string | null; existing_url?: string | null }
+const duplicate = ref<DuplicateResult>({ exists: false })
+const duplicateChecking = ref(false)
+const duplicateUnavailable = ref(false)
+let duplicateRequestId = 0
+let duplicateTimer: ReturnType<typeof setTimeout> | null = null
+
+const checkDuplicate = async (): Promise<boolean> => {
+  const username = form.wordpress_username
+  const displayName = form.display_name
+  if (!username.trim() && !displayName.trim()) {
+    duplicate.value = { exists: false }
+    duplicateUnavailable.value = false
+    return false
+  }
+  const requestId = ++duplicateRequestId
+  duplicateChecking.value = true
+  duplicateUnavailable.value = false
+  try {
+    const response = await axios.get<DuplicateResult>('/kol/library/duplicate-check', {
+      params: { wordpress_username: username, display_name: displayName },
+    })
+    if (requestId !== duplicateRequestId) return true
+    duplicate.value = response.data
+    return response.data.exists
+  } catch {
+    if (requestId === duplicateRequestId) duplicateUnavailable.value = true
+    return true // Fail closed rather than create an account without a duplicate preflight.
+  } finally {
+    if (requestId === duplicateRequestId) duplicateChecking.value = false
+  }
+}
+watch([() => form.wordpress_username, () => form.display_name], () => {
+  duplicate.value = { exists: false }
+  duplicateUnavailable.value = false
+  if (duplicateTimer) clearTimeout(duplicateTimer)
+  duplicateTimer = setTimeout(() => { void checkDuplicate() }, 420)
+})
+onUnmounted(() => { if (duplicateTimer) clearTimeout(duplicateTimer) })
+
 const couponExpiryManuallyEdited = ref(false)
 watch(() => form.joined_at, date => {
   if (!couponExpiryManuallyEdited.value) form.affiliate_coupon_expiry = plusThreeYears(date)
@@ -137,7 +167,9 @@ const removeSalesPerformance = (index: number) => {
   form.sales_performance_entries.splice(index, 1)
 }
 
-const submit = () => {
+const submit = async () => {
+  if (duplicateTimer) clearTimeout(duplicateTimer)
+  if (await checkDuplicate()) return
   form.transform(data => ({
     ...data,
     owner_id: data.owner_id ? Number(data.owner_id) : null,
@@ -196,7 +228,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
           <div class="kol-header-actions page-header-actions">
             <a href="/kol/library" class="erp-btn erp-btn-secondary">返回列表</a>
             <a href="/kol/library" class="erp-btn erp-btn-secondary">取消</a>
-            <button type="submit" form="kol-create-form" class="erp-btn erp-btn-primary" :disabled="form.processing">{{ form.processing ? '创建中…' : '保存 KOL' }}</button>
+            <button type="submit" form="kol-create-form" class="erp-btn erp-btn-primary" :disabled="form.processing || duplicate.exists || duplicateChecking || duplicateUnavailable">{{ form.processing ? '创建中…' : '保存 KOL' }}</button>
           </div>
         </div>
 
@@ -219,8 +251,9 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <p v-if="form.errors.display_name" class="erp-field-error">{{ form.errors.display_name }}</p>
               </div>
               <div class="erp-form-field">
-                <label class="erp-form-label">国家/地区</label>
-                <SearchableSelect v-model="form.country_code" :options="countryOptions" placeholder="搜索国家/地区" />
+                <label for="kol-nationality-country" class="erp-form-label">国籍地</label>
+                <input id="kol-nationality-country" v-model="form.country_code" data-testid="kol-nationality-country" type="text" class="erp-input" :class="{ 'has-error': form.errors.country_code }" maxlength="128" placeholder="自由填写，例如：Mexico、墨西哥、Brazil（可选）">
+                <small>国籍地与实际物流收件国家分别记录。</small>
                 <p v-if="form.errors.country_code" class="erp-field-error">{{ form.errors.country_code }}</p>
               </div>
               <div class="erp-form-field">
@@ -301,10 +334,24 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <p v-if="form.errors.shipping_recipient_name" class="erp-field-error">{{ form.errors.shipping_recipient_name }}</p>
               </div>
               <div class="erp-form-field">
-                <label class="erp-form-label">国家</label>
-                <input v-model="form.shipping_country" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_country }" maxlength="8" placeholder="例如：US">
+                <label class="erp-form-label">现居国家（收件地址）</label>
+                <input v-model="form.shipping_country" data-testid="kol-shipping-country" list="kol-shipping-country-suggestions" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_country }" maxlength="128" placeholder="例如：MX、Mexico、Brazil">
+                <datalist id="kol-shipping-country-suggestions">
+                  <option value="CL">智利 Chile</option>
+                  <option value="PE">秘鲁 Peru</option>
+                  <option value="AR">阿根廷 Argentina</option>
+                  <option value="BR">巴西 Brazil</option>
+                  <option value="MX">墨西哥 Mexico</option>
+                  <option value="KR">韩国 Korea</option>
+                  <option value="NO">挪威 Norway</option>
+                </datalist>
                 <p v-if="form.errors.shipping_country" class="erp-field-error">{{ form.errors.shipping_country }}</p>
               </div>
+              <RecipientCustomsField
+                :country="form.shipping_country"
+                v-model="form.shipping_customs_id"
+                :error="form.errors.shipping_customs_id"
+              />
               <div class="erp-form-field">
                 <label class="erp-form-label">省/州</label>
                 <input v-model="form.shipping_province_state" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_province_state }" maxlength="128" placeholder="可选">
@@ -337,6 +384,12 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <label class="erp-form-label">Username <span class="erp-form-required">*</span></label>
                 <input v-model="form.wordpress_username" type="text" autocomplete="username" class="erp-input" :class="{ 'has-error': form.errors.wordpress_username }" required placeholder="网红用户名，可修改" @input="usernameManuallyEdited = true">
                 <p v-if="form.errors.wordpress_username" class="erp-field-error">{{ form.errors.wordpress_username }}</p>
+                <p v-if="duplicateChecking" class="erp-form-helper">正在检查是否已有相同网红…</p>
+                <div v-if="duplicate.exists" data-testid="kol-duplicate-warning" class="erp-field-error" role="alert">
+                  已经存在这个网红，是否重复创建账号？系统已拦截，请核对已有档案，不允许直接重复开户。
+                  <a v-if="duplicate.existing_url" :href="duplicate.existing_url">查看已有网红</a>
+                </div>
+                <p v-if="duplicateUnavailable" class="erp-field-error" role="alert">暂时无法检查网红是否重复，已停止创建，请稍后重试。</p>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">Affiliate Name <span class="erp-form-required">*</span></label>

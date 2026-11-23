@@ -73,6 +73,21 @@ const defaultProps = {
 }
 
 describe('Kol/Edit VI contract', () => {
+  it('edits legacy nationality and arbitrary country text directly, separate from shipping address', async () => {
+    const wrapper = mount(Edit, { props: {
+      ...defaultProps, kol: { ...baseKol, country_code: 'New Zealand', shipping_country: 'US' },
+    } })
+    const nationality = wrapper.get('[data-testid="kol-nationality-country"]')
+    expect((nationality.element as HTMLInputElement).value).toBe('New Zealand')
+    expect(wrapper.find('.searchable-select').exists()).toBe(false)
+    expect(wrapper.text()).toContain('国籍地')
+    expect(wrapper.text()).toContain('现居国家（收件地址）')
+    await nationality.setValue('Mexico')
+    expect((nationality.element as HTMLInputElement).value).toBe('Mexico')
+    expect((wrapper.get('input[data-testid="kol-shipping-country"]').element as HTMLInputElement).value).toBe('US')
+    wrapper.unmount()
+  })
+
   it('reserves three independently editable Affiliate credential fields', () => {
     const wrapper = mount(Edit, { props: defaultProps })
     const card = wrapper.find('.kol-account-card')
