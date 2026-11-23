@@ -1,6 +1,6 @@
 # ERP2 最高优先级冻结方案：ERP1 Laravel 后端 + ERP2 Vben 前端（2026-11-23）
 
-**Owner Approved / Architecture Frozen / Source of Truth**  
+**Owner Approved / Architecture Frozen / Source of Truth**
 **Rule ID:** `ERP2_OWNER_FROZEN_FRONTEND_ONLY_V1`  
 **优先级：ERP2 的最高优先级。** 本规则取代此前 ERP2 作为平行 ERP 重建、独立业务规则、第二套 SKU/权限/订单引擎的迁移计划；不改变既有 ERP1 Production 的业务合同、审批与发布门禁。若旧的 ERP2 Roadmap 与本文冲突，以本文为准。
 
