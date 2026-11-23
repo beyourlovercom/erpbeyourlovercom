@@ -82,6 +82,7 @@ const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
   globalGridEnabled?:boolean; gridSearch?:string; gridSort?:{colId:string;direction:'asc'|'desc'}|null; gridFilters?:Record<string,string>
   shipoutProductionBatchUi?:boolean; shipoutProductionBatchDryRun?:boolean; shipoutProductionBatchPaused?:boolean;
+  deTianyunBatchUi?:boolean; deTianyunLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
   shipoutProductionLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
   shipoutProductionUi?:boolean; shipoutProductionReadEnabled?:boolean; shipoutProductionDispatchEnabled?:boolean; shipoutProductionMinOrderId?:number; shipoutProductionOperatorAllowed?:boolean
   workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[];
@@ -203,15 +204,21 @@ type ShipOutProductionStatus = {
 type ShipOutBatchPreview = {
   count:number; overflow:boolean; fingerprint:string; dry_run:boolean
   scope?:'selected'|'all'; scan_count?:number; stockout_count?:number; excluded_count?:number
+  items?:{order_id:number;order_no:string;ready:boolean;blockers:string[]}[]
 }
 type ShipOutBatchItem = { order_id:number; order_no:string; status:string; result_code:string|null; provider_order_id:string|null }
 type ShipOutBatchStatus = { batch_id:string; status:string; dry_run:boolean; total:number; processed:number; items:ShipOutBatchItem[] }
 const shipoutBatchSelection = ref<number[]>([])
 const shipoutBatchPreviewIds = ref<number[]>([])
-const showShipoutSelection = computed(() => !!props.shipoutProductionBatchUi
-  && props.warehouseKey==='us-moreplus' && props.view==='pending')
+const isDeTianyunBatch = computed(() => props.warehouseKey==='de-tianyun' && props.deTianyunBatchUi===true)
+const showShipoutSelection = computed(() => props.view==='pending'
+  && ((!!props.shipoutProductionBatchUi && props.warehouseKey==='us-moreplus') || isDeTianyunBatch.value))
+const shipoutBatchApiBase = computed(() => isDeTianyunBatch.value
+  ? '/logistics/oversea/de-tianyun/xlwms/batch'
+  : '/logistics/oversea/us-moreplus/shipout/batch')
 const shipoutPageSelectable = computed(() => visibleRows.value
-  .filter(row => row.shipment_status==='pending' && !row.shipout_production?.attempted)
+  .filter(row => row.shipment_status==='pending'
+    && (isDeTianyunBatch.value ? row.review_status==='approved' : !row.shipout_production?.attempted))
   .map(row=>row.order_id))
 const shipoutPageAllSelected = computed(() => shipoutPageSelectable.value.length>0
   && shipoutPageSelectable.value.every(id=>shipoutBatchSelection.value.includes(id)))
@@ -244,8 +251,8 @@ const onShipoutBatchVisible=()=>{
 onUnmounted(()=>{ if(shipoutBatchTimer)clearInterval(shipoutBatchTimer);document.removeEventListener('visibilitychange',onShipoutBatchVisible) })
 onMounted(()=>{
   document.addEventListener('visibilitychange',onShipoutBatchVisible)
-  const last=props.shipoutProductionLatestBatch
-  if(last&&props.shipoutProductionBatchUi) {
+  const last=isDeTianyunBatch.value ? props.deTianyunLatestBatch : props.shipoutProductionLatestBatch
+  if(last&&(props.shipoutProductionBatchUi || isDeTianyunBatch.value)) {
     shipoutBatchStatus.value={batch_id:last.id,status:last.status,dry_run:last.dry_run,
       total:last.total,processed:0,items:[]}
     pollShipoutBatchIfVisible()
@@ -264,28 +271,36 @@ async function shipoutBatchApi(url:string, data?:Record<string,string>) {
     ({SHIPOUT_BATCH_STALE:'订单列表已变化，请重新预览',SHIPOUT_BATCH_ALREADY_RUNNING:'已有批次执行中，请勿重复提交',
       SHIPOUT_BATCH_LOCKED:'正在创建批次，请勿重复点击',SHIPOUT_BATCH_SELECTION_INVALID:'勾选的订单列表无效，请重新选择',
       SHIPOUT_BATCH_QUEUE_UNAVAILABLE:'任务队列不可用，已暂停，不会自动重试',
-      SHIPOUT_BATCH_ASYNC_QUEUE_REQUIRED:'生产环境缺少异步队列，批量推送已禁止'} as Record<string,string>)[result.error_code]
+      SHIPOUT_BATCH_ASYNC_QUEUE_REQUIRED:'生产环境缺少异步队列，批量推送已禁止',
+      DE_BATCH_SELECTION_INVALID:'请只选择德国天运仓的订单（最多 200 单）',
+      DE_BATCH_STALE:'订单或物流信息已变化，请重新预检',
+      DE_BATCH_ALREADY_RUNNING:'德国仓已有批次处理中，请勿重复提交',
+      DE_BATCH_LOCKED:'另一位操作员正在建立德国仓批次',
+      DE_BATCH_CONFIRMATION_REQUIRED:'请重新确认所选德国仓订单',
+      DE_BATCH_QUEUE_UNAVAILABLE:'德国仓模拟任务队列不可用，已安全暂停'} as Record<string,string>)[result.error_code]
     || '批量操作未完成：'+(result.error_code||response.status))
   return result
 }
-async function shipoutBatchCheck() {
+async function shipoutBatchCheck(forcedIds:number[]|null=null) {
   if(shipoutBatchBusy.value)return
-  // Never use invisible selections from another workflow tab.
-  const ids=(props.view==='pending' ? [...shipoutBatchSelection.value] : []).sort((a,b)=>a-b)
-  if(!ids.length && !window.confirm('未勾选订单。是否选择美西 MorePlus 仓全部待发货订单（包含缺货订单）进入预检？缺货、未审核、已提交及有重复风险的订单会逐单隔离，绝不强制发货。'))return
+  // Single-order and selected-batch buttons share one exact selection path.
+  const ids=(props.view==='pending' ? (forcedIds??[...shipoutBatchSelection.value]) : []).sort((a,b)=>a-b)
+  if(isDeTianyunBatch.value && !ids.length) {shipoutBatchError.value='请先勾选德国天运仓待发货订单';return}
+  if(!isDeTianyunBatch.value && !ids.length
+    && !window.confirm('未勾选订单。是否选择美西 MorePlus 仓全部待发货订单（包含缺货订单）进入预检？缺货、未审核、已提交及有重复风险的订单会逐单隔离，绝不强制发货。'))return
   if(ids.length>200){shipoutBatchError.value='单批最多选择 200 单，请分批处理';return}
   shipoutBatchPreviewIds.value=ids
   shipoutBatchBusy.value=true;shipoutBatchError.value='';shipoutBatchPreview.value=null
   try {
     const query=ids.length ? '?scope=selected&order_ids='+ids.join(',') : '?scope=all'
-    shipoutBatchPreview.value=await shipoutBatchApi('/logistics/oversea/us-moreplus/shipout/batch/preview'+query) as ShipOutBatchPreview
+    shipoutBatchPreview.value=await shipoutBatchApi(shipoutBatchApiBase.value+'/preview'+query) as ShipOutBatchPreview
   }catch(e){shipoutBatchError.value=e instanceof Error?e.message:'批次预览失败'}
   finally{shipoutBatchBusy.value=false}
 }
 async function shipoutBatchPoll() {
   if(!shipoutBatchStatus.value)return
   try {
-    shipoutBatchStatus.value=await shipoutBatchApi('/logistics/oversea/us-moreplus/shipout/batch/'+shipoutBatchStatus.value.batch_id+'/status') as ShipOutBatchStatus
+    shipoutBatchStatus.value=await shipoutBatchApi(shipoutBatchApiBase.value+'/'+shipoutBatchStatus.value.batch_id+'/status') as ShipOutBatchStatus
     if(['completed','completed_partial','paused'].includes(shipoutBatchStatus.value.status)&&shipoutBatchTimer) {
       clearInterval(shipoutBatchTimer);shipoutBatchTimer=null
     }
@@ -296,14 +311,15 @@ async function shipoutBatchStart() {
   if(props.shipoutProductionBatchPaused||!preview||preview.overflow||preview.count<1||shipoutBatchBusy.value)return
   const ids=shipoutBatchPreviewIds.value
   if(preview.scope==='selected' && !ids.length)return
-  const message=(preview.dry_run?'Dev 模拟批次（不会访问海外仓）':'真实向 MorePlus 仓库逐单推送')
+  const message=(isDeTianyunBatch.value?'德国天运 Dev 模拟（不会向 OMS 发单）'
+    :preview.dry_run?'Dev 模拟批次（不会访问海外仓）':'真实向 MorePlus 仓库逐单推送')
     +'：扫描 '+(preview.scan_count??preview.count)+' 单，进入逐单校验 '+preview.count
     +' 单，排除 '+(preview.excluded_count??0)+' 单；再次确认仅提交安全门禁通过的订单？'
   if(!window.confirm(message))return
   shipoutBatchBusy.value=true;shipoutBatchError.value=''
   try {
-    const reply=await shipoutBatchApi('/logistics/oversea/us-moreplus/shipout/batch/start',{
-      fingerprint:preview.fingerprint,confirmation:'CONFIRM_MOREPLUS_BATCH_'+preview.count,
+    const reply=await shipoutBatchApi(shipoutBatchApiBase.value+'/start',{
+      fingerprint:preview.fingerprint,confirmation:(isDeTianyunBatch.value?'CONFIRM_DE_TIANYUN_BATCH_':'CONFIRM_MOREPLUS_BATCH_')+preview.count,
       scope:preview.scope||'all',order_ids:ids.join(','),
     }) as {batch_id:string;status:string;dry_run:boolean;total:number}
     shipoutBatchStatus.value={batch_id:reply.batch_id,status:reply.status,dry_run:reply.dry_run,
@@ -1536,7 +1552,11 @@ const compactPages = computed<(number|string)[]>(() => {
           <button type="button" class="file-button" data-testid="oversea-global-grid-toggle" @click="toggleGrid">{{gridEnabled?'返回原表':'切换新版表'}}</button>
           <button v-if="shipoutProductionBatchUi && warehouseKey==='us-moreplus'" type="button"
             class="file-button primary" :disabled="shipoutBatchBusy || Boolean(shipoutBatchStatus && ['queued','running','awaiting_oms','paused'].includes(shipoutBatchStatus.status))"
-            @click="shipoutBatchCheck">一键推送仓库</button>
+            @click="shipoutBatchCheck()">一键推送仓库</button>
+          <button v-if="isDeTianyunBatch && view==='pending'" type="button"
+            class="file-button primary" data-testid="de-tianyun-selected-push"
+            :disabled="shipoutBatchBusy || shipoutBatchSelection.length===0 || Boolean(shipoutBatchStatus && ['queued','running','paused'].includes(shipoutBatchStatus.status))"
+            @click="shipoutBatchCheck()">推送所选订单{{shipoutBatchSelection.length?' '+shipoutBatchSelection.length+' 单':''}}</button>
           <a v-if="warehousePortal" class="file-button file-link warehouse-portal-link"
             :href="warehousePortal.href" target="_blank" rel="noopener noreferrer">
             {{ warehousePortal.label }} <span aria-hidden="true">↗</span>
@@ -1554,11 +1574,12 @@ const compactPages = computed<(number|string)[]>(() => {
           </template>
         </div>
       </header>
-      <section v-if="shipoutProductionBatchUi && warehouseKey==='us-moreplus' && (shipoutBatchPreview || shipoutBatchStatus || shipoutBatchError || shipoutProductionBatchPaused)"
-        class="xlwms-batch-result" role="status">
+      <section v-if="(shipoutProductionBatchUi && warehouseKey==='us-moreplus' || isDeTianyunBatch)
+        && (shipoutBatchPreview || shipoutBatchStatus || shipoutBatchError || shipoutProductionBatchPaused)"
+        class="xlwms-batch-result" role="status" data-testid="oversea-provider-batch-feedback">
         <small v-if="shipoutProductionBatchPaused" class="xlwms-error" role="alert">当前批量推送已安全暂停：仓库重复判定原因待核对。管理员可查看预览与历史结果，但不可提交新订单。</small>
         <strong v-if="shipoutBatchPreview">
-          {{shipoutBatchPreview.dry_run?'Dev 模拟预览（不连接真实 OMS）':'MorePlus 真实推送预览'}}
+          {{isDeTianyunBatch?'德国天运 Dev 模拟预览（不向 OMS 创建订单）':shipoutBatchPreview.dry_run?'Dev 模拟预览（不连接真实 OMS）':'MorePlus 真实推送预览'}}
           · {{shipoutBatchPreview.scope==='selected'?'手动选择':'全部待发货'}}
           扫描 {{shipoutBatchPreview.scan_count??shipoutBatchPreview.count}} 单
           · 其中缺货 {{shipoutBatchPreview.stockout_count??0}} 单
@@ -1566,13 +1587,19 @@ const compactPages = computed<(number|string)[]>(() => {
           · 排除 {{shipoutBatchPreview.excluded_count??0}} 单
           <span v-if="shipoutBatchPreview.overflow">（超过单批 200 单限制，请分批处理）</span>
         </strong>
-        <small v-if="shipoutBatchPreview" class="xlwms-note">包含缺货订单的扫描统计；库存不足、未审核、历史已提交及重复风险订单不向仓库提交。</small>
+        <small v-if="shipoutBatchPreview" class="xlwms-note">{{isDeTianyunBatch?'只预检所选德国仓订单；不匹配 SKU、未验证库存和未核实渠道会逐单显示原因。':'包含缺货订单的扫描统计；库存不足、未审核、历史已提交及重复风险订单不向仓库提交。'}}</small>
+        <div v-if="isDeTianyunBatch && shipoutBatchPreview?.items?.length" class="shipout-batch-results" data-testid="de-batch-preflight-results">
+          <span v-for="item in shipoutBatchPreview.items" :key="item.order_id">
+            {{item.order_no}} · {{item.ready?'可模拟':'阻断'}}
+            <small v-if="item.blockers.length">（{{item.blockers.join('、')}}）</small>
+          </span>
+        </div>
         <button v-if="shipoutBatchPreview && shipoutBatchPreview.count>0 && !shipoutBatchPreview.overflow"
           type="button" class="file-button primary" :disabled="shipoutBatchBusy || shipoutProductionBatchPaused" @click="shipoutBatchStart">
           {{shipoutBatchPreview.dry_run?'确认运行 Dev 模拟':'确认逐单推送 '+shipoutBatchPreview.count+' 单'}}
         </button>
         <strong v-if="shipoutBatchStatus">
-          {{shipoutBatchStatus.dry_run?'Dev 模拟批次':'MorePlus 推送批次'}} ·
+          {{isDeTianyunBatch?'德国天运 Dev 模拟批次':shipoutBatchStatus.dry_run?'Dev 模拟批次':'MorePlus 推送批次'}} ·
           已核实 {{shipoutBatchStatus.processed}} / {{shipoutBatchStatus.total}} · {{shipoutBatchState(shipoutBatchStatus.status)}}
         </strong>
         <div v-if="shipoutBatchStatus" class="shipout-batch-results">
@@ -1582,7 +1609,7 @@ const compactPages = computed<(number|string)[]>(() => {
           </span>
         </div>
         <small v-if="shipoutBatchError" class="xlwms-error" role="alert">{{shipoutBatchError}}</small>
-        <small>自动逐单执行；订单接单不代表出库，不同步 Tracking。不确定结果绝不自动重试。</small>
+        <small>{{isDeTianyunBatch?'本轮仅模拟逐单预检，无仓库 API 调用、无 Tracking 或 ERP 发货写入。':'自动逐单执行；订单接单不代表出库，不同步 Tracking。不确定结果绝不自动重试。'}}</small>
       </section>
       <div v-if="warehouseKey === 'us-3sm' && (batchResult || batchError)" class="xlwms-batch-result" role="status">
         <strong v-if="batchResult">本次处理 {{ batchResult.count }} 单 · 新建 {{batchResult.summary?.created??0}} · 已存在 {{batchResult.summary?.existing??0}} · 阻断 {{batchResult.summary?.blocked??0}} · 待核实 {{batchResult.summary?.uncertain??0}}</strong>
@@ -1622,7 +1649,7 @@ const compactPages = computed<(number|string)[]>(() => {
 
       <div v-if="showShipoutSelection && shipoutBatchSelection.length" class="tracking-selection-bar">
         已勾选 {{ shipoutBatchSelection.length }} 单（跨页保留）
-        <button type="button" class="file-button primary" :disabled="shipoutBatchBusy" @click="shipoutBatchCheck">仅推送所选订单</button>
+        <button type="button" class="file-button primary" :disabled="shipoutBatchBusy || (isDeTianyunBatch && Boolean(shipoutBatchStatus && ['queued','running','paused'].includes(shipoutBatchStatus.status)))" @click="shipoutBatchCheck()">{{isDeTianyunBatch?'推送所选订单':'仅推送所选订单'}}</button>
         <button type="button" class="file-button" @click="shipoutBatchSelection=[];shipoutBatchPreview=null">清空勾选</button>
       </div>
       <div v-if="canTrackingSync && trackingSelection.length" class="tracking-selection-bar">
@@ -1743,6 +1770,7 @@ const compactPages = computed<(number|string)[]>(() => {
             </th>
             <th class="decision-col sticky-decision">审核</th>
             <th v-if="warehouseKey === 'us-3sm'" class="xlwms-header">世迈仓 · 人工下单</th>
+            <th v-if="warehouseKey === 'de-tianyun' && isDeTianyunBatch" class="xlwms-header">德国天运 · Dev 推送</th>
             <th v-if="warehouseKey === 'us-moreplus'" class="xlwms-header">MorePlus ShipOut · API / 物流</th>
             <th v-for="column in grid.visibleColumns" :key="column.key" :class="{ 'line-col':column.key === 'line' }">{{ column.label }}</th>
             <th>官网同步</th><th v-if="canTrackingSync">操作</th>
@@ -1789,6 +1817,15 @@ const compactPages = computed<(number|string)[]>(() => {
                       @click="omsRefresh(row)">{{omsBusy[row.order_id]?'查询中…':'查询历史状态'}}</button>
                   </details>
                   <small v-if="omsErrors[row.order_id]" role="alert" class="xlwms-error">{{omsErrors[row.order_id]}}</small>
+                </div>
+              </td>
+              <td v-if="warehouseKey === 'de-tianyun' && isDeTianyunBatch" class="xlwms-cell">
+                <div class="xlwms-inline" :data-de-order-id="row.order_id">
+                  <strong class="xlwms-state">仅 Dev 模拟</strong>
+                  <button v-if="view==='pending' && row.review_status==='approved'" type="button"
+                    class="xlwms-action primary" :disabled="shipoutBatchBusy || Boolean(shipoutBatchStatus && ['queued','running','paused'].includes(shipoutBatchStatus.status))"
+                    @click="shipoutBatchCheck([row.order_id])">单笔推送</button>
+                  <small class="xlwms-note">会先预检，不向 OMS 发单。</small>
                 </div>
               </td>
               <td v-if="warehouseKey === 'us-moreplus'" class="xlwms-cell">

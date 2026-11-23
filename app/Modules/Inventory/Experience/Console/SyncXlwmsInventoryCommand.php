@@ -7,14 +7,19 @@ use Illuminate\Console\Command;
 
 final class SyncXlwmsInventoryCommand extends Command
 {
-    protected $signature = 'xlwms:sync-inventory {--dry-run : Fetch and persist a read-only snapshot (default)} {--apply : Apply only a fully verified, safe matched snapshot}';
-    protected $description = 'Read XLWMS inventory for US-SM; apply is explicit and fail-closed';
+    protected $signature = 'xlwms:sync-inventory {--dry-run : Fetch and persist a read-only snapshot (default)} {--apply : Apply only a fully verified, safe matched snapshot} {--warehouse=US-SM : ERP warehouse code (US-SM or DE)}';
+    protected $description = 'Read XLWMS inventory per warehouse; DE apply requires isolated Dev and separate gates';
 
     public function handle(XlwmsInventorySyncService $service): int
     {
         if ($this->option('dry-run') && $this->option('apply')) { $this->error('Choose --dry-run or --apply, not both.'); return self::INVALID;
         }
-        try { $result = $service->sync((bool) $this->option('apply')); $this->line(json_encode($result, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT)); if (! $this->option('apply')) {
+        $warehouseCode = strtoupper(trim((string) $this->option('warehouse')));
+        if (! in_array($warehouseCode, ['US-SM', 'DE'], true)) {
+            $this->error('Unsupported XLWMS warehouse. Allowed: US-SM, DE.');
+            return self::INVALID;
+        }
+        try { $result = $service->sync((bool) $this->option('apply'), $warehouseCode); $this->line(json_encode($result, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT)); if (! $this->option('apply')) {
             // A successfully recorded read-only mismatch snapshot is expected
             // evidence, not a failed API read or failed scheduled collection.
             if (in_array($result['status'], ['blocked', 'not_ready'], true)) {

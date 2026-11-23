@@ -892,22 +892,145 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         self::assertArrayNotHasKey($products[1]->id,$map);
     }
 
-    /** @return array{0:Warehouse,1:WarehouseOpenApiConnection,2:list<Product>} */
-    private function fixture(array $skus): array
+    public function test_de_hannover_read_only_snapshot_never_changes_either_warehouse_inventory(): void
     {
-        $warehouse = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
-        $connection = WarehouseOpenApiConnection::query()->updateOrCreate(['warehouse_id' => $warehouse->id, 'provider' => 'xlwms'], ['app_key_encrypted' => 'KEY', 'app_secret_encrypted' => 'SECRET', 'oms_warehouse_code' => 'US-SM']);
+        [$de, , $products] = $this->fixture(['DE-SKU-A'], 'DE', 'Hannover');
+        $us = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        WarehouseInventory::query()->create(['warehouse_id' => $us->id, 'product_id' => $products[0]->id, 'quantity_on_hand' => 80, 'quantity_reserved' => 0]);
+        WarehouseInventory::query()->create(['warehouse_id' => $de->id, 'product_id' => $products[0]->id, 'quantity_on_hand' => 3, 'quantity_reserved' => 0]);
+        $service = $this->service($products, ['DE-SKU-A'], omsWarehouseCode: 'Hannover');
+
+        $result = $service->sync(false, 'DE');
+
+        self::assertContains($result['status'], ['read_only', 'blocked']);
+        $snapshot = XlwmsInventorySnapshot::query()->findOrFail($result['snapshot_id']);
+        self::assertSame((int) $de->id, (int) $snapshot->warehouse_id);
+        self::assertSame(3, (int) WarehouseInventory::query()->where('warehouse_id', $de->id)->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(80, (int) WarehouseInventory::query()->where('warehouse_id', $us->id)->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        config()->set('xlwms.inventory_apply_enabled', true);
+        $this->expectExceptionMessage('XLWMS_DE_INVENTORY_APPLY_NOT_AUTHORIZED');
+        $service->sync(true, 'DE');
+    }
+
+    public function test_de_rejects_wrong_oms_code_before_reading_inventory(): void
+    {
+        [, , $products] = $this->fixture(['DE-SKU-B'], 'DE', 'US-SM');
+        $service = $this->service($products, ['DE-SKU-B']);
+        $this->expectExceptionMessage('OMS_DE_WAREHOUSE_CODE_MISMATCH');
+        $service->sync(false, 'DE');
+    }
+
+    public function test_de_apply_requires_independent_dev_gate_and_v2_sku_isolation(): void
+    {
+        [$de, , $products] = $this->fixture(['DE-EXISTING'], 'DE', 'Hannover');
+        WarehouseInventory::query()->create(['warehouse_id' => $de->id,
+            'product_id' => $products[0]->id, 'quantity_on_hand' => 7, 'quantity_reserved' => 0]);
+        $service = $this->service($products, ['DE-EXISTING'], omsWarehouseCode: 'Hannover');
+        config()->set('xlwms.inventory_apply_enabled', true);
+
+        try {
+            $service->sync(true, 'DE');
+            self::fail('DE apply must require its own flag');
+        } catch (\RuntimeException $e) {
+            self::assertSame('XLWMS_DE_INVENTORY_APPLY_NOT_AUTHORIZED', $e->getMessage());
+        }
+        config()->set('xlwms.de_inventory_dev_apply_enabled', true);
+        self::assertTrue(app()->environment('local', 'testing'), 'Current test environment: '.app()->environment());
+        self::assertTrue((bool) config('xlwms.de_inventory_dev_apply_enabled'), 'DE flag failed to set');
+        try {
+            $service->sync(true, 'DE');
+            self::fail('V2 and SKU isolation must be mandatory');
+        } catch (\RuntimeException $e) {
+            self::assertSame('XLWMS_DE_REQUIRES_V2_SKU_ISOLATION', $e->getMessage());
+        }
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        try {
+            $service->sync(true, 'DE');
+            self::fail('SKU quarantine must be mandatory');
+        } catch (\RuntimeException $e) {
+            self::assertSame('XLWMS_DE_REQUIRES_V2_SKU_ISOLATION', $e->getMessage());
+        }
+        self::assertSame(7, (int) WarehouseInventory::query()->where('warehouse_id', $de->id)
+            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+    }
+
+    public function test_de_dev_first_approved_snapshot_syncs_existing_sku_only_and_never_us_sm(): void
+    {
+        [$de, , $products] = $this->fixture(['DE-MATCHED'], 'DE', 'Hannover');
+        $us = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        WarehouseInventory::query()->create(['warehouse_id' => $de->id,
+            'product_id' => $products[0]->id, 'quantity_on_hand' => 7, 'quantity_reserved' => 0]);
+        WarehouseInventory::query()->create(['warehouse_id' => $us->id,
+            'product_id' => $products[0]->id, 'quantity_on_hand' => 80, 'quantity_reserved' => 0]);
+        config()->set('xlwms.de_inventory_dev_apply_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('inventory_sku_gate.enabled', true);
+        $service = $this->service($products, ['DE-MATCHED', 'DE-UNKNOWN'],
+            ['DE-MATCHED'], ['DE-MATCHED', 'DE-UNKNOWN'], 0,
+            ['DE-MATCHED' => 10, 'DE-UNKNOWN' => 4], 'Hannover');
+        $preview = $service->sync(false, 'DE');
+        self::assertSame('blocked', $preview['status']);
+        self::assertSame(1, $preview['unmatched_sku_count']);
+        self::assertSame(7, (int) WarehouseInventory::where('warehouse_id', $de->id)
+            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+
+        self::assertSame('blocked', $service->sync(true, 'DE')['status']);
+        // A US-SM approval cannot authorize DE/Hannover, even for the same digest.
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $preview['checksum']);
+        self::assertSame('blocked', $service->sync(true, 'DE')['status']);
+        config()->set('xlwms.de_inventory_first_apply_approved_checksum', $preview['checksum']);
+        $applied = $service->sync(true, 'DE');
+        self::assertSame('partial_applied', $applied['status']);
+        self::assertSame(10, (int) WarehouseInventory::where('warehouse_id', $de->id)
+            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(80, (int) WarehouseInventory::where('warehouse_id', $us->id)
+            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(1, WarehouseInventory::where('warehouse_id', $de->id)->count());
+        self::assertSame('unmatched', XlwmsInventorySnapshot::findOrFail($applied['snapshot_id'])->rows()
+            ->where('provider_sku', 'DE-UNKNOWN')->value('resolution_status'));
+        // The first post-apply observation has a new ERP baseline in its checksum.
+        $stable = $service->sync(true, 'DE');
+        self::assertSame('partial_applied', $stable['status']);
+        self::assertSame($stable['snapshot_id'], $service->sync(true, 'DE')['snapshot_id']);
+    }
+
+    public function test_de_flag_never_allows_production_inventory_apply(): void
+    {
+        [, , $products] = $this->fixture(['DE-PROD-GUARD'], 'DE', 'Hannover');
+        config()->set('xlwms.de_inventory_dev_apply_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('inventory_sku_gate.enabled', true);
+        $service = $this->service($products, ['DE-PROD-GUARD'], omsWarehouseCode: 'Hannover');
+        $this->app->detectEnvironment(static fn (): string => 'production');
+        try {
+            $service->sync(true, 'DE');
+            self::fail('Production must never use the Dev apply gate');
+        } catch (\RuntimeException $e) {
+            self::assertSame('XLWMS_DE_INVENTORY_APPLY_NOT_AUTHORIZED', $e->getMessage());
+        } finally {
+            $this->app->detectEnvironment(static fn (): string => 'testing');
+        }
+        self::assertSame(0, WarehouseInventory::query()->where('product_id', $products[0]->id)->count());
+    }
+
+    /** @return array{0:Warehouse,1:WarehouseOpenApiConnection,2:list<Product>} */
+    private function fixture(array $skus, string $warehouseCode = 'US-SM', string $omsWarehouseCode = 'US-SM'): array
+    {
+        $warehouse = Warehouse::query()->where('code', $warehouseCode)->firstOrFail();
+        $connection = WarehouseOpenApiConnection::query()->updateOrCreate(['warehouse_id' => $warehouse->id, 'provider' => 'xlwms'], ['app_key_encrypted' => 'KEY', 'app_secret_encrypted' => 'SECRET', 'oms_warehouse_code' => $omsWarehouseCode]);
         $products = array_map(fn (string $sku): Product => Product::query()->firstOrCreate(['sku' => $sku], ['name' => $sku]), $skus);
         return [$warehouse, $connection, $products];
     }
 
-    private function service(array $products, array $catalogSkus, ?array $canonicalSkus = null, ?array $inventorySkus = null, int $locked = 0, array $totals = []): XlwmsInventorySyncService
+    private function service(array $products, array $catalogSkus, ?array $canonicalSkus = null, ?array $inventorySkus = null, int $locked = 0, array $totals = [], string $omsWarehouseCode = 'US-SM'): XlwmsInventorySyncService
     {
         $gateway = Mockery::mock(XlwmsInventoryGateway::class);
         $gateway->shouldReceive('productPage')->andReturnUsing(fn (): array => ['code' => 200, 'data' => ['records' => array_map(fn (string $sku): array => ['sku' => $sku, 'productName' => $sku], $catalogSkus), 'total' => count($catalogSkus), 'page' => 1, 'pageSize' => 10, 'pages' => 1], 'msg' => 'OK']);
-        $gateway->shouldReceive('integratedInventoryPage')->andReturnUsing(function () use ($catalogSkus, $inventorySkus, $locked, $totals): array {
+        $gateway->shouldReceive('integratedInventoryPage')->andReturnUsing(function () use ($catalogSkus, $inventorySkus, $locked, $totals, $omsWarehouseCode): array {
             $records = [];
-            foreach (($inventorySkus ?? $catalogSkus) as $index => $sku) { $total = $totals[$sku] ?? ($index === 0 ? 10 : 5); $records[] = ['sku' => $sku, 'whCode' => 'US-SM', 'stockType' => 0, 'productTotalAmount' => $total, 'productStockDtl' => ['availableAmount' => $total - $locked, 'lockAmount' => $locked, 'transportAmount' => 0]]; }
+            foreach (($inventorySkus ?? $catalogSkus) as $index => $sku) { $total = $totals[$sku] ?? ($index === 0 ? 10 : 5); $records[] = ['sku' => $sku, 'whCode' => $omsWarehouseCode, 'stockType' => 0, 'productTotalAmount' => $total, 'productStockDtl' => ['availableAmount' => $total - $locked, 'lockAmount' => $locked, 'transportAmount' => 0]]; }
             return ['code' => 200, 'data' => ['records' => $records, 'total' => count($records), 'page' => 1, 'pageSize' => 10, 'pages' => 1], 'msg' => 'OK'];
         });
         $resolver = $this->app->make(VerifiedOmsProductIdentityResolver::class);

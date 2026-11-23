@@ -1606,6 +1606,91 @@ describe('MorePlus Dev-only one-click batch workbench', () => {
   })
 })
 
+describe('DE Tianyun reuses MorePlus selected-order Dev batch UX', () => {
+  const deWarehouse={key:'de-tianyun',id:9,code:'DE',label:'德国天运仓',carrier:'DHL',url:'/logistics/oversea/de-tianyun'}
+  const rowA={...usSmPendingRows.data[0],order_id:101,erp_order_id:'007-DE-101',warehouse_id:9,
+    warehouse_name:'德国天运仓',carrier:'DHL',review_status:'approved' as const}
+  const rowB={...rowA,order_id:102,erp_order_id:'007-DE-102'}
+
+  it('shows only the selected-order button and previews exact single-order row without POST', async () => {
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      scope:'selected',scan_count:1,count:0,excluded_count:1,overflow:false,dry_run:true,
+      fingerprint:'a'.repeat(64),
+      items:[{order_id:101,order_no:'007-DE-101',ready:false,blockers:['DE_OMS_CHANNEL_NOT_VERIFIED']}],
+    })})
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      const page=mountPage({warehouseKey:'de-tianyun',warehouse:deWarehouse,
+        warehouseOptions:[...warehouseOptions,deWarehouse],deTianyunBatchUi:true,
+        rows:{...usSmPendingRows,data:[rowA]}})
+      const selected=page.get('[data-testid="de-tianyun-selected-push"]')
+      expect(selected.attributes('disabled')).toBeDefined()
+      expect(page.text()).not.toContain('一键推送仓库')
+      await page.findAll('button').find(b=>b.text()==='单笔推送')!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('DE_OMS_CHANNEL_NOT_VERIFIED'))
+      expect(fetchMock.mock.calls.map(c=>c[0])).toEqual([
+        '/logistics/oversea/de-tianyun/xlwms/batch/preview?scope=selected&order_ids=101',
+      ])
+      expect(fetchMock.mock.calls[0][1].method).toBe('GET')
+      page.unmount()
+    } finally {vi.unstubAllGlobals()}
+  })
+
+  it('uses exactly the two checked DE rows and runs the same confirmed Dev queue', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="DEV-DE-BATCH">')
+    const fingerprint='b'.repeat(64)
+    const batchId='00000000-0000-4000-8000-000000000456'
+    const confirm=vi.spyOn(window,'confirm').mockReturnValue(true)
+    const fetchMock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        scope:'selected',scan_count:2,count:1,excluded_count:1,overflow:false,dry_run:true,
+        fingerprint,items:[
+          {order_id:101,order_no:'007-DE-101',ready:true,blockers:[]},
+          {order_id:102,order_no:'007-DE-102',ready:false,blockers:['OMS_PRODUCT_IDENTITY_NOT_FOUND']},
+        ],
+      })})
+      .mockResolvedValueOnce({ok:true,json:async()=>({batch_id:batchId,status:'queued',dry_run:true,total:1})})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        batch_id:batchId,status:'completed',dry_run:true,total:1,processed:1,
+        items:[{order_id:101,order_no:'007-DE-101',status:'simulated',result_code:'DEV_SIMULATED_NO_PROVIDER_IO'}],
+      })})
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      const page=mountPage({warehouseKey:'de-tianyun',warehouse:deWarehouse,
+        warehouseOptions:[...warehouseOptions,deWarehouse],deTianyunBatchUi:true,
+        rows:{...usSmPendingRows,total:2,data:[rowA,rowB]},trackingImportPreview:null})
+      await page.find('input[aria-label="选择当前页待发货订单"]').setValue(true)
+      expect(page.text()).toContain('已勾选 2 单（跨页保留）')
+      await page.get('[data-testid="de-tianyun-selected-push"]').trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('排除 1 单'))
+      expect(page.text()).toContain('OMS_PRODUCT_IDENTITY_NOT_FOUND')
+      await page.findAll('button').find(b=>b.text().includes('确认运行 Dev 模拟'))!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('Dev 模拟通过'))
+      expect(fetchMock.mock.calls.map(c=>c[0])).toEqual([
+        '/logistics/oversea/de-tianyun/xlwms/batch/preview?scope=selected&order_ids=101,102',
+        '/logistics/oversea/de-tianyun/xlwms/batch/start',
+        '/logistics/oversea/de-tianyun/xlwms/batch/'+batchId+'/status',
+      ])
+      expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+        fingerprint,confirmation:'CONFIRM_DE_TIANYUN_BATCH_1',scope:'selected',order_ids:'101,102',
+      })
+      expect(confirm).toHaveBeenCalledTimes(1)
+      page.unmount()
+    } finally {
+      vi.unstubAllGlobals();confirm.mockRestore()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+
+  it('never exposes a DE push button when the Dev-only prop is absent', () => {
+    const page=mountPage({warehouseKey:'de-tianyun',warehouse:deWarehouse,
+      rows:{...usSmPendingRows,data:[rowA]},deTianyunBatchUi:false})
+    expect(page.find('[data-testid="de-tianyun-selected-push"]').exists()).toBe(false)
+    expect(page.find('input[aria-label^="选择推送"]').exists()).toBe(false)
+    page.unmount()
+  })
+})
+
 it('uses the same editable status cell for all overseas warehouse Global Grid views', async () => {
   const mutable = {
     ...usSmPendingRows.data[0], workflow_revision:11, can_edit_workflow_status:true,order_kind:'customer',

@@ -21,6 +21,19 @@ if ((bool) config('xlwms.inventory_sync_schedule_enabled', false)) {
         ->name('xlwms.inventory.sync')->withoutOverlapping();
 }
 
+// DE/Hannover schedule is independent of US-SM and defaults OFF. Outside an
+// explicitly authorized isolated Dev it can only capture read-only evidence.
+if ((bool) config('xlwms.de_inventory_sync_schedule_enabled', false)) {
+    $deApplyReady = app()->environment('local', 'testing')
+        && (bool) config('xlwms.de_inventory_dev_apply_enabled', false)
+        && (bool) config('xlwms.inventory_apply_enabled', false)
+        && (bool) config('xlwms.lot_reconciliation_v2_enabled', false)
+        && (bool) config('inventory_sku_gate.enabled', false);
+    Schedule::command('xlwms:sync-inventory --warehouse=DE '.($deApplyReady ? '--apply' : '--dry-run'))
+        ->cron('*/'.(int) config('xlwms.de_inventory_sync_schedule_minutes', 30).' * * * *')
+        ->name('xlwms.de.inventory.sync')->withoutOverlapping();
+}
+
 // Read-only Sync status index: the full Woo batch inspection must never
 // block a human /sync/orders filter request. No Woo writes are performed.
 Artisan::command('sync:refresh-progress-index', function (): int {

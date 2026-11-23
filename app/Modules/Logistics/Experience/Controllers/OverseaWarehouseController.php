@@ -203,6 +203,19 @@ final class OverseaWarehouseController
                 && (bool) config('xlwms.oms_web_enabled', false)
                 && filled(config('xlwms.oms_web_token'))
                 && filled(config('xlwms.oms_web_hmac_key')),
+            // R5-R6 DE uses the approved MorePlus selected-order workflow,
+            // with a distinct dry-run-only OMS queue and warehouse audit.
+            'deTianyunBatchUi' => $warehouseKey === 'de-tianyun'
+                && app()->environment('local', 'testing')
+                && $this->executionAccess->allows($request->user()),
+            'deTianyunLatestBatch' => $warehouseKey === 'de-tianyun'
+                && app()->environment('local', 'testing')
+                && Schema::hasTable('xlwms_de_dispatch_batches')
+                ? DB::table('xlwms_de_dispatch_batches')
+                    ->where('operator_user_id', (int) $request->user()->id)
+                    ->orderByDesc('created_at')->orderByDesc('id')
+                    ->first(['id', 'status', 'dry_run', 'total'])
+                : null,
             // Production V1 is visible as a separate, default-OFF workbench;
             // never make Sandbox flags active in Production.
             // Administrative visibility and read-only history remain available

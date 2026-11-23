@@ -6,11 +6,11 @@ use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryGateway;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
-/** Inventory-only OMS adapter. No generic endpoint or outbound operation exists here. */
+/** Strict inventory and logistics-catalog read-only OMS adapter; no outbound operations. */
 final class XlwmsInventoryReadOnlyGateway implements XlwmsInventoryGateway
 {
     private const BASE_URL = 'https://api.xlwms.com/openapi/v1';
-    private const ALLOWED_PATHS = ['product/pagelist', 'integratedInventory/pageOpen'];
+    private const ALLOWED_PATHS = ['product/pagelist', 'integratedInventory/pageOpen', 'logistics/channel/list'];
 
     public function productPage(WarehouseOpenApiConnection $connection, array $data): array
     {
@@ -20,6 +20,13 @@ final class XlwmsInventoryReadOnlyGateway implements XlwmsInventoryGateway
     public function integratedInventoryPage(WarehouseOpenApiConnection $connection, array $data): array
     {
         return $this->signedPost($connection, 'integratedInventory/pageOpen', $data);
+    }
+
+    /** @return array<string,mixed> */
+    public function logisticsChannels(WarehouseOpenApiConnection $connection, string $omsWarehouseCode): array
+    {
+        if ($omsWarehouseCode === '') throw new RuntimeException('OMS_WAREHOUSE_CODE_NOT_CONFIGURED');
+        return $this->signedPost($connection, 'logistics/channel/list', ['whCode' => $omsWarehouseCode]);
     }
 
     /** @return array<string,mixed> */
