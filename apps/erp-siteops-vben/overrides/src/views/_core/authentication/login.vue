@@ -33,7 +33,7 @@ async function submit() {
     password.value = '';
   } catch {
     message.error(canonicalMode
-      ? '隔离 Dev 登录失败：此环境仅接受已创建的 Dev 测试身份，原 ERP 正式员工账号尚未接入'
+      ? 'ERP2 Dev 登录未通过：请核对原 ERP 员工账号、密码及账号状态'
       : '登录验证失败，请核对本地账号、密码与权限状态');
   } finally {
     loading.value = false;
@@ -48,21 +48,21 @@ async function submit() {
         <div class="text-[26px] font-bold tracking-tight">BYL ERP SiteOps</div>
         <div class="mt-2 text-sm text-slate-500">Vben ERP 工作台 · 007windows</div>
       </div>
-      <a-alert v-if="canonicalMode" class="mb-5" show-icon type="warning" message="ERP2 隔离 Dev：目前仅接受 Dev 测试账号，原 ERP 正式账号密码不能直接登录。所有业务数据均为测试数据。" />
+      <a-alert v-if="canonicalMode" class="mb-5" show-icon type="warning" message="ERP2 隔离 Dev：已接入 ERP1 同构数据副本。可使用原 ERP 员工账号登录；数据操作仅影响 Dev，不会直接发货到真实仓库。" />
       <a-alert v-else class="mb-5" show-icon type="info" message="本地隔离 UAT：仅合成订单，正式 ERP 未连接" />
       <a-form layout="vertical">
-        <a-form-item :label="canonicalMode ? '隔离 Dev 测试账号 / 邮箱' : 'ERP 本地登录账号'">
-          <a-input v-model:value="username" size="large" autocomplete="username"  :placeholder="canonicalMode ? '如 kaven-r2c@local.test' : 'Owner 为 owner'" />
+        <a-form-item :label="canonicalMode ? '原 ERP 员工用户名 / 邮箱' : 'ERP 本地登录账号'">
+          <a-input v-model:value="username" size="large" autocomplete="username"  :placeholder="canonicalMode ? '例如 dede / liang / vita' : 'Owner 为 owner'" />
         </a-form-item>
-        <a-form-item :label="canonicalMode ? '隔离 Dev 测试密码' : username==='owner' ? 'ERP 本地管理密钥' : '用户密码'">
-          <a-input-password v-model:value="password" size="large" autocomplete="current-password" :placeholder="canonicalMode ? '请输入对应 Dev 账号的测试密码' : username==='owner' ? '请输入管理密钥' : '请输入用户密码'" />
+        <a-form-item :label="canonicalMode ? '原 ERP 员工密码' : username==='owner' ? 'ERP 本地管理密钥' : '用户密码'">
+          <a-input-password v-model:value="password" size="large" autocomplete="current-password" :placeholder="canonicalMode ? '请输入原 ERP 员工账号的密码' : username==='owner' ? '请输入管理密钥' : '请输入用户密码'" />
         </a-form-item>
         <a-button type="primary" size="large" block :loading="loading" @click="submit">
           进入 ERP 开发工作台
         </a-button>
       </a-form>
       <p class="mt-5 text-xs leading-5 text-slate-500">
-        {{ canonicalMode ? 'Dev 测试凭证仅发往隔离 Laravel 会话端点，不保存到浏览器本地权限存储；不得在此输入正式 ERP 员工密码。' : '本地独立密钥位于 D:\\ai\\erp-siteops\\private\\local-admin-key.txt；不使用原 SiteOps 管理密钥。' }}
+        {{ canonicalMode ? '员工密码仅提交至 ERP2 独立 Laravel Dev 会话端点；ERP1 正式账号和业务数据不因这里的登录而修改。' : '本地独立密钥位于 D:\\ai\\erp-siteops\\private\\local-admin-key.txt；不使用原 SiteOps 管理密钥。' }}
       </p>
     </a-card>
   </div>
