@@ -53,6 +53,7 @@ final class DeTianyunInventoryRunReporter
                     ->get(['provider_sku', 'product_id', 'oms_quantity'])
                     ->keyBy('provider_sku');
             $counts = ['updated' => 0, 'unchanged' => 0, 'unmatched' => 0,
+                'excluded' => 0,
                 'blocked' => 0, 'missing' => 0, 'preview' => 0];
             foreach ($snapshot->rows()->orderBy('provider_sku')->get() as $row) {
                 $sku = (string) $row->provider_sku;
@@ -78,7 +79,9 @@ final class DeTianyunInventoryRunReporter
                     && isset($appliedIds[$productId]) && $qoh !== null && $after === $qoh
                     && $row->resolution_status === 'matched' && $reason === null)
                     || $carriedForward;
-                if ($row->resolution_status === 'catalog_only') {
+                if ($row->resolution_status === 'excluded') {
+                    $status = 'excluded';
+                } elseif ($row->resolution_status === 'catalog_only') {
                     $status = 'missing';
                 } elseif ($row->resolution_status === 'unmatched') {
                     $status = 'unmatched';
