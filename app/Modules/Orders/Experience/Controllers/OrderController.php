@@ -965,7 +965,7 @@ final class OrderController
             'owner' => $order->owner ? ['id' => $order->owner->id, 'name' => $order->owner->name] : null,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'customer_email' => $includeCustomerEmail ? ($order->address?->email ?: $order->customer?->email) : null,
-            'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code']),
+            'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code', 'recipient_customs_id']),
             'items' => $order->items->map(fn ($item): array => [
                 ...$item->only(['id', 'product_id', 'product_summary', 'quantity', 'unit_price', 'line_revenue']),
                 'sku' => WarehouseSkuPresentation::sku($item),
