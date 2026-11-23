@@ -41,11 +41,12 @@ PARALLEL_SAFE: NO cross-repo release; serial order required
 - `npm run typecheck`, `npm run build`, PHP syntax checks, `git diff --check`: PASS.
 - Local `php artisan config:show kol`: default `coupon_discount_type=percent`, `coupon_amount=20` when amount env not set.
 - Tests use mocked gateways only; no live WordPress/ERP/Coupon writes. Live Owner browser UAT and GitHub CI remain separate gates.
+- Combined pre-merge ERP #828 + #829 conflict resolution: PHP KOL 344 tests / 1,759 assertions PASS; frontend 124 tests PASS; typecheck and build PASS. Combined branch includes the separate #828 storage migration and middleware exact-preservation changes. No Production migrations executed.
 
 ## Repository & execution rules
 - One Work Package / one dedicated worktree / one Draft PR.
 - No shared-file parallel implementation. GitHub main is canonical.
-- GPT+US DC performs bounded ERP remediation; Windows Codex owns YBY-Core per its AGENTS.md.
+- US Mac DC handles bounded ERP remediation; YBY-Core's canonical Windows repo is modified via approved Windows DC tools. Its Codex CLI was blocked by execution policy; the current Core AGENTS.md allows available implementation providers.
 - Exact deployed SHA and Production release require separate Owner authorization.
 
 PROJECT POSITION
@@ -54,10 +55,10 @@ CURRENT_TRACK_PHASE_MAP: KOL account create/edit → password+coupon default →
 COMPLETED_PHASES: earlier ERP KOL module and PR #828 identifier-format branch delivered for UAT
 CURRENT_PHASE: password/Coupon remediation
 CURRENT_WORK_PACKAGE: ERP-KOL-PASSWORD-COUPON-DEFAULT-20261123
-PACKAGE_STATUS: LOCAL_TESTS_PASS; PR_PENDING; OWNER_BROWSER_UAT_PENDING
+PACKAGE_STATUS: INTEGRATION_TESTS_PASS; PR #829 STACKED ON #828; OWNER_BROWSER_UAT_PENDING
 WAITING_PHASES: GitHub CI, Owner live browser UAT, merge, gated Production release
 BASELINE: c426681bb8275749fe4d14f521b2ea10c1f31234
-GITHUB_STATE: new branch, PR pending
+GITHUB_STATE: ERP PR #829 (password/Coupon) combined with ERP PR #828 (manual identifiers); merged branch in review
 SOURCE_CONFLICTS: YBY-Core current password 6–128 + digit; separate remediation required before Production
 GLOBAL_GATE: Owner visual PASS; Owner 2026-11-23 authorized merge and Production release, conditional on live browser UAT and all release safeguards
 PRODUCTION_DEPLOYMENT_STATUS: NO — this package is isolated Development

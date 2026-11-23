@@ -6,6 +6,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Kol\Application\AffiliateWp\ConnectorResponse;
+use App\Modules\Kol\Application\AffiliateWp\KolProvisioningService;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
 use App\Modules\Kol\Application\Contracts\WooCouponSettingsGateway;
 use App\Modules\Kol\Infrastructure\WooCommerce\LocalUatWooCouponSettingsGateway;
@@ -148,6 +149,8 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertSame('new-kol@example.test', $capturedAffiliatePayload['email']);
         self::assertSame('creator-login', $capturedAffiliatePayload['preferred_username']);
         self::assertSame('creator-login', $capturedAffiliatePayload['display_name']);
+        self::assertArrayNotHasKey('affiliate_url_slug', $capturedAffiliatePayload,
+            'An Affiliate URL equal to Username must use the default referral identifier, not Custom Slugs.');
 
         self::assertDatabaseCount('notifications', 1);
 
@@ -226,21 +229,11 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertSame(0, Kol::query()->count());
     }
 
-    public function test_invalid_wordpress_username_is_rejected_before_kol_creation(): void
+    public function test_manual_wordpress_username_is_not_reformatted_or_length_limited_by_erp(): void
     {
-        $specialist = $this->specialist();
-        $mock = $this->mockGateway();
-        $mock->shouldNotReceive('checkAffiliateIdentity');
-        $mock->shouldNotReceive('provisionAffiliate');
-        $payload = $this->payload();
-        $payload['wordpress_username'] = 'invalid login';
-
-        $this->actingAs($specialist)->from('/kol/library/create')
-            ->post('/kol/library', $payload)
-            ->assertRedirect('/kol/library/create')
-            ->assertSessionHasErrors('wordpress_username');
-
-        self::assertSame(0, Kol::query()->count());
+        self::assertSame('_dolordemuelas_', KolProvisioningService::resolveUsername('_dolordemuelas_', 'fallback'));
+        self::assertSame(' Spaces AND @punctuation! ', KolProvisioningService::resolveUsername(' Spaces AND @punctuation! ', 'fallback'));
+        self::assertSame(str_repeat('X', 300), KolProvisioningService::resolveUsername(str_repeat('X', 300), 'fallback'));
     }
 
     public function test_custom_affiliate_name_overrides_wordpress_display_name(): void
@@ -270,37 +263,33 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertSame('Custom Affiliate Name', KolAffiliateAccount::query()->sole()->display_name);
     }
 
-    public function test_independent_affiliate_url_slug_without_provider_support_is_rejected_before_create(): void
+    public function test_leading_underscore_affiliate_url_passes_erp_validation_to_provider_preflight(): void
     {
         $specialist = $this->specialist();
         $mock = $this->mockGateway();
-        $mock->shouldNotReceive('checkAffiliateIdentity');
+        $mock->shouldReceive('checkAffiliateIdentity')->once()
+            ->andReturn($this->response(['available' => false], 'provider-preflight'));
         $mock->shouldNotReceive('checkCoupon');
         $mock->shouldNotReceive('provisionAffiliate');
-        $mock->shouldNotReceive('provisionCoupon');
         $payload = $this->payload();
-        $payload['affiliate_url_slug'] = 'different-link';
+        $payload['wordpress_username'] = '_dolordemuelas_';
+        $payload['affiliate_url_slug'] = '_dolordemuelas_';
+
         $this->actingAs($specialist)->from('/kol/library/create')
             ->post('/kol/library', $payload)
-            ->assertRedirect('/kol/library/create')
-            ->assertSessionHasErrors('affiliate_url_slug');
+            ->assertSessionHasErrors('contact_email')
+            ->assertSessionDoesntHaveErrors(['wordpress_username', 'affiliate_url_slug']);
         self::assertSame(0, Kol::query()->count());
     }
 
-    public function test_custom_affiliate_url_with_uppercase_is_rejected_before_creating_a_kol(): void
+    public function test_custom_affiliate_url_keeps_operator_case_characters_and_length(): void
     {
-        $specialist = $this->specialist();
-        $mock = $this->mockGateway();
-        $mock->shouldNotReceive('checkAffiliateIdentity');
-        $mock->shouldNotReceive('checkCoupon');
-        $mock->shouldNotReceive('provisionAffiliate');
-        $payload = $this->payload();
-        $payload['affiliate_url_slug'] = 'Creator2026';
-        $this->actingAs($specialist)->from('/kol/library/create')
-            ->post('/kol/library', $payload)
-            ->assertRedirect('/kol/library/create')
-            ->assertSessionHasErrors('affiliate_url_slug');
-        self::assertSame(0, Kol::query()->count());
+        $requestedSlug = ' Creator-2026_? '.str_repeat('X', 100);
+        $profile = KolProvisioningService::resolveAffiliateProfile(
+            'Affiliate Display', $requestedSlug, 'original_username'
+        );
+        self::assertSame('Affiliate Display', $profile['name']);
+        self::assertSame($requestedSlug, $profile['slug']);
     }
 
     public function test_password_policy_requires_english_letter_first_and_more_than_six_characters(): void

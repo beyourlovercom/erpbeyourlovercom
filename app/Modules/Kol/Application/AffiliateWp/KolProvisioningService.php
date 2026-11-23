@@ -26,13 +26,12 @@ final class KolProvisioningService
 
     public static function resolveUsername(?string $requested, string $displayName): string
     {
-        $username = trim((string) $requested);
+        // Send the operator's original identifier to WordPress/AffiliateWP.
+        // ERP does not impose an alphabet, case, or character-length policy.
+        $username = $requested === null || $requested === '' ? $displayName : $requested;
         if ($username === '') {
-            $username = preg_replace('/[^A-Za-z0-9_.@-]/', '', preg_replace('/\s+/u', '-', trim($displayName)) ?? '') ?? '';
-        }
-        if ($username === '' || strlen($username) > 60 || ! preg_match('/^[A-Za-z0-9_.@-]+$/D', $username)) {
             throw ValidationException::withMessages([
-                'wordpress_username' => 'WordPress Username 必填，最多 60 位，仅支持英文字母、数字及 . _ @ -；请手工填写有效用户名。',
+                'wordpress_username' => 'WordPress Username 必填。',
             ]);
         }
 
@@ -40,29 +39,18 @@ final class KolProvisioningService
     }
 
     /**
-     * Resolve independent Affiliate profile inputs without pretending that an unsupported
-     * custom referral slug has actually been saved. AffiliateWP Custom Slugs must be
-     * integrated before accepting a value different from the WordPress username.
+     * Preserve operator-entered account fields without ERP-specific format rules.
+     * The provider must verify a distinct custom slug; a slug matching Username
+     * uses the default username-based referral identifier.
      *
      * @return array{name:string,slug:string}
      */
     public static function resolveAffiliateProfile(?string $requestedName, ?string $requestedSlug, string $username): array
     {
-        $name = trim((string) ($requestedName === null || trim($requestedName) === '' ? $username : $requestedName));
-        $slug = trim((string) ($requestedSlug === null || trim($requestedSlug) === '' ? $username : $requestedSlug));
-        if ($name === '' || mb_strlen($name) > 120 || $name !== strip_tags($name)) {
-            throw ValidationException::withMessages(['affiliate_name' => 'Affiliate Name 必填，最多 120 字符，不可包含 HTML 标签。']);
-        }
-        if (! preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/D', $slug) || strlen($slug) > 60) {
-            throw ValidationException::withMessages(['affiliate_url_slug' => 'Affiliate URL 只能包含字母、数字和 . _ -，最多 60 位。']);
-        }
-        // The official AffiliateWP add-on accepts alphabetic or alphanumeric slugs
-        // (not separators or numeric-only aliases). Default WP usernames remain valid.
-        if ($slug !== $username && ! preg_match('/^[a-z][a-z0-9]*$/D', $slug)) {
-            throw ValidationException::withMessages([
-                'affiliate_url_slug' => '独立 Affiliate URL 仅允许小写英文字母、数字，必须以字母开头；默认 Username 可保留原格式。',
-            ]);
-        }
+        // Treat both values as operator-controlled identifiers. Provider-side
+        // validation and exact readback report what WordPress/AffiliateWP accepts.
+        $name = $requestedName === null || $requestedName === '' ? $username : $requestedName;
+        $slug = $requestedSlug === null || $requestedSlug === '' ? $username : $requestedSlug;
 
         return ['name' => $name, 'slug' => $slug];
     }
@@ -127,7 +115,8 @@ final class KolProvisioningService
         $username = self::resolveUsername($username, (string) $kol->display_name);
         $profile = self::resolveAffiliateProfile($affiliateName, $affiliateUrlSlug, $username);
         $affiliateName = $profile['name'];
-        $affiliateUrlSlug = $affiliateUrlSlug !== null ? $profile['slug'] : null;
+        // The username-based default is not a separate Custom Slug request.
+        $affiliateUrlSlug = $affiliateUrlSlug !== null && $profile['slug'] !== $username ? $profile['slug'] : null;
 
         [$account, $idempotencyKey] = DB::transaction(function () use ($connectionKey, $kolId, $kol, $username, $affiliateName, $affiliateUrlSlug): array {
             $accountClass = self::ACCOUNT;

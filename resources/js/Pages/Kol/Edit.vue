@@ -106,7 +106,7 @@ const accountPasswordConfirmation = ref('')
 const accountCouponCode = ref('')
 const accountCouponExpiry = ref(plusThreeYears(props.kol.joined_at ?? localTodayDate()))
 const accountCouponExpiryManuallyEdited = ref(false)
-const accountUsername = ref(props.kol.display_name.trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9_.@-]/g, '').slice(0, 60))
+const accountUsername = ref(props.kol.display_name)
 const accountAffiliateName = ref(accountUsername.value)
 const accountAffiliateUrl = ref(accountUsername.value)
 const affiliateNameManuallyEdited = ref(false)
@@ -129,7 +129,7 @@ const apiErrorMessage = (error: any, fallback: string) => {
   return error?.response?.data?.message || fallback
 }
 
-const validWordpressPassword = (value: string) => value.length >= 7 && /^[A-Za-z]/.test(value)
+const validWordpressPassword = (value: string) => Array.from(value).length >= 7 && /^[A-Za-z]/.test(value)
 
 const saveBoundCouponSettings = async () => {
   couponUpdateError.value = ''
@@ -164,9 +164,9 @@ const provisionAffiliateAccount = async () => {
   accountError.value = ''
   accountMessage.value = ''
   if (!accountEmail.value) { accountError.value = '请先保存有效联系邮箱，再创建 WordPress / Affiliate 账号。'; return }
-  if (!accountUsername.value.trim()) { accountError.value = 'WordPress Username 必填。'; return }
-  if (!accountAffiliateName.value.trim()) { accountError.value = 'Affiliate Name 必填。'; return }
-  if (!accountAffiliateUrl.value.trim()) { accountError.value = 'Affiliate URL 必填。'; return }
+  if (!accountUsername.value) { accountError.value = 'WordPress Username 必填。'; return }
+  if (!accountAffiliateName.value) { accountError.value = 'Affiliate Name 必填。'; return }
+  if (!accountAffiliateUrl.value) { accountError.value = 'Affiliate URL 必填。'; return }
   if (!validWordpressPassword(accountPassword.value)) { accountError.value = 'Password 要求：英文字母开头，长度大于 6 个字符。'; return }
   if (accountPassword.value !== accountPasswordConfirmation.value) { accountError.value = '两次输入的 Password 不一致。'; return }
   if (!accountCouponCode.value.trim()) { accountError.value = 'Code 必填。'; return }
@@ -175,9 +175,9 @@ const provisionAffiliateAccount = async () => {
   accountProvisioning.value = true
   try {
     const response = await axios.post(`/kol/library/${props.kol.id}/affiliate-account`, {
-      wordpress_username: accountUsername.value.trim(),
-      affiliate_name: accountAffiliateName.value.trim(),
-      affiliate_url_slug: accountAffiliateUrl.value.trim(),
+      wordpress_username: accountUsername.value,
+      affiliate_name: accountAffiliateName.value,
+      affiliate_url_slug: accountAffiliateUrl.value,
       password: accountPassword.value,
       password_confirmation: accountPasswordConfirmation.value,
       affiliate_coupon_code: accountCouponCode.value.trim(),
@@ -708,15 +708,15 @@ const breadcrumbs = [
               <div class="kol-credential-rows">
                 <div class="erp-form-field">
                   <label class="erp-form-label">Username <span class="erp-form-required">*</span></label>
-                  <input v-model="accountUsername" type="text" autocomplete="username" class="erp-input" maxlength="60" required placeholder="网红用户名，可修改">
+                  <input v-model="accountUsername" type="text" autocomplete="username" class="erp-input" required placeholder="网红用户名，可修改">
                 </div>
                 <div class="erp-form-field">
                   <label class="erp-form-label">Affiliate Name <span class="erp-form-required">*</span></label>
-                  <input v-model="accountAffiliateName" type="text" autocomplete="off" class="erp-input" maxlength="120" required placeholder="默认与 Username 相同" @input="affiliateNameManuallyEdited = true">
+                  <input v-model="accountAffiliateName" type="text" autocomplete="off" class="erp-input" required placeholder="默认与 Username 相同" @input="affiliateNameManuallyEdited = true">
                 </div>
                 <div class="erp-form-field">
                   <label class="erp-form-label">Affiliate URL <span class="erp-form-required">*</span></label>
-                  <input v-model="accountAffiliateUrl" type="text" autocomplete="off" class="erp-input" maxlength="60" required placeholder="推广链接标识" @input="affiliateUrlManuallyEdited = true">
+                  <input v-model="accountAffiliateUrl" type="text" autocomplete="off" class="erp-input" required placeholder="推广链接标识" @input="affiliateUrlManuallyEdited = true">
                 </div>
                 <div class="kol-password-pair">
                   <div class="erp-form-field">
@@ -752,7 +752,7 @@ const breadcrumbs = [
               <p v-if="accountError" class="erp-field-error">{{ accountError }}</p>
               <p v-if="accountMessage" :class="affiliateAccountState?.last_error_code ? 'kol-account-warning' : 'kol-account-success'">{{ accountMessage }}</p>
               <div class="kol-account-actions">
-                <button type="button" class="erp-btn erp-btn-primary" :disabled="accountProvisioning || !accountEmail || !accountUsername.trim()" @click="provisionAffiliateAccount">{{ accountProvisioning ? '创建中…' : '创建 WordPress / Affiliate 账号' }}</button>
+                <button type="button" class="erp-btn erp-btn-primary" :disabled="accountProvisioning || !accountEmail || !accountUsername" @click="provisionAffiliateAccount">{{ accountProvisioning ? '创建中…' : '创建 WordPress / Affiliate 账号' }}</button>
               </div>
             </template>
           </div>

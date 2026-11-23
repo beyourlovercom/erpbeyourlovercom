@@ -119,7 +119,7 @@ watch(() => form.wordpress_username, (value) => {
 })
 watch(() => form.display_name, (value) => {
   if (!usernameManuallyEdited.value) {
-    form.wordpress_username = value.trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9_.@-]/g, '').slice(0, 60)
+    form.wordpress_username = value
   }
 })
 
@@ -335,17 +335,17 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <div class="kol-credential-rows">
               <div class="erp-form-field">
                 <label class="erp-form-label">Username <span class="erp-form-required">*</span></label>
-                <input v-model="form.wordpress_username" type="text" autocomplete="username" class="erp-input" :class="{ 'has-error': form.errors.wordpress_username }" maxlength="60" required placeholder="网红用户名，可修改" @input="usernameManuallyEdited = true">
+                <input v-model="form.wordpress_username" type="text" autocomplete="username" class="erp-input" :class="{ 'has-error': form.errors.wordpress_username }" required placeholder="网红用户名，可修改" @input="usernameManuallyEdited = true">
                 <p v-if="form.errors.wordpress_username" class="erp-field-error">{{ form.errors.wordpress_username }}</p>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">Affiliate Name <span class="erp-form-required">*</span></label>
-                <input v-model="form.affiliate_name" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_name }" maxlength="120" required placeholder="默认与 Username 相同" @input="affiliateNameManuallyEdited = true">
+                <input v-model="form.affiliate_name" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_name }" required placeholder="默认与 Username 相同" @input="affiliateNameManuallyEdited = true">
                 <p v-if="form.errors.affiliate_name" class="erp-field-error">{{ form.errors.affiliate_name }}</p>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">Affiliate URL <span class="erp-form-required">*</span></label>
-                <input v-model="form.affiliate_url_slug" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_url_slug }" maxlength="60" required placeholder="推广链接标识" @input="affiliateUrlManuallyEdited = true">
+                <input v-model="form.affiliate_url_slug" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_url_slug }" required placeholder="推广链接标识" @input="affiliateUrlManuallyEdited = true">
                 <p v-if="form.errors.affiliate_url_slug" class="erp-field-error">{{ form.errors.affiliate_url_slug }}</p>
               </div>
               <div class="kol-password-pair">
