@@ -1,23 +1,30 @@
 import { readFileSync } from 'node:fs'
-import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import Create from './Create.vue'
 
-vi.mock('@inertiajs/vue3', () => ({
+const axiosGetMock = vi.hoisted(() => vi.fn())
+vi.mock('axios', () => ({ default: { get: axiosGetMock } }))
+
+vi.mock('@inertiajs/vue3', async () => {
+  const { reactive } = await import('vue')
+  return {
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
   useForm: (initial: Record<string, unknown>) => {
     const data = { ...initial }
     const errors = {} as Record<string, string>
-    return {
+    return reactive({
       ...data,
       errors,
       processing: false,
       transform: () => ({ post: vi.fn() }),
       post: vi.fn(),
-    }
+    })
   },
   usePage: () => ({ url: '/kol/library/create', props: { auth: { user: { id: 1, name: 'Test', email: 't@t.com' } }, shellNavigation: [] } }),
-}))
+  }
+})
 
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { name: 'AuthenticatedLayout', props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' },
@@ -30,6 +37,40 @@ const defaultProps = {
 }
 
 describe('Kol/Create VI contract', () => {
+  afterEach(() => { vi.useRealTimers(); axiosGetMock.mockReset() })
+
+  it('uses one unrestricted nationality input independent of the shipping country', async () => {
+    const wrapper = mount(Create, { props: defaultProps })
+    const nationality = wrapper.get('[data-testid="kol-nationality-country"]')
+    expect(nationality.element.tagName).toBe('INPUT')
+    expect(nationality.attributes('maxlength')).toBe('128')
+    expect(wrapper.find('.searchable-select').exists()).toBe(false)
+    expect(wrapper.text()).toContain('国籍地')
+    expect(wrapper.text()).toContain('现居国家（收件地址）')
+    expect((nationality.element as HTMLInputElement).value).toBe('')
+    await nationality.setValue('墨西哥 / Mexico')
+    await wrapper.get('input[data-testid="kol-shipping-country"]').setValue('MX')
+    expect((nationality.element as HTMLInputElement).value).toBe('墨西哥 / Mexico')
+    expect((wrapper.get('input[data-testid="kol-shipping-country"]').element as HTMLInputElement).value).toBe('MX')
+    expect(wrapper.find('[data-testid="custom-kol-country"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('warns on an existing username before submitting a duplicate KOL', async () => {
+    vi.useFakeTimers()
+    axiosGetMock.mockResolvedValue({ data: {
+      exists: true, message: '已经存在这个网红，是否重复创建账号？',
+      existing_url: '/kol/library/42',
+    } })
+    const wrapper = mount(Create, { props: defaultProps })
+    await wrapper.get('input[autocomplete="username"]').setValue('_dolordemuelas_')
+    await vi.advanceTimersByTimeAsync(480)
+    await flushPromises()
+    expect(wrapper.get('[data-testid="kol-duplicate-warning"]').text()).toContain('已经存在这个网红，是否重复创建账号？')
+    expect(wrapper.get('[data-testid="kol-duplicate-warning"] a').attributes('href')).toBe('/kol/library/42')
+    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
   it('uses erp-form-page wrapper — no mvp-page', () => {
     const wrapper = mount(Create, { props: defaultProps })
     expect(wrapper.find('.erp-form-page').exists()).toBe(true)

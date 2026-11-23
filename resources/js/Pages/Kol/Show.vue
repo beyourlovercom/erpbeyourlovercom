@@ -21,7 +21,7 @@ type KolDetail = {
   contact_email: string | null; contact_phone: string | null; contact_whatsapp: string | null; other_contact: string | null
   preferred_contact_method: string
   tax_id: string | null; payout_method: string | null; payout_account: string | null
-  shipping_recipient_name: string | null; shipping_country: string | null; shipping_province_state: string | null
+  shipping_recipient_name: string | null; shipping_country: string | null; shipping_customs_id?: string | null; shipping_province_state: string | null
   shipping_city: string | null; shipping_postal_code: string | null
   shipping_address_line_1: string | null; shipping_address_line_2: string | null
   level: string | null; gender: string | null; categories: string[]; products: string[]
@@ -221,7 +221,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <dl class="kol-basic-list">
               <div class="kol-basic-row"><dt><span class="kol-basic-icon">♙</span><span>显示名称</span></dt><dd>{{ kol.display_name }}</dd></div>
               <div class="kol-basic-row"><dt><span class="kol-basic-icon">✉</span><span>邮箱</span></dt><dd>{{ kol.contact_email ?? '—' }}</dd></div>
-              <div class="kol-basic-row"><dt><span class="kol-basic-icon">◎</span><span>国家/地区</span></dt><dd>{{ countryLabel(kol.country_code) }}</dd></div>
+              <div class="kol-basic-row"><dt><span class="kol-basic-icon">◎</span><span>国籍地</span></dt><dd>{{ countryLabel(kol.country_code) }}</dd></div>
               <div class="kol-basic-row"><dt><span class="kol-basic-icon">◉</span><span>语言</span></dt><dd>{{ languageLabel(kol.language) }}</dd></div>
               <div class="kol-basic-row"><dt><span class="kol-basic-icon">✚</span><span>合作类型</span></dt><dd>{{ cooperationLabel(kol.cooperation_type) }}</dd></div>
               <div class="kol-basic-row"><dt><span class="kol-basic-icon">◫</span><span>加入时间</span></dt><dd>{{ joinedDateLabel(kol.joined_at) }}</dd></div>
@@ -438,7 +438,8 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <h4>收件地址</h4>
             <dl class="detail-list">
               <div><dt>收件人</dt><dd>{{ kol.shipping_recipient_name ?? '—' }}</dd></div>
-              <div><dt>国家</dt><dd>{{ kol.shipping_country ?? '—' }}</dd></div>
+              <div><dt>现居国家（收件地址）</dt><dd>{{ kol.shipping_country ?? '—' }}</dd></div>
+              <div v-if="kol.shipping_customs_id"><dt>收件清关税号／身份号码</dt><dd data-testid="kol-customs-id">{{ kol.shipping_customs_id }}</dd></div>
               <div><dt>省/州</dt><dd>{{ kol.shipping_province_state ?? '—' }}</dd></div>
               <div><dt>城市</dt><dd>{{ kol.shipping_city ?? '—' }}</dd></div>
               <div><dt>邮编</dt><dd>{{ kol.shipping_postal_code ?? '—' }}</dd></div>

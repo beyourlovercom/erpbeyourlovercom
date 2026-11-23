@@ -7,6 +7,7 @@ use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolScope;
+use App\Modules\Kol\Application\RecipientCustomsPolicy;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
@@ -187,6 +188,33 @@ final class OrderController
         ];
     }
 
+    /** Exact KOL address projection; never fetch an unrelated owner's private address. */
+    private function kolShippingData(Kol $kol): array
+    {
+        return [
+            'recipient_name' => $kol->shipping_recipient_name ?: $kol->legal_name ?: $kol->display_name,
+            'phone' => $kol->contact_phone ?: $kol->contact_whatsapp,
+            'email' => $kol->contact_email,
+            'recipient_customs_id' => RecipientCustomsPolicy::showsRecipientId($kol->shipping_country) ? $kol->shipping_customs_id : null,
+            'country' => $kol->shipping_country,
+            'province_state' => $kol->shipping_province_state,
+            'city' => $kol->shipping_city,
+            'address_line_1' => $kol->shipping_address_line_1,
+            'address_line_2' => $kol->shipping_address_line_2,
+            'postal_code' => $kol->shipping_postal_code,
+        ];
+    }
+
+    public function kolAddress(Request $request): JsonResponse
+    {
+        KolOrderAccessScope::authorizeCreate($request->user(), OrderKind::KolFulfillment);
+        abort_unless($request->user()->can('kol.view'), 403);
+        $data = $request->validate(['kol_id' => ['required', 'integer', 'min:1']]);
+        $kol = $this->scopedKolSelection($request)->findOrFail((int) $data['kol_id']);
+
+        return response()->json(['kol_id' => (int) $kol->id, 'address' => $this->kolShippingData($kol)]);
+    }
+
     public function searchKolOptions(Request $request): JsonResponse
     {
         KolOrderAccessScope::authorizeCreate($request->user(), OrderKind::KolFulfillment);
@@ -271,6 +299,7 @@ final class OrderController
             'generatedExternalOrderNumber' => $this->orders->generateExternalOrderNumber($kind),
             'kolOptions' => $kolOptions,
             'selectedKolId' => $selectedKolId,
+            'selectedKolAddress' => $requestedKol ? $this->kolShippingData($requestedKol) : null,
         ]);
     }
 
@@ -296,8 +325,28 @@ final class OrderController
             abort_unless($request->user()->can('kol.view'), 403);
             $kol = Kol::query()->findOrFail($data['kol_id']);
             abort_unless(KolScope::isAllScope($request->user()) || (int) $kol->owner_id === (int) $request->user()->getAuthIdentifier(), 403);
+            // Reuse canonical KOL shipping/contact data when not explicitly supplied on the order.
+            foreach ($this->kolShippingData($kol) as $field => $value) {
+                // A saved personal ID must never be copied to an order for a different country.
+                if ($field === 'recipient_customs_id' && filled($data['country'] ?? null)
+                    && RecipientCustomsPolicy::code($data['country']) !== RecipientCustomsPolicy::code($kol->shipping_country)) {
+                    continue;
+                }
+                if (blank($data[$field] ?? null) && filled($value)) {
+                    $data[$field] = $value;
+                }
+            }
+            if (! RecipientCustomsPolicy::showsRecipientId($data['country'] ?? null)) {
+                $data['recipient_customs_id'] = null;
+            }
         } else {
             unset($data['kol_id']);
+        }
+        if ($kind === OrderKind::KolFulfillment && RecipientCustomsPolicy::requiresRecipientId($data['country'] ?? null)
+            && blank($data['recipient_customs_id'] ?? null)) {
+            throw ValidationException::withMessages([
+                'recipient_customs_id' => '该收件国家需要收件人清关税号或身份证号码，请填写后创建订单。',
+            ]);
         }
         if ($kind === OrderKind::KolFulfillment && blank($data['order_date'] ?? null)) {
             $data['order_date'] = now()->toDateString();
@@ -916,7 +965,7 @@ final class OrderController
             'owner' => $order->owner ? ['id' => $order->owner->id, 'name' => $order->owner->name] : null,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'customer_email' => $includeCustomerEmail ? ($order->address?->email ?: $order->customer?->email) : null,
-            'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code']),
+            'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code', 'recipient_customs_id']),
             'items' => $order->items->map(fn ($item): array => [
                 ...$item->only(['id', 'product_id', 'product_summary', 'quantity', 'unit_price', 'line_revenue']),
                 'sku' => WarehouseSkuPresentation::sku($item),
@@ -1119,9 +1168,10 @@ final class OrderController
             'order_date' => ['required', 'date'],
             'order_note' => ['nullable', 'string', 'max:5000'],
             'currency' => ['sometimes', 'string', 'regex:/^[A-Z]{3}$/'],
-            'recipient_name' => ['nullable', 'string', 'max:255'], 'phone' => ['nullable', 'string', 'max:64'],
+            'recipient_name' => ['nullable', 'string', 'max:255'], 'phone' => ['nullable', 'string', 'max:64'], 'email' => ['nullable', 'email', 'max:255'],
             'country' => ['nullable', 'string', 'max:128'], 'province_state' => ['nullable', 'string', 'max:128'],
             'city' => ['nullable', 'string', 'max:128'], 'address_line_1' => ['nullable', 'string', 'max:255'],
+            'recipient_customs_id' => ['nullable', 'string', 'max:128'],
             'address_line_2' => ['nullable', 'string', 'max:255'], 'postal_code' => ['nullable', 'string', 'max:32'],
             'items' => ['required', 'array', 'min:1'], 'items.*.product_summary' => ['nullable', 'string', 'max:255'],
             'items.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->whereNotNull('sku')->where('sku', '!=', '')],

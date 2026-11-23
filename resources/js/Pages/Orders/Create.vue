@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+import axios from 'axios'
 
 const currencyOptions = [
   { value: 'USD', label: 'USD · 美元' },
@@ -16,7 +17,10 @@ const currencyOptions = [
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 import KolIdentityCombobox from './KolIdentityCombobox.vue'
+import RecipientCustomsField from '../../Components/RecipientCustomsField.vue'
 import { publishGlobalFeedback } from '../../lib/globalFeedback'
+
+type KolAddress = { recipient_customs_id?: string | null; recipient_name: string | null; phone: string | null; email: string | null; country: string | null; province_state: string | null; city: string | null; address_line_1: string | null; address_line_2: string | null; postal_code: string | null }
 
 const props = defineProps<{
   defaultOrderKind: string
@@ -24,6 +28,7 @@ const props = defineProps<{
   generatedExternalOrderNumber: string
   kolOptions?: { value: number; label: string; account?: string | null }[]
   selectedKolId?: number | null
+  selectedKolAddress?: KolAddress | null
 }>()
 
 type OrderItem = {
@@ -42,7 +47,9 @@ const form = useForm<{
   currency: string
   recipient_name: string
   phone: string
+  email: string
   country: string
+  recipient_customs_id: string
   province_state: string
   city: string
   address_line_1: string
@@ -57,7 +64,9 @@ const form = useForm<{
   currency: 'USD',
   recipient_name: '',
   phone: '',
+  email: '',
   country: '',
+  recipient_customs_id: '',
   province_state: '',
   city: '',
   address_line_1: '',
@@ -65,6 +74,44 @@ const form = useForm<{
   postal_code: '',
   items: [{ product_summary: '', sku: '', product_id: null, quantity: 1, unit_price: '0.00' }],
 })
+
+// Every KOL selection uses its saved shipping/contact details; never reuse the former KOL address.
+const addressLoading = ref(false)
+const addressWarning = ref('')
+const addressFields = ['recipient_name', 'phone', 'email', 'country', 'recipient_customs_id', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code'] as const
+let addressRequestId = 0
+let lastKolShippingCountry = ''
+const fillKolAddress = (address: KolAddress | null) => {
+  for (const field of addressFields) form[field] = address?.[field] ?? ''
+  lastKolShippingCountry = form.country
+}
+// A changed destination requires a new recipient ID; never carry another country's number.
+watch(() => form.country, country => {
+  if (isKol.value && country !== lastKolShippingCountry) {
+    form.recipient_customs_id = ''
+  }
+})
+watch(() => form.kol_id, async kolId => {
+  if (props.defaultOrderKind !== 'kol_fulfillment') return
+  const requestId = ++addressRequestId
+  fillKolAddress(null)
+  addressWarning.value = ''
+  addressLoading.value = false
+  if (!kolId) return
+  if (kolId === props.selectedKolId && props.selectedKolAddress) {
+    fillKolAddress(props.selectedKolAddress)
+    return
+  }
+  addressLoading.value = true
+  try {
+    const response = await axios.get<{ kol_id: number; address: KolAddress }>('/kol/orders/kol-address', { params: { kol_id: kolId } })
+    if (requestId === addressRequestId && response.data.kol_id === kolId) fillKolAddress(response.data.address)
+  } catch {
+    if (requestId === addressRequestId) addressWarning.value = '未能读取网红档案地址，请重新选择网红。'
+  } finally {
+    if (requestId === addressRequestId) addressLoading.value = false
+  }
+}, { immediate: true })
 
 const numberEditable = ref(false)
 
@@ -218,22 +265,35 @@ const submit = () => {
           <!-- Card 2: 收件与地址 -->
           <div class="erp-form-card">
             <h2 class="erp-form-card-title">收件与地址</h2>
+            <p v-if="isKol && form.kol_id" class="ord-hint-inline" data-testid="kol-address-source">{{ addressLoading ? '正在读取网红档案…' : '已从网红档案自动带入已有联系与收货信息，可按本单实际情况调整。' }}</p>
+            <p v-if="addressWarning" class="erp-field-error" role="alert">{{ addressWarning }}</p>
             <div class="erp-form-grid">
               <div class="erp-form-field">
                 <label class="erp-form-label">收件人姓名</label>
-                <input v-model="form.recipient_name" class="erp-input" placeholder="可选">
+                <input v-model="form.recipient_name" data-testid="order-recipient-name" class="erp-input" placeholder="可选">
                 <p v-if="form.errors.recipient_name" class="erp-field-error">{{ form.errors.recipient_name }}</p>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">联系电话</label>
-                <input v-model="form.phone" class="erp-input" placeholder="可选">
+                <input v-model="form.phone" data-testid="order-phone" class="erp-input" placeholder="可选">
                 <p v-if="form.errors.phone" class="erp-field-error">{{ form.errors.phone }}</p>
+              </div>
+              <div v-if="isKol" class="erp-form-field">
+                <label class="erp-form-label">联系邮箱（档案带入）</label>
+                <input v-model="form.email" data-testid="order-email" type="email" class="erp-input" placeholder="网红档案尚未填写">
+                <p v-if="form.errors.email" class="erp-field-error">{{ form.errors.email }}</p>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">国家</label>
-                <input v-model="form.country" class="erp-input" placeholder="可选">
+                <input v-model="form.country" data-testid="order-country" class="erp-input" placeholder="可选">
                 <p v-if="form.errors.country" class="erp-field-error">{{ form.errors.country }}</p>
               </div>
+              <RecipientCustomsField
+                v-if="isKol"
+                :country="form.country"
+                v-model="form.recipient_customs_id"
+                :error="form.errors.recipient_customs_id"
+              />
               <div class="erp-form-field">
                 <label class="erp-form-label">省/州</label>
                 <input v-model="form.province_state" class="erp-input" placeholder="可选">
@@ -241,7 +301,7 @@ const submit = () => {
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">城市</label>
-                <input v-model="form.city" class="erp-input" placeholder="可选">
+                <input v-model="form.city" data-testid="order-city" class="erp-input" placeholder="可选">
                 <p v-if="form.errors.city" class="erp-field-error">{{ form.errors.city }}</p>
               </div>
               <div class="erp-form-field">
@@ -251,7 +311,7 @@ const submit = () => {
               </div>
               <div class="erp-form-field ord-span-2">
                 <label class="erp-form-label">地址行 1</label>
-                <input v-model="form.address_line_1" class="erp-input" placeholder="可选">
+                <input v-model="form.address_line_1" data-testid="order-address-line-1" class="erp-input" placeholder="可选">
                 <p v-if="form.errors.address_line_1" class="erp-field-error">{{ form.errors.address_line_1 }}</p>
               </div>
               <div class="erp-form-field ord-span-2">

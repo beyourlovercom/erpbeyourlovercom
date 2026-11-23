@@ -150,6 +150,22 @@ const openShipmentReview = async (wrapper: ReturnType<typeof mountShipmentReview
 }
 
 describe('Orders/Show V2', () => {
+  it('shows saved recipient customs ID on KOL orders only', () => {
+    const kol = mount(Show, { props: {
+      order: { ...baseOrder, order_kind: 'kol_fulfillment',
+        address: { ...baseOrder.address, country: 'MX', recipient_customs_id: 'SYNTHETIC-MX-ID' } },
+      audit,
+    } })
+    expect(kol.get('[data-testid="kol-order-customs-id"]').text()).toContain('SYNTHETIC-MX-ID')
+    kol.unmount()
+    const customer = mount(Show, { props: {
+      order: { ...baseOrder, address: { ...baseOrder.address, recipient_customs_id: 'SYNTHETIC-PRIVATE' } },
+      audit,
+    } })
+    expect(customer.find('[data-testid="kol-order-customs-id"]').exists()).toBe(false)
+    customer.unmount()
+  })
+
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn()
     const memory = new Map<string,string>()

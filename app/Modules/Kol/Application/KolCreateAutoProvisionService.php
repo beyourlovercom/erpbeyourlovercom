@@ -46,6 +46,13 @@ final class KolCreateAutoProvisionService
             throw new AuthorizationException('KOL operation permission is required.');
         }
 
+        // Duplicate KOL identity is rejected before any ERP, WordPress or Coupon write.
+        if (KolDuplicateIdentity::find($username, (string) ($data['display_name'] ?? ''))) {
+            throw ValidationException::withMessages([
+                'wordpress_username' => '已经存在这个网红，是否重复创建账号？请先核查已有网红档案，禁止重复开户。',
+            ]);
+        }
+
         $profile = KolProvisioningService::resolveAffiliateProfile($affiliateName, $affiliateUrlSlug, $username);
         $email = mb_strtolower(trim((string) ($data['contact_email'] ?? '')));
         $code = trim($couponCode);
