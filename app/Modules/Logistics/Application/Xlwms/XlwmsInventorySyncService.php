@@ -35,8 +35,12 @@ final class XlwmsInventorySyncService
         // separate DE gate. V2 + per-SKU quarantine and first-checksum approval
         // remain mandatory; this cannot enable Production or US-SM dispatch.
         if ($warehouseCode === 'DE' && $apply) {
-            if (! app()->environment('local', 'testing')
-                || ! (bool) config('xlwms.de_inventory_dev_apply_enabled', false)) {
+            if (! (
+                (app()->environment('local', 'testing')
+                    && (bool) config('xlwms.de_inventory_dev_apply_enabled', false))
+                || (app()->environment('production')
+                    && (bool) config('xlwms.de_inventory_production_apply_enabled', false))
+            )) {
                 throw new RuntimeException('XLWMS_DE_INVENTORY_APPLY_NOT_AUTHORIZED');
             }
             if (! $this->v2Enabled() || ! $this->skuIsolationEnabled()) {

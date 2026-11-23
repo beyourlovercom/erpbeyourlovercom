@@ -39,14 +39,20 @@ final class RunDeTianyunWarehouseSync implements ShouldQueue
                 return;
             }
             $actor = User::query()->find($run->operator_user_id);
-            if (! app()->environment('local', 'testing')
-                || ! (bool) config('xlwms.de_manual_sync_enabled', false)
+            $dev = app()->environment('local', 'testing')
+                && (bool) config('xlwms.de_manual_sync_enabled', false);
+            $prodRead = app()->environment('production')
+                && (bool) config('xlwms.de_production_read_enabled', false);
+            if (! ($dev || $prodRead)
                 || ! $actor?->is_active || ! $actor->can('sync.operate')) {
                 $this->markFailed('XLWMS_DE_SYNC_NOT_AUTHORIZED');
 
                 return;
             }
-            if ($run->apply_requested && (! (bool) config('xlwms.de_inventory_dev_apply_enabled', false)
+            // A Production web task must never apply stock, even if a legacy
+            // or tampered queue row claims apply_requested=true.
+            if ($run->apply_requested && (! $dev
+                || ! (bool) config('xlwms.de_inventory_dev_apply_enabled', false)
                 || ! (bool) config('xlwms.inventory_apply_enabled', false))) {
                 $this->markFailed('XLWMS_DE_SYNC_APPLY_GATES_CHANGED');
 

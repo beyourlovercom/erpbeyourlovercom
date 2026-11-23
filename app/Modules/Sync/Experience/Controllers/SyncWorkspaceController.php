@@ -252,9 +252,12 @@ final class SyncWorkspaceController
                 ->whereIn('warehouse_id', $ids)->orderByDesc('id')->get()
                 ->unique('warehouse_id')->keyBy('warehouse_id')
             : collect();
-        $manualEnabled = app()->environment('local', 'testing')
-            && (bool) config('xlwms.de_manual_sync_enabled', false)
-            && (bool) $request->user()?->can('sync.operate');
+        $manualEnabled = (
+            (app()->environment('local', 'testing')
+                && (bool) config('xlwms.de_manual_sync_enabled', false))
+            || (app()->environment('production')
+                && (bool) config('xlwms.de_production_read_enabled', false))
+        ) && (bool) $request->user()?->can('sync.operate');
 
         return Inertia::render('Sync/Warehouses', [
             'can_map_sku' => (bool) ($request->user()?->can('products.view')
