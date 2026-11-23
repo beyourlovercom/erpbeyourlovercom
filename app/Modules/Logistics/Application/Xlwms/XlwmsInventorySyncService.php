@@ -27,9 +27,10 @@ final class XlwmsInventorySyncService
     }
 
     /** @return array<string,mixed> */
-    public function sync(bool $apply = false, string $warehouseCode = 'US-SM'): array
+    public function sync(bool $apply = false, string $warehouseCode = 'US-SM', array $resumeVerifiedSkus = []): array
     {
         if (! in_array($warehouseCode, ['US-SM', 'DE'], true)) throw new RuntimeException('XLWMS_WAREHOUSE_UNSUPPORTED');
+        if ($warehouseCode !== 'DE' && $resumeVerifiedSkus !== []) throw new RuntimeException('XLWMS_RESUME_ONLY_SUPPORTED_FOR_DE');
         // R4 permits DE inventory writes ONLY in isolated Local/Testing, with a
         // separate DE gate. V2 + per-SKU quarantine and first-checksum approval
         // remain mandatory; this cannot enable Production or US-SM dispatch.
@@ -134,7 +135,7 @@ final class XlwmsInventorySyncService
         $checksum = hash('sha256', json_encode(['snapshot_schema' => $this->v2Enabled() ? ($this->skuIsolationEnabled() ? 7 : 5) : 2,
             'sku_isolation' => $this->skuIsolationEnabled(), 'reconciliation_mode' => $this->v2Enabled() ? 'lot_v2' : 'quantity_v1', 'wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline, 'lot_baseline' => $this->v2LotBaseline($warehouse, $rows), 'p9_consumption_baseline' => $this->v2P9ConsumptionBaseline($warehouse, $rows), 'unknown_age_baseline' => $this->v2UnknownAgeBaseline($warehouse, $rows)], JSON_THROW_ON_ERROR));
         $status = ($unmatched > 0 || $blocked > 0) ? 'blocked' : 'read_only';
-        $snapshot = $this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline);
+        $snapshot = $this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline, $resumeVerifiedSkus);
         $this->audit->record(AuditActor::system(AuditSource::InternalSystem), 'inventory.xlwms_snapshot_'.$snapshot->status, $snapshot::class, $snapshot->id, after: $this->result($snapshot), reason: 'xlwms_inventory_sync');
         return $this->result($snapshot);
     }
@@ -162,14 +163,14 @@ final class XlwmsInventorySyncService
         throw new RuntimeException('OMS_PAGINATION_INCOMPLETE');
     }
 
-    private function persistAndMaybeApply(Warehouse $warehouse, string $whCode, string $checksum, array $providerSkus, array $normalized, array $rows, array $mismatches, int $mapped, int $unmatched, int $blocked, string $status, bool $apply, array $localBaseline): XlwmsInventorySnapshot
+    private function persistAndMaybeApply(Warehouse $warehouse, string $whCode, string $checksum, array $providerSkus, array $normalized, array $rows, array $mismatches, int $mapped, int $unmatched, int $blocked, string $status, bool $apply, array $localBaseline, array $resumeVerifiedSkus = []): XlwmsInventorySnapshot
     {
-        return DB::transaction(function () use ($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline): XlwmsInventorySnapshot {
+        return DB::transaction(function () use ($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline, $resumeVerifiedSkus): XlwmsInventorySnapshot {
             if ($this->v2Enabled()) {
                 if ($this->skuIsolationEnabled()) {
                     return $this->persistSkuIsolatedV2($warehouse, $whCode, $checksum,
                         $providerSkus, $normalized, $rows, $mismatches, $mapped,
-                        $unmatched, $blocked, $apply, $localBaseline);
+                        $unmatched, $blocked, $apply, $localBaseline, $resumeVerifiedSkus);
                 }
                 $plan = $this->lotReconciliation->plan($warehouse, $rows, $localBaseline);
                 $allMismatches = [...$mismatches, ...$plan['blocked']];
@@ -254,7 +255,7 @@ final class XlwmsInventorySyncService
     private function persistSkuIsolatedV2(
         Warehouse $warehouse, string $whCode, string $checksum,
         array $providerSkus, array $normalized, array $rows, array $mismatches,
-        int $mapped, int $unmatched, int $blocked, bool $apply, array $localBaseline
+        int $mapped, int $unmatched, int $blocked, bool $apply, array $localBaseline, array $resumeVerifiedSkus = []
     ): XlwmsInventorySnapshot {
         $plan = $this->lotReconciliation->plan($warehouse, $rows, $localBaseline);
         $issues = [...$mismatches, ...$plan['blocked']];
@@ -280,6 +281,22 @@ final class XlwmsInventorySyncService
         $eligible = array_filter($plan['products'],
             static fn (array $product): bool => ! isset($blockedIds[(int) $product['product_id']]));
         ksort($eligible, SORT_NUMERIC);
+
+        // Resume is a full fresh provider read, but a SKU whose previous
+        // write was verified must never be written again by "continue".
+        // If provider stock changed after the prior success, quarantine it:
+        // only a new "update sync" may update an already-completed SKU.
+        if ($apply && $warehouse->code === 'DE' && $resumeVerifiedSkus !== []) {
+            $previouslyVerified = array_fill_keys($resumeVerifiedSkus, true);
+            foreach ($eligible as $id => $product) {
+                if (! isset($previouslyVerified[(string) $product['sku']])) continue;
+                unset($eligible[$id]);
+                if ((int) $product['qoh_before'] !== (int) $product['qoh_after']) {
+                    $issues[] = ['reason' => 'OMS_RESUME_PREVIOUS_SUCCESS_STOCK_CHANGED',
+                        'product_id' => (int) $id, 'sku' => (string) $product['sku']];
+                }
+            }
+        }
 
         // Automatic changes are bounded per SKU. An excessive delta blocks
         // only that SKU, not the other independently verified stock.

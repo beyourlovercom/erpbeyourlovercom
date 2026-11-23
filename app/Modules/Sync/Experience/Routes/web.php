@@ -20,6 +20,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/sync/warehouses', [SyncWorkspaceController::class, 'warehouses'])->middleware('can:sync.view')->name('sync.warehouses');
     Route::post('/sync/warehouses/{warehouse}/sync', [DeTianyunWarehouseSyncController::class, 'start'])
         ->middleware(['can:sync.operate', 'throttle:3,1'])->whereNumber('warehouse')->name('sync.warehouses.de.start');
+    Route::post('/sync/warehouses/{warehouse}/sync/resume', [DeTianyunWarehouseSyncController::class, 'resume'])
+        ->middleware(['can:sync.operate', 'throttle:3,1'])->whereNumber('warehouse')->name('sync.warehouses.de.resume');
     Route::get('/sync/warehouses/{warehouse}/sync/{runId}', [DeTianyunWarehouseSyncController::class, 'status'])
         ->middleware(['can:sync.view', 'throttle:30,1'])->whereNumber('warehouse')->whereNumber('runId')->name('sync.warehouses.de.status');
     Route::get('/sync/warehouses/{warehouse}/sync-details', [DeTianyunWarehouseSyncController::class, 'details'])

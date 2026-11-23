@@ -9,11 +9,17 @@ type Warehouse = {
   is_active:boolean; connector_status:string; can_sync:boolean
   last_sync_at:string|null; last_applied_at:string|null
   last_status_at:string|null; last_sync_status:string; last_error_code:string|null
-  active_run_id:number|null; sync_counts:Counts
+  active_run_id:number|null; last_run_id?:number|null
+  last_outcome?:string; successful_sku_count?:number; updated_sku_count?:number
+  unchanged_sku_count?:number; failed_sku_count?:number; missing_sku_count?:number
+  sync_counts:Counts
 }
 type SyncResult = {
   run_id:number; status:string; mode:'read_only'|'apply_if_verified'
   erp_stock_updated:boolean; provider_sku_count:number; mapped_sku_count:number
+  outcome?:string; run_kind?:string; resume_from_run_id?:number|null
+  successful_sku_count?:number; updated_sku_count?:number
+  unchanged_sku_count?:number; failed_sku_count?:number; missing_sku_count?:number
   unmatched_sku_count:number; blocked_sku_count:number; error_code:string|null
   finished_at:string|null
 }
@@ -22,12 +28,17 @@ type InventoryRow = {
   provider_sku:string; erp_sku:string|null; resolution_status:string
   oms_total:number|null; oms_available:number|null; oms_locked:number|null
   oms_in_transit:number|null; mismatch_reason:string|null
+  sync_outcome?:string|null; erp_before?:number|null; erp_after?:number|null
+  delta?:number|null; write_verified?:boolean|null; sync_error_code?:string|null
 }
 type ManualRun = {
   id:number; status:string; mode:'read_only'|'apply_if_verified'
   snapshot_id:number|null; provider_sku_count:number; mapped_sku_count:number
   unmatched_sku_count:number; blocked_sku_count:number; error_code:string|null
-  created_at:string; finished_at:string|null
+  created_at:string; finished_at:string|null; outcome?:string; run_kind?:string
+  resume_from_run_id?:number|null; successful_sku_count?:number
+  updated_sku_count?:number; unchanged_sku_count?:number
+  failed_sku_count?:number; missing_sku_count?:number
 }
 type Details = {
   snapshot: null | { id:number; status:string; fetched_at:string
@@ -35,9 +46,9 @@ type Details = {
     mapped_sku_count:number; unmatched_sku_count:number; blocked_sku_count:number }
   counts:Record<'matched'|'unmatched'|'blocked'|'catalog_only',number>
   rows:InventoryRow[]; pagination:{page:number; per_page:number; total:number}
-  runs:ManualRun[]
+  runs:ManualRun[]; latest_run?:ManualRun|null
 }
-const props = defineProps<{ warehouses:Warehouse[] }>()
+const props = defineProps<{ warehouses:Warehouse[]; can_map_sku?:boolean }>()
 const resultById = reactive<Record<number,SyncResult>>({})
 const errors = reactive<Record<number,string>>({})
 const busy = reactive<Record<number,boolean>>({})
@@ -57,9 +68,51 @@ const labels:Record<string,string> = {
   read_only:'读取成功 · 未更新 ERP', applied:'ERP 库存已同步',
   partial_applied:'部分库存已同步', blocked:'OMS 已读取 · 待处理 SKU 差异',
   not_ready:'库存数据未就绪', failed:'同步失败',
+  success:'完全同步成功', partial_success:'部分同步成功',
+  preview:'只读预检，库存未更新',
 }
 function statusOf(w:Warehouse) { return resultById[w.id]?.status || w.last_sync_status }
-function statusLabel(w:Warehouse) { return labels[statusOf(w)] || statusOf(w) }
+function outcomeOf(w:Warehouse) {
+  const state=statusOf(w)
+  if(['queued','running'].includes(state))return state
+  const outcome=resultById[w.id]?.outcome || w.last_outcome
+  if(outcome==='preview' && state==='blocked')return 'needs_mapping'
+  if(outcome && outcome!=='pending' && outcome!=='never')return outcome
+  if(state==='never')return 'never'
+  return state==='failed'?'failed':state==='blocked'?'needs_mapping'
+    :['applied','partial_applied'].includes(state)?'unverified':'preview'
+}
+function statusLabel(w:Warehouse) {
+  if(w.code==='DE') {
+    const outcome=outcomeOf(w)
+    if(outcome==='needs_mapping')return '待处理 SKU 差异 · 未更新 ERP'
+    if(outcome==='success')return '完全同步成功'
+    if(outcome==='partial_success')return '部分同步成功'
+    if(outcome==='failed')return '完全同步失败'
+    if(outcome==='preview')return '只读预检 · 未更新 ERP'
+    if(outcome==='unverified')return '历史库存状态待核验'
+    if(outcome==='needs_reconcile')return '库存结果待核验 · 暂停重试'
+  }
+  return labels[statusOf(w)] || statusOf(w)
+}
+function actionLabel(w:Warehouse) {
+  if(['queued','running'].includes(statusOf(w)))return '同步中…'
+  if(w.code!=='DE')return '立即同步'
+  const outcome=outcomeOf(w)
+  if(outcome==='success')return '更新同步'
+  if(outcome==='partial_success')return '坚持同步'
+  if(outcome==='failed'||outcome==='needs_mapping')return '继续同步'
+  if(outcome==='needs_reconcile')return '暂停重试'
+  return '立即同步'
+}
+function shouldResume(w:Warehouse) {
+  return w.code==='DE' && !!w.last_run_id && ['partial_success','failed','needs_mapping'].includes(outcomeOf(w))
+}
+function syncedCount(w:Warehouse) {return resultById[w.id]?.successful_sku_count ?? w.successful_sku_count ?? 0}
+function failedCount(w:Warehouse) {return resultById[w.id]?.failed_sku_count ?? w.failed_sku_count ?? 0}
+function updatedCount(w:Warehouse) {return resultById[w.id]?.updated_sku_count ?? w.updated_sku_count ?? 0}
+function unchangedCount(w:Warehouse) {return resultById[w.id]?.unchanged_sku_count ?? w.unchanged_sku_count ?? 0}
+function missingCount(w:Warehouse) {return resultById[w.id]?.missing_sku_count ?? w.missing_sku_count ?? 0}
 function countsOf(w:Warehouse):Counts {
   const result=resultById[w.id]
   return result && !['queued','running'].includes(result.status)
@@ -88,12 +141,17 @@ function errorLabel(code:string) {
     XLWMS_DE_SYNC_WORKER_INTERRUPTED:'同步任务中断，检查队列后重试',
     XLWMS_DE_SYNC_NOT_AUTHORIZED:'执行用户权限不足，请联系管理员',
     XLWMS_DE_SYNC_APPLY_GATES_CHANGED:'库存写入保护条件已改变，本次未执行写入',
+    XLWMS_DE_SYNC_EVIDENCE_UNAVAILABLE:'库存操作结果待核验，请勿直接重复写入',
+    XLWMS_DE_RESUME_TARGET_INVALID:'无法找到可续传的历史任务',
+    XLWMS_DE_RESUME_NOT_NEEDED:'该批次不需要继续同步，请使用更新同步',
+    XLWMS_DE_SYNC_RECONCILIATION_REQUIRED:'前次库存写入结果待核对，禁止继续同步',
   }
   return map[code] || ('同步未完成：'+code)
 }
-async function requestJson(url:string, method:'GET'|'POST'='GET') {
+async function requestJson(url:string, method:'GET'|'POST'='GET',body?:Record<string,unknown>) {
   const response=await fetch(url,{method,credentials:'same-origin',
-    headers:{Accept:'application/json',...(method==='POST'?{'X-CSRF-TOKEN':token()}:{} )}})
+    headers:{Accept:'application/json',...(method==='POST'?{'X-CSRF-TOKEN':token(),'Content-Type':'application/json'}:{} )},
+    ...(body ? {body:JSON.stringify(body)} : {})})
   const data=await response.json()
   if(!response.ok)throw new Error(errorLabel(data.error_code||String(response.status)))
   return data
@@ -113,10 +171,23 @@ function reasonLabel(code:string|null) {
     ERP_LOCAL_RESERVATIONS_EXCEED_OMS_PHYSICAL_QOH:'ERP 本地预留库存超过 OMS 实物库存',
     LOT_RECONCILIATION_REQUIRED:'需要先完成批次库存核对',
     ABSENT_LEDGER_NOT_READY:'本仓库存台账未就绪',
+    XLWMS_DE_WRITE_PROOF_OR_READBACK_MISSING:'缺少写入凭证或 ERP 数量读回不一致',
+    OMS_SKU_DELTA_EXCEEDS_AUTO_LIMIT:'库存变化超过单 SKU 自动同步范围',
+    OMS_SKU_DEFERRED_BY_APPLY_BUDGET:'本轮库存变化额度不足，请后续继续同步',
+    FIRST_V2_APPLY_EXACT_SNAPSHOT_APPROVAL_REQUIRED:'首次库存写入需审核快照校验值',
+    OMS_MULTIPLE_SKUS_ONE_ERP_PRODUCT:'多个 OMS SKU 对应同一个 ERP 商品',
+    ERP_INVENTORY_ROW_MISSING:'ERP 商品存在，但德国仓库存身份尚未建立',
+    OMS_RESUME_PREVIOUS_SUCCESS_STOCK_CHANGED:'之前同步成功的 SKU 在 OMS 中已变化，请执行新的更新同步',
   }
   return labels[code] || code
 }
-function stockLabel(qty:number|null) { return qty===null?'—':String(qty) }
+function stockLabel(qty:number|null|undefined) { return qty===null||qty===undefined?'—':String(qty) }
+function resultLabel(code:string|null|undefined) {
+  const map:Record<string,string>={updated:'更新成功',unchanged:'已核验 · 无变化',
+    unmatched:'未匹配',blocked:'同步阻断',missing:'无本仓台账',preview:'只读预检'}
+  return code?map[code]||code:'尚无逐 SKU 执行记录'
+}
+function mappingUrl(sku:string) {return '/products/sku-aliases?search='+encodeURIComponent(sku)}
 async function loadDetails(w:Warehouse,page=1) {
   const serial=++detailRequestSerial
   detailPage.value=page
@@ -170,13 +241,18 @@ function watchRun(w:Warehouse,runId:number) {
   void poll(w,runId)
 }
 async function startSync(w:Warehouse) {
-  if(!w.can_sync || busy[w.id] || ['queued','running'].includes(statusOf(w)))return
+  if(!w.can_sync || busy[w.id] || outcomeOf(w)==='needs_reconcile' || ['queued','running'].includes(statusOf(w)))return
   busy[w.id]=true;errors[w.id]=''
   try {
-    const data=await requestJson('/sync/warehouses/'+w.id+'/sync','POST') as {
+    const resume=shouldResume(w)
+    const previousRunId=resultById[w.id]?.run_id || w.last_run_id
+    const url='/sync/warehouses/'+w.id+'/sync'+(resume?'/resume':'')
+    const data=await requestJson(url,'POST',resume&&previousRunId?{resume_from_run_id:previousRunId}:undefined) as {
       run_id:number;status:string;mode:'read_only'|'apply_if_verified'
+      run_kind?:string;resume_from_run_id?:number|null
     }
     resultById[w.id]={run_id:data.run_id,status:data.status,mode:data.mode,
+      outcome:'pending',run_kind:data.run_kind,resume_from_run_id:data.resume_from_run_id,
       erp_stock_updated:false,provider_sku_count:0,mapped_sku_count:0,
       unmatched_sku_count:0,blocked_sku_count:0,error_code:null,finished_at:null}
     watchRun(w,data.run_id)
@@ -227,8 +303,12 @@ onUnmounted(()=>{++detailRequestSerial;for(const id of timers.keys())stopPolling
                 OMS 产品 {{countsOf(warehouse).provider}} · 匹配 {{countsOf(warehouse).matched}}
                 · 未匹配 {{countsOf(warehouse).unmatched}} · 阻断 {{countsOf(warehouse).blocked}}
               </small>
+              <small v-if="warehouse.code==='DE' && ['success','partial_success','failed'].includes(outcomeOf(warehouse))" style="display:block" data-testid="de-sync-outcome-counts">
+                已同步 {{syncedCount(warehouse)}} 个 SKU（更新 {{updatedCount(warehouse)}}，无变化 {{unchangedCount(warehouse)}}）
+                · 待处理 {{failedCount(warehouse)}} · 无本仓台账 {{missingCount(warehouse)}}
+              </small>
               <small v-if="resultById[warehouse.id]?.error_code || warehouse.last_error_code" style="display:block;color:#b42318">
-                {{resultById[warehouse.id]?.error_code || warehouse.last_error_code}}
+                {{errorLabel(resultById[warehouse.id]?.error_code || warehouse.last_error_code || '')}}
               </small>
             </td>
             <td>
@@ -238,9 +318,9 @@ onUnmounted(()=>{++detailRequestSerial;for(const id of timers.keys())stopPolling
                   {{expandedId===warehouse.id?'收起明细':'查看同步明细'}}
                 </button>
               <button type="button" class="mvp-button" :data-testid="'warehouse-sync-button-'+warehouse.code"
-                :disabled="!warehouse.can_sync || !!busy[warehouse.id] || ['queued','running'].includes(statusOf(warehouse))"
+                :disabled="!warehouse.can_sync || !!busy[warehouse.id] || outcomeOf(warehouse)==='needs_reconcile' || ['queued','running'].includes(statusOf(warehouse))"
                 @click="startSync(warehouse)">
-                {{['queued','running'].includes(statusOf(warehouse))?'同步中…':'立即同步'}}
+                {{actionLabel(warehouse)}}
               </button>
               </div>
               <small v-if="!warehouse.can_sync" style="display:block">暂未开放</small>
@@ -265,8 +345,16 @@ onUnmounted(()=>{++detailRequestSerial;for(const id of timers.keys())stopPolling
                     <div><strong>{{details.counts.matched+details.counts.unmatched+details.counts.blocked}}</strong><span>有本仓库存记录</span></div>
                     <div><strong>{{details.counts.matched}}</strong><span>ERP SKU 已匹配</span></div>
                     <div class="de-metric-warning"><strong>{{details.counts.unmatched}}</strong><span>SKU 未匹配</span></div>
+                    <div><strong>{{details.latest_run?.successful_sku_count??0}}</strong><span>成功处理 SKU（更新 {{details.latest_run?.updated_sku_count??0}}）</span></div>
                     <div><strong>{{details.snapshot.erp_stock_updated?'已执行':'未执行'}}</strong><span>ERP 库存写入</span></div>
                   </div>
+                  <p v-if="details.latest_run" class="de-snapshot-line" data-testid="de-sync-run-outcome">
+                    最新运行 #{{details.latest_run.id}} ·
+                    {{labels[details.latest_run.outcome||'']||details.latest_run.outcome||'待核验'}} ·
+                    {{details.latest_run.successful_sku_count??0}} 个 SKU 成功（已更新 {{details.latest_run.updated_sku_count??0}}，无变化 {{details.latest_run.unchanged_sku_count??0}}） ·
+                    {{details.latest_run.failed_sku_count??0}} 个待处理 ·
+                    {{details.latest_run.missing_sku_count??0}} 个无本仓库存记录
+                  </p>
                   <p v-if="details.snapshot" class="de-snapshot-line">
                     快照 #{{details.snapshot.id}} · {{dateLabel(details.snapshot.fetched_at)}} ·
                     {{details.snapshot.erp_stock_updated?'已通过库存写入流程':'OMS 已读取，尚未更新 ERP'}}
@@ -292,7 +380,8 @@ onUnmounted(()=>{++detailRequestSerial;for(const id of timers.keys())stopPolling
                     <table class="de-table" aria-label="SKU 匹配明细">
                       <thead><tr>
                         <th>OMS SKU</th><th>ERP SKU</th><th>OMS 总库存</th><th>可用</th><th>锁定</th><th>在途</th>
-                        <th>匹配状态</th><th>错误 / 差异原因</th>
+                        <th>ERP 原库存</th><th>读回库存</th><th>库存变化</th><th>逐 SKU 执行结果</th>
+                        <th>匹配状态</th><th>错误 / 差异原因</th><th>异常处理</th>
                       </tr></thead>
                       <tbody>
                         <tr v-for="row in details.rows" :key="row.provider_sku" data-testid="de-sku-row">
@@ -302,10 +391,16 @@ onUnmounted(()=>{++detailRequestSerial;for(const id of timers.keys())stopPolling
                           <td>{{stockLabel(row.oms_available)}}</td>
                           <td>{{stockLabel(row.oms_locked)}}</td>
                           <td>{{stockLabel(row.oms_in_transit)}}</td>
+                          <td>{{stockLabel(row.erp_before)}}</td>
+                          <td>{{stockLabel(row.erp_after)}}</td>
+                          <td>{{stockLabel(row.delta)}}</td>
+                          <td><span :class="['de-resolution', 'de-resolution-'+(row.sync_outcome||'preview')]">{{resultLabel(row.sync_outcome)}}</span></td>
                           <td><span :class="['de-resolution', 'de-resolution-'+row.resolution_status]">{{resolutionLabel(row.resolution_status)}}</span></td>
-                          <td>{{reasonLabel(row.mismatch_reason)}}</td>
+                          <td>{{reasonLabel(row.sync_error_code||row.mismatch_reason)}}</td>
+                          <td><a v-if="row.resolution_status==='unmatched' && props.can_map_sku" :href="mappingUrl(row.provider_sku)"
+                            class="de-alias-link" title="打开现有 Product OS 核实别名">核实并关联现有 ERP SKU</a><span v-else-if="row.resolution_status==='unmatched'">需要产品管理权限</span><span v-else>—</span></td>
                         </tr>
-                        <tr v-if="details.rows.length===0"><td colspan="8" class="de-empty">当前筛选条件没有 SKU</td></tr>
+                        <tr v-if="details.rows.length===0"><td colspan="13" class="de-empty">当前筛选条件没有 SKU</td></tr>
                       </tbody>
                     </table>
                   </div>
@@ -321,7 +416,7 @@ onUnmounted(()=>{++detailRequestSerial;for(const id of timers.keys())stopPolling
                   <div class="de-table-scroll">
                     <table class="de-table" aria-label="同步重试记录">
                       <thead><tr>
-                        <th>运行编号</th><th>执行时间</th><th>结果</th><th>模式</th><th>已匹配 / 未匹配</th><th>失败原因</th>
+                        <th>运行编号</th><th>执行时间</th><th>结果</th><th>模式</th><th>已完成 SKU</th><th>待处理 SKU</th><th>重试来源</th><th>失败原因</th>
                       </tr></thead>
                       <tbody>
                         <tr v-for="run in details.runs" :key="run.id" data-testid="de-run-row">
@@ -329,14 +424,16 @@ onUnmounted(()=>{++detailRequestSerial;for(const id of timers.keys())stopPolling
                           <td>{{dateLabel(run.created_at)}}</td>
                           <td>{{labels[run.status]||run.status}}</td>
                           <td>{{run.mode==='read_only'?'只读':'验证后写入'}}</td>
-                          <td>{{run.mapped_sku_count}} / {{run.unmatched_sku_count}}</td>
+                          <td>{{run.successful_sku_count??0}}</td>
+                          <td>{{run.failed_sku_count??run.unmatched_sku_count}}</td>
+                          <td>{{run.resume_from_run_id?'继续 #'+run.resume_from_run_id:'—'}}</td>
                           <td>{{run.error_code?errorLabel(run.error_code):'—'}}</td>
                         </tr>
-                        <tr v-if="details.runs.length===0"><td colspan="6" class="de-empty">暂无执行记录</td></tr>
+                        <tr v-if="details.runs.length===0"><td colspan="8" class="de-empty">暂无执行记录</td></tr>
                       </tbody>
                     </table>
                   </div>
-                  <p class="de-note">未匹配时，请核对 ERP 产品主数据中的现有 SKU；重复读取不会自动创建商品或修复映射。只有“ERP 库存已同步”才表示完成库存写入。</p>
+                  <p class="de-note">未匹配的 SKU 请进入现有 Product OS 核实并关联，再点击「继续同步」重新读取最新 OMS 库存。无本仓库存台账不代表库存为 0。继续同步仍会重新读取完整 OMS 数据并重新校验，已一致的 SKU 不得重复产生库存变更。</p>
                 </template>
               </section>
             </td>
@@ -369,7 +466,7 @@ onUnmounted(()=>{++detailRequestSerial;for(const id of timers.keys())stopPolling
 .de-search-form{display:flex;align-items:center;gap:6px;margin-left:auto}
 .de-search-form input{min-width:215px}
 .de-table-scroll{overflow-x:auto;border:1px solid #dbe5eb;border-radius:8px;background:white}
-.de-table{width:100%;border-collapse:collapse;min-width:780px;font-size:12px;text-align:left}
+.de-table{width:100%;border-collapse:collapse;min-width:1180px;font-size:12px;text-align:left}
 .de-table th{color:#506b7b;background:#f8fafc;font-weight:600;padding:8px 10px;border-bottom:1px solid #dbe5eb;white-space:nowrap}
 .de-table td{padding:7px 10px;border-bottom:1px solid #edf1f4;vertical-align:middle}
 .de-table tbody tr:last-child td{border-bottom:none}
@@ -377,7 +474,9 @@ onUnmounted(()=>{++detailRequestSerial;for(const id of timers.keys())stopPolling
 .de-table .de-sku{font-weight:650;white-space:nowrap;color:#096f6a}
 .de-resolution{display:inline-block;border-radius:5px;padding:3px 6px;white-space:nowrap;background:#e7f4f2;color:#13685d}
 .de-resolution-unmatched,.de-resolution-blocked{background:#fff0e2;color:#9b4b23}
-.de-resolution-catalog_only{background:#e9eff5;color:#4e6678}
+.de-resolution-catalog_only,.de-resolution-missing,.de-resolution-preview{background:#e9eff5;color:#4e6678}
+.de-resolution-updated,.de-resolution-unchanged{background:#e7f4f2;color:#13685d}
+.de-alias-link{color:#0e7772;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 .de-pagination{display:flex;justify-content:flex-end;align-items:center;gap:8px;font-size:12px;margin:8px 0 14px;color:#60788a}
 .de-history-title{font-size:14px;font-weight:700;margin:10px 0 7px}
 .de-note{font-size:12px;color:#60798b;margin:9px 0 0}

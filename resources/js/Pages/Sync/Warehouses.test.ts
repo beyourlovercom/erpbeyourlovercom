@@ -37,7 +37,7 @@ describe('Warehouse sync operator UI', () => {
   it('shows read-only snapshot and counts, with a rightmost action only enabled for DE', () => {
     const wrapper=mount(Warehouses, {props:{warehouses:[warehouse,other]}})
     expect(wrapper.findAll('thead th').at(-1)?.text()).toBe('同步操作')
-    expect(wrapper.get('[data-testid="warehouse-sync-status-DE"]').text()).toBe('读取成功 · 未更新 ERP')
+    expect(wrapper.get('[data-testid="warehouse-sync-status-DE"]').text()).toBe('只读预检 · 未更新 ERP')
     expect(wrapper.text()).toContain('OMS 产品 34 · 匹配 0 · 未匹配 34')
     expect(wrapper.get('[data-testid="warehouse-sync-button-DE"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.get('[data-testid="warehouse-sync-button-US-SM"]').attributes('disabled')).toBeDefined()
@@ -48,7 +48,7 @@ describe('Warehouse sync operator UI', () => {
   it('distinguishes an actual ERP apply from a successful OMS read', () => {
     const applied={...warehouse, last_sync_status:'applied', last_applied_at:'2026-11-21T02:00:00Z'}
     const wrapper=mount(Warehouses,{props:{warehouses:[applied]}})
-    expect(wrapper.get('[data-testid="warehouse-sync-status-DE"]').text()).toBe('ERP 库存已同步')
+    expect(wrapper.get('[data-testid="warehouse-sync-status-DE"]').text()).toBe('历史库存状态待核验')
     wrapper.unmount()
   })
 
@@ -66,7 +66,7 @@ describe('Warehouse sync operator UI', () => {
     await flushPromises()
     expect(fetchMock).toHaveBeenCalledWith('/sync/warehouses/4/sync',expect.objectContaining({method:'POST'}))
     expect(fetchMock).toHaveBeenCalledWith('/sync/warehouses/4/sync/77',expect.objectContaining({method:'GET'}))
-    expect(wrapper.get('[data-testid="warehouse-sync-status-DE"]').text()).toBe('读取成功 · 未更新 ERP')
+    expect(wrapper.get('[data-testid="warehouse-sync-status-DE"]').text()).toBe('只读预检 · 未更新 ERP')
     expect(wrapper.get('[data-testid="warehouse-sync-status-DE"]').text()).not.toBe('ERP 库存已同步')
     wrapper.unmount()
   })
@@ -77,7 +77,7 @@ describe('Warehouse sync operator UI', () => {
     await wrapper.get('[data-testid="warehouse-sync-button-DE"]').trigger('click')
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('已有同步任务执行中')
-    expect(wrapper.get('[data-testid="warehouse-sync-status-DE"]').text()).toBe('读取成功 · 未更新 ERP')
+    expect(wrapper.get('[data-testid="warehouse-sync-status-DE"]').text()).toBe('只读预检 · 未更新 ERP')
     wrapper.unmount()
   })
 
@@ -137,6 +137,83 @@ describe('Warehouse sync operator UI', () => {
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('后台同步超时')
     expect(wrapper.get('[data-testid="warehouse-sync-status-DE"]').text()).toContain('待处理 SKU 差异')
+    wrapper.unmount()
+  })
+
+  it('shows all three final outcomes and uses resume only for unfinished batches', async () => {
+    const finishedBase={...warehouse,last_run_id:11,successful_sku_count:3,
+      updated_sku_count:2,unchanged_sku_count:1,failed_sku_count:1,missing_sku_count:2}
+    const success=mount(Warehouses,{props:{warehouses:[{
+      ...finishedBase,last_sync_status:'applied',last_outcome:'success',
+    }]}})
+    expect(success.get('[data-testid="warehouse-sync-status-DE"]').text()).toBe('完全同步成功')
+    expect(success.get('[data-testid="warehouse-sync-button-DE"]').text()).toBe('更新同步')
+    expect(success.get('[data-testid="de-sync-outcome-counts"]').text()).toContain('已同步 3 个 SKU')
+    success.unmount()
+
+    const failed=mount(Warehouses,{props:{warehouses:[{
+      ...finishedBase,last_sync_status:'failed',last_outcome:'failed',
+      successful_sku_count:0,
+    }]}})
+    expect(failed.get('[data-testid="warehouse-sync-status-DE"]').text()).toBe('完全同步失败')
+    expect(failed.get('[data-testid="warehouse-sync-button-DE"]').text()).toBe('继续同步')
+    failed.unmount()
+
+    const fetchMock=vi.mocked(fetch)
+    fetchMock.mockResolvedValueOnce(response({run_id:12,status:'queued',mode:'read_only',
+      run_kind:'resume',resume_from_run_id:11}) as Response)
+      .mockResolvedValueOnce(response({run_id:12,status:'blocked',mode:'read_only',
+        outcome:'preview',successful_sku_count:0,updated_sku_count:0,
+        unchanged_sku_count:0,failed_sku_count:1,missing_sku_count:2,
+        provider_sku_count:5,mapped_sku_count:3,unmatched_sku_count:1,
+        blocked_sku_count:0,error_code:null,erp_stock_updated:false,
+        finished_at:'2026-11-21T03:00:00Z'}) as Response)
+    const partial=mount(Warehouses,{props:{warehouses:[{
+      ...finishedBase,last_sync_status:'partial_applied',last_outcome:'partial_success',
+    }]}})
+    expect(partial.get('[data-testid="warehouse-sync-status-DE"]').text()).toBe('部分同步成功')
+    expect(partial.get('[data-testid="warehouse-sync-button-DE"]').text()).toBe('坚持同步')
+    await partial.get('[data-testid="warehouse-sync-button-DE"]').trigger('click')
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledWith('/sync/warehouses/4/sync/resume',
+      expect.objectContaining({method:'POST',body:JSON.stringify({resume_from_run_id:11})}))
+    expect(fetchMock).toHaveBeenCalledWith('/sync/warehouses/4/sync/12',
+      expect.objectContaining({method:'GET'}))
+    partial.unmount()
+  })
+
+  it('shows verified before/after values and existing Product OS mapping path', async () => {
+    vi.mocked(fetch).mockResolvedValue(response({
+      snapshot:{id:1,status:'partial_applied',fetched_at:'2026-11-21T09:41:00Z',
+        applied_at:'2026-11-21T09:41:10Z',erp_stock_updated:true,
+        provider_sku_count:2,mapped_sku_count:1,unmatched_sku_count:1,blocked_sku_count:0},
+      counts:{matched:1,unmatched:1,blocked:0,catalog_only:0},
+      rows:[{provider_sku:'DE-READY',erp_sku:'DE-READY',
+          resolution_status:'matched',oms_total:9,oms_available:9,
+          oms_locked:0,oms_in_transit:0,mismatch_reason:null,
+          sync_outcome:'updated',erp_before:6,erp_after:9,delta:3,write_verified:true},
+        {provider_sku:'DE-UNKNOWN',erp_sku:null,resolution_status:'unmatched',
+          oms_total:5,oms_available:5,oms_locked:0,oms_in_transit:0,
+          mismatch_reason:'OMS_SKU_NOT_VERIFIED_ERP_IDENTITY',sync_outcome:'unmatched'}],
+      pagination:{page:1,per_page:50,total:2},
+      runs:[{id:6,status:'partial_applied',outcome:'partial_success',mode:'apply_if_verified',
+        snapshot_id:1,provider_sku_count:2,mapped_sku_count:1,unmatched_sku_count:1,
+        blocked_sku_count:0,successful_sku_count:1,updated_sku_count:1,
+        unchanged_sku_count:0,failed_sku_count:1,missing_sku_count:0,
+        error_code:null,created_at:'2026-11-21T09:41:00Z',finished_at:'2026-11-21T09:41:10Z'}],
+      latest_run:{id:6,status:'partial_applied',outcome:'partial_success',mode:'apply_if_verified',
+        successful_sku_count:1,updated_sku_count:1,unchanged_sku_count:0,
+        failed_sku_count:1,missing_sku_count:0},
+    }) as Response)
+    const wrapper=mount(Warehouses,{props:{warehouses:[warehouse],can_map_sku:true}})
+    await wrapper.get('[data-testid="warehouse-sync-details-DE"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="de-sync-run-outcome"]').text()).toContain('1 个 SKU 成功')
+    expect(wrapper.findAll('[data-testid="de-sku-row"]')).toHaveLength(2)
+    expect(wrapper.findAll('[data-testid="de-sku-row"]')[0].text()).toContain('更新成功')
+    expect(wrapper.findAll('[data-testid="de-sku-row"]')[0].text()).toContain('9')
+    expect(wrapper.find('a.de-alias-link').attributes('href')).toBe(
+      '/products/sku-aliases?search=DE-UNKNOWN')
     wrapper.unmount()
   })
 

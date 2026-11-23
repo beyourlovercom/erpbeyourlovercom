@@ -20,6 +20,16 @@ final class DeTianyunWarehouseSyncController
 {
     public function start(Request $request, Warehouse $warehouse): JsonResponse
     {
+        return $this->queue($request, $warehouse, false);
+    }
+
+    public function resume(Request $request, Warehouse $warehouse): JsonResponse
+    {
+        return $this->queue($request, $warehouse, true);
+    }
+
+    private function queue(Request $request, Warehouse $warehouse, bool $resume): JsonResponse
+    {
         abort_unless(app()->environment('local', 'testing')
             && (bool) config('xlwms.de_manual_sync_enabled', false), 403);
         abort_unless($warehouse->code === 'DE' && $warehouse->is_active, 404);
@@ -35,12 +45,32 @@ final class DeTianyunWarehouseSyncController
             return $this->error('XLWMS_DE_CONNECTOR_NOT_CONFIGURED', 409);
         }
 
+        $resumeId = null;
+        if ($resume) {
+            $data = $request->validate(['resume_from_run_id' => ['required', 'integer', 'min:1']]);
+            $previous = DB::table('xlwms_inventory_manual_runs')
+                ->where('id', $data['resume_from_run_id'])
+                ->where('warehouse_id', $warehouse->id)->first();
+            if (! $previous || in_array($previous->status, ['queued', 'running'], true)) {
+                return $this->error('XLWMS_DE_RESUME_TARGET_INVALID', 409);
+            }
+            if (! in_array($previous->outcome, ['failed', 'partial_success', 'preview'], true)
+                && ! in_array($previous->status, ['blocked', 'failed', 'not_ready'], true)) {
+                return $this->error('XLWMS_DE_RESUME_NOT_NEEDED', 409);
+            }
+            $resumeId = (int) $previous->id;
+        }
+
         $lock = Cache::lock('xlwms:de:manual-sync:start', 15);
         if (! $lock->get()) {
             return $this->error('XLWMS_DE_SYNC_LOCKED', 409);
         }
         try {
             $this->expireStale($warehouse);
+            if (DB::table('xlwms_inventory_manual_runs')
+                ->where('warehouse_id', $warehouse->id)->where('outcome', 'needs_reconcile')->exists()) {
+                return $this->error('XLWMS_DE_SYNC_RECONCILIATION_REQUIRED', 409);
+            }
             if (DB::table('xlwms_inventory_manual_runs')
                 ->where('warehouse_id', $warehouse->id)
                 ->whereIn('status', ['queued', 'running'])->exists()) {
@@ -54,6 +84,8 @@ final class DeTianyunWarehouseSyncController
                 'operator_user_id' => (int) $request->user()->id,
                 'status' => 'queued',
                 'apply_requested' => $apply,
+                'run_kind' => $resume ? 'resume' : 'refresh',
+                'resume_from_run_id' => $resumeId,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -61,7 +93,7 @@ final class DeTianyunWarehouseSyncController
                 RunDeTianyunWarehouseSync::dispatch($runId)->onQueue('default');
             } catch (Throwable) {
                 DB::table('xlwms_inventory_manual_runs')->where('id', $runId)->update([
-                    'status' => 'failed', 'error_code' => 'XLWMS_DE_SYNC_QUEUE_UNAVAILABLE',
+                    'status' => 'failed', 'outcome' => 'failed', 'error_code' => 'XLWMS_DE_SYNC_QUEUE_UNAVAILABLE',
                     'finished_at' => now(), 'updated_at' => now(),
                 ]);
 
@@ -70,6 +102,8 @@ final class DeTianyunWarehouseSyncController
 
             return response()->json([
                 'run_id' => $runId, 'status' => 'queued',
+                'run_kind' => $resume ? 'resume' : 'refresh',
+                'resume_from_run_id' => $resumeId,
                 'mode' => $apply ? 'apply_if_verified' : 'read_only',
                 'erp_stock_updated' => false,
             ], 202)->header('Cache-Control', 'no-store, private');
@@ -92,6 +126,14 @@ final class DeTianyunWarehouseSyncController
             'run_id' => (int) $run->id,
             'status' => $run->status,
             'mode' => $run->apply_requested ? 'apply_if_verified' : 'read_only',
+            'outcome' => $run->outcome,
+            'run_kind' => $run->run_kind,
+            'resume_from_run_id' => $run->resume_from_run_id,
+            'successful_sku_count' => (int) $run->successful_sku_count,
+            'updated_sku_count' => (int) $run->updated_sku_count,
+            'unchanged_sku_count' => (int) $run->unchanged_sku_count,
+            'failed_sku_count' => (int) $run->failed_sku_count,
+            'missing_sku_count' => (int) $run->missing_sku_count,
             'erp_stock_updated' => in_array($run->status, ['applied', 'partial_applied'], true),
             'provider_sku_count' => (int) $run->provider_sku_count,
             'mapped_sku_count' => (int) $run->mapped_sku_count,
@@ -131,7 +173,9 @@ final class DeTianyunWarehouseSyncController
                 ->where('warehouse_id', $warehouse->id)->orderByDesc('id')->limit(12)
                 ->get(['id', 'status', 'apply_requested', 'snapshot_id', 'provider_sku_count',
                     'mapped_sku_count', 'unmatched_sku_count', 'blocked_sku_count',
-                    'error_code', 'created_at', 'finished_at'])
+                    'error_code', 'created_at', 'finished_at', 'run_kind', 'resume_from_run_id',
+                    'outcome', 'successful_sku_count', 'updated_sku_count',
+                    'unchanged_sku_count', 'failed_sku_count', 'missing_sku_count'])
                 ->map(static fn ($run): array => [
                     'id' => (int) $run->id,
                     'status' => $run->status,
@@ -142,6 +186,14 @@ final class DeTianyunWarehouseSyncController
                     'unmatched_sku_count' => (int) $run->unmatched_sku_count,
                     'blocked_sku_count' => (int) $run->blocked_sku_count,
                     'error_code' => $run->error_code,
+                    'outcome' => $run->outcome,
+                    'run_kind' => $run->run_kind,
+                    'resume_from_run_id' => $run->resume_from_run_id,
+                    'successful_sku_count' => (int) $run->successful_sku_count,
+                    'updated_sku_count' => (int) $run->updated_sku_count,
+                    'unchanged_sku_count' => (int) $run->unchanged_sku_count,
+                    'failed_sku_count' => (int) $run->failed_sku_count,
+                    'missing_sku_count' => (int) $run->missing_sku_count,
                     'created_at' => $run->created_at,
                     'finished_at' => $run->finished_at,
                 ])->all()
@@ -153,6 +205,7 @@ final class DeTianyunWarehouseSyncController
                 'counts' => ['matched' => 0, 'unmatched' => 0, 'blocked' => 0, 'catalog_only' => 0],
                 'rows' => [], 'pagination' => ['page' => $page, 'per_page' => $perPage, 'total' => 0],
                 'runs' => $runs,
+                'latest_run' => $runs[0] ?? null,
             ])->header('Cache-Control', 'no-store, private');
         }
 
@@ -165,8 +218,16 @@ final class DeTianyunWarehouseSyncController
             $counts[$key] = (int) ($byStatus[$key] ?? 0);
         }
 
+        $latestRun = $runs[0] ?? null;
+        $detailRunId = $latestRun !== null
+            && (int) ($latestRun['snapshot_id'] ?? 0) === (int) $snapshot->id
+                ? (int) $latestRun['id'] : 0;
         $query = DB::table('xlwms_inventory_snapshot_rows as r')
             ->leftJoin('products as p', 'p.id', '=', 'r.product_id')
+            ->leftJoin('xlwms_inventory_manual_run_rows as rr', static function ($join) use ($detailRunId): void {
+                $join->on('rr.provider_sku', '=', 'r.provider_sku')
+                    ->where('rr.run_id', '=', $detailRunId);
+            })
             ->where('r.snapshot_id', $snapshot->id);
         if ($status !== 'all') {
             $query->where('r.resolution_status', $status);
@@ -178,7 +239,9 @@ final class DeTianyunWarehouseSyncController
         $rows = $query->orderBy('r.provider_sku')->forPage($page, $perPage)
             ->get(['r.provider_sku', 'p.sku as erp_sku', 'r.resolution_status',
                 'r.oms_total', 'r.oms_available', 'r.oms_locked',
-                'r.oms_in_transit', 'r.mismatch_reason']);
+                'r.oms_in_transit', 'r.mismatch_reason', 'rr.outcome as sync_outcome',
+                'rr.erp_before', 'rr.erp_after', 'rr.delta', 'rr.write_verified',
+                'rr.error_code as sync_error_code']);
 
         return response()->json([
             'snapshot' => [
@@ -196,6 +259,7 @@ final class DeTianyunWarehouseSyncController
             'rows' => $rows,
             'pagination' => ['page' => $page, 'per_page' => $perPage, 'total' => $total],
             'runs' => $runs,
+            'latest_run' => $latestRun,
         ])->header('Cache-Control', 'no-store, private');
     }
 
@@ -207,7 +271,7 @@ final class DeTianyunWarehouseSyncController
             ->whereIn('status', ['queued', 'running'])
             ->where('updated_at', '<', now()->subMinutes(5))
             ->update([
-                'status' => 'failed', 'error_code' => 'XLWMS_DE_SYNC_TIMEOUT',
+                'status' => 'failed', 'outcome' => 'failed', 'error_code' => 'XLWMS_DE_SYNC_TIMEOUT',
                 'finished_at' => now(), 'updated_at' => now(),
             ]);
     }

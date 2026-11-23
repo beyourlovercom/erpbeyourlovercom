@@ -3,6 +3,7 @@
 namespace App\Modules\Sync\Experience\Jobs;
 
 use App\Models\User;
+use App\Modules\Sync\Application\DeTianyunInventoryRunReporter;
 use App\Modules\Logistics\Application\Xlwms\XlwmsInventorySyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -24,7 +25,7 @@ final class RunDeTianyunWarehouseSync implements ShouldQueue
 
     public function __construct(public readonly int $runId) {}
 
-    public function handle(XlwmsInventorySyncService $service): void
+    public function handle(XlwmsInventorySyncService $service, DeTianyunInventoryRunReporter $reporter): void
     {
         $lock = Cache::lock('xlwms:de:manual-sync:worker', 120);
         if (! $lock->get()) {
@@ -59,7 +60,14 @@ final class RunDeTianyunWarehouseSync implements ShouldQueue
                 return; // Another worker or stale-task cleanup already resolved this run.
             }
             try {
-                $result = $service->sync((bool) $run->apply_requested, 'DE');
+                $resumeVerifiedSkus = $run->resume_from_run_id === null ? []
+                    : DB::table('xlwms_inventory_manual_run_rows')
+                        ->where('run_id', $run->resume_from_run_id)
+                        ->where('write_verified', true)
+                        ->whereIn('outcome', ['updated', 'unchanged'])
+                        ->pluck('provider_sku')->all();
+                $result = $service->sync((bool) $run->apply_requested, 'DE', $resumeVerifiedSkus);
+                $stats = $reporter->record($this->runId, $result);
                 $state = (string) ($result['status'] ?? 'failed');
                 if (! in_array($state, ['read_only', 'blocked', 'not_ready', 'applied', 'partial_applied'], true)) {
                     $state = 'failed';
@@ -72,11 +80,14 @@ final class RunDeTianyunWarehouseSync implements ShouldQueue
                     'unmatched_sku_count' => (int) ($result['unmatched_sku_count'] ?? 0),
                     'blocked_sku_count' => (int) ($result['blocked_sku_count'] ?? 0),
                     'error_code' => $state === 'failed' ? 'XLWMS_DE_SYNC_UNEXPECTED_RESULT' : null,
+                    'outcome' => $stats['outcome'],
                     'finished_at' => now(), 'updated_at' => now(),
                 ]);
             } catch (Throwable) {
                 // Provider exceptions can contain signed payloads or secret metadata.
-                $this->markFailed('XLWMS_DE_SYNC_PROVIDER_FAILED');
+                // If stock changed but evidence logging failed, do not imply an OMS failure.
+                $code = isset($result) ? 'XLWMS_DE_SYNC_EVIDENCE_UNAVAILABLE' : 'XLWMS_DE_SYNC_PROVIDER_FAILED';
+                $this->markFailed($code);
             }
         } finally {
             $lock->release();
@@ -92,7 +103,9 @@ final class RunDeTianyunWarehouseSync implements ShouldQueue
     {
         DB::table('xlwms_inventory_manual_runs')->where('id', $this->runId)
             ->whereIn('status', ['queued', 'running'])->update([
-                'status' => 'failed', 'error_code' => $code,
+                'status' => $code === 'XLWMS_DE_SYNC_EVIDENCE_UNAVAILABLE' ? 'not_ready' : 'failed',
+                'outcome' => $code === 'XLWMS_DE_SYNC_EVIDENCE_UNAVAILABLE' ? 'needs_reconcile' : 'failed',
+                'error_code' => $code,
                 'finished_at' => now(), 'updated_at' => now(),
             ]);
     }

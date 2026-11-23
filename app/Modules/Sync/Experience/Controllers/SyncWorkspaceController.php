@@ -257,6 +257,8 @@ final class SyncWorkspaceController
             && (bool) $request->user()?->can('sync.operate');
 
         return Inertia::render('Sync/Warehouses', [
+            'can_map_sku' => (bool) ($request->user()?->can('products.view')
+                && $request->user()?->can('products.operate')),
             'warehouses' => $warehouses->map(static function (Warehouse $warehouse) use ($connections, $snapshots, $runs, $manualEnabled): array {
                 $connection = $connections->get($warehouse->id);
                 $snapshot = $snapshots->get($warehouse->id);
@@ -280,6 +282,13 @@ final class SyncWorkspaceController
                     'last_sync_status' => $displayRun ? $run->status : ($snapshot?->status ?? 'never'),
                     'last_error_code' => $displayRun ? $run->error_code : null,
                     'active_run_id' => $run && in_array($run->status, ['queued', 'running'], true) ? $run->id : null,
+                'last_run_id' => $run?->id,
+                'last_outcome' => $run?->outcome ?? 'never',
+                'successful_sku_count' => (int) ($run?->successful_sku_count ?? 0),
+                'updated_sku_count' => (int) ($run?->updated_sku_count ?? 0),
+                'unchanged_sku_count' => (int) ($run?->unchanged_sku_count ?? 0),
+                'failed_sku_count' => (int) ($run?->failed_sku_count ?? 0),
+                'missing_sku_count' => (int) ($run?->missing_sku_count ?? 0),
                     'sync_counts' => [
                         'provider' => (int) ($displayRun ? $run->provider_sku_count : ($snapshot?->provider_sku_count ?? 0)),
                         'matched' => (int) ($displayRun ? $run->mapped_sku_count : ($snapshot?->mapped_sku_count ?? 0)),
