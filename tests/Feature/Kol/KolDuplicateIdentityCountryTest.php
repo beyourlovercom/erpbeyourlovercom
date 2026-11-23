@@ -89,6 +89,26 @@ final class KolDuplicateIdentityCountryTest extends TestCase
         $this->assertDatabaseCount('kols', 1);
     }
 
+    public function test_nationality_and_shipping_country_save_as_independent_fields(): void
+    {
+        $actor = $this->staff();
+        $kol = $this->existing($actor, 'Synthetic Nationality Edit');
+        $kol->forceFill(['country_code' => 'US', 'shipping_country' => 'MX'])->save();
+
+        $this->actingAs($actor)->patch('/kol/library/'.$kol->id, [
+            'display_name' => 'Synthetic Nationality Edit',
+            'status' => 'active',
+            'relationship_stage' => 'cooperating',
+            'country_code' => 'New Zealand',
+            'shipping_country' => 'MX',
+            'social_accounts' => [],
+        ])->assertRedirect(route('kol.library.show', $kol))->assertSessionDoesntHaveErrors();
+
+        $kol->refresh();
+        self::assertSame('New Zealand', $kol->country_code);
+        self::assertSame('MX', $kol->shipping_country);
+    }
+
     public function test_custom_country_is_not_rejected_by_fixed_country_list(): void
     {
         $actor = $this->staff();

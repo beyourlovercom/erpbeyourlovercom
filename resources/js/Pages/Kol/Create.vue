@@ -4,24 +4,11 @@ import { computed, ref, watch, onUnmounted } from 'vue'
 import axios from 'axios'
 import { useWorkspaceDraftGuard } from '../../Composables/useWorkspaceDraftGuard'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
-import SearchableSelect from '../../Components/SearchableSelect.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 import { plusThreeYears, localTodayDate } from './couponExpiryDate'
 
 type OwnerOption = { value: number; label: string }
 
-const countryOptions = [
-  { value: 'US', label: 'United States' },
-  { value: 'GB', label: 'United Kingdom' },
-  { value: 'DE', label: 'Germany' },
-  { value: 'FR', label: 'France' },
-  { value: 'CA', label: 'Canada' },
-  { value: 'EU', label: 'Europe' },
-  { value: 'AU', label: 'Australia' },
-  { value: 'ASIA', label: '东南亚' },
-  { value: 'PH', label: 'Philippines' },
-  { value: 'OTHER', label: '其他' },
-]
 const languageOptions = [
   { value: 'en', label: 'English' },
   { value: 'es', label: 'Spanish' },
@@ -42,7 +29,7 @@ const props = withDefaults(defineProps<{
 
 const form = useForm({
   display_name: '',
-  country_code: 'US',
+  country_code: '',
   language: 'en',
   status: 'active',
   owner_id: String(props.currentUserId),
@@ -106,7 +93,6 @@ const form = useForm({
 // Only publish the unsaved boolean; no KOL or payment details are stored.
 useWorkspaceDraftGuard(() => form.isDirty)
 
-const customCountry = ref('')
 type DuplicateResult = { exists: boolean; message?: string | null; existing_url?: string | null }
 const duplicate = ref<DuplicateResult>({ exists: false })
 const duplicateChecking = ref(false)
@@ -184,7 +170,6 @@ const submit = async () => {
   if (await checkDuplicate()) return
   form.transform(data => ({
     ...data,
-    country_code: data.country_code === 'OTHER' ? customCountry.value.trim() : data.country_code,
     owner_id: data.owner_id ? Number(data.owner_id) : null,
     approval_manager_id: data.approval_manager_id ? Number(data.approval_manager_id) : null,
     finance_owner_id: data.finance_owner_id ? Number(data.finance_owner_id) : null,
@@ -264,10 +249,9 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <p v-if="form.errors.display_name" class="erp-field-error">{{ form.errors.display_name }}</p>
               </div>
               <div class="erp-form-field">
-                <label class="erp-form-label">国家/地区</label>
-                <SearchableSelect v-model="form.country_code" :options="countryOptions" placeholder="搜索国家/地区" />
-                <input v-if="form.country_code === 'OTHER'" v-model="customCountry" data-testid="custom-kol-country" class="erp-input" maxlength="128" required placeholder="请输入实际国家名称，例如：Mexico、Brazil">
-                <small v-if="form.country_code === 'OTHER'">没有对应选项时直接填写实际国家名称，不会只保存“其他”。</small>
+                <label for="kol-nationality-country" class="erp-form-label">国籍地</label>
+                <input id="kol-nationality-country" v-model="form.country_code" data-testid="kol-nationality-country" type="text" class="erp-input" :class="{ 'has-error': form.errors.country_code }" maxlength="128" placeholder="自由填写，例如：Mexico、墨西哥、Brazil（可选）">
+                <small>国籍地与实际物流收件国家分别记录。</small>
                 <p v-if="form.errors.country_code" class="erp-field-error">{{ form.errors.country_code }}</p>
               </div>
               <div class="erp-form-field">
@@ -348,8 +332,8 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <p v-if="form.errors.shipping_recipient_name" class="erp-field-error">{{ form.errors.shipping_recipient_name }}</p>
               </div>
               <div class="erp-form-field">
-                <label class="erp-form-label">国家</label>
-                <input v-model="form.shipping_country" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_country }" maxlength="8" placeholder="例如：US">
+                <label class="erp-form-label">现居国家（收件地址）</label>
+                <input v-model="form.shipping_country" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_country }" maxlength="8" placeholder="例如：MX、US">
                 <p v-if="form.errors.shipping_country" class="erp-field-error">{{ form.errors.shipping_country }}</p>
               </div>
               <div class="erp-form-field">

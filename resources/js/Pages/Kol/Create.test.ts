@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import SearchableSelect from '../../Components/SearchableSelect.vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Create from './Create.vue'
 
@@ -40,13 +39,20 @@ const defaultProps = {
 describe('Kol/Create VI contract', () => {
   afterEach(() => { vi.useRealTimers(); axiosGetMock.mockReset() })
 
-  it('shows a free-text country field when selecting Other', async () => {
+  it('uses one unrestricted nationality input independent of the shipping country', async () => {
     const wrapper = mount(Create, { props: defaultProps })
-    wrapper.getComponent(SearchableSelect).vm.$emit('update:modelValue', 'OTHER')
-    await nextTick()
-    expect(wrapper.find('[data-testid="custom-kol-country"]').exists()).toBe(true)
-    await wrapper.get('[data-testid="custom-kol-country"]').setValue('Mexico')
-    expect((wrapper.get('[data-testid="custom-kol-country"]').element as HTMLInputElement).value).toBe('Mexico')
+    const nationality = wrapper.get('[data-testid="kol-nationality-country"]')
+    expect(nationality.element.tagName).toBe('INPUT')
+    expect(nationality.attributes('maxlength')).toBe('128')
+    expect(wrapper.find('.searchable-select').exists()).toBe(false)
+    expect(wrapper.text()).toContain('国籍地')
+    expect(wrapper.text()).toContain('现居国家（收件地址）')
+    expect((nationality.element as HTMLInputElement).value).toBe('')
+    await nationality.setValue('墨西哥 / Mexico')
+    await wrapper.get('input[placeholder="例如：MX、US"]').setValue('MX')
+    expect((nationality.element as HTMLInputElement).value).toBe('墨西哥 / Mexico')
+    expect((wrapper.get('input[placeholder="例如：MX、US"]').element as HTMLInputElement).value).toBe('MX')
+    expect(wrapper.find('[data-testid="custom-kol-country"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
