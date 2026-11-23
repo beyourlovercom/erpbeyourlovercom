@@ -85,9 +85,14 @@ describe('Kol/Edit VI contract', () => {
     expect(card.findAll('.kol-credential-rows > .erp-form-field')).toHaveLength(7)
     expect(card.find('input[placeholder="https://www.instagram.com/username/"]').exists()).toBe(true)
     expect(card.text()).toContain('Code 有效期')
+    const password = card.find('input[type="password"]')
+    expect(password.attributes('minlength')).toBe('7')
+    expect(password.attributes('maxlength')).toBeUndefined()
+    expect(password.attributes('pattern')).toBe('[A-Za-z].{6,}')
+    expect(card.text()).toContain('英文字母开头，长度大于 6 个字符。')
   })
 
-  it('offers an explicit WooCommerce Description/expiry editor only for a bound coupon', () => {
+  it('offers an explicit WooCommerce Description/expiry editor only for a bound coupon', async () => {
     const wrapper = mount(Edit, { props: {
       ...defaultProps,
       kol: { ...baseKol, kol_profile_url: 'https://www.instagram.com/creator/' },
@@ -107,6 +112,13 @@ describe('Kol/Edit VI contract', () => {
     expect(editor.text()).toContain('保存到 WooCommerce')
     expect(wrapper.text()).toContain('Description')
     expect(wrapper.text()).not.toContain('WordPress 后台单独调整')
+    const resetButton = wrapper.findAll('button').find(button => button.text() === '设置新的 WordPress 密码')
+    expect(resetButton).toBeTruthy()
+    await resetButton!.trigger('click')
+    const passwordPanel = wrapper.find('.kol-account-password-panel')
+    expect(passwordPanel.exists()).toBe(true)
+    expect(passwordPanel.text()).toContain('英文字母开头，长度大于 6 个字符。')
+    expect(passwordPanel.find('input[type="password"]').attributes('maxlength')).toBeUndefined()
   })
 
   it('uses erp-form-page wrapper — no mvp-page', () => {

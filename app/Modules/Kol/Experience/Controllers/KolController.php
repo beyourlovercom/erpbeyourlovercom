@@ -115,8 +115,8 @@ final class KolController
             'wordpress_username' => ['nullable', 'string'],
             'affiliate_name' => ['nullable', 'string'],
             'affiliate_url_slug' => ['nullable', 'string'],
-            'wordpress_password' => ['required', 'string', 'min:6', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
-            'wordpress_password_confirmation' => 'required|string|max:128',
+            'wordpress_password' => ['required', 'string', 'min:7', 'regex:/^[A-Za-z]/', 'confirmed'],
+            'wordpress_password_confirmation' => 'required|string',
             'affiliate_coupon_code' => 'required|string|max:255',
             'contact_phone' => 'nullable|string|max:64',
             'contact_whatsapp' => 'nullable|string|max:64',
@@ -155,6 +155,9 @@ final class KolController
             'sales_performance_entries.*.recorded_at' => 'nullable|date',
             'sales_performance_entries.*.source' => 'nullable|string|max:64',
             'sales_performance_entries.*.note' => 'nullable|string|max:1000',
+        ], [
+            'wordpress_password.min' => 'Password 要求：英文字母开头，长度大于 6 个字符。',
+            'wordpress_password.regex' => 'Password 要求：英文字母开头，长度大于 6 个字符。',
         ]);
 
         $user = $request->user();
@@ -395,11 +398,14 @@ final class KolController
             'wordpress_username' => ['nullable', 'string'],
             'affiliate_name' => ['nullable', 'string'],
             'affiliate_url_slug' => ['nullable', 'string'],
-            'password' => ['required', 'string', 'min:6', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
-            'password_confirmation' => 'required|string|max:128',
+            'password' => ['required', 'string', 'min:7', 'regex:/^[A-Za-z]/', 'confirmed'],
+            'password_confirmation' => 'required|string',
             'affiliate_coupon_code' => 'required|string|max:255',
             'kol_profile_url' => 'required|url:http,https|max:500',
             'affiliate_coupon_expiry' => 'nullable|date_format:Y-m-d|after_or_equal:today',
+        ], [
+            'password.min' => 'Password 要求：英文字母开头，长度大于 6 个字符。',
+            'password.regex' => 'Password 要求：英文字母开头，长度大于 6 个字符。',
         ]);
 
         $username = \App\Modules\Kol\Application\AffiliateWp\KolProvisioningService::resolveUsername(
@@ -468,8 +474,11 @@ final class KolController
     {
         $this->authorizeKolAccess($request, $kol);
         $data = $request->validate([
-            'password' => ['required', 'string', 'min:6', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
-            'password_confirmation' => 'required|string|max:128',
+            'password' => ['required', 'string', 'min:7', 'regex:/^[A-Za-z]/', 'confirmed'],
+            'password_confirmation' => 'required|string',
+        ], [
+            'password.min' => 'Password 要求：英文字母开头，长度大于 6 个字符。',
+            'password.regex' => 'Password 要求：英文字母开头，长度大于 6 个字符。',
         ]);
 
         $password = (string) $data['password'];

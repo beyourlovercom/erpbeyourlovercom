@@ -139,7 +139,7 @@ final class KolEditAccountCardTest extends TestCase
                 && $payload['email'] === 'existing-kol@example.test'
                 && $payload['preferred_username'] === 'editor-choice'
                 && $payload['display_name'] === 'Edited Affiliate Name'
-                && $payload['password'] === 'Abc123'
+                && $payload['password'] === 'Abcdefg'
                 && $payload['existing_account_policy'] === 'reject'
                 && $key !== '')
             ->andReturn($this->response([
@@ -161,8 +161,8 @@ final class KolEditAccountCardTest extends TestCase
             ], 'coupon-created'));
 
         $this->actingAs($user)->postJson("/kol/library/{$kol->id}/affiliate-account", [
-            'password' => 'Abc123',
-            'password_confirmation' => 'Abc123',
+            'password' => 'Abcdefg',
+            'password_confirmation' => 'Abcdefg',
             'affiliate_coupon_code' => 'EXISTING15',
             'wordpress_username' => 'editor-choice',
             'affiliate_name' => 'Edited Affiliate Name',
@@ -178,7 +178,7 @@ final class KolEditAccountCardTest extends TestCase
         $this->assertSame('active', KolAffiliateCoupon::where('kol_id', $kol->id)->sole()->provisioning_status);
         $persisted = KolAffiliateAccount::where('kol_id', $kol->id)->get()->toJson()
             .KolAffiliateCoupon::where('kol_id', $kol->id)->get()->toJson();
-        $this->assertStringNotContainsString('Abc123', $persisted);
+        $this->assertStringNotContainsString('Abcdefg', $persisted);
     }
 
     public function test_explicit_password_update_uses_exact_bound_ids_and_never_persists_password(): void
@@ -203,7 +203,7 @@ final class KolEditAccountCardTest extends TestCase
                 && $payload === [
                     'erp_kol_id' => $kol->id,
                     'affiliate_id' => 83001,
-                    'password' => 'Zed123',
+                    'password' => 'Zedabcd',
                 ] && $key !== '')
             ->andReturn($this->response([
                 'wordpress_user_id' => 73001,
@@ -212,13 +212,36 @@ final class KolEditAccountCardTest extends TestCase
             ], 'password-updated'));
 
         $this->actingAs($user)->postJson("/kol/library/{$kol->id}/wordpress-password", [
-            'password' => 'Zed123',
-            'password_confirmation' => 'Zed123',
+            'password' => 'Zedabcd',
+            'password_confirmation' => 'Zedabcd',
         ])->assertOk()->assertJsonPath('message', 'WordPress 密码已更新并完成 exact read-back。');
 
         $persisted = Kol::whereKey($kol->id)->get()->toJson()
             .KolAffiliateAccount::where('kol_id', $kol->id)->get()->toJson();
-        $this->assertStringNotContainsString('Zed123', $persisted);
+        $this->assertStringNotContainsString('Zedabcd', $persisted);
+    }
+
+    public function test_edit_account_password_rule_rejects_numeric_first_and_six_character_values(): void
+    {
+        $user = $this->operator();
+        $kol = $this->kol($user);
+        $mock = $this->gateway();
+        $mock->shouldNotReceive('provisionAffiliate');
+        $mock->shouldNotReceive('updateWordpressPassword');
+
+        foreach (['1Abcdef', 'Abcdef'] as $invalidPassword) {
+            $this->actingAs($user)->postJson("/kol/library/{$kol->id}/affiliate-account", [
+                'password' => $invalidPassword,
+                'password_confirmation' => $invalidPassword,
+                'affiliate_coupon_code' => 'EXISTING15',
+                'kol_profile_url' => 'https://www.instagram.com/existing-kol/',
+            ])->assertUnprocessable()->assertJsonValidationErrors('password');
+
+            $this->actingAs($user)->postJson("/kol/library/{$kol->id}/wordpress-password", [
+                'password' => $invalidPassword,
+                'password_confirmation' => $invalidPassword,
+            ])->assertUnprocessable()->assertJsonValidationErrors('password');
+        }
     }
 
     public function test_normal_kol_save_never_provisions_or_changes_wordpress_password(): void

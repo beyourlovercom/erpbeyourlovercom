@@ -73,8 +73,8 @@ class KolCreateAutoProvisionTest extends TestCase
             'relationship_stage' => 'prospect',
             'contact_email' => $email,
             'wordpress_username' => 'creator-login',
-            'wordpress_password' => 'Abc123',
-            'wordpress_password_confirmation' => 'Abc123',
+            'wordpress_password' => 'Abcdefg',
+            'wordpress_password_confirmation' => 'Abcdefg',
             'affiliate_coupon_code' => $code,
             'joined_at' => '2026-11-12',
             'kol_profile_url' => 'https://www.instagram.com/new-kol/',
@@ -144,7 +144,7 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertSame('active', $coupon->provisioning_status);
         self::assertSame(92001, $coupon->coupon_id);
 
-        self::assertSame('Abc123', $capturedAffiliatePayload['password']);
+        self::assertSame('Abcdefg', $capturedAffiliatePayload['password']);
         self::assertSame('reject', $capturedAffiliatePayload['existing_account_policy']);
         self::assertSame('new-kol@example.test', $capturedAffiliatePayload['email']);
         self::assertSame('creator-login', $capturedAffiliatePayload['preferred_username']);
@@ -158,7 +158,7 @@ class KolCreateAutoProvisionTest extends TestCase
             .DB::table('notifications')->get()->toJson()
             .DB::table('kol_affiliate_accounts')->get()->toJson()
             .DB::table('kol_affiliate_coupons')->get()->toJson();
-        self::assertStringNotContainsString('Abc123', $persisted);
+        self::assertStringNotContainsString('Abcdefg', $persisted);
     }
 
     public function test_existing_provider_identity_blocks_before_kol_creation(): void
@@ -292,7 +292,7 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertSame($requestedSlug, $profile['slug']);
     }
 
-    public function test_password_policy_is_enforced_before_any_provider_call(): void
+    public function test_password_policy_requires_english_letter_first_and_more_than_six_characters(): void
     {
         $specialist = $this->specialist();
         $mock = $this->mockGateway();
@@ -300,15 +300,39 @@ class KolCreateAutoProvisionTest extends TestCase
         $mock->shouldNotReceive('checkCoupon');
         $mock->shouldNotReceive('provisionAffiliate');
         $mock->shouldNotReceive('provisionCoupon');
+
+        foreach (['1Abcdef', 'Abcdef', 'shor1'] as $invalidPassword) {
+            $payload = $this->payload();
+            $payload['wordpress_password'] = $invalidPassword;
+            $payload['wordpress_password_confirmation'] = $invalidPassword;
+
+            $this->actingAs($specialist)->from('/kol/library/create')
+                ->post('/kol/library', $payload)
+                ->assertRedirect('/kol/library/create')
+                ->assertSessionHasErrors('wordpress_password');
+        }
+
+        self::assertSame(0, Kol::query()->count());
+    }
+
+    public function test_letter_first_password_without_digits_or_length_ceiling_reaches_identity_preflight(): void
+    {
+        $specialist = $this->specialist();
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('checkAffiliateIdentity')->once()
+            ->andReturn($this->response(['available' => false], 'identity-exists'));
+        $mock->shouldNotReceive('checkCoupon');
+        $mock->shouldNotReceive('provisionAffiliate');
+        $mock->shouldNotReceive('provisionCoupon');
+
         $payload = $this->payload();
-        $payload['wordpress_password'] = 'shor1';
-        $payload['wordpress_password_confirmation'] = 'shor1';
+        $payload['wordpress_password'] = 'A'.str_repeat('b', 180);
+        $payload['wordpress_password_confirmation'] = $payload['wordpress_password'];
 
         $this->actingAs($specialist)->from('/kol/library/create')
             ->post('/kol/library', $payload)
-            ->assertRedirect('/kol/library/create')
-            ->assertSessionHasErrors('wordpress_password');
-
+            ->assertSessionHasErrors('contact_email')
+            ->assertSessionDoesntHaveErrors('wordpress_password');
         self::assertSame(0, Kol::query()->count());
     }
 
@@ -350,7 +374,7 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertSame('网红自动开户失败 · 需核查 WordPress', $notification['title']);
         self::assertStringContainsString('READBACK_MISMATCH', $notification['message']);
         self::assertStringContainsString('WordPress', $notification['message']);
-        self::assertStringNotContainsString('Abc123', json_encode($notification));
+        self::assertStringNotContainsString('Abcdefg', json_encode($notification));
         self::assertSame(0, KolAffiliateCoupon::query()->where('kol_id', $kol->id)->count());
     }
 
