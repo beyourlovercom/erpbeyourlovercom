@@ -78,3 +78,52 @@ test('isolated gateway forwards only authorized Inertia Orders GET requests', as
   assert.equal(observed.length,6,'only exact allowlisted GETs reached the fake upstream');
   assert.ok(observed.every((req) => req.method==='GET' && req.inertia==='true'));
 });
+test('M2 only permits exact original review POST under explicit isolated Dev flag',async(t)=>{
+  const observed=[];
+  const upstream=http.createServer((req,res)=>{
+    observed.push({path:req.url,method:req.method,
+      inertia:req.headers['x-inertia'],xsrf:req.headers['x-xsrf-token']});
+    res.writeHead(200,{'content-type':'application/json'});
+    res.end(JSON.stringify(req.method==='POST'?
+      {results:[{order_id:10,ok:true,message:'已处理'}],success_count:1,failed_count:0}:
+      {component:req.url.startsWith('/logistics/china')?'Logistics/Domestic/Index':'Logistics/Oversea/Show',
+        props:{rows:{data:[],current_page:1,per_page:20,total:0,last_page:1}}}));
+  });
+  const upstreamPort=await listen(upstream);
+  t.after(()=>close(upstream));
+  const reserved=http.createServer(),gatewayPort=await listen(reserved);
+  await close(reserved);
+  const child=spawn(process.execPath,[gateway],{env:{...process.env,
+    ERP2_LOGISTICS_DEV_UPSTREAM:'http://127.0.0.1:'+upstreamPort,
+    ERP2_LOGISTICS_DEV_PORT:String(gatewayPort),ERP2_LOGISTICS_VBEN_DIST:'/tmp',
+    ERP2_M2_DEV_REVIEW_ENABLED:'1'},stdio:'ignore'});
+  t.after(()=>{if(!child.killed)child.kill();});
+  const base='http://127.0.0.1:'+gatewayPort;
+  let ready=false;
+  for(let i=0;i<60;i++){
+    try{const r=await fetch(base+'/api/health');if(r.ok){ready=true;break;}}catch{}
+    await delay(50);
+  }
+  assert.ok(ready);
+  for(const target of ['/logistics/china?view=review','/logistics/oversea?view=review',
+    '/logistics/oversea/us-ny?view=pending']){
+    assert.equal((await fetch(base+target)).status,405);
+    assert.equal((await fetch(base+target,{headers:{'X-Inertia':'true'}})).status,200);
+  }
+  for(const target of ['/logistics/china/batch-review','/logistics/oversea/batch-review']){
+    assert.equal((await fetch(base+target,{method:'POST'})).status,405);
+    assert.equal((await fetch(base+target,{method:'POST',headers:{'Content-Type':'application/json'}})).status,405);
+    const result=await fetch(base+target,{method:'POST',headers:{
+      'Content-Type':'application/json','X-XSRF-TOKEN':'test-dev-token'},body:JSON.stringify({
+      order_ids:[10],action:'approve'})});
+    assert.equal(result.status,200);
+    assert.equal((await result.json()).success_count,1);
+  }
+  for(const target of ['/logistics/china/orders/10/quick-ship',
+    '/logistics/oversea/orders/10/manual-ship','/logistics/oversea/bulk-ship/apply']){
+    assert.equal((await fetch(base+target,{method:'POST',headers:{
+      'Content-Type':'application/json','X-XSRF-TOKEN':'test'}})).status,405);
+  }
+  assert.equal(observed.filter(row=>row.method==='POST').length,2);
+  assert.ok(observed.filter(row=>row.method==='POST').every(row=>row.xsrf==='test-dev-token'));
+});

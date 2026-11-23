@@ -1,11 +1,12 @@
 'use strict';
 // ERP2 Vben Dev-only canonical Laravel Session gateway. Loopback only.
-// Strict path allowlist: synthetic Mac SQLite, no Production access or business writes.
+// Strict path allowlist: isolated Mac SQLite; M2 review POST default-OFF, shipping POST denied.
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const HOST='127.0.0.1';
 const PORT=Number(process.env.ERP2_LOGISTICS_DEV_PORT || '18795');
 const MAC=(process.env.ERP2_LOGISTICS_DEV_UPSTREAM || '').replace(/\/+$/,'');
 const DIST=process.env.ERP2_LOGISTICS_VBEN_DIST || '';
+const REVIEW_DEV_WRITE=process.env.ERP2_M2_DEV_REVIEW_ENABLED==='1';
 // Require explicit isolated Dev endpoints: no accidental Production routing.
 let upstream;
 try { upstream=new URL(MAC); } catch { throw Error('ERP2_DEV_UPSTREAM_REQUIRED'); }
@@ -23,7 +24,13 @@ const logistics=new Set([
  '/api/erp2/v1/logistics/overseas',
 ]);
 // Canonical Laravel Orders routes, never route substrings or business mutations.
-const inertiaOrders=new Set(['/orders','/customers/orders','/kol/orders']);
+const inertiaOrders=new Set(['/orders','/customers/orders','/kol/orders',
+ '/orders/collaboration','/orders/procurement','/orders/archive']);
+const inertiaLogistics=new Set(['/logistics/china','/logistics/oversea']);
+const logisticsDetail=(pathname)=>/^\/logistics\/oversea\/(us-ny|us-moreplus|us-3sm|de-tianyun|ca)$/.test(pathname);
+const inertiaDetail=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*$/.test(pathname);
+const noteWrite=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*\/notes$/.test(pathname);
+const reviewWrite=new Set(['/logistics/china/batch-review','/logistics/oversea/batch-review']);
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
  '.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml',
  '.png':'image/png','.ico':'image/x-icon','.woff':'font/woff','.woff2':'font/woff2'};
@@ -31,9 +38,16 @@ function json(res,status,data){
  res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});
  res.end(JSON.stringify(data));
 }
+function isInertia(pathname){
+ return inertiaOrders.has(pathname)||inertiaDetail(pathname)||inertiaLogistics.has(pathname)||
+  logisticsDetail(pathname);
+}
 function allowed(req,url){
- if(inertiaOrders.has(url.pathname))
-  return req.method==='GET' && req.headers['x-inertia']==='true';
+ if(isInertia(url.pathname))return req.method==='GET' && req.headers['x-inertia']==='true';
+ if(noteWrite(url.pathname))return req.method==='POST' &&
+  req.headers['content-type']?.startsWith('application/json') && Boolean(req.headers['x-xsrf-token']);
+ if(reviewWrite.has(url.pathname))return REVIEW_DEV_WRITE && req.method==='POST' &&
+  req.headers['content-type']?.startsWith('application/json') && Boolean(req.headers['x-xsrf-token']);
  if(logistics.has(url.pathname))return req.method==='GET';
  if(url.pathname==='/_erp2/identity')return req.method==='GET';
  if(url.pathname==='/login')return ['GET','POST'].includes(req.method);
@@ -43,10 +57,14 @@ function allowed(req,url){
 }
 async function proxy(req,res,url){
  const headers={Accept:req.headers.accept||'text/html','X-Requested-With':req.headers['x-requested-with']||'XMLHttpRequest'};
- if(inertiaOrders.has(url.pathname))headers['X-Inertia']='true';
+ if(isInertia(url.pathname))headers['X-Inertia']='true';
+ if(isInertia(url.pathname)&&req.headers['x-inertia-version'])
+  headers['X-Inertia-Version']=String(req.headers['x-inertia-version']).slice(0,128);
  if(req.headers.cookie)headers.Cookie=req.headers.cookie;
  if(req.headers['content-type'])headers['Content-Type']=req.headers['content-type'];
  if(req.headers['x-csrf-token'])headers['X-CSRF-TOKEN']=req.headers['x-csrf-token'];
+ if((noteWrite(url.pathname)||reviewWrite.has(url.pathname))&&req.headers['x-xsrf-token'])
+  headers['X-XSRF-TOKEN']=req.headers['x-xsrf-token'];
  const payload=[];
  if(req.method==='POST')for await(const c of req){payload.push(c);if(payload.reduce((n,x)=>n+x.length,0)>16384)throw Error('LOGIN_BODY_TOO_LARGE');}
 
@@ -61,7 +79,7 @@ async function proxy(req,res,url){
  const cookies=upstream.headers.getSetCookie();
  if(cookies.length)responseHeaders['set-cookie']=cookies;
  const location=upstream.headers.get('location');
- if(location){
+ if(location&&!noteWrite(url.pathname)){
   const localOrigin='http://'+HOST+':'+PORT;
   if (location.startsWith(MAC+'/')) responseHeaders.location=localOrigin+location.slice(MAC.length);
   else if (location.startsWith('/')&&!location.startsWith('//')) responseHeaders.location=location;
@@ -87,12 +105,18 @@ const server=http.createServer(async(req,res)=>{
  try{
   const url=new URL(req.url||'/','http://'+HOST+':'+PORT);
   if(url.pathname==='/api/health'&&req.method==='GET')return json(res,200,{
-    source:'ISOLATED_MAC_DEV_SQLITE',production_connected:false,write_enabled:false,
+    source:'ISOLATED_MAC_DEV_SQLITE',production_connected:false,
+    write_enabled:REVIEW_DEV_WRITE?'notes-and-original-review-dev':'notes-only-dev',
     mode:'laravel-session',app:'ERP2 Vben Logistics Dev'});
   // Never let nested Laravel business URLs fall through to a misleading SPA 200.
-  if(/^\/(orders|customers\/orders|kol\/orders)\/.+/.test(url.pathname))
+  if(url.pathname.startsWith('/logistics/')&&!isInertia(url.pathname)&&
+     !reviewWrite.has(url.pathname))
     return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
-  if(url.pathname.startsWith('/api/')||inertiaOrders.has(url.pathname)||
+  if(/^\/(orders|customers\/orders|kol\/orders)\/.+/.test(url.pathname)&&
+     !isInertia(url.pathname)&&!noteWrite(url.pathname))
+    return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
+  if(url.pathname.startsWith('/api/')||isInertia(url.pathname)||
+     noteWrite(url.pathname)||reviewWrite.has(url.pathname)||
      ['/_erp2/identity','/login','/dashboard','/logout'].includes(url.pathname)){
     if(!allowed(req,url))return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
     return await proxy(req,res,url);

@@ -3,32 +3,61 @@ import { computed, ref, watch } from 'vue';
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type CellClickedEvent, type ColDef } from 'ag-grid-community';
 import { AgGridVue } from 'ag-grid-vue3';
 import { canonicalDevIdentity } from '#/router/erp-live-navigation';
-import { getLogisticsPage, type LogisticsRow, type LogisticsScope, type OverseasView } from '#/api/erp-logistics';
+import { getLogisticsPage, submitOriginalErpReview, type DomesticView, type DomesticReviewAction,
+  type LogisticsRow, type LogisticsScope, type OverseasView, type OverseasReviewAction } from '#/api/erp-logistics';
 
 defineOptions({ name: 'ERP2LogisticsProjection' });
 const props = defineProps<{ scope: LogisticsScope }>();
 ModuleRegistry.registerModules([AllCommunityModule]);
 const pageConfig = {
   allocation:{title:'待分仓',subtitle:'尚未分配发货仓的订单 · 运营分仓前只读确认',path:'待分仓'},
-  domestic:{title:'国内发货',subtitle:'中国工厂 · 待发货订单 / SKU / 数量',path:'国内发货'},
+  domestic:{title:'国内发货',subtitle:'中国工厂 · 原 Laravel 九个业务队列',path:'国内发货'},
   overseas:{title:'海外仓发货',subtitle:'海外仓审核、运单履约与 A/B/C 子单',path:'海外仓发货'},
 };
 const meta = computed(() => pageConfig[props.scope]);
-const views: {key:OverseasView;label:string}[] = [
-  {key:'review',label:'海外仓审核'},{key:'pending',label:'待发货'},
-  {key:'issued',label:'已下单'},{key:'shipped',label:'已发货'},
-  {key:'exceptions',label:'异常'},
+const domesticViews: {key:DomesticView;label:string}[] = [
+  {key:'review',label:'待审核'},{key:'stockout',label:'缺货单'},
+  {key:'outsource',label:'外采单'},{key:'pending',label:'待发货'},
+  {key:'today',label:'今日订单'},{key:'today-4px',label:'今日速达'},
+  {key:'today-weship',label:'今日纬狮'},{key:'exceptions',label:'异常订单'},
+  {key:'all',label:'全部国内订单'},
 ];
+const overseasViews: {key:OverseasView;label:string}[] = [
+  {key:'review',label:'待审核'},{key:'stockout',label:'缺货单'},
+  {key:'pending',label:'待发货'},{key:'issued',label:'已下发'},
+  {key:'shipped',label:'已发货'},{key:'exceptions',label:'异常订单'},
+  {key:'all',label:'全部订单'},
+];
+const views = computed(() => props.scope==='domestic'?domesticViews:overseasViews);
 const warehouses = [
   {value:'',label:'全部海外仓'}, {value:'us-ny',label:'美国 NY'},
   {value:'us-sm',label:'美国 3SM'}, {value:'us-moreplus',label:'美国 MorePlus'},
   {value:'de-tianyun',label:'德国天运'}, {value:'ca',label:'加拿大'},
 ];
-const search = ref(''),warehouse = ref(''),view = ref<OverseasView>('review');
+const search = ref(''),warehouse = ref(''),view = ref<DomesticView|OverseasView>('review');
 const loading = ref(false),error = ref(''),rows = ref<LogisticsRow[]>([]);
 const pager = ref({page:1,perPage:20 as 20|50|100,total:0,lastPage:1});
 const detail = ref<LogisticsRow|null>(null);
+const capabilities = ref({canReview:false,canOperate:false});
+const reviewBusy=ref(false),reviewError=ref(''),reviewSuccess=ref(''),reviewReason=ref('');
+const reviewEnabled=import.meta.env.VITE_ERP_IDENTITY_MODE==='laravel' &&
+  import.meta.env.VITE_ERP_M2_ORIGINAL_INERTIA_ENABLED==='1' &&
+  import.meta.env.VITE_ERP_M2_REVIEW_WRITE_ENABLED==='1';
 const allowed = computed(() => !!canonicalDevIdentity.value?.effectivePermissionKeys.includes('logistics.view'));
+const authorizedReview = computed(() => reviewEnabled && allowed.value && capabilities.value.canReview &&
+  (props.scope==='domestic'?canonicalDevIdentity.value?.effectivePermissionKeys.includes('domestic.review'):
+  canonicalDevIdentity.value?.effectivePermissionKeys.includes('logistics.operate')));
+const reviewActionLabels:Record<DomesticReviewAction,string>={
+  approve:'审核通过',stockout:'标记缺货',reject:'驳回',restock:'确认到货',return_allocation:'退回待分仓',
+};
+const reviewActions=computed<DomesticReviewAction[]>(()=>{
+  if(!authorizedReview.value || !detail.value)return [];
+  if(view.value==='review' && detail.value.review_status==='pending')
+    return ['approve','stockout','reject'];
+  if(view.value==='stockout' && detail.value.review_status==='stockout')
+    return props.scope==='domestic'?['restock','return_allocation']:['restock'];
+  return [];
+});
 let sequence = 0;
 const theme = themeQuartz.withParams({fontSize:12,spacing:4,headerBackgroundColor:'#f8fafc',
   borderColor:'#e2e8f0',accentColor:'#5a50dd',backgroundColor:'#fff'});
@@ -88,6 +117,7 @@ const gridColumns = computed<ColDef<LogisticsRow>[]>(() => [
 
 function clearData(){
   ++sequence; rows.value=[];detail.value=null;
+  capabilities.value={canReview:false,canOperate:false};reviewError.value='';
   pager.value={page:1,perPage:pager.value.perPage,total:0,lastPage:1};
 }
 async function load(page=1){
@@ -102,20 +132,50 @@ async function load(page=1){
       search:search.value,view:view.value,warehouse:warehouse.value});
     if(ticket!==sequence || !allowed.value)return;
     rows.value=result.rows;
+    capabilities.value={canReview:result.canReview===true,canOperate:result.canOperate===true};
     pager.value={page:result.page,perPage:result.perPage as 20|50|100,
       total:result.total,lastPage:result.lastPage};
   }catch(reason){
     if(ticket!==sequence)return;
-    rows.value=[];pager.value={...pager.value,page:1,total:0,lastPage:1};
+    rows.value=[];capabilities.value={canReview:false,canOperate:false};
+    pager.value={...pager.value,page:1,total:0,lastPage:1};
     error.value=reason instanceof Error?reason.message:'隔离 Dev 物流读取失败';
   }finally{if(ticket===sequence)loading.value=false;}
 }
 function filter(){void load(1);}
-function switchView(next:OverseasView){
-  view.value=next;void load(1);
+function switchView(next:DomesticView|OverseasView){
+  view.value=next;reviewSuccess.value='';void load(1);
 }
 function onCellClick(event:CellClickedEvent<LogisticsRow>){
-  if(event.column.getColId()==='action' && event.data && !loading.value)detail.value=event.data;
+  if(event.column.getColId()==='action' && event.data && !loading.value){
+    detail.value=event.data;reviewError.value='';reviewReason.value='';
+  }
+}
+async function decideReview(action:DomesticReviewAction){
+  const row=detail.value;
+  if(!row || !reviewActions.value.includes(action) || reviewBusy.value)return;
+  const reason=action==='reject'?reviewReason.value.trim():undefined;
+  if(action==='reject' && (!reason || reason.length<3 || reason.length>500)){
+    reviewError.value='驳回原因需填写 3–500 字。';return;
+  }
+  if(!window.confirm('确认对 '+row.order_number+' 执行「'+reviewActionLabels[action]+'」？'))return;
+  reviewBusy.value=true;reviewError.value='';reviewSuccess.value='';
+  try{
+    const result=props.scope==='domestic'
+      ?await submitOriginalErpReview({scope:'domestic',orderIds:[row.order_id],action,reason})
+      :await submitOriginalErpReview({scope:'overseas',orderIds:[row.order_id],
+          action:action as OverseasReviewAction,reason});
+    const outcome=result.results[0];
+    if(result.success_count!==1 || result.failed_count!==0 || !outcome?.ok){
+      reviewError.value=outcome?.message || '原 Laravel 已阻止本次审核；无成功写入。';
+      return;
+    }
+    reviewSuccess.value=row.order_number+' · '+reviewActionLabels[action]+'成功（原 Laravel）';
+    detail.value=null;
+    await load(1);
+  }catch(cause){
+    reviewError.value=cause instanceof Error?cause.message:'原 Laravel 审核失败';
+  }finally{reviewBusy.value=false;}
 }
 watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
   canonicalDevIdentity.value?.effectivePermissionKeys.join('|')],()=>{
@@ -133,13 +193,13 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
         <button type="button" class="rounded border border-slate-200 bg-white px-3 py-2 text-xs"
           :disabled="loading || !allowed" @click="load(pager.page)">↻ 刷新数据</button>
         <span class="rounded bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
-          隔离 Dev · 只读（禁止业务写入）</span>
+          {{ reviewEnabled && props.scope!=='allocation'?'隔离 Dev · 原 Laravel 审核':'隔离 Dev · 只读' }}</span>
       </div>
     </header>
 
-    <div class="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-      Owner 已通过视觉稿。当前三页面读取美国 Mac mini 隔离 SQLite / Laravel Session，
-      只提供 GET 查询；分仓、审核、发货与单号上传暂不开启。
+    <div v-if="!reviewEnabled && props.scope!=='allocation'"
+      class="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+      原 Laravel 审核按钮尚未在此隔离构建启用；发货与 Tracking 上传仍由原 ERP 流程负责。
     </div>
     <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
       <div class="rounded border border-slate-200 bg-white px-4 py-3">
@@ -155,15 +215,15 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
       </div>
     </div>
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-slate-200 bg-white">
-      <div class="flex min-h-[40px] gap-1 border-b border-slate-200 px-3">
-        <template v-if="props.scope==='overseas'">
+      <div class="flex min-h-[40px] gap-1 overflow-x-auto border-b border-slate-200 px-3">
+        <template v-if="props.scope!=='allocation'">
           <button v-for="v in views" :key="v.key" type="button"
-            class="border-b-2 px-4 py-2 text-xs font-semibold"
+            class="shrink-0 border-b-2 px-4 py-2 text-xs font-semibold"
             :class="view===v.key?'border-indigo-500 text-indigo-600':'border-transparent text-slate-500'"
-            @click="switchView(v.key)">{{ v.label }}</button>
+            :disabled="loading" @click="switchView(v.key)">{{ v.label }}</button>
         </template>
         <span v-else class="border-b-2 border-indigo-500 px-4 py-2 text-xs font-semibold text-indigo-600">
-          {{ props.scope==='allocation'?'待分配':'待发货' }}</span>
+          待分配</span>
       </div>
       <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3">
         <input v-model="search" class="min-w-[200px] max-w-full rounded border border-slate-300 px-3 py-2 text-xs"
@@ -191,6 +251,9 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
           </div>
         </div>
       </div>
+      <p v-if="reviewSuccess" role="status"
+        class="mx-3 mt-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+        {{ reviewSuccess }}</p>
       <p v-if="error" role="alert" class="m-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
         {{ error }}</p>
       <div class="relative min-h-[350px] flex-1 overflow-hidden" :aria-busy="loading">
@@ -215,12 +278,12 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
         </div>
       </div>
     </div>
-    <p class="text-xs text-slate-400">Help Footer · ERP2 read-only Dev 验收 · 原始订单组件及 Workspace Tabs 保持不变</p>
+    <p class="text-xs text-slate-400">帮助 · 审核结果由原 Laravel 记录；确认发货需真实 Tracking 和独立履约验证 · Workspace Tabs 保持不变。</p>
 
     <div v-if="detail" class="fixed inset-0 flex justify-end bg-slate-900/40" style="z-index: 20000" @click.self="detail=null">
       <aside class="h-full w-[440px] max-w-[95vw] overflow-y-auto bg-white p-6 shadow-2xl">
         <div class="flex items-start justify-between">
-          <div><p class="text-xs text-slate-500">订单 / 物流详情（只读）</p>
+          <div><p class="text-xs text-slate-500">订单 / 物流详情 · 原 Laravel</p>
             <h2 class="mt-1 text-lg font-semibold">{{ detail.order_number }}</h2></div>
           <button type="button" class="rounded border px-3 py-1 text-xs" @click="detail=null">关闭</button>
         </div>
@@ -237,7 +300,30 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
           <div class="mt-1">实际 SKU: {{ item.final_sku||item.resolved_sku||item.sku||'—' }}</div>
           <div class="mt-1">数量: {{ item.quantity }}</div>
         </div>
-        <p class="mt-6 rounded bg-amber-50 p-3 text-xs text-amber-800">仅展示服务器已授权的物流字段；不提供业务写入。</p>
+        <section v-if="reviewActions.length" class="mt-6 rounded border border-indigo-200 p-3">
+          <h3 class="text-sm font-semibold">审核操作 · 当前订单</h3>
+          <p class="mt-1 text-xs text-slate-500">将调用原 Laravel 审核服务；每次只提交这一个订单。</p>
+          <label v-if="reviewActions.includes('reject')" class="mt-3 block text-xs">
+            驳回原因（选择驳回时必填）
+            <textarea v-model="reviewReason" rows="2" maxlength="500"
+              class="mt-1 w-full rounded border border-slate-300 p-2"
+              placeholder="输入 3–500 字驳回原因" :disabled="reviewBusy"></textarea>
+          </label>
+          <p v-if="reviewError" role="alert" class="mt-2 rounded bg-red-50 p-2 text-xs text-red-700">
+            {{ reviewError }}</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button v-for="action in reviewActions" :key="action" type="button"
+              class="rounded border border-indigo-500 px-3 py-2 text-xs font-semibold text-indigo-700 disabled:opacity-50"
+              :disabled="reviewBusy" @click="decideReview(action)">{{ reviewActionLabels[action] }}</button>
+          </div>
+        </section>
+        <p v-else-if="reviewError" role="alert" class="mt-3 rounded bg-red-50 p-3 text-xs text-red-700">
+          {{ reviewError }}</p>
+        <p v-if="view==='pending' && capabilities.canOperate" class="mt-3 rounded bg-amber-50 p-3 text-xs text-amber-800">
+          发货信息已读取。确认发货需真实物理出库、有效物流商/服务与 Tracking；
+          ERP2 发货写入将在独立隔离验证后开放。
+        </p>
+        <p class="mt-4 text-xs text-slate-500">受 Laravel 会话权限及当前订单状态约束；不能操作的状态不显示审核按钮。</p>
       </aside>
     </div>
   </div>

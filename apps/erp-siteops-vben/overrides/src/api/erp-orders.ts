@@ -104,7 +104,7 @@ export function normalizeExistingInertiaOrders(value: unknown): ErpOrderPage {
 // Laravel requires the current Inertia asset version even for read-only GETs.
 // The Vben SPA is served independently, so it cannot reuse Laravel's page boot.
 const inertiaVersionCache = new WeakMap<typeof fetch, Promise<string>>();
-async function laravelInertiaVersion(fetcher: typeof fetch, refresh = false): Promise<string> {
+export async function laravelInertiaVersion(fetcher: typeof fetch, refresh = false): Promise<string> {
   if (refresh) inertiaVersionCache.delete(fetcher);
   let pending = inertiaVersionCache.get(fetcher);
   if (!pending) {
