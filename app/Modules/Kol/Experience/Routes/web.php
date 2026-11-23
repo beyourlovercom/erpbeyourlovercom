@@ -25,6 +25,7 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
 
     Route::get('/kol/library', [KolController::class, 'index'])->name('kol.library');
     Route::get('/kol/library/create', [KolController::class, 'create'])->middleware('can:kol.operate')->name('kol.library.create');
+    Route::get('/kol/library/duplicate-check', [KolController::class, 'duplicateCheck'])->middleware(['can:kol.operate', 'throttle:60,1'])->name('kol.library.duplicate-check');
     Route::post('/kol/library', [KolController::class, 'store'])->middleware('can:kol.operate')->name('kol.library.store');
     Route::get('/kol/library/{kol}', [KolController::class, 'show'])->name('kol.library.show');
     Route::get('/kol/library/{kol}/edit', [KolController::class, 'edit'])->middleware('can:kol.operate')->name('kol.library.edit');

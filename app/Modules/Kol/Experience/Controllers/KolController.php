@@ -5,6 +5,7 @@ namespace App\Modules\Kol\Experience\Controllers;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolCreateAutoProvisionService;
+use App\Modules\Kol\Application\KolDuplicateIdentity;
 use App\Modules\Kol\Application\AffiliateWp\CouponProvisioningService;
 use App\Modules\Kol\Application\KolEditAccountService;
 use App\Modules\Kol\Application\KolScope;
@@ -94,12 +95,31 @@ final class KolController
         ]);
     }
 
+    public function duplicateCheck(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'wordpress_username' => ['nullable', 'string'],
+            'display_name' => ['nullable', 'string', 'max:255'],
+        ]);
+        $username = (string) ($input['wordpress_username'] ?? '');
+        $displayName = (string) ($input['display_name'] ?? '');
+        $existing = KolDuplicateIdentity::find($username, $displayName);
+        $canOpen = $existing && (KolScope::isAllScope($request->user())
+            || (int) $existing->owner_id === (int) $request->user()->getAuthIdentifier());
+
+        return response()->json([
+            'exists' => $existing !== null,
+            'message' => $existing ? '已经存在这个网红，是否重复创建账号？' : null,
+            'existing_url' => $canOpen ? route('kol.library.show', $existing) : null,
+        ]);
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
             'display_name' => 'required|string|max:255',
             'legal_name' => 'nullable|string|max:255',
-            'country_code' => 'nullable|string|in:US,GB,DE,FR,CA,EU,AU,ASIA,PH,OTHER',
+            'country_code' => 'nullable|string|max:128',
             'language' => 'nullable|string|in:en,es,de,fr,it,zh,other',
             'status' => 'required|string|in:active,inactive',
             'owner_id' => 'nullable|integer|exists:users,id',
@@ -328,7 +348,7 @@ final class KolController
         $data = $request->validate([
             'display_name' => 'required|string|max:255',
             'legal_name' => 'nullable|string|max:255',
-            'country_code' => 'nullable|string|in:US,GB,DE,FR,CA,EU,AU,ASIA,PH,OTHER',
+            'country_code' => 'nullable|string|max:128',
             'language' => 'nullable|string|in:en,es,de,fr,it,zh,other',
             'status' => 'required|string|in:active,inactive',
             'owner_id' => 'nullable|integer|exists:users,id',

@@ -89,6 +89,14 @@ const props = withDefaults(defineProps<{
   canCreateOrders?: boolean
 }>(), { affiliateAccount: null, approvalManagerOptions: () => [], financeOwnerOptions: () => [] })
 
+const customCountry = ref(countryOptions.some(option => option.value === props.kol.country_code) ? '' : (props.kol.country_code ?? ''))
+const countryOptionsWithSaved = computed(() => {
+  const existing = form.country_code
+  return existing && !countryOptions.some(option => option.value === existing)
+    ? [...countryOptions, { value: existing, label: `${existing}（自定义）` }]
+    : countryOptions
+})
+const isCustomCountry = computed(() => form.country_code === 'OTHER' || (form.country_code !== '' && !countryOptions.some(option => option.value === form.country_code)))
 const affiliateAccountState = ref<AffiliateAccount | null>(props.affiliateAccount ?? null)
 const accountIsBound = computed(() => Boolean(affiliateAccountState.value?.affiliate_id && affiliateAccountState.value?.wordpress_user_id))
 const boundCouponExpiry = ref(affiliateAccountState.value?.coupon?.date_expires?.slice(0, 10) || plusThreeYears(props.kol.joined_at ?? localTodayDate()))
@@ -498,6 +506,7 @@ watch(() => form.joined_at, date => {
 const submit = () => {
   form.transform(data => ({
     ...data,
+    country_code: isCustomCountry.value ? customCountry.value.trim() : data.country_code,
     owner_id: data.owner_id ? Number(data.owner_id) : null,
     approval_manager_id: data.approval_manager_id ? Number(data.approval_manager_id) : null,
     finance_owner_id: data.finance_owner_id ? Number(data.finance_owner_id) : null,
@@ -572,7 +581,8 @@ const breadcrumbs = [
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">国家/地区</label>
-                <SearchableSelect v-model="form.country_code" :options="countryOptions" placeholder="搜索国家/地区" />
+                <SearchableSelect v-model="form.country_code" :options="countryOptionsWithSaved" placeholder="搜索国家/地区" />
+                <input v-if="isCustomCountry" v-model="customCountry" data-testid="custom-kol-country" class="erp-input" maxlength="128" required placeholder="输入实际国家名称，例如：Mexico、Brazil">
                 <p v-if="form.errors.country_code" class="erp-field-error">{{ form.errors.country_code }}</p>
               </div>
               <div class="erp-form-field">

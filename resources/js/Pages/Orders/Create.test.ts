@@ -1,20 +1,27 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
+import KolIdentityCombobox from './KolIdentityCombobox.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { globalFeedback, publishGlobalFeedback } from '../../lib/globalFeedback'
 import Create from './Create.vue'
 
 const postMock = vi.hoisted(() => vi.fn())
+const axiosGetMock = vi.hoisted(() => vi.fn())
+vi.mock('axios', () => ({ default: { get: axiosGetMock } }))
 
-vi.mock('@inertiajs/vue3', () => ({
+vi.mock('@inertiajs/vue3', async () => {
+  const { reactive } = await import('vue')
+  return {
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
-  useForm: (initial: Record<string, unknown>) => ({
+  useForm: (initial: Record<string, unknown>) => reactive({
     ...initial,
     processing: false,
     errors: {},
     post: postMock,
   }),
   usePage: () => ({ url: '/customers/orders/create', props: { auth: { user: { id: 1, name: 'Test', email: 't@t.com' } }, shellNavigation: [] } }),
-}))
+  }
+})
 
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' },
@@ -39,6 +46,8 @@ const kolProps = {
 describe('Orders/Create V2', () => {
   beforeEach(() => {
     postMock.mockReset()
+    axiosGetMock.mockReset()
+    axiosGetMock.mockRejectedValue(new Error('synthetic-no-data'))
     publishGlobalFeedback({ state: 'IDLE', title: '', message: '' })
   })
 
@@ -72,6 +81,54 @@ describe('Orders/Create V2', () => {
     } })
     expect((wrapper.get('[data-testid="kol-identity-select"]').element as HTMLInputElement).value).toBe('Unbound')
     expect(wrapper.find('[data-testid="kol-affiliate-unbound"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('autofills a preselected KOL contact and shipping address from server props', async () => {
+    const address = {
+      recipient_name: 'Saved Recipient', phone: '+5211223344', email: 'kol@example.test',
+      country: 'Mexico', province_state: 'Jalisco', city: 'Guadalajara',
+      address_line_1: 'Saved Street 3', address_line_2: 'Floor 2', postal_code: '44000',
+    }
+    const wrapper = mount(Create, { props: {
+      ...kolProps, selectedKolId: 42, kolOptions: [{ value: 42, label: 'Synthetic KOL' }],
+      selectedKolAddress: address,
+    } })
+    await nextTick()
+    expect((wrapper.get('[data-testid="order-recipient-name"]').element as HTMLInputElement).value).toBe('Saved Recipient')
+    expect((wrapper.get('[data-testid="order-phone"]').element as HTMLInputElement).value).toBe('+5211223344')
+    expect((wrapper.get('[data-testid="order-email"]').element as HTMLInputElement).value).toBe('kol@example.test')
+    expect((wrapper.get('[data-testid="order-country"]').element as HTMLInputElement).value).toBe('Mexico')
+    expect((wrapper.get('[data-testid="order-address-line-1"]').element as HTMLInputElement).value).toBe('Saved Street 3')
+    expect(axiosGetMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('clears previous KOL address immediately when switching and fetches the next address', async () => {
+    let respond!: (value: unknown) => void
+    axiosGetMock.mockReturnValue(new Promise(resolve => { respond = resolve }))
+    const wrapper = mount(Create, { props: {
+      ...kolProps, selectedKolId: 11, kolOptions: [{ value: 11, label: 'First KOL' }],
+      selectedKolAddress: {
+        recipient_name: 'First Person', phone: '111', email: 'first@example.test',
+        country: 'US', province_state: 'CA', city: 'LA',
+        address_line_1: 'Old Address', address_line_2: '', postal_code: '90001',
+      },
+    } })
+    await nextTick()
+    expect((wrapper.get('[data-testid="order-recipient-name"]').element as HTMLInputElement).value).toBe('First Person')
+    wrapper.getComponent(KolIdentityCombobox).vm.$emit('update:modelValue', 22)
+    await nextTick()
+    expect((wrapper.get('[data-testid="order-recipient-name"]').element as HTMLInputElement).value).toBe('')
+    expect(axiosGetMock).toHaveBeenCalledWith('/kol/orders/kol-address', { params: { kol_id: 22 } })
+    respond({ data: { kol_id: 22, address: {
+      recipient_name: 'Second Person', phone: '222', email: 'second@example.test',
+      country: 'GB', province_state: '', city: 'London',
+      address_line_1: 'New Address', address_line_2: '', postal_code: 'SW1',
+    } } })
+    await flushPromises()
+    expect((wrapper.get('[data-testid="order-recipient-name"]').element as HTMLInputElement).value).toBe('Second Person')
+    expect((wrapper.get('[data-testid="order-address-line-1"]').element as HTMLInputElement).value).toBe('New Address')
     wrapper.unmount()
   })
 
@@ -259,6 +316,8 @@ describe('Orders/Create V2', () => {
     expect(postMock.mock.calls[0]?.[0]).toBe('/customers/orders')
 
     postMock.mockReset()
+    axiosGetMock.mockReset()
+    axiosGetMock.mockRejectedValue(new Error('synthetic-no-data'))
     await mount(Create, { props: kolProps }).get('form').trigger('submit')
     expect(postMock.mock.calls[0]?.[0]).toBe('/kol/orders')
   })

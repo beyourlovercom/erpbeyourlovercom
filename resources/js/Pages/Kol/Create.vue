@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
+import axios from 'axios'
 import { useWorkspaceDraftGuard } from '../../Composables/useWorkspaceDraftGuard'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
@@ -105,6 +106,47 @@ const form = useForm({
 // Only publish the unsaved boolean; no KOL or payment details are stored.
 useWorkspaceDraftGuard(() => form.isDirty)
 
+const customCountry = ref('')
+type DuplicateResult = { exists: boolean; message?: string | null; existing_url?: string | null }
+const duplicate = ref<DuplicateResult>({ exists: false })
+const duplicateChecking = ref(false)
+const duplicateUnavailable = ref(false)
+let duplicateRequestId = 0
+let duplicateTimer: ReturnType<typeof setTimeout> | null = null
+
+const checkDuplicate = async (): Promise<boolean> => {
+  const username = form.wordpress_username
+  const displayName = form.display_name
+  if (!username.trim() && !displayName.trim()) {
+    duplicate.value = { exists: false }
+    duplicateUnavailable.value = false
+    return false
+  }
+  const requestId = ++duplicateRequestId
+  duplicateChecking.value = true
+  duplicateUnavailable.value = false
+  try {
+    const response = await axios.get<DuplicateResult>('/kol/library/duplicate-check', {
+      params: { wordpress_username: username, display_name: displayName },
+    })
+    if (requestId !== duplicateRequestId) return true
+    duplicate.value = response.data
+    return response.data.exists
+  } catch {
+    if (requestId === duplicateRequestId) duplicateUnavailable.value = true
+    return true // Fail closed rather than create an account without a duplicate preflight.
+  } finally {
+    if (requestId === duplicateRequestId) duplicateChecking.value = false
+  }
+}
+watch([() => form.wordpress_username, () => form.display_name], () => {
+  duplicate.value = { exists: false }
+  duplicateUnavailable.value = false
+  if (duplicateTimer) clearTimeout(duplicateTimer)
+  duplicateTimer = setTimeout(() => { void checkDuplicate() }, 420)
+})
+onUnmounted(() => { if (duplicateTimer) clearTimeout(duplicateTimer) })
+
 const couponExpiryManuallyEdited = ref(false)
 watch(() => form.joined_at, date => {
   if (!couponExpiryManuallyEdited.value) form.affiliate_coupon_expiry = plusThreeYears(date)
@@ -137,9 +179,12 @@ const removeSalesPerformance = (index: number) => {
   form.sales_performance_entries.splice(index, 1)
 }
 
-const submit = () => {
+const submit = async () => {
+  if (duplicateTimer) clearTimeout(duplicateTimer)
+  if (await checkDuplicate()) return
   form.transform(data => ({
     ...data,
+    country_code: data.country_code === 'OTHER' ? customCountry.value.trim() : data.country_code,
     owner_id: data.owner_id ? Number(data.owner_id) : null,
     approval_manager_id: data.approval_manager_id ? Number(data.approval_manager_id) : null,
     finance_owner_id: data.finance_owner_id ? Number(data.finance_owner_id) : null,
@@ -196,7 +241,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
           <div class="kol-header-actions page-header-actions">
             <a href="/kol/library" class="erp-btn erp-btn-secondary">返回列表</a>
             <a href="/kol/library" class="erp-btn erp-btn-secondary">取消</a>
-            <button type="submit" form="kol-create-form" class="erp-btn erp-btn-primary" :disabled="form.processing">{{ form.processing ? '创建中…' : '保存 KOL' }}</button>
+            <button type="submit" form="kol-create-form" class="erp-btn erp-btn-primary" :disabled="form.processing || duplicate.exists || duplicateChecking || duplicateUnavailable">{{ form.processing ? '创建中…' : '保存 KOL' }}</button>
           </div>
         </div>
 
@@ -221,6 +266,8 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
               <div class="erp-form-field">
                 <label class="erp-form-label">国家/地区</label>
                 <SearchableSelect v-model="form.country_code" :options="countryOptions" placeholder="搜索国家/地区" />
+                <input v-if="form.country_code === 'OTHER'" v-model="customCountry" data-testid="custom-kol-country" class="erp-input" maxlength="128" required placeholder="请输入实际国家名称，例如：Mexico、Brazil">
+                <small v-if="form.country_code === 'OTHER'">没有对应选项时直接填写实际国家名称，不会只保存“其他”。</small>
                 <p v-if="form.errors.country_code" class="erp-field-error">{{ form.errors.country_code }}</p>
               </div>
               <div class="erp-form-field">
@@ -337,6 +384,12 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <label class="erp-form-label">Username <span class="erp-form-required">*</span></label>
                 <input v-model="form.wordpress_username" type="text" autocomplete="username" class="erp-input" :class="{ 'has-error': form.errors.wordpress_username }" required placeholder="网红用户名，可修改" @input="usernameManuallyEdited = true">
                 <p v-if="form.errors.wordpress_username" class="erp-field-error">{{ form.errors.wordpress_username }}</p>
+                <p v-if="duplicateChecking" class="erp-form-helper">正在检查是否已有相同网红…</p>
+                <div v-if="duplicate.exists" data-testid="kol-duplicate-warning" class="erp-field-error" role="alert">
+                  已经存在这个网红，是否重复创建账号？系统已拦截，请核对已有档案，不允许直接重复开户。
+                  <a v-if="duplicate.existing_url" :href="duplicate.existing_url">查看已有网红</a>
+                </div>
+                <p v-if="duplicateUnavailable" class="erp-field-error" role="alert">暂时无法检查网红是否重复，已停止创建，请稍后重试。</p>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">Affiliate Name <span class="erp-form-required">*</span></label>
