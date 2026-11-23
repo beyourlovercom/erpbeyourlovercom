@@ -87,10 +87,24 @@ final class XlwmsInventorySyncService
             $normalized[$sku] = ['sku' => $sku, 'total' => $qoh, 'available' => $available, 'locked' => $locked, 'in_transit' => $inTransit];
         }
 
+        // Only DE owns these explicit customer-scope exclusions. Keep source
+        // observations for auditing, but exclude them before identity resolution,
+        // quantity reconciliation and any potential apply.
+        $deExcluded = [];
+        if ($warehouseCode === 'DE') {
+            foreach ((array) config('xlwms.de_excluded_inventory_skus', []) as $excludedSku) {
+                $deExcluded[mb_strtolower(trim((string) $excludedSku), 'UTF-8')] = true;
+            }
+        }
         $rows = []; $mismatches = []; $mapped = $unmatched = $blocked = 0;
         // A catalog SKU without a stock-ledger row is UNKNOWN, never implicit zero.
         // Only current, warehouse-scoped stock rows may drive inventory updates.
         foreach (array_keys($normalized) as $sku) {
+            if (isset($deExcluded[mb_strtolower($sku, 'UTF-8')])) {
+                $rows[] = ['sku' => $sku, 'status' => 'excluded',
+                    'stock' => $normalized[$sku], 'reason' => 'OMS_SKU_EXCLUDED_OTHER_CUSTOMER'];
+                continue;
+            }
             $resolution = $this->resolver->resolve($sku);
             $resolved = $resolution['status'] === 'resolved' ? $resolution['product_id'] : null;
             if ($resolved === null) {
@@ -117,6 +131,11 @@ final class XlwmsInventorySyncService
         // Catalog-only is deliberately not "unmatched" and never means stock zero.
         foreach (array_keys($providerSkus) as $sku) {
             if (isset($normalized[$sku])) continue;
+            if (isset($deExcluded[mb_strtolower($sku, 'UTF-8')])) {
+                $rows[] = ['sku' => $sku, 'status' => 'excluded',
+                    'reason' => 'OMS_SKU_EXCLUDED_OTHER_CUSTOMER'];
+                continue;
+            }
             $resolution = $this->resolver->resolve($sku);
             $catalogProductId = $resolution['status'] === 'resolved' ? $resolution['product_id'] : null;
             $rows[] = ['sku' => $sku, 'status' => 'catalog_only',
@@ -421,6 +440,11 @@ final class XlwmsInventorySyncService
 
     private function storeSnapshot(Warehouse $warehouse, string $whCode, string $checksum, array $providerSkus, array $normalized, array $rows, array $mismatches, int $mapped, int $unmatched, int $blocked, string $status, bool $applied, array $errors, array $extraSummary = []): XlwmsInventorySnapshot
     {
+        $excludedStock = array_values(array_filter($rows,
+            static fn (array $row): bool => $row['status'] === 'excluded' && isset($row['stock'])));
+        $excludedKeys = array_fill_keys(array_column($excludedStock, 'sku'), true);
+        $eligibleNormalized = array_filter($normalized,
+            static fn (string $sku): bool => ! isset($excludedKeys[$sku]), ARRAY_FILTER_USE_KEY);
         $changes = [];
         foreach ($rows as $row) {
             if (! isset($row['product_id'], $row['stock']['total'])) continue;
@@ -434,10 +458,15 @@ final class XlwmsInventorySyncService
                     'ready' => $row['status'] === 'matched'];
             }
         }
-        $snapshot = XlwmsInventorySnapshot::query()->create(['warehouse_id' => $warehouse->id, 'wh_code' => $whCode, 'checksum' => $checksum, 'status' => $status, 'fetched_at' => now(), 'applied_at' => $applied ? now() : null, 'provider_sku_count' => count($providerSkus), 'mapped_sku_count' => $mapped, 'unmatched_sku_count' => $unmatched, 'blocked_sku_count' => $blocked, 'summary' => ['oms_rows' => count($normalized), 'oms_good_qty' => array_sum(array_column($normalized, 'total')),
-                    'oms_available_qty' => array_sum(array_column($normalized, 'available')),
-                    'oms_locked_qty' => array_sum(array_column($normalized, 'locked')),
-                    'in_transit' => array_sum(array_column($normalized, 'in_transit')), 'changes' => $changes, ...$extraSummary], 'mismatches' => $mismatches, 'errors' => $errors]);
+        $snapshot = XlwmsInventorySnapshot::query()->create(['warehouse_id' => $warehouse->id, 'wh_code' => $whCode, 'checksum' => $checksum, 'status' => $status, 'fetched_at' => now(), 'applied_at' => $applied ? now() : null, 'provider_sku_count' => count($providerSkus), 'mapped_sku_count' => $mapped, 'unmatched_sku_count' => $unmatched, 'blocked_sku_count' => $blocked, 'summary' => ['oms_rows' => count($eligibleNormalized),
+                    'oms_good_qty' => array_sum(array_column($eligibleNormalized, 'total')),
+                    'oms_available_qty' => array_sum(array_column($eligibleNormalized, 'available')),
+                    'oms_locked_qty' => array_sum(array_column($eligibleNormalized, 'locked')),
+                    'in_transit' => array_sum(array_column($eligibleNormalized, 'in_transit')),
+                    'oms_raw_stock_sku_count' => count($normalized),
+                    'oms_excluded_stock_sku_count' => count($excludedStock),
+                    'oms_excluded_stock_qty' => array_sum(array_map(static fn (array $row): int => (int) $row['stock']['total'], $excludedStock)),
+                    'changes' => $changes, ...$extraSummary], 'mismatches' => $mismatches, 'errors' => $errors]);
         foreach ($rows as $row) XlwmsInventorySnapshotRow::query()->create(['snapshot_id' => $snapshot->id, 'provider_sku' => $row['sku'], 'product_id' => $row['product_id'] ?? null, 'resolution_status' => $row['status'], 'oms_total' => $row['stock']['total'] ?? null, 'oms_available' => $row['stock']['available'] ?? null, 'oms_locked' => $row['stock']['locked'] ?? null, 'oms_in_transit' => $row['stock']['in_transit'] ?? null, 'mismatch_reason' => $row['reason'] ?? null]);
         return $snapshot;
     }

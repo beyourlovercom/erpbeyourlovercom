@@ -57,6 +57,10 @@ return [
         explode(',', (string) env('XLWMS_DE_VERIFIED_CHANNEL_CODES', ''))))),
     // R4 manual DE inventory sync is independently enabled only in isolated Dev.
     'de_manual_sync_enabled' => filter_var(env('XLWMS_DE_MANUAL_SYNC_ENABLED', false), FILTER_VALIDATE_BOOL),
+    // Owner 2026-11-23: other customer's stock / unidentified external goods.
+    // DE only. These OMS SKUs must NEVER resolve to ERP products or change
+    // stock, even if an alias or canonical SKU is later created.
+    'de_excluded_inventory_skus' => ['zuodian', 'X002DEC9SZ'],
     // R7: independent Production read-only observer and one-time inventory apply.
     // Both default OFF. UI is always read-only in Production, including when
     // the separate CLI-only apply gate is explicitly enabled.

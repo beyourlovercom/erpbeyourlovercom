@@ -23,7 +23,7 @@ type SyncResult = {
   unmatched_sku_count:number; blocked_sku_count:number; error_code:string|null
   finished_at:string|null
 }
-type ResolutionFilter = 'unmatched'|'matched'|'blocked'|'catalog_only'|'all'
+type ResolutionFilter = 'unmatched'|'matched'|'blocked'|'catalog_only'|'excluded'|'all'
 type InventoryRow = {
   provider_sku:string; erp_sku:string|null; resolution_status:string
   oms_total:number|null; oms_available:number|null; oms_locked:number|null
@@ -44,7 +44,7 @@ type Details = {
   snapshot: null | { id:number; status:string; fetched_at:string
     applied_at:string|null; erp_stock_updated:boolean; provider_sku_count:number
     mapped_sku_count:number; unmatched_sku_count:number; blocked_sku_count:number }
-  counts:Record<'matched'|'unmatched'|'blocked'|'catalog_only',number>
+  counts:Record<'matched'|'unmatched'|'blocked'|'catalog_only',number> & { excluded?:number }
   rows:InventoryRow[]; pagination:{page:number; per_page:number; total:number}
   runs:ManualRun[]; latest_run?:ManualRun|null
 }
@@ -159,7 +159,7 @@ async function requestJson(url:string, method:'GET'|'POST'='GET',body?:Record<st
 function resolutionLabel(code:string) {
   const labels:Record<string,string>={
     matched:'已匹配 ERP SKU', unmatched:'未匹配', blocked:'库存保护阻断',
-    catalog_only:'无本仓库存台账',
+    catalog_only:'无本仓库存台账', excluded:'已排除（其他客户 / 不属于本仓商品）',
   }
   return labels[code] || code
 }
@@ -171,6 +171,7 @@ function reasonLabel(code:string|null) {
     ERP_LOCAL_RESERVATIONS_EXCEED_OMS_PHYSICAL_QOH:'ERP 本地预留库存超过 OMS 实物库存',
     LOT_RECONCILIATION_REQUIRED:'需要先完成批次库存核对',
     ABSENT_LEDGER_NOT_READY:'本仓库存台账未就绪',
+    OMS_SKU_EXCLUDED_OTHER_CUSTOMER:'其他客户 / 明确忽略的 SKU，不参与 ERP 库存同步',
     XLWMS_DE_WRITE_PROOF_OR_READBACK_MISSING:'缺少写入凭证或 ERP 数量读回不一致',
     OMS_SKU_DELTA_EXCEEDS_AUTO_LIMIT:'库存变化超过单 SKU 自动同步范围',
     OMS_SKU_DEFERRED_BY_APPLY_BUDGET:'本轮库存变化额度不足，请后续继续同步',
@@ -184,6 +185,7 @@ function reasonLabel(code:string|null) {
 function stockLabel(qty:number|null|undefined) { return qty===null||qty===undefined?'—':String(qty) }
 function resultLabel(code:string|null|undefined) {
   const map:Record<string,string>={updated:'更新成功',unchanged:'已核验 · 无变化',
+    excluded:'已排除 · 不参与同步',
     unmatched:'未匹配',blocked:'同步阻断',missing:'无本仓台账',preview:'只读预检'}
   return code?map[code]||code:'尚无逐 SKU 执行记录'
 }
@@ -368,6 +370,7 @@ onUnmounted(()=>{++detailRequestSerial;for(const id of timers.keys())stopPolling
                       <option value="matched">已匹配（{{details.counts.matched}}）</option>
                       <option value="blocked">被阻断（{{details.counts.blocked}}）</option>
                       <option value="catalog_only">目录中但无本仓台账（{{details.counts.catalog_only}}）</option>
+                      <option value="excluded">已排除（{{details.counts.excluded||0}}）</option>
                       <option value="all">全部 SKU</option>
                     </select>
                     <form class="de-search-form" @submit.prevent="loadDetails(warehouse,1)">
@@ -474,7 +477,7 @@ onUnmounted(()=>{++detailRequestSerial;for(const id of timers.keys())stopPolling
 .de-table .de-sku{font-weight:650;white-space:nowrap;color:#096f6a}
 .de-resolution{display:inline-block;border-radius:5px;padding:3px 6px;white-space:nowrap;background:#e7f4f2;color:#13685d}
 .de-resolution-unmatched,.de-resolution-blocked{background:#fff0e2;color:#9b4b23}
-.de-resolution-catalog_only,.de-resolution-missing,.de-resolution-preview{background:#e9eff5;color:#4e6678}
+.de-resolution-catalog_only,.de-resolution-missing,.de-resolution-preview,.de-resolution-excluded{background:#e9eff5;color:#4e6678}
 .de-resolution-updated,.de-resolution-unchanged{background:#e7f4f2;color:#13685d}
 .de-alias-link{color:#0e7772;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 .de-pagination{display:flex;justify-content:flex-end;align-items:center;gap:8px;font-size:12px;margin:8px 0 14px;color:#60788a}

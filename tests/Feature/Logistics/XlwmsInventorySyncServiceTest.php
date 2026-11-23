@@ -68,6 +68,19 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         self::assertSame(2, XlwmsInventorySnapshot::query()->count());
     }
 
+    public function test_german_customer_exclusion_does_not_apply_to_us_sm_warehouse(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['zuodian']);
+        $service = $this->service($products, ['zuodian']);
+        $result = $service->sync(false, 'US-SM');
+        $snapshot = XlwmsInventorySnapshot::query()->findOrFail($result['snapshot_id']);
+        self::assertSame(1, (int) $snapshot->mapped_sku_count);
+        self::assertSame(0, (int) $snapshot->unmatched_sku_count);
+        self::assertSame('matched',
+            $snapshot->rows()->where('provider_sku', 'zuodian')->value('resolution_status'));
+        self::assertSame(10, (int) $snapshot->summary['oms_good_qty']);
+    }
+
     public function test_unmatched_sku_blocks_without_partial_quantity_write(): void
     {
         [$warehouse, , $products] = $this->fixture(['SKU-A']);

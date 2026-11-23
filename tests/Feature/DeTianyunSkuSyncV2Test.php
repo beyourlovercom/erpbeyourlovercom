@@ -9,6 +9,7 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryGateway;
 use App\Modules\Logistics\Application\Xlwms\XlwmsInventorySyncService;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Sync\Experience\Jobs\RunDeTianyunWarehouseSync;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -201,6 +202,46 @@ final class DeTianyunSkuSyncV2Test extends TestCase
             DB::table('xlwms_inventory_manual_run_rows')
                 ->where('run_id', $retryId)->where('provider_sku', $skuA)
                 ->value('error_code'));
+    }
+
+    public function test_explicit_other_customer_skus_are_excluded_from_de_without_stock_write_or_failure(): void
+    {
+        Queue::fake();
+        $warehouse = $this->warehouse();
+        $this->connection($warehouse);
+        $actor = $this->actor();
+        $other = Product::query()->create(['sku' => 'zuodian', 'name' => 'OTHER CUSTOMER product']);
+        $unknown = Product::query()->create(['sku' => 'X002DEC9SZ', 'name' => 'Never owned']);
+        $mine = Product::query()->create(['sku' => 'M3', 'name' => 'Owner confirmed M3']);
+        $this->stock($warehouse, $other, 200);
+        $this->stock($warehouse, $unknown, 10);
+        $this->stock($warehouse, $mine, 1);
+        $this->fakeOms(['zuodian' => 159, 'X002DEC9SZ' => 0, 'M3' => 1]);
+
+        $runId = $this->start($warehouse, $actor);
+        $this->execute($runId);
+        $this->getJson($this->statusUrl($warehouse, $runId))
+            ->assertOk()->assertJsonPath('mode', 'read_only')
+            ->assertJsonPath('outcome', 'preview')
+            ->assertJsonPath('unmatched_sku_count', 0)
+            ->assertJsonPath('blocked_sku_count', 0);
+        $snapshot = XlwmsInventorySnapshot::query()
+            ->where('warehouse_id', $warehouse->id)->latest('id')->firstOrFail();
+        self::assertSame(1, (int) $snapshot->summary['oms_rows']);
+        self::assertSame(3, (int) $snapshot->summary['oms_raw_stock_sku_count']);
+        self::assertSame(2, (int) $snapshot->summary['oms_excluded_stock_sku_count']);
+        self::assertSame(159, (int) $snapshot->summary['oms_excluded_stock_qty']);
+        self::assertSame(1, (int) $snapshot->summary['oms_good_qty']);
+        self::assertSame('excluded', $snapshot->rows()->where('provider_sku', 'zuodian')->value('resolution_status'));
+        self::assertSame('excluded', $snapshot->rows()->where('provider_sku', 'X002DEC9SZ')->value('resolution_status'));
+        self::assertNull($snapshot->rows()->where('provider_sku', 'zuodian')->value('product_id'));
+        self::assertSame(2, DB::table('xlwms_inventory_manual_run_rows')
+            ->where('run_id', $runId)->where('outcome', 'excluded')->count());
+        self::assertSame(200, $this->qoh($warehouse, $other));
+        self::assertSame(10, $this->qoh($warehouse, $unknown));
+        self::assertSame(1, $this->qoh($warehouse, $mine));
+        $this->actingAs($actor)->getJson("/sync/warehouses/{$warehouse->id}/sync-details?status=excluded")
+            ->assertOk()->assertJsonCount(2, 'rows');
     }
 
     private function warehouse(): Warehouse

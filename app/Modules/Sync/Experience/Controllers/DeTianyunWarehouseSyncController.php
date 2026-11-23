@@ -166,7 +166,7 @@ final class DeTianyunWarehouseSyncController
         );
 
         $input = $request->validate([
-            'status' => ['nullable', Rule::in(['all', 'unmatched', 'matched', 'blocked', 'catalog_only'])],
+            'status' => ['nullable', Rule::in(['all', 'unmatched', 'matched', 'blocked', 'catalog_only', 'excluded'])],
             'search' => ['nullable', 'string', 'max:128'],
             'page' => ['nullable', 'integer', 'min:1', 'max:100000'],
         ]);
