@@ -86,9 +86,17 @@ async function proxy(req,res,url){
  const location=upstream.headers.get('location');
  if(location&&!noteWrite(url.pathname)){
   const localOrigin='http://'+HOST+':'+PORT;
-  if (location.startsWith(MAC+'/')) responseHeaders.location=localOrigin+location.slice(MAC.length);
+  if (location===MAC) responseHeaders.location='/';
+  else if (location.startsWith(MAC+'/')) responseHeaders.location=localOrigin+location.slice(MAC.length);
   else if (location.startsWith('/')&&!location.startsWith('//')) responseHeaders.location=location;
-  else return json(res,502,{error:'ERP2_EXTERNAL_REDIRECT_DENIED'});
+  else {
+   // Laravel Dev APP_URL may produce an absolute same-site redirect on logout.
+   // Never forward to any external origin; map only ERP2's canonical Dev origin.
+   let parsed;try{parsed=new URL(location);}catch{return json(res,502,{error:'ERP2_EXTERNAL_REDIRECT_DENIED'});}
+   if(parsed.origin!=='https://erp2.beyourlover.com' || parsed.username || parsed.password)
+    return json(res,502,{error:'ERP2_EXTERNAL_REDIRECT_DENIED'});
+   responseHeaders.location=parsed.pathname+parsed.search+parsed.hash;
+  }
  }
  res.writeHead(upstream.status,responseHeaders);
  res.end(Buffer.from(await upstream.arrayBuffer()));
