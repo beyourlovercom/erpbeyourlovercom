@@ -156,6 +156,7 @@ const props = withDefaults(defineProps<{
   isDomesticFactory?: boolean
   canMarkDomesticStockout?: boolean
   canEditOrder?: boolean
+  canSyncChildAddresses?: boolean
   canEditWorkflowStatus?: boolean
   canManageAuxiliary?: boolean
   canTrashOrder?: boolean
@@ -175,7 +176,7 @@ const props = withDefaults(defineProps<{
   wooAdminEditUrl?: string | null
   kolProfile?: { id: number; display_name: string; url: string } | null
 
-}>(), { canAppendOrderNote: false, canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canForceTrackingSync: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
+}>(), { canAppendOrderNote: false, canMarkOperational: false, isDomesticFactory:false, canMarkDomesticStockout:false, canEditOrder: false, canSyncChildAddresses: false, canEditWorkflowStatus: false, canManageAuxiliary: false, canArchiveOrder: false, operationallyArchived: false, directlyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canForceTrackingSync: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
 
 
 const inlineCarrierOptions = ref<CarrierOption[]>([])
@@ -211,6 +212,7 @@ const isImportedOrder = computed(() => ['website', 'kol', 'manual_other'].includ
 const sourceNumber = computed(() => isImportedOrder.value ? (props.order.external_order_number || props.order.erp_order_id || '—') : (props.order.erp_order_id || '—'))
 const displayedOrderKind = computed(() => ({ website: '网站订单', kol: '网红订单', manual_other: '外采订单' } as Record<string, string>)[props.order.source_type] ?? props.order.order_kind_label)
 const displayedSourceLabel = computed(() => isImportedOrder.value ? (displayedOrderKind.value || props.order.source_label) : props.order.source_label)
+const isDerivedOrder = computed(() => props.order.order_kind === 'fulfillment_derived')
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment'
   || props.order.fulfillment_parent?.order_kind === 'kol_fulfillment')
 const adjacentNavigationPending = ref(false)
@@ -476,6 +478,16 @@ const submitOrderNote = () => {
 }
 
 const editMode = ref(false)
+const childAddressSyncing = ref(false)
+const syncChildAddresses = () => {
+  if (!props.canSyncChildAddresses || childAddressSyncing.value || editMode.value) return
+  if (!window.confirm('将当前母订单已保存的收件信息覆盖到所有未发货的 A/B/C 子订单。子订单原有的独立地址也会被覆盖，确定同步？')) return
+  childAddressSyncing.value = true
+  router.post(`/orders/${props.order.id}/address/sync-children`, {}, {
+    preserveScroll: true,
+    onFinish: () => { childAddressSyncing.value = false },
+  })
+}
 const trashConfirmOpen = ref(false)
 const trashSubmitting = ref(false)
 const submitTrash = () => {
@@ -522,6 +534,18 @@ const cancelEdit = () => {
 }
 
 const submit = () => {
+  if (isDerivedOrder.value) {
+    form.transform(data => ({
+      recipient_name: data.recipient_name, phone: data.phone, country: data.country,
+      province_state: data.province_state, city: data.city,
+      address_line_1: data.address_line_1, address_line_2: data.address_line_2,
+      postal_code: data.postal_code,
+    })).patch(`/orders/${props.order.id}/address`, {
+      preserveScroll: true,
+      onSuccess: () => { editMode.value = false },
+    })
+    return
+  }
   const itemsChanged = hasItemChanges()
   if (itemsChanged && !amendmentPreview.value) {
     publishGlobalFeedback({state:'BLOCKED',title:'请先检查商品变更',
@@ -1250,7 +1274,7 @@ onBeforeUnmount(() => {
           <div>
             <p class="ord-kicker">{{ displayedOrderKind }}</p>
             <h1 class="erp-form-title">{{ order.erp_order_id ?? '—' }}</h1>
-            <p v-if="editMode" class="erp-form-subtitle">仅修改允许编辑的字段；商品变更须通过库存与分仓影响预检。</p>
+            <p v-if="editMode" class="erp-form-subtitle">{{ isDerivedOrder ? '子订单仅编辑收件与地址；SKU、金额及履约信息保持不变。' : '仅修改允许编辑的字段；商品变更须通过库存与分仓影响预检。' }}</p>
           </div>
           <div class="erp-form-header-actions page-header-actions">
             <div class="ord-adjacent-navigation" role="group" aria-label="订单快速切换">
@@ -1562,7 +1586,7 @@ onBeforeUnmount(() => {
               :aria-expanded="!isSectionCollapsed('order-section-order-info')" @click="toggleSection('order-section-order-info')">{{ isSectionCollapsed('order-section-order-info') ? '▸' : '▾' }}</button>
           </div>
           </div>
-          <dl v-if="!editMode" class="ord-summary-grid ord-summary-grid-order" aria-label="订单信息摘要">
+          <dl v-if="!editMode || isDerivedOrder" class="ord-summary-grid ord-summary-grid-order" aria-label="订单信息摘要">
             <div class="ord-summary-field"><dt>{{ isImportedOrder ? '原始订单号' : '订单号' }}</dt><dd>{{ sourceNumber }}</dd></div>
             <div class="ord-summary-field"><dt>订单类型</dt><dd>{{ displayedOrderKind }}</dd></div>
             <div class="ord-summary-field"><dt>来源</dt><dd>{{ displayedSourceLabel }}</dd></div>
@@ -1617,6 +1641,10 @@ onBeforeUnmount(() => {
             <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-address') ? '展开收件与地址' : '折叠收件与地址'"
               :aria-expanded="!isSectionCollapsed('order-section-address')" @click="toggleSection('order-section-address')">{{ isSectionCollapsed('order-section-address') ? '▸' : '▾' }}</button>
           </div>
+          </div>
+          <div v-if="canSyncChildAddresses && !editMode" class="ord-amendment-actions" data-testid="sync-child-address-actions">
+            <button type="button" class="erp-btn erp-btn-secondary" data-testid="sync-child-address" :disabled="childAddressSyncing" @click="syncChildAddresses">{{ childAddressSyncing ? '正在同步…' : '同步收件信息到 A/B/C 子订单' }}</button>
+            <small>先保存母订单修改；仅同步未发货原始子订单，保留各子订单的商品、仓库及物流记录。</small>
           </div>
           <dl v-if="!editMode" class="ord-summary-grid ord-summary-grid-address" aria-label="收件地址摘要">
             <div class="ord-summary-field"><dt>收件人</dt><dd>{{ order.address?.recipient_name || '—' }}</dd></div>
@@ -1714,7 +1742,7 @@ onBeforeUnmount(() => {
           </div>
           </div>
           <!-- View mode: condensed, non-editable SKU table. Financial totals are not inferred from fulfillment lines. -->
-          <div v-if="!editMode" class="ord-summary-table-wrap">
+          <div v-if="!editMode || isDerivedOrder" class="ord-summary-table-wrap">
             <table class="ord-summary-table" aria-label="订单商品摘要">
               <thead><tr><th scope="col">SKU</th><th scope="col">产品</th><th scope="col">数量</th><th scope="col">单价</th></tr></thead>
               <tbody>

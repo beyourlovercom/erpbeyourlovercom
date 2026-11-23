@@ -437,7 +437,11 @@ final class OrderController
                 && blank($order->shipment?->tracking_number)
                 && $order->shipment?->shipped_at === null,
             'workflowStatusOptions' => app(OrderWorkflowStatusPolicy::class)->for($order, $request->user())['options'],
-            'canEditOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
+            'canEditOrder' => ! $order->isOperationallyArchived() && $order->archived_at === null
+                && ($request->user()?->can('orders.edit') ?? false),
+            'canSyncChildAddresses' => ! $isDerived && $order->originalFulfillmentChildren()->exists()
+                && ! $order->isOperationallyArchived() && $order->archived_at === null
+                && ($request->user()?->can('orders.edit') ?? false),
             'canEditWorkflowStatus' => app(OrderWorkflowStatusPolicy::class)->for($order, $request->user())['can_edit'],
             'canManageAuxiliary' => ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canTrashOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),

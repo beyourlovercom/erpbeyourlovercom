@@ -15,6 +15,7 @@ vi.mock('@inertiajs/vue3', () => ({
       processing: false,
       errors: {},
       patch: vi.fn(),
+      transform: vi.fn().mockReturnThis(),
       reset: vi.fn(),
       clearErrors: vi.fn(),
     }
@@ -150,6 +151,30 @@ const openShipmentReview = async (wrapper: ReturnType<typeof mountShipmentReview
 }
 
 describe('Orders/Show V2', () => {
+  it('shows an explicit address sync action on parent only and posts to the parent endpoint', async () => {
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+    const wrapper = mount(Show, { props: { order: splitOrder, audit, canSyncChildAddresses: true, canEditOrder: true } })
+    const sync = wrapper.get('[data-testid="sync-child-address"]')
+    expect(sync.text()).toContain('同步收件信息到 A/B/C 子订单')
+    await sync.trigger('click')
+    expect(router.post).toHaveBeenCalledWith('/orders/1/address/sync-children', {}, expect.any(Object))
+    wrapper.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it('allows child edit of address while keeping item and financial inputs read-only', async () => {
+    const child = { ...baseOrder, id: 11, order_kind: 'fulfillment_derived',
+      order_kind_label: '履约衍生订单',
+      fulfillment_parent: { id: 1, erp_order_id: '007-0908-c1', order_kind: 'customer', url: '/customers/orders/1' } }
+    const wrapper = mount(Show, { props: { order: child, audit, canEditOrder: true, canTrashOrder: false } })
+    await wrapper.get('[data-testid="order-edit"]').trigger('click')
+    expect(wrapper.get('#order-section-address').find('input').exists()).toBe(true)
+    expect(wrapper.get('#order-section-items').find('.ord-summary-table').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="move-to-trash"]').exists()).toBe(false)
+    expect(wrapper.get('#order-section-order-info').find('select').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('shows saved recipient customs ID on KOL orders only', () => {
     const kol = mount(Show, { props: {
       order: { ...baseOrder, order_kind: 'kol_fulfillment',

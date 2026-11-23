@@ -20,7 +20,7 @@ final class DerivedOrderDetailsTest extends TestCase
         config()->set('inertia.testing.ensure_pages_exist', false);
     }
 
-    public function test_customer_derived_order_opens_own_detail_and_preserves_source_link_without_edit_permissions(): void
+    public function test_customer_derived_order_opens_own_detail_and_allows_address_edits_without_trash_permissions(): void
     {
         $viewer = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate', 'analysis.view']);
         $root = $this->order('customer', $viewer, '007-1102-TEST');
@@ -47,7 +47,7 @@ final class DerivedOrderDetailsTest extends TestCase
                 ->where('order.fulfillment_parent.id', $root->id)
                 ->where('order.fulfillment_parent.erp_order_id', '007-1102-TEST')
                 ->where('order.fulfillment_parent.url', '/customers/orders/'.$root->id)
-                ->where('canEditOrder', false)
+                ->where('canEditOrder', true)
                 ->where('canTrashOrder', false)
                 ->where('canOperateLogistics', true)
                 ->where('canReopenFulfillment', true)

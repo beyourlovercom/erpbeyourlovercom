@@ -126,7 +126,8 @@ final class FulfillmentDerivedOrderService
             'currency' => $parent->currency,
         ])->save();
 
-        if ($parent->address) {
+        // Rebuilding a pending segment must not erase an address an operator edited on that child.
+        if ($parent->address && ! $child->address()->exists()) {
             $child->address()->updateOrCreate([], $parent->address->only([
                 'recipient_name', 'phone', 'country', 'province_state', 'city',
                 'address_line_1', 'address_line_2', 'postal_code',
