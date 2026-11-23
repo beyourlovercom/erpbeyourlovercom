@@ -262,6 +262,106 @@ final class DomesticInlineTrackingTest extends TestCase
         self::assertNotEquals('shipped', $parent->fresh()->order_status->value);
     }
 
+    /**
+     * Regression fixture from Production order 8255 (only synthetic IDs and SQLite).
+     * A split child is allocated to FACTORY and pending shipment, while its parent
+     * is still in the staff queue pending_allocation. Parent queue state alone
+     * must not block the already-allocated child's physical dispatch.
+     */
+    public function test_8255_simulated_allocated_domestic_child_can_ship_despite_parent_pending_allocation(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $parent = $this->factoryOrder(false);
+        $parent->shipment()->delete();
+        $parent->forceFill(['workflow_status' => 'pending_allocation'])->save();
+
+        $child = $this->factoryOrder(true);
+        $child->forceFill([
+            'erp_order_id' => '007-1115-c42445B',
+            'order_kind' => 'fulfillment_derived',
+            'fulfillment_parent_id' => $parent->id,
+            'fulfillment_role' => 'original',
+            'fulfillment_suffix' => 'B',
+            'routing_warehouse_code' => 'FACTORY',
+            'workflow_status' => 'sending',
+        ])->save();
+        $child->shipment()->update([
+            'tracking_number' => '4PX3003428844833CN',
+            'warehouse_selection_source' => 'allocation',
+        ]);
+
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$child->id.'/quick-ship', [
+            'tracking_number' => '4PX3003428844833CN',
+        ])->assertRedirect();
+
+        self::assertSame('shipped', $child->fresh()->order_status->value);
+        self::assertSame('shipped', $child->fresh()->shipment->shipment_status);
+        self::assertSame('4PX3003428844833CN', $child->fresh()->shipment->tracking_number);
+        self::assertSame('pending_allocation', $parent->fresh()->workflow_status);
+    }
+
+    public function test_domestic_child_parent_exception_still_blocks_confirm_shipping(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $parent = $this->factoryOrder(false);
+        $parent->shipment()->delete();
+        $parent->forceFill(['workflow_status' => 'exception'])->save();
+        $child = $this->factoryOrder(true);
+        $child->forceFill([
+            'order_kind' => 'fulfillment_derived',
+            'fulfillment_parent_id' => $parent->id,
+            'fulfillment_role' => 'original',
+            'fulfillment_suffix' => 'B',
+            'routing_warehouse_code' => 'FACTORY',
+            'workflow_status' => 'sending',
+        ])->save();
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$child->id.'/quick-ship', [
+            'tracking_number' => '4PX-PARENT-EXCEPTION',
+        ])->assertStatus(409);
+        self::assertSame('pending', $child->fresh()->shipment->shipment_status);
+    }
+
+    public function test_domestic_child_parent_stockout_still_blocks_confirm_shipping(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $parent = $this->factoryOrder(false);
+        $parent->shipment()->delete();
+        $parent->forceFill(['workflow_status' => 'out_of_stock'])->save();
+        $child = $this->factoryOrder(true);
+        $child->forceFill([
+            'order_kind' => 'fulfillment_derived',
+            'fulfillment_parent_id' => $parent->id,
+            'fulfillment_role' => 'original',
+            'fulfillment_suffix' => 'B',
+            'routing_warehouse_code' => 'FACTORY',
+        ])->save();
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$child->id.'/quick-ship', [
+            'tracking_number' => '4PX-PARENT-STOCKOUT',
+        ])->assertStatus(409);
+        self::assertSame('pending', $child->fresh()->shipment->shipment_status);
+    }
+
+    public function test_domestic_child_own_pending_allocation_still_blocks_confirm_shipping(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $parent = $this->factoryOrder(false);
+        $parent->shipment()->delete();
+        $parent->forceFill(['workflow_status' => 'pending_allocation'])->save();
+        $child = $this->factoryOrder(true);
+        $child->forceFill([
+            'order_kind' => 'fulfillment_derived',
+            'fulfillment_parent_id' => $parent->id,
+            'fulfillment_role' => 'original',
+            'fulfillment_suffix' => 'B',
+            'routing_warehouse_code' => 'FACTORY',
+            'workflow_status' => 'pending_allocation',
+        ])->save();
+        $this->actingAs($actor)->post('/logistics/china/orders/'.$child->id.'/quick-ship', [
+            'tracking_number' => '4PX-CHILD-NOT-ALLOCATED',
+        ])->assertStatus(409);
+        self::assertSame('pending', $child->fresh()->shipment->shipment_status);
+    }
+
     public function test_cross_warehouse_and_duplicate_tracking_are_rejected(): void
     {
         $actor=$this->userWith(['logistics.view','logistics.operate']);
