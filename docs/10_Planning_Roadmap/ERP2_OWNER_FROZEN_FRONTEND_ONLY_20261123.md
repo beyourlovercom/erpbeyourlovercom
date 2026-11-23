@@ -54,7 +54,9 @@
 ## 7. 当日事实状态（2026-11-23）
 
 - ERP2 Draft PR #766 正在开发，既有 Vben 页面与孤立 Dev 工作已有进展；**当前不是正式 ERP1 业务数据库的同构副本**。
-- 007windows 已具备 Node/Vben 环境；tailnet 内网连接可使用，域名 `erp2.beyourlover.com` 尚未确认可解析/可访问。
+- 007windows 已具备 Node/Vben 环境，并使用计划任务自启隔离 Dev Gateway + Tailscale 网关；中国 Mac 和美国 Mac mini 通过 `http://100.99.21.57:18810` 实测 HTTP 200。
+- `erp2.beyourlover.com` 已创建 **单独的** Cloudflare Tunnel/DNS CNAME，外部验证 HTTPS 证书有效、未认证请求返回 401；入口额外加了 Dev BasicAuth，正式 ERP1 Tunnel 未改。授权用户的浏览器完整登录 UAT 尚未 PASS，公开域名不能算业务验收通过；Dev 仍然只有合成数据。
+- Tailscale HTTPS Serve 功能在当前 tailnet 尚未授权，短期直连 IP 是受 Tailscale 加密保护的 HTTP Dev 入口；公网 Dev 域名优先采用独立 Cloudflare Tunnel，真实数据副本导入之前仍需落实访问权限清单。
 - 本文记录新架构批准，不代表数据库已复制、域名已上线、所有员工登录/发货回读 PASS。
 - 旧 roadmap 中“全部模块重建”“200h+ 一体化重造 ERP”与本文冲突的部分从此停用。
 
