@@ -1,0 +1,82 @@
+[
+  {
+    "path": "evidence\\App.vue",
+    "sha256": "DFC2E3DED4E0C20FF7C5EADBF9A842B887C8A32D665B6E88886E222A23047D8D",
+    "bytes": 811
+  },
+  {
+    "path": "evidence\\browser.cjs",
+    "sha256": "A4FFAF1612636F5916191EB66D82B4D3C21888F9175F355B158B68E1A59EEF76",
+    "bytes": 4345
+  },
+  {
+    "path": "evidence\\erp2-o3-browser.log",
+    "sha256": "06A0FEF784116B0D4E73D1B7E1E24AECE20D77F7BBF5133F9CD4D0290FCFDD5D",
+    "bytes": 358
+  },
+  {
+    "path": "evidence\\erp2-o3-build.log",
+    "sha256": "FA3760E44B92C7B1FA8FA1B034BC145D5D10E9001E48E21F6012A75CF5ACED34",
+    "bytes": 53068
+  },
+  {
+    "path": "evidence\\erp2-o3-tests.log",
+    "sha256": "BD48828A55AE48F6D0ACCF08F34EC2B19D4525F058F75B1845F9D6E9845B7F9E",
+    "bytes": 1578
+  },
+  {
+    "path": "evidence\\erp2-o3-typecheck.log",
+    "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "bytes": 0
+  },
+  {
+    "path": "overrides\\src\\api\\erp-logistics.test.ts",
+    "sha256": "F5376592F5F006BAAFB90B2F72FF05B938308C61A636D51B28C7E695FF47587C",
+    "bytes": 38973
+  },
+  {
+    "path": "overrides\\src\\api\\erp-logistics.ts",
+    "sha256": "B7901562EBA8B68D8EA02AE348E4BCEEE864A93C13D98743D2F5DB5D04AC3882",
+    "bytes": 56486
+  },
+  {
+    "path": "overrides\\src\\views\\erp\\logistics-projection.vue",
+    "sha256": "1D9D8960341D30556E2B42BFB242C47A2A9DC4592192F0DFDA37239456A2C21A",
+    "bytes": 47068
+  },
+  {
+    "path": "overrides\\src\\views\\erp\\oversea-oms-batch-panel.vue",
+    "sha256": "5F887F66FC3909D01DB6DACCAEAE03EB768255F7F464A46D81AF054D5E54A0CF",
+    "bytes": 3737
+  },
+  {
+    "path": "overrides\\src\\views\\erp\\oversea-return-panel.vue",
+    "sha256": "21582CCD9B65FE02FEAE7ABE4E2457DA80D52B9A04DD26D6E0A2C0103021342D",
+    "bytes": 2599
+  },
+  {
+    "path": "README.md",
+    "sha256": "F228072A2780307D0711C7F3AC583F41418B530D3868F3D35F3A3F6B77B90032",
+    "bytes": 1026
+  },
+  {
+    "path": "runtime\\erp2-o1-o2-gateway-candidate-20261124.cjs",
+    "sha256": "22B6784637FC2815F78D627361D472CB48D092203411BE40D729A54FBFFFE2A9",
+    "bytes": 14090
+  },
+  {
+    "path": "runtime\\erp2-o1-o2-gateway-test-20261124.cjs",
+    "sha256": "5147FD8DB492228B1727489C209A628504EE1176B3122922BBD3CB52847892A4",
+    "bytes": 3818
+  },
+  {
+    "path": "runtime\\erp2-o3-gateway-candidate-20261124.cjs",
+    "sha256": "A27C4F3187BA0FD9C4C882CD6075FFBBDB9102B05E24B613AB42845B796AB678",
+    "bytes": 14875
+  },
+  {
+    "path": "runtime\\erp2-o3-gateway-test-20261124.cjs",
+    "sha256": "581C6E374CA5EA89CA05F582474D9333D0EC1240993B69F57405FD0CFCF2B23F",
+    "bytes": 3315
+  }
+]
