@@ -28,3 +28,19 @@ test('R2 login completes canonical router bootstrap before home redirect',()=>{
  assert.ok(bootstrap>=0&&redirect>bootstrap);
  assert.match(login,/authenticatedButNavigationFailed/);
 });
+
+test('P0 domestic Excel buttons reuse exact Laravel routes and selected order_ids',()=>{
+ const grid=source('views/erp/logistics-projection.vue');
+ const gateway=fs.readFileSync(path.join(__dirname,'erp2-logistics-dev-gateway.cjs'),'utf8');
+ for(const route of [
+  '/logistics/china/today/export','/logistics/china/export/4px',
+  '/logistics/china/export/weship','/logistics/china/pending-batch/export',
+  '/logistics/china/pending-batch/export-sku-merged'
+ ]) {
+  assert.ok(grid.includes(route),'Missing Dev download action: '+route);
+  assert.ok(gateway.includes(route),'Gateway must use exact Laravel export URL: '+route);
+ }
+ assert.match(grid,/qs\.append\('order_ids\[\]'/);
+ assert.match(gateway,/domesticExportRead/);
+ assert.match(gateway,/content-disposition/);
+});

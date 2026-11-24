@@ -32,6 +32,14 @@ const logisticsDetail=(pathname)=>/^\/logistics\/oversea\/(us-ny|us-moreplus|us-
 const inertiaDetail=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*$/.test(pathname);
 const noteWrite=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*\/notes$/.test(pathname);
 const reviewWrite=new Set(['/logistics/china/batch-review','/logistics/oversea/batch-review']);
+// Exact original ERP1 domestic XLSX downloads, never a duplicate exporter.
+const domesticExportRead=new Set([
+ '/logistics/china/today/export',
+ '/logistics/china/pending-batch/export',
+ '/logistics/china/pending-batch/export-sku-merged',
+ '/logistics/china/export/4px',
+ '/logistics/china/export/weship',
+]);
 const accountPreferences=pathname=>/^\/ui\/preferences\/grid\.[A-Za-z0-9._:-]{1,110}$/.test(pathname);
 const shippingWrite=pathname=>/^\/logistics\/china\/orders\/[1-9][0-9]*\/(carrier-service|tracking-draft|quick-ship)$/.test(pathname)||
   /^\/logistics\/oversea\/(orders|us-3sm\/orders|us-moreplus\/orders)\/[1-9][0-9]*\/manual-ship$/.test(pathname);
@@ -47,6 +55,7 @@ function isInertia(pathname){
   logisticsDetail(pathname);
 }
 function allowed(req,url){
+ if(domesticExportRead.has(url.pathname))return req.method==='GET';
  if(accountPreferences(url.pathname))return req.method==='GET' ||
    (req.method==='PUT' && req.headers['content-type']?.startsWith('application/json') &&
     Boolean(req.headers['x-xsrf-token']));
@@ -85,6 +94,13 @@ async function proxy(req,res,url){
   'content-type':upstream.headers.get('content-type')||'text/plain',
   'cache-control':'no-store,private','x-content-type-options':'nosniff',
  };
+ // Preserve original Laravel XLSX attachment name and export audit totals.
+ if(domesticExportRead.has(url.pathname)&&upstream.ok){
+  for(const header of ['content-disposition','x-byl-exported-orders','x-byl-blocked-orders']){
+   const value=upstream.headers.get(header);
+   if(value)responseHeaders[header]=value;
+  }
+ }
  const cookies=upstream.headers.getSetCookie();
  if(cookies.length)responseHeaders['set-cookie']=cookies;
  const location=upstream.headers.get('location');
@@ -127,13 +143,13 @@ const server=http.createServer(async(req,res)=>{
     mode:'laravel-session',app:'ERP2 Vben Logistics Dev'});
   // Never let nested Laravel business URLs fall through to a misleading SPA 200.
   if(url.pathname.startsWith('/logistics/')&&!isInertia(url.pathname)&&
-     !reviewWrite.has(url.pathname)&&!shippingWrite(url.pathname))
+     !reviewWrite.has(url.pathname)&&!shippingWrite(url.pathname)&&!domesticExportRead.has(url.pathname))
     return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
   if(/^\/(orders|customers\/orders|kol\/orders)\/.+/.test(url.pathname)&&
      !isInertia(url.pathname)&&!noteWrite(url.pathname))
     return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
   if(url.pathname.startsWith('/api/')||isInertia(url.pathname)||
-     noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname)||accountPreferences(url.pathname)||
+     noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname)||accountPreferences(url.pathname)||domesticExportRead.has(url.pathname)||
      ['/_erp2/identity','/login','/dashboard','/logout'].includes(url.pathname)){
     if(!allowed(req,url))return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
     return await proxy(req,res,url);

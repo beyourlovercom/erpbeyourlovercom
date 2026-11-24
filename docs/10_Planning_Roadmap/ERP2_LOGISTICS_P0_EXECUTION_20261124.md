@@ -28,6 +28,19 @@
 - **确认发货（quick-ship/manual-ship）Dev POST→ shipment/Tracking/审计/出站队列回读仍 HOLD**。发货网关写入标志仍 OFF，外部出库接口保持隔离；不能将 Tracking 草稿 PASS 当成出库 PASS。
 - 国内 4PX/纬狮 Excel 导出、回传预览、上传匹配与子订单 A/B/C 联动的 Vben 前端需继续 1:1 接入原 Laravel 路由并完成隔离 Dev UAT。
 - Dede/梁/Vita 物流完整浏览器操作的 Owner 视觉验收与大批量回归仍 HOLD。
-- 原 `workspace.vue` 订单总表的 GlobalGrid 预先移植工作不列为此轮物流 P0 新增范围，继续冻结 R4 功能扩展。
+- 原 `workspace.vue` 订单总表的 GlobalGrid 预先移植工作不列为此轮物流 P0 新增范围，继续冻结 R4 功能扩展.
+
+## 国内 Excel 原接口恢复（当日追加）
+
+- ERP2 只实现 **国内物流页面入口 + 007windows Dev Gateway GET 白名单**，真正的 XLSX 仍由原 Laravel `DomesticLogisticsController` 生成。网关转发 `Content-Disposition` 和原始 `X-BYL-Exported-Orders` 等下载计数，不制作第二套模板。
+- Edge 独立 Dev 物流员工会话，实际文件返回结果：
+  - `/logistics/china/today/export`：HTTP 200，XLSX ZIP 魔数有效，10 单。
+  - `/logistics/china/export/4px`：HTTP 200，XLSX 有效，速达 10 单。
+  - `/logistics/china/pending-batch/export`：HTTP 200，XLSX 有效，待发货 10 单。
+  - `/logistics/china/pending-batch/export-sku-merged`：HTTP 200，XLSX 有效，SKU 合并 10 单。
+  - `/logistics/china/export/weship`：Dev 快照当前今日纬狮 0 单，原 Laravel HTTP 422；不能虚构纬狮导出 PASS，待有合格 Dev 数据再验证实际模板。
+- **选中订单下载正向 E2E：** 在真实 AG Grid 当前页勾选 1 个订单，出现“下载已选 1 单”；链接携带原 Laravel `order_ids[]`，返回 HTTP 200、附件下载文件名、XLSX ZIP 魔数与 `X-BYL-Exported-Orders=1`。全部只读。
+- 网关回归：原授权 GET 仅限 5 条精确 Excel 路由；错误出口、任意地址及 Excel POST 都被 405 拒绝；测试使用模拟 XLSX 字节，不带客户资料。运行的 Dev 域名/网关仍仅对员工身份开放，ERP1 Production 未修改。
+- **回传上传与预览/Apply 仍 HOLD**，不可因“导出 PASS”而宣布所有 4PX/纬狮物流批量流程关闭。
 
 **下一步按 P0 单线程：** 先关闭真实员工登录与权限 UAT；后针对已确认的现成原 Laravel 发货/Excel 路由做 Dev 接入、正负事务/回读；最后国内/海外实际角色 UAT。所有写入限定 Dev。不得以此文作为 Production 发布授权。

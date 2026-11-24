@@ -111,6 +111,13 @@ const sorting = ref<{colId:'tracking';direction:'asc'|'desc'}|null>(null);
 const filters = ref<Partial<Record<'carrier'|'tracking'|'status',string>>>({});
 const preferenceNamespace=computed(()=>`grid.erp2.logistics.${props.scope}.v1`);
 const globalRows=computed(()=>rows.value as unknown as Record<string,unknown>[]);
+const selectedDomesticExportHref=computed(()=>{
+  if(props.scope!=='domestic'||view.value!=='pending'||!selectedRows.value.length)return '';
+  const qs=new URLSearchParams();
+  for(const id of [...new Set(selectedRows.value.map(row=>row.order_id))])
+    qs.append('order_ids[]',String(id));
+  return '/logistics/china/pending-batch/export?'+qs.toString();
+});
 const sortKeys = computed(()=>props.scope==='overseas'?['tracking']:[]);
 const filterKeys=computed(()=>props.scope==='overseas'?['carrier','tracking']:view.value==='all'?['carrier','status']:[]);
 const gridColumns=computed<ColDef<Record<string,unknown>>[]>(()=>[
@@ -339,6 +346,25 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
           :disabled="loading" :aria-pressed="warehouse===w.value"
           @click="switchWarehouse(w.value)">{{ w.label }}</button>
       </nav>
+      <div v-if="props.scope==='domestic'" class="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
+        <span class="text-xs font-semibold text-slate-600">原 ERP Excel 导出：</span>
+        <template v-if="view==='pending'">
+          <a data-testid="p0-export-domestic-pending" href="/logistics/china/pending-batch/export"
+            class="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-indigo-700">下载待发货批量表</a>
+          <a data-testid="p0-export-domestic-sku-merged" href="/logistics/china/pending-batch/export-sku-merged"
+            class="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-indigo-700">下载 SKU 合并版</a>
+          <a v-if="selectedDomesticExportHref" data-testid="p0-export-domestic-selected" :href="selectedDomesticExportHref"
+            class="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">
+            下载已选 {{ selectedRows.length }} 单</a>
+        </template>
+        <a v-else-if="view==='today'" data-testid="p0-export-domestic-today"
+          href="/logistics/china/today/export" class="rounded border bg-white px-3 py-1.5 text-xs text-indigo-700">下载今日订单表</a>
+        <a v-else-if="view==='today-4px'" data-testid="p0-export-domestic-4px"
+          href="/logistics/china/export/4px" class="rounded border bg-white px-3 py-1.5 text-xs text-indigo-700">下载今日速达</a>
+        <a v-else-if="view==='today-weship'" data-testid="p0-export-domestic-weship"
+          href="/logistics/china/export/weship" class="rounded border bg-white px-3 py-1.5 text-xs text-indigo-700">下载今日纬狮</a>
+        <span v-else class="text-xs text-slate-500">切换至待发货或今日订单队列下载原有业务模板</span>
+      </div>
       <p v-if="shippingSuccess" role="status"
         class="mx-3 mt-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{{ shippingSuccess }}</p>
       <p v-if="reviewSuccess" role="status"
