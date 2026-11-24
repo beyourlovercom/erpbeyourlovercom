@@ -38,7 +38,7 @@ enum RolePreset: string
     public function permissions(): array
     {
         return match ($this) {
-            self::Logistics => ['dashboard.view', 'orders.view', 'orders.archive', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate', 'products.view', 'inventory.view'],
+            self::Logistics => ['dashboard.view', 'orders.view', 'orders.archive', 'logistics.view', 'logistics.operate', 'domestic.review', 'sync.view', 'sync.operate', 'products.view', 'inventory.view'],
             self::DomesticBusiness => ['dashboard.view', 'orders.view', 'orders.archive', 'logistics.view', 'logistics.operate', 'domestic.review', 'sync.view', 'sync.operate', 'products.view', 'inventory.view'],
             self::SalesRepresentative => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit', 'products.view', 'inventory.view'],
             self::KolSpecialist => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.payouts.request', 'orders.view', 'orders.create', 'orders.edit', 'products.view', 'inventory.view'],

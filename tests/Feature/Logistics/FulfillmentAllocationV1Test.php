@@ -612,6 +612,85 @@ final class FulfillmentAllocationV1Test extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_erp2_domestic_final_http_chain_with_shared_role_permissions(): void
+    {
+        \Illuminate\Support\Facades\Http::fake([]);
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Queue::fake();
+        [$unused, $order] = $this->scenario(1);
+        $ops = $this->userWith(\App\Modules\Identity\Application\RolePreset::Operations->permissions());
+        $logistics = $this->userWith(\App\Modules\Identity\Application\RolePreset::Logistics->permissions());
+        $ops->roles()->firstOrFail()->update(['key'=>'role_preset_operations']);
+        $logistics->roles()->firstOrFail()->update(['key'=>'role_preset_logistics']);
+        $id = $order->id;
+        $base = '/logistics/orders/'.$id.'/fulfillment-allocation';
+        $assignments = [['order_item_id'=>$order->items()->firstOrFail()->id, 'source_code'=>'FACTORY']];
+        $this->actingAs($ops)->getJson($base.'/status')->assertOk()->assertJsonPath('status','none');
+        $this->postJson($base.'/preflight',['assignments'=>$assignments])->assertOk()->assertJsonPath('can_submit',true);
+        $this->postJson($base.'/manual',['assignments'=>$assignments,'stock_exception_acknowledged'=>true])->assertOk();
+        $this->getJson($base.'/status')->assertOk()->assertJsonPath('status','submitted');
+        self::assertSame('pending_review',$order->fresh()->workflow_status);
+        $this->actingAs($logistics)->postJson('/logistics/china/batch-review',['order_ids'=>[$id],'action'=>'stockout'])->assertOk()->assertJsonPath('success_count',1);
+        self::assertSame('out_of_stock',$order->fresh()->workflow_status);
+        $this->actingAs($ops)->postJson('/logistics/china/batch-return-allocation',['order_ids'=>[$id]])->assertOk()->assertJsonPath('success_count',1);
+        self::assertSame('UNASSIGNED',$order->fresh()->routing_warehouse_code);
+        $this->postJson($base.'/manual',['assignments'=>$assignments,'stock_exception_acknowledged'=>true])->assertOk();
+        self::assertSame('pending_review',$order->fresh()->workflow_status);
+        $this->actingAs($logistics)->postJson('/logistics/china/batch-review',['order_ids'=>[$id],'action'=>'approve'])->assertOk()->assertJsonPath('success_count',1);
+        self::assertSame('sending',$order->fresh()->workflow_status);
+        $url='/logistics/china/orders/'.$id;
+        $this->post($url.'/carrier-service',['carrier'=>'4PX','service'=>'SD经济挂号-带电'])->assertRedirect();
+        self::assertSame('4PX',$order->fresh()->shipment->carrier);
+        $tracking='ERP2-UAT-CHAIN-001';
+        $this->post($url.'/tracking-draft',['tracking_number'=>$tracking])->assertRedirect();
+        self::assertSame('pending',$order->fresh()->shipment->shipment_status);
+        self::assertSame($tracking,$order->fresh()->shipment->tracking_number);
+        $this->post($url.'/quick-ship',['tracking_number'=>$tracking])->assertRedirect();
+        self::assertSame('shipped',$order->fresh()->shipment->shipment_status);
+        self::assertSame($tracking,$order->fresh()->shipment->tracking_number);
+        $this->get('/logistics/china?view=all&search='.$order->erp_order_id)->assertOk()->assertInertia(fn($page)=>$page->component('Logistics/Domestic/Index')->where('rows.total',1)->where('rows.data.0.shipment_status','shipped')->where('rows.data.0.tracking_number',$tracking));
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+        \Illuminate\Support\Facades\Queue::assertNothingPushed();
+    }
+
+
+    public function test_erp2_domestic_final_export_return_roundtrip_after_allocation(): void
+    {
+        \Illuminate\Support\Facades\Http::fake([]);
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Queue::fake();
+        [$actor, $order] = $this->scenario(1);
+        $actor->roles()->firstOrFail()->permissions()->firstOrCreate(['key'=>'domestic.review'],['label'=>'domestic.review']);
+        $id=$order->id;
+        $base='/logistics/orders/'.$id.'/fulfillment-allocation';
+        $this->actingAs($actor)->postJson($base.'/manual',['assignments'=>[['order_item_id'=>$order->items()->firstOrFail()->id,'source_code'=>'FACTORY']],'stock_exception_acknowledged'=>true])->assertOk();
+        $this->postJson('/logistics/china/batch-review',['order_ids'=>[$id],'action'=>'approve'])->assertOk()->assertJsonPath('success_count',1);
+        $this->post('/logistics/china/orders/'.$id.'/carrier-service',['carrier'=>'4PX','service'=>'SD经济挂号-带电'])->assertRedirect();
+        $result=$this->get('/logistics/china/pending-batch/export?order_ids[0]='.$id)->assertOk()->assertHeader('X-BYL-Exported-Orders','1');
+        $path=tempnam(sys_get_temp_dir(),'erp2-roundtrip-');
+        try {
+            file_put_contents($path,$result->getContent());
+            $book=\PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+            $sheet=$book->getActiveSheet();
+            self::assertSame($order->erp_order_id,$sheet->getCell('A2')->getValue());
+            self::assertSame('Tracking',$sheet->getCell('E1')->getValue());
+            $sheet->setCellValue('E2','ERP2-UAT-XLSX-002');
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save($path);
+            $book->disconnectWorksheets();
+            $file=new \Illuminate\Http\UploadedFile($path,'roundtrip.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',null,true);
+            $this->post('/logistics/china/tracking-import/preview',['file'=>$file],['Accept'=>'application/json'])->assertOk()->assertJsonPath('provider','generic');
+            self::assertSame('pending',$order->fresh()->shipment->shipment_status);
+            $token=session('domestic_tracking_preview_generic.token');
+            self::assertIsString($token);
+            $this->postJson('/logistics/china/pending-batch/tracking-import/apply',['token'=>$token])->assertOk()->assertJsonPath('applied_count',1);
+            self::assertSame('shipped',$order->fresh()->shipment->shipment_status);
+            self::assertSame('ERP2-UAT-XLSX-002',$order->fresh()->shipment->tracking_number);
+            $this->postJson('/logistics/china/pending-batch/tracking-import/apply',['token'=>$token])->assertStatus(409);
+        } finally { @unlink($path); }
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+        \Illuminate\Support\Facades\Queue::assertNothingPushed();
+    }
+
     /** @return array{User,Order} */
     private function scenario(int $itemCount): array
     {
