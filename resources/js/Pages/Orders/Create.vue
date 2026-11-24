@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CountrySelect from '../../Components/CountrySelect.vue';
+
 import { Head, useForm } from '@inertiajs/vue3'
 import { ref, computed, watch } from 'vue'
 import axios from 'axios'
@@ -285,7 +287,7 @@ const submit = () => {
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">国家</label>
-                <input v-model="form.country" data-testid="order-country" class="erp-input" placeholder="可选">
+                <CountrySelect v-model="form.country" data-testid="order-country" class="erp-input" placeholder="搜索国家名称 / 代码" />
                 <p v-if="form.errors.country" class="erp-field-error">{{ form.errors.country }}</p>
               </div>
               <RecipientCustomsField

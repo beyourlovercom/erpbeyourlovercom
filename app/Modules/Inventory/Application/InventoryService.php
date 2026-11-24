@@ -121,7 +121,7 @@ final class InventoryService
 
     public function updateRegions(Model $warehouse, array $countryCodes, ?Authenticatable $actor): Model
     {
-        $codes = collect($countryCodes)->map(fn ($code) => strtoupper(trim((string) $code)))->filter()->unique()->values()->all();
+        $codes = collect($countryCodes)->map(fn ($code) => \App\Support\Countries\CountryStandard::forWrite((string) $code, "country_codes"))->filter()->unique()->values()->all();
         return DB::transaction(function () use ($warehouse, $codes, $actor): Model {
             $before = $warehouse->serviceRegions()->pluck('country_code')->sort()->values()->all();
             $this->inventory->syncServiceRegions($warehouse, $codes);

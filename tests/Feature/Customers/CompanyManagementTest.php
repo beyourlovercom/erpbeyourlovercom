@@ -77,7 +77,7 @@ final class CompanyManagementTest extends TestCase
     {
         $user = $this->userWith(['customers.view', 'customers.operate']);
 
-        $this->actingAs($user)->post('/customers/companies', ['name' => 'Bad Country Co', 'country_code' => 'USA'])
+        $this->actingAs($user)->post('/customers/companies', ['name' => 'Bad Country Co', 'country_code' => 'XX'])
             ->assertSessionHasErrors('country_code');
         $this->assertDatabaseCount('companies', 0);
     }

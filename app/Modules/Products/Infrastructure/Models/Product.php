@@ -9,6 +9,11 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Product extends Model
 {
+    public function setCountryOfOriginAttribute($value): void
+    {
+        $this->attributes['country_of_origin'] = \App\Support\Countries\CountryStandard::forWrite($value, 'country_of_origin', $this->getRawOriginal('country_of_origin'));
+    }
+
     protected $fillable = [
         'woocommerce_product_id',
         'source_type',

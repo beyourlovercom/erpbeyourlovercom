@@ -11,6 +11,16 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Kol extends Model
 {
+    public function setCountryCodeAttribute($value): void
+    {
+        $this->attributes['country_code'] = \App\Support\Countries\CountryStandard::forWrite($value, 'country_code', $this->getRawOriginal('country_code'));
+    }
+
+    public function setShippingCountryAttribute($value): void
+    {
+        $this->attributes['shipping_country'] = \App\Support\Countries\CountryStandard::forWrite($value, 'shipping_country', $this->getRawOriginal('shipping_country'));
+    }
+
     protected $table = 'kols';
 
     protected $fillable = [

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CountrySelect from '../../Components/CountrySelect.vue';
+
 import { Head, router, useForm, usePage } from '@inertiajs/vue3'
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import axios from 'axios'
@@ -1493,7 +1495,7 @@ onBeforeUnmount(() => {
                 收件清关号码：{{ order.address.recipient_customs_id }}
               </div>
               <template v-else>
-                <input v-model="form.country" class="erp-input" placeholder="可选">
+                <CountrySelect v-model="form.country" class="erp-input" placeholder="搜索国家名称 / 代码" />
                 <p v-if="form.errors.country" class="erp-field-error">{{ form.errors.country }}</p>
               </template>
             </div>
@@ -1823,7 +1825,7 @@ onBeforeUnmount(() => {
         <div v-if="replacementAddressOverride" class="ord-replacement-address">
           <input v-model="replacementAddress.recipient_name" class="erp-input" placeholder="收件人">
           <input v-model="replacementAddress.phone" class="erp-input" placeholder="电话">
-          <input v-model="replacementAddress.country" class="erp-input" placeholder="国家">
+          <CountrySelect v-model="replacementAddress.country" class="erp-input" placeholder="搜索国家名称 / 代码" />
           <input v-model="replacementAddress.province_state" class="erp-input" placeholder="州 / 省">
           <input v-model="replacementAddress.city" class="erp-input" placeholder="城市">
           <input v-model="replacementAddress.postal_code" class="erp-input" placeholder="邮编">

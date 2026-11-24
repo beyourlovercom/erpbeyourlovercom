@@ -48,7 +48,7 @@ final class MorePlusOutboundExporter
             $row = array_fill(0, count(self::HEADERS), null);
             if ($index === 0) {
                 $row[0] = $this->references->warehouse($order);
-                $country = $this->required(strtoupper((string) $a->country), '国家', $order->erp_order_id);
+                $country = $this->required((\App\Support\Countries\CountryStandard::resolve($a->country) ?? ''), '国家', $order->erp_order_id);
                 $row[5] = $this->required($a->recipient_name, '收件人', $order->erp_order_id);
                 $row[6] = $this->optional($a->company);
                 $row[7] = $this->requiredMax($a->address_line_1, '地址1', $order->erp_order_id, 35);

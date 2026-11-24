@@ -11,6 +11,11 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Customer extends Model
 {
+    public function setCountryCodeAttribute($value): void
+    {
+        $this->attributes['country_code'] = \App\Support\Countries\CountryStandard::forWrite($value, 'country_code', $this->getRawOriginal('country_code'));
+    }
+
     protected $fillable = [
         'name', 'email', 'phone', 'country_code', 'language_code',
         'source_type', 'owner_id', 'notes', 'archived_at',

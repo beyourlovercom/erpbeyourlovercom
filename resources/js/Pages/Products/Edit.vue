@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CountrySelect from '../../Components/CountrySelect.vue';
+
 import { Head, router } from '@inertiajs/vue3'
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
@@ -580,15 +582,12 @@ const doDelete = () => {
 
               <div class="erp-form-field">
                 <label class="erp-form-label" for="edit-country">原产国</label>
-                <input
+                <CountrySelect
                   id="edit-country"
                   v-model="form.country_of_origin"
-                  type="text"
-                  maxlength="2"
                   class="erp-input"
                   :class="{ 'has-error': errors.country_of_origin }"
-                  placeholder="CN"
-                >
+                  placeholder="搜索国家名称 / 代码" />
                 <p v-if="errors.country_of_origin" class="erp-field-error">{{ errors.country_of_origin }}</p>
               </div>
 

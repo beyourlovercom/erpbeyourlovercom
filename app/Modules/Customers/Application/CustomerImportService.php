@@ -253,7 +253,7 @@ final class CustomerImportService
         $value = $this->clean($value);
         if ($value === null) return null;
         if (in_array($field, ['email', 'owner_email'], true)) return strtolower($value);
-        if (in_array($field, ['country_code', 'billing_country_code', 'shipping_country_code'], true)) return strtoupper($value);
+        if (in_array($field, ['country_code', 'billing_country_code', 'shipping_country_code'], true)) return \App\Support\Countries\CountryStandard::resolve($value) ?? $value;
         if ($field === 'source_type') return strtolower($value);
         if ($field === 'status') return $this->status($value);
         if ($field === 'manual_groups') return json_encode($this->groups($value), JSON_UNESCAPED_UNICODE);
