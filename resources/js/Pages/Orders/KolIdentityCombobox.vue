@@ -7,6 +7,7 @@ const props = defineProps<{
   initialOption?: KolOption | null
   hasError?: boolean
   required?: boolean
+  searchHint?: string
 }>()
 const emit = defineEmits<{ 'update:modelValue': [number | null] }>()
 
@@ -115,6 +116,19 @@ const onInput = (event: Event) => {
   open.value = true
   scheduleSearch(inputValue.value)
 }
+
+watch(() => props.searchHint, value => {
+  if (!value || chosen.value || props.modelValue !== null) return
+  inputValue.value=value
+  sequence++
+  cancelActiveSearch()
+  results.value=[]
+  activeIndex.value=-1
+  loading.value=true
+  errorMessage.value=''
+  open.value=true
+  scheduleSearch(value)
+})
 
 const choose = (option: KolOption) => {
   sequence++

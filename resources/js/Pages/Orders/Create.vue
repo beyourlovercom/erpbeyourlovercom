@@ -18,6 +18,8 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 import KolIdentityCombobox from './KolIdentityCombobox.vue'
 import RecipientCustomsField from '../../Components/RecipientCustomsField.vue'
+import KolSmartInput from '../../Components/Kol/KolSmartInput.vue'
+import type { QuickOrderDraft } from '../../lib/kol/kolQuickOrderParser'
 import { publishGlobalFeedback } from '../../lib/globalFeedback'
 
 type KolAddress = { recipient_customs_id?: string | null; recipient_name: string | null; phone: string | null; email: string | null; country: string | null; province_state: string | null; city: string | null; address_line_1: string | null; address_line_2: string | null; postal_code: string | null }
@@ -113,6 +115,37 @@ watch(() => form.kol_id, async kolId => {
   }
 }, { immediate: true })
 
+const smartDraft = ref<QuickOrderDraft|null>(null)
+const smartSearch = ref('')
+const smartAddressConfirmed = ref(false)
+const applySmartDraft = (draft: QuickOrderDraft) => {
+  smartDraft.value=draft
+  smartSearch.value=draft.social_accounts.length===1 ? draft.social_accounts[0].handle : draft.username_hint ?? ''
+  smartAddressConfirmed.value=false
+}
+const applySmartAddress = () => {
+  const draft=smartDraft.value
+  if (!draft || !form.kol_id || addressLoading.value) return
+  const previousCountry=form.country
+  const changesRecipient = Boolean(draft.recipient_name && draft.recipient_name!==form.recipient_name)
+  const changesCountry = Boolean(draft.country && draft.country!==previousCountry)
+  // Do not mix a different country or recipient with a previously saved shipping address.
+  if(changesCountry || changesRecipient) {
+    for(const field of addressFields) form[field]=''
+  }
+  for(const field of addressFields) {
+    if(field==='recipient_customs_id') continue
+    const value=draft[field]
+    if(value) form[field]=value
+  }
+  lastKolShippingCountry=form.country
+  if(previousCountry!==form.country || changesRecipient)form.recipient_customs_id=''
+  if(draft.recipient_customs_id&&draft.country===form.country)form.recipient_customs_id=draft.recipient_customs_id
+  if(draft.product_hint&&!form.items[0].product_id&&!form.items[0].product_summary)form.items[0].product_summary=draft.product_hint
+  smartAddressConfirmed.value=false
+}
+watch([()=>form.kol_id,...addressFields.map(field=>()=>form[field])],()=>{smartAddressConfirmed.value=false})
+
 const numberEditable = ref(false)
 
 const isKol = computed(() => props.defaultOrderKind === 'kol_fulfillment')
@@ -165,6 +198,10 @@ const validationFeedback = (errors: Record<string, string>) => {
 }
 
 const submit = () => {
+  if (isKol.value && smartDraft.value && (!form.kol_id || addressLoading.value || !smartAddressConfirmed.value)) {
+    publishGlobalFeedback({state:'BLOCKED',title:'请确认收件信息',message:'请先关联已有网红并核对本次收件地址。'})
+    return
+  }
   form.post(isKol.value ? '/kol/orders' : '/customers/orders', {
     onStart: () => publishGlobalFeedback({
       state: 'SUBMITTING',
@@ -197,6 +234,14 @@ const submit = () => {
         </div>
 
         <form id="order-create-form" @submit.prevent="submit">
+          <KolSmartInput v-if="isKol" @apply="applySmartDraft" />
+          <section v-if="isKol && smartDraft" class="erp-form-card" data-testid="kol-smart-order-review">
+            <p v-if="smartSearch">识别 Username：{{smartSearch}}。请在下方检索并选择网红；不存在时先创建网红。</p>
+            <p v-if="smartDraft.product_hint">产品候选：{{smartDraft.product_hint}}（请手动核对 SKU）</p>
+            <p v-if="smartDraft.coupon_code">折扣码：{{smartDraft.coupon_code}}（请核对网红档案）</p>
+            <button type="button" class="erp-btn erp-btn-secondary" :disabled="!form.kol_id || addressLoading" data-testid="kol-smart-address-apply" @click="applySmartAddress">采用粘贴的收件信息</button>
+            <label><input type="checkbox" v-model="smartAddressConfirmed" :disabled="!form.kol_id || addressLoading" data-testid="kol-smart-address-confirm"> 已核对本次收件信息（下方表单）</label>
+          </section>
 
           <!-- Card 1: 订单信息 -->
           <div class="erp-form-card">
@@ -216,6 +261,7 @@ const submit = () => {
                   v-model="form.kol_id"
                   :initial-option="(kolOptions ?? []).find(item => item.value === form.kol_id) ?? null"
                   :has-error="Boolean(form.errors.kol_id)"
+                  :search-hint="smartSearch"
                   required
                 />
                 <p v-if="form.errors.kol_id" class="erp-field-error">{{ form.errors.kol_id }}</p>

@@ -8,10 +8,10 @@ describe('KOL quick order text parser', () => {
   })
   it('preserves conflicting and ambiguous values for review', () => {
     const draft = parseKolQuickOrder('Email: first@example.com\nEmail: other@example.com\nMaybe one\nMaybe two\nhttps://x.com/example/status/123')
-    expect(draft.email).toBe('first@example.com')
+    expect(draft.email).toBeUndefined()
     expect(draft.product_hint).toBeUndefined()
     expect(draft.social_accounts).toEqual([])
-    expect(draft.unparsed).toEqual(expect.arrayContaining(['Email: other@example.com', 'Maybe one', 'Maybe two', 'https://x.com/example/status/123']))
+    expect(draft.unparsed).toEqual(expect.arrayContaining(['Email: first@example.com', 'Email: other@example.com', 'Maybe one', 'Maybe two', 'https://x.com/example/status/123']))
   })
   it('does not synthesize missing tax IDs or coupon codes', () => {
     expect(parseKolQuickOrder('Country: Mexico')).toEqual({ country: 'Mexico', social_accounts: [], unparsed: [] })

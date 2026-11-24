@@ -6,6 +6,8 @@ import { useWorkspaceDraftGuard } from '../../Composables/useWorkspaceDraftGuard
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 import RecipientCustomsField from '../../Components/RecipientCustomsField.vue'
+import KolSmartInput from '../../Components/Kol/KolSmartInput.vue'
+import type { QuickOrderDraft } from '../../lib/kol/kolQuickOrderParser'
 import { plusThreeYears, localTodayDate } from './couponExpiryDate'
 
 type OwnerOption = { value: number; label: string }
@@ -153,6 +155,39 @@ watch(() => form.display_name, (value) => {
   }
 })
 
+const smartProductHint = ref('')
+const smartWarning = ref('')
+const applySmartDraft = (draft: QuickOrderDraft) => {
+  const account = draft.social_accounts.length === 1 ? draft.social_accounts[0] : undefined
+  const handle = account?.handle ?? draft.username_hint
+  smartWarning.value=''
+  if ((handle && form.wordpress_username && handle.toLowerCase()!==form.wordpress_username.toLowerCase()) ||
+      (draft.social_accounts.length>1 && !form.wordpress_username)) {
+    smartWarning.value='账号存在冲突或多个候选，未自动填充；请先核对网红身份。'
+    return
+  }
+  if (!form.wordpress_username && !form.display_name && handle) form.display_name = handle
+  if (!form.wordpress_username && handle) form.wordpress_username = handle
+  if (!form.kol_profile_url && account) form.kol_profile_url = account.profile_url
+  for (const item of draft.social_accounts) {
+    const existing = form.social_accounts.find(a => a.platform === item.platform && !a.handle && !a.profile_url)
+    const value = { platform: item.platform, handle: item.handle, profile_url: item.profile_url, is_active: true, followers: item.followers === undefined ? '' : String(item.followers), raw_followers_value: '' }
+    if (form.social_accounts.some(a => a.platform === item.platform && a.handle === item.handle)) continue
+    if (existing) Object.assign(existing, value)
+    else form.social_accounts.push(value)
+  }
+  const fields = { recipient_name:'shipping_recipient_name', country:'shipping_country', province_state:'shipping_province_state', city:'shipping_city', address_line_1:'shipping_address_line_1', address_line_2:'shipping_address_line_2', postal_code:'shipping_postal_code', email:'contact_email', phone:'contact_phone', coupon_code:'affiliate_coupon_code' } as const
+  const oldCountry=form.shipping_country
+  for (const [source,target] of Object.entries(fields) as [keyof typeof fields, typeof fields[keyof typeof fields]][]) {
+    const value=draft[source]
+    if (value && !form[target]) form[target]=value
+  }
+  if (draft.recipient_customs_id && draft.country && (!oldCountry || oldCountry===draft.country) && !form.shipping_customs_id) form.shipping_customs_id=draft.recipient_customs_id
+  smartProductHint.value=draft.product_hint ?? ''
+  if (duplicateTimer) clearTimeout(duplicateTimer)
+  void checkDuplicate()
+}
+
 const addSocialAccount = () => {
   form.social_accounts.push({ platform: 'instagram', handle: '', profile_url: '', is_active: true, followers: '', raw_followers_value: '' })
 }
@@ -240,6 +275,9 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
         </section>
 
         <form id="kol-create-form" @submit.prevent="submit">
+          <KolSmartInput @apply="applySmartDraft" />
+          <p v-if="smartWarning" role="alert" data-testid="kol-smart-warning">{{smartWarning}}</p>
+          <p v-if="smartProductHint" data-testid="kol-smart-product-hint">产品候选：{{ smartProductHint }}（请在产品选择器核对 SKU）</p>
 
           <!-- Card 1: 基本信息 -->
           <div class="erp-form-card">
