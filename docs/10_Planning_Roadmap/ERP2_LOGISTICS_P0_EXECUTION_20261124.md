@@ -44,3 +44,15 @@
 - **回传上传与预览/Apply 仍 HOLD**，不可因“导出 PASS”而宣布所有 4PX/纬狮物流批量流程关闭。
 
 **下一步按 P0 单线程：** 先关闭真实员工登录与权限 UAT；后针对已确认的现成原 Laravel 发货/Excel 路由做 Dev 接入、正负事务/回读；最后国内/海外实际角色 UAT。所有写入限定 Dev。不得以此文作为 Production 发布授权。
+
+## 国内回传上传「预览」补齐（当日 P0）
+
+- Vben 国内待发货新增 XLS/XLSX 原文件上传和「上传并预览（不写订单）」按钮；仅允许当前已授权 `logistics.operate` 的员工查看，调用 ERP1 原 Controller 的 `POST /logistics/china/tracking-import/preview`，复用 Laravel Session + XLSX header 自动检测（不是文件名选择）。
+- Dev 网关对该预览路径及 4PX、纬狮、待发货独立预览路径做 exact POST/multipart/CSRF 白名单、单次 10MB 请求体限制；**`/logistics/china/*/tracking-import/apply` 及其它真实发货路径仍被拒绝 HTTP 405 / shipping write OFF**。
+- 实际 007windows Edge 通过独立合成 Dev 员工账号上传一份 **完全不存在订单号**的真实 XLSX，原 Laravel 返回 HTTP 200；界面准确展示 `4px: 可应用 0、重复 0、阻断 1`，没有前端异常，页面明确提示 Apply 尚未开放。
+- 使用同一真实 Fortify Dev 登录会话，另外对 3 份 Excel 原始模板执行真实 PHP/Laravel multipart HTTP 接口回归：
+  - 速达：`原单号、转单号` → `provider=4px` HTTP 200；
+  - 纬狮：`客户单号、运单号` → `provider=weship` HTTP 200；
+  - ERP 批量表：`ERP订单号、物流商、Tracking` → `provider=generic` HTTP 200。
+- 三份均为 `apply_count=0`、`noop_count=0`、`blocked_count=1`（不存在的 Dev 测试订单号）；原 Laravel 只创建 Session 预览记录，**未对业务订单/物流写入**。临时 XLSX 在 Mac mini Laravel 公共目录和 007windows 文件系统均已删除。
+- Frontend Vitest 27/27 PASS，Node 网关预览正负授权测试 PASS，007windows vue-tsc 和 Vite 隔离 Dev 构建 PASS。新的确切范围仅为 **预览**，不能声称 Apply/真正物流回传已经通过。

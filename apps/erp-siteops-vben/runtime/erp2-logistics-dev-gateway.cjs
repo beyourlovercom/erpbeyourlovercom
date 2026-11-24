@@ -40,6 +40,13 @@ const domesticExportRead=new Set([
  '/logistics/china/export/4px',
  '/logistics/china/export/weship',
 ]);
+// Preview only: original Laravel parser stores a session token, no business data changes.
+const domesticTrackingPreview=new Set([
+ '/logistics/china/tracking-import/preview',
+ '/logistics/china/pending-batch/tracking-import/preview',
+ '/logistics/china/4px/tracking-import/preview',
+ '/logistics/china/weship/tracking-import/preview',
+]);
 const accountPreferences=pathname=>/^\/ui\/preferences\/grid\.[A-Za-z0-9._:-]{1,110}$/.test(pathname);
 const shippingWrite=pathname=>/^\/logistics\/china\/orders\/[1-9][0-9]*\/(carrier-service|tracking-draft|quick-ship)$/.test(pathname)||
   /^\/logistics\/oversea\/(orders|us-3sm\/orders|us-moreplus\/orders)\/[1-9][0-9]*\/manual-ship$/.test(pathname);
@@ -55,6 +62,9 @@ function isInertia(pathname){
   logisticsDetail(pathname);
 }
 function allowed(req,url){
+ if(domesticTrackingPreview.has(url.pathname))return req.method==='POST'
+  && req.headers['content-type']?.startsWith('multipart/form-data;')
+  && Boolean(req.headers['x-xsrf-token']);
  if(domesticExportRead.has(url.pathname))return req.method==='GET';
  if(accountPreferences(url.pathname))return req.method==='GET' ||
    (req.method==='PUT' && req.headers['content-type']?.startsWith('application/json') &&
@@ -81,10 +91,16 @@ async function proxy(req,res,url){
  if(req.headers.cookie)headers.Cookie=req.headers.cookie;
  if(req.headers['content-type'])headers['Content-Type']=req.headers['content-type'];
  if(req.headers['x-csrf-token'])headers['X-CSRF-TOKEN']=req.headers['x-csrf-token'];
- if((noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname)||accountPreferences(url.pathname))&&req.headers['x-xsrf-token'])
+ if((noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname)||accountPreferences(url.pathname)||domesticTrackingPreview.has(url.pathname))&&req.headers['x-xsrf-token'])
   headers['X-XSRF-TOKEN']=req.headers['x-xsrf-token'];
  const payload=[];
- if(req.method==='POST'||req.method==='PUT')for await(const c of req){payload.push(c);if(payload.reduce((n,x)=>n+x.length,0)>16384)throw Error('LOGIN_BODY_TOO_LARGE');}
+ let payloadBytes=0;
+ const payloadLimit=domesticTrackingPreview.has(url.pathname)?10*1024*1024:16384;
+ if(req.method==='POST'||req.method==='PUT')for await(const c of req){
+  payloadBytes+=c.length;
+  if(payloadBytes>payloadLimit)throw Error('ERP2_DEV_REQUEST_BODY_TOO_LARGE');
+  payload.push(c);
+ }
 
  const upstream=await fetch(MAC+url.pathname+url.search,{
   method:req.method,headers,body:payload.length?Buffer.concat(payload):undefined,
@@ -143,13 +159,13 @@ const server=http.createServer(async(req,res)=>{
     mode:'laravel-session',app:'ERP2 Vben Logistics Dev'});
   // Never let nested Laravel business URLs fall through to a misleading SPA 200.
   if(url.pathname.startsWith('/logistics/')&&!isInertia(url.pathname)&&
-     !reviewWrite.has(url.pathname)&&!shippingWrite(url.pathname)&&!domesticExportRead.has(url.pathname))
+     !reviewWrite.has(url.pathname)&&!shippingWrite(url.pathname)&&!domesticExportRead.has(url.pathname)&&!domesticTrackingPreview.has(url.pathname))
     return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
   if(/^\/(orders|customers\/orders|kol\/orders)\/.+/.test(url.pathname)&&
      !isInertia(url.pathname)&&!noteWrite(url.pathname))
     return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
   if(url.pathname.startsWith('/api/')||isInertia(url.pathname)||
-     noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname)||accountPreferences(url.pathname)||domesticExportRead.has(url.pathname)||
+     noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname)||accountPreferences(url.pathname)||domesticExportRead.has(url.pathname)||domesticTrackingPreview.has(url.pathname)||
      ['/_erp2/identity','/login','/dashboard','/logout'].includes(url.pathname)){
     if(!allowed(req,url))return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
     return await proxy(req,res,url);

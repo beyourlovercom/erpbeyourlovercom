@@ -4,6 +4,7 @@ import type { CellClickedEvent, ColDef } from 'ag-grid-community';
 import GlobalGrid from '#/components/erp-global-grid/GlobalGrid.vue';
 import { canonicalDevIdentity } from '#/router/erp-live-navigation';
 import { getLogisticsPage, submitOriginalErpReview, submitOriginalErpShipment,
+  previewOriginalDomesticTrackingReturn, type DomesticTrackingPreview,
   type LogisticsCarrierOption, type OriginalShippingAction, type DomesticView, type DomesticReviewAction,
   type LogisticsRow, type LogisticsScope, type OverseasView, type OverseasReviewAction } from '#/api/erp-logistics';
 
@@ -43,6 +44,24 @@ const reviewBusy=ref(false),reviewError=ref(''),reviewSuccess=ref(''),reviewReas
 const shippingBusy=ref(false),shippingError=ref(''),shippingSuccess=ref('');
 const trackingDraft=ref(''),outboundReference=ref(''),carrierSelection=ref(''),serviceSelection=ref('');
 const carrierOptions=ref<LogisticsCarrierOption[]>([]);
+const returnFile=ref<File|null>(null);
+const returnPreview=ref<DomesticTrackingPreview|null>(null);
+const returnPreviewBusy=ref(false),returnPreviewError=ref('');
+const canPreviewDomesticReturn=computed(()=>props.scope==='domestic' &&
+  !!canonicalDevIdentity.value?.effectivePermissionKeys.includes('logistics.operate'));
+function chooseDomesticReturnFile(event:Event){
+  const input=event.target as HTMLInputElement;
+  returnFile.value=input.files?.[0]??null;
+  returnPreview.value=null;
+  returnPreviewError.value='';
+}
+async function previewDomesticReturn(){
+  if(!canPreviewDomesticReturn.value||returnPreviewBusy.value||!returnFile.value)return;
+  returnPreviewBusy.value=true;returnPreviewError.value='';returnPreview.value=null;
+  try{returnPreview.value=await previewOriginalDomesticTrackingReturn(returnFile.value);}
+  catch(e){returnPreviewError.value=e instanceof Error?e.message:'ERP2 回传表预览失败';}
+  finally{returnPreviewBusy.value=false;}
+}
 const shippingEnabled=import.meta.env.VITE_ERP_IDENTITY_MODE==='laravel' &&
   import.meta.env.VITE_ERP_M2_ORIGINAL_INERTIA_ENABLED==='1' &&
   import.meta.env.VITE_ERP_M2_SHIPPING_WRITE_ENABLED==='1';
@@ -364,6 +383,22 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
         <a v-else-if="view==='today-weship'" data-testid="p0-export-domestic-weship"
           href="/logistics/china/export/weship" class="rounded border bg-white px-3 py-1.5 text-xs text-indigo-700">下载今日纬狮</a>
         <span v-else class="text-xs text-slate-500">切换至待发货或今日订单队列下载原有业务模板</span>
+      </div>
+      <div v-if="canPreviewDomesticReturn && view==='pending'"
+        class="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+        <label class="text-xs font-semibold text-slate-600" for="erp2-domestic-return-file">物流回传表 XLS / XLSX：</label>
+        <input id="erp2-domestic-return-file" data-testid="p0-domestic-tracking-return-file"
+          type="file" accept=".xls,.xlsx" class="max-w-[245px] text-xs"
+          :disabled="returnPreviewBusy" @change="chooseDomesticReturnFile" />
+        <button type="button" data-testid="p0-domestic-tracking-preview"
+          class="rounded border border-indigo-500 px-3 py-1.5 text-xs font-semibold text-indigo-700"
+          :disabled="!returnFile||returnPreviewBusy" @click="previewDomesticReturn">
+          {{ returnPreviewBusy?'正在由原 ERP 解析…':'上传并预览（不写订单）' }}</button>
+        <span v-if="returnPreview" role="status" class="text-xs text-slate-700">
+          {{ returnPreview.provider }} · 可应用 {{ returnPreview.apply_count }}，
+          重复 {{ returnPreview.noop_count }}，阻断 {{ returnPreview.blocked_count }}。
+          当前仅预览；Apply 尚未开放。</span>
+        <p v-if="returnPreviewError" role="alert" class="w-full text-xs text-red-700">{{ returnPreviewError }}</p>
       </div>
       <p v-if="shippingSuccess" role="status"
         class="mx-3 mt-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{{ shippingSuccess }}</p>

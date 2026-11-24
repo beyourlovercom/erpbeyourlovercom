@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getLogisticsPage, parseLogisticsPage, parseOriginalLogisticsInertiaPage,
-  submitOriginalErpReview, submitOriginalErpShipment, originalShippingPath } from './erp-logistics';
+  submitOriginalErpReview, submitOriginalErpShipment, originalShippingPath,
+  previewOriginalDomesticTrackingReturn } from './erp-logistics';
 
 const pagination = {current_page:1,per_page:20,total:1,last_page:1};
 const order = {id:11,order_number:'UAT-CN-101',order_date:'2026-11-19',
@@ -202,5 +203,50 @@ describe('M2 original ERP shipping with fail-closed Dev adapter',()=>{
       orderId:12,tracking:'UAT123'},fetcher,'XSRF-TOKEN=abc'))
       .rejects.toThrow('ERP2_SHIPPING_REJECTED_409');
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('P0 original domestic tracking XLSX PREVIEW only',()=>{
+  it('sends an XLSX as multipart to the original Laravel preview and verifies counts',async()=>{
+    vi.stubEnv('VITE_ERP_IDENTITY_MODE','laravel');
+    const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      message:'预览已生成；无业务数据写入',provider:'4px',
+      apply_count:0,noop_count:0,blocked_count:1,
+    }),{status:200,headers:{'content-type':'application/json'}}));
+    const file=new File(['PK-test'],'test.xlsx',{
+      type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const result=await previewOriginalDomesticTrackingReturn(file,fetcher,'XSRF-TOKEN=dev%3Dtest');
+    expect(result).toEqual({message:'预览已生成；无业务数据写入',
+      provider:'4px',apply_count:0,noop_count:0,blocked_count:1});
+    expect(fetcher.mock.calls).toHaveLength(1);
+    const [path,options]=fetcher.mock.calls[0]!;
+    expect(path).toBe('/logistics/china/tracking-import/preview');
+    expect(options.method).toBe('POST');
+    expect(options.headers['X-XSRF-TOKEN']).toBe('dev=test');
+    expect(options.headers).not.toHaveProperty('Content-Type');
+    expect(options.body).toBeInstanceOf(FormData);
+    expect(options.body.get('file')).toBeInstanceOf(File);
+  });
+  it('rejects bad extension, missing CSRF, non-Laravel and invalid preview schema without Apply',async()=>{
+    const fetcher=vi.fn();
+    vi.stubEnv('VITE_ERP_IDENTITY_MODE','laravel');
+    await expect(previewOriginalDomesticTrackingReturn(
+      new File(['x'],'bad.txt'),fetcher,'XSRF-TOKEN=xxx'))
+      .rejects.toThrow('ERP2_TRACKING_PREVIEW_FILE_INVALID');
+    await expect(previewOriginalDomesticTrackingReturn(
+      new File(['x'],'demo.xlsx'),fetcher,''))
+      .rejects.toThrow('ERP2_TRACKING_PREVIEW_CSRF_REQUIRED');
+    vi.stubEnv('VITE_ERP_IDENTITY_MODE','synthetic');
+    await expect(previewOriginalDomesticTrackingReturn(
+      new File(['x'],'demo.xlsx'),fetcher,'XSRF-TOKEN=xxx'))
+      .rejects.toThrow('ERP2_LARAVEL_SESSION_REQUIRED');
+    vi.stubEnv('VITE_ERP_IDENTITY_MODE','laravel');
+    const wrong=vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      provider:'4px',apply_count:2,blocked_count:null,
+    }),{status:200,headers:{'content-type':'application/json'}}));
+    await expect(previewOriginalDomesticTrackingReturn(
+      new File(['x'],'demo.xlsx'),wrong,'XSRF-TOKEN=xxx'))
+      .rejects.toThrow('ERP2_TRACKING_PREVIEW_LARAVEL_SCHEMA_INVALID');
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

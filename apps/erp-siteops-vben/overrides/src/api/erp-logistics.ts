@@ -300,3 +300,47 @@ export async function submitOriginalErpShipment(
   // The old controllers are redirect-only, not JSON-confirming.
   throw Error('ERP2_SHIPPING_UNEXPECTED_SUCCESS_RESPONSE_RECHECK_MANUALLY');
 }
+
+/** Original Laravel upload PREVIEW only. Never calls Apply or shipping endpoints. */
+export interface DomesticTrackingPreview {
+  provider:'4px'|'weship'|'generic';message:string;
+  apply_count:number;noop_count:number;blocked_count:number;
+}
+export async function previewOriginalDomesticTrackingReturn(
+  file:File,fetcher:typeof fetch=fetch,
+  cookieSource:string=typeof document==='undefined'?'':document.cookie,
+):Promise<DomesticTrackingPreview>{
+  if(import.meta.env.VITE_ERP_IDENTITY_MODE!=='laravel')
+    throw Error('ERP2_LARAVEL_SESSION_REQUIRED');
+  if(!/\.(xls|xlsx)$/i.test(file.name) || file.size===0 || file.size>10*1024*1024)
+    throw Error('ERP2_TRACKING_PREVIEW_FILE_INVALID');
+  const csrf=cookieSource.split(';').map(s=>s.trim()).find(s=>s.startsWith('XSRF-TOKEN='));
+  if(!csrf)throw Error('ERP2_TRACKING_PREVIEW_CSRF_REQUIRED');
+  let token:string;
+  try{token=decodeURIComponent(csrf.slice(11));}
+  catch{throw Error('ERP2_TRACKING_PREVIEW_CSRF_INVALID');}
+  const body=new FormData();body.append('file',file,file.name);
+  const resp=await fetcher('/logistics/china/tracking-import/preview',{
+    method:'POST',credentials:'same-origin',redirect:'manual',
+    headers:{Accept:'application/json','X-XSRF-TOKEN':token},
+    body,
+  });
+  if([0,401,403,419].includes(resp.status))
+    throw Error('ERP2_TRACKING_PREVIEW_LOGIN_OR_PERMISSION_REQUIRED');
+  if(!resp.ok){
+    let message='';
+    try{message=str(obj(await resp.json()).message);}catch{}
+    throw Error(message||'ERP2_TRACKING_PREVIEW_REJECTED_'+resp.status);
+  }
+  if(!(resp.headers.get('content-type')||'').includes('application/json'))
+    throw Error('ERP2_TRACKING_PREVIEW_CONTENT_TYPE_INVALID');
+  const data=obj(await resp.json());
+  const provider=data.provider;
+  if(!['4px','weship','generic'].includes(String(provider))||
+     ![data.apply_count,data.noop_count,data.blocked_count].every(
+       n=>Number.isSafeInteger(n)&&Number(n)>=0))
+    throw Error('ERP2_TRACKING_PREVIEW_LARAVEL_SCHEMA_INVALID');
+  return{provider:provider as DomesticTrackingPreview['provider'],message:str(data.message),
+    apply_count:data.apply_count as number,noop_count:data.noop_count as number,
+    blocked_count:data.blocked_count as number};
+}
