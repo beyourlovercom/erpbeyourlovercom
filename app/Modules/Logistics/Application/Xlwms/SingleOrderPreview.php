@@ -51,6 +51,16 @@ final class SingleOrderPreview
         $channel = $usSm
             ? trim((string) ($webDraft ? 'Upload_Shipping_Label' : config('xlwms.us_sm_oms_logistics_channel', '')))
             : trim((string) ($shipment?->carrierService?->service_value ?: $shipment?->service ?: ''));
+        // DE-only translation: retain ERP's carrier/service labels and use the
+        // exact native code observed in Hannover's signed channel catalogue.
+        // The independent verified-code gate still controls actual dispatch.
+        if ($warehouseCode === 'DE' && $shipment?->warehouse?->code === 'DE'
+            && strcasecmp(trim((string) $shipment?->carrier), 'DHL') === 0) {
+            $channel = match ($channel) {
+                'DHL PAKET International' => 'DHL PAKET International N',
+                default => $channel,
+            };
+        }
         $add($channel === '', 'native_logistics_channel_missing');
         // R3 DE catalog channels are provider IDs, not the ERP carrier label.
         // Never fall back to US-SM's special service or an unverified DHL alias.
