@@ -30,3 +30,10 @@ SHA256 14f86bf9f1b83ff2751daa711aa7ff28bce4df5e1cbfd81946a097801ddf3cdc,
 resolver unit test and Vben typecheck PASS. ERP2 currently has no native
 country editing forms; component is prepared but native form UAT is deferred
 until those pages exist. No production deployment or real data writes.
+
+Latest main alignment: 883c9690 (PR #850). Smart input and KOL saved-address
+autofill compare canonical country codes, preserving country-specific customs
+numbers for equivalent aliases. Targeted backend 183 passed, Vue 195 passed,
+typecheck and production-style frontend build PASS. Repeat isolated Chrome
+E2E PASS (4.5 s), disposable runtime cleanup PASS. ERP2 Windows typecheck and
+resolver test PASS. Owner visual UAT and production release remain pending.

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import CountrySelect from '../../Components/CountrySelect.vue';
+import { resolveCountry } from '../../lib/countryStandard'
 
 import { Head, useForm } from '@inertiajs/vue3'
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
@@ -182,12 +183,13 @@ const applySmartDraft = (draft: QuickOrderDraft) => {
     else form.social_accounts.push(value)
   }
   const fields = { recipient_name:'shipping_recipient_name', country:'shipping_country', province_state:'shipping_province_state', city:'shipping_city', address_line_1:'shipping_address_line_1', address_line_2:'shipping_address_line_2', postal_code:'shipping_postal_code', email:'contact_email', phone:'contact_phone', coupon_code:'affiliate_coupon_code' } as const
-  const oldCountry=form.shipping_country
+  const oldCountry=resolveCountry(form.shipping_country)?.code ?? form.shipping_country
+  const draftCountry=resolveCountry(draft.country)?.code ?? draft.country
   for (const [source,target] of Object.entries(fields) as [keyof typeof fields, typeof fields[keyof typeof fields]][]) {
-    const value=draft[source]
+    const value=source==='country' ? draftCountry : draft[source]
     if (value && !form[target]) form[target]=value
   }
-  if (draft.recipient_customs_id && draft.country && (!oldCountry || oldCountry===draft.country) && !form.shipping_customs_id) form.shipping_customs_id=draft.recipient_customs_id
+  if (draft.recipient_customs_id && draftCountry && (!oldCountry || oldCountry===draftCountry) && !form.shipping_customs_id) form.shipping_customs_id=draft.recipient_customs_id
   smartProductHint.value=draft.product_hint ?? ''
   if (duplicateTimer) clearTimeout(duplicateTimer)
   void checkDuplicate()
