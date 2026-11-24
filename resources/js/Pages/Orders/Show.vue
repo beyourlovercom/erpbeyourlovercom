@@ -1491,13 +1491,13 @@ onBeforeUnmount(() => {
             <div class="erp-form-field">
               <label class="erp-form-label">国家</label>
               <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.country || '—' }}</div>
+              <template v-else>
+                <CountrySelect v-model="form.country" data-testid="order-edit-country" class="erp-input" placeholder="搜索国家名称 / 代码" />
+                <p v-if="form.errors.country" class="erp-field-error">{{ form.errors.country }}</p>
+              </template>
               <div v-if="editMode && order.order_kind === 'kol_fulfillment' && order.address?.recipient_customs_id" class="erp-readonly-input" data-testid="kol-order-customs-id-edit">
                 收件清关号码：{{ order.address.recipient_customs_id }}
               </div>
-              <template v-else>
-                <CountrySelect v-model="form.country" class="erp-input" placeholder="搜索国家名称 / 代码" />
-                <p v-if="form.errors.country" class="erp-field-error">{{ form.errors.country }}</p>
-              </template>
             </div>
             <div class="erp-form-field">
               <label class="erp-form-label">省/州</label>

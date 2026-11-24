@@ -17,3 +17,16 @@ Order 8198: original Norway, candidate payload NO, SKU VA617A, DHL PAKET Interna
 ## Remaining
 
 R5: isolated Dev browser UAT, regression checks, review country selection across pages, including ERP2 frontend adaptation. R6: approved merge/release and separately reviewed migration apply. Do not merge or deploy on R0-R4 alone.
+
+## R5 evidence (2026-11-24)
+
+Isolated Chrome UAT: order create country search/selection/invalid country,
+order edit and persisted DE readback, KOL nationality/shipping independent
+selection and customs-field visibility: PASS. Disposable database cleaned.
+Follow-up order detail fix: selector only rendered in edit mode; existing
+customs ID must not hide the country selector. Targeted Vue regression
+122 passed. ERP2 Vben adapter copied to 007windows; matching dictionary
+SHA256 14f86bf9f1b83ff2751daa711aa7ff28bce4df5e1cbfd81946a097801ddf3cdc,
+resolver unit test and Vben typecheck PASS. ERP2 currently has no native
+country editing forms; component is prepared but native form UAT is deferred
+until those pages exist. No production deployment or real data writes.
