@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import CountrySelect from '../../Components/CountrySelect.vue';
+import { resolveCountry } from '../../lib/countryStandard'
+
 import { Head, useForm } from '@inertiajs/vue3'
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
@@ -266,12 +269,13 @@ const fillSmartDraft = (draft: QuickOrderDraft) => {
     else form.social_accounts.push(value)
   }
   const fields = { recipient_name:'shipping_recipient_name', country:'shipping_country', province_state:'shipping_province_state', city:'shipping_city', address_line_1:'shipping_address_line_1', address_line_2:'shipping_address_line_2', postal_code:'shipping_postal_code', email:'contact_email', phone:'contact_phone', coupon_code:'affiliate_coupon_code' } as const
-  const oldCountry=form.shipping_country
+  const oldCountry=resolveCountry(form.shipping_country)?.code ?? form.shipping_country
+  const draftCountry=resolveCountry(draft.country)?.code ?? draft.country
   for (const [source,target] of Object.entries(fields) as [keyof typeof fields, typeof fields[keyof typeof fields]][]) {
-    const value=draft[source]
+    const value=source==='country' ? draftCountry : draft[source]
     if (value && !form[target]) form[target]=value
   }
-  if (draft.recipient_customs_id && draft.country && (!oldCountry || oldCountry===draft.country) && !form.shipping_customs_id) form.shipping_customs_id=draft.recipient_customs_id
+  if (draft.recipient_customs_id && draftCountry && (!oldCountry || oldCountry===draftCountry) && !form.shipping_customs_id) form.shipping_customs_id=draft.recipient_customs_id
   smartProductHint.value=draft.product_hint ?? ''
   if (duplicateTimer) clearTimeout(duplicateTimer)
   void checkDuplicate()
@@ -412,7 +416,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
               </div>
               <div class="erp-form-field">
                 <label for="kol-nationality-country" class="erp-form-label">国籍地</label>
-                <input id="kol-nationality-country" v-model="form.country_code" data-testid="kol-nationality-country" type="text" class="erp-input" :class="{ 'has-error': form.errors.country_code }" maxlength="128" placeholder="自由填写，例如：Mexico、墨西哥、Brazil（可选）">
+                <CountrySelect id="kol-nationality-country" v-model="form.country_code" data-testid="kol-nationality-country" class="erp-input" :class="{ 'has-error': form.errors.country_code }" placeholder="搜索国家名称 / 代码" />
                 <small>国籍地与实际物流收件国家分别记录。</small>
                 <p v-if="form.errors.country_code" class="erp-field-error">{{ form.errors.country_code }}</p>
               </div>
@@ -495,16 +499,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">现居国家（收件地址）</label>
-                <input v-model="form.shipping_country" data-testid="kol-shipping-country" list="kol-shipping-country-suggestions" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_country }" maxlength="128" placeholder="例如：MX、Mexico、Brazil">
-                <datalist id="kol-shipping-country-suggestions">
-                  <option value="CL">智利 Chile</option>
-                  <option value="PE">秘鲁 Peru</option>
-                  <option value="AR">阿根廷 Argentina</option>
-                  <option value="BR">巴西 Brazil</option>
-                  <option value="MX">墨西哥 Mexico</option>
-                  <option value="KR">韩国 Korea</option>
-                  <option value="NO">挪威 Norway</option>
-                </datalist>
+                <CountrySelect v-model="form.shipping_country" data-testid="kol-shipping-country" class="erp-input" :class="{ 'has-error': form.errors.shipping_country }" placeholder="搜索国家名称 / 代码" />
                 <p v-if="form.errors.shipping_country" class="erp-field-error">{{ form.errors.shipping_country }}</p>
               </div>
               <RecipientCustomsField

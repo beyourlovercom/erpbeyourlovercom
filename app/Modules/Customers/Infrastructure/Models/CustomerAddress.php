@@ -7,6 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CustomerAddress extends Model
 {
+    public function setCountryCodeAttribute($value): void
+    {
+        $this->attributes['country_code'] = \App\Support\Countries\CountryStandard::forWrite($value, 'country_code', $this->getRawOriginal('country_code'));
+    }
+
     protected $fillable = [
         'customer_id', 'address_type',
         'name', 'company', 'phone', 'country_code', 'province_state',

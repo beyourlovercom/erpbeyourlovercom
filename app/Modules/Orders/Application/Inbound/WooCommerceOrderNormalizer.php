@@ -268,7 +268,7 @@ final class WooCommerceOrderNormalizer
             'phone' => $shippingPhone !== '' ? $shippingPhone : $billingPhone,
             'email' => $shippingEmail !== '' ? $shippingEmail : $billingEmail,
             'company' => $shippingCompany !== '' ? $shippingCompany : $billingCompany,
-            'country' => strtoupper(trim((string) ($source['country'] ?? ''))),
+            'country' => (\App\Support\Countries\CountryStandard::forWrite((string) ($source['country'] ?? ''), 'country') ?? ''),
             'province_state' => trim((string) ($source['state'] ?? '')),
             'city' => trim((string) ($source['city'] ?? '')),
             'address_line_1' => trim((string) ($source['address_1'] ?? '')),

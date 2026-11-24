@@ -106,7 +106,7 @@ final class KolDuplicateIdentityCountryTest extends TestCase
         ])->assertRedirect(route('kol.library.show', $kol))->assertSessionDoesntHaveErrors();
 
         $kol->refresh();
-        self::assertSame('New Zealand', $kol->country_code);
+        self::assertSame('NZ', $kol->country_code);
         self::assertSame('MX', $kol->shipping_country);
     }
 
@@ -127,8 +127,8 @@ final class KolDuplicateIdentityCountryTest extends TestCase
             'shipping_customs_id' => 'SYNTHETIC-RFC-MX-ABCD',
         ])->assertRedirect(route('kol.library.show', $kol));
         $kol->refresh();
-        self::assertSame('Mexico', $kol->shipping_country);
-        self::assertSame('United States', $kol->country_code);
+        self::assertSame('MX', $kol->shipping_country);
+        self::assertSame('US', $kol->country_code);
         self::assertSame('SYNTHETIC-RFC-MX-ABCD', $kol->shipping_customs_id);
         self::assertNotSame('SYNTHETIC-RFC-MX-ABCD', $kol->getRawOriginal('shipping_customs_id'));
     }
@@ -142,7 +142,7 @@ final class KolDuplicateIdentityCountryTest extends TestCase
             'relationship_stage' => 'cooperating', 'country_code' => 'Argentina',
             'shipping_country' => 'Norway', 'social_accounts' => [],
         ])->assertRedirect(route('kol.library.show', $kol));
-        self::assertSame('Norway', $kol->fresh()->shipping_country);
+        self::assertSame('NO', $kol->fresh()->shipping_country);
         self::assertNull($kol->fresh()->shipping_customs_id);
     }
 
@@ -157,6 +157,6 @@ final class KolDuplicateIdentityCountryTest extends TestCase
             'display_name' => 'Country Sample', 'country_code' => 'New Zealand',
             'owner_id' => $actor->id, 'status' => 'active', 'relationship_stage' => 'prospect',
         ]);
-        $this->assertSame('New Zealand', $kol->refresh()->country_code);
+        $this->assertSame('NZ', $kol->refresh()->country_code);
     }
 }

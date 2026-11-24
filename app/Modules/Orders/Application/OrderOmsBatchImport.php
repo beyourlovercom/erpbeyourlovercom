@@ -328,6 +328,14 @@ final class OrderOmsBatchImport
                     $errors[] = ['row' => $row, 'message' => $field.' 超过最大长度 '.$length];
                 }
             }
+            if ($fields['country'] !== '') {
+                $country = \App\Support\Countries\CountryStandard::resolve($fields['country']);
+                if ($country === null) {
+                    $errors[] = ['row' => $row, 'message' => 'country 国家无法识别，请选择具体国家'];
+                } else {
+                    $fields['country'] = $country;
+                }
+            }
             $currency = $fields['currency'] ?: 'USD';
             if (preg_match('/^[A-Z]{3}$/', $currency) !== 1) {
                 $errors[] = ['row' => $row, 'message' => 'currency 必须为三位大写货币代码'];

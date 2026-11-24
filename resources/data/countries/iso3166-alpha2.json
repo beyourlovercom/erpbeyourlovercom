@@ -1,0 +1,1578 @@
+[
+  {
+    "code": "AD",
+    "en": "Andorra",
+    "zh": "安道尔",
+    "aliases": []
+  },
+  {
+    "code": "AE",
+    "en": "United Arab Emirates",
+    "zh": "阿拉伯联合酋长国",
+    "aliases": [
+      "UAE"
+    ]
+  },
+  {
+    "code": "AF",
+    "en": "Afghanistan",
+    "zh": "阿富汗",
+    "aliases": []
+  },
+  {
+    "code": "AG",
+    "en": "Antigua & Barbuda",
+    "zh": "安提瓜和巴布达",
+    "aliases": []
+  },
+  {
+    "code": "AI",
+    "en": "Anguilla",
+    "zh": "安圭拉",
+    "aliases": []
+  },
+  {
+    "code": "AL",
+    "en": "Albania",
+    "zh": "阿尔巴尼亚",
+    "aliases": []
+  },
+  {
+    "code": "AM",
+    "en": "Armenia",
+    "zh": "亚美尼亚",
+    "aliases": []
+  },
+  {
+    "code": "AO",
+    "en": "Angola",
+    "zh": "安哥拉",
+    "aliases": []
+  },
+  {
+    "code": "AQ",
+    "en": "Antarctica",
+    "zh": "南极洲",
+    "aliases": []
+  },
+  {
+    "code": "AR",
+    "en": "Argentina",
+    "zh": "阿根廷",
+    "aliases": []
+  },
+  {
+    "code": "AS",
+    "en": "American Samoa",
+    "zh": "美属萨摩亚",
+    "aliases": []
+  },
+  {
+    "code": "AT",
+    "en": "Austria",
+    "zh": "奥地利",
+    "aliases": []
+  },
+  {
+    "code": "AU",
+    "en": "Australia",
+    "zh": "澳大利亚",
+    "aliases": []
+  },
+  {
+    "code": "AW",
+    "en": "Aruba",
+    "zh": "阿鲁巴",
+    "aliases": []
+  },
+  {
+    "code": "AX",
+    "en": "Åland Islands",
+    "zh": "奥兰群岛",
+    "aliases": []
+  },
+  {
+    "code": "AZ",
+    "en": "Azerbaijan",
+    "zh": "阿塞拜疆",
+    "aliases": []
+  },
+  {
+    "code": "BA",
+    "en": "Bosnia & Herzegovina",
+    "zh": "波斯尼亚和黑塞哥维那",
+    "aliases": []
+  },
+  {
+    "code": "BB",
+    "en": "Barbados",
+    "zh": "巴巴多斯",
+    "aliases": []
+  },
+  {
+    "code": "BD",
+    "en": "Bangladesh",
+    "zh": "孟加拉国",
+    "aliases": []
+  },
+  {
+    "code": "BE",
+    "en": "Belgium",
+    "zh": "比利时",
+    "aliases": []
+  },
+  {
+    "code": "BF",
+    "en": "Burkina Faso",
+    "zh": "布基纳法索",
+    "aliases": []
+  },
+  {
+    "code": "BG",
+    "en": "Bulgaria",
+    "zh": "保加利亚",
+    "aliases": []
+  },
+  {
+    "code": "BH",
+    "en": "Bahrain",
+    "zh": "巴林",
+    "aliases": []
+  },
+  {
+    "code": "BI",
+    "en": "Burundi",
+    "zh": "布隆迪",
+    "aliases": []
+  },
+  {
+    "code": "BJ",
+    "en": "Benin",
+    "zh": "贝宁",
+    "aliases": []
+  },
+  {
+    "code": "BL",
+    "en": "St. Barthélemy",
+    "zh": "圣巴泰勒米",
+    "aliases": []
+  },
+  {
+    "code": "BM",
+    "en": "Bermuda",
+    "zh": "百慕大",
+    "aliases": []
+  },
+  {
+    "code": "BN",
+    "en": "Brunei",
+    "zh": "文莱",
+    "aliases": []
+  },
+  {
+    "code": "BO",
+    "en": "Bolivia",
+    "zh": "玻利维亚",
+    "aliases": [
+      "Bolivia, Plurinational State of"
+    ]
+  },
+  {
+    "code": "BQ",
+    "en": "Caribbean Netherlands",
+    "zh": "荷属加勒比区",
+    "aliases": []
+  },
+  {
+    "code": "BR",
+    "en": "Brazil",
+    "zh": "巴西",
+    "aliases": [
+      "Brasil"
+    ]
+  },
+  {
+    "code": "BS",
+    "en": "Bahamas",
+    "zh": "巴哈马",
+    "aliases": []
+  },
+  {
+    "code": "BT",
+    "en": "Bhutan",
+    "zh": "不丹",
+    "aliases": []
+  },
+  {
+    "code": "BV",
+    "en": "Bouvet Island",
+    "zh": "布韦岛",
+    "aliases": []
+  },
+  {
+    "code": "BW",
+    "en": "Botswana",
+    "zh": "博茨瓦纳",
+    "aliases": []
+  },
+  {
+    "code": "BY",
+    "en": "Belarus",
+    "zh": "白俄罗斯",
+    "aliases": []
+  },
+  {
+    "code": "BZ",
+    "en": "Belize",
+    "zh": "伯利兹",
+    "aliases": []
+  },
+  {
+    "code": "CA",
+    "en": "Canada",
+    "zh": "加拿大",
+    "aliases": []
+  },
+  {
+    "code": "CC",
+    "en": "Cocos (Keeling) Islands",
+    "zh": "科科斯（基林）群岛",
+    "aliases": []
+  },
+  {
+    "code": "CD",
+    "en": "Congo - Kinshasa",
+    "zh": "刚果（金）",
+    "aliases": []
+  },
+  {
+    "code": "CF",
+    "en": "Central African Republic",
+    "zh": "中非共和国",
+    "aliases": []
+  },
+  {
+    "code": "CG",
+    "en": "Congo - Brazzaville",
+    "zh": "刚果（布）",
+    "aliases": []
+  },
+  {
+    "code": "CH",
+    "en": "Switzerland",
+    "zh": "瑞士",
+    "aliases": []
+  },
+  {
+    "code": "CI",
+    "en": "Côte d’Ivoire",
+    "zh": "科特迪瓦",
+    "aliases": [
+      "Côte d'Ivoire",
+      "Ivory Coast"
+    ]
+  },
+  {
+    "code": "CK",
+    "en": "Cook Islands",
+    "zh": "库克群岛",
+    "aliases": []
+  },
+  {
+    "code": "CL",
+    "en": "Chile",
+    "zh": "智利",
+    "aliases": [
+      "Chili"
+    ]
+  },
+  {
+    "code": "CM",
+    "en": "Cameroon",
+    "zh": "喀麦隆",
+    "aliases": []
+  },
+  {
+    "code": "CN",
+    "en": "China",
+    "zh": "中国",
+    "aliases": [
+      "中国",
+      "中华人民共和国",
+      "People’s Republic of China"
+    ]
+  },
+  {
+    "code": "CO",
+    "en": "Colombia",
+    "zh": "哥伦比亚",
+    "aliases": []
+  },
+  {
+    "code": "CR",
+    "en": "Costa Rica",
+    "zh": "哥斯达黎加",
+    "aliases": []
+  },
+  {
+    "code": "CU",
+    "en": "Cuba",
+    "zh": "古巴",
+    "aliases": []
+  },
+  {
+    "code": "CV",
+    "en": "Cape Verde",
+    "zh": "佛得角",
+    "aliases": [
+      "Cape Verde"
+    ]
+  },
+  {
+    "code": "CW",
+    "en": "Curaçao",
+    "zh": "库拉索",
+    "aliases": []
+  },
+  {
+    "code": "CX",
+    "en": "Christmas Island",
+    "zh": "圣诞岛",
+    "aliases": []
+  },
+  {
+    "code": "CY",
+    "en": "Cyprus",
+    "zh": "塞浦路斯",
+    "aliases": []
+  },
+  {
+    "code": "CZ",
+    "en": "Czechia",
+    "zh": "捷克",
+    "aliases": [
+      "Czech Republic"
+    ]
+  },
+  {
+    "code": "DE",
+    "en": "Germany",
+    "zh": "德国",
+    "aliases": [
+      "Deutschland"
+    ]
+  },
+  {
+    "code": "DJ",
+    "en": "Djibouti",
+    "zh": "吉布提",
+    "aliases": []
+  },
+  {
+    "code": "DK",
+    "en": "Denmark",
+    "zh": "丹麦",
+    "aliases": []
+  },
+  {
+    "code": "DM",
+    "en": "Dominica",
+    "zh": "多米尼克",
+    "aliases": []
+  },
+  {
+    "code": "DO",
+    "en": "Dominican Republic",
+    "zh": "多米尼加共和国",
+    "aliases": []
+  },
+  {
+    "code": "DZ",
+    "en": "Algeria",
+    "zh": "阿尔及利亚",
+    "aliases": []
+  },
+  {
+    "code": "EC",
+    "en": "Ecuador",
+    "zh": "厄瓜多尔",
+    "aliases": []
+  },
+  {
+    "code": "EE",
+    "en": "Estonia",
+    "zh": "爱沙尼亚",
+    "aliases": []
+  },
+  {
+    "code": "EG",
+    "en": "Egypt",
+    "zh": "埃及",
+    "aliases": []
+  },
+  {
+    "code": "EH",
+    "en": "Western Sahara",
+    "zh": "西撒哈拉",
+    "aliases": []
+  },
+  {
+    "code": "ER",
+    "en": "Eritrea",
+    "zh": "厄立特里亚",
+    "aliases": []
+  },
+  {
+    "code": "ES",
+    "en": "Spain",
+    "zh": "西班牙",
+    "aliases": [
+      "España"
+    ]
+  },
+  {
+    "code": "ET",
+    "en": "Ethiopia",
+    "zh": "埃塞俄比亚",
+    "aliases": []
+  },
+  {
+    "code": "FI",
+    "en": "Finland",
+    "zh": "芬兰",
+    "aliases": []
+  },
+  {
+    "code": "FJ",
+    "en": "Fiji",
+    "zh": "斐济",
+    "aliases": []
+  },
+  {
+    "code": "FK",
+    "en": "Falkland Islands",
+    "zh": "福克兰群岛",
+    "aliases": []
+  },
+  {
+    "code": "FM",
+    "en": "Micronesia",
+    "zh": "密克罗尼西亚",
+    "aliases": []
+  },
+  {
+    "code": "FO",
+    "en": "Faroe Islands",
+    "zh": "法罗群岛",
+    "aliases": []
+  },
+  {
+    "code": "FR",
+    "en": "France",
+    "zh": "法国",
+    "aliases": [
+      "France métropolitaine"
+    ]
+  },
+  {
+    "code": "GA",
+    "en": "Gabon",
+    "zh": "加蓬",
+    "aliases": []
+  },
+  {
+    "code": "GB",
+    "en": "United Kingdom",
+    "zh": "英国",
+    "aliases": [
+      "UK",
+      "Great Britain",
+      "United Kingdom of Great Britain and Northern Ireland"
+    ]
+  },
+  {
+    "code": "GD",
+    "en": "Grenada",
+    "zh": "格林纳达",
+    "aliases": []
+  },
+  {
+    "code": "GE",
+    "en": "Georgia",
+    "zh": "格鲁吉亚",
+    "aliases": []
+  },
+  {
+    "code": "GF",
+    "en": "French Guiana",
+    "zh": "法属圭亚那",
+    "aliases": []
+  },
+  {
+    "code": "GG",
+    "en": "Guernsey",
+    "zh": "根西岛",
+    "aliases": []
+  },
+  {
+    "code": "GH",
+    "en": "Ghana",
+    "zh": "加纳",
+    "aliases": []
+  },
+  {
+    "code": "GI",
+    "en": "Gibraltar",
+    "zh": "直布罗陀",
+    "aliases": []
+  },
+  {
+    "code": "GL",
+    "en": "Greenland",
+    "zh": "格陵兰",
+    "aliases": []
+  },
+  {
+    "code": "GM",
+    "en": "Gambia",
+    "zh": "冈比亚",
+    "aliases": []
+  },
+  {
+    "code": "GN",
+    "en": "Guinea",
+    "zh": "几内亚",
+    "aliases": []
+  },
+  {
+    "code": "GP",
+    "en": "Guadeloupe",
+    "zh": "瓜德罗普",
+    "aliases": []
+  },
+  {
+    "code": "GQ",
+    "en": "Equatorial Guinea",
+    "zh": "赤道几内亚",
+    "aliases": []
+  },
+  {
+    "code": "GR",
+    "en": "Greece",
+    "zh": "希腊",
+    "aliases": []
+  },
+  {
+    "code": "GS",
+    "en": "South Georgia & South Sandwich Islands",
+    "zh": "南乔治亚和南桑威奇群岛",
+    "aliases": []
+  },
+  {
+    "code": "GT",
+    "en": "Guatemala",
+    "zh": "危地马拉",
+    "aliases": []
+  },
+  {
+    "code": "GU",
+    "en": "Guam",
+    "zh": "关岛",
+    "aliases": []
+  },
+  {
+    "code": "GW",
+    "en": "Guinea-Bissau",
+    "zh": "几内亚比绍",
+    "aliases": []
+  },
+  {
+    "code": "GY",
+    "en": "Guyana",
+    "zh": "圭亚那",
+    "aliases": []
+  },
+  {
+    "code": "HK",
+    "en": "Hong Kong SAR China",
+    "zh": "中国香港特别行政区",
+    "aliases": [
+      "Hong Kong",
+      "香港"
+    ]
+  },
+  {
+    "code": "HM",
+    "en": "Heard & McDonald Islands",
+    "zh": "赫德岛和麦克唐纳群岛",
+    "aliases": []
+  },
+  {
+    "code": "HN",
+    "en": "Honduras",
+    "zh": "洪都拉斯",
+    "aliases": []
+  },
+  {
+    "code": "HR",
+    "en": "Croatia",
+    "zh": "克罗地亚",
+    "aliases": []
+  },
+  {
+    "code": "HT",
+    "en": "Haiti",
+    "zh": "海地",
+    "aliases": []
+  },
+  {
+    "code": "HU",
+    "en": "Hungary",
+    "zh": "匈牙利",
+    "aliases": []
+  },
+  {
+    "code": "ID",
+    "en": "Indonesia",
+    "zh": "印度尼西亚",
+    "aliases": []
+  },
+  {
+    "code": "IE",
+    "en": "Ireland",
+    "zh": "爱尔兰",
+    "aliases": []
+  },
+  {
+    "code": "IL",
+    "en": "Israel",
+    "zh": "以色列",
+    "aliases": []
+  },
+  {
+    "code": "IM",
+    "en": "Isle of Man",
+    "zh": "马恩岛",
+    "aliases": []
+  },
+  {
+    "code": "IN",
+    "en": "India",
+    "zh": "印度",
+    "aliases": []
+  },
+  {
+    "code": "IO",
+    "en": "British Indian Ocean Territory",
+    "zh": "英属印度洋领地",
+    "aliases": []
+  },
+  {
+    "code": "IQ",
+    "en": "Iraq",
+    "zh": "伊拉克",
+    "aliases": []
+  },
+  {
+    "code": "IR",
+    "en": "Iran",
+    "zh": "伊朗",
+    "aliases": [
+      "Iran, Islamic Republic of"
+    ]
+  },
+  {
+    "code": "IS",
+    "en": "Iceland",
+    "zh": "冰岛",
+    "aliases": []
+  },
+  {
+    "code": "IT",
+    "en": "Italy",
+    "zh": "意大利",
+    "aliases": [
+      "Italia"
+    ]
+  },
+  {
+    "code": "JE",
+    "en": "Jersey",
+    "zh": "泽西岛",
+    "aliases": []
+  },
+  {
+    "code": "JM",
+    "en": "Jamaica",
+    "zh": "牙买加",
+    "aliases": []
+  },
+  {
+    "code": "JO",
+    "en": "Jordan",
+    "zh": "约旦",
+    "aliases": []
+  },
+  {
+    "code": "JP",
+    "en": "Japan",
+    "zh": "日本",
+    "aliases": []
+  },
+  {
+    "code": "KE",
+    "en": "Kenya",
+    "zh": "肯尼亚",
+    "aliases": []
+  },
+  {
+    "code": "KG",
+    "en": "Kyrgyzstan",
+    "zh": "吉尔吉斯斯坦",
+    "aliases": []
+  },
+  {
+    "code": "KH",
+    "en": "Cambodia",
+    "zh": "柬埔寨",
+    "aliases": []
+  },
+  {
+    "code": "KI",
+    "en": "Kiribati",
+    "zh": "基里巴斯",
+    "aliases": []
+  },
+  {
+    "code": "KM",
+    "en": "Comoros",
+    "zh": "科摩罗",
+    "aliases": []
+  },
+  {
+    "code": "KN",
+    "en": "St. Kitts & Nevis",
+    "zh": "圣基茨和尼维斯",
+    "aliases": []
+  },
+  {
+    "code": "KP",
+    "en": "North Korea",
+    "zh": "朝鲜",
+    "aliases": [
+      "Democratic People’s Republic of Korea",
+      "North Korea"
+    ]
+  },
+  {
+    "code": "KR",
+    "en": "South Korea",
+    "zh": "韩国",
+    "aliases": [
+      "Republic of Korea",
+      "Korea, Republic of",
+      "한국",
+      "韩国"
+    ]
+  },
+  {
+    "code": "KW",
+    "en": "Kuwait",
+    "zh": "科威特",
+    "aliases": []
+  },
+  {
+    "code": "KY",
+    "en": "Cayman Islands",
+    "zh": "开曼群岛",
+    "aliases": []
+  },
+  {
+    "code": "KZ",
+    "en": "Kazakhstan",
+    "zh": "哈萨克斯坦",
+    "aliases": []
+  },
+  {
+    "code": "LA",
+    "en": "Laos",
+    "zh": "老挝",
+    "aliases": [
+      "Lao People’s Democratic Republic"
+    ]
+  },
+  {
+    "code": "LB",
+    "en": "Lebanon",
+    "zh": "黎巴嫩",
+    "aliases": []
+  },
+  {
+    "code": "LC",
+    "en": "St. Lucia",
+    "zh": "圣卢西亚",
+    "aliases": []
+  },
+  {
+    "code": "LI",
+    "en": "Liechtenstein",
+    "zh": "列支敦士登",
+    "aliases": []
+  },
+  {
+    "code": "LK",
+    "en": "Sri Lanka",
+    "zh": "斯里兰卡",
+    "aliases": []
+  },
+  {
+    "code": "LR",
+    "en": "Liberia",
+    "zh": "利比里亚",
+    "aliases": []
+  },
+  {
+    "code": "LS",
+    "en": "Lesotho",
+    "zh": "莱索托",
+    "aliases": []
+  },
+  {
+    "code": "LT",
+    "en": "Lithuania",
+    "zh": "立陶宛",
+    "aliases": []
+  },
+  {
+    "code": "LU",
+    "en": "Luxembourg",
+    "zh": "卢森堡",
+    "aliases": []
+  },
+  {
+    "code": "LV",
+    "en": "Latvia",
+    "zh": "拉脱维亚",
+    "aliases": []
+  },
+  {
+    "code": "LY",
+    "en": "Libya",
+    "zh": "利比亚",
+    "aliases": []
+  },
+  {
+    "code": "MA",
+    "en": "Morocco",
+    "zh": "摩洛哥",
+    "aliases": []
+  },
+  {
+    "code": "MC",
+    "en": "Monaco",
+    "zh": "摩纳哥",
+    "aliases": []
+  },
+  {
+    "code": "MD",
+    "en": "Moldova",
+    "zh": "摩尔多瓦",
+    "aliases": [
+      "Moldova, Republic of"
+    ]
+  },
+  {
+    "code": "ME",
+    "en": "Montenegro",
+    "zh": "黑山",
+    "aliases": []
+  },
+  {
+    "code": "MF",
+    "en": "St. Martin",
+    "zh": "法属圣马丁",
+    "aliases": []
+  },
+  {
+    "code": "MG",
+    "en": "Madagascar",
+    "zh": "马达加斯加",
+    "aliases": []
+  },
+  {
+    "code": "MH",
+    "en": "Marshall Islands",
+    "zh": "马绍尔群岛",
+    "aliases": []
+  },
+  {
+    "code": "MK",
+    "en": "North Macedonia",
+    "zh": "北马其顿",
+    "aliases": [
+      "Macedonia"
+    ]
+  },
+  {
+    "code": "ML",
+    "en": "Mali",
+    "zh": "马里",
+    "aliases": []
+  },
+  {
+    "code": "MM",
+    "en": "Myanmar (Burma)",
+    "zh": "缅甸",
+    "aliases": [
+      "Burma"
+    ]
+  },
+  {
+    "code": "MN",
+    "en": "Mongolia",
+    "zh": "蒙古",
+    "aliases": []
+  },
+  {
+    "code": "MO",
+    "en": "Macao SAR China",
+    "zh": "中国澳门特别行政区",
+    "aliases": [
+      "Macau",
+      "澳门"
+    ]
+  },
+  {
+    "code": "MP",
+    "en": "Northern Mariana Islands",
+    "zh": "北马里亚纳群岛",
+    "aliases": []
+  },
+  {
+    "code": "MQ",
+    "en": "Martinique",
+    "zh": "马提尼克",
+    "aliases": []
+  },
+  {
+    "code": "MR",
+    "en": "Mauritania",
+    "zh": "毛里塔尼亚",
+    "aliases": []
+  },
+  {
+    "code": "MS",
+    "en": "Montserrat",
+    "zh": "蒙特塞拉特",
+    "aliases": []
+  },
+  {
+    "code": "MT",
+    "en": "Malta",
+    "zh": "马耳他",
+    "aliases": []
+  },
+  {
+    "code": "MU",
+    "en": "Mauritius",
+    "zh": "毛里求斯",
+    "aliases": []
+  },
+  {
+    "code": "MV",
+    "en": "Maldives",
+    "zh": "马尔代夫",
+    "aliases": []
+  },
+  {
+    "code": "MW",
+    "en": "Malawi",
+    "zh": "马拉维",
+    "aliases": []
+  },
+  {
+    "code": "MX",
+    "en": "Mexico",
+    "zh": "墨西哥",
+    "aliases": [
+      "México"
+    ]
+  },
+  {
+    "code": "MY",
+    "en": "Malaysia",
+    "zh": "马来西亚",
+    "aliases": []
+  },
+  {
+    "code": "MZ",
+    "en": "Mozambique",
+    "zh": "莫桑比克",
+    "aliases": []
+  },
+  {
+    "code": "NA",
+    "en": "Namibia",
+    "zh": "纳米比亚",
+    "aliases": []
+  },
+  {
+    "code": "NC",
+    "en": "New Caledonia",
+    "zh": "新喀里多尼亚",
+    "aliases": []
+  },
+  {
+    "code": "NE",
+    "en": "Niger",
+    "zh": "尼日尔",
+    "aliases": []
+  },
+  {
+    "code": "NF",
+    "en": "Norfolk Island",
+    "zh": "诺福克岛",
+    "aliases": []
+  },
+  {
+    "code": "NG",
+    "en": "Nigeria",
+    "zh": "尼日利亚",
+    "aliases": []
+  },
+  {
+    "code": "NI",
+    "en": "Nicaragua",
+    "zh": "尼加拉瓜",
+    "aliases": []
+  },
+  {
+    "code": "NL",
+    "en": "Netherlands",
+    "zh": "荷兰",
+    "aliases": []
+  },
+  {
+    "code": "NO",
+    "en": "Norway",
+    "zh": "挪威",
+    "aliases": [
+      "Norge"
+    ]
+  },
+  {
+    "code": "NP",
+    "en": "Nepal",
+    "zh": "尼泊尔",
+    "aliases": []
+  },
+  {
+    "code": "NR",
+    "en": "Nauru",
+    "zh": "瑙鲁",
+    "aliases": []
+  },
+  {
+    "code": "NU",
+    "en": "Niue",
+    "zh": "纽埃",
+    "aliases": []
+  },
+  {
+    "code": "NZ",
+    "en": "New Zealand",
+    "zh": "新西兰",
+    "aliases": []
+  },
+  {
+    "code": "OM",
+    "en": "Oman",
+    "zh": "阿曼",
+    "aliases": []
+  },
+  {
+    "code": "PA",
+    "en": "Panama",
+    "zh": "巴拿马",
+    "aliases": []
+  },
+  {
+    "code": "PE",
+    "en": "Peru",
+    "zh": "秘鲁",
+    "aliases": [
+      "Perú"
+    ]
+  },
+  {
+    "code": "PF",
+    "en": "French Polynesia",
+    "zh": "法属波利尼西亚",
+    "aliases": []
+  },
+  {
+    "code": "PG",
+    "en": "Papua New Guinea",
+    "zh": "巴布亚新几内亚",
+    "aliases": []
+  },
+  {
+    "code": "PH",
+    "en": "Philippines",
+    "zh": "菲律宾",
+    "aliases": [
+      "Philippines"
+    ]
+  },
+  {
+    "code": "PK",
+    "en": "Pakistan",
+    "zh": "巴基斯坦",
+    "aliases": []
+  },
+  {
+    "code": "PL",
+    "en": "Poland",
+    "zh": "波兰",
+    "aliases": []
+  },
+  {
+    "code": "PM",
+    "en": "St. Pierre & Miquelon",
+    "zh": "圣皮埃尔和密克隆群岛",
+    "aliases": []
+  },
+  {
+    "code": "PN",
+    "en": "Pitcairn Islands",
+    "zh": "皮特凯恩群岛",
+    "aliases": []
+  },
+  {
+    "code": "PR",
+    "en": "Puerto Rico",
+    "zh": "波多黎各",
+    "aliases": []
+  },
+  {
+    "code": "PS",
+    "en": "Palestinian Territories",
+    "zh": "巴勒斯坦领土",
+    "aliases": []
+  },
+  {
+    "code": "PT",
+    "en": "Portugal",
+    "zh": "葡萄牙",
+    "aliases": []
+  },
+  {
+    "code": "PW",
+    "en": "Palau",
+    "zh": "帕劳",
+    "aliases": []
+  },
+  {
+    "code": "PY",
+    "en": "Paraguay",
+    "zh": "巴拉圭",
+    "aliases": []
+  },
+  {
+    "code": "QA",
+    "en": "Qatar",
+    "zh": "卡塔尔",
+    "aliases": []
+  },
+  {
+    "code": "RE",
+    "en": "Réunion",
+    "zh": "留尼汪",
+    "aliases": []
+  },
+  {
+    "code": "RO",
+    "en": "Romania",
+    "zh": "罗马尼亚",
+    "aliases": []
+  },
+  {
+    "code": "RS",
+    "en": "Serbia",
+    "zh": "塞尔维亚",
+    "aliases": []
+  },
+  {
+    "code": "RU",
+    "en": "Russia",
+    "zh": "俄罗斯",
+    "aliases": [
+      "Russian Federation"
+    ]
+  },
+  {
+    "code": "RW",
+    "en": "Rwanda",
+    "zh": "卢旺达",
+    "aliases": []
+  },
+  {
+    "code": "SA",
+    "en": "Saudi Arabia",
+    "zh": "沙特阿拉伯",
+    "aliases": []
+  },
+  {
+    "code": "SB",
+    "en": "Solomon Islands",
+    "zh": "所罗门群岛",
+    "aliases": []
+  },
+  {
+    "code": "SC",
+    "en": "Seychelles",
+    "zh": "塞舌尔",
+    "aliases": []
+  },
+  {
+    "code": "SD",
+    "en": "Sudan",
+    "zh": "苏丹",
+    "aliases": []
+  },
+  {
+    "code": "SE",
+    "en": "Sweden",
+    "zh": "瑞典",
+    "aliases": []
+  },
+  {
+    "code": "SG",
+    "en": "Singapore",
+    "zh": "新加坡",
+    "aliases": []
+  },
+  {
+    "code": "SH",
+    "en": "St. Helena",
+    "zh": "圣赫勒拿",
+    "aliases": []
+  },
+  {
+    "code": "SI",
+    "en": "Slovenia",
+    "zh": "斯洛文尼亚",
+    "aliases": []
+  },
+  {
+    "code": "SJ",
+    "en": "Svalbard & Jan Mayen",
+    "zh": "斯瓦尔巴和扬马延",
+    "aliases": []
+  },
+  {
+    "code": "SK",
+    "en": "Slovakia",
+    "zh": "斯洛伐克",
+    "aliases": []
+  },
+  {
+    "code": "SL",
+    "en": "Sierra Leone",
+    "zh": "塞拉利昂",
+    "aliases": []
+  },
+  {
+    "code": "SM",
+    "en": "San Marino",
+    "zh": "圣马力诺",
+    "aliases": []
+  },
+  {
+    "code": "SN",
+    "en": "Senegal",
+    "zh": "塞内加尔",
+    "aliases": []
+  },
+  {
+    "code": "SO",
+    "en": "Somalia",
+    "zh": "索马里",
+    "aliases": []
+  },
+  {
+    "code": "SR",
+    "en": "Suriname",
+    "zh": "苏里南",
+    "aliases": []
+  },
+  {
+    "code": "SS",
+    "en": "South Sudan",
+    "zh": "南苏丹",
+    "aliases": []
+  },
+  {
+    "code": "ST",
+    "en": "São Tomé & Príncipe",
+    "zh": "圣多美和普林西比",
+    "aliases": []
+  },
+  {
+    "code": "SV",
+    "en": "El Salvador",
+    "zh": "萨尔瓦多",
+    "aliases": []
+  },
+  {
+    "code": "SX",
+    "en": "Sint Maarten",
+    "zh": "荷属圣马丁",
+    "aliases": []
+  },
+  {
+    "code": "SY",
+    "en": "Syria",
+    "zh": "叙利亚",
+    "aliases": [
+      "Syrian Arab Republic"
+    ]
+  },
+  {
+    "code": "SZ",
+    "en": "Eswatini",
+    "zh": "斯威士兰",
+    "aliases": [
+      "Swaziland"
+    ]
+  },
+  {
+    "code": "TC",
+    "en": "Turks & Caicos Islands",
+    "zh": "特克斯和凯科斯群岛",
+    "aliases": []
+  },
+  {
+    "code": "TD",
+    "en": "Chad",
+    "zh": "乍得",
+    "aliases": []
+  },
+  {
+    "code": "TF",
+    "en": "French Southern Territories",
+    "zh": "法属南部领地",
+    "aliases": []
+  },
+  {
+    "code": "TG",
+    "en": "Togo",
+    "zh": "多哥",
+    "aliases": []
+  },
+  {
+    "code": "TH",
+    "en": "Thailand",
+    "zh": "泰国",
+    "aliases": []
+  },
+  {
+    "code": "TJ",
+    "en": "Tajikistan",
+    "zh": "塔吉克斯坦",
+    "aliases": []
+  },
+  {
+    "code": "TK",
+    "en": "Tokelau",
+    "zh": "托克劳",
+    "aliases": []
+  },
+  {
+    "code": "TL",
+    "en": "Timor-Leste",
+    "zh": "东帝汶",
+    "aliases": []
+  },
+  {
+    "code": "TM",
+    "en": "Turkmenistan",
+    "zh": "土库曼斯坦",
+    "aliases": []
+  },
+  {
+    "code": "TN",
+    "en": "Tunisia",
+    "zh": "突尼斯",
+    "aliases": []
+  },
+  {
+    "code": "TO",
+    "en": "Tonga",
+    "zh": "汤加",
+    "aliases": []
+  },
+  {
+    "code": "TR",
+    "en": "Türkiye",
+    "zh": "土耳其",
+    "aliases": [
+      "Turkey"
+    ]
+  },
+  {
+    "code": "TT",
+    "en": "Trinidad & Tobago",
+    "zh": "特立尼达和多巴哥",
+    "aliases": []
+  },
+  {
+    "code": "TV",
+    "en": "Tuvalu",
+    "zh": "图瓦卢",
+    "aliases": []
+  },
+  {
+    "code": "TW",
+    "en": "Taiwan",
+    "zh": "台湾",
+    "aliases": [
+      "Taiwan",
+      "台湾"
+    ]
+  },
+  {
+    "code": "TZ",
+    "en": "Tanzania",
+    "zh": "坦桑尼亚",
+    "aliases": [
+      "Tanzania, United Republic of"
+    ]
+  },
+  {
+    "code": "UA",
+    "en": "Ukraine",
+    "zh": "乌克兰",
+    "aliases": []
+  },
+  {
+    "code": "UG",
+    "en": "Uganda",
+    "zh": "乌干达",
+    "aliases": []
+  },
+  {
+    "code": "UM",
+    "en": "U.S. Outlying Islands",
+    "zh": "美国本土外小岛屿",
+    "aliases": []
+  },
+  {
+    "code": "US",
+    "en": "United States",
+    "zh": "美国",
+    "aliases": [
+      "USA",
+      "United States of America",
+      "America"
+    ]
+  },
+  {
+    "code": "UY",
+    "en": "Uruguay",
+    "zh": "乌拉圭",
+    "aliases": []
+  },
+  {
+    "code": "UZ",
+    "en": "Uzbekistan",
+    "zh": "乌兹别克斯坦",
+    "aliases": []
+  },
+  {
+    "code": "VA",
+    "en": "Vatican City",
+    "zh": "梵蒂冈",
+    "aliases": []
+  },
+  {
+    "code": "VC",
+    "en": "St. Vincent & Grenadines",
+    "zh": "圣文森特和格林纳丁斯",
+    "aliases": []
+  },
+  {
+    "code": "VE",
+    "en": "Venezuela",
+    "zh": "委内瑞拉",
+    "aliases": []
+  },
+  {
+    "code": "VG",
+    "en": "British Virgin Islands",
+    "zh": "英属维尔京群岛",
+    "aliases": []
+  },
+  {
+    "code": "VI",
+    "en": "U.S. Virgin Islands",
+    "zh": "美属维尔京群岛",
+    "aliases": []
+  },
+  {
+    "code": "VN",
+    "en": "Vietnam",
+    "zh": "越南",
+    "aliases": [
+      "Viet Nam"
+    ]
+  },
+  {
+    "code": "VU",
+    "en": "Vanuatu",
+    "zh": "瓦努阿图",
+    "aliases": []
+  },
+  {
+    "code": "WF",
+    "en": "Wallis & Futuna",
+    "zh": "瓦利斯和富图纳",
+    "aliases": []
+  },
+  {
+    "code": "WS",
+    "en": "Samoa",
+    "zh": "萨摩亚",
+    "aliases": []
+  },
+  {
+    "code": "YE",
+    "en": "Yemen",
+    "zh": "也门",
+    "aliases": []
+  },
+  {
+    "code": "YT",
+    "en": "Mayotte",
+    "zh": "马约特",
+    "aliases": []
+  },
+  {
+    "code": "ZA",
+    "en": "South Africa",
+    "zh": "南非",
+    "aliases": []
+  },
+  {
+    "code": "ZM",
+    "en": "Zambia",
+    "zh": "赞比亚",
+    "aliases": []
+  },
+  {
+    "code": "ZW",
+    "en": "Zimbabwe",
+    "zh": "津巴布韦",
+    "aliases": []
+  }
+]

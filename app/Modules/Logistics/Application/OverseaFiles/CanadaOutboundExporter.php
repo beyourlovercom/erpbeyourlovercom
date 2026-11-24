@@ -47,7 +47,7 @@ final class CanadaOutboundExporter
 
         $a = $order->address;
         $row = array_fill(0, count(self::HEADERS), null);
-        $country = $this->required(strtoupper((string) $a->country), '国家', $order->erp_order_id);
+        $country = $this->required((\App\Support\Countries\CountryStandard::resolve($a->country) ?? ''), '国家', $order->erp_order_id);
         $row[0] = $this->references->canada($order);
         $row[1] = 'CA02_多伦多仓';
         $row[2] = 'CAPOST[加拿大邮政多伦多]';

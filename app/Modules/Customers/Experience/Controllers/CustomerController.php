@@ -461,7 +461,7 @@ final class CustomerController
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255', Rule::unique('customers', 'email')->ignore($customer?->id)],
             'phone' => ['nullable', 'string', 'max:64'],
-            'country_code' => ['nullable', 'string', 'max:8', $this->countryRule()],
+            'country_code' => ['nullable', 'string', 'max:128', $this->countryRule()],
             'language_code' => ['nullable', 'string', 'max:16'],
             'source_type' => ['required', Rule::in(array_keys(self::SOURCES))],
             'owner_id' => ['nullable', 'integer', 'exists:users,id'],
@@ -477,7 +477,7 @@ final class CustomerController
             "{$prefix}.name" => ['nullable', 'string', 'max:255'],
             "{$prefix}.company" => ['nullable', 'string', 'max:255'],
             "{$prefix}.phone" => ['nullable', 'string', 'max:64'],
-            "{$prefix}.country_code" => ['nullable', 'string', 'max:2'],
+            "{$prefix}.country_code" => ['nullable', 'string', 'max:128'],
             "{$prefix}.province_state" => ['nullable', 'string', 'max:128'],
             "{$prefix}.city" => ['nullable', 'string', 'max:128'],
             "{$prefix}.address_line_1" => ['nullable', 'string', 'max:255'],
@@ -491,7 +491,7 @@ final class CustomerController
         return function (string $attribute, mixed $value, Closure $fail): void {
             if ($value === null || $value === '') return;
             try { CountryCodeNormalizer::normalize($value); }
-            catch (InvalidCompanyAttributeException) { $fail('国家代码需为两位字母。'); }
+            catch (InvalidCompanyAttributeException) { $fail('请选择可识别的标准国家。'); }
         };
     }
 

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CountrySelect from '../../../Components/CountrySelect.vue';
+
 import { Head, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
@@ -87,7 +89,7 @@ const submit = () => {
 
                             <div class="erp-form-field">
                                 <label class="erp-form-label" for="create-country">国家代码</label>
-                                <input id="create-country" v-model="form.country_code" type="text" maxlength="2" class="erp-input" :class="{ 'has-error': errors.country_code }" placeholder="US">
+                                <CountrySelect id="create-country" v-model="form.country_code" class="erp-input" :class="{ 'has-error': errors.country_code }" placeholder="搜索国家名称 / 代码" />
                                 <p v-if="errors.country_code" class="erp-field-error">{{ errors.country_code }}</p>
                             </div>
 
@@ -141,7 +143,7 @@ const submit = () => {
                             </div>
                             <div class="erp-form-field">
                                 <label class="erp-form-label" for="billing-country">国家代码</label>
-                                <input id="billing-country" v-model="form.billing_address.country_code" type="text" maxlength="2" class="erp-input" placeholder="US">
+                                <CountrySelect id="billing-country" v-model="form.billing_address.country_code" class="erp-input" placeholder="搜索国家名称 / 代码" />
                             </div>
                             <div class="erp-form-field">
                                 <label class="erp-form-label" for="billing-state">省/州</label>
@@ -183,7 +185,7 @@ const submit = () => {
                             </div>
                             <div class="erp-form-field">
                                 <label class="erp-form-label" for="shipping-country">国家代码</label>
-                                <input id="shipping-country" v-model="form.shipping_address.country_code" type="text" maxlength="2" class="erp-input" placeholder="US">
+                                <CountrySelect id="shipping-country" v-model="form.shipping_address.country_code" class="erp-input" placeholder="搜索国家名称 / 代码" />
                             </div>
                             <div class="erp-form-field">
                                 <label class="erp-form-label" for="shipping-state">省/州</label>

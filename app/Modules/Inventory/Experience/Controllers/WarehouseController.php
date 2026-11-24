@@ -139,7 +139,7 @@ final class WarehouseController
     public function regions(Request $request,string $warehouse): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
-        $data=$request->validate(['country_codes'=>['array'],'country_codes.*'=>['string','size:2']]);
+        $data=$request->validate(['country_codes'=>['array'],'country_codes.*'=>['string','max:128']]);
         $this->inventory->updateRegions($w,$data['country_codes'] ?? [],$request->user());
         return back()->with('success','服务地区已保存');
     }
@@ -426,7 +426,7 @@ final class WarehouseController
         return [
             'slug'=>['required','string','max:64','alpha_dash','unique:warehouses,slug'.($ignoreId?",{$ignoreId}":'')],
             'code'=>['required','string','max:64','unique:warehouses,code'.($ignoreId?",{$ignoreId}":'')],
-            'name'=>['required','string','max:191'],'country_code'=>['nullable','string','size:2'],
+            'name'=>['required','string','max:191'],'country_code'=>['nullable','string','max:128'],
             'address_line1'=>['nullable','string','max:255'],'address_line2'=>['nullable','string','max:255'],'city'=>['nullable','string','max:128'],
             'state_region'=>['nullable','string','max:128'],'postal_code'=>['nullable','string','max:32'],'timezone'=>['nullable','string','max:64'],
             'type'=>['required','string','max:32'],'ownership_type'=>['sometimes','in:owned,external'],'is_domestic'=>['boolean'],'is_active'=>['boolean'],'priority'=>['integer','min:0','max:9999'],

@@ -39,7 +39,7 @@ final class SingleOrderPreview
         $add(! $address || ! filled($address->address_line_1), 'address_missing');
         $add(! $address || ! filled($address->city), 'city_missing');
         $add(! $address || ! filled($address->postal_code), 'postal_code_missing');
-        $country = strtoupper(trim((string) ($address?->country ?? '')));
+        $country = (\App\Support\Countries\CountryStandard::resolve($address?->country) ?? '');
         $add(strlen($country) !== 2, 'country_iso2_missing');
         $state = strtoupper(trim((string) ($address?->province_state ?? '')));
         $add(! $state && $warehouseCode !== 'DE', 'province_missing');

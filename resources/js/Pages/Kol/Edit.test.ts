@@ -73,18 +73,19 @@ const defaultProps = {
 }
 
 describe('Kol/Edit VI contract', () => {
-  it('edits legacy nationality and arbitrary country text directly, separate from shipping address', async () => {
+  it('normalizes nationality independently of shipping country', async () => {
     const wrapper = mount(Edit, { props: {
       ...defaultProps, kol: { ...baseKol, country_code: 'New Zealand', shipping_country: 'US' },
     } })
     const nationality = wrapper.get('[data-testid="kol-nationality-country"]')
-    expect((nationality.element as HTMLInputElement).value).toBe('New Zealand')
+    expect((nationality.element as HTMLInputElement).value).toBe('New Zealand (NZ)')
     expect(wrapper.find('.searchable-select').exists()).toBe(false)
     expect(wrapper.text()).toContain('国籍地')
     expect(wrapper.text()).toContain('现居国家（收件地址）')
     await nationality.setValue('Mexico')
-    expect((nationality.element as HTMLInputElement).value).toBe('Mexico')
-    expect((wrapper.get('input[data-testid="kol-shipping-country"]').element as HTMLInputElement).value).toBe('US')
+    await nationality.trigger('blur')
+    expect((nationality.element as HTMLInputElement).value).toBe('Mexico (MX)')
+    expect((wrapper.get('input[data-testid="kol-shipping-country"]').element as HTMLInputElement).value).toBe('United States (US)')
     wrapper.unmount()
   })
 
