@@ -1698,7 +1698,7 @@ onBeforeUnmount(() => {
           <ul class="ord-audit-list">
             <li v-for="(event, index) in audit" :key="event.id ?? index" class="ord-audit-item">
               <span class="ord-audit-action">{{ orderAuditAction(event.action) }}</span>
-              <small class="ord-audit-meta">{{ orderAuditTime(event.created_at) }} · {{ orderAuditActor(event) }}</small>
+              <small class="ord-audit-meta">{{ orderAuditActor(event) }} · {{ orderAuditTime(event.created_at) }}</small>
             </li>
           </ul>
         </div>
@@ -2257,6 +2257,7 @@ onBeforeUnmount(() => {
 }
 
 .ord-audit-list {
+  overflow-x: auto;
   list-style: none;
   padding: 0;
   margin: 0;
@@ -2264,6 +2265,10 @@ onBeforeUnmount(() => {
 
 .ord-audit-item {
   display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  min-width: max-content;
+  white-space: nowrap;
   align-items: center;
   justify-content: space-between;
   padding: 8px 0;
