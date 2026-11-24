@@ -66,3 +66,12 @@
 - 网关及 Vben 正式 Dev 构建继续保持 **`ERP2_M2_DEV_SHIPPING_ENABLED=0`**；任何真实 Woo/OMS/WMS 外部出库仍禁止。
 
 **物流 P0 剩余：** 原员工账号及本人菜单 UAT；国内待审核为 0 时合格 Dev 正向审核样本；批量回传 Apply 的 Dev 数据库写入/回读；发货确认经浏览器路由 POST、原订单聚合与 Tracking/审计/Sync Outbox 回读及外部 API 隔离；德国/美国仓原专属流程/ABC 子单页面对齐；Owner 视觉签收。ERP1 Production 没有更改。
+
+## Woo 同步出站完全隔离的正向模拟（2026-11-24）
+
+- 使用原 ERP1 `AssistedFulfillmentService::markShipped` 和 `ShipmentWebsiteSyncHandoff::afterShipmentSaved`，**仅测试 Laravel Service 与 MySQL Outbox 事务**，不使用 Vben 发货按钮、不请求真实 Woo API。
+- 在隔离 Dev Laravel 运行进程临时注入实现 `WooCommerceTrackingGateway` 的 **测试替身**：`descriptor().configured=true` 且 connection key 取自 Dev 克隆的同源 Woo external reference；其所有真正外发方法均抛出错误。真实出站实现从未启用。
+- MySQL 最外层事务中创建一次性 Dev actor 和使用一笔当前 Pending 的 Woo 快照订单：原发货服务更新 Shipment/订单状态、Tracking，原 Outbox 在事务内 **+1 pending**，`handoff.status=pending`。验证模拟网关被调用外发 **0 次**。
+- 最外层 `ROLLBACK` 后确认订单、Shipment、Outbox 计数恢复；一次性测试 actor 也没有残留。**该 PASS 只证明原业务 Service/Outbox 的可复用性**，不证明 ERP2 Vben 浏览器发货或真实 Woo 远程写入。
+- ERP2 Dev 上为 Grid UAT 使用的独立测试员工已经标记为 Inactive、密码已随机轮换、Laravel 会话清除，两台设备的临时测试凭据文件均删除；保留 Dev actor 数据行仅为此前审核操作审计溯源，ERP1 18 位正式员工资料未改动。
+- 当前发货页面依旧按照 Owner 冻结边界关闭写入开关，尚未放行浏览器 `quick-ship/manual-ship` POST。此项需独立 Dev HTTP E2E 和可受控模拟出站后方可关闭。
