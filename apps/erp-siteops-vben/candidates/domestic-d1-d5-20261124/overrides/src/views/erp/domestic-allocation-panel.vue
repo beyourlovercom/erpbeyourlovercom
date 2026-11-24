@@ -2,7 +2,7 @@
 import {computed,ref} from 'vue';
 import {submitOriginalAllocation,type AllocationAssignment,type AllocationPlan,type AllocationWarehouse} from '#/api/erp-logistics';
 const props=defineProps<{orderId:number;plan:AllocationPlan;warehouses:AllocationWarehouse[]}>();
-const emit=defineEmits<{completed:[]}>(); 
+const emit=defineEmits<{completed:[]}>();
 const choices=ref<Record<number,string>>({}),gifts=ref<Record<number,number>>({}),note=ref(''),ack=ref(false),busy=ref(false),error=ref('');
 function choose(id:number){delete gifts.value[id];}
 const assignments=computed<AllocationAssignment[]>(()=>props.plan.items.map(i=>{
