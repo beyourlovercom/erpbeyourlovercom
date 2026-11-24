@@ -27,6 +27,7 @@ use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderAuxiliaryStatusService;
 use App\Modules\Orders\Application\OrderItemAmendmentPreflight;
+use App\Modules\Orders\Application\ManualOrderItemAmendment;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderOmsAvailability;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
@@ -683,21 +684,25 @@ final class OrderController
         $reason = trim((string) ($data['amendment_reason'] ?? ''));
         unset($data['items'], $data['amendment_reason'], $data['expected_revision']);
 
-        // Lock the source order before rechecking inventory/fulfillment gates. The
-        // preview itself is read-only; a concurrent allocation must never race a save.
+        // Lock the order while validating and refreshing its current fulfillment.
         DB::transaction(function () use ($request, $order, $data, $items, $reason): void {
             $lockedOrder = Order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             abort_if($lockedOrder->isOperationallyArchived(), 409, '运营归档订单为只读，不能编辑。');
             if ($items !== null) {
-                $preview = $this->itemAmendmentPreflight->preview($lockedOrder, $items);
+                $preview = $this->itemAmendmentPreflight->preview($lockedOrder, $items, false);
                 if (filled($request->input('expected_revision')) && $request->input('expected_revision') !== $preview['expected_revision']) {
-                    abort(409, '订单商品已被其他操作修改，请刷新订单并重新预检。');
+                    abort(409, '订单商品已被其他操作修改，请刷新订单后重试。');
                 }
                 if (! $preview['can_save_direct']) {
                     throw ValidationException::withMessages(['items' => $preview['issues'][0] ?? '订单商品不能直接修改。']);
                 }
             }
-            $this->orders->update($lockedOrder, $data, $items, $request->user(), $reason ?: null);
+            $amendment = app(ManualOrderItemAmendment::class);
+            $before = $items !== null && $preview['changed'] ? $lockedOrder->items()->get()->keyBy('id') : null;
+            $updated = $this->orders->update($lockedOrder, $data, $items, $request->user(), $reason ?: null);
+            if ($before !== null) {
+                $amendment->refresh($updated, $before, $request->user());
+            }
         });
 
         return back()->with('success', '订单已更新');

@@ -4,6 +4,11 @@ namespace Tests\Feature\Orders;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
+use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
+use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -52,17 +57,62 @@ final class OrderItemAmendmentPreflightTest extends TestCase
         $this->assertSame(2, $order->items()->count());
     }
 
-    public function test_allocated_order_returns_blocked_preview_and_never_overwrites_items(): void
+    public function test_legacy_allocated_order_can_save_without_preview(): void
     {
         [$order, $combo, $a1] = $this->fixture();
         $order->fulfillmentAllocation()->create(['status' => 'submitted', 'decision_source' => 'manual']);
         $actor = $this->actor(['orders.view', 'orders.edit']);
         $items = [['product_id' => $a1->id, 'quantity' => 1, 'unit_price' => '138.80']];
-        $this->actingAs($actor)->postJson("/customers/orders/{$order->id}/items/preview", ['items' => $items])
-            ->assertOk()->assertJsonPath('can_save_direct', false)->assertJsonPath('requires_replan', true)
-            ->assertJsonPath('can_atomic_single_replan', false);
         $this->actingAs($actor)->patch("/customers/orders/{$order->id}", ['items' => $items])
-            ->assertSessionHasErrors('items');
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(['A1'], $order->items()->pluck('sku')->all());
+    }
+
+    public function test_kol_pending_warehouse_replacement_without_stock_or_preview(): void
+    {
+        $actor = $this->actor(['orders.view', 'orders.edit', 'kol.view']);
+        $pink = Product::create(['sku' => 'VA617A-PINK', 'name' => 'Pink', 'product_type' => 'simple']);
+        $yellow = Product::create(['sku' => 'VA617A', 'name' => 'Yellow', 'product_type' => 'simple']);
+        $warehouse = Warehouse::where('code', 'FACTORY')->firstOrFail();
+        $order = Order::create([
+            'order_kind' => 'kol_fulfillment', 'source_type' => 'manual', 'order_status' => 'pending_shipment',
+            'workflow_status' => 'sending', 'owner_id' => $actor->id,
+            'order_date' => now()->toDateString(), 'internal_order_number' => 'TEST-KOL-AMEND',
+            'erp_order_id' => 'TEST-KOL-AMEND', 'currency' => 'USD',
+        ]);
+        $old = $order->items()->create(['product_id' => $pink->id, 'sku' => $pink->sku, 'product_summary' => 'Pink', 'quantity' => 1, 'unit_price' => '0.00', 'line_revenue' => '0.00']);
+        $order->shipment()->create(['shipment_status' => 'pending', 'warehouse_id' => $warehouse->id]);
+        $order->fulfillmentAllocation()->create(['status' => 'submitted', 'decision_source' => 'manual',
+            'plan_snapshot' => ['segments' => [['source_code' => 'FACTORY', 'warehouse_id' => $warehouse->id,
+                'items' => [['sku' => $pink->sku, 'order_item_id' => $old->id, 'quantity' => 1]]]]]]);
+        InventorySyncBatch::create(['warehouse_id' => $warehouse->id, 'source_type' => 'xlsx',
+            'sync_mode' => 'full', 'status' => 'confirmed', 'confirmed_at' => now(), 'stock_count_at' => now()]);
+        $stock = WarehouseInventory::create(['warehouse_id' => $warehouse->id, 'product_id' => $pink->id,
+            'quantity_on_hand' => 1, 'quantity_reserved' => 0]);
+        $reservation = app(InventoryReservationRepository::class)->reserve($order->id, $warehouse->id,
+            'test-amendment', null, $actor->id);
+        $this->actingAs($actor)->patch("/kol/orders/{$order->id}", ['items' => [
+            ['id' => $old->id, 'product_id' => $yellow->id, 'quantity' => 1, 'unit_price' => '96.00'],
+        ]])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame('VA617A', $order->items()->sole()->sku);
+        $this->assertSame('96.00', $order->items()->sole()->unit_price);
+        $this->assertSame($warehouse->id, $order->shipment()->sole()->warehouse_id);
+        $this->assertSame('sending', $order->fresh()->workflow_status);
+        $this->assertSame('VA617A', $order->fulfillmentAllocation()->sole()->plan_snapshot['segments'][0]['items'][0]['sku']);
+        $this->assertSame('released', InventoryReservation::findOrFail($reservation['id'])->status);
+        $this->assertSame(0, $stock->fresh()->quantity_reserved);
+        $this->assertSame(0, InventoryReservation::where('order_id', $order->id)->where('status', 'reserved')->count());
+    }
+
+    public function test_shipped_order_does_not_overwrite_history(): void
+    {
+        [$order, $combo, $a1] = $this->fixture();
+        $order->shipment()->create(['shipment_status' => 'shipped', 'shipped_at' => now()]);
+        $actor = $this->actor(['orders.view', 'orders.edit']);
+        $this->actingAs($actor)->patch("/customers/orders/{$order->id}", ['items' => [
+            ['product_id' => $a1->id, 'quantity' => 1, 'unit_price' => '138.80'],
+        ]])->assertSessionHasErrors('items');
         $this->assertSame(2, $order->items()->count());
     }
 
