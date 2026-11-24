@@ -44,6 +44,14 @@ async function runFoundation() {
     const playwrightCli = resolveLocalPlaywrightCli();
     activeRun = await createDisposableRun();
     const { browserCache, databasePath, env, runRoot } = activeRun;
+    if (process.env.BYL_E2E_SUITE === 'kol-smart-local') {
+        Object.assign(env, {
+            ANDY_CORE_UAT_FAKE: 'true',
+            ANDY_CORE_CONNECTION_KEY: 'beyourlover.com',
+            KOL_SMART_INPUT_SHAPE_ENABLED: 'false',
+            KOL_SMART_INPUT_DEV_ENABLED: 'false',
+        });
+    }
 
     process.stdout.write(`E2E_RUN_ROOT=${runRoot}\n`);
     process.stdout.write(`E2E_DATABASE_PATH=${databasePath}\n`);
@@ -65,7 +73,7 @@ async function runFoundation() {
     await runManagedChild('php', ['tests/e2e/support/provision-users.php'], { env, signal: abortController.signal });
     assertNotAborted(abortController.signal);
     const suite = process.env.BYL_E2E_SUITE ?? 'all';
-    if (!['all', 'kol-role', 'tracking-ux', 'oms-import', 'orders-master', 'global-grid', 'rejection-visual'].includes(suite)) {
+    if (!['all', 'kol-role', 'kol-smart-local', 'tracking-ux', 'oms-import', 'orders-master', 'global-grid', 'rejection-visual'].includes(suite)) {
         throw new Error('BYL_E2E_SUITE must be all, kol-role, tracking-ux, oms-import, orders-master, global-grid or rejection-visual.');
     }
     if (suite === 'global-grid' || suite === 'rejection-visual') {
@@ -78,7 +86,9 @@ async function runFoundation() {
             env, signal: abortController.signal,
         });
     }
-    const testArgs = suite === 'rejection-visual'
+    const testArgs = suite === 'kol-smart-local'
+        ? [playwrightCli, 'test', 'tests/e2e/orders/kol-smart-local.spec.ts', '--project=chromium', '--timeout=90000']
+        : suite === 'rejection-visual'
         ? [playwrightCli, 'test', 'tests/e2e/global-grid/rejection-visual.spec.ts', '--project=chromium', '--timeout=90000']
         : suite === 'global-grid'
         ? [playwrightCli, 'test', 'tests/e2e/global-grid/global-grid-pilot.spec.ts', '--project=chromium', '--timeout=90000']
@@ -100,8 +110,11 @@ async function runFoundation() {
     await runManagedChild(process.execPath, testArgs, {
         env,
         signal: abortController.signal,
-        timeout: suite === 'kol-role' ? 360_000 : ['oms-import', 'orders-master', 'global-grid', 'rejection-visual'].includes(suite) ? 360_000 : 120_000,
+        timeout: ['kol-role','kol-smart-local'].includes(suite) ? 360_000 : ['oms-import', 'orders-master', 'global-grid', 'rejection-visual'].includes(suite) ? 360_000 : 120_000,
     });
+    if (suite === 'kol-smart-local') {
+        await runManagedChild('php', ['tests/e2e/support/verify-kol-smart-local.php'], {env, signal: abortController.signal});
+    }
 }
 
 async function main() {

@@ -422,4 +422,42 @@ class KolCreateAutoProvisionTest extends TestCase
 
         self::assertSame(0, Kol::query()->count());
     }
+
+    public function test_order_onboarding_creates_and_approves_profile_before_resuming_draft(): void
+    {
+        $this->withoutVite();
+        $specialist = $this->specialist();
+        $specialist->roles()->firstOrFail()->permissions()->attach(
+            Permission::firstOrCreate(['key'=>'orders.create'], ['label'=>'orders.create'])
+        );
+        $this->actingAs($specialist)->post('/kol/onboarding-draft', [
+            'smart'=>['username_hint'=>'creator-login','product_hint'=>'Synthetic Product'],
+            'order'=>['currency'=>'USD'],
+        ])->assertRedirect();
+        $token = session('kol.onboarding.draft.token');
+
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('checkAffiliateIdentity')->once()->andReturn($this->response(['available'=>true], 'draft-identity'));
+        $mock->shouldReceive('checkCoupon')->twice()->andReturn($this->response(['available'=>true,'normalized_code'=>'newkol15'], 'draft-coupon-check'));
+        $mock->shouldReceive('provisionAffiliate')->once()->andReturn($this->response([
+            'affiliate_id'=>91001,'wp_user_id'=>71001,'affiliate_status'=>'active',
+            'affiliate_url_slug'=>'creator-login',
+        ],'draft-affiliate'));
+        $mock->shouldReceive('provisionCoupon')->once()->andReturnUsing(fn (array $payload) => $this->response([
+            'coupon_id'=>92001,'code'=>$payload['code'],'normalized_code'=>'newkol15',
+            'affiliate_id'=>91001,'discount_type'=>'percent','amount'=>'15','date_expires'=>$payload['expiry'],
+        ],'draft-coupon'));
+
+        $response = $this->post('/kol/library', array_merge($this->payload(), ['onboarding_token'=>$token]));
+        $kol = Kol::query()->where('display_name','New Auto KOL')->sole();
+        $response->assertRedirect(route('kol.orders.create',['kol_id'=>$kol->id,'onboarding_token'=>$token]));
+        self::assertSame('approved',$kol->approval_status);
+        self::assertSame('active',KolAffiliateAccount::query()->where('kol_id',$kol->id)->sole()->provisioning_status);
+        self::assertSame('active',KolAffiliateCoupon::query()->where('kol_id',$kol->id)->sole()->provisioning_status);
+        self::assertDatabaseCount('orders',0);
+        $this->get(route('kol.orders.create',['kol_id'=>$kol->id,'onboarding_token'=>$token]))
+            ->assertOk()->assertInertia(fn($page)=>$page
+                ->where('selectedKolId',$kol->id)
+                ->where('resumeOrderDraft.smart.product_hint','Synthetic Product'));
+    }
 }
