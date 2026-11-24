@@ -15,7 +15,6 @@ use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
-use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\SelectedExportOrderIds;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
@@ -54,7 +53,6 @@ final class DomesticLogisticsController
         private readonly DomesticPendingBatchExporter $pendingBatch,
         private readonly DomesticTodayOrdersExporter $todayOrders,
         private readonly DomesticTrackingReturnService $tracking,
-        private readonly WarehouseOrderReference $references,
         private readonly DomesticReviewDecisionService $decisions,
         private readonly DomesticReviewAccess $reviewAccess,
         private readonly OrderProgressQuery $progressQueries,
@@ -121,7 +119,6 @@ final class DomesticLogisticsController
             $term = '%'.addcslashes($search, '%_\\').'%';
             $query->where(function (Builder $query) use ($term): void {
                 $query->where('erp_order_id', 'like', $term)
-                    ->orWhere('external_order_number', 'like', $term)
                     ->orWhereHas('address', fn (Builder $address) => $address->where('recipient_name', 'like', $term));
             });
         }
@@ -592,12 +589,6 @@ final class DomesticLogisticsController
         $approved = ! $stockout && $order->operationalMarkers->contains('marker', self::REVIEW_MARKER);
         $projection = $this->workflowProjection($order);
         $conflict = $projection['code'] === 'progress_conflict';
-        $reference = null;
-        try {
-            $reference = $this->references->warehouse($order);
-        } catch (\DomainException) {
-        }
-
         $businessDate = app(OrderBusinessDateResolver::class)->domesticReview($order);
         $amount = app(DomesticReviewAmountResolver::class)->resolve($order);
         $items = $order->items->map(function ($item) use ($metadata, $fallbackProducts): array {
@@ -643,7 +634,6 @@ final class DomesticLogisticsController
             'order_kind' => $order->order_kind?->value,
             'can_edit_workflow_status' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
             'workflow_status_options' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
-            'provider_reference' => $reference,
             // Generic details route redirects by order kind (customer, KOL, derived).
             'order_url' => '/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,

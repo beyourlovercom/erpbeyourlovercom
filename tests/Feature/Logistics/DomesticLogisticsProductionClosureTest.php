@@ -59,7 +59,7 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
 
     public function test_r4_l1_domestic_grid_uses_real_backend_search_and_bounded_pagination(): void
     {
-        $this->domesticOrder('007-GRID-L1-ANCHOR', '4PX', false, '13800138011', 2);
+        $order = $this->domesticOrder('007-GRID-L1-ANCHOR', '4PX', false, '13800138011', 2);
         $viewer = $this->logisticsViewer();
 
         // Owner-approved rollout contract: domestic opens in Global Grid by default,
@@ -130,7 +130,18 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
                 ->where('view', 'review')
                 ->where('rows.per_page', 20)
                 ->where('rows.total', 1)
-                ->where('rows.data.0.erp_order_id', '007-GRID-L1-ANCHOR'));
+                ->where('rows.data.0.erp_order_id', '007-GRID-L1-ANCHOR')
+                ->missing('rows.data.0.provider_reference'));
+
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=review&search='.urlencode($order->external_order_number))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('rows.total', 0));
+
+        $this->actingAs($viewer)
+            ->get('/logistics/china?view=review&search=Closure%20Recipient')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('rows.total', 1));
 
         $this->actingAs($viewer)
             ->get('/logistics/china?view=review&global_grid=1&per_page=9999&search=R4-L1-NOT-FOUND')
@@ -662,6 +673,10 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         self::assertSame(0, $preview['blocked_count']);
         self::assertSame('apply', $preview['rows'][0]['status']);
         self::assertSame('apply', $preview['rows'][1]['status']);
+        self::assertSame('C50003-007', $preview['rows'][0]['order_number']);
+        self::assertSame('007-0923-c50003', $preview['rows'][0]['erp_order_id']);
+        self::assertSame('007-0923-c50004', $preview['rows'][1]['erp_order_id']);
+
 
         $actor = User::factory()->create(['is_active' => true]);
         $result = $service->apply('4px', $preview, $preview['token'], $actor);
