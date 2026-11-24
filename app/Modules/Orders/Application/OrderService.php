@@ -58,11 +58,7 @@ final class OrderService
                 'owner_id' => $orderAttributes['owner_id'] ?? $actor?->getAuthIdentifier(),
             ]);
             if ($isManualKol) {
-                // Approved manual KOL ERP identity: {prefix}-{MMDD}-k{orders.id}.
-                // Preserve a uniqueness failure rather than silently changing the number.
-                $order->erp_order_id = $this->orderIdentities->generate(
-                    'k', (string) $order->id, (string) $attributes['order_date']
-                );
+                $order->erp_order_id = $this->orderIdentities->allocateKol();
                 $order->save();
             }
             $requiredAddressFields = ['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1'];

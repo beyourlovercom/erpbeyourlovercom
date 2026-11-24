@@ -64,6 +64,30 @@ final class OrderIdentityService
         });
     }
 
+    public function allocateKol(): string
+    {
+        // The creation clock is shared across all staff and independent of the editable order date.
+        $created = now('Asia/Shanghai');
+        $date = $created->toDateString();
+        $prefix = 'KOL'.$created->format('ymd');
+
+        return DB::transaction(function () use ($date, $prefix): string {
+            DB::table('kol_daily_order_sequences')->insertOrIgnore([
+                'creation_date' => $date, 'last_number' => 0,
+            ]);
+            $sequence = DB::table('kol_daily_order_sequences')->where('creation_date', $date);
+            $last = (int) $sequence->lockForUpdate()->first()->last_number;
+            do {
+                $last++;
+                $identity = sprintf('%s%02d-007', $prefix, $last);
+            } while (Order::query()->where('erp_order_id', $identity)->exists());
+
+            $sequence->update(['last_number' => $last]);
+
+            return $identity;
+        });
+    }
+
     public function generateWooCustomer(string $externalOrderNumber, string $providerReference, string $businessDate): string
     {
         $identity = $this->previewWooCustomer($externalOrderNumber, $providerReference, $businessDate);

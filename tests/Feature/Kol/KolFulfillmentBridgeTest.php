@@ -39,7 +39,7 @@ class KolFulfillmentBridgeTest extends TestCase
         $this->assertSame('kol_fulfillment', $order->order_kind->value);
         $this->assertSame('kol', $order->source_type->value);
         $this->assertSame('2026-09-24', $order->order_date->toDateString(), 'fulfillment inherits the true collaboration date');
-        $this->assertSame('007erp-'.$order->order_date->format('md').'-k'.$kol->id, $order->erp_order_id);
+        $this->assertSame('KOL'.now('Asia/Shanghai')->format('ymd').'01-007', $order->erp_order_id);
         $this->assertSame($order->id, $collaboration->fresh()->order_id);
         $this->assertSame($kol->id, (int) $order->kol_id, 'new collaboration fulfillment must persist the authoritative KOL ID');
         $this->assertDatabaseHas('order_items', ['order_id' => $order->id, 'product_id' => $product->id, 'quantity' => 2]);
