@@ -53,18 +53,10 @@ final class OrderService
                 'internal_order_number' => $this->nextOrderNumber($attributes['order_kind']),
                 'erp_order_id' => $attributes['order_kind'] === OrderKind::Customer->value
                     ? $this->orderIdentities->allocateCustomer((string) $attributes['order_date'])
-                    : ($orderAttributes['erp_order_id'] ?? null),
+                    : ($isManualKol ? $this->orderIdentities->allocateKol() : ($orderAttributes['erp_order_id'] ?? null)),
                 'order_status' => OrderStatus::PendingShipment,
                 'owner_id' => $orderAttributes['owner_id'] ?? $actor?->getAuthIdentifier(),
             ]);
-            if ($isManualKol) {
-                // Approved manual KOL ERP identity: {prefix}-{MMDD}-k{orders.id}.
-                // Preserve a uniqueness failure rather than silently changing the number.
-                $order->erp_order_id = $this->orderIdentities->generate(
-                    'k', (string) $order->id, (string) $attributes['order_date']
-                );
-                $order->save();
-            }
             $requiredAddressFields = ['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1'];
             $hasCompleteRequiredAddress = collect($requiredAddressFields)->every(
                 fn (string $field): bool => trim((string) ($address[$field] ?? '')) !== '',

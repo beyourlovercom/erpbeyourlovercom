@@ -10,7 +10,6 @@ use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
 use App\Modules\Kol\Infrastructure\Models\KolOpportunity;
-use App\Modules\Orders\Application\OrderIdentityService;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
@@ -28,7 +27,6 @@ final class KolCollaborationController
     public function __construct(
         private readonly AuditRecorder $audit,
         private readonly OrderService $orders,
-        private readonly OrderIdentityService $identities,
         private readonly CollaborationApprovalService $approvals,
     ) {}
 
@@ -172,7 +170,6 @@ final class KolCollaborationController
                 'source_type' => OrderSourceType::Kol->value,
                 'order_kind' => OrderKind::KolFulfillment->value,
                 'kol_id' => $kol->id,
-                'erp_order_id' => $this->identities->generate('k', $kol->id, $businessDate),
                 'external_order_number' => $this->orders->generateExternalOrderNumber(OrderKind::KolFulfillment),
                 'order_date' => $businessDate,
                 'order_note' => 'KOL Collaboration #'.$locked->id,

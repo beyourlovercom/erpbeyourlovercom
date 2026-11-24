@@ -659,7 +659,7 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
     public function test_speeda_legacy_xls_return_applies_unreviewed_factory_order(): void
     {
         $safe = $this->domesticOrder('007-0923-c50003', '4PX', reviewed: true, phone: '111', quantity: 1);
-        $blocked = $this->domesticOrder('007-0923-c50004', '4PX', reviewed: false, phone: '222', quantity: 1);
+        $blocked = $this->domesticOrder('C50004-007', '4PX', reviewed: false, phone: '222', quantity: 1);
         $file = $this->speedaReturnXls([
             ['C50003-007', '4PX-TRACK-SAFE'],
             ['C50004-007', '4PX-TRACK-BLOCKED'],
@@ -675,7 +675,7 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         self::assertSame('apply', $preview['rows'][1]['status']);
         self::assertSame('C50003-007', $preview['rows'][0]['order_number']);
         self::assertSame('007-0923-c50003', $preview['rows'][0]['erp_order_id']);
-        self::assertSame('007-0923-c50004', $preview['rows'][1]['erp_order_id']);
+        self::assertSame('C50004-007', $preview['rows'][1]['erp_order_id']);
 
 
         $actor = User::factory()->create(['is_active' => true]);

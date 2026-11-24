@@ -30,9 +30,68 @@ final class OrderIdentityContractTest extends TestCase
         $service = app(OrderIdentityService::class);
         $service->updatePrefix('007', null);
 
-        $this->assertSame('007-0910-c40414', $service->previewWooCustomer('40414', '50123', '2026-09-10'));
-        $this->assertSame('007-0910-c40414', $service->previewWooCustomer('40414-VA617A-gift', '50123', '2026-09-10'));
-        $this->assertSame('007-0910-c50123', $service->previewWooCustomer('WC-40414', '50123', '2026-09-10'));
+        $this->assertSame('C40414-007', $service->previewWooCustomer('40414', '50123', '2026-09-10'));
+        $this->assertSame('C40414-007', $service->previewWooCustomer('40414-VA617A-gift', '50123', '2026-09-10'));
+        $this->assertSame('C50123-007', $service->previewWooCustomer('WC-40414', '50123', '2026-09-10'));
+        $service->updatePrefix('yby', null);
+        $this->assertSame('C40618-007', $service->generateWooCustomer('40618', '50123', '2026-11-24'));
+        $this->assertSame('C40618-007', $service->previewWooCustomer('40618', '50123', '2027-01-01'));
+
+    }
+
+    public function test_warehouse_reference_supports_new_and_legacy_customer_identities(): void
+    {
+        $reference = app(\App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference::class);
+        foreach (['C40618-007', '007-1024-c40618'] as $id) {
+            $order = new \App\Modules\Orders\Infrastructure\Models\Order(['erp_order_id' => $id]);
+            $this->assertSame('C40618-007', $reference->warehouse($order));
+            $this->assertSame('C40618', $reference->canada($order));
+            $order->erp_order_id = $id.'A';
+            $this->assertSame('C40618-007A', $reference->warehouse($order));
+            $this->assertSame('C40618A', $reference->canada($order));
+        }
+    }
+
+    public function test_kol_daily_sequence_uses_china_creation_date_and_never_reuses_numbers(): void
+    {
+        $service = app(OrderIdentityService::class);
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-28 23:59:59', 'Asia/Shanghai'));
+        for ($i = 1; $i <= 7; $i++) {
+            $this->assertSame(sprintf('K260928%02d-007', $i), $service->allocateKol());
+        }
+        $service->updatePrefix('yby', null);
+        $this->assertSame('K26092808-007', $service->allocateKol());
+        \Illuminate\Support\Facades\DB::table('kol_daily_order_sequences')->where('creation_date', '2026-09-28')->update(['last_number' => 99]);
+        $this->assertSame('K260928100-007', $service->allocateKol());
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-29 00:00:00', 'Asia/Shanghai'));
+        $this->assertSame('K26092901-007', $service->allocateKol());
+        $reference = app(\App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference::class);
+        $order = new \App\Modules\Orders\Infrastructure\Models\Order(['erp_order_id' => 'K26092807-007A']);
+        $this->assertSame('K26092807-007A', $reference->warehouse($order));
+        $this->assertSame('K26092807A', $reference->canada($order));
+        $order->erp_order_id = 'KOL26092807-007A';
+        $this->assertSame('KOL26092807-007A', $reference->warehouse($order));
+        $this->assertSame('KOL26092807A', $reference->canada($order));
+        $order->erp_order_id = '007-0928-k123A';
+        $this->assertSame('KOL123-007A', $reference->warehouse($order));
+    }
+
+    public function test_kol_rollout_day_continues_existing_orders_including_deleted_roots(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-28 12:00:00', 'Asia/Shanghai'));
+        $model = \App\Modules\Orders\Infrastructure\Models\Order::class;
+        $base = [
+            'source_type' => 'manual', 'order_kind' => 'kol_fulfillment',
+            'order_date' => '2026-09-01', 'order_status' => 'pending_shipment', 'currency' => 'USD',
+        ];
+        $first = $model::create([...$base, 'internal_order_number' => 'LEGACY-1', 'erp_order_id' => '007-0901-k1']);
+        $second = $model::create([...$base, 'internal_order_number' => 'LEGACY-2', 'erp_order_id' => '007-0901-k2']);
+        $second->delete();
+        $model::create([...$base, 'internal_order_number' => 'DERIVED-1', 'erp_order_id' => '007-0901-k1A', 'fulfillment_parent_id' => $first->id]);
+        $model::create([...$base, 'internal_order_number' => 'CUSTOMER-1', 'erp_order_id' => 'C123-007', 'order_kind' => 'customer']);
+        $service = app(OrderIdentityService::class);
+        $this->assertSame('K26092803-007', $service->allocateKol());
+        $this->assertSame('K26092804-007', $service->allocateKol());
     }
 
     public function test_customer_sequence_is_global_and_prefix_changes_do_not_reset_it(): void

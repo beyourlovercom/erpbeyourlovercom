@@ -77,7 +77,7 @@ final class MorePlusCostBridgeService
     {
         $map=[];
         foreach(Order::query()->with(['shipment','externalReferences','fulfillmentChildren.shipment'])->whereNull('fulfillment_parent_id')->whereNotNull('erp_order_id')->get() as $order){
-            if(preg_match('/-c(\d+)$/i',(string)$order->erp_order_id,$m)!==1) continue;
+            if(preg_match('/(?|^C(\d+)-007$|-c(\d+)$)/iD',(string)$order->erp_order_id,$m)!==1) continue;
             $map[$m[1]][]=$order;
         }
         return $map;
@@ -128,7 +128,7 @@ final class MorePlusCostBridgeService
     {
         if(count($sourceOrderRefs)!==1) return ['decision'=>'review','reason_code'=>count($sourceOrderRefs)>1?'source_order_reference_ambiguous':'source_order_reference_missing','shipment_id'=>null,'order_id'=>null];
         $ref=strtoupper(trim($sourceOrderRefs[0]));
-        if(preg_match('/^KOL\d+-007$/D',$ref)===1) return ['decision'=>'excluded','reason_code'=>'source_marked_kol','shipment_id'=>null,'order_id'=>null];
+        if(preg_match('/^(?:KOL|K)\d+-007[A-Z]?$/iD',$ref)===1) return ['decision'=>'excluded','reason_code'=>'source_marked_kol','shipment_id'=>null,'order_id'=>null];
         if(preg_match('/^\d{12,20}$/D',$ref)===1) return ['decision'=>'review','reason_code'=>'source_order_unmapped','shipment_id'=>null,'order_id'=>null];
         if(preg_match('/^C(\d+)(?:-007([A-Z])?|([A-Z]))?$/D',$ref,$m)!==1) return ['decision'=>'review','reason_code'=>'source_order_unmapped','shipment_id'=>null,'order_id'=>null];
         $orders=$orderIdentityMap[$m[1]]??[];

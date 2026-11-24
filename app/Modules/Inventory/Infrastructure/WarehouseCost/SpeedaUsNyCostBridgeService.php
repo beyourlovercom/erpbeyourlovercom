@@ -64,7 +64,7 @@ final class SpeedaUsNyCostBridgeService
     {
         $map=[];
         foreach (Order::query()->with(['shipment','externalReferences','fulfillmentChildren.shipment'])->whereNull('fulfillment_parent_id')->whereNotNull('erp_order_id')->get() as $order) {
-            if (preg_match('/-c(\d+)$/i',(string)$order->erp_order_id,$m)===1) $map[$m[1]][]=$order;
+            if (preg_match('/(?|^C(\d+)-007$|-c(\d+)$)/iD',(string)$order->erp_order_id,$m)===1) $map[$m[1]][]=$order;
         }
         return $map;
     }
@@ -80,7 +80,7 @@ final class SpeedaUsNyCostBridgeService
             $ref=$this->sourceOrderReference($row);
             $decision='review'; $reason='shipment_not_found'; $shipmentId=null; $orderId=null;
 
-            if (preg_match('/^KOL/i',$ref)===1) {
+            if (preg_match('/^(?:KOL|K\d)/i',$ref)===1) {
                 $decision='excluded'; $reason='source_marked_kol';
             } else {
                 $matches=$tracking!==''?($shipmentMap[$tracking]??[]):[];
@@ -128,7 +128,7 @@ final class SpeedaUsNyCostBridgeService
     private function sourceFallback(string $ref,array $orderMap,string $tracking): array
     {
         if ($ref==='') return ['decision'=>'review','reason_code'=>'source_order_reference_missing','shipment_id'=>null,'order_id'=>null];
-        if (preg_match('/^KOL/i',$ref)===1) return ['decision'=>'excluded','reason_code'=>'source_marked_kol','shipment_id'=>null,'order_id'=>null];
+        if (preg_match('/^(?:KOL|K\d)/i',$ref)===1) return ['decision'=>'excluded','reason_code'=>'source_marked_kol','shipment_id'=>null,'order_id'=>null];
         if (preg_match('/^C(\d+)(?:-007([A-Z])?|([A-Z]))?$/D',$ref,$m)!==1) return ['decision'=>'review','reason_code'=>'source_order_unmapped','shipment_id'=>null,'order_id'=>null];
 
         $orders=$orderMap[$m[1]]??[];
@@ -153,7 +153,7 @@ final class SpeedaUsNyCostBridgeService
     private function referenceConflicts(string $ref,string $erpOrderId): bool
     {
         if (preg_match('/^C(\d+)(?:-007[A-Z]?|[A-Z])?$/D',$ref,$r)!==1) return false;
-        return preg_match('/-c(\d+)$/i',$erpOrderId,$e)===1 && $r[1]!==$e[1];
+        return preg_match('/(?|^C(\d+)-007$|-c(\d+)$)/iD',$erpOrderId,$e)===1 && $r[1]!==$e[1];
     }
 
     private function sourceOrderReference($row): string

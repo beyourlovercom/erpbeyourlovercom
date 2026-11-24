@@ -37,11 +37,11 @@ final class WooOrderIdentityRepairCommandTest extends TestCase
         $this->artisan('orders:repair-woo-identities --date=2026-09-10 --apply --expect-change=1 --json')
             ->assertSuccessful();
 
-        $this->assertSame('007-0910-c40414', $order->fresh()->erp_order_id);
+        $this->assertSame('C40414-007', $order->fresh()->erp_order_id);
         $this->assertDatabaseHas('audit_records', [
             'action' => 'order.erp_identity_repaired',
             'entity_id' => (string) $order->id,
-            'reason' => 'owner_rule_007_mmdd_c_woo_number',
+            'reason' => 'owner_rule_c_woo_number_007_datefree',
         ]);
     }
 
@@ -80,8 +80,8 @@ final class WooOrderIdentityRepairCommandTest extends TestCase
         $this->artisan('orders:repair-woo-identities --from-date=2026-09-08 --to-date=2026-09-09 --apply --expect-change=2 --json')
             ->assertSuccessful();
 
-        $this->assertSame('007-0908-c40401', $inRangeA->fresh()->erp_order_id);
-        $this->assertSame('007-0909-c40402', $inRangeB->fresh()->erp_order_id);
+        $this->assertSame('C40401-007', $inRangeA->fresh()->erp_order_id);
+        $this->assertSame('C40402-007', $inRangeB->fresh()->erp_order_id);
         $this->assertSame('007-0910-c6003', $outside->fresh()->erp_order_id);
     }
 
@@ -104,7 +104,7 @@ final class WooOrderIdentityRepairCommandTest extends TestCase
 
         Order::create([
             'internal_order_number' => 'MANUAL-COLLISION-40404',
-            'erp_order_id' => '007-0908-c40404',
+            'erp_order_id' => 'C40404-007',
             'source_type' => 'manual',
             'order_kind' => 'customer',
             'external_order_number' => 'MANUAL-40404',
