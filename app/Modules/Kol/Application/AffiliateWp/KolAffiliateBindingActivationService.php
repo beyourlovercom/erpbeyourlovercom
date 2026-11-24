@@ -12,6 +12,7 @@ use App\Modules\Kol\Infrastructure\Models\KolAffiliateBindingActivationItem;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateReferral;
 use App\Modules\Kol\Infrastructure\Models\KolImportActivationBatch;
 use App\Modules\Kol\Infrastructure\Models\KolImportActivationItem;
+use App\Modules\Kol\Infrastructure\Models\KolOwnerCandidateDecision;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Carbon;
@@ -266,6 +267,17 @@ final class KolAffiliateBindingActivationService
 
             $account = count($candidateIds) === 1 ? $accountsById->get($candidateIds[0]) : null;
             if (count($candidateIds) > 1) $reasons[] = 'multiple_affiliates';
+
+            // With no source email, an existing canonical binding is a fact,
+            // not new identity evidence. Never use it to propose a new binding.
+            $hasSourceEmail = collect(($sourceItem->exact_identity ?? [])['emails'] ?? [])
+                ->contains(fn ($value): bool => $this->normalizeEmail($value) !== null);
+            if ($kol && $reasons === [] && $candidateIds === [] && $storedIds === [] && ! $hasSourceEmail) {
+                $bound = $accounts->filter(fn (KolAffiliateAccount $row): bool => (int) ($row->kol_id ?? 0) === (int) $kol->id && $row->affiliate_id !== null)->values();
+                if ($bound->count() === 1) $account = $bound->first();
+                elseif ($bound->count() > 1) $reasons[] = 'multiple_affiliates';
+            }
+
             if ($account && $kol) {
                 if ($account->kol_id !== null && (int) $account->kol_id !== (int) $kol->id) $reasons[] = 'affiliate_bound_elsewhere';
                 $kolOtherAccount = $accounts->first(fn (KolAffiliateAccount $row): bool => (int) ($row->kol_id ?? 0) === (int) $kol->id && (int) $row->id !== (int) $account->id);
@@ -281,15 +293,17 @@ final class KolAffiliateBindingActivationService
                         static fn ($value): string => mb_strtolower(trim((string) $value)),
                         (array) (($sourceItem->source_owner_evidence ?? [])['source_values'] ?? []),
                     ))));
-                    if (count($sourceOwners) > 1) $reasons[] = 'multiple_source_owners';
+                    if (count($sourceOwners) > 1 && ! $this->hasCurrentAppliedOwnerDecision($activation, $sourceItem, $kol, $sourceOwners)) {
+                        $reasons[] = 'multiple_source_owners';
+                    }
                 }
             }
             $reasons = array_values(array_unique($reasons));
 
             $status = self::BLOCKED;
             if ($reasons === []) {
-                if ($candidateIds === []) $status = self::NO_AFFILIATE;
-                elseif ($account && $kol && (int) $account->kol_id === (int) $kol->id) $status = self::ALREADY_BOUND;
+                if ($account && $kol && (int) $account->kol_id === (int) $kol->id) $status = self::ALREADY_BOUND;
+                elseif ($candidateIds === []) $status = self::NO_AFFILIATE;
                 elseif ($account && $kol && $account->kol_id === null) $status = self::READY;
             }
             foreach ($reasons as $reason) $blockers[$reason] = ($blockers[$reason] ?? 0) + 1;
@@ -327,6 +341,29 @@ final class KolAffiliateBindingActivationService
             ],
             'blocker_summary' => $blockers,
         ];
+    }
+
+    private function hasCurrentAppliedOwnerDecision(KolImportActivationBatch $activation, KolImportActivationItem $item, Kol $kol, array $sourceOwners): bool
+    {
+        $evidence = $item->source_owner_evidence ?? [];
+        // Only a genuinely applied creation with a recorded manual decision
+        // may pass. Existing unresolved KOLs and historical/stale decisions stay blocked.
+        if ($item->readiness_status !== 'applied' || (int) $item->created_kol_id !== (int) $kol->id
+            || ($evidence['resolution_status'] ?? null) !== 'decided' || empty($evidence['decision_id'])
+            || ! $item->effective_owner_id || (int) $item->effective_owner_id !== (int) $kol->owner_id) return false;
+
+        $decision = KolOwnerCandidateDecision::query()->whereKey((int) $evidence['decision_id'])
+            ->where('reconciliation_batch_id', $activation->reconciliation_batch_id)
+            ->where('cluster_key', $item->cluster_key)->first();
+        if (! $decision || (int) $decision->mapped_user_id !== (int) $kol->owner_id
+            || ! $decision->mappedUser?->is_active) return false;
+
+        $decisionOwners = array_values(array_unique(array_filter(array_map(
+            static fn ($value): string => mb_strtolower(trim((string) $value)),
+            (array) ($decision->source_owner_values ?? []),
+        ))));
+        sort($decisionOwners); sort($sourceOwners);
+        return $decisionOwners === $sourceOwners;
     }
 
     private function canonicalKolId(KolImportActivationItem $item): ?int
