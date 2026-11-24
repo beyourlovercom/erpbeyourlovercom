@@ -5,7 +5,7 @@ import { useAuthStore } from '#/store';
 import { useRouter } from 'vue-router';
 import { resetAllStores } from '@vben/stores';
 import { loginCanonicalErp } from '#/api/erp-laravel-auth';
-import { canonicalHomePath, clearAuthorizedDevNavigation, seedCanonicalVerifiedLogin } from '#/router/erp-live-navigation';
+import { bootstrapCanonicalDevNavigation, canonicalHomePath, clearAuthorizedDevNavigation, seedCanonicalVerifiedLogin } from '#/router/erp-live-navigation';
 import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
 
 const canonicalMode = import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel';
@@ -16,25 +16,45 @@ const store = useAuthStore();
 const router = useRouter();
 
 async function submit() {
+  let stage = 'start';
   if (!username.value.trim()||!password.value) return void message.warning('请输入账号与密码');
   loading.value = true;
   try {
     if (canonicalMode) {
       // The original Laravel session and real employee ID are mandatory.
+      stage='credential-verification';
       const verifiedIdentity = await loginCanonicalErp(username.value.trim(), password.value);
+      stage='bootstrap-prepare';
       clearHotOrderSnapshots();
       clearAuthorizedDevNavigation();
       resetAllStores();
       seedCanonicalVerifiedLogin(verifiedIdentity);
+      // Install the original ERP employee's authorized menu/route set BEFORE
+      // navigating: an authenticated Laravel session can otherwise land on
+      // a not-yet-registered Vben route and be misreported as a bad password.
+      stage='bootstrap-authorized-navigation';
+      if (!await bootstrapCanonicalDevNavigation(router))
+        throw new Error('ERP2_VERIFIED_LOGIN_NAVIGATION_BOOTSTRAP_FAILED');
+      stage='router-replace';
       await router.replace(canonicalHomePath(verifiedIdentity));
+      stage='complete';
     } else {
       await store.authLogin({ username: username.value.trim().toLowerCase(), password: password.value });
     }
     password.value = '';
-  } catch {
-    message.error(canonicalMode
-      ? 'ERP2 Dev 登录未通过：请核对原 ERP 员工账号、密码及账号状态'
-      : '登录验证失败，请核对本地账号、密码与权限状态');
+  } catch (reason) {
+    if(canonicalMode) console.error('ERP2_DEV_LOGIN_STAGE',stage,
+      reason instanceof Error?reason.message:'unknown-error');
+    // A successfully authenticated Laravel session must never be presented
+    // as an incorrect password if only the Vben menu/router bootstrap failed.
+    const authenticatedButNavigationFailed = canonicalMode &&
+      !['start', 'credential-verification'].includes(stage);
+    password.value = '';
+    message.error(authenticatedButNavigationFailed
+      ? '原 ERP 身份已经验证，但工作台菜单加载失败。请刷新页面，不必重复输入密码。'
+      : canonicalMode
+        ? 'ERP2 Dev 登录未通过：请核对原 ERP 员工账号、密码及账号状态'
+        : '登录验证失败，请核对本地账号、密码与权限状态');
   } finally {
     loading.value = false;
   }

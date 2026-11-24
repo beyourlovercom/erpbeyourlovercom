@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { AllCommunityModule, ModuleRegistry, themeQuartz, type CellClickedEvent, type ColDef } from 'ag-grid-community';
-import { AgGridVue } from 'ag-grid-vue3';
+import type { CellClickedEvent, ColDef } from 'ag-grid-community';
+import GlobalGrid from '#/components/erp-global-grid/GlobalGrid.vue';
 import { canonicalDevIdentity } from '#/router/erp-live-navigation';
 import { getLogisticsPage, submitOriginalErpReview, submitOriginalErpShipment,
   type LogisticsCarrierOption, type OriginalShippingAction, type DomesticView, type DomesticReviewAction,
@@ -9,7 +9,6 @@ import { getLogisticsPage, submitOriginalErpReview, submitOriginalErpShipment,
 
 defineOptions({ name: 'ERP2LogisticsProjection' });
 const props = defineProps<{ scope: LogisticsScope }>();
-ModuleRegistry.registerModules([AllCommunityModule]);
 const pageConfig = {
   allocation:{title:'待分仓',subtitle:'尚未分配发货仓的订单 · 运营分仓前只读确认',path:'待分仓'},
   domestic:{title:'国内发货',subtitle:'中国工厂 · 原 Laravel 九个业务队列',path:'国内发货'},
@@ -77,9 +76,6 @@ const reviewActions=computed<DomesticReviewAction[]>(()=>{
   return [];
 });
 let sequence = 0;
-const theme = themeQuartz.withParams({fontSize:12,spacing:4,headerBackgroundColor:'#f8fafc',
-  borderColor:'#e2e8f0',accentColor:'#5a50dd',backgroundColor:'#fff'});
-
 type GridKey = keyof LogisticsRow;
 type Column = {key:GridKey;label:string;width?:number};
 const common: Column[] = [
@@ -107,40 +103,78 @@ const overseas: Column[] = [
  {key:'tracking',label:'物流单号',width:160},
 ];
 const availableCols = computed(() => props.scope==='overseas'?overseas:common);
-const visibility = ref<Record<string,boolean>>({});
-const columnsOpen = ref(false);
-const preferenceKey = computed(() => 'erp2.grid.logistics.v1.'+canonicalDevIdentity.value?.user.id+'.'+props.scope);
-function readPreference(){
-  visibility.value={};
-  if(!canonicalDevIdentity.value)return;
-  try{
-    const stored=JSON.parse(localStorage.getItem(preferenceKey.value)||'{}');
-    if(stored && typeof stored==='object' && !Array.isArray(stored))
-      visibility.value=Object.fromEntries(Object.entries(stored).filter(([,v])=>typeof v==='boolean')) as Record<string,boolean>;
-  }catch{visibility.value={};}
-}
-function toggleColumn(key:string,checked:boolean){
-  visibility.value={...visibility.value,[key]:checked};
-  if(canonicalDevIdentity.value)localStorage.setItem(preferenceKey.value,JSON.stringify(visibility.value));
-}
-const gridColumns = computed<ColDef<LogisticsRow>[]>(() => [
- ...availableCols.value.filter(c=>visibility.value[c.key]!==false).map(c=>({
-  field:c.key,headerName:c.label,width:c.width,resizable:true,sortable:false,
-  pinned:c.key==='order_number'?'left' as const:undefined,
-  valueFormatter:(p:{value:unknown})=>p.value==null||p.value===''?'—':String(p.value),
- })),
- {colId:'action',headerName:'操作',width:100,pinned:'right' as const,
-  sortable:false,resizable:false,valueGetter:()=> '查看详情'},
+// Original ERP1 GlobalGrid/OmsGrid implementation is ported as one shared
+// component, using the same Laravel account-preferences table on isolated Dev.
+const selectedRows = ref<LogisticsRow[]>([]);
+const bulkAction = ref<'approve'|'stockout'|'reject'>('approve');
+const sorting = ref<{colId:'tracking';direction:'asc'|'desc'}|null>(null);
+const filters = ref<Partial<Record<'carrier'|'tracking'|'status',string>>>({});
+const preferenceNamespace=computed(()=>`grid.erp2.logistics.${props.scope}.v1`);
+const globalRows=computed(()=>rows.value as unknown as Record<string,unknown>[]);
+const sortKeys = computed(()=>props.scope==='overseas'?['tracking']:[]);
+const filterKeys=computed(()=>props.scope==='overseas'?['carrier','tracking']:view.value==='all'?['carrier','status']:[]);
+const gridColumns=computed<ColDef<Record<string,unknown>>[]>(()=>[
+  ...availableCols.value.map(c=>({
+    field:c.key,headerName:c.label,width:c.width,resizable:true,
+    // Laravel's canonical overseas list supports only these server sort fields.
+    sortable:sortKeys.value.includes(c.key),
+    pinned:c.key==='order_number'?'left' as const:undefined,
+    lockPinned:c.key==='order_number',
+    valueFormatter:(p:{value:unknown})=>p.value==null||p.value===''?'—':String(p.value),
+  })),
+  {colId:'action',headerName:'操作',width:108,pinned:'right' as const,
+   lockPinned:true,lockVisible:true,sortable:false,resizable:false,
+   valueGetter:()=> '查看详情'},
 ]);
-
+function onGridSelection(input:Record<string,unknown>[]){
+  selectedRows.value=input.filter(row=>Number.isSafeInteger(row.order_id))
+    .map(row=>row as unknown as LogisticsRow);
+}
+function onGridSort(input:{colId:string;direction:'asc'|'desc'|null}){
+  sorting.value=props.scope==='overseas' && input.colId==='tracking' && input.direction
+    ?{colId:'tracking',direction:input.direction}:null;
+  void load(1);
+}
+function onGridColumnFilter(input:{colId:string;value:string}){
+  if(!filterKeys.value.includes(input.colId))return;
+  filters.value={...filters.value,[input.colId]:input.value};
+  void load(1);
+}
+async function applyBulkReview(){
+  if(!authorizedReview.value||view.value!=='review'||reviewBusy.value || props.scope==='allocation')return;
+  const ids=[...new Set(selectedRows.value.filter(row=>row.review_status==='pending')
+    .map(row=>row.order_id))];
+  if(ids.length!==selectedRows.value.length || !ids.length || ids.length>50){
+    reviewError.value='仅允许对当前待审核队列中的 1–50 条订单操作；请重新选择。';return;
+  }
+  const label=bulkAction.value==='approve'?'审核通过':bulkAction.value==='stockout'?'标记缺货':'驳回';
+  let reason: string|undefined;
+  if(bulkAction.value==='reject'){
+    const typed=window.prompt('请填写选中订单统一驳回原因（3–500字）');
+    if(typed===null)return;
+    reason=typed.trim();
+    if(reason.length<3||reason.length>500){reviewError.value='驳回原因需填写 3–500 字。';return;}
+  }
+  if(!window.confirm('确认对 '+ids.length+' 条选中的 Dev 订单执行「'+label+'」？'))return;
+  reviewBusy.value=true;reviewError.value='';reviewSuccess.value='';
+  try {
+    const result=props.scope==='domestic'
+      ?await submitOriginalErpReview({scope:'domestic',orderIds:ids,action:bulkAction.value,reason})
+      :await submitOriginalErpReview({scope:'overseas',orderIds:ids,action:bulkAction.value,reason});
+    reviewSuccess.value='原 Laravel 批量审核成功 '+result.success_count+' 条；失败 '+result.failed_count+' 条';
+    if(result.failed_count)reviewError.value=result.results.filter(r=>!r.ok).map(r=>r.message).slice(0,3).join('；');
+    selectedRows.value=[];await load(1);
+  }catch(e){reviewError.value=e instanceof Error?e.message:'批量审核失败';}
+  finally{reviewBusy.value=false;}
+}
 function clearData(){
-  ++sequence; rows.value=[];detail.value=null;
+  ++sequence; rows.value=[];detail.value=null;selectedRows.value=[];
   capabilities.value={canReview:false,canOperate:false};reviewError.value='';
   shippingError.value='';carrierOptions.value=[];
   pager.value={page:1,perPage:pager.value.perPage,total:0,lastPage:1};
 }
 async function load(page=1){
-  const ticket=++sequence;error.value='';rows.value=[];detail.value=null;
+  const ticket=++sequence;error.value='';rows.value=[];detail.value=null;selectedRows.value=[];
   if(import.meta.env.VITE_ERP_IDENTITY_MODE!=='laravel' || !canonicalDevIdentity.value){
     error.value='ERP2 物流只允许通过 Laravel 原始 Dev Session 读取。';return;
   }
@@ -148,7 +182,8 @@ async function load(page=1){
   loading.value=true;
   try{
     const result=await getLogisticsPage({scope:props.scope,page,perPage:pager.value.perPage,
-      search:search.value,view:view.value,warehouse:warehouse.value});
+      search:search.value,view:view.value,warehouse:warehouse.value,
+      sortCol:sorting.value?.colId,sortDir:sorting.value?.direction,columnFilters:filters.value});
     if(ticket!==sequence || !allowed.value)return;
     rows.value=result.rows;
     capabilities.value={canReview:result.canReview===true,canOperate:result.canOperate===true};
@@ -167,17 +202,17 @@ async function load(page=1){
 }
 function filter(){void load(1);}
 function switchView(next:DomesticView|OverseasView){
-  view.value=next;reviewSuccess.value='';void load(1);
+  view.value=next;filters.value={};sorting.value=null;reviewSuccess.value='';void load(1);
 }
 function switchWarehouse(next:string){
   if(props.scope!=='overseas' || !warehouses.some(w=>w.value===next))return;
   warehouse.value=next;reviewSuccess.value='';shippingSuccess.value='';void load(1);
 }
-function onCellClick(event:CellClickedEvent<LogisticsRow>){
+function onCellClick(event:CellClickedEvent<Record<string,unknown>>){
   if(event.column.getColId()==='action' && event.data && !loading.value){
-    detail.value=event.data;reviewError.value='';reviewReason.value='';
-    shippingError.value='';trackingDraft.value=event.data.tracking||'';
-    carrierSelection.value=event.data.carrier||'';serviceSelection.value=event.data.service||'';
+    detail.value=event.data as unknown as LogisticsRow;reviewError.value='';reviewReason.value='';
+    shippingError.value='';trackingDraft.value=String(event.data.tracking||'');
+    carrierSelection.value=String(event.data.carrier||'');serviceSelection.value=String(event.data.service||'');
     outboundReference.value='';
   }
 }
@@ -263,7 +298,7 @@ async function confirmShipping(action:'carrier-service'|'tracking-draft'|'quick-
 watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
   canonicalDevIdentity.value?.effectivePermissionKeys.join('|')],()=>{
   clearData();search.value='';warehouse.value='';view.value='review';
-  columnsOpen.value=false;readPreference();void load(1);
+  filters.value={};sorting.value=null;selectedRows.value=[];void load(1);
 },{immediate:true});
 </script>
 
@@ -304,27 +339,6 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
           :disabled="loading" :aria-pressed="warehouse===w.value"
           @click="switchWarehouse(w.value)">{{ w.label }}</button>
       </nav>
-      <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3">
-        <input v-model="search" class="min-w-[200px] max-w-full rounded border border-slate-300 px-3 py-2 text-xs"
-          aria-label="物流搜索" placeholder="搜索订单号 / SKU" :disabled="loading"
-          @keydown.enter="filter" />
-        <button type="button" class="rounded border border-indigo-500 bg-indigo-600 px-3 py-2 text-xs text-white"
-          :disabled="loading || !allowed" @click="filter">查询</button>
-        <div class="flex-1"></div>
-        <div class="relative">
-          <button type="button" class="rounded border border-slate-300 px-3 py-2 text-xs"
-            aria-label="列设置" @click="columnsOpen=!columnsOpen">☷ 列设置</button>
-
-          <div v-if="columnsOpen" class="absolute right-0 top-full z-20 mt-1 w-48 rounded border border-slate-200 bg-white p-3 shadow-xl">
-            <p class="mb-2 text-xs font-semibold">显示列 · 按账号独立保存</p>
-            <label v-for="col in availableCols" :key="col.key" class="mb-2 flex items-center gap-2 text-xs">
-              <input type="checkbox" :checked="visibility[col.key]!==false"
-                @change="toggleColumn(col.key,($event.target as HTMLInputElement).checked)" />
-              {{ col.label }}
-            </label>
-          </div>
-        </div>
-      </div>
       <p v-if="shippingSuccess" role="status"
         class="mx-3 mt-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{{ shippingSuccess }}</p>
       <p v-if="reviewSuccess" role="status"
@@ -332,26 +346,54 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
         {{ reviewSuccess }}</p>
       <p v-if="error" role="alert" class="m-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
         {{ error }}</p>
-      <div class="relative min-h-[350px] flex-1 overflow-hidden" :aria-busy="loading">
-        <div v-if="loading" role="status"
-          class="absolute inset-0 z-10 flex items-center justify-center bg-white/75 text-sm text-slate-500">
-          正在读取隔离 Dev API…</div>
-        <AgGridVue class="h-full w-full" :theme="theme" :row-data="rows" :column-defs="gridColumns"
-          :row-height="36" :header-height="38"
-          :default-col-def="{sortable:false,resizable:true}"
-          :suppress-cell-focus="true" @cell-clicked="onCellClick" />
-      </div>
-      <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-3 py-3 text-xs text-slate-500">
-        <span>共 {{ pager.total }} 条 · 当前 {{ rows.length }} 条 · 第 {{ pager.page }} / {{ pager.lastPage }} 页</span>
-        <div class="flex items-center gap-3">
-          <select :value="pager.perPage" aria-label="每页条数"
-            class="rounded border border-slate-300 px-2 py-1"
-            @change="pager.perPage=Number(($event.target as HTMLSelectElement).value) as 20|50|100;filter()">
-            <option :value="20">20 / 页</option><option :value="50">50 / 页</option><option :value="100">100 / 页</option>
-          </select>
-          <button type="button" :disabled="pager.page<=1||loading" @click="load(pager.page-1)">上一页</button>
-          <button type="button" :disabled="pager.page>=pager.lastPage||loading" @click="load(pager.page+1)">下一页</button>
-        </div>
+      <div class="grid-host min-h-0 flex-1" :aria-busy="loading">
+        <p v-if="loading" role="status" class="px-3 pt-2 text-xs text-slate-500">正在读取原 Laravel 全库数据…</p>
+        <GlobalGrid
+          :key="preferenceNamespace"
+          :namespace="preferenceNamespace"
+          :title="meta.title + ' · 新表'"
+          :columns="gridColumns"
+          :rows="globalRows"
+          :page="{current_page:pager.page,last_page:pager.lastPage,per_page:pager.perPage,total:pager.total}"
+          row-identity-key="order_id"
+          :required-column-ids="['order_number','action']"
+          :search="search"
+          search-placeholder="搜索全库订单号 / SKU / Tracking…"
+          :sort="sorting || undefined"
+          :filter-columns="filterKeys"
+          :filter-values="filters"
+          :enable-selection="props.scope!=='allocation'"
+          :selected-order-ids="selectedRows.map(row=>row.order_id)"
+          :default-pinned-right="1"
+          :client-csv-export="false"
+          @cell-clicked="onCellClick"
+          @selection-change="onGridSelection"
+          @search-change="search=$event;filter()"
+          @page-change="load($event)"
+          @page-size-change="pager.perPage=$event as 20|50|100;filter()"
+          @sort-change="onGridSort"
+          @column-search-change="onGridColumnFilter"
+        >
+          <template #footer-left>
+            <span v-if="selectedRows.length" class="text-xs text-slate-600">
+              已选 {{ selectedRows.length }} 条（当前页）
+            </span>
+            <template v-if="selectedRows.length && authorizedReview && view==='review'">
+              <select v-model="bulkAction" aria-label="批量审核动作"
+                class="rounded border border-slate-300 px-2 py-1 text-xs">
+                <option value="approve">审核通过</option>
+                <option value="stockout">标记缺货</option>
+                <option value="reject">驳回</option>
+              </select>
+              <button type="button" class="rounded bg-indigo-600 px-2 py-1 text-xs text-white"
+                :disabled="reviewBusy" @click="applyBulkReview">批量执行</button>
+            </template>
+          </template>
+          <template #actions>
+            <button type="button" class="rounded border px-2 py-1 text-xs"
+              :disabled="loading||!allowed" @click="load(pager.page)">↻ 刷新</button>
+          </template>
+        </GlobalGrid>
       </div>
     </div>
     <p class="text-xs text-slate-400">帮助 · 审核结果由原 Laravel 记录；确认发货需真实 Tracking 和独立履约验证 · Workspace Tabs 保持不变。</p>
@@ -434,3 +476,8 @@ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
     </div>
   </div>
 </template>
+
+<style scoped>
+.grid-host :deep(.oms-grid){height:clamp(420px,62vh,840px);min-height:400px;border:0;border-radius:0}
+.grid-host :deep(.oms-grid.is-maximized){height:100dvh;min-height:0;border:0}
+</style>

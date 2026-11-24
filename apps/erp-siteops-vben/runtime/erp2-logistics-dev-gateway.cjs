@@ -32,6 +32,7 @@ const logisticsDetail=(pathname)=>/^\/logistics\/oversea\/(us-ny|us-moreplus|us-
 const inertiaDetail=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*$/.test(pathname);
 const noteWrite=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*\/notes$/.test(pathname);
 const reviewWrite=new Set(['/logistics/china/batch-review','/logistics/oversea/batch-review']);
+const accountPreferences=pathname=>/^\/ui\/preferences\/grid\.[A-Za-z0-9._:-]{1,110}$/.test(pathname);
 const shippingWrite=pathname=>/^\/logistics\/china\/orders\/[1-9][0-9]*\/(carrier-service|tracking-draft|quick-ship)$/.test(pathname)||
   /^\/logistics\/oversea\/(orders|us-3sm\/orders|us-moreplus\/orders)\/[1-9][0-9]*\/manual-ship$/.test(pathname);
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
@@ -46,6 +47,9 @@ function isInertia(pathname){
   logisticsDetail(pathname);
 }
 function allowed(req,url){
+ if(accountPreferences(url.pathname))return req.method==='GET' ||
+   (req.method==='PUT' && req.headers['content-type']?.startsWith('application/json') &&
+    Boolean(req.headers['x-xsrf-token']));
  if(isInertia(url.pathname))return req.method==='GET' && req.headers['x-inertia']==='true';
  if(noteWrite(url.pathname))return req.method==='POST' &&
   req.headers['content-type']?.startsWith('application/json') && Boolean(req.headers['x-xsrf-token']);
@@ -68,10 +72,10 @@ async function proxy(req,res,url){
  if(req.headers.cookie)headers.Cookie=req.headers.cookie;
  if(req.headers['content-type'])headers['Content-Type']=req.headers['content-type'];
  if(req.headers['x-csrf-token'])headers['X-CSRF-TOKEN']=req.headers['x-csrf-token'];
- if((noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname))&&req.headers['x-xsrf-token'])
+ if((noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname)||accountPreferences(url.pathname))&&req.headers['x-xsrf-token'])
   headers['X-XSRF-TOKEN']=req.headers['x-xsrf-token'];
  const payload=[];
- if(req.method==='POST')for await(const c of req){payload.push(c);if(payload.reduce((n,x)=>n+x.length,0)>16384)throw Error('LOGIN_BODY_TOO_LARGE');}
+ if(req.method==='POST'||req.method==='PUT')for await(const c of req){payload.push(c);if(payload.reduce((n,x)=>n+x.length,0)>16384)throw Error('LOGIN_BODY_TOO_LARGE');}
 
  const upstream=await fetch(MAC+url.pathname+url.search,{
   method:req.method,headers,body:payload.length?Buffer.concat(payload):undefined,
@@ -129,12 +133,19 @@ const server=http.createServer(async(req,res)=>{
      !isInertia(url.pathname)&&!noteWrite(url.pathname))
     return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
   if(url.pathname.startsWith('/api/')||isInertia(url.pathname)||
-     noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname)||
+     noteWrite(url.pathname)||reviewWrite.has(url.pathname)||shippingWrite(url.pathname)||accountPreferences(url.pathname)||
      ['/_erp2/identity','/login','/dashboard','/logout'].includes(url.pathname)){
     if(!allowed(req,url))return json(res,405,{error:'ERP2_DEV_METHOD_OR_PATH_DENIED'});
     return await proxy(req,res,url);
   }
   return staticFile(req,res,url);
- }catch(e){console.error('[ERP2 Dev Proxy]',String(e.message||e));return json(res,502,{error:'ERP2_ISOLATED_DEV_UNAVAILABLE'});}
+ }catch(e){
+  console.error('[ERP2 Dev Proxy]',String(e?.message||e));
+  // A slow/cancelled browser request can fail AFTER upstream sent headers.
+  // Never attempt a second writeHead: that would crash the whole Dev Gateway.
+  if(res.destroyed||res.writableEnded)return;
+  if(res.headersSent){res.destroy();return;}
+  return json(res,502,{error:'ERP2_ISOLATED_DEV_UNAVAILABLE'});
+ }
 });
 server.listen(PORT,HOST,()=>console.log('ERP2_VBEN_CANONICAL_DEV_READY http://'+HOST+':'+PORT));

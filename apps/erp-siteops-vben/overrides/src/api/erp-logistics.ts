@@ -124,6 +124,8 @@ export function parseOriginalLogisticsInertiaPage(
 export interface LogisticsQuery {
   scope: LogisticsScope; page?: number; perPage?: 20 | 50 | 100;
   search?: string; view?: DomesticView | OverseasView; warehouse?: string;
+  sortCol?: 'tracking' | 'shipped_at' | 'line'; sortDir?: 'asc' | 'desc';
+  columnFilters?: Partial<Record<'carrier' | 'tracking' | 'status', string>>;
 }
 export async function getLogisticsPage(query: LogisticsQuery, fetcher: typeof fetch = fetch): Promise<LogisticsPage> {
   // Fail closed: the local-JWT SiteOps fixture must never impersonate an ERP employee.
@@ -134,6 +136,15 @@ export async function getLogisticsPage(query: LogisticsQuery, fetcher: typeof fe
     page:String(Math.max(1,query.page ?? 1)),per_page:String(query.perPage ?? 20),
   });
   if (query.search?.trim()) params.set('search',query.search.trim().slice(0,100));
+  if(original && query.scope==='overseas' &&
+    ['tracking','shipped_at','line'].includes(query.sortCol||'')){
+    params.set('sort_col',query.sortCol!);params.set('sort_dir',query.sortDir==='asc'?'asc':'desc');
+  }
+  if (original) for(const [key,value] of Object.entries(query.columnFilters||{})){
+    const accepted=query.scope==='overseas' ? ['carrier','tracking'] :
+      query.view==='all'?['carrier','status']:[];
+    if(accepted.includes(key) && value?.trim())params.set('filter_'+key,value.trim().slice(0,80));
+  }
   if (original || query.scope === 'overseas') params.set('view',query.view ?? 'review');
   const warehouse = query.warehouse?.trim() || '';
   if (warehouse && !['us-ny','us-sm','us-3sm','us-moreplus','de-tianyun','ca'].includes(warehouse))
