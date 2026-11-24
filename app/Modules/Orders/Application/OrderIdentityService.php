@@ -71,16 +71,29 @@ final class OrderIdentityService
         $date = $created->toDateString();
         $prefix = 'K'.$created->format('ymd');
 
-        return DB::transaction(function () use ($date, $prefix): string {
-            DB::table('kol_daily_order_sequences')->insertOrIgnore([
+        $startUtc = $created->copy()->startOfDay()->utc()->toDateTimeString();
+        $endUtc = $created->copy()->addDay()->startOfDay()->utc()->toDateTimeString();
+
+        return DB::transaction(function () use ($date, $prefix, $startUtc, $endUtc): string {
+            $initialized = DB::table('kol_daily_order_sequences')->insertOrIgnore([
                 'creation_date' => $date, 'last_number' => 0,
             ]);
             $sequence = DB::table('kol_daily_order_sequences')->where('creation_date', $date);
             $last = (int) $sequence->lockForUpdate()->first()->last_number;
+            if ($initialized === 1) {
+                // On rollout day continue after all already-created root KOL orders,
+                // including soft-deleted ones; derived shipments do not consume a number.
+                $last = max($last, DB::table('orders')
+                    ->where('order_kind', OrderKind::KolFulfillment->value)
+                    ->whereNull('fulfillment_parent_id')
+                    ->where('created_at', '>=', $startUtc)
+                    ->where('created_at', '<', $endUtc)
+                    ->count());
+            }
             do {
                 $last++;
                 $identity = sprintf('%s%02d-007', $prefix, $last);
-            } while (Order::query()->where('erp_order_id', $identity)->exists());
+            } while (Order::withTrashed()->where('erp_order_id', $identity)->exists());
 
             $sequence->update(['last_number' => $last]);
 
