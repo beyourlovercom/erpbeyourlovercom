@@ -892,8 +892,10 @@ describe('Orders/Show V2', () => {
 
   it('shows audit log section', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    expect(wrapper.text()).toContain('操作审计')
-    expect(wrapper.text()).toContain('created')
+    expect(wrapper.text()).toContain('操作记录')
+    expect(wrapper.get('.ord-audit-list').text()).toContain('创建订单')
+    expect(wrapper.get('.ord-audit-list').text()).toContain('2026-08-25 18:00:00')
+    expect(wrapper.get('.ord-audit-list').text()).toContain('未知账号（ID：1）')
   })
 
   it('shows address fields labels', () => {
@@ -1031,7 +1033,7 @@ describe('Orders/Show V2', () => {
     const buttons = wrapper.findAll('.ord-detail-nav-item')
     expect(buttons.map(button => button.text())).toEqual([
       '概览', '履约状态', '辅助标记', '库存分布',
-      '订单信息', '收件与地址', '订单商品', '包装与重量', '内部备注', '操作审计',
+      '订单信息', '收件与地址', '订单商品', '包装与重量', '内部备注', '操作记录',
     ])
     expect(buttons.filter(button => button.text() === '库存分布')).toHaveLength(1)
     expect(wrapper.findAll('.ord-inventory-card')).toHaveLength(2)
@@ -1055,7 +1057,7 @@ describe('Orders/Show V2', () => {
     try {
       window.dispatchEvent(new Event('scroll'))
       await nextTick()
-      expect(wrapper.get('.ord-detail-nav-item[aria-current="location"]').text()).toBe('操作审计')
+      expect(wrapper.get('.ord-detail-nav-item[aria-current="location"]').text()).toBe('操作记录')
     } finally {
       height.mockRestore()
       scroll.mockRestore()

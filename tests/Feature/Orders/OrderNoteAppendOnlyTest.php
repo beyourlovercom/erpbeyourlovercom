@@ -44,7 +44,10 @@ final class OrderNoteAppendOnlyTest extends TestCase
                 ->component('Orders/Show')
                 ->where('canAppendOrderNote', true)
                 ->has('orderNotes', 1)
-                ->where('orderNotes.0.body', '补充：库存已核实'));
+                ->where('orderNotes.0.body', '补充：库存已核实')
+                ->where('audit.0.action', 'order.note_appended')
+                ->where('audit.0.actor_id', $vita->id)
+                ->where('audit.0.actor_name', $vita->name));
         $this->assertDatabaseHas('audit_records', ['entity_type' => Order::class, 'entity_id' => (string) $order->id, 'action' => 'order.note_appended']);
         Notification::assertSentTo($owner, BusinessNotification::class);
     }
