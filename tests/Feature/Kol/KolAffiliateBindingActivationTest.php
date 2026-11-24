@@ -12,6 +12,7 @@ use App\Modules\Kol\Infrastructure\Models\KolAffiliateReferral;
 use App\Modules\Kol\Infrastructure\Models\KolImportActivationBatch;
 use App\Modules\Kol\Infrastructure\Models\KolImportPreviewBatch;
 use App\Modules\Kol\Infrastructure\Models\KolReconciliationBatch;
+use App\Modules\Kol\Infrastructure\Models\KolOwnerCandidateDecision;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -90,6 +91,59 @@ class KolAffiliateBindingActivationTest extends TestCase
         self::assertSame(1, $plan->no_affiliate_count);
         self::assertSame(1, $plan->blocked_count);
         self::assertNotNull($noAffiliateKol);
+    }
+
+    public function test_no_source_email_recognizes_existing_binding_but_never_proposes_a_new_one(): void
+    {
+        $admin = $this->admin();
+        [$activation, $kol] = $this->activationWithKol($admin, 'login-only@example.com');
+        $url = 'https://www.instagram.com/login_only';
+        $kol->socialAccounts()->create(['platform' => 'instagram', 'handle' => 'login_only', 'profile_url' => $url, 'is_active' => true]);
+        $activation->items()->firstOrFail()->update([
+            'exact_identity' => ['emails' => [], 'profile_urls' => [$url], 'tokens' => ['url:'.$url]],
+        ]);
+        $account = $this->account(680, 'login-only@example.com');
+        $unbound = $this->service()->prepare($activation->id, $admin);
+        self::assertSame('no_affiliate', $unbound->items->first()->readiness_status);
+        self::assertSame(0, $unbound->ready_count);
+        self::assertNull($account->fresh()->kol_id);
+
+        $account->update(['kol_id' => $kol->id]);
+        $bound = $this->service()->prepare($activation->id, $admin);
+        self::assertSame('already_bound', $bound->items->first()->readiness_status);
+        self::assertSame($account->id, $bound->items->first()->affiliate_account_id);
+        self::assertSame(0, $bound->ready_count);
+        self::assertSame($kol->id, $account->fresh()->kol_id);
+    }
+
+    public function test_applied_manual_owner_decision_is_recognized_but_stale_or_removed_decision_is_blocked(): void
+    {
+        $admin = $this->admin();
+        [$activation, $kol] = $this->activationWithKol($admin, 'decided@example.com');
+        $account = $this->account(681, 'decided@example.com');
+        $item = $activation->items()->firstOrFail();
+        $decision = KolOwnerCandidateDecision::create([
+            'reconciliation_batch_id' => $activation->reconciliation_batch_id, 'cluster_key' => $item->cluster_key,
+            'mapped_user_id' => $admin->id, 'source_owner_values' => ['Emma', 'Max'], 'decided_by' => $admin->id,
+        ]);
+        $item->update([
+            'affiliate_evidence' => ['account_ids' => [$account->id]],
+            'source_owner_evidence' => ['source_values' => ['Emma', 'Max'], 'resolution_status' => 'decided', 'decision_id' => $decision->id],
+        ]);
+        $ready = $this->service()->prepare($activation->id, $admin);
+        self::assertSame(1, $ready->ready_count);
+        self::assertNull($account->fresh()->kol_id);
+
+        $decision->update(['source_owner_values' => ['Emma', 'Young']]);
+        $stale = $this->service()->prepare($activation->id, $admin);
+        self::assertSame(0, $stale->ready_count);
+        self::assertContains('multiple_source_owners', $stale->items->first()->block_reasons);
+
+        $decision->delete();
+        $removed = $this->service()->prepare($activation->id, $admin);
+        self::assertSame(0, $removed->ready_count);
+        self::assertContains('multiple_source_owners', $removed->items->first()->block_reasons);
+        self::assertNull($account->fresh()->kol_id);
     }
 
     public function test_inactive_and_non_current_mirrors_are_blocked_before_binding(): void
