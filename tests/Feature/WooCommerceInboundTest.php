@@ -51,7 +51,7 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertSame('woocommerce', $order->source_type->value);
         $this->assertSame('customer', $order->order_kind->value);
         $this->assertSame('WC-101', $order->external_order_number);
-        $this->assertSame('007erp-0827-c101', $order->erp_order_id);
+        $this->assertSame('C101-007', $order->erp_order_id);
         $firstErpOrderId = $order->erp_order_id;
         $this->assertSame('EUR', $order->currency);
         $this->assertSame('DE', $order->address->country);
@@ -72,6 +72,21 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertSame(100101, $order->items->first()->woocommerce_line_item_id);
         $this->assertSame('21.50', $order->items->first()->unit_price);
         $this->assertDatabaseHas('audit_records', ['action' => 'order.inbound_updated']);
+    }
+
+    public function test_reimport_preserves_legacy_identity_without_creating_a_duplicate(): void
+    {
+        $user = $this->userWith(['sync.operate']);
+        Http::fakeSequence('https://shop.test/wp-json/wc/v3/orders/40618')
+            ->push($this->wooOrder(40618, '40618'), 200)
+            ->push($this->wooOrder(40618, '40618'), 200);
+        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 40618])->assertSessionHasNoErrors();
+        $order = Order::firstOrFail();
+        $this->assertSame('C40618-007', $order->erp_order_id);
+        $order->forceFill(['erp_order_id' => '007-0827-c40618'])->save();
+        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 40618])->assertSessionHasNoErrors();
+        $this->assertSame(1, Order::count());
+        $this->assertSame('007-0827-c40618', $order->fresh()->erp_order_id);
     }
 
     public function test_empty_shipping_phone_falls_back_to_billing_phone(): void
@@ -145,7 +160,7 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertSame(2, Order::count());
         $this->assertSame(2, OrderExternalReference::where('reference', '303')->count());
         $erpIds = Order::query()->orderBy('id')->pluck('erp_order_id')->all();
-        $this->assertSame(['007erp-0827-c303', '007erp-0827-c1303'], $erpIds);
+        $this->assertSame(['C303-007', 'C1303-007'], $erpIds);
         $this->assertCount(2, array_unique($erpIds));
         $this->assertDatabaseHas('order_external_references', ['provider' => 'woocommerce', 'connection_key' => 'shop-a', 'reference' => '303']);
         $this->assertDatabaseHas('order_external_references', ['provider' => 'woocommerce', 'connection_key' => 'shop-b', 'reference' => '303']);

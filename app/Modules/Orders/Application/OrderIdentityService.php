@@ -77,13 +77,9 @@ final class OrderIdentityService
     public function previewWooCustomer(string $externalOrderNumber, string $providerReference, string $businessDate): string
     {
         $number = $this->wooOrderNumber($externalOrderNumber, $providerReference);
-        $prefix = (string) (OrderIdentitySetting::query()->whereKey(1)->value('prefix_token') ?: self::DEFAULT_PREFIX);
-        $date = date_create_immutable($businessDate);
-        if (! $date) {
-            throw new RuntimeException('ERP order identity date is invalid.');
-        }
 
-        return sprintf('%s-%s-c%s', $prefix, $date->format('md'), $number);
+        // Website order identity is stable regardless of order date or manual prefix settings.
+        return sprintf('C%s-007', $number);
     }
 
     private function wooOrderNumber(string $externalOrderNumber, string $providerReference): string

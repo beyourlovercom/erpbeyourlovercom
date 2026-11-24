@@ -25,6 +25,9 @@ final class WarehouseOrderReference
     private function parts(Order $order): array
     {
         $erp = trim((string) $order->erp_order_id);
+        if (preg_match('/^C(\d+)-007([A-Z]?)$/iD', $erp, $canonical) === 1) {
+            return ['C', $canonical[1], strtoupper($canonical[2])];
+        }
         if (preg_match('/-(c|k)(\d+)([A-Z]?)$/i', $erp, $matches) !== 1) {
             throw new DomainException("订单 {$erp} 无法生成海外仓客户参考号");
         }

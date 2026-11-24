@@ -77,7 +77,7 @@ final class MorePlusCostBridgeService
     {
         $map=[];
         foreach(Order::query()->with(['shipment','externalReferences','fulfillmentChildren.shipment'])->whereNull('fulfillment_parent_id')->whereNotNull('erp_order_id')->get() as $order){
-            if(preg_match('/-c(\d+)$/i',(string)$order->erp_order_id,$m)!==1) continue;
+            if(preg_match('/(?|^C(\d+)-007$|-c(\d+)$)/iD',(string)$order->erp_order_id,$m)!==1) continue;
             $map[$m[1]][]=$order;
         }
         return $map;

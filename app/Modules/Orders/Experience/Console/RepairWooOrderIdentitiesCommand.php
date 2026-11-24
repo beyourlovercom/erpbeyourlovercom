@@ -20,7 +20,7 @@ final class RepairWooOrderIdentitiesCommand extends Command
         {--expect-change= : Required exact candidate count when applying}
         {--json : Emit safe JSON evidence}';
 
-    protected $description = 'Preview or repair Woo ERP IDs to prefix-MMDD-cWooOrderNumber';
+    protected $description = 'Preview or repair Woo ERP IDs to C{WooOrderNumber}-007';
 
     public function handle(OrderIdentityService $identities, AuditRecorder $audit): int
     {
@@ -92,6 +92,15 @@ final class RepairWooOrderIdentitiesCommand extends Command
                 continue;
             }
 
+            // Existing fulfillment identities may already be referenced outside ERP.
+            // Migrate those only through a separate coordinated historical migration.
+            if ($order->shipment()->exists() || $order->fulfillmentChildren()->exists()) {
+                $rows[] = $this->row($order, $expected, 'blocked', 'existing_fulfillment_requires_migration');
+                $blocked++;
+
+                continue;
+            }
+
             $collision = Order::query()
                 ->where('erp_order_id', $expected)
                 ->where('id', '<>', $order->id)
@@ -104,7 +113,7 @@ final class RepairWooOrderIdentitiesCommand extends Command
             }
 
             $targets[$expected] = $order->id;
-            $rows[] = $this->row($order, $expected, 'change', 'owner_rule_007_mmdd_c_woo_number');
+            $rows[] = $this->row($order, $expected, 'change', 'owner_rule_c_woo_number_007_datefree');
             $change++;
         }
 
@@ -144,6 +153,9 @@ final class RepairWooOrderIdentitiesCommand extends Command
 
                 $order = Order::query()->whereKey($row['order_id'])->lockForUpdate()->firstOrFail();
                 $before = (string) $order->erp_order_id;
+                if ($order->shipment()->exists() || $order->fulfillmentChildren()->exists()) {
+                    throw new \RuntimeException('Existing fulfillment requires coordinated identity migration.');
+                }
                 $target = (string) $row['expected_erp_order_id'];
                 if (Order::query()->where('erp_order_id', $target)->where('id', '<>', $order->id)->exists()) {
                     throw new \RuntimeException('Target ERP order identity collided during apply.');
@@ -157,7 +169,7 @@ final class RepairWooOrderIdentitiesCommand extends Command
                     $order->id,
                     before: ['erp_order_id' => $before],
                     after: ['erp_order_id' => $target],
-                    reason: 'owner_rule_007_mmdd_c_woo_number',
+                    reason: 'owner_rule_c_woo_number_007_datefree',
                 );
             }
         });

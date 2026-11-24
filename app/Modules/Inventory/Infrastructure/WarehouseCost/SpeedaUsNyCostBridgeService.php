@@ -64,7 +64,7 @@ final class SpeedaUsNyCostBridgeService
     {
         $map=[];
         foreach (Order::query()->with(['shipment','externalReferences','fulfillmentChildren.shipment'])->whereNull('fulfillment_parent_id')->whereNotNull('erp_order_id')->get() as $order) {
-            if (preg_match('/-c(\d+)$/i',(string)$order->erp_order_id,$m)===1) $map[$m[1]][]=$order;
+            if (preg_match('/(?|^C(\d+)-007$|-c(\d+)$)/iD',(string)$order->erp_order_id,$m)===1) $map[$m[1]][]=$order;
         }
         return $map;
     }
@@ -153,7 +153,7 @@ final class SpeedaUsNyCostBridgeService
     private function referenceConflicts(string $ref,string $erpOrderId): bool
     {
         if (preg_match('/^C(\d+)(?:-007[A-Z]?|[A-Z])?$/D',$ref,$r)!==1) return false;
-        return preg_match('/-c(\d+)$/i',$erpOrderId,$e)===1 && $r[1]!==$e[1];
+        return preg_match('/(?|^C(\d+)-007$|-c(\d+)$)/iD',$erpOrderId,$e)===1 && $r[1]!==$e[1];
     }
 
     private function sourceOrderReference($row): string

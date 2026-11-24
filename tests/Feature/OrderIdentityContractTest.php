@@ -30,9 +30,26 @@ final class OrderIdentityContractTest extends TestCase
         $service = app(OrderIdentityService::class);
         $service->updatePrefix('007', null);
 
-        $this->assertSame('007-0910-c40414', $service->previewWooCustomer('40414', '50123', '2026-09-10'));
-        $this->assertSame('007-0910-c40414', $service->previewWooCustomer('40414-VA617A-gift', '50123', '2026-09-10'));
-        $this->assertSame('007-0910-c50123', $service->previewWooCustomer('WC-40414', '50123', '2026-09-10'));
+        $this->assertSame('C40414-007', $service->previewWooCustomer('40414', '50123', '2026-09-10'));
+        $this->assertSame('C40414-007', $service->previewWooCustomer('40414-VA617A-gift', '50123', '2026-09-10'));
+        $this->assertSame('C50123-007', $service->previewWooCustomer('WC-40414', '50123', '2026-09-10'));
+        $service->updatePrefix('yby', null);
+        $this->assertSame('C40618-007', $service->generateWooCustomer('40618', '50123', '2026-11-24'));
+        $this->assertSame('C40618-007', $service->previewWooCustomer('40618', '50123', '2027-01-01'));
+
+    }
+
+    public function test_warehouse_reference_supports_new_and_legacy_customer_identities(): void
+    {
+        $reference = app(\App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference::class);
+        foreach (['C40618-007', '007-1024-c40618'] as $id) {
+            $order = new \App\Modules\Orders\Infrastructure\Models\Order(['erp_order_id' => $id]);
+            $this->assertSame('C40618-007', $reference->warehouse($order));
+            $this->assertSame('C40618', $reference->canada($order));
+            $order->erp_order_id = $id.'A';
+            $this->assertSame('C40618-007A', $reference->warehouse($order));
+            $this->assertSame('C40618A', $reference->canada($order));
+        }
     }
 
     public function test_customer_sequence_is_global_and_prefix_changes_do_not_reset_it(): void

@@ -71,7 +71,7 @@ final class HistoricalWarehouseEvidenceRecoveryAdapter
             return false;
         }
         $erpOrderId = trim((string) data_get($candidate, 'order.erp_order_id', ''));
-        if (preg_match('/-c(\d+)$/i', $erpOrderId, $erp) !== 1) {
+        if (preg_match('/(?|^C(\d+)-007$|-c(\d+)$)/iD', $erpOrderId, $erp) !== 1) {
             return false;
         }
         $providerOrder = strtoupper(trim((string) $providerOrder));
