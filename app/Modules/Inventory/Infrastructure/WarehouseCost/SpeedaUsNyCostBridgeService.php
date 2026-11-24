@@ -80,7 +80,7 @@ final class SpeedaUsNyCostBridgeService
             $ref=$this->sourceOrderReference($row);
             $decision='review'; $reason='shipment_not_found'; $shipmentId=null; $orderId=null;
 
-            if (preg_match('/^KOL/i',$ref)===1) {
+            if (preg_match('/^(?:KOL|K\d)/i',$ref)===1) {
                 $decision='excluded'; $reason='source_marked_kol';
             } else {
                 $matches=$tracking!==''?($shipmentMap[$tracking]??[]):[];
@@ -128,7 +128,7 @@ final class SpeedaUsNyCostBridgeService
     private function sourceFallback(string $ref,array $orderMap,string $tracking): array
     {
         if ($ref==='') return ['decision'=>'review','reason_code'=>'source_order_reference_missing','shipment_id'=>null,'order_id'=>null];
-        if (preg_match('/^KOL/i',$ref)===1) return ['decision'=>'excluded','reason_code'=>'source_marked_kol','shipment_id'=>null,'order_id'=>null];
+        if (preg_match('/^(?:KOL|K\d)/i',$ref)===1) return ['decision'=>'excluded','reason_code'=>'source_marked_kol','shipment_id'=>null,'order_id'=>null];
         if (preg_match('/^C(\d+)(?:-007([A-Z])?|([A-Z]))?$/D',$ref,$m)!==1) return ['decision'=>'review','reason_code'=>'source_order_unmapped','shipment_id'=>null,'order_id'=>null];
 
         $orders=$orderMap[$m[1]]??[];

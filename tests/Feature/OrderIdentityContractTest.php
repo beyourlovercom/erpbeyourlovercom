@@ -57,18 +57,23 @@ final class OrderIdentityContractTest extends TestCase
         $service = app(OrderIdentityService::class);
         $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-28 23:59:59', 'Asia/Shanghai'));
         for ($i = 1; $i <= 7; $i++) {
-            $this->assertSame(sprintf('KOL260928%02d-007', $i), $service->allocateKol());
+            $this->assertSame(sprintf('K260928%02d-007', $i), $service->allocateKol());
         }
         $service->updatePrefix('yby', null);
-        $this->assertSame('KOL26092808-007', $service->allocateKol());
+        $this->assertSame('K26092808-007', $service->allocateKol());
         \Illuminate\Support\Facades\DB::table('kol_daily_order_sequences')->where('creation_date', '2026-09-28')->update(['last_number' => 99]);
-        $this->assertSame('KOL260928100-007', $service->allocateKol());
+        $this->assertSame('K260928100-007', $service->allocateKol());
         $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-29 00:00:00', 'Asia/Shanghai'));
-        $this->assertSame('KOL26092901-007', $service->allocateKol());
+        $this->assertSame('K26092901-007', $service->allocateKol());
         $reference = app(\App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference::class);
-        $order = new \App\Modules\Orders\Infrastructure\Models\Order(['erp_order_id' => 'KOL26092807-007A']);
+        $order = new \App\Modules\Orders\Infrastructure\Models\Order(['erp_order_id' => 'K26092807-007A']);
+        $this->assertSame('K26092807-007A', $reference->warehouse($order));
+        $this->assertSame('K26092807A', $reference->canada($order));
+        $order->erp_order_id = 'KOL26092807-007A';
         $this->assertSame('KOL26092807-007A', $reference->warehouse($order));
         $this->assertSame('KOL26092807A', $reference->canada($order));
+        $order->erp_order_id = '007-0928-k123A';
+        $this->assertSame('KOL123-007A', $reference->warehouse($order));
     }
 
     public function test_customer_sequence_is_global_and_prefix_changes_do_not_reset_it(): void

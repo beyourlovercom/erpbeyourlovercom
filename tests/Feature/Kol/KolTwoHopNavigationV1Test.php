@@ -156,13 +156,13 @@ final class KolTwoHopNavigationV1Test extends TestCase
 
         $this->actingAs($staff)->post('/kol/orders', $payload)->assertRedirect();
         $first = Order::query()->firstOrFail();
-        $this->assertSame('KOL26092801-007', $first->erp_order_id);
+        $this->assertSame('K26092801-007', $first->erp_order_id);
         $this->assertSame('KOL-APPROVED-ID', $first->external_order_number);
         $this->assertSame($kol->id, (int) $first->kol_id);
 
         $this->actingAs($staff)->post('/kol/orders', [...$payload, 'external_order_number' => 'KOL-APPROVED-ID-2'])->assertRedirect();
         $second = Order::query()->latest('id')->firstOrFail();
-        $this->assertSame('KOL26092802-007', $second->erp_order_id);
+        $this->assertSame('K26092802-007', $second->erp_order_id);
         $this->assertNotSame($first->erp_order_id, $second->erp_order_id);
     }
 

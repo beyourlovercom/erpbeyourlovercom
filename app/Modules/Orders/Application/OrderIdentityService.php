@@ -69,7 +69,7 @@ final class OrderIdentityService
         // The creation clock is shared across all staff and independent of the editable order date.
         $created = now('Asia/Shanghai');
         $date = $created->toDateString();
-        $prefix = 'KOL'.$created->format('ymd');
+        $prefix = 'K'.$created->format('ymd');
 
         return DB::transaction(function () use ($date, $prefix): string {
             DB::table('kol_daily_order_sequences')->insertOrIgnore([
