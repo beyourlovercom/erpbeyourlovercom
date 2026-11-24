@@ -290,177 +290,6 @@ const currencyOptions = computed(() => {
     : [{ value: current, label: current }, ...commonCurrencyOptions]
 })
 
-type AmendmentPreview = {
-  changed:boolean; fulfillment_only?:boolean; can_save_direct:boolean; requires_replan:boolean; can_atomic_single_replan:boolean; can_atomic_multi_replan:boolean; expected_revision:string; no_writes:boolean;
-  old_items_gross:string; new_items_gross:string; gross_delta:string; currency:string;
-  rows:{order_item_id:number|null; operation:string; before:{sku:string|null;quantity:number}|null; after:{sku:string;quantity:number}|null}[];
-  issues:string[];
-  stock_by_warehouse:{warehouse_id:number; warehouse_name:string; warehouse_code:string; single_warehouse_candidate:boolean;
-    details:{product_id:number;required:number;available:number|null;enough:boolean}[]}[];
-  inventory_note:string;
-}
-const amendmentPreview = ref<AmendmentPreview|null>(null)
-const amendmentPreviewLoading = ref(false)
-const amendmentPreviewError = ref('')
-const amendmentReplanWarehouse = ref('')
-const amendmentReplanReason = ref('')
-const amendmentReplanApproved = ref(false)
-const amendmentReplanSaving = ref(false)
-const commitAtomicReplan = async () => {
-  const preview = amendmentPreview.value
-  if (!preview?.can_atomic_single_replan || amendmentReplanSaving.value) return
-  if (!amendmentReplanApproved.value || amendmentReplanReason.value.trim().length < 4 || !amendmentReplanWarehouse.value) {
-    amendmentPreviewError.value = '请选择目标仓库、填写客户变更原因并勾选确认。'
-    return
-  }
-  const target = preview.stock_by_warehouse.find(
-    wh => wh.warehouse_code === amendmentReplanWarehouse.value && wh.single_warehouse_candidate,
-  )
-  if (!target) {
-    amendmentPreviewError.value = '所选仓库没有可用库存或状态已失效，请重新预检。'
-    return
-  }
-  amendmentReplanSaving.value = true
-  amendmentPreviewError.value = ''
-  publishGlobalFeedback({state:'RUNNING',title:'正在更新订单与库存预留',
-    message:'订单商品、分仓与预留将作为一次事务提交；发生冲突会全部回滚。'})
-  try {
-    await axios.post(`${basePath.value}/${props.order.id}/items/replan`, {
-      items:form.items.map(item => ({
-        id:item.id, product_id:item.product_id, product_summary:item.product_summary,
-        quantity:item.quantity, unit_price:item.unit_price,
-      })),
-      assignments:form.items.map((_,index) => ({
-        item_index:index, source_code:target.warehouse_code,
-      })),
-      expected_revision:preview.expected_revision,
-      reason:amendmentReplanReason.value.trim(),
-    })
-    publishGlobalFeedback({state:'SUCCESS',title:'单仓商品及库存重规划完成',
-      message:'旧库存预留已释放、新库存预留已建立，物流仍待人工确认后发货。'})
-    amendmentPreview.value = null
-    amendmentReplanApproved.value = false
-    editMode.value = false
-    router.reload()
-  } catch (error) {
-    const payload = axios.isAxiosError(error)
-      ? error.response?.data as {message?:string;errors?:Record<string,string[]>}|undefined : undefined
-    amendmentPreviewError.value = Object.values(payload?.errors ?? {}).flat()[0]
-      || payload?.message || '事务未完成，订单和旧库存预留保持不变，请重新预检。'
-    publishGlobalFeedback({state:'BLOCKED',title:'库存重规划未成功',message:amendmentPreviewError.value,
-      next:'请重新检查订单、库存和发货仓库；未完成的事务不会产生部分发货。'})
-    amendmentPreview.value = null
-  } finally {
-    amendmentReplanSaving.value = false
-  }
-}
-const multiWarehouseByIndex = ref<Record<number,string>>({})
-const multiReplanReason = ref('')
-const multiReplanApproved = ref(false)
-const multiReplanSaving = ref(false)
-const multiRowStockAvailable = (index:number, code:string):boolean => {
-  const wh = amendmentPreview.value?.stock_by_warehouse.find(wh => wh.warehouse_code === code)
-  const item = form.items[index]
-  if (!wh || !item || !item.product_id) return false
-  const detail = wh.details.find(row => row.product_id === Number(item.product_id))
-  return detail?.available !== null && detail?.available !== undefined
-    && Number(detail.available) >= Number(item.quantity)
-}
-const multiAssignmentsReady = computed(() => {
-  const choices = form.items.map((_,index) => multiWarehouseByIndex.value[index] || '')
-  return choices.every((code,index) => code && multiRowStockAvailable(index,code))
-    && new Set(choices).size >= 2
-})
-const commitMultiWarehouseReplan = async () => {
-  const preview = amendmentPreview.value
-  if (!preview?.can_atomic_multi_replan || multiReplanSaving.value) return
-  if (!multiReplanApproved.value || multiReplanReason.value.trim().length < 4 || !multiAssignmentsReady.value) {
-    amendmentPreviewError.value = '请为每条商品选择有库存的仓库，至少使用两个仓库，并填写原因与确认授权。'
-    return
-  }
-  multiReplanSaving.value = true
-  amendmentPreviewError.value = ''
-  publishGlobalFeedback({state:'RUNNING',title:'正在原子重规划所有发货仓',
-    message:'旧子订单预留、商品与新分仓将在同一事务中更新，任一步失败都会回滚。'})
-  try {
-    await axios.post(`${basePath.value}/${props.order.id}/items/replan-multi`, {
-      items:form.items.map(item => ({
-        id:item.id, product_id:item.product_id, product_summary:item.product_summary,
-        quantity:item.quantity, unit_price:item.unit_price,
-      })),
-      assignments:form.items.map((_,index) => ({
-        item_index:index, source_code:multiWarehouseByIndex.value[index],
-      })),
-      expected_revision:preview.expected_revision,
-      reason:multiReplanReason.value.trim(),
-    })
-    publishGlobalFeedback({state:'SUCCESS',title:'多仓商品及库存预留重规划完成',
-      message:'全部子履约已更新并预留新库存，仍需按流程审核实际发货。'})
-    multiReplanApproved.value = false
-    amendmentPreview.value = null
-    editMode.value = false
-    router.reload()
-  } catch (error) {
-    const payload = axios.isAxiosError(error)
-      ? error.response?.data as {message?:string;errors?:Record<string,string[]>}|undefined : undefined
-    amendmentPreviewError.value = Object.values(payload?.errors ?? {}).flat()[0]
-      || payload?.message || '多仓事务失败，旧订单与各仓预留均保持不变。'
-    publishGlobalFeedback({state:'BLOCKED',title:'多仓重规划未完成',
-      message:amendmentPreviewError.value, next:'请重新预检各 SKU 的库存与仓库，确认后再提交。'})
-    amendmentPreview.value = null
-  } finally {
-    multiReplanSaving.value = false
-  }
-}
-
-const previewItemAmendment = async () => {
-  if (amendmentPreviewLoading.value) return
-  amendmentPreviewLoading.value = true
-  amendmentPreview.value = null
-  amendmentPreviewError.value = ''
-  amendmentReplanApproved.value = false
-  amendmentReplanWarehouse.value = ''
-  multiWarehouseByIndex.value = {}
-  multiReplanApproved.value = false
-  try {
-    const response = await axios.post<AmendmentPreview>(
-      `${basePath.value}/${props.order.id}/items/preview`,
-      { items:form.items.map(item => ({
-        id:item.id, product_id:item.product_id, product_summary:item.product_summary,
-        quantity:item.quantity, unit_price:item.unit_price,
-      })) },
-    )
-    amendmentPreview.value = response.data
-    if (!response.data.can_save_direct && response.data.changed) {
-      publishGlobalFeedback({
-        state:'BLOCKED',title:'商品变更需要重新规划',
-        message:response.data.issues[0] ?? '订单当前不允许直接修改商品。',
-        next:'先处理库存、仓库或履约冲突；本次预检没有修改任何订单。',
-      })
-    } else {
-      publishGlobalFeedback({
-        state:'SUCCESS',title:'商品变更预检完成',
-        message:response.data.changed ? '可按权限保存，然后重新确认发货仓库。' : '商品明细没有变化。',
-      })
-    }
-  } catch (error) {
-    const payload = axios.isAxiosError(error)
-      ? error.response?.data as {message?:string;errors?:Record<string,string[]>}|undefined : undefined
-    const problem = Object.values(payload?.errors ?? {}).flat()[0]
-    const httpStatus = axios.isAxiosError(error) ? error.response?.status : undefined
-    amendmentPreviewError.value = problem || payload?.message || (httpStatus === 404
-      ? '预检接口不存在（404），请核查 ERP 后端部署版本。'
-      : httpStatus === 403 ? '当前账号缺少订单编辑权限（403）。'
-      : httpStatus === 409 ? '订单履约状态冲突（409），请重新加载并核对库存预留。'
-      : '预检请求失败，请检查网络与服务器日志。')
-    publishGlobalFeedback({
-      state:'ERROR',title:'商品修改预检失败',message:amendmentPreviewError.value,
-      next:'请在当前订单页修正错误，不需要重新打开页面。',
-    })
-  } finally {
-    amendmentPreviewLoading.value = false
-  }
-}
 // Internal collaboration notes are append-only and independent of orders.edit.
 const noteDraft = ref('')
 const noteSubmitting = ref(false)
@@ -517,19 +346,10 @@ const hasItemChanges = () => JSON.stringify(form.items.map(item => ({
   quantity: Number(item.quantity), unit_price: Number(item.unit_price).toFixed(2),
 }))) !== JSON.stringify(initialItemSnapshot())
 
-watch(() => JSON.stringify(form.items.map(item => [
-  item.id,item.product_id,item.sku,item.product_summary,item.quantity,item.unit_price,
-])), () => { amendmentPreview.value = null; amendmentPreviewError.value = ''; multiReplanApproved.value = false; multiWarehouseByIndex.value = {} })
-
 const cancelEdit = () => {
   form.reset()
   Object.assign(form, makeFormData())
   form.clearErrors()
-  amendmentPreview.value = null
-  amendmentPreviewError.value = ''
-  amendmentReplanApproved.value = false
-  multiReplanApproved.value = false
-  multiWarehouseByIndex.value = {}
   editMode.value = false
 }
 
@@ -547,18 +367,8 @@ const submit = () => {
     return
   }
   const itemsChanged = hasItemChanges()
-  if (itemsChanged && !amendmentPreview.value) {
-    publishGlobalFeedback({state:'BLOCKED',title:'请先检查商品变更',
-      message:'保存前请执行 SKU、库存和发货仓库影响预检。'})
-    return
-  }
-  if (itemsChanged && !amendmentPreview.value?.can_save_direct) {
-    publishGlobalFeedback({state:'BLOCKED',title:'订单尚不能直接变更',
-      message:amendmentPreview.value?.issues[0] ?? '当前商品关联的分仓或库存状态尚未完成审核。'})
-    return
-  }
   form.transform(data => {
-    if (itemsChanged) return { ...data, expected_revision: amendmentPreview.value?.expected_revision ?? null }
+    if (itemsChanged) return data
     const { items: _unchangedItems, ...otherFields } = data
     return otherFields
   }).patch(`${basePath.value}/${props.order.id}`, {
@@ -1274,7 +1084,7 @@ onBeforeUnmount(() => {
           <div>
             <p class="ord-kicker">{{ displayedOrderKind }}</p>
             <h1 class="erp-form-title">{{ order.erp_order_id ?? '—' }}</h1>
-            <p v-if="editMode" class="erp-form-subtitle">{{ isDerivedOrder ? '子订单仅编辑收件与地址；SKU、金额及履约信息保持不变。' : '仅修改允许编辑的字段；商品变更须通过库存与分仓影响预检。' }}</p>
+            <p v-if="editMode" class="erp-form-subtitle">{{ isDerivedOrder ? '子订单仅编辑收件与地址；SKU、金额及履约信息保持不变。' : '人工确认后可直接保存商品变更。' }}</p>
           </div>
           <div class="erp-form-header-actions page-header-actions">
             <div class="ord-adjacent-navigation" role="group" aria-label="订单快速切换">
@@ -1757,7 +1567,7 @@ onBeforeUnmount(() => {
           </div>
           <!-- Edit mode: stable item IDs, SKU variant selection and explicit add/remove. -->
           <template v-else>
-            <p class="ord-item-amendment-info">修改的是 ERP 实际发货方案。已经发货的商品不能覆盖历史；已预留的库存必须经过原子重规划。</p>
+            <p class="ord-item-amendment-info">修改的是 ERP 实际发货方案。人工确认后直接保存，不需要库存预检。</p>
             <p v-if="order.source_type === 'woocommerce'" class="ord-item-amendment-info">Woo 原订单付款及商品交易记录保持不变；仅 ERP 的 SKU、数量、颜色、赠品和发货仓库发生变化。</p>
             <p v-if="(form.errors as Record<string,string>).items" class="erp-field-error" role="alert">{{ (form.errors as Record<string,string>).items }}</p>
             <div v-for="(item, index) in form.items" :key="item.id ?? `new-${index}`" class="ord-item-row">
@@ -1795,80 +1605,6 @@ onBeforeUnmount(() => {
               <textarea v-model="form.amendment_reason" class="erp-textarea" rows="2" placeholder="填写客户同意升级产品或赠品的具体依据"/>
               <p v-if="form.errors.amendment_reason" class="erp-field-error">{{ form.errors.amendment_reason }}</p>
             </label>
-            <div class="ord-amendment-actions">
-              <button type="button" class="erp-btn erp-btn-secondary" :disabled="amendmentPreviewLoading" @click="previewItemAmendment">
-                {{ amendmentPreviewLoading ? '正在核对…' : '检查 SKU、库存与分仓影响' }}
-              </button>
-              <small>只读预检，不会修改订单、库存或发货状态。</small>
-            </div>
-            <p v-if="amendmentPreviewError" class="erp-field-error" role="alert">{{ amendmentPreviewError }}</p>
-            <section v-if="amendmentPreview" class="ord-amendment-preview" aria-label="订单商品变更预检结果">
-              <strong>{{ amendmentPreview.can_save_direct ? '预检：可保存商品变更' : '预检：暂不能直接保存商品变更' }}</strong>
-              <p v-if="amendmentPreview.fulfillment_only">仅调整 ERP 实际发货，不修改官网订单、客户付款、退款或原销售收入。</p>
-              <p>商品金额（{{ amendmentPreview.currency }}）：{{ amendmentPreview.old_items_gross }} → {{ amendmentPreview.new_items_gross }}（差额 {{ amendmentPreview.gross_delta }}）。不代表最终应收/退款金额。</p>
-              <p v-for="(issue,i) in amendmentPreview.issues" :key="i" class="erp-field-error" role="alert">{{ issue }}</p>
-              <div v-for="(row,i) in amendmentPreview.rows.filter(row => row.operation !== 'unchanged')" :key="i" class="ord-amendment-diff">
-                {{ row.operation === 'add' ? '增加' : row.operation === 'remove' ? '移除' : '更换' }}：
-                {{ row.before?.sku || '—' }} × {{ row.before?.quantity ?? 0 }} → {{ row.after?.sku || '—' }} × {{ row.after?.quantity ?? 0 }}
-              </div>
-              <strong>单仓当前库存核对</strong>
-              <p v-for="wh in amendmentPreview.stock_by_warehouse" :key="wh.warehouse_id">
-                {{ wh.warehouse_name }}：{{ wh.single_warehouse_candidate ? '全部 SKU 当前库存满足' : '存在缺货、未确认库存或不支持自动分配' }}
-              </p>
-              <small>{{ amendmentPreview.inventory_note }}</small>
-              <div v-if="amendmentPreview.can_atomic_multi_replan && canEditOrder && canOperateLogistics" class="ord-replan-approval ord-multi-replan-approval">
-                <strong>A5-B 多仓库存原子重规划</strong>
-                <p>逐条重新指定仓库，全部子订单库存会在同一事务内释放并重新预留。已发货及已扣减商品不能走此流程。</p>
-                <label v-for="(item,index) in form.items" :key="item.id ?? `new-${index}`" class="erp-form-label">
-                  商品 {{ index + 1 }} · {{ item.sku }} × {{ item.quantity }} 发货仓
-                  <select v-model="multiWarehouseByIndex[index]" class="erp-select" :aria-label="`商品 ${index + 1} 发货仓`">
-                    <option value="">请选择新仓库</option>
-                    <option v-for="wh in amendmentPreview.stock_by_warehouse" :key="wh.warehouse_id"
-                      :value="wh.warehouse_code" :disabled="!multiRowStockAvailable(index, wh.warehouse_code)">
-                      {{ wh.warehouse_name }} — {{ multiRowStockAvailable(index, wh.warehouse_code) ? '当前库存可选' : '该 SKU 库存不足/未知' }}
-                    </option>
-                  </select>
-                </label>
-                <p v-if="!multiAssignmentsReady">请为所有商品选择仓库，且本次必须至少使用两个不同的仓库。</p>
-                <label class="erp-form-label">客户变更原因
-                  <textarea v-model="multiReplanReason" class="erp-textarea" rows="2"
-                    placeholder="填写与客户核实的 SKU、颜色、数量及赠品变更依据" />
-                </label>
-                <label class="ord-replan-consent">
-                  <input v-model="multiReplanApproved" type="checkbox">
-                  我已核对每条商品与发货仓，并授权整笔多仓库存重规划。
-                </label>
-                <button type="button" class="erp-btn erp-btn-primary"
-                  :disabled="multiReplanSaving || !multiReplanApproved || !multiAssignmentsReady || multiReplanReason.trim().length < 4"
-                  @click="commitMultiWarehouseReplan">
-                  {{ multiReplanSaving ? '正在原子提交所有仓库…' : '确认多仓修改并重新预留库存' }}
-                </button>
-              </div>
-              <div v-if="amendmentPreview.can_atomic_single_replan && canEditOrder && canOperateLogistics" class="ord-replan-approval">
-                <strong>A5 单仓库存原子重规划</strong>
-                <p>此操作只调整订单商品、待发货分仓和库存预留；不会发货，也不会自动修改 Woo 或收退款。</p>
-                <label class="erp-form-label">新的发货仓库
-                  <select v-model="amendmentReplanWarehouse" class="erp-select">
-                    <option value="">请明确选择目标仓库</option>
-                    <option v-for="wh in amendmentPreview.stock_by_warehouse.filter(w => w.single_warehouse_candidate)"
-                      :key="wh.warehouse_id" :value="wh.warehouse_code">{{ wh.warehouse_name }}</option>
-                  </select>
-                </label>
-                <label class="erp-form-label">商品变更原因
-                  <textarea v-model="amendmentReplanReason" class="erp-textarea" rows="2"
-                    placeholder="填写与客户沟通后的具体 SKU、颜色或数量调整原因" />
-                </label>
-                <label class="ord-replan-consent">
-                  <input v-model="amendmentReplanApproved" type="checkbox">
-                  我已确认客户修改要求，允许一次性释放旧预留并在所选仓库重新预留。
-                </label>
-                <button type="button" class="erp-btn erp-btn-primary"
-                  :disabled="amendmentReplanSaving || !amendmentReplanApproved || !amendmentReplanWarehouse || amendmentReplanReason.trim().length < 4"
-                  @click="commitAtomicReplan">
-                  {{ amendmentReplanSaving ? '正在原子提交…' : '确认商品变更并重新预留库存' }}
-                </button>
-              </div>
-            </section>
           </template>
         </div>
 

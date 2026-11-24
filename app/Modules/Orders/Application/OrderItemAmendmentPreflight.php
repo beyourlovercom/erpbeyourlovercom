@@ -4,6 +4,7 @@ namespace App\Modules\Orders\Application;
 
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
+use Illuminate\Support\Facades\DB;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 
@@ -12,7 +13,7 @@ final class OrderItemAmendmentPreflight
     public function __construct(private readonly InventoryAvailabilityReader $availability) {}
 
     /** @param array<int, array<string, mixed>> $items */
-    public function preview(Order $order, array $items): array
+    public function preview(Order $order, array $items, bool $includeStock = true): array
     {
         $old = $order->items()->orderBy('id')->get();
         $oldById = $old->keyBy('id');
@@ -64,21 +65,34 @@ final class OrderItemAmendmentPreflight
         if ($changed && $isWoo && $oldCents !== $newCents) {
             $issues[] = 'Woo 原订单金额必须保持不变：请把拆分后各商品单价调整为原商品金额总和，不改变客户付款。';
         }
-        $reserved = InventoryReservation::query()
-            ->where('order_id', $order->id)->whereIn('status', ['reserved', 'committed'])->exists();
-        $hasLogistics = $order->shipment()->exists()
-            || $order->fulfillmentChildren()->exists()
-            || $order->fulfillmentAllocation()->exists()
-            || $reserved;
-        if ($changed && $hasLogistics) {
-            $issues[] = '订单已有分仓、发货或库存预留记录，不能直接覆盖商品；需先通过受控库存重规划处理。';
+        // Staff product edits do not need stock approval. Protect only already
+        // executed fulfillment and split orders whose physical rows differ.
+        if ($changed) {
+            $shipment = $order->shipment;
+            $committed = InventoryReservation::query()
+                ->where('order_id', $order->id)->where('status', 'committed')->exists();
+            $dispatched = DB::table('warehouse_dispatch_states')->where('order_id', $order->id)
+                ->whereNotNull('provider_order_no')->exists()
+                || DB::table('shipout_dispatch_attempts')->where('order_id', $order->id)
+                    ->whereNotNull('provider_order_id')->exists()
+                || DB::table('xlwms_dispatch_attempts')->where('order_id', $order->id)
+                    ->whereNotNull('oms_order_no')->exists()
+                || DB::table('xlwms_web_draft_attempts')->where('order_id', $order->id)
+                    ->whereNotNull('oms_order_no')->exists();
+            if ($order->order_status !== OrderStatus::PendingShipment || $committed || $dispatched
+                || ($shipment && ($shipment->shipment_status !== 'pending' || $shipment->shipped_at !== null))) {
+                $issues[] = '已执行的发货或仓库订单不能直接覆盖历史商品。';
+            }
+            if ($order->originalFulfillmentChildren()->exists()) {
+                $issues[] = '多仓拆单已有独立履约明细，不能直接覆盖母单商品。';
+            }
         }
         if ($changed && $order->isOperationallyArchived()) {
             $issues[] = '订单已归档，不能修改商品。';
         }
         $warehouses = [];
         $stockNote = '库存按仓库当前快照显示；预检不占用、不释放任何库存。';
-        if ($changed && $issues === []) {
+        if ($includeStock && $changed && $issues === []) {
             $availability = $this->availability->forProductIds(array_values(array_unique(array_map('intval', array_column($items, 'product_id')))));
             foreach ($this->availability->activeWarehouses() as $warehouse) {
                 $details = [];
@@ -102,7 +116,7 @@ final class OrderItemAmendmentPreflight
 
         return [
             'changed' => $changed, 'fulfillment_only' => $isWoo,
-            'can_save_direct' => $issues === [], 'requires_replan' => $changed && $hasLogistics,
+            'can_save_direct' => $issues === [], 'requires_replan' => false,
             'can_atomic_single_replan' => false, 'can_atomic_multi_replan' => false,
             'expected_revision' => hash('sha256', $old->map(fn ($item) => $item->only(['id', 'product_id', 'quantity', 'unit_price', 'product_summary']))->toJson()),
             'no_writes' => true, 'currency' => $order->currency ?? 'USD',

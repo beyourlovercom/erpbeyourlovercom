@@ -530,6 +530,16 @@ final class ShipmentService
         return DB::transaction($callback);
     }
 
+    /** Refresh draft packaging only for changed product identities. */
+    public function refreshAmendedItemPackaging(Model $order, Model $shipment, array $changedIds): void
+    {
+        if ($changedIds !== []) {
+            ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->getKey())
+                ->whereIn('order_item_id', $changedIds)->delete();
+        }
+        $this->syncPackagingSnapshots($order->fresh('items'), $shipment);
+    }
+
     private function syncPackagingSnapshots(Model $order, Model $shipment): void
     {
         $order->loadMissing('items');
