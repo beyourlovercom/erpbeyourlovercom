@@ -304,6 +304,33 @@ final class DeTianyunOutboundBatchTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_de_dhl_international_maps_native_code_without_changing_erp_service_or_bypassing_gate(): void
+    {
+        $operator = $this->operator();
+        $order = $this->order($operator, 'DHL-INTERNATIONAL');
+        $service = CarrierService::query()->firstOrCreate(
+            ['carrier_id' => $order->shipment->carrierService->carrier_id, 'service_key' => 'paket_international'],
+            ['service_value' => 'DHL PAKET International', 'is_active' => true],
+        );
+        $order->shipment()->update(['carrier_service_id' => $service->id, 'service' => 'DHL PAKET International']);
+        $order->address()->update(['country' => 'SK']);
+        $preview = app(\App\Modules\Logistics\Application\Xlwms\SingleOrderPreview::class);
+        $blocked = $preview->forOrder($order->fresh(), false, false, 'DE');
+        self::assertSame('DHL PAKET International N', $blocked['payload']['logisticsChannel']);
+        self::assertContains('DE_OMS_CHANNEL_NOT_VERIFIED', $blocked['blockers']);
+        config()->set('xlwms.de_verified_channel_codes', ['DHL PAKET DOMESTIC', 'DHL PAKET International N']);
+        $ready = $preview->forOrder($order->fresh(), false, false, 'DE');
+        self::assertSame('DHL PAKET International N', $ready['payload']['logisticsChannel']);
+        self::assertNotContains('DE_OMS_CHANNEL_NOT_VERIFIED', $ready['blockers']);
+        self::assertSame('DHL PAKET International', $order->fresh()->shipment->service);
+        self::assertSame('DHL PAKET International', $service->fresh()->service_value);
+        $other = $this->order($operator, 'DHL-NON-DE', 'US-MOREPLUS');
+        $other->shipment()->update(['carrier_service_id' => $service->id, 'service' => 'DHL PAKET International']);
+        $otherPreview = $preview->forOrder($other->fresh(), false, false, 'US-MOREPLUS');
+        self::assertSame('DHL PAKET International', $otherPreview['payload']['logisticsChannel']);
+        Http::assertNothingSent();
+    }
+
     public function test_stale_address_and_unverified_channel_are_fail_closed(): void
     {
         $operator = $this->operator();
