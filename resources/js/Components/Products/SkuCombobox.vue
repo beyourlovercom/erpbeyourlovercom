@@ -3,7 +3,7 @@ import { onUnmounted, ref, watch } from 'vue'
 
 type SkuOption = { id: number; sku: string; name: string; matched_alias?: string | null }
 
-const props = defineProps<{ modelValue: string; productId?: number | null }>()
+const props = defineProps<{ modelValue: string; productId?: number | null; searchHint?: string }>()
 const emit = defineEmits<{ 'update:modelValue': [string]; 'update:productId': [number | null] }>()
 
 const inputValue = ref(props.modelValue)
@@ -61,6 +61,16 @@ const scheduleFetch = (query: string) => {
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => fetchOptions(query), 180)
 }
+
+// Candidate text is not a selected SKU. Only the existing select action emits IDs.
+watch(() => props.searchHint, hint => {
+  if (!hint || props.modelValue || props.productId) return
+  inputValue.value=hint
+  options.value=[]
+  activeIndex.value=-1
+  requestSequence++
+  scheduleFetch(hint)
+}, {immediate:true})
 
 const onFocus = () => {
   clearTimeout(blurTimer)

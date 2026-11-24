@@ -7,8 +7,11 @@ const props = defineProps<{
   initialOption?: KolOption | null
   hasError?: boolean
   required?: boolean
+  searchHint?: string
+  canOnboard?: boolean
+  onboardingBusy?: boolean
 }>()
-const emit = defineEmits<{ 'update:modelValue': [number | null] }>()
+const emit = defineEmits<{ 'update:modelValue': [number | null]; 'search-term':[string]; 'create-new':[string]; 'selected':[KolOption|null] }>()
 
 const initial = props.initialOption?.value === props.modelValue ? props.initialOption : null
 const chosen = ref<KolOption | null>(initial)
@@ -54,7 +57,7 @@ onUnmounted(() => {
 })
 
 
-const search = async (term: string) => {
+const search = async (term: string, autoMatch = false) => {
   const current = ++sequence
   cancelActiveSearch()
   const controller = new AbortController()
@@ -77,6 +80,11 @@ const search = async (term: string) => {
     if (!Array.isArray(data)) throw new Error('网红查询返回的数据无效')
     if (!mounted || current !== sequence) return
     results.value = data as KolOption[]
+    if(autoMatch&&results.value.length===1&&results.value[0].account?.replace(/^@/,'').toLowerCase()===term.trim().replace(/^@/,'').toLowerCase()){
+      loading.value=false
+      choose(results.value[0])
+      return
+    }
     activeIndex.value = results.value.length > 0 ? 0 : -1
   } catch (error) {
     if (controller.signal.aborted || !mounted || current !== sequence) return
@@ -90,9 +98,9 @@ const search = async (term: string) => {
   }
 }
 
-const scheduleSearch = (term: string) => {
+const scheduleSearch = (term: string, autoMatch = false) => {
   clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => { void search(term) }, 200)
+  debounceTimer = setTimeout(() => { void search(term,autoMatch) }, 200)
 }
 
 const onFocus = () => {
@@ -103,18 +111,33 @@ const onFocus = () => {
 
 const onInput = (event: Event) => {
   inputValue.value = (event.target as HTMLInputElement).value
+  emit('search-term',inputValue.value)
   // Invalidate even an in-flight focus lookup before the debounce timer fires.
   sequence++
   cancelActiveSearch()
   loading.value = true
   errorMessage.value = ''
   chosen.value = null
+  emit('selected',null)
   emit('update:modelValue', null)
   results.value = []
   activeIndex.value = -1
   open.value = true
   scheduleSearch(inputValue.value)
 }
+
+watch(() => props.searchHint, value => {
+  if (!value || chosen.value || props.modelValue !== null) return
+  inputValue.value=value
+  sequence++
+  cancelActiveSearch()
+  results.value=[]
+  activeIndex.value=-1
+  loading.value=true
+  errorMessage.value=''
+  open.value=true
+  scheduleSearch(value,true)
+})
 
 const choose = (option: KolOption) => {
   sequence++
@@ -124,8 +147,11 @@ const choose = (option: KolOption) => {
   inputValue.value = option.label
   results.value = []
   open.value = false
+  emit('selected',option)
   emit('update:modelValue', option.value)
 }
+
+const onCreateFocus = () => { clearTimeout(blurTimer) }
 
 const onBlur = () => {
   blurTimer = setTimeout(() => { open.value = false }, 150)
@@ -185,7 +211,10 @@ const onKeydown = (event: KeyboardEvent) => {
     <ul v-if="open" id="kol-identity-results" class="kol-identity-results" role="listbox">
       <li v-if="loading" class="kol-identity-state" aria-live="polite">正在搜索网红…</li>
       <li v-else-if="errorMessage" class="kol-identity-state" role="alert">{{ errorMessage }}</li>
-      <li v-else-if="results.length === 0" class="kol-identity-state">没有匹配的网红档案</li>
+      <li v-else-if="results.length === 0" class="kol-identity-state">
+        没有匹配的网红档案
+        <button v-if="canOnboard && inputValue.trim() && !modelValue" type="button" class="erp-btn erp-btn-secondary kol-create-missing" data-testid="kol-onboarding-start" :disabled="onboardingBusy" @mousedown.prevent @focus="onCreateFocus" @click="emit('create-new',inputValue.trim())">{{onboardingBusy?'保存草稿中…':'先创建网红'}}</button>
+      </li>
       <li
         v-for="(item, index) in loading || errorMessage ? [] : results"
         :id="'kol-result-' + item.value"
@@ -216,4 +245,5 @@ const onKeydown = (event: KeyboardEvent) => {
 .kol-identity-option strong { color: #142126; font-size: 14px; }
 .kol-identity-option small, .kol-identity-state { color: #7a8c94; font-size: 12px; }
 .kol-identity-state { padding: 12px; }
+.kol-create-missing { display: block; margin-top: 8px; width: 100%; }
 </style>

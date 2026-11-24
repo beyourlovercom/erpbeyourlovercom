@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
-import { computed, ref, watch, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { useWorkspaceDraftGuard } from '../../Composables/useWorkspaceDraftGuard'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 import RecipientCustomsField from '../../Components/RecipientCustomsField.vue'
+import KolSmartInput from '../../Components/Kol/KolSmartInput.vue'
+import type { QuickOrderDraft } from '../../lib/kol/kolQuickOrderParser'
 import { plusThreeYears, localTodayDate } from './couponExpiryDate'
 
 type OwnerOption = { value: number; label: string }
@@ -22,6 +24,8 @@ const languageOptions = [
 
 const props = withDefaults(defineProps<{
   ownerOptions: OwnerOption[]
+  onboardingToken?: string|null
+  onboardingSmartDraft?: QuickOrderDraft|null
   approvalManagerOptions?: OwnerOption[]
   financeOwnerOptions?: OwnerOption[]
   currentUserId: number
@@ -29,6 +33,7 @@ const props = withDefaults(defineProps<{
 }>(), { approvalManagerOptions: () => [], financeOwnerOptions: () => [] })
 
 const form = useForm({
+  onboarding_token: props.onboardingToken ?? null,
   display_name: '',
   country_code: '',
   language: 'en',
@@ -153,6 +158,41 @@ watch(() => form.display_name, (value) => {
   }
 })
 
+const smartProductHint = ref('')
+const smartWarning = ref('')
+const applySmartDraft = (draft: QuickOrderDraft) => {
+  const account = draft.social_accounts.length === 1 ? draft.social_accounts[0] : undefined
+  const handle = account?.handle ?? draft.username_hint
+  smartWarning.value=''
+  if ((handle && form.wordpress_username && handle.toLowerCase()!==form.wordpress_username.toLowerCase()) ||
+      (draft.social_accounts.length>1 && !form.wordpress_username)) {
+    smartWarning.value='账号存在冲突或多个候选，未自动填充；请先核对网红身份。'
+    return
+  }
+  if (!form.wordpress_username && !form.display_name && handle) form.display_name = handle
+  if (!form.wordpress_username && handle) form.wordpress_username = handle
+  if (!form.kol_profile_url && account) form.kol_profile_url = account.profile_url
+  for (const item of draft.social_accounts) {
+    const existing = form.social_accounts.find(a => a.platform === item.platform && !a.handle && !a.profile_url)
+    const value = { platform: item.platform, handle: item.handle, profile_url: item.profile_url, is_active: true, followers: item.followers === undefined ? '' : String(item.followers), raw_followers_value: '' }
+    if (form.social_accounts.some(a => a.platform === item.platform && a.handle === item.handle)) continue
+    if (existing) Object.assign(existing, value)
+    else form.social_accounts.push(value)
+  }
+  const fields = { recipient_name:'shipping_recipient_name', country:'shipping_country', province_state:'shipping_province_state', city:'shipping_city', address_line_1:'shipping_address_line_1', address_line_2:'shipping_address_line_2', postal_code:'shipping_postal_code', email:'contact_email', phone:'contact_phone', coupon_code:'affiliate_coupon_code' } as const
+  const oldCountry=form.shipping_country
+  for (const [source,target] of Object.entries(fields) as [keyof typeof fields, typeof fields[keyof typeof fields]][]) {
+    const value=draft[source]
+    if (value && !form[target]) form[target]=value
+  }
+  if (draft.recipient_customs_id && draft.country && (!oldCountry || oldCountry===draft.country) && !form.shipping_customs_id) form.shipping_customs_id=draft.recipient_customs_id
+  smartProductHint.value=draft.product_hint ?? ''
+  if (duplicateTimer) clearTimeout(duplicateTimer)
+  void checkDuplicate()
+}
+
+onMounted(()=>{if(props.onboardingSmartDraft)applySmartDraft({...props.onboardingSmartDraft,social_accounts:props.onboardingSmartDraft.social_accounts??[],unparsed:[]})})
+
 const addSocialAccount = () => {
   form.social_accounts.push({ platform: 'instagram', handle: '', profile_url: '', is_active: true, followers: '', raw_followers_value: '' })
 }
@@ -240,6 +280,16 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
         </section>
 
         <form id="kol-create-form" @submit.prevent="submit">
+          <p v-if="onboardingToken" data-testid="kol-onboarding-resume" role="status">订单草稿已保留。创建网红并完成开户后返回订单，仍需确认收件地址及商品。</p>
+          <KolSmartInput @apply="applySmartDraft" />
+          <section v-if="duplicate.exists" data-testid="kol-duplicate-warning" class="erp-form-card" role="status">
+            <h2 class="erp-form-card-title">已有网红档案</h2>
+            <p>已经存在这个网红，是否重复创建账号？请使用已有档案。</p>
+            <a v-if="duplicate.existing_url" class="erp-btn erp-btn-primary" :href="duplicate.existing_url + (props.onboardingToken ? '?onboarding_token='+encodeURIComponent(props.onboardingToken) : '')">打开网红档案</a>
+            <p v-else class="erp-form-helper">该档案不在你的查看权限内，请联系负责人。</p>
+          </section>
+          <p v-if="smartWarning" role="alert" data-testid="kol-smart-warning">{{smartWarning}}</p>
+          <p v-if="smartProductHint" data-testid="kol-smart-product-hint">产品候选：{{ smartProductHint }}（请在产品选择器核对 SKU）</p>
 
           <!-- Card 1: 基本信息 -->
           <div class="erp-form-card">
@@ -385,10 +435,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <input v-model="form.wordpress_username" type="text" autocomplete="username" class="erp-input" :class="{ 'has-error': form.errors.wordpress_username }" required placeholder="网红用户名，可修改" @input="usernameManuallyEdited = true">
                 <p v-if="form.errors.wordpress_username" class="erp-field-error">{{ form.errors.wordpress_username }}</p>
                 <p v-if="duplicateChecking" class="erp-form-helper">正在检查是否已有相同网红…</p>
-                <div v-if="duplicate.exists" data-testid="kol-duplicate-warning" class="erp-field-error" role="alert">
-                  已经存在这个网红，是否重复创建账号？系统已拦截，请核对已有档案，不允许直接重复开户。
-                  <a v-if="duplicate.existing_url" :href="duplicate.existing_url">查看已有网红</a>
-                </div>
+
                 <p v-if="duplicateUnavailable" class="erp-field-error" role="alert">暂时无法检查网红是否重复，已停止创建，请稍后重试。</p>
               </div>
               <div class="erp-form-field">
@@ -506,7 +553,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">主推产品</label>
-                <SkuCombobox v-model="form.products" />
+                <SkuCombobox v-model="form.products" :search-hint="smartProductHint" />
                 <p v-if="form.errors.products" class="erp-field-error">{{ form.errors.products }}</p>
               </div>
               <div class="erp-form-field">

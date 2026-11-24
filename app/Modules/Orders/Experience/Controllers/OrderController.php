@@ -8,6 +8,7 @@ use App\Modules\Identity\Application\UserDirectory;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolScope;
+use App\Modules\Kol\Application\SmartInput\OnboardingDraft;
 use App\Modules\Kol\Application\RecipientCustomsPolicy;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
@@ -302,6 +303,9 @@ final class OrderController
             'kolOptions' => $kolOptions,
             'selectedKolId' => $selectedKolId,
             'selectedKolAddress' => $requestedKol ? $this->kolShippingData($requestedKol) : null,
+            'onboardingToken' => $requestedKol && OnboardingDraft::readForKol($request, $request->query('onboarding_token'), $requestedKolId) ? $request->query('onboarding_token') : null,
+            'resumeOrderDraft' => $requestedKol ? OnboardingDraft::readForKol($request, $request->query('onboarding_token'), $requestedKolId) : null,
+            'canOnboardKol' => $kind === OrderKind::KolFulfillment && $request->user()->can('kol.operate') && $request->user()->can('kol.view'),
         ]);
     }
 
@@ -312,6 +316,14 @@ final class OrderController
         // A new manually created KOL order must never use the legacy identity-less path.
         if ($kind === OrderKind::KolFulfillment) {
             abort_unless($request->user()->can('kol.view'), 403);
+        }
+        $token = $request->input('onboarding_token');
+        if ($kind === OrderKind::KolFulfillment && $token !== null) {
+            abort_unless(is_string($token) && OnboardingDraft::readForKol($request, $token, $request->integer('kol_id')), 422, '订单草稿已失效，请重新发起。');
+            $request->validate(['address_confirmed'=>['accepted']]);
+        }
+        if ($kind === OrderKind::KolFulfillment && $request->input('address_confirmed') !== null) {
+            $request->validate(['address_confirmed'=>['accepted']]);
         }
         $orderRules = $this->rules();
         if ($kind === OrderKind::KolFulfillment) {
@@ -334,7 +346,7 @@ final class OrderController
                     && RecipientCustomsPolicy::code($data['country']) !== RecipientCustomsPolicy::code($kol->shipping_country)) {
                     continue;
                 }
-                if (blank($data[$field] ?? null) && filled($value)) {
+                if (!$request->boolean('address_confirmed') && blank($data[$field] ?? null) && filled($value)) {
                     $data[$field] = $value;
                 }
             }
@@ -361,6 +373,7 @@ final class OrderController
         $data['currency'] ??= 'USD';
         $data['owner_id'] = $request->user()->getAuthIdentifier();
         $order = $this->orders->create($data, $items, $request->user());
+        if ($kind === OrderKind::KolFulfillment && is_string($token)) OnboardingDraft::forget($request);
 
         $routeName = $order->order_kind === OrderKind::KolFulfillment ? 'kol.orders.show' : 'customers.orders.show';
 

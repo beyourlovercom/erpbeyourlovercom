@@ -114,6 +114,47 @@ describe('KolIdentityCombobox', () => {
     expect(secondSignal.aborted).toBe(true)
   })
 
+  it('offers onboarding only after an empty successful lookup, inside the dropdown', async () => {
+    fetchMock.mockResolvedValue(response([]))
+    const wrapper=mount(KolIdentityCombobox,{props:{modelValue:null,canOnboard:true}})
+    await wrapper.get('input').setValue('demo_missing')
+    expect(wrapper.find('[data-testid="kol-onboarding-start"]').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(200)
+    await flushPromises()
+    const button=wrapper.get('[role="listbox"] [data-testid="kol-onboarding-start"]')
+    await button.trigger('click')
+    expect(wrapper.emitted('create-new')).toEqual([['demo_missing']])
+    fetchMock.mockResolvedValue(response([linked]))
+    await wrapper.get('input').setValue('Mary')
+    await vi.advanceTimersByTimeAsync(200)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="kol-onboarding-start"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('auto-selects only one exact account returned for pasted Username',async()=>{
+    fetchMock.mockResolvedValue(response([linked]))
+    const wrapper=mount(KolIdentityCombobox,{props:{modelValue:null,searchHint:''}})
+    await wrapper.setProps({searchHint:'mary_social'})
+    await vi.advanceTimersByTimeAsync(200)
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([1501])
+    expect(wrapper.get('input').element.value).toBe('Mary Creator')
+    wrapper.unmount()
+  })
+  it('requires manual selection for fuzzy or ambiguous account matches',async()=>{
+    for(const matches of [[linked],[linked,{...unbound,account:'mary_social'}]]){
+      fetchMock.mockResolvedValue(response(matches))
+      const wrapper=mount(KolIdentityCombobox,{props:{modelValue:null,searchHint:''}})
+      await wrapper.setProps({searchHint:matches.length===1?'mary':'mary_social'})
+      await vi.advanceTimersByTimeAsync(200)
+      await flushPromises()
+      expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+      expect(wrapper.findAll('[role="option"]')).toHaveLength(matches.length)
+      wrapper.unmount()
+    }
+  })
+
   it('shows authorization errors without exposing unrelated records', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 403 })
     const wrapper = mount(KolIdentityCombobox, { props: { modelValue: null } })

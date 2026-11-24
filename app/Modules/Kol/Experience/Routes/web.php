@@ -23,6 +23,9 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
     Route::get('/kol', KolOverviewController::class)->name('shell.kol');
     Route::get('/kol/overview', fn () => redirect()->route('shell.kol'))->name('kol.overview');
 
+    Route::post('/kol/smart-input/shape', \App\Modules\Kol\Experience\Controllers\KolSmartShapeController::class)->middleware('throttle:6,1')->name('kol.smart-input.shape');
+    Route::post('/kol/smart-input/fixture', \App\Modules\Kol\Experience\Controllers\KolSmartInputController::class)->middleware('throttle:6,1')->name('kol.smart-input.fixture');
+    Route::post('/kol/onboarding-draft', [\App\Modules\Kol\Experience\Controllers\KolOnboardingDraftController::class, 'store'])->middleware(['can:kol.operate','can:orders.create','throttle:12,1'])->name('kol.onboarding-draft.store');
     Route::get('/kol/library', [KolController::class, 'index'])->name('kol.library');
     Route::get('/kol/library/create', [KolController::class, 'create'])->middleware('can:kol.operate')->name('kol.library.create');
     Route::get('/kol/library/duplicate-check', [KolController::class, 'duplicateCheck'])->middleware(['can:kol.operate', 'throttle:60,1'])->name('kol.library.duplicate-check');
