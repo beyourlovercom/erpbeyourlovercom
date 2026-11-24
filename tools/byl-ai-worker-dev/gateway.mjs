@@ -7,12 +7,14 @@ import {spawn} from 'node:child_process';
 import {canonicalIdentity} from './identity.mjs';
 
 const ROOT = new URL('.',import.meta.url);
-const key=createPublicKey(readFileSync(new URL('client-public.pem',ROOT)));
+const testPort=process.env.BYL_AI_TEST_LOOPBACK_PORT;
+if(testPort && (!/^\d{4,5}$/.test(testPort)||Number(testPort)>65535||!process.env.BYL_AI_TEST_PUBLIC_KEY))throw new Error('invalid_loopback_test_config');
+const key=createPublicKey(readFileSync(testPort?process.env.BYL_AI_TEST_PUBLIC_KEY:new URL('client-public.pem',ROOT)));
 const fixtures=JSON.parse(readFileSync(new URL('fixtures.json',ROOT),'utf8'));
 const schema=JSON.parse(readFileSync(new URL('schema.json',ROOT),'utf8'));
 const allowed=new Set(fixtures.map(f=>f.text));
 const nonceCache=new Map();
-const peer='100.99.21.57', host='100.94.52.109', port=18765;
+const peer=testPort?'127.0.0.1':'100.99.21.57', host=testPort?'127.0.0.1':'100.94.52.109', port=testPort?Number(testPort):18765;
 const MAX_BODY=8192, MAX_ACTIVE=1, TIMEOUT=45000;
 let active=0;
 function reply(res,status,data){if(!res.destroyed){res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'});res.end(JSON.stringify(data));}}

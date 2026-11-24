@@ -17,3 +17,14 @@ describe('KOL quick order text parser', () => {
     expect(parseKolQuickOrder('Country: Mexico')).toEqual({ country: 'Mexico', social_accounts: [], unparsed: [] })
   })
 })
+
+describe('real-source format regressions',()=>{
+ it('extracts standalone email and recorded alias fields without guessing customs IDs',()=>{
+  const d=parseKolQuickOrder('Full Name:\nDemo Person\nAddress Street: 10 Demo Road\nZipcode: 00123\nContact Phone: 001555\ndemo@example.com\nTax Number: SYNTHETIC-ID')
+  expect(d).toMatchObject({recipient_name:'Demo Person',address_line_1:'10 Demo Road',postal_code:'00123',phone:'001555',email:'demo@example.com',recipient_customs_id:'SYNTHETIC-ID'})
+ })
+ it('leaves standalone and labeled conflicting emails unresolved',()=>{
+  const d=parseKolQuickOrder('Email: first@example.com\nsecond@example.com')
+  expect(d.email).toBeUndefined()
+ })
+})

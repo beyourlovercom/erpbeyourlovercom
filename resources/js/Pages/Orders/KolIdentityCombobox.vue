@@ -9,7 +9,7 @@ const props = defineProps<{
   required?: boolean
   searchHint?: string
 }>()
-const emit = defineEmits<{ 'update:modelValue': [number | null] }>()
+const emit = defineEmits<{ 'update:modelValue': [number | null]; 'search-term':[string] }>()
 
 const initial = props.initialOption?.value === props.modelValue ? props.initialOption : null
 const chosen = ref<KolOption | null>(initial)
@@ -104,6 +104,7 @@ const onFocus = () => {
 
 const onInput = (event: Event) => {
   inputValue.value = (event.target as HTMLInputElement).value
+  emit('search-term',inputValue.value)
   // Invalidate even an in-flight focus lookup before the debounce timer fires.
   sequence++
   cancelActiveSearch()

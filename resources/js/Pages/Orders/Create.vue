@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3'
+import { Head, router, useForm } from '@inertiajs/vue3'
 import { ref, computed, watch } from 'vue'
 import axios from 'axios'
 
@@ -26,6 +26,10 @@ type KolAddress = { recipient_customs_id?: string | null; recipient_name: string
 
 const props = defineProps<{
   defaultOrderKind: string
+  smartAiFixtures?: {id:string;text:string}[]
+  onboardingToken?: string|null
+  resumeOrderDraft?: {smart:QuickOrderDraft;order?:{order_date?:string;order_note?:string;currency?:string;items?:OrderItem[]}}|null
+  canOnboardKol?: boolean
   orderKindLabel: string
   generatedExternalOrderNumber: string
   kolOptions?: { value: number; label: string; account?: string | null }[]
@@ -43,6 +47,8 @@ type OrderItem = {
 
 const form = useForm<{
   external_order_number: string
+  onboarding_token: string|null
+  address_confirmed: boolean|null
   kol_id: number | null
   order_date: string
   order_note: string
@@ -60,10 +66,12 @@ const form = useForm<{
   items: OrderItem[]
 }>({
   external_order_number: props.generatedExternalOrderNumber,
+  onboarding_token: props.onboardingToken ?? null,
+  address_confirmed: null,
   kol_id: props.defaultOrderKind === 'kol_fulfillment' ? (props.selectedKolId ?? null) : null,
-  order_date: props.defaultOrderKind === 'kol_fulfillment' ? '' : new Date().toISOString().slice(0, 10),
-  order_note: '',
-  currency: 'USD',
+  order_date: props.resumeOrderDraft?.order?.order_date ?? (props.defaultOrderKind === 'kol_fulfillment' ? '' : new Date().toISOString().slice(0, 10)),
+  order_note: props.resumeOrderDraft?.order?.order_note ?? '',
+  currency: props.resumeOrderDraft?.order?.currency ?? 'USD',
   recipient_name: '',
   phone: '',
   email: '',
@@ -74,7 +82,7 @@ const form = useForm<{
   address_line_1: '',
   address_line_2: '',
   postal_code: '',
-  items: [{ product_summary: '', sku: '', product_id: null, quantity: 1, unit_price: '0.00' }],
+  items: props.resumeOrderDraft?.order?.items?.length ? props.resumeOrderDraft.order.items.map(i=>({...i,unit_price:String(i.unit_price??'0.00')})) : [{ product_summary: '', sku: '', product_id: null, quantity: 1, unit_price: '0.00' }],
 })
 
 // Every KOL selection uses its saved shipping/contact details; never reuse the former KOL address.
@@ -115,13 +123,30 @@ watch(() => form.kol_id, async kolId => {
   }
 }, { immediate: true })
 
-const smartDraft = ref<QuickOrderDraft|null>(null)
+const smartDraft = ref<QuickOrderDraft|null>(props.resumeOrderDraft?.smart ? {...props.resumeOrderDraft.smart,social_accounts:props.resumeOrderDraft.smart.social_accounts??[],unparsed:[]} : null)
 const smartSearch = ref('')
+const manualSearch=ref('')
+const draftSaving=ref(false)
 const smartAddressConfirmed = ref(false)
 const applySmartDraft = (draft: QuickOrderDraft) => {
   smartDraft.value=draft
   smartSearch.value=draft.social_accounts.length===1 ? draft.social_accounts[0].handle : draft.username_hint ?? ''
   smartAddressConfirmed.value=false
+}
+const startOnboarding = () => {
+  if(form.kol_id || draftSaving.value || !props.canOnboardKol)return
+  const draft=smartDraft.value
+  const {unparsed: _ignored,...smart}=draft??{social_accounts:[],unparsed:[]}
+  const username=smartSearch.value || manualSearch.value.trim()
+  if(!username && !smart.social_accounts.length)return
+  // Retain manual order input too; no raw text or password enters the draft.
+  const shipping={...smart}
+  for(const field of addressFields)if(form[field])shipping[field]=form[field]
+  draftSaving.value=true
+  router.post('/kol/onboarding-draft',{
+    smart:{...shipping,username_hint:smart.username_hint??username},
+    order:{order_date:form.order_date||null,order_note:form.order_note,currency:form.currency,items:form.items},
+  },{onFinish:()=>{draftSaving.value=false}})
 }
 const applySmartAddress = () => {
   const draft=smartDraft.value
@@ -198,10 +223,11 @@ const validationFeedback = (errors: Record<string, string>) => {
 }
 
 const submit = () => {
-  if (isKol.value && smartDraft.value && (!form.kol_id || addressLoading.value || !smartAddressConfirmed.value)) {
+  if (isKol.value && (!form.kol_id || addressLoading.value || !smartAddressConfirmed.value)) {
     publishGlobalFeedback({state:'BLOCKED',title:'请确认收件信息',message:'请先关联已有网红并核对本次收件地址。'})
     return
   }
+  form.address_confirmed = isKol.value ? smartAddressConfirmed.value : null
   form.post(isKol.value ? '/kol/orders' : '/customers/orders', {
     onStart: () => publishGlobalFeedback({
       state: 'SUBMITTING',
@@ -234,13 +260,12 @@ const submit = () => {
         </div>
 
         <form id="order-create-form" @submit.prevent="submit">
-          <KolSmartInput v-if="isKol" @apply="applySmartDraft" />
+          <KolSmartInput v-if="isKol" :ai-fixtures="smartAiFixtures" @apply="applySmartDraft" />
           <section v-if="isKol && smartDraft" class="erp-form-card" data-testid="kol-smart-order-review">
             <p v-if="smartSearch">识别 Username：{{smartSearch}}。请在下方检索并选择网红；不存在时先创建网红。</p>
             <p v-if="smartDraft.product_hint">产品候选：{{smartDraft.product_hint}}（请手动核对 SKU）</p>
             <p v-if="smartDraft.coupon_code">折扣码：{{smartDraft.coupon_code}}（请核对网红档案）</p>
             <button type="button" class="erp-btn erp-btn-secondary" :disabled="!form.kol_id || addressLoading" data-testid="kol-smart-address-apply" @click="applySmartAddress">采用粘贴的收件信息</button>
-            <label><input type="checkbox" v-model="smartAddressConfirmed" :disabled="!form.kol_id || addressLoading" data-testid="kol-smart-address-confirm"> 已核对本次收件信息（下方表单）</label>
           </section>
 
           <!-- Card 1: 订单信息 -->
@@ -261,10 +286,11 @@ const submit = () => {
                   v-model="form.kol_id"
                   :initial-option="(kolOptions ?? []).find(item => item.value === form.kol_id) ?? null"
                   :has-error="Boolean(form.errors.kol_id)"
-                  :search-hint="smartSearch"
+                  :search-hint="smartSearch" @search-term="manualSearch=$event"
                   required
                 />
                 <p v-if="form.errors.kol_id" class="erp-field-error">{{ form.errors.kol_id }}</p>
+                <button v-if="canOnboardKol && !form.kol_id && (smartSearch || manualSearch.trim())" type="button" class="erp-btn erp-btn-secondary" data-testid="kol-onboarding-start" :disabled="draftSaving" @click="startOnboarding">{{draftSaving?'保存草稿中…':'找不到网红？先创建网红'}}</button>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">{{ isKol ? '合作日期（可选）' : '订单日期' }} <span v-if="!isKol" class="erp-form-required">*</span></label>
@@ -311,6 +337,7 @@ const submit = () => {
           <!-- Card 2: 收件与地址 -->
           <div class="erp-form-card">
             <h2 class="erp-form-card-title">收件与地址</h2>
+            <label v-if="isKol" class="erp-form-helper"><input type="checkbox" v-model="smartAddressConfirmed" :disabled="!form.kol_id || addressLoading" data-testid="kol-smart-address-confirm"> 已核对本次收件信息（下方表单）</label>
             <p v-if="isKol && form.kol_id" class="ord-hint-inline" data-testid="kol-address-source">{{ addressLoading ? '正在读取网红档案…' : '已从网红档案自动带入已有联系与收货信息，可按本单实际情况调整。' }}</p>
             <p v-if="addressWarning" class="erp-field-error" role="alert">{{ addressWarning }}</p>
             <div class="erp-form-grid">
@@ -380,6 +407,7 @@ const submit = () => {
                 <SkuCombobox
                   v-model="item.sku"
                   :product-id="item.product_id"
+                  :search-hint="isKol && index===0 ? smartDraft?.product_hint : undefined"
                   @update:product-id="(id) => { item.product_id = id }"
                 />
                 <p v-if="(form.errors as Record<string, string>)[`items.${index}.product_id`]" class="erp-field-error">

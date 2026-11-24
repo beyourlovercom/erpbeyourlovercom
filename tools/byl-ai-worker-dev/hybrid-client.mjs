@@ -15,8 +15,10 @@ export async function hybridDraft(raw,options={}){
   const key=createPrivateKey(readFileSync(process.env.BYL_AI_KEY_PATH || new URL('client-key.pem',import.meta.url)));
   const path='/v1/kol/parse',body=Buffer.from(JSON.stringify({text:raw})),ts=String(Date.now()),nonce=randomBytes(16).toString('hex');
   const msg=Buffer.concat([Buffer.from('POST\n'+path+'\n'+ts+'\n'+nonce+'\n'),body]);
+  const testPort=process.env.BYL_AI_TEST_LOOPBACK_PORT;
+  if(testPort&&(!/^\d{4,5}$/.test(testPort)||Number(testPort)>65535))throw new Error('invalid_loopback_test_config');
   const data=await new Promise((resolve,reject)=>{
-   const req=http.request({host:'100.94.52.109',port:options.offlineTest?1:18765,path,method:'POST',headers:{'content-type':'application/json','content-length':body.length,'x-byl-ts':ts,'x-byl-nonce':nonce,'x-byl-signature':sign(null,msg,key).toString('base64')}},res=>{
+   const req=http.request({host:testPort?'127.0.0.1':'100.94.52.109',port:options.offlineTest?1:testPort?Number(testPort):18765,path,method:'POST',headers:{'content-type':'application/json','content-length':body.length,'x-byl-ts':ts,'x-byl-nonce':nonce,'x-byl-signature':sign(null,msg,key).toString('base64')}},res=>{
     const chunks=[];let size=0;res.on('data',c=>{size+=c.length;if(size>32768)req.destroy(new Error('response_size'));else chunks.push(c)});
     res.on('end',()=>{try{if(res.statusCode!==200)throw new Error('http_'+res.statusCode);resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')).data)}catch(e){reject(e)}});
     res.on('error',reject);
@@ -35,4 +37,10 @@ if(process.argv[1]===fileURLToPath(import.meta.url)&&process.argv.includes('--se
  const offline=await hybridDraft(fixtures[0].text,{offlineTest:true});assert.equal(offline.reason,'worker_unavailable');assert.ok(offline.draft);
  console.log('SYNTHETIC_ONLY_PASS OFFLINE_FALLBACK_PASS');
  const live=await hybridDraft(fixtures[0].text);assert.equal(live.source,'hybrid_review');assert.equal(live.ai_suggestions.username,'demo_es');assert.equal(live.ai_suggestions.tax_id,null);console.log('LIVE_HYBRID_REVIEW_PASS');
+}
+
+if(process.argv[1]===fileURLToPath(import.meta.url)&&process.argv[2]==='--fixture'){
+ const fixture=fixtures.find(f=>f.id===process.argv[3]);
+ if(!fixture){console.log(JSON.stringify({source:'local_rules',reason:'synthetic_only'}));process.exitCode=1;}
+ else {const result=await hybridDraft(fixture.text);console.log(JSON.stringify(result));}
 }

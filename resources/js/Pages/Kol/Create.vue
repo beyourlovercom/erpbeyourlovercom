@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
-import { computed, ref, watch, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { useWorkspaceDraftGuard } from '../../Composables/useWorkspaceDraftGuard'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
@@ -24,6 +24,9 @@ const languageOptions = [
 
 const props = withDefaults(defineProps<{
   ownerOptions: OwnerOption[]
+  smartAiFixtures?: {id:string;text:string}[]
+  onboardingToken?: string|null
+  onboardingSmartDraft?: QuickOrderDraft|null
   approvalManagerOptions?: OwnerOption[]
   financeOwnerOptions?: OwnerOption[]
   currentUserId: number
@@ -31,6 +34,7 @@ const props = withDefaults(defineProps<{
 }>(), { approvalManagerOptions: () => [], financeOwnerOptions: () => [] })
 
 const form = useForm({
+  onboarding_token: props.onboardingToken ?? null,
   display_name: '',
   country_code: '',
   language: 'en',
@@ -188,6 +192,8 @@ const applySmartDraft = (draft: QuickOrderDraft) => {
   void checkDuplicate()
 }
 
+onMounted(()=>{if(props.onboardingSmartDraft)applySmartDraft({...props.onboardingSmartDraft,social_accounts:props.onboardingSmartDraft.social_accounts??[],unparsed:[]})})
+
 const addSocialAccount = () => {
   form.social_accounts.push({ platform: 'instagram', handle: '', profile_url: '', is_active: true, followers: '', raw_followers_value: '' })
 }
@@ -275,7 +281,8 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
         </section>
 
         <form id="kol-create-form" @submit.prevent="submit">
-          <KolSmartInput @apply="applySmartDraft" />
+          <p v-if="onboardingToken" data-testid="kol-onboarding-resume" role="status">订单草稿已保留。创建网红并完成开户后返回订单，仍需确认收件地址及商品。</p>
+          <KolSmartInput :ai-fixtures="smartAiFixtures" @apply="applySmartDraft" />
           <p v-if="smartWarning" role="alert" data-testid="kol-smart-warning">{{smartWarning}}</p>
           <p v-if="smartProductHint" data-testid="kol-smart-product-hint">产品候选：{{ smartProductHint }}（请在产品选择器核对 SKU）</p>
 
@@ -425,7 +432,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <p v-if="duplicateChecking" class="erp-form-helper">正在检查是否已有相同网红…</p>
                 <div v-if="duplicate.exists" data-testid="kol-duplicate-warning" class="erp-field-error" role="alert">
                   已经存在这个网红，是否重复创建账号？系统已拦截，请核对已有档案，不允许直接重复开户。
-                  <a v-if="duplicate.existing_url" :href="duplicate.existing_url">查看已有网红</a>
+                  <a v-if="duplicate.existing_url" :href="duplicate.existing_url + (props.onboardingToken ? '?onboarding_token='+encodeURIComponent(props.onboardingToken) : '')">查看已有网红</a>
                 </div>
                 <p v-if="duplicateUnavailable" class="erp-field-error" role="alert">暂时无法检查网红是否重复，已停止创建，请稍后重试。</p>
               </div>
@@ -544,7 +551,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">主推产品</label>
-                <SkuCombobox v-model="form.products" />
+                <SkuCombobox v-model="form.products" :search-hint="smartProductHint" />
                 <p v-if="form.errors.products" class="erp-field-error">{{ form.errors.products }}</p>
               </div>
               <div class="erp-form-field">

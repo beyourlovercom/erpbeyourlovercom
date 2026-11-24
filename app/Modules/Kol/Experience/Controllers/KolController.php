@@ -11,6 +11,7 @@ use App\Modules\Kol\Application\KolEditAccountService;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Application\RecipientCustomsPolicy;
 use App\Modules\Kol\Application\KolService;
+use App\Modules\Kol\Application\SmartInput\OnboardingDraft;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
@@ -94,6 +95,9 @@ final class KolController
             'financeOwnerOptions' => $canManageViews ? $this->usersWithPermission('kol.payouts.manage') : [],
             'currentUserId' => (int) $user->getAuthIdentifier(),
             'canManageViews' => $canManageViews,
+            'onboardingToken' => OnboardingDraft::read($request, $request->query('onboarding_token')) ? $request->query('onboarding_token') : null,
+            'onboardingSmartDraft' => OnboardingDraft::read($request, $request->query('onboarding_token'))['smart'] ?? null,
+            'smartAiFixtures' => \App\Modules\Kol\Application\SmartInput\DevFixtureBridge::fixtures(),
         ]);
     }
 
@@ -118,6 +122,10 @@ final class KolController
 
     public function store(Request $request): RedirectResponse
     {
+        $token = $request->input('onboarding_token');
+        if ($token !== null) {
+            abort_unless(is_string($token) && OnboardingDraft::read($request, $token), 422, '订单草稿已失效，请重新发起。');
+        }
         $data = $request->validate([
             'display_name' => 'required|string|max:255',
             'legal_name' => 'nullable|string|max:255',
@@ -233,6 +241,12 @@ final class KolController
         unset($password);
 
         $redirect = redirect()->route('kol.library.show', $result['kol']);
+        if (is_string($token) && OnboardingDraft::read($request, $token)) {
+            OnboardingDraft::bind($request, $token, (int)$result['kol']->getKey());
+            $redirect = $result['success']
+                ? redirect()->route('kol.orders.create', ['kol_id'=>$result['kol']->getKey(), 'onboarding_token'=>$token])
+                : redirect()->route('kol.library.show', ['kol'=>$result['kol']->getKey(), 'onboarding_token'=>$token]);
+        }
 
         return $result['success']
             ? $redirect->with('success', 'KOL 已创建；WordPress / AffiliateWP / Coupon 自动开通完成。')
@@ -293,6 +307,7 @@ final class KolController
             'kolCreateFailureReason' => $failureReason,
             'canOperate' => KolScope::canOperate($request->user()),
             'canCreateOrders' => $request->user()->can('orders.create'),
+            'onboardingToken' => OnboardingDraft::readForKol($request, $request->query('onboarding_token'), (int)$kol->getKey()) ? $request->query('onboarding_token') : null,
             'canManageViews' => KolScope::canManageViews($request->user()),
         ]);
     }
