@@ -4,6 +4,7 @@ namespace App\Modules\Orders\Experience\Controllers;
 
 use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Finance\Application\OrderAnalysisService;
+use App\Modules\Identity\Application\UserDirectory;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolScope;
@@ -458,15 +459,26 @@ final class OrderController
             'canOperateLogistics' => $this->logisticsExecutionAccess->allows($request->user()),
             'canReopenFulfillment' => $this->fulfillmentAllocationAccess->allows($request->user()),
             'canViewPackagingEvidence' => ($request->user()?->can('inventory.view') ?? false) || ($request->user()?->can('inventory.packaging.review') ?? false),
-            'audit' => AuditRecord::query()
-                ->where('entity_type', Order::class)
-                ->where('entity_id', (string) $order->getKey())
-                ->latest('created_at')->limit(30)->get()
-                ->map(fn (AuditRecord $record): array => [
-                    'action' => $record->action, 'actor_id' => $record->actor_id,
-                    'created_at' => $record->created_at?->toIso8601String(), 'reason' => $record->reason,
-                ])->all(),
+            'audit' => $this->orderAudit($order),
         ]);
+    }
+
+    private function orderAudit(Order $order): array
+    {
+        $records = AuditRecord::query()
+            ->where('entity_type', Order::class)
+            ->where('entity_id', (string) $order->getKey())
+            ->latest('created_at')->orderByDesc('id')->limit(30)->get();
+        $names = app(UserDirectory::class)->namesForIds($records->pluck('actor_id'));
+
+        return $records->map(fn (AuditRecord $record): array => [
+            'id' => $record->id,
+            'action' => $record->action,
+            'actor_id' => $record->actor_id,
+            'actor_name' => $record->actor_id !== null ? ($names[(string) $record->actor_id] ?? null) : null,
+            'created_at' => $record->created_at?->toIso8601String(),
+            'reason' => $record->reason,
+        ])->all();
     }
 
     /**
