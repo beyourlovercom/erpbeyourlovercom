@@ -41,6 +41,36 @@ const baseProps = {
 }
 
 describe('Domestic logistics production workbench', () => {
+  it('keeps ERP order as the sole displayed order identifier in every domestic grid and legacy list', () => {
+    for (const view of ['review','stockout','outsource','pending','today','today-4px','today-weship','exceptions','all']) {
+      for (const globalGridPilotEnabled of [true,false]) {
+        const wrapper=mount(Index,{props:{...baseProps,view,globalGridPilotEnabled,trackingImportPreview:null,trackingImportProvider:null}})
+        const state=(wrapper.vm as unknown as {$:{setupState:Record<string,any>}}).$.setupState
+        expect(state.domesticGridColumns.filter((col:{colId:string})=>col.colId==='order')).toHaveLength(1)
+        expect(state.domesticGridColumns.some((col:{colId:string})=>col.colId==='provider_ref')).toBe(false)
+        expect(state.domesticGridRows[0].order_number).toBe('007-0923-c50001')
+        expect(state.domesticGridRows[0]).not.toHaveProperty('provider_reference')
+        expect(wrapper.text()).not.toContain('物流商单号')
+        expect(wrapper.text()).not.toContain('C50001-007')
+        wrapper.unmount()
+      }
+    }
+  })
+
+  it('shows matched ERP identifiers instead of carrier references in return previews', () => {
+    const preview={...baseProps.trackingImportPreview,rows:[
+      {...baseProps.trackingImportPreview.rows[0],erp_order_id:'007-0923-c50001'},
+      {...baseProps.trackingImportPreview.rows[1],order_id:null,erp_order_id:null},
+    ]}
+    const wrapper=mount(Index,{props:{...baseProps,trackingImportPreview:preview}})
+    const panel=wrapper.get('.preview')
+    expect(panel.text()).toContain('007-0923-c50001')
+    expect(panel.text()).toContain('未匹配 ERP 单号')
+    expect(panel.text()).not.toContain('C50001-007')
+    expect(panel.text()).not.toContain('C50002-007')
+    wrapper.unmount()
+  })
+
   it('shows a selected-only pending XLSX link without changing the full export URL', async () => {
     const wrapper = mount(Index, {props:{...baseProps,trackingImportPreview:null,trackingImportProvider:null,
       globalGridPilotAvailable:true,globalGridPilotEnabled:true}})

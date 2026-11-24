@@ -181,6 +181,7 @@ final class DomesticTrackingReturnService
                 'row' => (int) ($source['row'] ?? 0),
                 'order_id' => $order?->id,
                 'order_number' => $reference,
+                'erp_order_id' => $order?->erp_order_id,
                 'tracking_number' => str_starts_with($tracking, '__CONFLICT__:') ? '' : $tracking,
                 'carrier' => (string) ($source['carrier'] ?? ''),
                 'provider_status' => $source['provider_status'] ?? null,

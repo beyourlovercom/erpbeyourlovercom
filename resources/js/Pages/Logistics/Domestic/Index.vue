@@ -28,7 +28,7 @@ type Item = { sku:string|null; quantity:number; has_liquid?:boolean; material_fu
 type PurchaseLine = { id:number; sku:string; quantity:number; purchase_quantity:number; purchase_url:string|null; purchase_size:string|null; received_quantity:number; received_sku:string|null }
 type PurchaseInfo = { id:number; number:string; status:string; carrier:string|null; tracking_number:string|null; received_at:string|null; released_at:string|null; items:PurchaseLine[] }
 type Row = {
-  line:number; order_id:number; paid_date:string|null; paid_date_source?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
+  line:number; order_id:number; paid_date:string|null; paid_date_source?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; erp_order_id:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
   workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; order_kind?:string; routing_warehouse?:{code:string;name:string;source:string;revision:number}
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; carrier_selection_source?:string|null; carrier_ready?:boolean; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
@@ -36,7 +36,7 @@ type Row = {
   review_status:'approved'|'pending'|'stockout'|'conflict'; exception_type?:string; exception_reason?:string; export_blockers:string[]; items:Item[]; has_liquid?:boolean; liquid_skus?:string[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page?:number; total:number }
-type PreviewRow = { row:number; order_id:number|null; order_number:string; tracking_number:string; carrier:string; provider_status:string|null; status:string; message:string }
+type PreviewRow = { row:number; order_id:number|null; order_number:string; erp_order_id?:string|null; tracking_number:string; carrier:string; provider_status:string|null; status:string; message:string }
 type Preview = { token:string; rows:PreviewRow[]; apply_count:number; noop_count:number; blocked_count:number }
 type ProviderStatus = Record<'4px'|'weship',{export_ready:boolean;return_ready:boolean;label:string;note?:string;reason?:string}>
 type CarrierOption = {value:string;label:string;default_service_value?:string|null;services:{value:string;label:string;name_zh?:string|null}[]}
@@ -211,7 +211,6 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   quantity:row.items.map(item=>item.quantity).join(' / ') || '—',
   amount:row.amount!==null&&row.amount!==undefined ? row.amount+' '+(row.amount_currency??'USD'):'—',
   export_status:row.export_blockers.length ? row.export_blockers.join(' / '):'可导出',
-  provider_reference:row.provider_reference??'—',
   carrier:displayCarrier(row.carrier),
   service:row.service??'—',
   tracking_number:row.tracking_number??'—',
@@ -265,7 +264,6 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'quantity',field:'quantity',headerName:'数量',width:100}),
   gridColumn({colId:'amount',field:'amount',headerName:'金额',width:134}),
   gridColumn({colId:'export',field:'export_status',headerName:'导出状态',width:175}),
-  gridColumn({colId:'provider_ref',field:'provider_reference',headerName:'物流商单号',width:180}),
   gridColumn({colId:'carrier',field:'carrier',headerName:'物流商',width:156,
     ...selectFilter(carrierCatalog.value.map(item=>({value:item.value,label:item.label})),'全部物流商'),
     ...(props.view==='pending'?{cellRenderer:DomesticGridPendingRouteCell,cellRendererParams:{
@@ -841,9 +839,9 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         <p>阻断订单不参与发货。可应用订单逐单登记 ERP Shipment；官网物流由同步模块每 30 分钟处理一次，最终状态以官网回读为准。</p>
         <div class="table-wrap">
         <div v-if="trackingFeedback" class="tracking-action-feedback" role="status">{{ trackingFeedback }}</div>
-          <table><thead><tr><th>行</th><th>订单号</th><th>Tracking</th><th>物流商</th><th>Provider 状态</th><th>结果</th><th>说明</th></tr></thead>
+          <table><thead><tr><th>行</th><th>ERP 订单</th><th>Tracking</th><th>物流商</th><th>Provider 状态</th><th>结果</th><th>说明</th></tr></thead>
           <tbody><tr v-for="row in previewRows" :key="row.row + '-' + row.order_number">
-            <td>{{ row.row }}</td><td>{{ row.order_number }}</td><td>{{ row.tracking_number || '—' }}</td><td>{{ displayCarrier(row.carrier) }}</td><td>{{ row.provider_status ?? '—' }}</td>
+            <td>{{ row.row }}</td><td>{{ row.erp_order_id ?? (row.order_id ? rows.data.find(order=>order.order_id===row.order_id)?.erp_order_id : null) ?? '未匹配 ERP 单号' }}</td><td>{{ row.tracking_number || '—' }}</td><td>{{ displayCarrier(row.carrier) }}</td><td>{{ row.provider_status ?? '—' }}</td>
             <td><b :class="'status-' + row.status">{{ statusLabel(row.status) }}</b></td><td>{{ row.message || '—' }}</td>
           </tr></tbody></table>
         </div>
@@ -952,7 +950,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
       </div>
       <div v-if="view!=='outsource' && (!globalGridPilotEnabled || (view!=='review' && view!=='stockout' && !isProviderWorkView(view) && (activeOperationId!==null || showBatchLegacyOperations)))" class="table-wrap orders">
         <table>
-          <thead><tr><th v-if="canTrackingSync && view!=='stockout'">选择</th><th>#</th><th>{{ view==='stockout' ? '操作' : '审核' }}</th><th>ERP 订单</th><th>订单状态</th><th>所属分仓</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>物流商单号</th><th>物流商</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view==='pending'">SKU</th><th v-if="view==='pending'">数量</th><th v-if="view==='pending'">金额</th><th v-if="view!=='review' && view!=='pending'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync && view!=='stockout'">操作</th></tr></thead>
+          <thead><tr><th v-if="canTrackingSync && view!=='stockout'">选择</th><th>#</th><th>{{ view==='stockout' ? '操作' : '审核' }}</th><th>ERP 订单</th><th>订单状态</th><th>所属分仓</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>物流商</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view==='pending'">SKU</th><th v-if="view==='pending'">数量</th><th v-if="view==='pending'">金额</th><th v-if="view!=='review' && view!=='pending'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync && view!=='stockout'">操作</th></tr></thead>
           <tbody>
             <tr v-for="row in nativeOperationRows" :key="row.order_id">
               <td v-if="canTrackingSync && view!=='stockout'"><input v-if="eligibleForBatchTracking(row)" type="checkbox"
@@ -978,7 +976,6 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                 :options="warehouseRouteOptions??[]" /></td>
               <td v-if="view==='review'" :title="row.paid_date_source ?? ''">{{ row.paid_date ?? '—' }}</td><td v-if="view==='review'"><div v-for="(item,index) in row.items" :key="item.sku+'-'+index">{{ item.sku ?? '无SKU' }}</div><button v-if="europeanCountries.has((row.country ?? '').toUpperCase())" type="button" class="secondary" :disabled="barcodeLoading" @click="showBarcode(row)">69条码</button><div v-if="barcodePreview?.orderId===row.order_id" class="barcode-preview"><div v-for="item in barcodePreview.items" :key="item.sku">{{ item.sku }} × {{ item.quantity }}：{{ item.barcode_69 }}</div></div><small v-if="barcodeError && barcodeErrorOrderId===row.order_id && !barcodeLoading" class="danger">{{ barcodeError }}</small></td><td v-if="view==='review'"><div v-for="(item,index) in row.items" :key="item.sku+'-'+index">{{ item.quantity }}</div></td><td v-if="view==='review'" :title="row.amount_source ?? ''">{{ row.amount !== null && row.amount !== undefined ? `${row.amount} ${row.amount_currency ?? 'USD'}` : '—' }}</td>
               <td><span v-if="row.export_blockers.length" class="danger">{{ row.export_blockers.join(' / ') }}</span><span v-else class="ready">可导出</span></td>
-              <td>{{ row.provider_reference ?? '—' }}</td>
               <td class="domestic-carrier-cell">
                 <select v-if="view==='pending' && canQuickShip(row)" :value="carrierDraft(row).carrier"
                   :aria-label="'选择物流商 '+(row.erp_order_id??row.order_id)" :disabled="!!carrierBusy[row.order_id]"
