@@ -206,10 +206,23 @@ final class OverseaWarehouseController
             // R5-R6 DE uses the approved MorePlus selected-order workflow,
             // with a distinct dry-run-only OMS queue and warehouse audit.
             'deTianyunBatchUi' => $warehouseKey === 'de-tianyun'
-                && app()->environment('local', 'testing')
+                && (app()->environment('local', 'testing')
+                    || (app()->environment('production')
+                        && (bool) config('xlwms.de_order_batch_read_enabled', false)))
+                && $this->executionAccess->allows($request->user()),
+            'deTianyunBatchSimulation' => $warehouseKey === 'de-tianyun'
+                && app()->environment('local', 'testing'),
+            'deTianyunBatchLiveEnabled' => $warehouseKey === 'de-tianyun'
+                && app()->environment('production')
+                && (bool) config('xlwms.de_order_batch_read_enabled', false)
+                && (bool) config('xlwms.de_order_batch_live_enabled', false)
+                && (array) config('xlwms.de_verified_channel_codes', []) !== []
+                && (array) config('xlwms.de_order_batch_live_order_ids', []) !== []
                 && $this->executionAccess->allows($request->user()),
             'deTianyunLatestBatch' => $warehouseKey === 'de-tianyun'
-                && app()->environment('local', 'testing')
+                && (app()->environment('local', 'testing')
+                    || (app()->environment('production')
+                        && (bool) config('xlwms.de_order_batch_read_enabled', false)))
                 && Schema::hasTable('xlwms_de_dispatch_batches')
                 ? DB::table('xlwms_de_dispatch_batches')
                     ->where('operator_user_id', (int) $request->user()->id)

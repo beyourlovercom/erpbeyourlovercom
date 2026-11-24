@@ -68,6 +68,13 @@ return [
     'de_inventory_production_apply_enabled' => filter_var(env('XLWMS_DE_PRODUCTION_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_inventory_dev_apply_enabled' => filter_var(env('XLWMS_DE_INVENTORY_DEV_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_inventory_first_apply_approved_checksum' => (string) env('XLWMS_DE_INVENTORY_FIRST_APPLY_APPROVED_CHECKSUM', ''),
+    'de_authoritative_auto_apply_enabled' => filter_var(env('XLWMS_DE_AUTHORITATIVE_AUTO_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'de_order_batch_read_enabled' => filter_var(env('XLWMS_DE_ORDER_BATCH_READ_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'de_order_batch_live_enabled' => filter_var(env('XLWMS_DE_ORDER_BATCH_LIVE_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'de_order_batch_live_order_ids' => array_values(array_unique(array_filter(
+        array_map('intval', explode(',', (string) env('XLWMS_DE_ORDER_BATCH_LIVE_ORDER_IDS', ''))),
+        static fn (int $id): bool => $id > 0
+    ))),
     'de_inventory_sync_schedule_enabled' => filter_var(env('XLWMS_DE_INVENTORY_SYNC_SCHEDULE_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_inventory_sync_schedule_minutes' => in_array((int) env('XLWMS_DE_INVENTORY_SYNC_SCHEDULE_MINUTES', 30), [10, 30], true)
         ? (int) env('XLWMS_DE_INVENTORY_SYNC_SCHEDULE_MINUTES', 30) : 30,

@@ -15,7 +15,7 @@ final class DeTianyunOutboundBatchController
 {
     public function preview(Request $request, DeTianyunOutboundBatchService $batches): JsonResponse
     {
-        abort_unless(app()->environment('local', 'testing'), 403);
+        abort_unless($this->canPreview(), 403);
         try {
             return response()->json($batches->preview($this->selection($request)))
                 ->header('Cache-Control', 'no-store, private');
@@ -26,7 +26,7 @@ final class DeTianyunOutboundBatchController
 
     public function start(Request $request, DeTianyunOutboundBatchService $batches): JsonResponse
     {
-        abort_unless(app()->environment('local', 'testing'), 403);
+        abort_unless($this->canStart(), 403);
         $input = $request->validate([
             'fingerprint' => ['required', 'regex:/^[0-9a-f]{64}$/D'],
             'confirmation' => ['required', 'string', 'max:80'],
@@ -40,7 +40,7 @@ final class DeTianyunOutboundBatchController
             $id = $batches->start((int) $request->user()->id, $input['fingerprint'], $selected);
             try {
                 ProcessDeTianyunOutboundBatch::dispatch($id)
-                    ->onQueue(ProcessDeTianyunOutboundBatch::QUEUE);
+                    ->onQueue(app()->environment('production') ? 'default' : ProcessDeTianyunOutboundBatch::QUEUE);
             } catch (Throwable) {
                 DB::table('xlwms_de_dispatch_batches')->where('id', $id)
                     ->update(['status' => 'paused', 'updated_at' => now()]);
@@ -49,9 +49,9 @@ final class DeTianyunOutboundBatchController
             }
 
             return response()->json([
-                'batch_id' => $id, 'status' => 'queued', 'dry_run' => true,
+                'batch_id' => $id, 'status' => 'queued', 'dry_run' => ! app()->environment('production'),
                 'total' => $preview['count'], 'erp_shipment_unchanged' => true,
-                'woo_unchanged' => true, 'provider_io' => false,
+                'woo_unchanged' => true, 'provider_io' => app()->environment('production'),
             ], 202)->header('Cache-Control', 'no-store, private');
         } catch (RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -60,12 +60,26 @@ final class DeTianyunOutboundBatchController
 
     public function status(string $batchId, Request $request, DeTianyunOutboundBatchService $batches): JsonResponse
     {
-        abort_unless(app()->environment('local', 'testing'), 403);
+        abort_unless($this->canPreview(), 403);
         $batch = DB::table('xlwms_de_dispatch_batches')->where('id', $batchId)->first();
         abort_unless($batch && (int) $batch->operator_user_id === (int) $request->user()->id, 404);
 
         return response()->json($batches->status($batchId))
             ->header('Cache-Control', 'no-store, private');
+    }
+
+    private function canPreview(): bool
+    {
+        return app()->environment('local', 'testing')
+            || (app()->environment('production')
+                && (bool) config('xlwms.de_order_batch_read_enabled', false));
+    }
+
+    private function canStart(): bool
+    {
+        return app()->environment('local', 'testing')
+            || ($this->canPreview() && app()->environment('production')
+                && (bool) config('xlwms.de_order_batch_live_enabled', false));
     }
 
     /** @return list<int> */

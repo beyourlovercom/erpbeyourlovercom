@@ -34,6 +34,31 @@ final class XlwmsInventoryCoverage
         if ($latest === null) return null;
 
         if ((bool) ($latest->summary['v2'] ?? false)) {
+            $isDePhysical = $latest->wh_code === 'Hannover'
+                && ($latest->summary['de_authoritative_physical_v1'] ?? false) === true;
+            if ($isDePhysical) {
+                $all = $latest->rows()->whereNotNull('oms_total')->get();
+                $excluded = array_fill_keys(array_map(
+                    static fn (string $sku): string => mb_strtolower(trim($sku), 'UTF-8'),
+                    (array) config('xlwms.de_excluded_inventory_skus', [])
+                ), true);
+                $available = [];
+                foreach ($all as $row) {
+                    if (isset($excluded[mb_strtolower(trim((string) $row->provider_sku), 'UTF-8')])) continue;
+                    if (! in_array($row->resolution_status, ['matched','blocked'], true)
+                        || (int) $row->product_id <= 0 || $row->oms_total === null
+                        || $row->oms_available === null || $row->oms_locked === null
+                        || (int) $row->oms_total !== (int) $row->oms_available + (int) $row->oms_locked
+                        || isset($available[(int) $row->product_id])) return [];
+                    $erp = \App\Modules\Inventory\Infrastructure\Models\WarehouseInventory::query()
+                        ->where('warehouse_id', $warehouseId)
+                        ->where('product_id', $row->product_id)->first();
+                    if (! $erp || (int) $erp->quantity_on_hand !== (int) $row->oms_total
+                        || (int) $erp->provider_available_quantity !== (int) $row->oms_available) return [];
+                    $available[(int) $row->product_id] = (int) $row->oms_available;
+                }
+                return count($available) === (int) $latest->mapped_sku_count ? $available : [];
+            }
             $isolated = (bool) config('inventory_sku_gate.enabled', false);
             if ($isolated) {
                 if (! in_array($latest->status, ['applied', 'partial_applied'], true)

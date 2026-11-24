@@ -9,15 +9,18 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\Xlwms\DeTianyunOutboundBatchService;
+use App\Modules\Logistics\Application\Xlwms\DeTianyunLiveOrderCreateService;
 use App\Modules\Logistics\Experience\Jobs\ProcessDeTianyunOutboundBatch;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\CarrierService;
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -32,6 +35,131 @@ final class DeTianyunOutboundBatchTest extends TestCase
         Http::preventStrayRequests();
         $this->withoutVite();
         $this->withoutMiddleware(PreventRequestForgery::class);
+    }
+
+    public function test_production_batch_preflight_is_readable_but_real_create_stays_disabled_by_default(): void
+    {
+        $operator = $this->operator();
+        $order = $this->order($operator, 'PROD-READ');
+        $this->actingAs($operator);
+        $beforeEnv = $this->app['env'];
+        $this->app->instance('env', 'production');
+        config()->set('xlwms.de_order_batch_read_enabled', true);
+        config()->set('xlwms.de_order_batch_live_enabled', false);
+        try {
+            $this->get('/logistics/oversea/de-tianyun?view=pending')->assertOk()
+                ->assertInertia(fn ($page) => $page
+                    ->where('deTianyunBatchUi', true)
+                    ->where('deTianyunBatchLiveEnabled', false)
+                    ->where('deTianyunBatchSimulation', false));
+            $this->getJson('/logistics/oversea/de-tianyun/xlwms/batch/preview?scope=selected&order_ids='.$order->id)
+                ->assertOk()->assertJsonPath('count', 0);
+            $this->postJson('/logistics/oversea/de-tianyun/xlwms/batch/start', [
+                'scope' => 'selected', 'order_ids' => (string) $order->id,
+                'fingerprint' => str_repeat('a', 64), 'confirmation' => 'CONFIRM_DE_TIANYUN_BATCH_1',
+            ])->assertForbidden();
+            $this->assertDatabaseCount('xlwms_de_dispatch_batches', 0);
+            Http::assertNothingSent();
+        } finally {
+            $this->app->instance('env', $beforeEnv);
+        }
+    }
+
+    public function test_one_explicitly_approved_production_order_creates_one_oms_record_and_never_retries(): void
+    {
+        $operator = $this->operator();
+        $order = $this->order($operator, 'PROD-LIVE');
+        $this->actingAs($operator);
+        $productId = (int) $order->items()->firstOrFail()->product_id;
+        $warehouseId = (int) $order->shipment->warehouse_id;
+        WarehouseInventory::query()->where('warehouse_id', $warehouseId)
+            ->where('product_id', $productId)
+            ->update(['provider_available_quantity' => 8]);
+        $snapshot = XlwmsInventorySnapshot::query()->create([
+            'warehouse_id' => $warehouseId, 'wh_code' => 'Hannover',
+            'checksum' => str_repeat('a', 64), 'status' => 'blocked',
+            'fetched_at' => now(), 'mapped_sku_count' => 1,
+            'provider_sku_count' => 1, 'unmatched_sku_count' => 0,
+            'blocked_sku_count' => 0,
+            'summary' => ['v2' => true, 'de_authoritative_physical_v1' => true],
+        ]);
+        $snapshot->rows()->create([
+            'provider_sku' => 'DE-EXISTING', 'product_id' => $productId,
+            'resolution_status' => 'matched', 'oms_total' => 8,
+            'oms_available' => 8, 'oms_locked' => 0, 'oms_in_transit' => 0,
+        ]);
+        $oldEnv = $this->app['env'];
+        $this->app->instance('env', 'production');
+        config()->set('xlwms.de_order_batch_read_enabled', true);
+        config()->set('xlwms.de_order_batch_live_enabled', true);
+        config()->set('xlwms.de_order_batch_live_order_ids', [$order->id]);
+        Queue::fake();
+        $createCalls = 0;
+        Http::fake(function ($request) use (&$createCalls, $order) {
+            $path = parse_url($request->url(), PHP_URL_PATH);
+            if (str_ends_with($path, '/outboundOrder/detail')) {
+                return Http::response(['code' => 200, 'data' => []]);
+            }
+            if (str_ends_with($path, '/outboundOrder/pageList')) {
+                if ($createCalls === 0) {
+                    return Http::response(['code' => 200,
+                        'data' => ['records' => [], 'total' => 0]]);
+                }
+                return Http::response(['code' => 200, 'data' => [
+                    'records' => [[
+                        'outboundOrderNo' => 'DE-LIVE-0001', 'whCode' => 'Hannover',
+                        'thirdOrderNo' => 'BYL-ERP-'.$order->id,
+                        'platformOrderNo' => (string) $order->erp_order_id,
+                        'referOrderNo' => (string) $order->erp_order_id, 'status' => 0,
+                    ]], 'total' => 1,
+                ]]);
+            }
+            if (str_ends_with($path, '/logistics/channel/list')) {
+                return Http::response(['code' => 200, 'data' => [
+                    ['channelCode' => 'DHL PAKET DOMESTIC', 'whCodes' => ['Hannover']],
+                ]]);
+            }
+            if (str_ends_with($path, '/product/pagelist')) {
+                return Http::response(['code' => 200, 'data' => [
+                    'records' => [['sku' => 'DE-EXISTING', 'approveStatus' => 2]],
+                ]]);
+            }
+            if (str_ends_with($path, '/outboundOrder/create')) {
+                $createCalls++;
+                return Http::response(['code' => 200, 'data' => [[
+                    'thirdOrderNo' => 'BYL-ERP-'.$order->id,
+                    'success' => true, 'orderNo' => 'DE-LIVE-0001',
+                ]]]);
+            }
+            return Http::response([], 500);
+        });
+        try {
+            $preview = $this->getJson('/logistics/oversea/de-tianyun/xlwms/batch/preview?scope=selected&order_ids='.$order->id)
+                ->assertOk()->assertJsonPath('count', 1)->json();
+            $reply = $this->postJson('/logistics/oversea/de-tianyun/xlwms/batch/start', [
+                'scope' => 'selected', 'order_ids' => (string) $order->id,
+                'fingerprint' => $preview['fingerprint'],
+                'confirmation' => 'CONFIRM_DE_TIANYUN_BATCH_1',
+            ])->assertStatus(202)->assertJsonPath('dry_run', false);
+            $batch = $reply->json('batch_id');
+            Queue::assertPushed(ProcessDeTianyunOutboundBatch::class, 1);
+            $job = new ProcessDeTianyunOutboundBatch($batch);
+            $job->handle(app(DeTianyunOutboundBatchService::class),
+                app(LogisticsExecutionAccess::class), app(DeTianyunLiveOrderCreateService::class));
+            $this->getJson('/logistics/oversea/de-tianyun/xlwms/batch/'.$batch.'/status')
+                ->assertOk()->assertJsonPath('items.0.status', 'created');
+            self::assertSame(1, $createCalls);
+            self::assertSame(1, DB::table('xlwms_dispatch_attempts')
+                ->where('order_id', $order->id)->count());
+            self::assertSame('oms_create_confirmed', DB::table('xlwms_dispatch_attempts')
+                ->where('order_id', $order->id)->value('state'));
+            self::assertSame('pending', $order->fresh()->shipment->shipment_status);
+            $job->handle(app(DeTianyunOutboundBatchService::class),
+                app(LogisticsExecutionAccess::class), app(DeTianyunLiveOrderCreateService::class));
+            self::assertSame(1, $createCalls);
+        } finally {
+            $this->app->instance('env', $oldEnv);
+        }
     }
 
     private function operator(): User

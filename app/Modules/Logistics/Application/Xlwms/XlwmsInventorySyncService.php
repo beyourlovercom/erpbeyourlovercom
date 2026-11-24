@@ -394,7 +394,15 @@ final class XlwmsInventorySyncService
                 [...$plan['summary'], 'sku_isolation' => true,
                     'eligible_product_ids' => array_map('intval', array_keys($eligible))]);
         }
-        if (! $apply) return $snapshot->fresh();
+        if (! $apply) {
+            // An unchanged full signed DE read is a NEW observation. Preserve
+            // the separate physical apply proof on the same snapshot row, but
+            // update freshness for the next actual warehouse dispatch preflight.
+            if ($warehouse->code === 'DE') {
+                $snapshot->forceFill(['fetched_at' => now()])->save();
+            }
+            return $snapshot->fresh();
+        }
 
         // The first V2 apply still requires the exact full OMS checksum and
         // Owner-approved config. Never use a prior V1 snapshot as approval.

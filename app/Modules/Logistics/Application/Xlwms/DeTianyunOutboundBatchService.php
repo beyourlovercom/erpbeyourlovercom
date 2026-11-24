@@ -35,10 +35,15 @@ final class DeTianyunOutboundBatchService
         $alreadyAttempted = array_fill_keys($previousAttempts, true);
         sort($orderIds, SORT_NUMERIC);
         $items = [];
+        $production = app()->environment('production');
+        $allowlisted = array_fill_keys((array) config('xlwms.de_order_batch_live_order_ids', []), true);
         foreach ($orderIds as $id) {
             $order = $orders->get($id);
             $blockers = [];
             $payloadHash = null;
+            if ($production && ! isset($allowlisted[$id])) {
+                $blockers[] = 'DE_PRODUCTION_ORDER_NOT_APPROVED';
+            }
             if (! $order || $order->shipment?->warehouse?->code !== 'DE') {
                 $blockers[] = 'DE_ORDER_NOT_FOUND_OR_WRONG_WAREHOUSE';
             } else {
@@ -74,7 +79,7 @@ final class DeTianyunOutboundBatchService
         return [
             'scope' => 'selected', 'scan_count' => count($orderIds),
             'count' => count($eligible), 'excluded_count' => count($orderIds) - count($eligible),
-            'overflow' => false, 'dry_run' => true,
+            'overflow' => false, 'dry_run' => ! $production || ! (bool) config('xlwms.de_order_batch_live_enabled', false),
             'items' => $items,
             'fingerprint' => hash('sha256', json_encode([
                 'warehouse' => 'DE', 'selected_order_ids' => $orderIds, 'items' => $items,
@@ -85,7 +90,11 @@ final class DeTianyunOutboundBatchService
     /** @param list<int> $orderIds */
     public function start(int $operatorId, string $expectedFingerprint, array $orderIds): string
     {
-        if (! app()->environment('local', 'testing')) {
+        $production = app()->environment('production');
+        if (! app()->environment('local', 'testing')
+            && ! ($production && (bool) config('xlwms.de_order_batch_live_enabled', false)
+                && (bool) config('xlwms.de_order_batch_read_enabled', false)
+                && (array) config('xlwms.de_verified_channel_codes', []) !== [])) {
             throw new RuntimeException('DE_REAL_ORDER_CREATE_NOT_AUTHORIZED');
         }
         $mutex = Cache::lock('xlwms:de:batch:start', 12);
@@ -105,10 +114,10 @@ final class DeTianyunOutboundBatchService
             $id = (string) Str::uuid();
             $eligible = array_values(array_filter($preview['items'],
                 static fn (array $item): bool => $item['ready']));
-            DB::transaction(function () use ($id, $operatorId, $eligible): void {
+            DB::transaction(function () use ($id, $operatorId, $eligible, $production): void {
                 DB::table('xlwms_de_dispatch_batches')->insert([
                     'id' => $id, 'operator_user_id' => $operatorId, 'status' => 'queued',
-                    'dry_run' => true, 'total' => count($eligible),
+                    'dry_run' => ! $production, 'total' => count($eligible),
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
                 foreach ($eligible as $item) {
@@ -139,7 +148,7 @@ final class DeTianyunOutboundBatchService
 
         return [
             'batch_id' => $batchId, 'status' => $batch->status,
-            'dry_run' => true, 'total' => (int) $batch->total,
+            'dry_run' => (bool) $batch->dry_run, 'total' => (int) $batch->total,
             'processed' => $items->whereNotIn('status', ['queued', 'processing'])->count(),
             'items' => $items->map(fn ($item) => (array) $item)->values()->all(),
         ];
