@@ -33,8 +33,10 @@ final class ProcessDeTianyunOutboundBatch implements ShouldQueue
 
     public function handle(DeTianyunOutboundBatchService $service, LogisticsExecutionAccess $access, ?DeTianyunLiveOrderCreateService $live = null): void
     {
-        $lock = Cache::lock('xlwms:de:batch:worker', 55);
+        $operatorMode = app()->environment('production') && config('xlwms.de_operator_batch_enabled', false);
+        $lock = Cache::lock('xlwms:de:batch:worker', $operatorMode ? 900 : 55);
         if (! $lock->get()) {
+            if ($operatorMode) return; // Another scheduler invocation owns this batch.
             // A non-retried worker must never leave a newly queued batch stranded.
             DB::table('xlwms_de_dispatch_batches')->where('id', $this->batchId)
                 ->where('status', 'queued')
@@ -60,8 +62,13 @@ final class ProcessDeTianyunOutboundBatch implements ShouldQueue
             }
             DB::table('xlwms_de_dispatch_batches')->where('id', $this->batchId)
                 ->update(['status' => 'running', 'updated_at' => now()]);
-            $items = DB::table('xlwms_de_dispatch_batch_items')->where('batch_id', $this->batchId)
-                ->where('status', 'queued')->orderBy('id')->get();
+            if ($operatorMode && DB::table('xlwms_de_dispatch_batch_items')->where('batch_id', $this->batchId)->where('status', 'processing')->exists()) {
+                $this->pause('DE_INTERRUPTED_WORKER_RECONCILE_REQUIRED');
+                return;
+            }
+            $itemsQuery = DB::table('xlwms_de_dispatch_batch_items')->where('batch_id', $this->batchId)
+                ->where('status', 'queued')->orderBy('id');
+            $items = $operatorMode ? $itemsQuery->limit(1)->get() : $itemsQuery->get();
             foreach ($items as $item) {
                 $claimed = DB::table('xlwms_de_dispatch_batch_items')
                     ->where('id', $item->id)->where('status', 'queued')
@@ -97,6 +104,10 @@ final class ProcessDeTianyunOutboundBatch implements ShouldQueue
                 }
                 DB::table('xlwms_de_dispatch_batch_items')->where('id', $item->id)
                     ->update(['status' => $status, 'result_code' => $code, 'updated_at' => now()]);
+            }
+            if ($operatorMode && DB::table('xlwms_de_dispatch_batch_items')->where('batch_id', $this->batchId)->where('status', 'queued')->exists()) {
+                DB::table('xlwms_de_dispatch_batches')->where('id', $this->batchId)->update(['status' => 'queued', 'updated_at' => now()]);
+                return;
             }
             $failed = DB::table('xlwms_de_dispatch_batch_items')->where('batch_id', $this->batchId)
                 ->whereIn('status', ['queued', 'processing', 'skipped', 'uncertain'])->exists();

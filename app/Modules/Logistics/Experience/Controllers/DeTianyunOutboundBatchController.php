@@ -39,8 +39,12 @@ final class DeTianyunOutboundBatchController
             }
             $id = $batches->start((int) $request->user()->id, $input['fingerprint'], $selected);
             try {
-                ProcessDeTianyunOutboundBatch::dispatch($id)
-                    ->onQueue(app()->environment('production') ? 'default' : ProcessDeTianyunOutboundBatch::QUEUE);
+                // Production operator batches are drained by the durable DE-only
+                // scheduler. No 55-second default queue timeout or shared worker.
+                if (! (app()->environment('production') && config('xlwms.de_operator_batch_enabled', false))) {
+                    ProcessDeTianyunOutboundBatch::dispatch($id)
+                        ->onQueue(app()->environment('production') ? 'default' : ProcessDeTianyunOutboundBatch::QUEUE);
+                }
             } catch (Throwable) {
                 DB::table('xlwms_de_dispatch_batches')->where('id', $id)
                     ->update(['status' => 'paused', 'updated_at' => now()]);

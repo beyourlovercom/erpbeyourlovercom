@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Application\Xlwms;
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsOrderGateway;
+use App\Modules\Orders\Application\OrderManualHoldStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -27,14 +28,17 @@ final class DeTianyunLiveOrderCreateService
     {
         if (! app()->environment('production', 'testing')
             || ! (bool) config('xlwms.de_order_batch_live_enabled', false)
-            || ! in_array($orderId, (array) config('xlwms.de_order_batch_live_order_ids', []), true)) {
+            || ! DeTianyunDispatchAuthorization::permits($orderId, $actorId, $expectedFingerprint)) {
             throw new RuntimeException('DE_LIVE_ORDER_CREATE_NOT_AUTHORIZED');
         }
-        $order = Order::query()->with([
+        if (app()->environment('production') && config('xlwms.de_operator_batch_enabled', false)) {
+            app(DeAuthoritativePhysicalStockSyncService::class)->run(true);
+        }
+        $order = Order::query()->eligibleForOperations()->with([
             'address', 'items', 'shipment.warehouse', 'shipment.carrierService',
             'shipment.overseaReview',
         ])->findOrFail($orderId);
-        if ($order->shipment?->warehouse?->code !== 'DE') {
+        if ($order->shipment?->warehouse?->code !== 'DE' || ! $this->routeReady($order)) {
             throw new RuntimeException('DE_ORDER_WRONG_WAREHOUSE');
         }
         $fresh = $this->preview->forOrder($order, true, false, 'DE');
@@ -94,6 +98,14 @@ final class DeTianyunLiveOrderCreateService
                 (string) $payload['logisticsChannel'],
                 array_column((array) $payload['productList'], 'sku'),
             );
+            if (app()->environment('production') && config('xlwms.de_operator_batch_enabled', false)) {
+                app(DeAuthoritativePhysicalStockSyncService::class)->run(true);
+                $latestOrder = Order::query()->eligibleForOperations()->findOrFail($orderId);
+                $latest = $this->preview->forOrder($latestOrder, true, false, 'DE');
+                if (! $this->routeReady($latestOrder) || $latest['blockers'] !== [] || ! hash_equals($expectedFingerprint, (string) $latest['payload_hash'])) {
+                    throw new RuntimeException('DE_ORDER_CHANGED_DURING_SCAN');
+                }
+            }
             // A transient failure after this line is NEVER retried blindly.
             $attempt->forceFill(['state' => 'request_in_flight', 'last_checked_at' => now()])->save();
             $created = $this->oms->createSingle($connection, $payload);
@@ -144,6 +156,13 @@ final class DeTianyunLiveOrderCreateService
             ])->save();
             return $this->result($attempt, $uncertain ? 'uncertain' : 'skipped', $code);
         }
+    }
+
+    private function routeReady(Order $order): bool
+    {
+        return in_array($order->routing_warehouse_code, [null, 'DE'], true)
+            && ! in_array((string) $order->workflow_status,
+                ['out_of_stock', 'pending_allocation', ...OrderManualHoldStatus::CODES], true);
     }
 
     /** @return array{status:string,code:string,oms_order_no:?string} */

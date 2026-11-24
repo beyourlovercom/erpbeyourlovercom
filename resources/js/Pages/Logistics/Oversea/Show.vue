@@ -1411,7 +1411,7 @@ const overseaGridRows = computed<GridListRow[]>(()=>visibleRows.value.map(row=>(
   reviewer_name:row.reviewer_name??'—',reviewed_at:row.reviewed_at??'—',
   shipment_status:row.shipment_status==='shipped'?'已发货':row.shipment_status==='pending'?'待发货':row.shipment_status,
   warehouse_name:row.warehouse_name??'—',carrier:carrierDisplay(row.carrier),service:row.service??'—',
-  tracking_number:row.tracking_number??'',note:row.note??'',
+  tracking_number:row.tracking_number||(props.warehouseKey==='de-tianyun'?row.xlwms?.oms_tracking_no:'')||'',note:row.note??'',
   recipient_name:row.recipient_name??'—',country:row.country??'—',
   sku:row.items.map(item=>item.sku??'无SKU').join(' / ')||'—',
   material_full_name:materialText(row),
@@ -1458,6 +1458,7 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
     editable:params=>{
       const row=visibleRows.value.find(item=>item.order_id===Number(params.data?.id))
       return Boolean(props.canOperate && row?.review_status==='approved' && row.shipment_status==='pending'
+        && !(props.warehouseKey==='de-tianyun' && row.xlwms?.oms_order_no)
         && !inlineSaveBusy[row.order_id])
     },
     singleClickEdit:true,cellEditor:'agTextCellEditor',
