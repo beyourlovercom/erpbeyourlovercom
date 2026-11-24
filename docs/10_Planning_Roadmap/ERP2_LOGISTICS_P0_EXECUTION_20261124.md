@@ -61,7 +61,7 @@
 
 - 仅读取隔离 MySQL Dev 中 77 条国内工厂仓 Pending 候选，初筛 10 条带有效承运商/服务；但正式 Laravel 仍存在归档、缺货、异常状态及人工保留条件，故 **10 条不是“可以实际发货”的承诺**。
 - 在 Dev 数据库外层事务中执行 **ERP1 原 `AssistedFulfillmentService::markShipped`**，HTTP 外发由 `Http::preventStrayRequests()` 禁止，邮件 fake，未启动队列 Worker；一笔 Woo 来源 Dev 快照订单在事务内被真实更新：`shipment_status=shipped`、Tracking 落库、发货时间存在、订单聚合状态变 `completed`。随后统一事务 **ROLLBACK PASS**：订单/Shipment/出站队列计数均恢复原始状态，无遗留发货事实。此项仅为服务逻辑预演，**不是** Vben 浏览器确认发货 POST 验收。
-- `ShipmentWebsiteSyncHandoff::afterShipmentSaved` 对该 Woo 历史快照示例返回 `handoff_failed`（Log: `DomainException`，未产生出站队列新增）；不能据此宣称网站 Tracking 同步 PASS。应在下一阶段以可独立生成的 Dev 订单事实与契约检查原同步意图。
+- `ShipmentWebsiteSyncHandoff::afterShipmentSaved` 对该 Woo 历史快照示例返回 `handoff_failed`（Log: `DomainException`，未产生出站队列新增）。**已查明主要 Dev 原因：`WooCommerceTrackingGateway::descriptor()['configured'] === false`**，这是刻意保持 Dev Woo 出站未配置的隔离设置。原业务 `WooCommerceTrackingOutboundService::prepare` 会拒绝未配置的连接，因此此处不能判定 ERP1 正式出站业务有 Bug，更不能将 Dev 测试写成 Woo Tracking 已同步 PASS。后续使用受控 Mock Gateway 测试 outbox intent，绝不接入真实 Woo 凭据。
 - 对另一笔 `manual_other` Dev 克隆候选，原 Service 正确拒绝了异常处理中订单；没有修改其状态或绕过原 ERP 规则。
 - 网关及 Vben 正式 Dev 构建继续保持 **`ERP2_M2_DEV_SHIPPING_ENABLED=0`**；任何真实 Woo/OMS/WMS 外部出库仍禁止。
 
