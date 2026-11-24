@@ -2,6 +2,7 @@
 import { Head, router, useForm, usePage } from '@inertiajs/vue3'
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import axios from 'axios'
+import { orderAuditAction, orderAuditActor, orderAuditTime } from '../../lib/orderAuditDisplay'
 import { publishGlobalFeedback } from '../../lib/globalFeedback'
 
 const commonCurrencyOptions = [
@@ -149,7 +150,7 @@ const props = withDefaults(defineProps<{
   warehouseRouting?: Record<number,{ carrier:string|null; service:string|null; carrier_service_id:number|null; automatic:boolean }>
   carrierOptions?: CarrierOption[]
   allocationUi?: AllocationUi
-  audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
+  audit: { id?: number; action: string; actor_id: number | null; actor_name?: string | null; created_at: string | null; reason?: string }[]
   orderNotes?: { id: number; author_name: string; body: string; created_at: string | null }[]
   canAppendOrderNote?: boolean
   canMarkOperational?: boolean
@@ -933,7 +934,7 @@ const orderSections = [
   { id:'order-section-items', label:'订单商品' },
   { id:'order-section-packaging', label:'包装与重量' },
   { id:'order-section-notes', label:'内部备注' },
-  { id:'order-section-audit', label:'操作审计' },
+  { id:'order-section-audit', label:'操作记录' },
 ] as const
 type SectionId = (typeof orderSections)[number]['id']
 const defaultPanelOrder: SectionId[] = orderSections.slice(1).map(section => section.id)
@@ -1685,19 +1686,19 @@ onBeforeUnmount(() => {
         <!-- Audit log -->
         <div id="order-section-audit" class="erp-form-card ord-sortable-panel ord-audit-card" :style="{ order: sectionVisualOrder('order-section-audit') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-audit'), 'ord-panel-dragging': draggingSection === 'order-section-audit' }" @dragover.prevent @drop.prevent="dropPanel('order-section-audit')">
           <div class="ord-section-header">
-          <h2 class="erp-form-card-title">操作审计</h2>
+          <h2 class="erp-form-card-title">操作记录 <small class="ord-audit-meta">（北京时间）</small></h2>
           <div class="ord-section-controls">
-            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动操作审计排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动操作记录排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
               @dragstart="startPanelDrag($event,'order-section-audit')" @dragend="endPanelDrag"
               @keydown.alt.up.prevent="moveSection('order-section-audit',-1)" @keydown.alt.down.prevent="moveSection('order-section-audit',1)">⠿</button>
-            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-audit') ? '展开操作审计' : '折叠操作审计'"
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-audit') ? '展开操作记录' : '折叠操作记录'"
               :aria-expanded="!isSectionCollapsed('order-section-audit')" @click="toggleSection('order-section-audit')">{{ isSectionCollapsed('order-section-audit') ? '▸' : '▾' }}</button>
           </div>
           </div>
           <ul class="ord-audit-list">
-            <li v-for="event in audit" :key="event.created_at + event.action" class="ord-audit-item">
-              <span class="ord-audit-action">{{ event.action }}</span>
-              <small class="ord-audit-meta">{{ event.created_at }} · actor {{ event.actor_id ?? 'system' }}</small>
+            <li v-for="(event, index) in audit" :key="event.id ?? index" class="ord-audit-item">
+              <span class="ord-audit-action">{{ orderAuditAction(event.action) }}</span>
+              <small class="ord-audit-meta">{{ orderAuditTime(event.created_at) }} · {{ orderAuditActor(event) }}</small>
             </li>
           </ul>
         </div>
