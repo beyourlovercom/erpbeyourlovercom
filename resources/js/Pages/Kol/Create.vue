@@ -7,7 +7,7 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 import RecipientCustomsField from '../../Components/RecipientCustomsField.vue'
 import KolSmartInput from '../../Components/Kol/KolSmartInput.vue'
-import type { QuickOrderDraft } from '../../lib/kol/kolQuickOrderParser'
+import { parseKolQuickOrder, type QuickOrderDraft } from '../../lib/kol/kolQuickOrderParser'
 import { plusThreeYears, localTodayDate } from './couponExpiryDate'
 
 type OwnerOption = { value: number; label: string }
@@ -106,6 +106,90 @@ const duplicateChecking = ref(false)
 const duplicateUnavailable = ref(false)
 let duplicateRequestId = 0
 let duplicateTimer: ReturnType<typeof setTimeout> | null = null
+const onboardingIdentity=computed(()=>{
+  const draft=props.onboardingSmartDraft
+  if(!props.onboardingToken||!draft)return ''
+  return draft.social_accounts?.length===1?draft.social_accounts[0].handle:draft.username_hint??''
+})
+const lookupInput=ref(onboardingIdentity.value)
+const lookupState=ref<'idle'|'checking'|'existing'|'clear'|'error'>('idle')
+const lookupResult=ref<DuplicateResult>({exists:false})
+const lookupError=ref('')
+const verifiedUsername=ref('')
+let lookupSequence=0
+const smartInputVersion=ref(0)
+const identityReady=computed(()=>lookupState.value==='clear' && !!verifiedUsername.value &&
+  form.wordpress_username.trim().toLowerCase()===verifiedUsername.value.toLowerCase())
+const visibleDuplicate=computed(()=>lookupResult.value.exists?lookupResult.value:duplicate.value)
+const resetLookup=()=>{
+  lookupSequence++
+  lookupState.value='idle'
+  lookupResult.value={exists:false}
+  lookupError.value=''
+}
+const checkBeforeFill=async(draft?:QuickOrderDraft)=>{
+  const parsed=draft??parseKolQuickOrder(lookupInput.value.trim())
+  const raw=lookupInput.value.trim().replace(/^@/,'')
+  const handle=parsed.social_accounts.length===1?parsed.social_accounts[0].handle:
+    parsed.username_hint??(!draft&&/^[A-Za-z0-9_.-]{1,100}$/.test(raw)?raw:'')
+  if(!handle || parsed.social_accounts.length>1){
+    lookupError.value='请输入一个明确的 Username 或社媒主页链接。'
+    return
+  }
+  if(onboardingIdentity.value && onboardingIdentity.value.toLowerCase()!==handle.toLowerCase()){
+    lookupError.value='该账号与订单草稿不一致，请返回订单重新检索。'
+    return
+  }
+  if(verifiedUsername.value && verifiedUsername.value.toLowerCase()!==handle.toLowerCase()){
+    lookupError.value='如需更换网红账号，请先点击「更换账号」清空当前草稿。'
+    return
+  }
+  lookupInput.value=handle
+  const seq=++lookupSequence
+  lookupState.value='checking'
+  lookupError.value=''
+  lookupResult.value={exists:false}
+  try {
+    const response=await axios.get<DuplicateResult>('/kol/library/duplicate-check',{
+      params:{wordpress_username:handle,display_name:''},
+    })
+    if(seq!==lookupSequence)return
+    if(typeof response.data?.exists!=='boolean')throw new Error('invalid duplicate result')
+    lookupResult.value=response.data
+    if(response.data.exists){lookupState.value='existing';return}
+    verifiedUsername.value=handle
+    form.wordpress_username=handle
+    if(!form.display_name)form.display_name=handle
+    usernameManuallyEdited.value=true
+    lookupState.value='clear'
+    if(draft)fillSmartDraft(draft)
+  }catch{
+    if(seq!==lookupSequence)return
+    lookupState.value='error'
+    lookupError.value='查重暂不可用，请重试；暂不展开创建表单。'
+  }
+}
+const changeIdentity=()=>{
+  if(props.onboardingToken)return
+  if(!window.confirm('更换账号将清空当前已填写的网红资料，是否继续？'))return
+  if(duplicateTimer)clearTimeout(duplicateTimer)
+  duplicateRequestId++
+  duplicateChecking.value=false
+  duplicateUnavailable.value=false
+  duplicate.value={exists:false}
+  verifiedUsername.value=''
+  lookupInput.value=''
+  usernameManuallyEdited.value=false
+  affiliateNameManuallyEdited.value=false
+  affiliateUrlManuallyEdited.value=false
+  couponExpiryManuallyEdited.value=false
+  smartProductHint.value=''
+  smartWarning.value=''
+  form.reset()
+  smartInputVersion.value++
+  resetLookup()
+}
+
 
 const checkDuplicate = async (): Promise<boolean> => {
   const username = form.wordpress_username
@@ -133,12 +217,14 @@ const checkDuplicate = async (): Promise<boolean> => {
   }
 }
 watch([() => form.wordpress_username, () => form.display_name], () => {
+  duplicateRequestId++
+  duplicateChecking.value = false
   duplicate.value = { exists: false }
   duplicateUnavailable.value = false
   if (duplicateTimer) clearTimeout(duplicateTimer)
   duplicateTimer = setTimeout(() => { void checkDuplicate() }, 420)
 })
-onUnmounted(() => { if (duplicateTimer) clearTimeout(duplicateTimer) })
+onUnmounted(() => { lookupSequence++; duplicateRequestId++; if (duplicateTimer) clearTimeout(duplicateTimer) })
 
 const couponExpiryManuallyEdited = ref(false)
 watch(() => form.joined_at, date => {
@@ -160,7 +246,7 @@ watch(() => form.display_name, (value) => {
 
 const smartProductHint = ref('')
 const smartWarning = ref('')
-const applySmartDraft = (draft: QuickOrderDraft) => {
+const fillSmartDraft = (draft: QuickOrderDraft) => {
   const account = draft.social_accounts.length === 1 ? draft.social_accounts[0] : undefined
   const handle = account?.handle ?? draft.username_hint
   smartWarning.value=''
@@ -191,6 +277,13 @@ const applySmartDraft = (draft: QuickOrderDraft) => {
   void checkDuplicate()
 }
 
+const applySmartDraft=(draft:QuickOrderDraft)=>{
+  if(identityReady.value){
+    fillSmartDraft(draft)
+  }else{
+    void checkBeforeFill(draft)
+  }
+}
 onMounted(()=>{if(props.onboardingSmartDraft)applySmartDraft({...props.onboardingSmartDraft,social_accounts:props.onboardingSmartDraft.social_accounts??[],unparsed:[]})})
 
 const addSocialAccount = () => {
@@ -208,6 +301,7 @@ const removeSalesPerformance = (index: number) => {
 }
 
 const submit = async () => {
+  if(!identityReady.value || lookupResult.value.exists)return
   if (duplicateTimer) clearTimeout(duplicateTimer)
   if (await checkDuplicate()) return
   form.transform(data => ({
@@ -263,12 +357,12 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
           <div>
             <p class="kol-kicker">KOL Master</p>
             <h1 class="erp-form-title">新建 KOL</h1>
-            <p class="erp-form-subtitle">填写红人基本资料、业务画像、联系与收货信息后点击「创建 KOL」完成录入</p>
+            <p class="erp-form-subtitle">先查重，再填写网红资料；已有档案直接使用，不重复开户。</p>
           </div>
           <div class="kol-header-actions page-header-actions">
             <a href="/kol/library" class="erp-btn erp-btn-secondary">返回列表</a>
             <a href="/kol/library" class="erp-btn erp-btn-secondary">取消</a>
-            <button type="submit" form="kol-create-form" class="erp-btn erp-btn-primary" :disabled="form.processing || duplicate.exists || duplicateChecking || duplicateUnavailable">{{ form.processing ? '创建中…' : '保存 KOL' }}</button>
+            <button type="submit" form="kol-create-form" class="erp-btn erp-btn-primary" :disabled="!identityReady || form.processing || visibleDuplicate.exists || duplicateChecking || duplicateUnavailable">{{ form.processing ? '创建中…' : '保存 KOL' }}</button>
           </div>
         </div>
 
@@ -281,16 +375,32 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
 
         <form id="kol-create-form" @submit.prevent="submit">
           <p v-if="onboardingToken" data-testid="kol-onboarding-resume" role="status">订单草稿已保留。创建网红并完成开户后返回订单，仍需确认收件地址及商品。</p>
-          <KolSmartInput @apply="applySmartDraft" />
-          <section v-if="duplicate.exists" data-testid="kol-duplicate-warning" class="erp-form-card" role="status">
+          <section class="erp-form-card" data-testid="kol-preflight">
+            <h2 class="erp-form-card-title">第一步：网红账号查重</h2>
+            <label class="erp-form-label" for="kol-preflight-username">Username 或社媒主页链接</label>
+            <div class="kol-preflight-row">
+              <input id="kol-preflight-username" v-model="lookupInput" type="text" class="erp-input" autocomplete="off" placeholder="输入 Username，例如 demo_creator" :readonly="!!verifiedUsername || !!onboardingIdentity" data-testid="kol-preflight-username" @input="resetLookup" @keydown.enter.prevent="!verifiedUsername && checkBeforeFill()">
+              <button v-if="!verifiedUsername" type="button" class="erp-btn erp-btn-primary" :disabled="!lookupInput.trim() || lookupState==='checking'" data-testid="kol-preflight-search" @click="checkBeforeFill()">{{lookupState==='checking'?'正在查重…':'查询网红'}}</button>
+              <a v-else-if="onboardingToken" href="/kol/orders/create" class="erp-btn erp-btn-secondary">返回订单重新检索</a>
+              <button v-else type="button" class="erp-btn erp-btn-secondary" @click="changeIdentity">更换账号</button>
+            </div>
+            <p v-if="lookupState==='checking'" role="status">正在查询已有网红档案…</p>
+            <p v-if="lookupError" role="alert" class="erp-field-error">{{lookupError}}</p>
+            <p v-if="identityReady && !visibleDuplicate.exists && !duplicateChecking && !duplicateUnavailable" role="status" data-testid="kol-preflight-clear" class="kol-preflight-success">未发现重复网红，可以填写资料。</p>
+            <p v-else-if="lookupState==='idle'" class="erp-form-helper">先查询是否已有网红，再填写资料。</p>
+          </section>
+          <KolSmartInput :key="smartInputVersion" @apply="applySmartDraft" />
+          <section v-if="visibleDuplicate.exists" data-testid="kol-duplicate-warning" class="erp-form-card" role="status">
             <h2 class="erp-form-card-title">已有网红档案</h2>
             <p>已经存在这个网红，是否重复创建账号？请使用已有档案。</p>
-            <a v-if="duplicate.existing_url" class="erp-btn erp-btn-primary" :href="duplicate.existing_url + (props.onboardingToken ? '?onboarding_token='+encodeURIComponent(props.onboardingToken) : '')">打开网红档案</a>
+            <a v-if="visibleDuplicate.existing_url" class="erp-btn erp-btn-primary" :href="visibleDuplicate.existing_url + (props.onboardingToken ? '?onboarding_token='+encodeURIComponent(props.onboardingToken) : '')">打开网红档案</a>
             <p v-else class="erp-form-helper">该档案不在你的查看权限内，请联系负责人。</p>
           </section>
           <p v-if="smartWarning" role="alert" data-testid="kol-smart-warning">{{smartWarning}}</p>
           <p v-if="smartProductHint" data-testid="kol-smart-product-hint">产品候选：{{ smartProductHint }}（请在产品选择器核对 SKU）</p>
 
+          <fieldset v-show="identityReady" :disabled="!identityReady" class="kol-preflight-fields" data-testid="kol-create-fields">
+          <h2 class="erp-form-card-title">第二步：填写网红资料</h2>
           <!-- Card 1: 基本信息 -->
           <div class="erp-form-card">
             <h2 class="erp-form-card-title">基本信息</h2>
@@ -432,7 +542,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <div class="kol-credential-rows">
               <div class="erp-form-field">
                 <label class="erp-form-label">Username <span class="erp-form-required">*</span></label>
-                <input v-model="form.wordpress_username" type="text" autocomplete="username" class="erp-input" :class="{ 'has-error': form.errors.wordpress_username }" required placeholder="网红用户名，可修改" @input="usernameManuallyEdited = true">
+                <input v-model="form.wordpress_username" type="text" autocomplete="username" class="erp-input" :class="{ 'has-error': form.errors.wordpress_username }" required readonly placeholder="已查重的网红用户名">
                 <p v-if="form.errors.wordpress_username" class="erp-field-error">{{ form.errors.wordpress_username }}</p>
                 <p v-if="duplicateChecking" class="erp-form-helper">正在检查是否已有相同网红…</p>
 
@@ -654,6 +764,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             </div>
           </div>
 
+          </fieldset>
         </form>
       </div>
     </div>
@@ -661,6 +772,11 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
 </template>
 
 <style scoped>
+.kol-preflight-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.kol-preflight-row input{flex:1;min-width:180px}
+.kol-preflight-fields{border:0;padding:0;margin:0;min-width:0}
+.kol-preflight-success{color:#22806b;margin:10px 0 0}
+
 .kol-create-provider-blocked { border: 1px solid #f59e0b; border-left: 4px solid #d97706; border-radius: 8px; background: #fffbeb; padding: 12px 14px; margin: 8px 0 16px; color: #78350f; font-size: 13px; }
 .kol-create-provider-blocked strong { font-size: 14px; }
 .kol-create-provider-blocked p { margin: 5px 0; }
