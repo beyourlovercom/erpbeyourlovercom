@@ -114,6 +114,24 @@ describe('KolIdentityCombobox', () => {
     expect(secondSignal.aborted).toBe(true)
   })
 
+  it('offers onboarding only after an empty successful lookup, inside the dropdown', async () => {
+    fetchMock.mockResolvedValue(response([]))
+    const wrapper=mount(KolIdentityCombobox,{props:{modelValue:null,canOnboard:true}})
+    await wrapper.get('input').setValue('demo_missing')
+    expect(wrapper.find('[data-testid="kol-onboarding-start"]').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(200)
+    await flushPromises()
+    const button=wrapper.get('[role="listbox"] [data-testid="kol-onboarding-start"]')
+    await button.trigger('click')
+    expect(wrapper.emitted('create-new')).toEqual([['demo_missing']])
+    fetchMock.mockResolvedValue(response([linked]))
+    await wrapper.get('input').setValue('Mary')
+    await vi.advanceTimersByTimeAsync(200)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="kol-onboarding-start"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('shows authorization errors without exposing unrelated records', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 403 })
     const wrapper = mount(KolIdentityCombobox, { props: { modelValue: null } })

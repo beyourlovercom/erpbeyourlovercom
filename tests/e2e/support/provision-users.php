@@ -200,6 +200,9 @@ DB::transaction(function () use ($runId, $activePassword, $inactivePassword): vo
         $specialistRole->permissions()->attach($permission);
         $managerRole->permissions()->attach($permission);
     }
+    if (getenv('BYL_E2E_SUITE') === 'kol-smart-local') {
+        $specialistRole->permissions()->attach(Permission::query()->firstOrCreate(['key'=>'kol.operate'],['label'=>'kol.operate']));
+    }
     $managerRole->permissions()->attach(
         Permission::query()->firstOrCreate(['key' => 'kol.views.manage'], ['label' => 'kol.views.manage']),
     );

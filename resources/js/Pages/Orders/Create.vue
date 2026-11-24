@@ -134,11 +134,15 @@ const applySmartDraft = (draft: QuickOrderDraft) => {
   smartSearch.value=draft.social_accounts.length===1 ? draft.social_accounts[0].handle : draft.username_hint ?? ''
   smartAddressConfirmed.value=false
 }
-const startOnboarding = () => {
+const startOnboarding = (term:string) => {
   if(form.kol_id || draftSaving.value || !props.canOnboardKol)return
   const draft=smartDraft.value
   const {unparsed: _ignored,...smart}=draft??{social_accounts:[],unparsed:[]}
-  const username=smartSearch.value || manualSearch.value.trim()
+  const username=term.trim()
+  if(smartSearch.value && username.toLowerCase()!==smartSearch.value.toLowerCase()){
+    publishGlobalFeedback({state:'BLOCKED',title:'请核对网红身份',message:'当前搜索账号与粘贴资料不一致，请重新粘贴正确资料。'})
+    return
+  }
   if(!username && !smart.social_accounts.length)return
   // Retain manual order input too; no raw text or password enters the draft.
   const shipping={...smart}
@@ -287,11 +291,10 @@ const submit = () => {
                   v-model="form.kol_id"
                   :initial-option="(kolOptions ?? []).find(item => item.value === form.kol_id) ?? null"
                   :has-error="Boolean(form.errors.kol_id)"
-                  :search-hint="smartSearch" @search-term="manualSearch=$event"
+                  :search-hint="smartSearch" :can-onboard="canOnboardKol" :onboarding-busy="draftSaving" @create-new="startOnboarding" @search-term="manualSearch=$event"
                   required
                 />
                 <p v-if="form.errors.kol_id" class="erp-field-error">{{ form.errors.kol_id }}</p>
-                <button v-if="canOnboardKol && !form.kol_id && (smartSearch || manualSearch.trim())" type="button" class="erp-btn erp-btn-secondary" data-testid="kol-onboarding-start" :disabled="draftSaving" @click="startOnboarding">{{draftSaving?'保存草稿中…':'找不到网红？先创建网红'}}</button>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">{{ isKol ? '合作日期（可选）' : '订单日期' }} <span v-if="!isKol" class="erp-form-required">*</span></label>

@@ -8,8 +8,10 @@ const props = defineProps<{
   hasError?: boolean
   required?: boolean
   searchHint?: string
+  canOnboard?: boolean
+  onboardingBusy?: boolean
 }>()
-const emit = defineEmits<{ 'update:modelValue': [number | null]; 'search-term':[string] }>()
+const emit = defineEmits<{ 'update:modelValue': [number | null]; 'search-term':[string]; 'create-new':[string] }>()
 
 const initial = props.initialOption?.value === props.modelValue ? props.initialOption : null
 const chosen = ref<KolOption | null>(initial)
@@ -142,6 +144,8 @@ const choose = (option: KolOption) => {
   emit('update:modelValue', option.value)
 }
 
+const onCreateFocus = () => { clearTimeout(blurTimer) }
+
 const onBlur = () => {
   blurTimer = setTimeout(() => { open.value = false }, 150)
 }
@@ -200,7 +204,10 @@ const onKeydown = (event: KeyboardEvent) => {
     <ul v-if="open" id="kol-identity-results" class="kol-identity-results" role="listbox">
       <li v-if="loading" class="kol-identity-state" aria-live="polite">正在搜索网红…</li>
       <li v-else-if="errorMessage" class="kol-identity-state" role="alert">{{ errorMessage }}</li>
-      <li v-else-if="results.length === 0" class="kol-identity-state">没有匹配的网红档案</li>
+      <li v-else-if="results.length === 0" class="kol-identity-state">
+        没有匹配的网红档案
+        <button v-if="canOnboard && inputValue.trim() && !modelValue" type="button" class="erp-btn erp-btn-secondary kol-create-missing" data-testid="kol-onboarding-start" :disabled="onboardingBusy" @mousedown.prevent @focus="onCreateFocus" @click="emit('create-new',inputValue.trim())">{{onboardingBusy?'保存草稿中…':'先创建网红'}}</button>
+      </li>
       <li
         v-for="(item, index) in loading || errorMessage ? [] : results"
         :id="'kol-result-' + item.value"
@@ -231,4 +238,5 @@ const onKeydown = (event: KeyboardEvent) => {
 .kol-identity-option strong { color: #142126; font-size: 14px; }
 .kol-identity-option small, .kol-identity-state { color: #7a8c94; font-size: 12px; }
 .kol-identity-state { padding: 12px; }
+.kol-create-missing { display: block; margin-top: 8px; width: 100%; }
 </style>
