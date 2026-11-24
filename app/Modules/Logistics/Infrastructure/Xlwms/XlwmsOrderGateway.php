@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Infrastructure\Xlwms;
 
+use App\Modules\Logistics\Application\Xlwms\DeTianyunDispatchAuthorization;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -43,7 +44,8 @@ final class XlwmsOrderGateway
                 && (bool) config('xlwms.de_order_batch_live_enabled', false)
                 && (bool) config('xlwms.de_order_batch_read_enabled', false)
                 && $exactOrderId > 0
-                && in_array($exactOrderId, (array) config('xlwms.de_order_batch_live_order_ids', []), true)
+                && $connection->oms_warehouse_code === 'Hannover'
+                && DeTianyunDispatchAuthorization::permitsCreate($exactOrderId, (int) $connection->warehouse_id, $row)
                 && ($row['whCode'] ?? null) === 'Hannover'
                 && (int) ($row['isSubmit'] ?? -1) === 1
                 && in_array($channel, (array) config('xlwms.de_verified_channel_codes', []), true)
@@ -167,7 +169,9 @@ final class XlwmsOrderGateway
         $size = 10;
         $total = null;
         $seen = [];
+        $deadline = microtime(true) + 240;
         for ($page = 1; $page <= 300; $page++) {
+            if (microtime(true) > $deadline) throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
             $response = $this->signedPost($connection, 'outboundOrder/pageList', [
                 'page' => $page, 'pageSize' => $size,
             ]);

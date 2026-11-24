@@ -70,6 +70,8 @@ return [
     'de_inventory_first_apply_approved_checksum' => (string) env('XLWMS_DE_INVENTORY_FIRST_APPLY_APPROVED_CHECKSUM', ''),
     'de_authoritative_auto_apply_enabled' => filter_var(env('XLWMS_DE_AUTHORITATIVE_AUTO_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_order_batch_read_enabled' => filter_var(env('XLWMS_DE_ORDER_BATCH_READ_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'de_operator_batch_enabled' => filter_var(env('XLWMS_DE_OPERATOR_BATCH_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'de_status_refresh_enabled' => filter_var(env('XLWMS_DE_STATUS_REFRESH_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_order_batch_live_enabled' => filter_var(env('XLWMS_DE_ORDER_BATCH_LIVE_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_order_batch_live_order_ids' => array_values(array_unique(array_filter(
         array_map('intval', explode(',', (string) env('XLWMS_DE_ORDER_BATCH_LIVE_ORDER_IDS', ''))),

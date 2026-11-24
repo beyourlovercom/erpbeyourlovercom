@@ -41,7 +41,7 @@ final class DeTianyunOutboundBatchService
             $order = $orders->get($id);
             $blockers = [];
             $payloadHash = null;
-            if ($production && ! isset($allowlisted[$id])) {
+            if ($production && ! config('xlwms.de_operator_batch_enabled', false) && ! isset($allowlisted[$id])) {
                 $blockers[] = 'DE_PRODUCTION_ORDER_NOT_APPROVED';
             }
             if (! $order || $order->shipment?->warehouse?->code !== 'DE') {
@@ -61,7 +61,7 @@ final class DeTianyunOutboundBatchService
                 // quantity and channel without claiming a fresh remote stock read.
                 // A later real-create phase must require fresh applied OMS V2 proof.
                 $check = $this->preflight->forOrder($order,
-                    ! app()->environment('local', 'testing'), false, 'DE');
+                    ! app()->environment('local', 'testing') && ! config('xlwms.de_operator_batch_enabled', false), false, 'DE');
                 $blockers = [...$blockers, ...$check['blockers']];
                 $payloadHash = $check['payload_hash'];
             }

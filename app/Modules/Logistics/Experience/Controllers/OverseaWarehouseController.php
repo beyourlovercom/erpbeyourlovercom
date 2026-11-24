@@ -140,7 +140,7 @@ final class OverseaWarehouseController
         $start = ($shipments->currentPage() - 1) * $shipments->perPage();
         // One indexed batch read of OMS audit snapshots; no per-row network
         // queries. Nothing from the provider is fetched just to render a list.
-        $xlwmsAttempts = $warehouseKey === 'us-3sm'
+        $xlwmsAttempts = in_array($warehouseKey, ['us-3sm', 'de-tianyun', 'all'], true)
             ? XlwmsDispatchAttempt::query()
                 ->whereIn('order_id', $shipments->getCollection()->pluck('order_id')->all())
                 ->get()->keyBy('order_id')
@@ -217,7 +217,7 @@ final class OverseaWarehouseController
                 && (bool) config('xlwms.de_order_batch_read_enabled', false)
                 && (bool) config('xlwms.de_order_batch_live_enabled', false)
                 && (array) config('xlwms.de_verified_channel_codes', []) !== []
-                && (array) config('xlwms.de_order_batch_live_order_ids', []) !== []
+                && (config('xlwms.de_operator_batch_enabled', false) || (array) config('xlwms.de_order_batch_live_order_ids', []) !== [])
                 && $this->executionAccess->allows($request->user()),
             'deTianyunLatestBatch' => $warehouseKey === 'de-tianyun'
                 && (app()->environment('local', 'testing')
@@ -619,7 +619,14 @@ final class OverseaWarehouseController
             // Even a manually selected Sending status cannot place an already
             // shipped/issued shipment back in a pending workbench.
             $query->where('shipment_status', 'pending')
-                ->whereNull('shipped_at');
+                ->whereNull('shipped_at')
+                ->where(function ($scope): void {
+                    $scope->whereHas('warehouse', fn ($w) => $w->where('code', '!=', 'DE'))
+                        ->orWhere(function ($de): void {
+                            $de->whereHas('warehouse', fn ($w) => $w->where('code', 'DE'))
+                                ->whereNotExists(fn ($q) => $this->scopeDeAttempt($q));
+                        });
+                });
             $query->where(function ($phase): void {
                 $phase->whereHas('order', fn (\Illuminate\Database\Eloquent\Builder $o) => $o->where('workflow_status', 'sending'))
                     ->orWhere(function ($auto): void {
@@ -660,6 +667,9 @@ final class OverseaWarehouseController
                     $byWarehouse->where(function ($sm): void {
                         $sm->whereHas('warehouse', fn ($w) => $w->where('code', 'US-SM'))
                             ->whereExists(fn ($sub) => $this->scope3smIssued($sub));
+                    })->orWhere(function ($de): void {
+                        $de->whereHas('warehouse', fn ($w) => $w->where('code', 'DE'))
+                            ->whereExists(fn ($q) => $this->scopeDeIssued($q));
                     })->orWhere(function ($moreplus): void {
                         $moreplus->whereHas('warehouse', fn ($w) => $w->where('code', 'US-LA'))
                             ->whereExists(fn ($sub) => ShipOutProductionDispatchState::scopeCreated($sub))
@@ -697,6 +707,12 @@ final class OverseaWarehouseController
                             ->whereHas('warehouse', fn ($w) => $w->where('code', 'US-SM'))
                             ->whereExists(fn ($q) => $this->scope3smException($q));
                     })
+                    ->orWhere(function ($de): void {
+                        $de->where('shipment_status', 'pending')
+                            ->whereHas('warehouse', fn ($w) => $w->where('code', 'DE'))
+                            ->whereExists(fn ($q) => $this->scopeDeAttempt($q))
+                            ->whereNotExists(fn ($q) => $this->scopeDeIssued($q));
+                    })
                     ->orWhere(function ($unresolved): void {
                         $unresolved->where('shipment_status', 'pending')
                             ->whereHas('warehouse', fn ($w) => $w->where('code', 'US-LA'))
@@ -716,6 +732,21 @@ final class OverseaWarehouseController
                     });
             });
         }
+    }
+
+    private function scopeDeAttempt(Builder $query): void
+    {
+        $query->selectRaw('1')->from('xlwms_dispatch_attempts as de_attempt')
+            ->whereColumn('de_attempt.order_id', 'shipments.order_id')
+            ->whereColumn('de_attempt.warehouse_id', 'shipments.warehouse_id');
+    }
+
+    private function scopeDeIssued(Builder $query): void
+    {
+        $this->scopeDeAttempt($query);
+        $query->where('de_attempt.state', 'oms_create_confirmed')
+            ->whereNotNull('de_attempt.oms_order_no')->where('de_attempt.oms_order_no', '!=', '')
+            ->whereIn('de_attempt.oms_status_code', ['2', '3']);
     }
 
     /** 3SM: an OMS draft (status 0) is not a warehouse-dispatched order. */

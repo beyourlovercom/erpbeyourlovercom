@@ -9,7 +9,7 @@ final class WarehouseDispatchStatus
 {
     private const ACCEPTED = [
         'batch_created', 'batch_draft_created', 'batch_draft_unverified', 'oms_draft_created', 'oms_draft_unverified', 'batch_existing', 'batch_status_updated',
-        'submitted_oms', 'found_in_oms',
+        'submitted_oms', 'found_in_oms', 'oms_create_confirmed',
     ];
 
     private const RETRYABLE_LOCAL_BLOCKS = [

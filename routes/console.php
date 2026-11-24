@@ -4,6 +4,8 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutSandboxLabelStage;
 use App\Modules\Logistics\Application\Xlwms\DeAuthoritativePhysicalStockSyncService;
+use App\Modules\Logistics\Application\Xlwms\DeTianyunStatusRefresh;
+use App\Modules\Logistics\Experience\Jobs\ProcessDeTianyunOutboundBatch;
 use App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository;
 use App\Modules\Sync\Application\OrderSyncProgressSnapshot;
 use App\Modules\Sync\Application\SyncOrchestrationService;
@@ -50,6 +52,37 @@ if ((bool) config('xlwms.de_inventory_sync_schedule_enabled', false)) {
     Schedule::command('xlwms:sync-de-physical '.($deApplyReady ? '--apply' : '--dry-run'))
         ->cron('*/'.(int) config('xlwms.de_inventory_sync_schedule_minutes', 30).' * * * *')
         ->name('xlwms.de.inventory.sync')->withoutOverlapping();
+}
+
+// DE production batches: one durable claimed item per scheduler invocation.
+// Dedicated long-running process, not the shared 55-second/90-second queue.
+Artisan::command('xlwms:drain-de-batch', function (): int {
+    if (! app()->environment('production') || ! config('xlwms.de_operator_batch_enabled', false)
+        || ! config('xlwms.de_order_batch_live_enabled', false)) {
+        return Command::SUCCESS;
+    }
+    $id = DB::table('xlwms_de_dispatch_batches')->where('dry_run', false)
+        ->whereIn('status', ['queued', 'running'])->orderBy('created_at')->value('id');
+    if ($id) {
+        ProcessDeTianyunOutboundBatch::dispatchSync($id);
+    }
+
+    return Command::SUCCESS;
+});
+Artisan::command('xlwms:refresh-de-status', function (): int {
+    if (app()->environment('production') && config('xlwms.de_status_refresh_enabled', false)) {
+        $this->info(json_encode(app(DeTianyunStatusRefresh::class)->run()));
+    }
+
+    return Command::SUCCESS;
+});
+if (app()->environment('production') && config('xlwms.de_operator_batch_enabled', false) && config('xlwms.de_order_batch_live_enabled', false)) {
+    Schedule::command('xlwms:drain-de-batch')->everyMinute()
+        ->name('xlwms.de.outbound.drain')->withoutOverlapping(15)->onOneServer()->runInBackground();
+}
+if (app()->environment('production') && config('xlwms.de_status_refresh_enabled', false)) {
+    Schedule::command('xlwms:refresh-de-status')->everyFiveMinutes()
+        ->name('xlwms.de.outbound.refresh')->withoutOverlapping(5)->onOneServer()->runInBackground();
 }
 
 // Read-only Sync status index: the full Woo batch inspection must never
