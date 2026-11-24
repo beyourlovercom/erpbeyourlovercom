@@ -3,6 +3,7 @@
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutSandboxLabelStage;
+use App\Modules\Logistics\Application\Xlwms\DeAuthoritativePhysicalStockSyncService;
 use App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository;
 use App\Modules\Sync\Application\OrderSyncProgressSnapshot;
 use App\Modules\Sync\Application\SyncOrchestrationService;
@@ -12,7 +13,6 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Schema;
-use App\Modules\Logistics\Application\Xlwms\DeAuthoritativePhysicalStockSyncService;
 
 if ((bool) config('xlwms.inventory_sync_schedule_enabled', false)) {
     $xlwmsSyncMode = config('xlwms.inventory_apply_enabled', false) && config('xlwms.lot_reconciliation_v2_enabled', false)
@@ -28,14 +28,17 @@ if ((bool) config('xlwms.inventory_sync_schedule_enabled', false)) {
 Artisan::command('xlwms:sync-de-physical {--apply} {--dry-run}', function (DeAuthoritativePhysicalStockSyncService $sync): int {
     if ($this->option('apply') && $this->option('dry-run')) {
         $this->error('Choose --apply or --dry-run.');
+
         return Command::INVALID;
     }
     try {
         $result = $sync->run((bool) $this->option('apply'));
         $this->line(json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
         return Command::SUCCESS;
-    } catch (\Throwable $error) {
+    } catch (Throwable $error) {
         $this->error('DE_PHYSICAL_SYNC_FAILED:'.$error->getMessage());
+
         return Command::FAILURE;
     }
 });
