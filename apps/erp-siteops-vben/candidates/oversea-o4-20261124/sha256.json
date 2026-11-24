@@ -1,0 +1,42 @@
+[
+  {
+    "path": "evidence\\erp2-o4-final-browser.log",
+    "sha256": "06A0FEF784116B0D4E73D1B7E1E24AECE20D77F7BBF5133F9CD4D0290FCFDD5D",
+    "bytes": 358
+  },
+  {
+    "path": "evidence\\erp2-o4-final-tests.log",
+    "sha256": "10A0858D7405D49809D14CB11B7C330B00A99DFA5186A8C8B05928CD531BB68D",
+    "bytes": 1578
+  },
+  {
+    "path": "evidence\\erp2-o4-final-typecheck.log",
+    "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "bytes": 0
+  },
+  {
+    "path": "overrides\\src\\api\\erp-logistics.test.ts",
+    "sha256": "88D8B883D56381715AF60254D3CE7E581A6295ACD4DA04ABC27D8AEE721A24D5",
+    "bytes": 42791
+  },
+  {
+    "path": "overrides\\src\\api\\erp-logistics.ts",
+    "sha256": "01B3822B0F2AEEAA64B6045232CB078F160962C52C7BDB7EF0BF5B5CBDB6B0F0",
+    "bytes": 59114
+  },
+  {
+    "path": "overrides\\src\\views\\erp\\logistics-projection.vue",
+    "sha256": "A22609E0BA6C32C264C8F84BB5A64CEC14178AE2433D049AF04CD61D833480BC",
+    "bytes": 49182
+  },
+  {
+    "path": "overrides\\src\\views\\erp\\oversea-oms-batch-panel.vue",
+    "sha256": "D4EC81DA5CC30477EC7A0BE0631421F659678C40779D57079C5102079BB67E9F",
+    "bytes": 4146
+  },
+  {
+    "path": "README.md",
+    "sha256": "B66020195500B835F831169EFB94904F86EB038D1920FF520CCE5CEBB46F6BC2",
+    "bytes": 1326
+  }
+]
