@@ -16,10 +16,41 @@ final class XlwmsOrderGateway
      */
     private function signedPost(WarehouseOpenApiConnection $connection, string $path, array $data): array
     {
-        if ($path === 'outboundOrder/create'
-            && (! app()->environment('testing')
-                || config('xlwms.us_sm_outbound_entry_mode') !== 'legacy_api_test')) {
-            throw new RuntimeException('XLWMS_OPENAPI_CREATE_BLOCKED_USE_OMS_DRAFT_IMPORT');
+        if ($path === 'outboundOrder/create') {
+            $legacyTest = app()->environment('testing')
+                && config('xlwms.us_sm_outbound_entry_mode') === 'legacy_api_test';
+            // Only an explicitly authorized, exact DE/Hannover ERP order may
+            // invoke live CREATE. The URL and provider operation remain fixed.
+            $row = count($data) === 1 && is_array($data[0] ?? null)
+                ? $data[0] : [];
+            $third = (string) ($row['thirdOrderNo'] ?? '');
+            $exactOrderId = preg_match('/^BYL-ERP-([1-9][0-9]*)$/D', $third, $m) === 1
+                ? (int) $m[1] : 0;
+            $channel = (string) ($row['logisticsChannel'] ?? '');
+            $allowedSkus = (array) config('xlwms.de_excluded_inventory_skus', []);
+            $excluded = array_fill_keys(array_map(
+                static fn (string $sku): string => mb_strtolower(trim($sku), 'UTF-8'),
+                $allowedSkus,
+            ), true);
+            $items = $row['productList'] ?? null;
+            $itemsValid = is_array($items) && array_is_list($items) && $items !== []
+                && collect($items)->every(static fn ($item): bool => is_array($item)
+                    && is_string($item['sku'] ?? null)
+                    && trim($item['sku']) !== ''
+                    && ! isset($excluded[mb_strtolower(trim($item['sku']), 'UTF-8')])
+                    && is_int($item['quantity'] ?? null) && $item['quantity'] > 0);
+            $productionDe = app()->environment('production')
+                && (bool) config('xlwms.de_order_batch_live_enabled', false)
+                && (bool) config('xlwms.de_order_batch_read_enabled', false)
+                && $exactOrderId > 0
+                && in_array($exactOrderId, (array) config('xlwms.de_order_batch_live_order_ids', []), true)
+                && ($row['whCode'] ?? null) === 'Hannover'
+                && (int) ($row['isSubmit'] ?? -1) === 1
+                && in_array($channel, (array) config('xlwms.de_verified_channel_codes', []), true)
+                && $itemsValid;
+            if (! $legacyTest && ! $productionDe) {
+                throw new RuntimeException('XLWMS_OPENAPI_CREATE_BLOCKED_USE_OMS_DRAFT_IMPORT');
+            }
         }
         if (! in_array($path, ['outboundOrder/detail', 'outboundOrder/pageList', 'outboundOrder/create', 'warehouse/options', 'logistics/channel/list', 'product/pagelist'], true)) {
             throw new RuntimeException('OMS operation not allowlisted.');

@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Experience\Jobs;
 use App\Models\User;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\Xlwms\DeTianyunOutboundBatchService;
+use App\Modules\Logistics\Application\Xlwms\DeTianyunLiveOrderCreateService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -30,7 +31,7 @@ final class ProcessDeTianyunOutboundBatch implements ShouldQueue
 
     public function __construct(public readonly string $batchId) {}
 
-    public function handle(DeTianyunOutboundBatchService $service, LogisticsExecutionAccess $access): void
+    public function handle(DeTianyunOutboundBatchService $service, LogisticsExecutionAccess $access, ?DeTianyunLiveOrderCreateService $live = null): void
     {
         $lock = Cache::lock('xlwms:de:batch:worker', 55);
         if (! $lock->get()) {
@@ -48,8 +49,11 @@ final class ProcessDeTianyunOutboundBatch implements ShouldQueue
                 return;
             }
             $actor = User::query()->find($batch->operator_user_id);
-            if (! app()->environment('local', 'testing') || ! $batch->dry_run
-                || ! $access->allows($actor)) {
+            $dev = app()->environment('local', 'testing') && (bool) $batch->dry_run;
+            $production = app()->environment('production') && ! (bool) $batch->dry_run
+                && (bool) config('xlwms.de_order_batch_read_enabled', false)
+                && (bool) config('xlwms.de_order_batch_live_enabled', false);
+            if (! ($dev || $production) || ! $access->allows($actor)) {
                 $this->pause('DE_BATCH_DEV_OPERATOR_NOT_AUTHORIZED');
 
                 return;
@@ -68,19 +72,28 @@ final class ProcessDeTianyunOutboundBatch implements ShouldQueue
                 $status = 'skipped';
                 $code = 'DE_PREFLIGHT_CHANGED';
                 try {
-                    // Re-read each selected order immediately before its slot.
-                    // Never reuse a stale preflight from the operator's browser.
-                    $fresh = $service->preview([(int) $item->order_id]);
-                    $candidate = $fresh['items'][0] ?? [];
-                    if (($candidate['ready'] ?? false) === true
-                        && is_string($candidate['payload_hash'] ?? null)
-                        && hash_equals((string) $item->payload_hash, $candidate['payload_hash'])) {
-                        $status = 'simulated';
-                        $code = 'DEV_SIMULATED_NO_PROVIDER_IO';
+                    if ($production) {
+                        // No blind retries. The durable XlwmsDispatchAttempt
+                        // ledger is written before each real OMS CREATE.
+                        $created = ($live ?? app(DeTianyunLiveOrderCreateService::class))
+                            ->create((int) $item->order_id, (string) $item->payload_hash, (int) $actor->id);
+                        $status = $created['status'];
+                        $code = $created['code'];
+                    } else {
+                        // Dev simulation is provider-I/O-free.
+                        $fresh = $service->preview([(int) $item->order_id]);
+                        $candidate = $fresh['items'][0] ?? [];
+                        if (($candidate['ready'] ?? false) === true
+                            && is_string($candidate['payload_hash'] ?? null)
+                            && hash_equals((string) $item->payload_hash, $candidate['payload_hash'])) {
+                            $status = 'simulated';
+                            $code = 'DEV_SIMULATED_NO_PROVIDER_IO';
+                        }
                     }
                 } catch (Throwable) {
                     $status = 'skipped';
-                    $code = 'DE_PREFLIGHT_FAILED';
+                    $code = $production ? 'DE_PRODUCTION_CREATE_GATE_OR_PREVIEW_BLOCKED'
+                        : 'DE_PREFLIGHT_FAILED';
                 }
                 DB::table('xlwms_de_dispatch_batch_items')->where('id', $item->id)
                     ->update(['status' => $status, 'result_code' => $code, 'updated_at' => now()]);

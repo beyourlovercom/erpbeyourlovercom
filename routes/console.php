@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Schema;
+use App\Modules\Logistics\Application\Xlwms\DeAuthoritativePhysicalStockSyncService;
 
 if ((bool) config('xlwms.inventory_sync_schedule_enabled', false)) {
     $xlwmsSyncMode = config('xlwms.inventory_apply_enabled', false) && config('xlwms.lot_reconciliation_v2_enabled', false)
@@ -21,15 +22,29 @@ if ((bool) config('xlwms.inventory_sync_schedule_enabled', false)) {
         ->name('xlwms.inventory.sync')->withoutOverlapping();
 }
 
-// DE/Hannover schedule is independent of US-SM and defaults OFF. Outside an
-// explicitly authorized isolated Dev it can only capture read-only evidence.
+// DE/Hannover owner policy: the OMS is physical-stock authority. The CLI
+// applies verified per-SKU stock only when separately enabled; all historical
+// order reservations and FIFO/aging ledgers remain unchanged.
+Artisan::command('xlwms:sync-de-physical {--apply} {--dry-run}', function (DeAuthoritativePhysicalStockSyncService $sync): int {
+    if ($this->option('apply') && $this->option('dry-run')) {
+        $this->error('Choose --apply or --dry-run.');
+        return Command::INVALID;
+    }
+    try {
+        $result = $sync->run((bool) $this->option('apply'));
+        $this->line(json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        return Command::SUCCESS;
+    } catch (\Throwable $error) {
+        $this->error('DE_PHYSICAL_SYNC_FAILED:'.$error->getMessage());
+        return Command::FAILURE;
+    }
+});
+
+// DE/Hannover schedule is isolated from US-SM, defaults OFF and uses one
+// cross-worker lock. A read-only scheduled fetch never silently applies stock.
 if ((bool) config('xlwms.de_inventory_sync_schedule_enabled', false)) {
-    $deApplyReady = app()->environment('local', 'testing')
-        && (bool) config('xlwms.de_inventory_dev_apply_enabled', false)
-        && (bool) config('xlwms.inventory_apply_enabled', false)
-        && (bool) config('xlwms.lot_reconciliation_v2_enabled', false)
-        && (bool) config('inventory_sku_gate.enabled', false);
-    Schedule::command('xlwms:sync-inventory --warehouse=DE '.($deApplyReady ? '--apply' : '--dry-run'))
+    $deApplyReady = (bool) config('xlwms.de_authoritative_auto_apply_enabled', false);
+    Schedule::command('xlwms:sync-de-physical '.($deApplyReady ? '--apply' : '--dry-run'))
         ->cron('*/'.(int) config('xlwms.de_inventory_sync_schedule_minutes', 30).' * * * *')
         ->name('xlwms.de.inventory.sync')->withoutOverlapping();
 }

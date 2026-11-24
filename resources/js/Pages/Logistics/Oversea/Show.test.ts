@@ -1621,7 +1621,7 @@ describe('DE Tianyun reuses MorePlus selected-order Dev batch UX', () => {
     vi.stubGlobal('fetch',fetchMock)
     try {
       const page=mountPage({warehouseKey:'de-tianyun',warehouse:deWarehouse,
-        warehouseOptions:[...warehouseOptions,deWarehouse],deTianyunBatchUi:true,
+        warehouseOptions:[...warehouseOptions,deWarehouse],deTianyunBatchUi:true,deTianyunBatchSimulation:true,
         rows:{...usSmPendingRows,data:[rowA]}})
       const selected=page.get('[data-testid="de-tianyun-selected-push"]')
       expect(selected.attributes('disabled')).toBeDefined()
@@ -1657,7 +1657,7 @@ describe('DE Tianyun reuses MorePlus selected-order Dev batch UX', () => {
     vi.stubGlobal('fetch',fetchMock)
     try {
       const page=mountPage({warehouseKey:'de-tianyun',warehouse:deWarehouse,
-        warehouseOptions:[...warehouseOptions,deWarehouse],deTianyunBatchUi:true,
+        warehouseOptions:[...warehouseOptions,deWarehouse],deTianyunBatchUi:true,deTianyunBatchSimulation:true,
         rows:{...usSmPendingRows,total:2,data:[rowA,rowB]},trackingImportPreview:null})
       await page.find('input[aria-label="选择当前页待发货订单"]').setValue(true)
       expect(page.text()).toContain('已勾选 2 单（跨页保留）')

@@ -82,7 +82,8 @@ const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
   globalGridEnabled?:boolean; gridSearch?:string; gridSort?:{colId:string;direction:'asc'|'desc'}|null; gridFilters?:Record<string,string>
   shipoutProductionBatchUi?:boolean; shipoutProductionBatchDryRun?:boolean; shipoutProductionBatchPaused?:boolean;
-  deTianyunBatchUi?:boolean; deTianyunLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
+  deTianyunBatchUi?:boolean; deTianyunBatchLiveEnabled?:boolean; deTianyunBatchSimulation?:boolean;
+  deTianyunLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
   shipoutProductionLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
   shipoutProductionUi?:boolean; shipoutProductionReadEnabled?:boolean; shipoutProductionDispatchEnabled?:boolean; shipoutProductionMinOrderId?:number; shipoutProductionOperatorAllowed?:boolean
   workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[];
@@ -211,6 +212,7 @@ type ShipOutBatchStatus = { batch_id:string; status:string; dry_run:boolean; tot
 const shipoutBatchSelection = ref<number[]>([])
 const shipoutBatchPreviewIds = ref<number[]>([])
 const isDeTianyunBatch = computed(() => props.warehouseKey==='de-tianyun' && props.deTianyunBatchUi===true)
+const deTianyunIsSimulation = computed(() => props.deTianyunBatchSimulation!==false)
 const showShipoutSelection = computed(() => props.view==='pending'
   && ((!!props.shipoutProductionBatchUi && props.warehouseKey==='us-moreplus') || isDeTianyunBatch.value))
 const shipoutBatchApiBase = computed(() => isDeTianyunBatch.value
@@ -309,9 +311,14 @@ async function shipoutBatchPoll() {
 async function shipoutBatchStart() {
   const preview=shipoutBatchPreview.value
   if(props.shipoutProductionBatchPaused||!preview||preview.overflow||preview.count<1||shipoutBatchBusy.value)return
+  if(isDeTianyunBatch.value && !deTianyunIsSimulation.value && !props.deTianyunBatchLiveEnabled) {
+    shipoutBatchError.value='德国天运仅开放生产只读预检，尚未核实渠道和放行真实订单'
+    return
+  }
   const ids=shipoutBatchPreviewIds.value
   if(preview.scope==='selected' && !ids.length)return
-  const message=(isDeTianyunBatch.value?'德国天运 Dev 模拟（不会向 OMS 发单）'
+  const message=(isDeTianyunBatch.value
+      ? (deTianyunIsSimulation.value?'德国天运 Dev 模拟（不会向 OMS 发单）':'真实向德国天运 OMS 逐单推送')
     :preview.dry_run?'Dev 模拟批次（不会访问海外仓）':'真实向 MorePlus 仓库逐单推送')
     +'：扫描 '+(preview.scan_count??preview.count)+' 单，进入逐单校验 '+preview.count
     +' 单，排除 '+(preview.excluded_count??0)+' 单；再次确认仅提交安全门禁通过的订单？'
@@ -1579,7 +1586,10 @@ const compactPages = computed<(number|string)[]>(() => {
         class="xlwms-batch-result" role="status" data-testid="oversea-provider-batch-feedback">
         <small v-if="shipoutProductionBatchPaused" class="xlwms-error" role="alert">当前批量推送已安全暂停：仓库重复判定原因待核对。管理员可查看预览与历史结果，但不可提交新订单。</small>
         <strong v-if="shipoutBatchPreview">
-          {{isDeTianyunBatch?'德国天运 Dev 模拟预览（不向 OMS 创建订单）':shipoutBatchPreview.dry_run?'Dev 模拟预览（不连接真实 OMS）':'MorePlus 真实推送预览'}}
+          {{isDeTianyunBatch
+            ? (deTianyunIsSimulation?'德国天运 Dev 模拟预览（不会创建 OMS 订单）'
+              :deTianyunBatchLiveEnabled?'德国天运真实推送预检':'德国天运 Production 只读预检（推送未启用）')
+            :shipoutBatchPreview.dry_run?'Dev 模拟预览（不连接真实 OMS）':'MorePlus 真实推送预览'}}
           · {{shipoutBatchPreview.scope==='selected'?'手动选择':'全部待发货'}}
           扫描 {{shipoutBatchPreview.scan_count??shipoutBatchPreview.count}} 单
           · 其中缺货 {{shipoutBatchPreview.stockout_count??0}} 单
@@ -1590,16 +1600,17 @@ const compactPages = computed<(number|string)[]>(() => {
         <small v-if="shipoutBatchPreview" class="xlwms-note">{{isDeTianyunBatch?'只预检所选德国仓订单；不匹配 SKU、未验证库存和未核实渠道会逐单显示原因。':'包含缺货订单的扫描统计；库存不足、未审核、历史已提交及重复风险订单不向仓库提交。'}}</small>
         <div v-if="isDeTianyunBatch && shipoutBatchPreview?.items?.length" class="shipout-batch-results" data-testid="de-batch-preflight-results">
           <span v-for="item in shipoutBatchPreview.items" :key="item.order_id">
-            {{item.order_no}} · {{item.ready?'可模拟':'阻断'}}
+            {{item.order_no}} · {{item.ready?(deTianyunIsSimulation?'可模拟':deTianyunBatchLiveEnabled?'可推送':'预检通过'):'阻断'}}
             <small v-if="item.blockers.length">（{{item.blockers.join('、')}}）</small>
           </span>
         </div>
         <button v-if="shipoutBatchPreview && shipoutBatchPreview.count>0 && !shipoutBatchPreview.overflow"
-          type="button" class="file-button primary" :disabled="shipoutBatchBusy || shipoutProductionBatchPaused" @click="shipoutBatchStart">
-          {{shipoutBatchPreview.dry_run?'确认运行 Dev 模拟':'确认逐单推送 '+shipoutBatchPreview.count+' 单'}}
+          type="button" class="file-button primary" :disabled="shipoutBatchBusy || shipoutProductionBatchPaused || (isDeTianyunBatch && !deTianyunIsSimulation && !deTianyunBatchLiveEnabled)" @click="shipoutBatchStart">
+          {{isDeTianyunBatch && !deTianyunIsSimulation && !deTianyunBatchLiveEnabled?'真实推送尚未启用'
+            :shipoutBatchPreview.dry_run?'确认运行 Dev 模拟':'确认逐单推送 '+shipoutBatchPreview.count+' 单'}}
         </button>
         <strong v-if="shipoutBatchStatus">
-          {{isDeTianyunBatch?'德国天运 Dev 模拟批次':shipoutBatchStatus.dry_run?'Dev 模拟批次':'MorePlus 推送批次'}} ·
+          {{isDeTianyunBatch?(shipoutBatchStatus.dry_run?'德国天运 Dev 模拟批次':'德国天运真实推送批次'):shipoutBatchStatus.dry_run?'Dev 模拟批次':'MorePlus 推送批次'}} ·
           已核实 {{shipoutBatchStatus.processed}} / {{shipoutBatchStatus.total}} · {{shipoutBatchState(shipoutBatchStatus.status)}}
         </strong>
         <div v-if="shipoutBatchStatus" class="shipout-batch-results">
@@ -1649,7 +1660,7 @@ const compactPages = computed<(number|string)[]>(() => {
 
       <div v-if="showShipoutSelection && shipoutBatchSelection.length" class="tracking-selection-bar">
         已勾选 {{ shipoutBatchSelection.length }} 单（跨页保留）
-        <button type="button" class="file-button primary" :disabled="shipoutBatchBusy || (isDeTianyunBatch && Boolean(shipoutBatchStatus && ['queued','running','paused'].includes(shipoutBatchStatus.status)))" @click="shipoutBatchCheck()">{{isDeTianyunBatch?'推送所选订单':'仅推送所选订单'}}</button>
+        <button type="button" class="file-button primary" :disabled="shipoutBatchBusy || (isDeTianyunBatch && Boolean(shipoutBatchStatus && ['queued','running','paused'].includes(shipoutBatchStatus.status)))" @click="shipoutBatchCheck()">{{isDeTianyunBatch?(deTianyunBatchLiveEnabled||deTianyunIsSimulation?'预检并推送所选订单':'只读预检所选订单'):'仅推送所选订单'}}</button>
         <button type="button" class="file-button" @click="shipoutBatchSelection=[];shipoutBatchPreview=null">清空勾选</button>
       </div>
       <div v-if="canTrackingSync && trackingSelection.length" class="tracking-selection-bar">

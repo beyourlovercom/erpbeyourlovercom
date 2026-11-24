@@ -179,14 +179,19 @@ final class SingleOrderPreview
             && $snapshot->fetched_at->lte(now())
             && $snapshot->fetched_at->diffInSeconds(now()) <= 120;
         $isolated = (bool) config('inventory_sku_gate.enabled', false);
-        $validStatus = $isolated
+        // DE Owner's physical OMS stock authority is independent of historical
+        // FIFO/aging. The stock service gives a separate proof after an audited
+        // physical-only write, never a falsely marked V2 lot reconciliation.
+        $isDePhysical = $snapshot?->wh_code === 'Hannover'
+            && ($summary['de_authoritative_physical_v1'] ?? false) === true;
+        $validStatus = $isDePhysical || ($isolated
             ? in_array($snapshot?->status, ['applied', 'partial_applied'], true)
-            : $snapshot?->status === 'applied';
+            : $snapshot?->status === 'applied');
         if (! $snapshot || ! $validStatus
             || ($snapshot->status === 'partial_applied'
                 && ($summary['sku_isolation_write_proof'] ?? false) !== true)
             || ($summary['v2'] ?? false) !== true
-            || ($summary['v2_applied'] ?? false) !== true
+            || (! $isDePhysical && ($summary['v2_applied'] ?? false) !== true)
             || (! $isolated && ((int) $snapshot->unmatched_sku_count !== 0
                 || (int) $snapshot->blocked_sku_count !== 0))
             || $snapshot->rows()->count() !== (int) $snapshot->provider_sku_count
