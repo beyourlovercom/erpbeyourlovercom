@@ -132,6 +132,9 @@ final class XlwmsOrderGateway
 
         // Historical/manual warehouse orders are only discoverable by
         // referOrderNo in the paginated outbound order list.
+        if ($connection->oms_warehouse_code === 'Hannover') {
+            return $this->findExistingDeComplete($connection, $refs);
+        }
         $pageSize = 10;
         for ($page = 1; $page <= 50; $page++) {
             $response = $this->signedPost($connection, 'outboundOrder/pageList', [
@@ -146,6 +149,58 @@ final class XlwmsOrderGateway
             $total = $data['total'] ?? $data['totalCount'] ?? null;
             if (count($rows) < $pageSize) return [];
             if (is_numeric($total) && $page * $pageSize >= (int) $total) return [];
+        }
+        throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
+    }
+
+    /**
+     * Hannover's live pageList returns page/pageSize/pages/total and at most
+     * 10 rows. Do not treat the former 500-row scan as proof of absence.
+     * A changing total, repeated record, incomplete page or inconsistent
+     * pagination is uncertain and must still block CREATE.
+     *
+     * @param list<string> $refs
+     * @return list<array<string,mixed>>
+     */
+    private function findExistingDeComplete(WarehouseOpenApiConnection $connection, array $refs): array
+    {
+        $size = 10;
+        $total = null;
+        $seen = [];
+        for ($page = 1; $page <= 300; $page++) {
+            $response = $this->signedPost($connection, 'outboundOrder/pageList', [
+                'page' => $page, 'pageSize' => $size,
+            ]);
+            $data = $response['data'] ?? null;
+            if (! is_array($data) || ! is_array($data['records'] ?? null)
+                || ! array_is_list($data['records'])
+                || ! isset($data['total']) || ! is_numeric($data['total'])
+                || (int) $data['total'] < 0) {
+                throw new RuntimeException('OMS_PAGE_RESPONSE_INVALID');
+            }
+            $currentTotal = (int) $data['total'];
+            $pages = (int) ceil($currentTotal / $size);
+            $total ??= $currentTotal;
+            if ($currentTotal !== $total || $pages > 300
+                || (isset($data['page']) && (int) $data['page'] !== $page)
+                || (isset($data['pageSize']) && (int) $data['pageSize'] !== $size)
+                || (isset($data['pages']) && (int) $data['pages'] !== $pages)
+                || count($data['records']) !== min($size, max(0, $total - ($page - 1) * $size))) {
+                throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
+            }
+            $matched = $this->exactMatches($data['records'], $refs);
+            if ($matched !== []) return $matched;
+            foreach ($data['records'] as $row) {
+                $id = is_array($row) ? trim((string) ($row['outboundOrderNo'] ?? '')) : '';
+                if ($id === '' || isset($seen[$id])) {
+                    throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
+                }
+                $seen[$id] = true;
+            }
+            if ($page >= $pages) {
+                if (count($seen) !== $total) throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
+                return [];
+            }
         }
         throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
     }
