@@ -28,3 +28,17 @@ describe('real-source format regressions',()=>{
   expect(d.email).toBeUndefined()
  })
 })
+
+describe('V2 identity hints',()=>{
+ it('recognizes a standalone username, not a standalone postal code or label',()=>{
+  expect(parseKolQuickOrder('demo_existing')).toMatchObject({username_hint:'demo_existing'})
+  expect(parseKolQuickOrder('00123').username_hint).toBeUndefined()
+  expect(parseKolQuickOrder('country').username_hint).toBeUndefined()
+ })
+ it('leaves conflicting pasted account identifiers unresolved',()=>{
+  const d=parseKolQuickOrder('https://x.com/demo_a\nUsername: demo_b')
+  expect(d.username_hint).toBeUndefined()
+  expect(d.social_accounts).toEqual([])
+  expect(d.unparsed.length).toBeGreaterThan(0)
+ })
+})

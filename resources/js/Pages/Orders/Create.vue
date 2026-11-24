@@ -26,8 +26,6 @@ type KolAddress = { recipient_customs_id?: string | null; recipient_name: string
 
 const props = defineProps<{
   defaultOrderKind: string
-  smartShapeEnabled?:boolean
-  smartAiFixtures?: {id:string;text:string}[]
   onboardingToken?: string|null
   resumeOrderDraft?: {smart:QuickOrderDraft;order?:{order_date?:string;order_note?:string;currency?:string;items?:OrderItem[]}}|null
   canOnboardKol?: boolean
@@ -126,12 +124,20 @@ watch(() => form.kol_id, async kolId => {
 
 const smartDraft = ref<QuickOrderDraft|null>(props.resumeOrderDraft?.smart ? {...props.resumeOrderDraft.smart,social_accounts:props.resumeOrderDraft.smart.social_accounts??[],unparsed:[]} : null)
 const smartSearch = ref('')
-const manualSearch=ref('')
+const smartWarning=ref('')
+const hasPastedAddress=computed(()=>Boolean(smartDraft.value&&addressFields.some(f=>smartDraft.value?.[f])))
+const selectedAccount=ref((props.kolOptions??[]).find(item=>item.value===form.kol_id)?.account??null)
 const draftSaving=ref(false)
 const smartAddressConfirmed = ref(false)
 const applySmartDraft = (draft: QuickOrderDraft) => {
+  const handle=draft.social_accounts.length===1 ? draft.social_accounts[0].handle : draft.username_hint ?? ''
+  smartWarning.value=''
+  if(form.kol_id&&handle&&selectedAccount.value&&selectedAccount.value.replace(/^@/,'').toLowerCase()!==handle.toLowerCase()){
+    smartWarning.value='当前已关联网红与粘贴账号不同，请先更换关联网红后重新识别。'
+    return
+  }
   smartDraft.value=draft
-  smartSearch.value=draft.social_accounts.length===1 ? draft.social_accounts[0].handle : draft.username_hint ?? ''
+  smartSearch.value=handle
   smartAddressConfirmed.value=false
 }
 const startOnboarding = (term:string) => {
@@ -155,7 +161,11 @@ const startOnboarding = (term:string) => {
 }
 const applySmartAddress = () => {
   const draft=smartDraft.value
-  if (!draft || !form.kol_id || addressLoading.value) return
+  if (!draft || !form.kol_id || addressLoading.value || !hasPastedAddress.value) return
+  if(smartSearch.value&&selectedAccount.value&&selectedAccount.value.replace(/^@/,'').toLowerCase()!==smartSearch.value.toLowerCase()){
+    smartWarning.value='粘贴账号与当前网红不一致，请核对后手工填写本次收件信息。'
+    return
+  }
   const previousCountry=form.country
   const changesRecipient = Boolean(draft.recipient_name && draft.recipient_name!==form.recipient_name)
   const changesCountry = Boolean(draft.country && draft.country!==previousCountry)
@@ -265,12 +275,13 @@ const submit = () => {
         </div>
 
         <form id="order-create-form" @submit.prevent="submit">
-          <KolSmartInput v-if="isKol" :ai-fixtures="smartAiFixtures" :shape-enabled="smartShapeEnabled" @apply="applySmartDraft" />
+          <KolSmartInput v-if="isKol" @apply="applySmartDraft" />
+          <p v-if="smartWarning" role="alert" data-testid="kol-smart-warning">{{smartWarning}}</p>
           <section v-if="isKol && smartDraft" class="erp-form-card" data-testid="kol-smart-order-review">
             <p v-if="smartSearch">识别 Username：{{smartSearch}}。请在下方检索并选择网红；不存在时先创建网红。</p>
             <p v-if="smartDraft.product_hint">产品候选：{{smartDraft.product_hint}}（请手动核对 SKU）</p>
             <p v-if="smartDraft.coupon_code">折扣码：{{smartDraft.coupon_code}}（请核对网红档案）</p>
-            <button type="button" class="erp-btn erp-btn-secondary" :disabled="!form.kol_id || addressLoading" data-testid="kol-smart-address-apply" @click="applySmartAddress">采用粘贴的收件信息</button>
+            <button v-if="hasPastedAddress" type="button" class="erp-btn erp-btn-secondary" :disabled="!form.kol_id || addressLoading" data-testid="kol-smart-address-apply" @click="applySmartAddress">采用粘贴的收件信息</button>
           </section>
 
           <!-- Card 1: 订单信息 -->
@@ -291,7 +302,7 @@ const submit = () => {
                   v-model="form.kol_id"
                   :initial-option="(kolOptions ?? []).find(item => item.value === form.kol_id) ?? null"
                   :has-error="Boolean(form.errors.kol_id)"
-                  :search-hint="smartSearch" :can-onboard="canOnboardKol" :onboarding-busy="draftSaving" @create-new="startOnboarding" @search-term="manualSearch=$event"
+                  :search-hint="smartSearch" :can-onboard="canOnboardKol" :onboarding-busy="draftSaving" @create-new="startOnboarding" @selected="selectedAccount=$event?.account??null"
                   required
                 />
                 <p v-if="form.errors.kol_id" class="erp-field-error">{{ form.errors.kol_id }}</p>
@@ -342,7 +353,7 @@ const submit = () => {
           <div class="erp-form-card">
             <h2 class="erp-form-card-title">收件与地址</h2>
             <label v-if="isKol" class="erp-form-helper"><input type="checkbox" v-model="smartAddressConfirmed" :disabled="!form.kol_id || addressLoading" data-testid="kol-smart-address-confirm"> 已核对本次收件信息（下方表单）</label>
-            <p v-if="isKol && form.kol_id" class="ord-hint-inline" data-testid="kol-address-source">{{ addressLoading ? '正在读取网红档案…' : '已从网红档案自动带入已有联系与收货信息，可按本单实际情况调整。' }}</p>
+            <p v-if="isKol && form.kol_id" class="ord-hint-inline" data-testid="kol-address-source">{{ addressLoading ? '正在读取网红档案…' : '已自动加载网红档案中的收件信息，可直接核对或按本单调整。' }}</p>
             <p v-if="addressWarning" class="erp-field-error" role="alert">{{ addressWarning }}</p>
             <div class="erp-form-grid">
               <div class="erp-form-field">

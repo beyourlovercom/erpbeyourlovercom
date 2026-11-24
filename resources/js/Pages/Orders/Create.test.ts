@@ -360,7 +360,6 @@ describe('A8 shared smart input — order entry',()=>{
     const wrapper=mount(Create,{props:{...kolProps,selectedKolId:42,kolOptions:[{value:42,label:'Demo'}],selectedKolAddress:{recipient_name:'Old Name',country:'US',phone:'001',email:'old@example.com',province_state:'CA',city:'Old City',address_line_1:'Old Street',address_line_2:'Old Unit',postal_code:'00001'}}})
     await wrapper.get('[data-testid="kol-smart-raw"]').setValue('https://x.com/demo\nFull Name: New Name\nCountry: Mexico\nCity: New City\nPost Code: 00123')
     await wrapper.get('[data-testid="kol-smart-parse"]').trigger('click')
-    await wrapper.get('[data-testid="kol-smart-apply"]').trigger('click')
     expect((wrapper.get('[data-testid="order-recipient-name"]').element as HTMLInputElement).value).toBe('Old Name')
     await wrapper.get('[data-testid="kol-smart-address-apply"]').trigger('click')
     expect((wrapper.get('[data-testid="order-recipient-name"]').element as HTMLInputElement).value).toBe('New Name')

@@ -303,8 +303,6 @@ final class OrderController
             'kolOptions' => $kolOptions,
             'selectedKolId' => $selectedKolId,
             'selectedKolAddress' => $requestedKol ? $this->kolShippingData($requestedKol) : null,
-            'smartShapeEnabled' => $kind === OrderKind::KolFulfillment && \App\Modules\Kol\Application\SmartInput\DevShapeBridge::enabled(),
-            'smartAiFixtures' => $kind === OrderKind::KolFulfillment ? \App\Modules\Kol\Application\SmartInput\DevFixtureBridge::fixtures() : [],
             'onboardingToken' => $requestedKol && OnboardingDraft::readForKol($request, $request->query('onboarding_token'), $requestedKolId) ? $request->query('onboarding_token') : null,
             'resumeOrderDraft' => $requestedKol ? OnboardingDraft::readForKol($request, $request->query('onboarding_token'), $requestedKolId) : null,
             'canOnboardKol' => $kind === OrderKind::KolFulfillment && $request->user()->can('kol.operate') && $request->user()->can('kol.view'),

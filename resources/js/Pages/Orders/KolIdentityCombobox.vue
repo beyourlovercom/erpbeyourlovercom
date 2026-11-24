@@ -11,7 +11,7 @@ const props = defineProps<{
   canOnboard?: boolean
   onboardingBusy?: boolean
 }>()
-const emit = defineEmits<{ 'update:modelValue': [number | null]; 'search-term':[string]; 'create-new':[string] }>()
+const emit = defineEmits<{ 'update:modelValue': [number | null]; 'search-term':[string]; 'create-new':[string]; 'selected':[KolOption|null] }>()
 
 const initial = props.initialOption?.value === props.modelValue ? props.initialOption : null
 const chosen = ref<KolOption | null>(initial)
@@ -57,7 +57,7 @@ onUnmounted(() => {
 })
 
 
-const search = async (term: string) => {
+const search = async (term: string, autoMatch = false) => {
   const current = ++sequence
   cancelActiveSearch()
   const controller = new AbortController()
@@ -80,6 +80,11 @@ const search = async (term: string) => {
     if (!Array.isArray(data)) throw new Error('网红查询返回的数据无效')
     if (!mounted || current !== sequence) return
     results.value = data as KolOption[]
+    if(autoMatch&&results.value.length===1&&results.value[0].account?.replace(/^@/,'').toLowerCase()===term.trim().replace(/^@/,'').toLowerCase()){
+      loading.value=false
+      choose(results.value[0])
+      return
+    }
     activeIndex.value = results.value.length > 0 ? 0 : -1
   } catch (error) {
     if (controller.signal.aborted || !mounted || current !== sequence) return
@@ -93,9 +98,9 @@ const search = async (term: string) => {
   }
 }
 
-const scheduleSearch = (term: string) => {
+const scheduleSearch = (term: string, autoMatch = false) => {
   clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => { void search(term) }, 200)
+  debounceTimer = setTimeout(() => { void search(term,autoMatch) }, 200)
 }
 
 const onFocus = () => {
@@ -113,6 +118,7 @@ const onInput = (event: Event) => {
   loading.value = true
   errorMessage.value = ''
   chosen.value = null
+  emit('selected',null)
   emit('update:modelValue', null)
   results.value = []
   activeIndex.value = -1
@@ -130,7 +136,7 @@ watch(() => props.searchHint, value => {
   loading.value=true
   errorMessage.value=''
   open.value=true
-  scheduleSearch(value)
+  scheduleSearch(value,true)
 })
 
 const choose = (option: KolOption) => {
@@ -141,6 +147,7 @@ const choose = (option: KolOption) => {
   inputValue.value = option.label
   results.value = []
   open.value = false
+  emit('selected',option)
   emit('update:modelValue', option.value)
 }
 

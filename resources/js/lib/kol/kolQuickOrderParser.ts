@@ -48,6 +48,9 @@ function splitInline(line:string):string[]{
 const platforms:Record<string,string>={'x.com':'twitter','twitter.com':'twitter','instagram.com':'instagram','tiktok.com':'tiktok','youtube.com':'youtube'}
 export function parseKolQuickOrder(raw:string):QuickOrderDraft {
  const draft:QuickOrderDraft={social_accounts:[],unparsed:[]}
+ // A standalone account token is a lookup hint, never a selected identity.
+ const single=raw.trim()
+ if(/^@?[A-Za-z0-9_.-]{1,100}$/.test(single)&&/[A-Za-z_]/.test(single)&&!labels.has(single.toLowerCase()))return {...draft,username_hint:single.replace(/^@/,'')}
  const conflicts=new Set<Field>();const original=new Map<Field,string>()
  let prev:Field|undefined
  let pendingLabel:Field|undefined
@@ -91,5 +94,8 @@ export function parseKolQuickOrder(raw:string):QuickOrderDraft {
  // Legacy template: one unlabeled product hint after the phone; never a selected SKU.
  if(loose.length===1&&draft.coupon_code&&!draft.product_hint&&!conflicts.has('product_hint'))draft.product_hint=loose[0]
  else draft.unparsed.push(...loose)
+ if(draft.username_hint&&draft.social_accounts.some(a=>a.handle.toLowerCase()!==draft.username_hint!.toLowerCase())){
+  draft.unparsed.push('Username: '+draft.username_hint,...draft.social_accounts.map(a=>a.profile_url));delete draft.username_hint;draft.social_accounts=[]
+ }
  return draft
 }

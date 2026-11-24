@@ -24,8 +24,6 @@ const languageOptions = [
 
 const props = withDefaults(defineProps<{
   ownerOptions: OwnerOption[]
-  smartShapeEnabled?:boolean
-  smartAiFixtures?: {id:string;text:string}[]
   onboardingToken?: string|null
   onboardingSmartDraft?: QuickOrderDraft|null
   approvalManagerOptions?: OwnerOption[]
@@ -283,7 +281,13 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
 
         <form id="kol-create-form" @submit.prevent="submit">
           <p v-if="onboardingToken" data-testid="kol-onboarding-resume" role="status">订单草稿已保留。创建网红并完成开户后返回订单，仍需确认收件地址及商品。</p>
-          <KolSmartInput :ai-fixtures="smartAiFixtures" :shape-enabled="smartShapeEnabled" @apply="applySmartDraft" />
+          <KolSmartInput @apply="applySmartDraft" />
+          <section v-if="duplicate.exists" data-testid="kol-duplicate-warning" class="erp-form-card" role="status">
+            <h2 class="erp-form-card-title">已有网红档案</h2>
+            <p>已经存在这个网红，是否重复创建账号？请使用已有档案。</p>
+            <a v-if="duplicate.existing_url" class="erp-btn erp-btn-primary" :href="duplicate.existing_url + (props.onboardingToken ? '?onboarding_token='+encodeURIComponent(props.onboardingToken) : '')">打开网红档案</a>
+            <p v-else class="erp-form-helper">该档案不在你的查看权限内，请联系负责人。</p>
+          </section>
           <p v-if="smartWarning" role="alert" data-testid="kol-smart-warning">{{smartWarning}}</p>
           <p v-if="smartProductHint" data-testid="kol-smart-product-hint">产品候选：{{ smartProductHint }}（请在产品选择器核对 SKU）</p>
 
@@ -431,10 +435,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <input v-model="form.wordpress_username" type="text" autocomplete="username" class="erp-input" :class="{ 'has-error': form.errors.wordpress_username }" required placeholder="网红用户名，可修改" @input="usernameManuallyEdited = true">
                 <p v-if="form.errors.wordpress_username" class="erp-field-error">{{ form.errors.wordpress_username }}</p>
                 <p v-if="duplicateChecking" class="erp-form-helper">正在检查是否已有相同网红…</p>
-                <div v-if="duplicate.exists" data-testid="kol-duplicate-warning" class="erp-field-error" role="alert">
-                  已经存在这个网红，是否重复创建账号？系统已拦截，请核对已有档案，不允许直接重复开户。
-                  <a v-if="duplicate.existing_url" :href="duplicate.existing_url + (props.onboardingToken ? '?onboarding_token='+encodeURIComponent(props.onboardingToken) : '')">查看已有网红</a>
-                </div>
+
                 <p v-if="duplicateUnavailable" class="erp-field-error" role="alert">暂时无法检查网红是否重复，已停止创建，请稍后重试。</p>
               </div>
               <div class="erp-form-field">
