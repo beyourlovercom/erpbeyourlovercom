@@ -26,6 +26,7 @@ type KolAddress = { recipient_customs_id?: string | null; recipient_name: string
 
 const props = defineProps<{
   defaultOrderKind: string
+  smartShapeEnabled?:boolean
   smartAiFixtures?: {id:string;text:string}[]
   onboardingToken?: string|null
   resumeOrderDraft?: {smart:QuickOrderDraft;order?:{order_date?:string;order_note?:string;currency?:string;items?:OrderItem[]}}|null
@@ -260,7 +261,7 @@ const submit = () => {
         </div>
 
         <form id="order-create-form" @submit.prevent="submit">
-          <KolSmartInput v-if="isKol" :ai-fixtures="smartAiFixtures" @apply="applySmartDraft" />
+          <KolSmartInput v-if="isKol" :ai-fixtures="smartAiFixtures" :shape-enabled="smartShapeEnabled" @apply="applySmartDraft" />
           <section v-if="isKol && smartDraft" class="erp-form-card" data-testid="kol-smart-order-review">
             <p v-if="smartSearch">识别 Username：{{smartSearch}}。请在下方检索并选择网红；不存在时先创建网红。</p>
             <p v-if="smartDraft.product_hint">产品候选：{{smartDraft.product_hint}}（请手动核对 SKU）</p>

@@ -97,6 +97,7 @@ final class KolController
             'canManageViews' => $canManageViews,
             'onboardingToken' => OnboardingDraft::read($request, $request->query('onboarding_token')) ? $request->query('onboarding_token') : null,
             'onboardingSmartDraft' => OnboardingDraft::read($request, $request->query('onboarding_token'))['smart'] ?? null,
+            'smartShapeEnabled' => \App\Modules\Kol\Application\SmartInput\DevShapeBridge::enabled(),
             'smartAiFixtures' => \App\Modules\Kol\Application\SmartInput\DevFixtureBridge::fixtures(),
         ]);
     }

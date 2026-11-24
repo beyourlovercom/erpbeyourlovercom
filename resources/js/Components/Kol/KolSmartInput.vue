@@ -2,7 +2,8 @@
 import {computed,ref} from 'vue'
 import axios from 'axios'
 import {parseKolQuickOrder,type QuickOrderDraft} from '../../lib/kol/kolQuickOrderParser'
-const props=defineProps<{aiFixtures?: {id:string;text:string}[]}>()
+import {projectKolShape,recoverShapeSuggestions,shapeFields,type ShapeField} from '../../lib/kol/kolShapeProjection'
+const props=defineProps<{aiFixtures?: {id:string;text:string}[];shapeEnabled?:boolean}>()
 const emit=defineEmits<{apply:[QuickOrderDraft]}>()
 const raw=ref('')
 const preview=ref<QuickOrderDraft|null>(null)
@@ -10,10 +11,45 @@ const labels:Record<string,string>={recipient_name:'收件人',country:'收件�
 const aiBusy=ref(false)
 const aiStatus=ref('')
 const aiSuggestions=ref<Record<string,string|number|null>|null>(null)
+const shapeSuggestions=ref<Partial<Record<ShapeField,string>>>({})
+const accepted=ref<ShapeField[]>([])
+const shapeRequest=computed(()=>{
+ if(!props.shapeEnabled||!preview.value)return null
+ const p=projectKolShape(raw.value)
+ if(!p)return null
+ const missing=shapeFields.filter(f=>f!=='recipient_customs_id'&&preview.value?.[f]===undefined)
+ if(!missing.length)return null
+ return {...p.request,missing}
+})
+const apply=()=>{
+ if(!preview.value)return
+ const result={...preview.value}
+ for(const field of accepted.value){
+  if(result[field]===undefined&&shapeSuggestions.value[field])result[field]=shapeSuggestions.value[field]
+ }
+ emit('apply',result)
+}
+
 let revision=0
 const fixture=computed(()=>props.aiFixtures?.find(f=>f.text===raw.value))
-const reset=()=>{revision++;preview.value=null;aiStatus.value='';aiSuggestions.value=null;aiBusy.value=false}
-const parse=()=>{preview.value=parseKolQuickOrder(raw.value)}
+const reset=()=>{revision++;preview.value=null;aiStatus.value='';aiSuggestions.value=null;shapeSuggestions.value={};accepted.value=[];aiBusy.value=false}
+const parse=()=>{reset();preview.value=parseKolQuickOrder(raw.value)}
+const askShape=async()=>{
+ const payload=shapeRequest.value
+ if(!payload||!preview.value||aiBusy.value)return
+ const current=++revision
+ aiBusy.value=true;aiStatus.value='';shapeSuggestions.value={};accepted.value=[]
+ try{
+  const r=await axios.post('/kol/smart-input/shape',payload,{timeout:58000})
+  if(current!==revision||!preview.value)return
+  if(r.data?.source==='shape_review'){
+   shapeSuggestions.value=recoverShapeSuggestions(raw.value,r.data.assignments,preview.value)
+   aiStatus.value=Object.keys(shapeSuggestions.value).length?'AI 找到候选字段，请逐项核对并勾选。':'AI 未找到可靠候选，请人工填写。'
+  }else aiStatus.value='AI 暂不可用，继续使用本地识别'
+ }catch{if(current===revision)aiStatus.value='AI 暂不可用，继续使用本地识别'}
+ finally{if(current===revision)aiBusy.value=false}
+}
+
 const askAi=async()=>{
  const id=fixture.value?.id
  if(!id||aiBusy.value)return
@@ -39,6 +75,10 @@ const askAi=async()=>{
   <button type="button" class="erp-btn erp-btn-secondary" data-testid="kol-smart-parse" :disabled="!raw.trim()" @click="parse">识别信息</button>
   <div v-if="preview" data-testid="kol-smart-preview">
    <button v-if="fixture" type="button" class="erp-btn erp-btn-secondary" data-testid="kol-smart-ai" :disabled="aiBusy" @click="askAi">{{aiBusy?'AI 识别中…':'AI 辅助识别（Dev 合成样本）'}}</button>
+   <button v-if="shapeRequest" type="button" class="erp-btn erp-btn-secondary" data-testid="kol-smart-shape" :disabled="aiBusy" @click="askShape">{{aiBusy?'AI 识别中…':'AI 辅助识别（仅传字段结构）'}}</button>
+   <div v-if="Object.keys(shapeSuggestions).length" data-testid="kol-smart-shape-suggestions">
+     <label v-for="(value,field) in shapeSuggestions" :key="field" class="erp-form-helper"><input v-model="accepted" type="checkbox" :value="field"> {{labels[field]??field}}：{{value}}</label>
+   </div>
    <p v-if="aiStatus" role="status" data-testid="kol-smart-ai-status">{{aiStatus}}</p>
    <div v-if="aiSuggestions" data-testid="kol-smart-ai-suggestions">
      <template v-for="(value,key) in aiSuggestions" :key="key"><p v-if="value!==null">{{labels[key]??key}}：{{value}}</p></template>
@@ -51,7 +91,7 @@ const askAi=async()=>{
     <strong>未识别或冲突信息（请核对）</strong>
     <p v-for="(line,index) in preview.unparsed" :key="index">{{line}}</p>
    </div>
-   <button type="button" class="erp-btn erp-btn-primary" data-testid="kol-smart-apply" @click="emit('apply',preview)">确认填充</button>
+   <button type="button" class="erp-btn erp-btn-primary" data-testid="kol-smart-apply" @click="apply">确认填充</button>
   </div>
  </section>
 </template>

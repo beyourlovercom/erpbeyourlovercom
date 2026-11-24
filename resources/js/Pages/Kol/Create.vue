@@ -24,6 +24,7 @@ const languageOptions = [
 
 const props = withDefaults(defineProps<{
   ownerOptions: OwnerOption[]
+  smartShapeEnabled?:boolean
   smartAiFixtures?: {id:string;text:string}[]
   onboardingToken?: string|null
   onboardingSmartDraft?: QuickOrderDraft|null
@@ -282,7 +283,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
 
         <form id="kol-create-form" @submit.prevent="submit">
           <p v-if="onboardingToken" data-testid="kol-onboarding-resume" role="status">订单草稿已保留。创建网红并完成开户后返回订单，仍需确认收件地址及商品。</p>
-          <KolSmartInput :ai-fixtures="smartAiFixtures" @apply="applySmartDraft" />
+          <KolSmartInput :ai-fixtures="smartAiFixtures" :shape-enabled="smartShapeEnabled" @apply="applySmartDraft" />
           <p v-if="smartWarning" role="alert" data-testid="kol-smart-warning">{{smartWarning}}</p>
           <p v-if="smartProductHint" data-testid="kol-smart-product-hint">产品候选：{{ smartProductHint }}（请在产品选择器核对 SKU）</p>
 
