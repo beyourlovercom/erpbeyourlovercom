@@ -16,6 +16,7 @@ use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\GiftSkuResolutionService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\LogisticsStatusSummary;
+use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
 use App\Modules\Logistics\Application\ReplacementFulfillmentService;
 use App\Modules\Logistics\Application\ShipmentService;
@@ -124,13 +125,14 @@ final class LogisticsController
             ->keyBy('order_id')
             ->all();
         $paymentDecisions = $this->automaticAllocationEligibility->preparePaymentDecisions($orders->items());
+        $entryEligible = array_fill_keys(app(PendingAllocationEntryPolicy::class)->eligibleIdsForPreview($orders->getCollection()->modelKeys()), true);
         $allowedCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
         $warehouses = collect($context['warehouses'] ?? [])
             ->filter(fn (array $warehouse): bool => in_array(strtoupper((string) ($warehouse['code'] ?? '')), $allowedCodes, true))
             ->values()->all();
 
         return Inertia::render('Logistics/FulfillmentAllocation', [
-            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context, $activeReservations, $paymentDecisions))->toArray(),
+            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context, $activeReservations, $paymentDecisions, $entryEligible))->toArray(),
             'warehouses' => $warehouses,
             'carrierOptions' => $this->carrierServices->options(),
             'pendingTotal' => $rejectionFilter ? $this->statusSummary->waitStockCount() : $orders->total(),
@@ -931,6 +933,7 @@ final class LogisticsController
         array $context,
         array $activeReservationsByOrderId = [],
         array $paymentDecisionsByOrderId = [],
+        ?array $entryEligible = null,
     ): array {
         $destinationContext = [
             'province_state' => $order->address?->province_state,
@@ -1043,6 +1046,7 @@ final class LogisticsController
                 $recommendation,
                 $activeReservationsByOrderId,
                 $paymentDecisionsByOrderId[$order->id] ?? null,
+                $entryEligible === null ? null : isset($entryEligible[$order->id]),
             ),
             'shipment' => $order->shipment ? [
                 ...$order->shipment->only(['warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note']),

@@ -20,6 +20,7 @@ use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
+use App\Modules\Orders\Application\OrderContactProjection;
 use App\Modules\Orders\Application\OrderManualHoldStatus;
 use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
@@ -114,7 +115,7 @@ final class OverseaWarehouseController
         ];
         $gridFilters['contact'] = mb_substr(trim((string) $request->query('filter_contact', '')), 0, 80);
         if ($gridFilters['contact'] !== '') {
-            $base->whereHas('order', fn ($q) => app(\App\Modules\Orders\Application\OrderContactProjection::class)->applyNameFilter($q, $gridFilters['contact']));
+            $base->whereHas('order', fn ($q) => app(OrderContactProjection::class)->applyNameFilter($q, $gridFilters['contact']));
         }
         $sortable = ['line' => 'id', 'shipped_at' => 'shipped_at', 'tracking' => 'tracking_number'];
         $sortCol = (string) $request->query('sort_col', 'line');
@@ -139,7 +140,7 @@ final class OverseaWarehouseController
 
         $shipments = $base->orderBy($sortable[$gridEnabled ? $sortCol : 'line'], $gridEnabled ? $sortDir : 'desc')
             ->paginate($perPage)->withQueryString();
-        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($shipments->getCollection()->pluck('order'));
+        app(OrderContactProjection::class)->prime($shipments->getCollection()->pluck('order'));
         $trackingStatuses = app(LogisticsTrackingListStatus::class)
             ->forShipments($shipments->getCollection()->pluck('id')->all());
         $start = ($shipments->currentPage() - 1) * $shipments->perPage();
@@ -812,7 +813,7 @@ final class OverseaWarehouseController
             'line' => $line,
             'order_id' => $order?->id,
             'erp_order_id' => $order?->erp_order_id,
-            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
+            ...app(OrderContactProjection::class)->for($order),
             'order_url' => $order ? "/orders/{$order->id}" : null,
             'recipient_name' => $order?->address?->recipient_name,
             'order_date' => $order?->order_date?->toDateString(),

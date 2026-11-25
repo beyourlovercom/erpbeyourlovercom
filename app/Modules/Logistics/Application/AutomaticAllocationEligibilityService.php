@@ -27,6 +27,7 @@ final class AutomaticAllocationEligibilityService
         ?array $recommendation = null,
         ?array $activeReservationsByOrderId = null,
         ?array $paymentDecision = null,
+        ?bool $entryAllowedForPreview = null,
     ): array {
         $order->loadMissing(['address', 'items', 'shipment.warehouse', 'externalReferences']);
 
@@ -39,7 +40,7 @@ final class AutomaticAllocationEligibilityService
             return $this->blocked('PAYMENT_NOT_AUTHORIZED', $payment['reason_code'], $payment['reason_label']);
         }
 
-        if (! $this->entryPolicy->allows($order)) {
+        if (! ($entryAllowedForPreview ?? $this->entryPolicy->allows($order))) {
             return $this->blocked('BLOCKED_OTHER', 'allocation_entry_not_eligible', '订单未满足待分仓日期、付款或网红审核条件。');
         }
 

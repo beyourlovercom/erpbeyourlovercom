@@ -5,6 +5,8 @@ namespace App\Modules\Orders\Application;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 
 /** Shared, request-scoped projection. Prime a full page before rendering list rows. */
 final class OrderContactProjection
@@ -15,6 +17,7 @@ final class OrderContactProjection
     {
         $rootIds = [];
         $orderRoots = [];
+        $loadedRoots = collect();
         foreach ($orders as $order) {
             if (! $order instanceof Order) {
                 continue;
@@ -24,20 +27,29 @@ final class OrderContactProjection
             if (! array_key_exists($id, $this->rows)) {
                 $orderRoots[$id] = $root;
                 $rootIds[] = $root;
+                if ($root === $id && array_key_exists('contact_user_id', $order->getAttributes())) {
+                    $loadedRoots->put($id, $order);
+                }
             }
         }
         if ($orderRoots === []) {
             return;
         }
 
-        $roots = Order::withTrashed()->whereIn('id', array_unique($rootIds))
-            ->get(['id', 'order_kind', 'contact_user_id', 'owner_id', 'kol_id'])->keyBy('id');
-        $kolOwners = Kol::query()->whereIn('id', $roots->pluck('kol_id')->filter()->unique())
-            ->pluck('owner_id', 'id');
-        $kol = collect(OrderContactPolicy::options(OrderKind::KolFulfillment))->keyBy('value');
-        $ops = collect(OrderContactPolicy::options(OrderKind::Customer))->keyBy('value');
-        $explicit = User::query()->whereIn('id', $roots->pluck('contact_user_id')->filter()->unique())
-            ->pluck('name', 'id');
+        $missing = array_diff(array_unique($rootIds), $loadedRoots->keys()->all());
+        $roots = $missing === [] ? $loadedRoots : $loadedRoots->union(
+            Order::withTrashed()->whereIn('id', $missing)
+                ->get(['id', 'order_kind', 'contact_user_id', 'owner_id', 'kol_id'])->keyBy('id')
+        );
+        $legacy = $roots->filter(fn (Order $order) => ! $order->contact_user_id);
+        $kolRoots = $legacy->filter(fn (Order $order) => $order->order_kind === OrderKind::KolFulfillment);
+        $kolProfileIds = $kolRoots->pluck('kol_id')->filter()->unique();
+        $kolOwners = $kolProfileIds->isEmpty() ? collect() : Kol::query()->whereIn('id', $kolProfileIds)->pluck('owner_id', 'id');
+        $kol = $kolRoots->isEmpty() ? collect() : collect(OrderContactPolicy::options(OrderKind::KolFulfillment))->keyBy('value');
+        $ops = $legacy->contains(fn (Order $order) => $order->order_kind === OrderKind::Customer)
+            ? collect(OrderContactPolicy::options(OrderKind::Customer))->keyBy('value') : collect();
+        $explicitIds = $roots->pluck('contact_user_id')->filter()->unique();
+        $explicit = $explicitIds->isEmpty() ? collect() : User::query()->whereIn('id', $explicitIds)->pluck('name', 'id');
         $configured = (int) config('order_contact.operations_user_id');
 
         foreach ($orderRoots as $id => $rootId) {
@@ -66,11 +78,13 @@ final class OrderContactProjection
         }
     }
 
-    public function filterRequest(\Illuminate\Database\Eloquent\Builder $query, \Illuminate\Http\Request $request, bool $throughOrder = false): void
+    public function filterRequest(Builder $query, Request $request, bool $throughOrder = false): void
     {
         $raw = $request->query('filter_contact', '');
         $name = is_string($raw) ? mb_substr(trim($raw), 0, 80) : '';
-        if ($name === '') return;
+        if ($name === '') {
+            return;
+        }
         if ($throughOrder) {
             $query->whereHas('order', fn ($order) => $this->applyNameFilter($order, $name));
         } else {
@@ -79,7 +93,7 @@ final class OrderContactProjection
     }
 
     /** Apply the same effective-contact precedence to the complete paginated dataset. */
-    public function applyNameFilter(\Illuminate\Database\Eloquent\Builder $query, string $name): void
+    public function applyNameFilter(Builder $query, string $name): void
     {
         $needle = mb_strtolower(trim($name));
         if ($needle === '') {
@@ -106,7 +120,9 @@ final class OrderContactProjection
                         })->orWhere(function ($c) use ($matchingOps, $default): void {
                             $c->where('order_kind', OrderKind::Customer->value);
                             if ($default !== null) {
-                                if (! in_array($default, $matchingOps, false)) $c->whereRaw('1 = 0');
+                                if (! in_array($default, $matchingOps, false)) {
+                                    $c->whereRaw('1 = 0');
+                                }
                             } else {
                                 $c->whereIn('owner_id', $matchingOps);
                             }
