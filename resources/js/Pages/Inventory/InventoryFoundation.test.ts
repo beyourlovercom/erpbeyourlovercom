@@ -106,7 +106,7 @@ describe('Inventory foundation UI', () => {
     expect((wrapper.find('select').element as HTMLSelectElement).options[1].value).toBe('us-la')
   })
   it('defaults to the matrix and switches to the preserved warehouse view', async () => {
-    localStorage.clear()
+    window.localStorage?.clear()
     const wrapper = mount(Products, { props: {
       rows:{data:[],links:[],current_page:1,last_page:1}, warehouses:[], filters:{}, matrixRows:[],
       warehouseGridEnabled:false,
@@ -120,6 +120,6 @@ describe('Inventory foundation UI', () => {
     await wrapper.get('[data-testid="inventory-view-product"]').trigger('click')
     expect(router.get).toHaveBeenLastCalledWith('/inventory/products',{view:'product'},expect.any(Object))
     wrapper.unmount()
-    localStorage.clear()
+    window.localStorage?.clear()
   })
 })
