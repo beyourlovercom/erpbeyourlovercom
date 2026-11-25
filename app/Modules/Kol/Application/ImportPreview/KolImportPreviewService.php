@@ -214,6 +214,10 @@ final class KolImportPreviewService
         sort($affiliateIds);
 
         $issues = [];
+        $rawCountry = $this->latestValue($rows, ['国 Country']);
+        if ($rawCountry !== null && trim($rawCountry) !== '' && $this->countryCode($rawCountry) === null) {
+            $issues[] = 'country_unresolved';
+        }
         if (count($emails) > 1) {
             $issues[] = 'multiple_emails';
         }
@@ -612,22 +616,7 @@ final class KolImportPreviewService
 
     private function countryCode(?string $country): ?string
     {
-        if ($country === null || trim($country) === '') {
-            return null;
-        }
-        $value = mb_strtolower(trim($country));
-        $direct = [
-            'us' => 'US', 'usa' => 'US', 'united states' => 'US', 'united states of america' => 'US',
-            'gb' => 'GB', 'uk' => 'GB', 'united kingdom' => 'GB', 'great britain' => 'GB', 'england' => 'GB',
-            'de' => 'DE', 'germany' => 'DE', 'deutschland' => 'DE', 'fr' => 'FR', 'france' => 'FR',
-            'ca' => 'CA', 'canada' => 'CA', 'au' => 'AU', 'australia' => 'AU', 'ph' => 'PH', 'philippines' => 'PH',
-        ];
-        if (isset($direct[$value])) {
-            return $direct[$value];
-        }
-        $eu = ['austria', 'belgium', 'bulgaria', 'croatia', 'cyprus', 'czech republic', 'czechia', 'denmark', 'estonia', 'finland', 'greece', 'hungary', 'ireland', 'italy', 'italia', 'latvia', 'lithuania', 'luxembourg', 'malta', 'netherlands', 'poland', 'portugal', 'romania', 'slovakia', 'slovenia', 'spain', 'sweden'];
-
-        return in_array($value, $eu, true) ? 'EU' : 'OTHER';
+        return \App\Support\Countries\CountryStandard::resolve($country);
     }
 
     private function value(array $raw, array $headers): mixed

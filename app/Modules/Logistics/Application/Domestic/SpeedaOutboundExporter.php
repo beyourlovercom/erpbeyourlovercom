@@ -164,7 +164,7 @@ final class SpeedaOutboundExporter
 
             $order->loadMissing(['address', 'items.product', 'externalReferences']);
             $address = $order->address;
-            $countryCode = strtoupper(trim((string) $address?->country));
+            $countryCode = \App\Support\Countries\CountryStandard::forWrite($address?->country, 'country') ?? '';
             $country = $countryMap[$countryCode] ?? $countryCode;
             $quantity = max(1, (int) $order->items->sum('quantity'));
             $taxId = $this->taxId($order);

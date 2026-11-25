@@ -20,6 +20,8 @@ final class RecipientCustomsPolicy
         if (! is_string($country) || trim($country) === '') {
             return null;
         }
+        $code = \App\Support\Countries\CountryStandard::resolve($country);
+        if ($code !== null) return $code;
         $normalized = mb_strtoupper(trim(preg_replace('/\s+/u', ' ', $country)), 'UTF-8');
         foreach (self::COUNTRY_ALIASES as $code => $aliases) {
             foreach ($aliases as $alias) {

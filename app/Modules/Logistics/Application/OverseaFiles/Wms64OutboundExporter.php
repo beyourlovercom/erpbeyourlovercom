@@ -98,7 +98,7 @@ final class Wms64OutboundExporter
         [$warehouseCode, $shippingService, $carrier] = $this->profile($warehouseKey, strtoupper((string) $order->address->country));
         $a = $order->address;
         $row = array_fill(0, count(self::HEADERS), null);
-        $country = $this->required(strtoupper((string) $a->country), '国家', $order->erp_order_id);
+        $country = $this->required((\App\Support\Countries\CountryStandard::resolve($a->country) ?? ''), '国家', $order->erp_order_id);
         $row[0] = $warehouseCode;
         $row[1] = $this->salesPlatform($order);
         $row[3] = $referenceOverride ?: $this->references->warehouse($order);

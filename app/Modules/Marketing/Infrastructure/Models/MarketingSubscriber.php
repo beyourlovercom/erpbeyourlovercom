@@ -7,6 +7,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 final class MarketingSubscriber extends Model
 {
+    public function setCountryCodeAttribute($value): void
+    {
+        $this->attributes['country_code'] = \App\Support\Countries\CountryStandard::forWrite($value, 'country_code', $this->getRawOriginal('country_code'));
+    }
+
     protected $table = 'marketing_subscribers';
 
     protected $fillable = ['email', 'first_name', 'last_name', 'phone', 'country_code', 'language_code'];

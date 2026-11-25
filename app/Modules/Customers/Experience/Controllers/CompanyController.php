@@ -121,7 +121,7 @@ final class CompanyController
             'name' => ['required', 'string', 'max:255'],
             'legal_name' => ['nullable', 'string', 'max:255'],
             'website_url' => ['nullable', 'string', 'max:500', $this->websiteRule()],
-            'country_code' => ['nullable', 'string', 'max:8', $this->countryRule()],
+            'country_code' => ['nullable', 'string', 'max:128', $this->countryRule()],
             'registration_number' => ['nullable', 'string', 'max:191'],
             'industry' => ['nullable', 'string', 'max:191'],
             'owner_id' => ['nullable', 'integer', 'exists:users,id'],
@@ -134,7 +134,7 @@ final class CompanyController
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'legal_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'website_url' => ['sometimes', 'nullable', 'string', 'max:500', $this->websiteRule()],
-            'country_code' => ['sometimes', 'nullable', 'string', 'max:8', $this->countryRule()],
+            'country_code' => ['sometimes', 'nullable', 'string', 'max:128', $this->countryRule()],
             'registration_number' => ['sometimes', 'nullable', 'string', 'max:191'],
             'industry' => ['sometimes', 'nullable', 'string', 'max:191'],
             'owner_id' => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
@@ -164,7 +164,7 @@ final class CompanyController
             try {
                 CountryCodeNormalizer::normalize($value);
             } catch (InvalidCompanyAttributeException) {
-                $fail('国家代码需为两位字母。');
+                $fail('请选择可识别的标准国家。');
             }
         };
     }

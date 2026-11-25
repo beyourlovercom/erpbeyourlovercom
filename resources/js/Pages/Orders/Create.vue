@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CountrySelect from '../../Components/CountrySelect.vue';
+import { resolveCountry } from '../../lib/countryStandard'
 import { Head, router, useForm } from '@inertiajs/vue3'
 import { ref, computed, watch } from 'vue'
 import axios from 'axios'
@@ -101,6 +103,7 @@ const prefillContact = (id: number | null | undefined) => {
 let lastKolShippingCountry = ''
 const fillKolAddress = (address: KolAddress | null) => {
   for (const field of addressFields) form[field] = address?.[field] ?? ''
+  form.country = resolveCountry(form.country)?.code ?? form.country
   lastKolShippingCountry = form.country
 }
 // A changed destination requires a new recipient ID; never carry another country's number.
@@ -181,21 +184,22 @@ const applySmartAddress = () => {
     smartWarning.value='粘贴账号与当前网红不一致，请核对后手工填写本次收件信息。'
     return
   }
-  const previousCountry=form.country
+  const previousCountry=resolveCountry(form.country)?.code ?? form.country
+  const draftCountry=resolveCountry(draft.country)?.code ?? draft.country
   const changesRecipient = Boolean(draft.recipient_name && draft.recipient_name!==form.recipient_name)
-  const changesCountry = Boolean(draft.country && draft.country!==previousCountry)
+  const changesCountry = Boolean(draftCountry && draftCountry!==previousCountry)
   // Do not mix a different country or recipient with a previously saved shipping address.
   if(changesCountry || changesRecipient) {
     for(const field of addressFields) form[field]=''
   }
   for(const field of addressFields) {
     if(field==='recipient_customs_id') continue
-    const value=draft[field]
+    const value=field==='country' ? draftCountry : draft[field]
     if(value) form[field]=value
   }
   lastKolShippingCountry=form.country
   if(previousCountry!==form.country || changesRecipient)form.recipient_customs_id=''
-  if(draft.recipient_customs_id&&draft.country===form.country)form.recipient_customs_id=draft.recipient_customs_id
+  if(draft.recipient_customs_id&&draftCountry===form.country)form.recipient_customs_id=draft.recipient_customs_id
   if(draft.product_hint&&!form.items[0].product_id&&!form.items[0].product_summary)form.items[0].product_summary=draft.product_hint
   smartAddressConfirmed.value=false
 }
@@ -401,7 +405,7 @@ const submit = () => {
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">国家</label>
-                <input v-model="form.country" data-testid="order-country" class="erp-input" placeholder="可选">
+                <CountrySelect v-model="form.country" data-testid="order-country" class="erp-input" placeholder="搜索国家名称 / 代码" />
                 <p v-if="form.errors.country" class="erp-field-error">{{ form.errors.country }}</p>
               </div>
               <RecipientCustomsField

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CountrySelect from '../../../Components/CountrySelect.vue';
+
 import { Head, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 
@@ -27,7 +29,7 @@ const submit = () => form.patch(`/customers/companies/${props.company.id}`)
           <label>法定名称<input v-model="form.legal_name"></label>
           <label>网址<input v-model="form.website_url" placeholder="https://example.com"></label>
           <span v-if="form.errors.website_url" class="mvp-field-error">{{ form.errors.website_url }}</span>
-          <label>国家代码<input v-model="form.country_code" maxlength="2" placeholder="US"></label>
+          <label>国家代码<CountrySelect v-model="form.country_code" placeholder="搜索国家名称 / 代码" /></label>
           <span v-if="form.errors.country_code" class="mvp-field-error">{{ form.errors.country_code }}</span>
           <label>注册号<input v-model="form.registration_number"></label>
           <label>行业<input v-model="form.industry"></label>

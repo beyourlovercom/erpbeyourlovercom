@@ -138,7 +138,7 @@ describe('Orders/Create V2', () => {
     expect((wrapper.get('[data-testid="order-recipient-name"]').element as HTMLInputElement).value).toBe('Saved Recipient')
     expect((wrapper.get('[data-testid="order-phone"]').element as HTMLInputElement).value).toBe('+5211223344')
     expect((wrapper.get('[data-testid="order-email"]').element as HTMLInputElement).value).toBe('kol@example.test')
-    expect((wrapper.get('[data-testid="order-country"]').element as HTMLInputElement).value).toBe('Mexico')
+    expect((wrapper.get('[data-testid="order-country"]').element as HTMLInputElement).value).toBe('Mexico (MX)')
     expect((wrapper.get('[data-testid="order-address-line-1"]').element as HTMLInputElement).value).toBe('Saved Street 3')
     expect(axiosGetMock).not.toHaveBeenCalled()
     wrapper.unmount()

@@ -44,7 +44,7 @@ final class ShipOutOutboundPayloadFactory
             throw new RuntimeException('SHIPOUT_SHIP_DATE_INVALID');
         }
         $a = $order->address;
-        if (! $a || strtoupper(trim((string) $a->country)) !== 'US') {
+        if (! $a || \App\Support\Countries\CountryStandard::resolve($a->country) !== 'US') {
             throw new RuntimeException('SHIPOUT_US_ONLY_FIRST_RELEASE');
         }
         $map = [
