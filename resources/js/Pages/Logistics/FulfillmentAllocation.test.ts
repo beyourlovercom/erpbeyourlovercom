@@ -764,7 +764,7 @@ describe('Actual fulfillment product selection', () => {
       .mockResolvedValueOnce({ok:true,json:async()=>({status:'submitted',decision_source:'manual'})})
     vi.stubGlobal('fetch',fetchMock)
     const original={...itemA,product_name:'Original English',material_full_name:'原商品中文'}
-    const order={...manualOrder,items:[original],item_count:1}
+    const order={...manualOrder,contact_user_name:'Vita',items:[original],item_count:1}
     const wrapper=mountPage({...props,orders:{...props.orders,data:[order]}})
     await wrapper.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
     await flushPromises()
@@ -776,9 +776,10 @@ describe('Actual fulfillment product selection', () => {
     await flushPromises()
     search.value='tw05r';search.dispatchEvent(new Event('input',{bubbles:true}))
     await flushPromises()
-    const select=row.querySelector('.replacement-picker select') as HTMLSelectElement
+    const select=row.querySelector('.replacement-options')!
     expect(select.textContent).toContain('红色产品')
-    select.value='99';select.dispatchEvent(new Event('change',{bubbles:true}))
+    expect(document.body.textContent).toContain('订单联络人Vita')
+    ;(Array.from(select.querySelectorAll('button')).find(b=>b.textContent?.includes('TW05R'))!).click()
     await flushPromises()
     expect(row.textContent).toContain('ERP参考 15')
     expect(row.textContent).toContain('实际发货：TW05R')

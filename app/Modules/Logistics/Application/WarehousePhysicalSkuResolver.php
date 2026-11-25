@@ -29,8 +29,9 @@ final class WarehousePhysicalSkuResolver
     public function resolve(OrderItem $item, string $warehouseCode, ?int $giftMappingId, bool $allowManualGiftStockException = false, ?int $replacementProductId = null): array
     {
         $sourceSku = trim((string) ($item->source_sku ?: $item->sku));
-        $sourceProductId = (int) ($item->source_product_id ?: $item->product_id);
-        abort_if($sourceSku === '' || $sourceProductId < 1, 422, '订单来源商品身份无效，不能分仓发货');
+        $sourceProductId = $item->fulfillmentSourceProductId();
+        abort_if($sourceSku === '', 422, '原订单缺少 SKU，请先补齐原始商品信息');
+        abort_if($sourceProductId === null && $replacementProductId === null, 422, '原 SKU 未关联商品档案，请选择实际发货商品');
 
         $gift = $this->gifts->resolve($item, $warehouseCode, $giftMappingId, $allowManualGiftStockException);
         $targetId = (int) ($gift['resolved_product_id'] ?? $sourceProductId);

@@ -252,6 +252,27 @@ final class WarehousePhysicalSkuMaterializationTest extends TestCase
         self::assertSame('submitted', $allocation->status);
     }
 
+    public function test_unbound_source_can_be_explicitly_replaced_without_inventing_source_identity(): void
+    {
+        [$user, $order, $item, $product, $warehouse] = $this->ordinaryScenario();
+        $item->forceFill(['product_id' => null])->save();
+        $target = $this->product('REPLACEMENT-UNBOUND', 'Replacement for unbound SKU');
+        $this->inventory($warehouse, $target, 7);
+        config()->set('shipout.production_read_enabled', false);
+        $service = app(FulfillmentAllocationSubmissionService::class);
+        $allocation = $service->submitManual($order, [
+            ['order_item_id' => $item->id, 'source_code' => 'US-LA', 'replacement_product_id' => $target->id],
+        ], null, $user);
+        $actual = $item->fresh();
+        self::assertSame($target->id, $actual->product_id);
+        self::assertSame($target->sku, $actual->sku);
+        self::assertSame($item->sku, $actual->source_sku);
+        self::assertNull($actual->source_product_id);
+        self::assertNull($actual->fulfillmentSourceProductId());
+        self::assertSame($item->line_revenue, $actual->line_revenue);
+        self::assertNull($allocation->plan_snapshot['segments'][0]['items'][0]['source_product_id']);
+    }
+
     private function giftScenario(): array
     {
         $user = $this->operator();

@@ -65,8 +65,8 @@ final class FulfillmentDerivedOrderService
                 $item = $parent->items->firstWhere('id', (int) ($planned['order_item_id'] ?? 0));
                 if ($item) $item->forceFill([
                     'source_sku' => $item->source_sku ?: $item->sku,
-                    'source_product_id' => $item->source_product_id ?: $item->product_id,
-                    'source_product_summary' => $item->source_product_summary ?: $item->product_summary,
+                    'source_product_id' => $planned['source_product_id'] ?? $item->fulfillmentSourceProductId(),
+                    'source_product_summary' => $item->source_product_summary ?? $item->product_summary ?? '',
                     'resolved_fulfillment_sku' => $planned['resolved_fulfillment_sku'] ?? $item->sku,
                     'final_sku' => $this->finalSkus->resolve(
                         (int) ($planned['resolved_product_id'] ?? $item->product_id),
@@ -153,8 +153,8 @@ final class FulfillmentDerivedOrderService
             $resolvedSummary = trim((string) ($segmentItem['resolved_product_summary'] ?? ''));
             $child->items()->create([
                 'product_id' => $resolvedProductId,
-                'source_product_id' => $source->source_product_id ?: $source->product_id,
-                'source_product_summary' => $source->source_product_summary ?: $source->product_summary,
+                'source_product_id' => $segmentItem['source_product_id'] ?? $source->fulfillmentSourceProductId(),
+                'source_product_summary' => $source->source_product_summary ?? $source->product_summary ?? '',
                 'woocommerce_line_item_id' => $source->woocommerce_line_item_id,
                 'product_summary' => $resolvedSummary !== '' ? $resolvedSummary : $source->product_summary,
                 'sku' => $resolvedSku !== '' ? $resolvedSku : $source->sku,
@@ -183,7 +183,7 @@ final class FulfillmentDerivedOrderService
             abort_unless($item && ! isset($seen[$item->id]), 422, '单仓履约商品行身份无效');
             $seen[$item->id] = true;
             $sourceSku = trim((string) ($item->source_sku ?: $item->sku));
-            $sourceProductId = (int) ($item->source_product_id ?: $item->product_id);
+            $sourceProductId = $planned['source_product_id'] ?? $item->fulfillmentSourceProductId();
             $resolvedSku = trim((string) ($planned['resolved_fulfillment_sku'] ?? ''));
             $resolvedProductId = (int) ($planned['resolved_product_id'] ?? $sourceProductId);
             $resolvedSku = $this->finalSkus->resolve(
@@ -195,7 +195,7 @@ final class FulfillmentDerivedOrderService
             $item->forceFill([
                 'source_sku' => $sourceSku,
                 'source_product_id' => $sourceProductId,
-                'source_product_summary' => $item->source_product_summary ?: $item->product_summary,
+                'source_product_summary' => $item->source_product_summary ?? $item->product_summary ?? '',
                 'sku' => $resolvedSku,
                 'product_id' => $resolvedProductId,
                 'product_summary' => $planned['resolved_product_summary'] ?: ($item->source_product_summary ?: $item->product_summary),
@@ -212,8 +212,8 @@ final class FulfillmentDerivedOrderService
             if (! $item->source_sku && ! $item->source_product_id) continue;
             $item->forceFill([
                 'sku' => $item->source_sku ?: $item->sku,
-                'product_id' => $item->source_product_id ?: $item->product_id,
-                'product_summary' => $item->source_product_summary ?: $item->product_summary,
+                'product_id' => $item->fulfillmentSourceProductId(),
+                'product_summary' => $item->source_product_summary ?? $item->product_summary ?? '',
                 'resolved_fulfillment_sku' => null,
                 'final_sku' => null,
             ])->save();
