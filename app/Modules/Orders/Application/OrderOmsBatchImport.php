@@ -6,6 +6,7 @@ use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxTableReader;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderCollaborationPartner;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Support\Countries\CountryStandard;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Crypt;
@@ -86,7 +87,7 @@ final class OrderOmsBatchImport
             ['黄色表头', '必填；灰色表头可留空。不要删除、修改、重排第一行字段名称'],
             ['external_order_number', '同一个订单的所有 SKU 行必须是完全相同的来源订单号；不同订单使用不同号；不可与 ERP 已有订单重复'],
             ['order_date', '支持 YYYY-MM-DD、YYYY/MM/DD 和 Excel/WPS 日期格式，后台自动统一为 YYYY-MM-DD'],
-            ['sku', '每个 XLSX 数据行一个 SKU；必须与 ERP 产品库中唯一 SKU 精确匹配'],
+            ['sku', '每个 XLSX 数据行一个 SKU；忽略大小写，与 ERP 产品库中唯一 SKU 匹配'],
             ['quantity', '当前 SKU 的购买数量，必须为 1–99999 的正整数'],
             ['unit_price', '当前 SKU 商品单价，0 或正数，最多两位小数'],
             ['country', '建议使用两位 ISO 国家代码，例如 US、DE、CA'],
@@ -302,7 +303,7 @@ final class OrderOmsBatchImport
             if (! preg_match('/^(?:0|[1-9][0-9]{0,7})(?:\.[0-9]{1,2})?$/', $entry['unit_price'])) {
                 $errors[] = ['row' => $row, 'message' => 'unit_price 必须是最多两位小数的非负金额'];
             }
-            $allSku[$entry['sku']] = true;
+            $allSku[mb_strtolower($entry['sku'])] = true;
             $groups[$key]['items'][] = [
                 'row' => $row, 'sku' => $entry['sku'],
                 'quantity' => (int) $entry['quantity'], 'unit_price' => $entry['unit_price'],
@@ -329,7 +330,7 @@ final class OrderOmsBatchImport
                 }
             }
             if ($fields['country'] !== '') {
-                $country = \App\Support\Countries\CountryStandard::resolve($fields['country']);
+                $country = CountryStandard::resolve($fields['country']);
                 if ($country === null) {
                     $errors[] = ['row' => $row, 'message' => 'country 国家无法识别，请选择具体国家'];
                 } else {
@@ -360,15 +361,16 @@ final class OrderOmsBatchImport
             }
         }
 
-        $products = Product::query()->whereIn('sku', array_keys($allSku))
-            ->get(['id', 'sku', 'name'])->groupBy('sku');
+        $products = Product::query()->whereIn(DB::raw('LOWER(sku)'), array_keys($allSku))
+            ->get(['id', 'sku', 'name'])->groupBy(fn (Product $product): string => mb_strtolower($product->sku));
         foreach ($orders as &$order) {
             foreach ($order['items'] as &$item) {
-                $matching = $products->get($item['sku']);
+                $matching = $products->get(mb_strtolower($item['sku']));
                 if (! $matching || $matching->count() !== 1) {
                     $errors[] = ['row' => $item['row'], 'message' => 'SKU '.$item['sku'].' 在 ERP 产品库'.($matching ? '匹配多个产品' : '不存在')];
                 } else {
                     $item['product_id'] = (int) $matching->first()->id;
+                    $item['sku'] = (string) $matching->first()->sku;
                     $item['product_summary'] = (string) ($matching->first()->name ?: $item['sku']);
                 }
             }

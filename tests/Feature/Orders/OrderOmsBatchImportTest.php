@@ -8,6 +8,7 @@ use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxTableReader;
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
 use App\Modules\Orders\Application\OrderOmsBatchImport;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Infrastructure\Models\OrderCollaborationPartner;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -366,6 +367,52 @@ final class OrderOmsBatchImportTest extends TestCase
         }
         $this->assertDatabaseCount('orders', 3);
         $this->assertDatabaseCount('oms_order_import_claims', 3);
+    }
+
+    public function test_all_four_import_types_match_sku_case_insensitively_and_store_canonical_sku(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        $product = Product::query()->create(['sku' => 'VA617A-PINK', 'name' => 'Pink Clock']);
+        $partner = OrderCollaborationPartner::query()->where('code', 'CHUNYI')->firstOrFail();
+
+        foreach (OrderOmsBatchImport::IMPORT_TYPES as $type) {
+            foreach (['VA617A-PINK', 'VA617A-Pink', 'va617a-pink', '  Va617a-pInK  '] as $index => $sku) {
+                $number = 'CASE-'.$type.'-'.$index;
+                $file = $this->xlsx($number, sku: $sku);
+                $payload = ['file' => $file, 'import_type' => $type];
+                if ($type === 'collaboration') {
+                    $payload['partner_id'] = $partner->id;
+                }
+                $preview = $this->actingAs($user)->post('/orders/oms/import/preview', $payload)->assertOk()->json();
+                $this->assertSame([], $preview['errors']);
+                $this->assertSame('VA617A-PINK × 2', $preview['preview'][0]['sku_detail']);
+                $this->assertNotNull($preview['token']);
+                $this->assertDatabaseMissing('orders', ['external_order_number' => $number]);
+                $this->actingAs($user)->post('/orders/oms/import/confirm',
+                    $payload + ['token' => $preview['token'], 'confirm' => '1'])->assertOk();
+                $order = Order::query()->where('external_order_number', $number)->firstOrFail();
+                $item = $order->items()->firstOrFail();
+                $this->assertSame('VA617A-PINK', $item->sku);
+                $this->assertSame($product->id, (int) $item->product_id);
+                $this->assertSame($type, $order->source_type->value);
+            }
+        }
+        $this->assertDatabaseCount('orders', 16);
+        $this->assertDatabaseCount('oms_order_import_claims', 16);
+    }
+
+    public function test_case_insensitive_sku_collision_is_rejected_without_writes(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        Product::query()->create(['sku' => 'VA617A-PINK', 'name' => 'First']);
+        Product::query()->create(['sku' => 'va617a-pink', 'name' => 'Second']);
+        $preview = $this->actingAs($user)->post('/orders/oms/import/preview', [
+            'import_type' => 'website', 'file' => $this->xlsx(sku: 'VA617A-PINK'),
+        ])->assertOk()->json();
+        $this->assertNull($preview['token']);
+        $this->assertStringContainsString('匹配多个产品', $preview['errors'][0]['message']);
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('oms_order_import_batches', 0);
     }
 
     public function test_preview_type_is_required_and_token_cannot_confirm_as_another_type(): void
