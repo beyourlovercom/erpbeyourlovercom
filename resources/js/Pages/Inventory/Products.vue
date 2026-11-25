@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3'
+import { Head, Link, router, usePage } from '@inertiajs/vue3'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
 const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+const InventoryMatrix = defineAsyncComponent(() => import('./InventoryMatrix.vue'))
 
 type Row = {
   id:number
@@ -39,8 +40,17 @@ const props = defineProps<{
   filters:{search?:string;warehouse?:string;stock_status?:string}
   globalGridPilotAvailable?:boolean
   globalGridPilotEnabled?:boolean
+  warehouseGridEnabled?:boolean
+  inventoryView?:'product'|'warehouse'|null
+  matrixRows:{id:number;sku:string;material_name:string;warehouses:Record<string,{on_hand:number|null;transit:number;pending:number}>}[]
 }>()
 
+const actor = Number((usePage().props as {auth?:{user?:{id?:number}}}).auth?.user?.id)
+const preferenceKey = actor>0 ? 'inventory-products:view:v1:user:'+actor : null
+let saved: {view?:'product'|'warehouse';warehouseFilters?:{search?:string;warehouse?:string;stock_status?:string}} = {}
+try { if(preferenceKey) saved=JSON.parse(localStorage.getItem(preferenceKey)??'{}') ?? {} } catch { /* optional cache */ }
+const view = ref<'product'|'warehouse'>(props.inventoryView ?? (saved.view==='warehouse'?'warehouse':'product'))
+const warehouseGrid = computed(()=>props.warehouseGridEnabled ?? props.globalGridPilotEnabled ?? true)
 const search = ref(props.filters.search || '')
 // Keep the legacy filter model coherent with in-grid server-side search.
 watch(() => props.filters.search, value => { search.value = value || '' })
@@ -48,31 +58,55 @@ const globalGridSearch = (value:string) => {
   search.value = value
   router.get('/inventory/products', {
     search:value, warehouse:warehouse.value, stock_status:stockStatus.value,
-    global_grid:'1', per_page:String(props.rows.per_page??100), page:1,
+    view:'warehouse', global_grid:'1', per_page:String(props.rows.per_page??100), page:1,
   }, {preserveState:true,replace:true})
 }
 const warehouse = ref(props.filters.warehouse || '')
 const stockStatus = ref(props.filters.stock_status || '')
+const remember = () => {
+  saved={view:view.value,warehouseFilters:{search:search.value,warehouse:warehouse.value,stock_status:stockStatus.value}}
+  try { if(preferenceKey) localStorage.setItem(preferenceKey,JSON.stringify(saved)) } catch { /* optional cache */ }
+}
+const switchView = (target:'product'|'warehouse') => {
+  if (target===view.value) return
+  view.value=target
+  remember()
+  // Inertia visit retains the canonical path without a full-page reload.
+  router.get('/inventory/products', target==='warehouse'
+    ? {...currentFilters(),view:target,global_grid:warehouseGrid.value?'1':'0'} : {view:target},
+    {preserveState:true,replace:true,preserveScroll:true})
+}
+watch(()=>props.inventoryView,next=>{ if(next) view.value=next })
+watch([search,warehouse,stockStatus],()=>{if(view.value==='warehouse')remember()})
+// Restore prior warehouse filters on a default entry; do not overwrite explicit links.
+if(!props.inventoryView && saved.view==='warehouse' && saved.warehouseFilters) {
+  search.value=saved.warehouseFilters.search??''
+  warehouse.value=saved.warehouseFilters.warehouse??''
+  stockStatus.value=saved.warehouseFilters.stock_status??''
+  if(search.value || warehouse.value || stockStatus.value) router.get('/inventory/products',{
+    search:search.value,warehouse:warehouse.value,stock_status:stockStatus.value,view:'warehouse',global_grid:'1',
+  },{preserveState:true,replace:true})
+}
 const apply = () => router.get('/inventory/products', {
   search: search.value,
   warehouse: warehouse.value,
   stock_status: stockStatus.value,
-  ...(props.globalGridPilotEnabled ? {global_grid:'1', per_page: String(props.rows.per_page??100)} : {}),
+  view:'warehouse', global_grid:warehouseGrid.value?'1':'0', per_page:String(props.rows.per_page??100),
 }, { preserveState:true, replace:true })
 
 const currentFilters = () => ({
   search: search.value, warehouse: warehouse.value, stock_status: stockStatus.value,
 })
 const toggleGlobalPilot = () => router.get('/inventory/products', {
-  ...currentFilters(), global_grid: props.globalGridPilotEnabled ? '0' : '1',
+  ...currentFilters(), view:'warehouse', global_grid: warehouseGrid.value ? '0' : '1',
 }, { preserveState: true, replace: true })
 const gridPage = (page:number) => router.get('/inventory/products', {
-  ...currentFilters(), global_grid:'1', per_page:String(props.rows.per_page??100), page,
+  ...currentFilters(), view:'warehouse', global_grid:'1', per_page:String(props.rows.per_page??100), page,
 }, { preserveState:true,replace:true })
 const gridPageSize = (size:number|'all') => {
   if(size==='all')return
   router.get('/inventory/products',{
-    ...currentFilters(),global_grid:'1',per_page:String(size),page:1,
+    ...currentFilters(),view:'warehouse',global_grid:'1',per_page:String(size),page:1,
   },{preserveState:true,replace:true})
 }
 type GridRow = Record<string,unknown>
@@ -138,14 +172,20 @@ const breadcrumbs = [{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/
   <AuthenticatedLayout title="产品库存" :breadcrumbs="breadcrumbs">
     <section class="mvp-page">
       <div class="mvp-page-heading">
-        <div><p class="mvp-kicker">产品 × 仓库</p><h2>产品对应仓库清单</h2><p>统一统计产品在各仓库的库存、上架时间与停留时间。</p></div>
+        <div><p class="mvp-kicker">产品 × 仓库</p><h2>{{view==='product'?'全球多仓库存总表':'产品对应仓库清单'}}</h2><p>{{view==='product'?'按 SKU 查看实际库存与海运在途，快速判断各仓备货需求。':'统一统计产品在各仓库的库存、上架时间与停留时间。'}}</p></div>
         <div class="inventory-actions">
-          <button v-if="globalGridPilotAvailable" type="button" class="mvp-button" data-testid="inventory-global-toggle" @click="toggleGlobalPilot">{{globalGridPilotEnabled?'返回原列表':'Dev · Global Grid'}}</button>
+          <button v-if="view==='warehouse' && globalGridPilotAvailable" type="button" class="mvp-button" data-testid="inventory-global-toggle" @click="toggleGlobalPilot">{{warehouseGrid?'返回原列表':'新版仓库表'}}</button>
           <Link class="mvp-button" href="/inventory/list">仓库清单</Link>
         </div>
       </div>
+      <div class="inventory-view-switch" role="group" aria-label="库存视图">
+        <button type="button" :aria-pressed="view==='product'" :class="{active:view==='product'}" @click="switchView('product')" data-testid="inventory-view-product">按产品查看</button>
+        <button type="button" :aria-pressed="view==='warehouse'" :class="{active:view==='warehouse'}" @click="switchView('warehouse')" data-testid="inventory-view-warehouse">按仓库查看</button>
+      </div>
+      <InventoryMatrix v-if="view==='product'" :rows="matrixRows??[]" />
+      <template v-else>
       <div class="mvp-card filters">
-        <input v-if="!globalGridPilotEnabled" v-model="search" placeholder="搜索 SKU / 产品名称" @keyup.enter="apply">
+        <input v-if="!warehouseGrid" v-model="search" placeholder="搜索 SKU / 产品名称" @keyup.enter="apply">
         <select v-model="warehouse" @change="apply">
           <option value="">全部仓库</option>
           <option v-for="w in warehouses" :key="w.public_slug||w.slug" :value="w.public_slug||w.slug">{{w.name}}</option>
@@ -159,7 +199,7 @@ const breadcrumbs = [{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/
         </select>
         <button class="mvp-button" @click="apply">筛选</button>
       </div>
-      <GlobalGrid v-if="globalGridPilotEnabled" namespace="grid.inventory.products.global.v1"
+      <GlobalGrid v-if="warehouseGrid" namespace="grid.inventory.products.global.v1"
         title="产品库存 · Global Grid V1" :rows="globalRows" :columns="inventoryColumns"
         :search="filters.search ?? ''" search-placeholder="搜索全部 SKU / 产品名称..."
         :required-column-ids="['warehouse','sku']" :page="inventoryPager"
@@ -184,10 +224,12 @@ const breadcrumbs = [{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/
           </tbody>
         </table>
       </div>
+      </template>
     </section>
   </AuthenticatedLayout>
 </template>
 
 <style scoped>
+.inventory-view-switch{display:inline-flex;align-self:flex-start;gap:2px;background:#e8eef0;border:1px solid #d6e0e3;border-radius:7px;padding:3px;margin-bottom:8px}.inventory-view-switch button{background:transparent;color:#536775;border:0;border-radius:5px;padding:8px 18px;cursor:pointer;font-weight:600}.inventory-view-switch button.active{background:#fff;color:#116b57;box-shadow:0 1px 3px #2037421a}
 .inventory-actions{display:flex;gap:8px;align-items:center}.filters{display:flex;gap:10px;flex-wrap:wrap}.filters input,.filters select{padding:9px;border:1px solid #dbe2e8;border-radius:8px}.filters input{min-width:280px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:left;white-space:nowrap}th{font-size:12px;color:#64748b}.stock-badge{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:700}.stock-out_of_stock{background:#fee2e2;color:#991b1b}.stock-low_stock{background:#ffedd5;color:#9a3412}.stock-in_stock{background:#dcfce7;color:#166534}.replenishment-badge{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:700}.replenishment-reorder{background:#fee2e2;color:#991b1b}.replenishment-healthy{background:#dcfce7;color:#166534}.replenishment-no_demand,.replenishment-unconfigured{background:#f1f5f9;color:#475569}@media(max-width:700px){.filters>*{min-width:0!important;flex:1 1 100%}}
 </style>
