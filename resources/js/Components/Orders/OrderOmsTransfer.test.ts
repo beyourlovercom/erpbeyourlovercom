@@ -4,7 +4,7 @@ import { router } from '@inertiajs/vue3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OrderOmsTransfer from './OrderOmsTransfer.vue'
 
-vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn(), isAxiosError: vi.fn(() => false) } }))
+vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), isAxiosError: vi.fn(() => false) } }))
 vi.mock('@inertiajs/vue3', () => ({ router: { reload: vi.fn() } }))
 
 const props = {
@@ -20,7 +20,8 @@ beforeEach(() => {
   vi.restoreAllMocks()
   vi.mocked(axios.post).mockReset()
   vi.mocked(axios.get).mockReset()
-  vi.mocked(axios.get).mockResolvedValue({ data: { partners: [{ id: 1, code: 'CHUNYI', name: '春意' }, { id: 2, code: 'AMAZON_JENNY', name: '亚马逊 Jenny' }], can_manage: false } } as never)
+  vi.mocked(axios.patch).mockReset()
+  vi.mocked(axios.get).mockResolvedValue({ data: { partners: [{ id: 1, code: 'CHUNYI', name: '春意', identity_prefix: 'CY', is_active: true }, { id: 2, code: 'AMAZON_JENNY', name: '亚马逊 Jenny', identity_prefix: 'AJ', is_active: true }], can_manage: false } } as never)
   vi.mocked(router.reload).mockReset()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
@@ -169,6 +170,45 @@ describe('OMS P3 preview and confirm production gates', () => {
     await wrapper.get('#oms-import-partner').setValue('1')
     expect(wrapper.get('button.oms-import-commit').attributes('disabled')).toBeDefined()
     expect(axios.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets an administrator edit a partner prefix and shows the canonical example', async () => {
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: { partners: [{ id: 1, code: 'CHUNYI', name: '春意', identity_prefix: 'CY', is_active: true }], can_manage: true } } as never)
+    const wrapper = mount(OrderOmsTransfer, { props, global: { stubs: { Teleport: true } } })
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    await wrapper.get('#oms-import-type').setValue('collaboration')
+    expect(wrapper.text()).toContain('合作商管理')
+    await wrapper.findAll('button').find(b => b.text() === '编辑')?.trigger('click')
+    await wrapper.get('#oms-partner-prefix').setValue('cx')
+    expect(wrapper.text()).toContain('CX27552-007')
+    vi.mocked(axios.patch).mockResolvedValueOnce({ data: { partner: { id: 1, code: 'CHUNYI', name: '春意', identity_prefix: 'CX', is_active: true } } } as never)
+    await wrapper.get('.oms-partner-add').trigger('submit')
+    await flushPromises()
+    expect(axios.patch).toHaveBeenCalledWith('/orders/collaboration/partners/1', { name: '春意', identity_prefix: 'CX' })
+    expect(wrapper.text()).toContain('春意（CX）')
+  })
+
+  it('requires a valid prefix for new partners and hides management from employees', async () => {
+    const employee = mount(OrderOmsTransfer, { props, global: { stubs: { Teleport: true } } })
+    await employee.get('button').trigger('click')
+    await flushPromises()
+    await employee.get('#oms-import-type').setValue('collaboration')
+    expect(employee.find('.oms-partner-management').exists()).toBe(false)
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: { partners: [], can_manage: true } } as never)
+    const admin = mount(OrderOmsTransfer, { props, global: { stubs: { Teleport: true } } })
+    await admin.get('button').trigger('click')
+    await flushPromises()
+    await admin.get('#oms-import-type').setValue('collaboration')
+    await admin.findAll('button').find(b => b.text().includes('新增合作商'))?.trigger('click')
+    await admin.get('#oms-partner-new-name').setValue('测试合作商')
+    expect(admin.get('button[type=submit]').attributes('disabled')).toBeDefined()
+    await admin.get('#oms-partner-prefix').setValue('CS')
+    expect(admin.get('button[type=submit]').attributes('disabled')).toBeUndefined()
+    vi.mocked(axios.post).mockResolvedValueOnce({ data: { partner: { id: 3, code: 'CP_TEST', name: '测试合作商', identity_prefix: 'CS', is_active: true } } } as never)
+    await admin.get('.oms-partner-add').trigger('submit')
+    await flushPromises()
+    expect(axios.post).toHaveBeenCalledWith('/orders/collaboration/partners', { name: '测试合作商', identity_prefix: 'CS' })
   })
 
   it('does not call the confirm endpoint when the browser confirmation is cancelled', async () => {

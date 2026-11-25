@@ -42,8 +42,7 @@ final class OrderIdentityService
 
     public function previewCollaboration(?int $partnerId, string $externalOrderNumber): string
     {
-        $code = OrderCollaborationPartner::query()->whereKey($partnerId)->value('code');
-        $prefix = config('erp_orders.collaboration_identity_prefixes.'.($code ?? ''));
+        $prefix = OrderCollaborationPartner::query()->whereKey($partnerId)->value('identity_prefix');
         if (! is_string($prefix) || preg_match('/^[A-Z]{2,8}$/D', $prefix) !== 1) {
             throw ValidationException::withMessages(['partner_id' => '该合作商尚未配置唯一的订单编号缩写。']);
         }
