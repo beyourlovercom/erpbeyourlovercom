@@ -5,7 +5,7 @@ import FulfillmentAllocation from './FulfillmentAllocation.vue'
 vi.mock('@inertiajs/vue3', () => ({
   Head: { template: '<span />' },
   Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
-  router: { reload: vi.fn() },
+  router: { reload: vi.fn(), get: vi.fn() },
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { template: '<main><slot /></main>' },

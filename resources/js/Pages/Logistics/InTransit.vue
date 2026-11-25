@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
 import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
@@ -76,7 +75,6 @@ const goToPage = (page: number) => router.get('/logistics/in-transit', { ...curr
   <Head title="运输中 · BYL ERP" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '运输中']">
     <section class="mvp-page">
-      <OrderContactFilter />
       <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading"><div><p class="mvp-kicker">Logistics OS V1</p><h2>运输中</h2><p>已有追踪号、正在运输的物流单。<strong v-if="!props.canOperate"> 当前角色为只读模式。</strong></p></div>
         <div v-if="globalGridPilotAvailable" class="l2-grid-switch"><button

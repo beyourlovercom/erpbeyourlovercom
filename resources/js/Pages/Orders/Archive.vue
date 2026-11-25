@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
 import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
@@ -40,7 +39,6 @@ const restore = (order: Order) => {
         <button v-if="props.filters.search" class="mvp-button" type="button" @click="search = ''; submitSearch()">清除</button>
         <span class="archive-result-count">匹配 {{ props.orders.total }} 单 · 搜索覆盖全部分页</span>
       </form>
-      <OrderContactFilter />
       <div class="mvp-table-wrap"><table class="mvp-table archive-table">
         <thead><tr><th>ERP订单号</th><th>订单联络人</th><th>类型</th><th>归档时间</th><th>归档人</th><th>状态</th><th>操作</th></tr></thead>
         <tbody>

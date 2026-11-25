@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
 import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
@@ -21,12 +20,18 @@ const selectedReviewOrderId = ref<number|null>(null)
 const reviewSearchText = ref(props.gridSearch ?? '')
 watch(() => props.gridSearch, value => { reviewSearchText.value=value??'' })
 const searchReviewGrid = (value:string) => { reviewSearchText.value=value; selectedReviewOrderId.value=null; gridNavigation.search(value) }
+const contactSearch = ref(currentContactQuery().filter_contact ?? '')
+function filterContactColumn(filter:{colId:string;value:string}) {
+  if(filter.colId !== 'contact') return
+  contactSearch.value=filter.value.trim()
+  gridNavigation.page(1)
+}
 const gridNavigation = useGlobalGridListAdapter({
   path:'/logistics/review',
   enabled:()=>!!props.globalGridPilotEnabled,
   search:()=>reviewSearchText.value,
   pageSize:()=>props.reviews.per_page??50,
-  context:currentContactQuery,
+  context:()=>contactSearch.value ? {filter_contact:contactSearch.value} : {},
 })
 const reviewGridRows = computed<GridListRow[]>(()=>props.reviews.data.map(row=>({
   ...row,
@@ -64,12 +69,13 @@ const labels:Record<string,string> = { pending:'退回待发货', awaiting_track
 const decide = (row:Row) => { if (!props.canOperate) return; const value=form(row); if (!value.destination || !value.note.trim()) return; router.post(`/logistics/orders/${row.order_id}/review`, { destination:value.destination, decision_note:value.note.trim() }, { preserveScroll:true }) }
 </script>
 <template><Head title="复核单 · BYL ERP"/><AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP','物流','复核单']"><section class="mvp-page">
-      <OrderContactFilter /><StatusBar :statuses="props.statusBar"/><div class="mvp-page-heading"><div><p class="mvp-kicker">Logistics Review</p><h2>复核单</h2><p>复核中的订单会阻断正常履约操作。<strong v-if="!props.canOperate"> 当前角色为只读模式。</strong></p></div></div><div v-if="globalGridPilotAvailable" style="margin:8px 0">
+      <StatusBar :statuses="props.statusBar"/><div class="mvp-page-heading"><div><p class="mvp-kicker">Logistics Review</p><h2>复核单</h2><p>复核中的订单会阻断正常履约操作。<strong v-if="!props.canOperate"> 当前角色为只读模式。</strong></p></div></div><div v-if="globalGridPilotAvailable" style="margin:8px 0">
   <button type="button" class="mvp-button" data-testid="review-global-grid-toggle" @click="gridNavigation.toggle()">{{ globalGridPilotEnabled?'返回原表':'体验 Global Grid V1' }}</button>
 </div>
 <GlobalGrid v-if="globalGridPilotEnabled" namespace="grid.logistics.review.global.v1"
   title="物流复核 · Global Grid V1" :rows="reviewGridRows" :columns="reviewGridColumns"
   :required-column-ids="['order']" :page="reviewPager" :search="gridSearch??''"
+  :filter-columns="['contact']" :filter-values="{contact:contactSearch}" @column-search-change="filterContactColumn"
   search-placeholder="搜索全部复核订单号 / 收件人..."
   @search-change="searchReviewGrid($event)" @page-change="gridNavigation.page($event)"
   @page-size-change="gridNavigation.pageSize($event)" />

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
 import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { reactive } from 'vue'
@@ -50,7 +49,6 @@ const page = (number: number) => router.get('/kol/logistics', { ...currentContac
         </select>
         <button type="submit" class="mvp-button mvp-button-primary">查询</button>
       </form>
-      <OrderContactFilter />
       <p class="scope-notice">仅显示有权限的 KOL 订单。不提供跨部门导出、发货或修改物流操作。</p>
 
       <div class="rows">

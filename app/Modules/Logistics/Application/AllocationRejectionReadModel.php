@@ -21,6 +21,19 @@ final class AllocationRejectionReadModel
         });
     }
 
+    /** Same effective completion rule as the allocation table, before pagination. */
+    public function onlyProcessed(Builder $orders): Builder
+    {
+        return $orders->whereHas('fulfillmentAllocation', fn (Builder $a) => $a->where('status', 'submitted'))
+            ->whereRaw("TRIM(COALESCE(domestic_reject_reason, '')) = ''")
+            ->whereDoesntHave('overseaWarehouseReview', fn (Builder $review) => $review->where('status', 'rejected'));
+    }
+
+    public function onlyPending(Builder $orders): Builder
+    {
+        return $orders->whereNot(fn (Builder $processed) => $this->onlyProcessed($processed));
+    }
+
     /** @return array{count:int,notice_version:string} */
     public function snapshot(Builder $orders): array
     {
@@ -39,6 +52,7 @@ final class AllocationRejectionReadModel
             ->first();
 
         $count = (int) ($row?->rejected_count ?? 0);
+
         return [
             'count' => $count,
             'notice_version' => hash('sha256',

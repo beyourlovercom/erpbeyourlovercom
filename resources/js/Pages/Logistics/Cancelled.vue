@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
 import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
@@ -28,7 +27,6 @@ const goToPage = (page: number) => router.get('/logistics/cancelled', { ...curre
   <Head title="已取消 · BYL ERP" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '已取消']">
     <section class="mvp-page">
-      <OrderContactFilter />
       <StatusBar :statuses="statusBar" />
       <div class="mvp-page-heading">
         <div>

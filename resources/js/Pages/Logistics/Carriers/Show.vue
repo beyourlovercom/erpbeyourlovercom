@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import OrderContactFilter from '../../../Components/Orders/OrderContactFilter.vue'
 import { currentContactQuery } from '../../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { reactive, ref } from 'vue'
@@ -129,7 +128,6 @@ const saveCarrier = () => {
   <Head :title="`${carrierDisplayName} · 物流商 · BYL ERP`" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '物流商', carrierDisplayName]">
     <section class="mvp-page carrier-detail-page">
-      <OrderContactFilter />
       <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading carrier-heading">
         <div><p class="mvp-kicker">Carrier Shipment Ledger</p><h2>{{ carrierDisplayName }}</h2><p>真实 Shipment 历史、计费重量、实际物流费用与 Provider raw evidence。</p></div>
