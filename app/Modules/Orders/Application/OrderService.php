@@ -51,9 +51,13 @@ final class OrderService
                 ...$orderAttributes,
                 'external_order_number' => trim((string) $attributes['external_order_number']),
                 'internal_order_number' => $this->nextOrderNumber($attributes['order_kind']),
-                'erp_order_id' => $attributes['order_kind'] === OrderKind::Customer->value
-                    ? $this->orderIdentities->allocateCustomer((string) $attributes['order_date'])
-                    : ($isManualKol ? $this->orderIdentities->allocateKol() : ($orderAttributes['erp_order_id'] ?? null)),
+                'erp_order_id' => match (true) {
+                    ($attributes['source_type'] ?? null) === OrderSourceType::Collaboration->value =>
+                        $this->orderIdentities->generateCollaboration($attributes['collaboration_partner_id'] ?? null, (string) $attributes['external_order_number']),
+                    $attributes['order_kind'] === OrderKind::Customer->value =>
+                        $this->orderIdentities->allocateCustomer((string) $attributes['order_date']),
+                    default => $isManualKol ? $this->orderIdentities->allocateKol() : ($orderAttributes['erp_order_id'] ?? null),
+                },
                 'order_status' => OrderStatus::PendingShipment,
                 'owner_id' => $orderAttributes['owner_id'] ?? $actor?->getAuthIdentifier(),
             ]);

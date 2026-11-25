@@ -8,6 +8,7 @@ use App\Modules\Orders\Application\OrderWorkflowStatusDisplayCatalog;
 use App\Modules\Orders\Experience\Console\PaymentHealthPreviewCommand;
 use App\Modules\Orders\Experience\Console\PreviewStalePaymentsCommand;
 use App\Modules\Orders\Experience\Console\RepairWooOrderIdentitiesCommand;
+use App\Modules\Orders\Experience\Console\RepairCollaborationOrderIdentitiesCommand;
 use App\Modules\Orders\Experience\Console\SyncWooCommerceOrdersCommand;
 use App\Modules\Orders\Infrastructure\WooCommerce\EloquentWooCommerceFinancialEvidenceReader;
 use App\Modules\Orders\Infrastructure\WooCommerce\HttpWooCommerceOrderGateway;
@@ -33,6 +34,7 @@ final class OrdersServiceProvider extends ServiceProvider
                 PreviewStalePaymentsCommand::class,
                 PaymentHealthPreviewCommand::class,
                 RepairWooOrderIdentitiesCommand::class,
+                RepairCollaborationOrderIdentitiesCommand::class,
             ]);
         }
     }

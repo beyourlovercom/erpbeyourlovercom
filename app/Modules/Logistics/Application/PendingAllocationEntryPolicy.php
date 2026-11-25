@@ -23,7 +23,7 @@ final class PendingAllocationEntryPolicy
                                     $sources->where(function (Builder $woo): void {
                                         $woo->where('source_type', 'woocommerce')
                                             ->whereHas('financials', fn (Builder $financial) => $financial->where('provider_order_status', 'processing'));
-                                    })->orWhereIn('source_type', ['manual', 'manual_other']);
+                                    })->orWhereIn('source_type', ['manual', 'manual_other', 'collaboration']);
                                 });
                         });
                 });
