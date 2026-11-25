@@ -421,6 +421,7 @@ final class OrderOmsBatchImport
             'actor' => (string) $actor->getAuthIdentifier(),
             'import_type' => $importType,
             'partner_id' => $partnerId,
+            'partner_prefix' => $partnerId === null ? null : OrderCollaborationPartner::query()->whereKey($partnerId)->value('identity_prefix'),
             'expires' => now()->addMinutes(15)->timestamp,
             'count' => count($orders), 'row_count' => $rowCount,
         ], JSON_THROW_ON_ERROR)) : null;
@@ -453,6 +454,12 @@ final class OrderOmsBatchImport
         }
 
         return DB::transaction(function () use ($file, $proof, $actor, $importType, $partnerId): array {
+            if ($partnerId !== null) {
+                $partner = OrderCollaborationPartner::query()->whereKey($partnerId)->lockForUpdate()->firstOrFail();
+                if (! $partner->is_active || ($proof['partner_prefix'] ?? null) !== $partner->identity_prefix) {
+                    throw ValidationException::withMessages(['token' => '合作商编号缩写或状态已变化，请重新预检。']);
+                }
+            }
             $data = $this->inspect($file, $actor, $importType, $partnerId);
             if ($data['errors'] !== [] || $data['count'] !== (int) $proof['count']
                 || $data['row_count'] !== (int) ($proof['row_count'] ?? 0)) {

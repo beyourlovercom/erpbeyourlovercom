@@ -18,15 +18,18 @@ const open = ref(false)
 const busy = ref(false)
 const file = ref<File | null>(null)
 const importType = ref('')
-type Partner = { id: number; code: string; name: string }
+type Partner = { id: number; code: string; name: string; identity_prefix: string | null; is_active: boolean }
 const partners = ref<Partner[]>([])
 const partnerId = ref('')
 const canManagePartners = ref(false)
 const showAddPartner = ref(false)
 const newPartnerName = ref('')
+const newPartnerPrefix = ref('')
+const editingPartnerId = ref<number | null>(null)
+const prefixValid = computed(() => /^[A-Z]{2,8}$/.test(newPartnerPrefix.value.trim().toUpperCase()))
 const partnerBusy = ref(false)
 const isCollaboration = computed(() => importType.value === 'collaboration')
-const partnerReady = computed(() => !isCollaboration.value || (partnerId.value !== '' && partners.value.some(p => String(p.id) === partnerId.value)))
+const partnerReady = computed(() => !isCollaboration.value || (partnerId.value !== '' && partners.value.some(p => String(p.id) === partnerId.value && !!p.identity_prefix)))
 const partnerName = computed(() => partners.value.find(p => String(p.id) === partnerId.value)?.name ?? '未指定')
 const typeLabels: Record<string, string> = { website: '网站订单', kol: '网红订单', manual_other: '外采订单', collaboration: '合作订单' }
 const changeImportType = () => { partnerId.value = ''; preview.value = null; committed.value = null; message.value = '' }
@@ -34,8 +37,8 @@ const changePartner = () => { preview.value = null; committed.value = null; mess
 const preview = ref<Preview | null>(null)
 const message = ref('')
 const committed = ref<{ created: number; orders: Array<{ id: number; erp_order_id: string }> } | null>(null)
-const canConfirm = computed(() => props.canConfirmImport === true && !!importType.value && partnerReady.value && file.value !== null && preview.value?.errors.length === 0 && !!preview.value?.token && !busy.value)
-const close = () => { if (busy.value) return; open.value = false }
+const canConfirm = computed(() => props.canConfirmImport === true && !!importType.value && partnerReady.value && file.value !== null && preview.value?.errors.length === 0 && !!preview.value?.token && !busy.value && !partnerBusy.value)
+const close = () => { if (busy.value || partnerBusy.value) return; open.value = false }
 const chooseFile = (event: Event) => {
   file.value = (event.target as HTMLInputElement).files?.[0] ?? null
   preview.value = null
@@ -61,23 +64,36 @@ async function openDialog() {
   open.value = true
   await loadPartners()
 }
+function editPartner(partner?: Partner) {
+  editingPartnerId.value = partner?.id ?? null
+  newPartnerName.value = partner?.name ?? ''
+  newPartnerPrefix.value = partner?.identity_prefix ?? ''
+  showAddPartner.value = true
+}
 async function createPartner() {
   const name = newPartnerName.value.trim()
-  if (!name || partnerBusy.value || !canManagePartners.value) return
+  if (!name || !prefixValid.value || busy.value || partnerBusy.value || !canManagePartners.value) return
   partnerBusy.value = true
   try {
-    const { data } = await axios.post<{ partner: Partner }>('/orders/collaboration/partners', { name })
-    partners.value = [...partners.value, data.partner].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+    const payload = { name, identity_prefix: newPartnerPrefix.value.trim().toUpperCase() }
+    const editing = editingPartnerId.value
+    const { data } = editing === null
+      ? await axios.post<{ partner: Partner }>('/orders/collaboration/partners', payload)
+      : await axios.patch<{ partner: Partner }>('/orders/collaboration/partners/' + editing, payload)
+    partners.value = [...partners.value.filter(p => p.id !== data.partner.id), data.partner].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
     partnerId.value = String(data.partner.id)
     newPartnerName.value = ''
+    newPartnerPrefix.value = ''
+    editingPartnerId.value = null
     showAddPartner.value = false
     preview.value = null
-    message.value = '已新增合作商：' + data.partner.name + '。请重新预检。'
+    committed.value = null
+    message.value = '已保存合作商：' + data.partner.name + '。请重新预检。'
   } catch (error) { message.value = errorMessage(error) }
   finally { partnerBusy.value = false }
 }
 async function inspect() {
-  if (!file.value || !importType.value || !partnerReady.value || busy.value) return
+  if (!file.value || !importType.value || !partnerReady.value || busy.value || partnerBusy.value) return
   busy.value = true
   preview.value = null
   message.value = ''
@@ -138,7 +154,7 @@ async function confirm() {
         <main class="oms-import-body">
           <div class="oms-template-panel">
             <label for="oms-import-type"><strong>订单类型</strong></label>
-            <select id="oms-import-type" v-model="importType" :disabled="busy" @change="changeImportType">
+            <select id="oms-import-type" v-model="importType" :disabled="busy || partnerBusy" @change="changeImportType">
               <option value="" disabled>请选择订单类型</option>
               <option value="website">网站订单</option>
               <option value="kol">网红订单</option>
@@ -149,14 +165,26 @@ async function confirm() {
               <label for="oms-import-partner"><strong>所属合作商 *</strong></label>
               <select id="oms-import-partner" v-model="partnerId" :disabled="busy || partnerBusy" @change="changePartner">
                 <option value="" disabled>请选择合作商</option>
-                <option v-for="partner in partners" :key="partner.id" :value="String(partner.id)">{{ partner.name }}</option>
+                <option v-for="partner in partners" :key="partner.id" :value="String(partner.id)">{{ partner.name }}（{{ partner.identity_prefix ?? '未设置缩写' }}）</option>
               </select>
-              <button v-if="canManagePartners" type="button" class="oms-partner-add-trigger" @click="showAddPartner = !showAddPartner">＋ 新增合作商</button>
-              <form v-if="showAddPartner && canManagePartners" class="oms-partner-add" @submit.prevent="createPartner">
-                <label for="oms-partner-new-name">合作商名称</label>
-                <input id="oms-partner-new-name" v-model="newPartnerName" maxlength="160" placeholder="如：亚马逊 Jenny" :disabled="partnerBusy" />
-                <button type="submit" :disabled="!newPartnerName.trim() || partnerBusy">{{ partnerBusy ? '保存中…' : '保存合作商' }}</button>
-              </form>
+              <div v-if="canManagePartners" class="oms-partner-management">
+                <strong>合作商管理</strong>
+                <table class="oms-preview-table">
+                  <thead><tr><th>合作商名称</th><th>编号缩写</th><th>状态</th><th>操作</th></tr></thead>
+                  <tbody><tr v-for="partner in partners" :key="partner.id"><td>{{ partner.name }}</td><td>{{ partner.identity_prefix ?? '未设置' }}</td><td>启用</td><td><button type="button" class="oms-partner-add-trigger" :disabled="busy || partnerBusy" @click="editPartner(partner)">编辑</button></td></tr></tbody>
+                </table>
+                <button type="button" class="oms-partner-add-trigger" :disabled="busy || partnerBusy" @click="editPartner()">＋ 新增合作商</button>
+                <form v-if="showAddPartner" class="oms-partner-add" @submit.prevent="createPartner">
+                  <strong>{{ editingPartnerId === null ? '新增合作商' : '编辑合作商' }}</strong>
+                  <label for="oms-partner-new-name">合作商名称</label>
+                  <input id="oms-partner-new-name" v-model="newPartnerName" maxlength="160" placeholder="如：亚马逊 Jenny" :disabled="partnerBusy || busy" />
+                  <label for="oms-partner-prefix">订单编号缩写 *</label>
+                  <input id="oms-partner-prefix" v-model="newPartnerPrefix" maxlength="8" placeholder="如：CY" :disabled="partnerBusy || busy" class="oms-prefix-input" />
+                  <small>2–8 位英文字母，自动转为大写；修改仅影响新订单。</small>
+                  <small v-if="prefixValid">编号示例：<strong>{{ newPartnerPrefix.trim().toUpperCase() }}27552-007</strong></small>
+                  <div class="oms-partner-buttons"><button type="submit" :disabled="!newPartnerName.trim() || !prefixValid || partnerBusy || busy">{{ partnerBusy ? '保存中…' : '保存合作商' }}</button><button type="button" :disabled="partnerBusy" @click="showAddPartner = false">取消</button></div>
+                </form>
+              </div>
               <small>归属写入 ERP 订单，分仓和物流变更不会影响合作商身份。</small>
             </div>
             <strong>模板 1 · 一行一个 SKU</strong>
@@ -190,7 +218,7 @@ async function confirm() {
         </main>
         <footer class="oms-import-footer">
           <button type="button" :disabled="busy" @click="close">关闭</button>
-          <button type="button" :disabled="!file || !importType || !partnerReady || busy" @click="inspect">{{ busy ? '处理中...' : '上传并预检' }}</button>
+          <button type="button" :disabled="!file || !importType || !partnerReady || busy || partnerBusy" @click="inspect">{{ busy ? '处理中...' : '上传并预检' }}</button>
           <span v-if="!canConfirmImport" class="oms-import-readonly" role="status">预检模式：创建订单未开放</span>
           <button v-else type="button" class="oms-import-commit" :disabled="!canConfirm" @click="confirm">确认创建 {{ preview?.count ?? 0 }} 单</button>
         </footer>
@@ -213,7 +241,7 @@ async function confirm() {
 .oms-partner-choice{display:flex;align-items:flex-start;flex-direction:column;gap:7px;padding:10px 12px;border:1px solid #bae6d4;border-radius:8px;background:#f0fdf8}
 .oms-template-panel .oms-partner-choice strong{font-size:13px}.oms-partner-choice select{min-width:220px}
 .oms-partner-add-trigger{border:0;background:transparent;color:#087d67;cursor:pointer;font-size:12px;padding:2px 0}
-.oms-partner-add{display:flex;align-items:end;flex-wrap:wrap;gap:7px}.oms-partner-add label{font-size:12px}
+.oms-partner-management{width:100%;display:flex;flex-direction:column;gap:8px;align-items:stretch}.oms-partner-management .oms-partner-add-trigger{align-self:flex-start}.oms-partner-add{display:flex;flex-direction:column;align-items:flex-start;gap:7px}.oms-prefix-input{text-transform:uppercase}.oms-partner-buttons{display:flex;gap:8px}.oms-partner-add button:disabled{opacity:.5;cursor:not-allowed}.oms-partner-add label{font-size:12px}
 .oms-partner-add input{padding:8px;border:1px solid #cbd5e1;border-radius:6px}.oms-partner-add button{padding:8px;border:1px solid #a4dccd;border-radius:6px;background:#e2f5f0;cursor:pointer}
 .oms-template-panel strong{font-size:17px}.oms-template-panel p{color:#64748b;font-size:12px;line-height:1.6;margin:0}
 .oms-import-file{display:flex;gap:18px;align-items:center;flex-wrap:wrap}

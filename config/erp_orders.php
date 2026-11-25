@@ -1,10 +1,6 @@
 <?php
 
 return [
-    'collaboration_identity_prefixes' => [
-        'CHUNYI' => 'CY',
-        'AMAZON_JENNY' => 'AJ',
-    ],
     'orders' => [
         ['order_number' => 'KOL26073001-007', 'created_at' => '2026-07-30 18:42', 'shipping_status' => '待发货', 'owner' => 'Hiko', 'customer' => 'Richard Delgado', 'country' => '哥伦比亚', 'sku' => 'MF414A', 'quantity' => 1, 'warehouse' => '美国美西加州仓', 'tracking_number' => ''],
         ['order_number' => 'KOL26072918-003', 'created_at' => '2026-07-29 15:08', 'shipping_status' => '已发待单号', 'owner' => 'Andy', 'customer' => 'Mariana López', 'country' => '墨西哥', 'sku' => 'MF319C', 'quantity' => 2, 'warehouse' => '美国美东纽约仓', 'tracking_number' => ''],

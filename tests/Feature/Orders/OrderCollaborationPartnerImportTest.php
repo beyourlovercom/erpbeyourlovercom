@@ -61,16 +61,16 @@ final class OrderCollaborationPartnerImportTest extends TestCase
         $admin = $this->userWith(['orders.view', 'system.permissions.manage']);
         $this->actingAs($employee)->getJson('/orders/collaboration/partners')->assertOk()
             ->assertJsonPath('can_manage', false)->assertJsonCount(2, 'partners');
-        $this->actingAs($employee)->postJson('/orders/collaboration/partners', ['name' => 'Partner C'])
+        $this->actingAs($employee)->postJson('/orders/collaboration/partners', ['name' => 'Partner C', 'identity_prefix' => 'pc'])
             ->assertForbidden();
-        $response = $this->actingAs($admin)->postJson('/orders/collaboration/partners', ['name' => 'Partner C'])
-            ->assertCreated()->assertJsonPath('partner.name', 'Partner C');
+        $response = $this->actingAs($admin)->postJson('/orders/collaboration/partners', ['name' => 'Partner C', 'identity_prefix' => 'pc'])
+            ->assertCreated()->assertJsonPath('partner.name', 'Partner C')->assertJsonPath('partner.identity_prefix', 'PC');
         $partner = OrderCollaborationPartner::query()->findOrFail($response->json('partner.id'));
         $this->assertStringStartsWith('CP_', $partner->code);
         $this->assertDatabaseHas('audit_records', ['action' => 'orders.collaboration_partner.created', 'entity_id' => (string) $partner->id]);
         $this->actingAs($admin)->getJson('/orders/collaboration/partners')
             ->assertJsonCount(3, 'partners')->assertJsonPath('can_manage', true);
-        $this->actingAs($admin)->postJson('/orders/collaboration/partners', ['name' => 'Partner C'])
+        $this->actingAs($admin)->postJson('/orders/collaboration/partners', ['name' => 'Partner C', 'identity_prefix' => 'pc'])
             ->assertUnprocessable();
         $this->actingAs($employee)->patchJson('/orders/collaboration/partners/'.$partner->id, ['name' => 'Renamed'])
             ->assertForbidden();
@@ -78,6 +78,38 @@ final class OrderCollaborationPartnerImportTest extends TestCase
             ->assertOk()->assertJsonPath('partner.is_active', false);
         $this->actingAs($employee)->getJson('/orders/collaboration/partners')
             ->assertOk()->assertJsonCount(2, 'partners');
+    }
+
+    public function test_prefix_management_preserves_history_and_invalidates_stale_import_preview(): void
+    {
+        $admin = $this->userWith(['orders.view', 'orders.create', 'system.permissions.manage']);
+        $employee = $this->userWith(['orders.view', 'orders.create']);
+        Product::query()->create(['sku' => 'MF414A', 'name' => 'Product']);
+        $partner = OrderCollaborationPartner::query()->where('code', 'CHUNYI')->firstOrFail();
+        $this->assertSame('CY', $partner->identity_prefix);
+        $this->actingAs($admin)->postJson('/orders/collaboration/partners', ['name' => 'No Prefix'])->assertUnprocessable();
+        $this->postJson('/orders/collaboration/partners', ['name' => 'Duplicate', 'identity_prefix' => 'cy'])->assertUnprocessable();
+        $this->postJson('/orders/collaboration/partners', ['name' => 'Invalid', 'identity_prefix' => 'C1'])->assertUnprocessable();
+        $this->actingAs($employee)->patchJson('/orders/collaboration/partners/'.$partner->id, ['identity_prefix' => 'NEW'])->assertForbidden();
+        $file = $this->xlsx('103769360358527552');
+        $data = ['file' => $file, 'import_type' => 'collaboration', 'partner_id' => $partner->id];
+        $preview = $this->actingAs($admin)->postJson('/orders/oms/import/preview', $data)->assertOk()->json();
+        $this->postJson('/orders/oms/import/confirm', [...$data, 'token' => $preview['token'], 'confirm' => '1'])->assertOk();
+        $old = Order::query()->firstOrFail();
+        $this->assertSame('CY27552-007', $old->erp_order_id);
+        $next = [...$data, 'file' => $this->xlsx('103769142557701265')];
+        $stale = $this->postJson('/orders/oms/import/preview', $next)->assertOk()->json();
+        $this->patchJson('/orders/collaboration/partners/'.$partner->id, ['identity_prefix' => 'cx'])->assertOk()
+            ->assertJsonPath('partner.identity_prefix', 'CX');
+        $this->assertSame('CX', $partner->fresh()->identity_prefix);
+        $this->assertSame('CY27552-007', $old->fresh()->erp_order_id);
+        $this->postJson('/orders/collaboration/partners', ['name' => 'Historical', 'identity_prefix' => 'CY'])->assertUnprocessable();
+        $this->postJson('/orders/oms/import/confirm', [...$next, 'token' => $stale['token'], 'confirm' => '1'])->assertUnprocessable();
+        $this->assertDatabaseCount('orders', 1);
+        $fresh = $this->postJson('/orders/oms/import/preview', $next)->assertOk()->json();
+        $this->postJson('/orders/oms/import/confirm', [...$next, 'token' => $fresh['token'], 'confirm' => '1'])->assertOk()
+            ->assertJsonPath('orders.0.erp_order_id', 'CX01265-007');
+        $this->assertDatabaseHas('audit_records', ['action' => 'orders.collaboration_partner.updated', 'entity_id' => (string) $partner->id]);
     }
 
     public function test_import_requires_active_partner_and_token_binds_same_partner_without_partial_writes(): void

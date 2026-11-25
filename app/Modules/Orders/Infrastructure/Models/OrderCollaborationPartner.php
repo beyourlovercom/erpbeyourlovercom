@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 final class OrderCollaborationPartner extends Model
 {
-    protected $fillable = ['code', 'name', 'is_active'];
+    protected $fillable = ['code', 'name', 'is_active', 'identity_prefix'];
 
     protected function casts(): array
     {
