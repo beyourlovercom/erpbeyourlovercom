@@ -6,6 +6,8 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInboundBatch;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInboundItem;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
@@ -422,4 +424,17 @@ DB::transaction(function () use ($product, $warehouse, $owner): void {
         'trigger'=>'redispatch',
     ]);
 });
+// Extra fixture for the explicitly selected Inventory Matrix browser regression only.
+if (str_contains((string) getenv('BYL_E2E_GREP'), 'Inventory Matrix V1 real browser')) {
+    DB::transaction(function () use ($product, $warehouse): void {
+        $second = Product::create(['sku'=>'MATRIX-E2E-LOW','name'=>'Matrix second fixture','is_active'=>true]);
+        WarehouseInventory::create(['warehouse_id'=>$warehouse->id,'product_id'=>$second->id,'quantity_on_hand'=>2,'quantity_reserved'=>0]);
+        $ny = Warehouse::where('code','US-NY')->firstOrFail();
+        WarehouseInventory::create(['warehouse_id'=>$ny->id,'product_id'=>$product->id,'quantity_on_hand'=>51,'quantity_reserved'=>0]);
+        WarehouseInventory::create(['warehouse_id'=>$ny->id,'product_id'=>$second->id,'quantity_on_hand'=>0,'quantity_reserved'=>0]);
+        $batch = WarehouseInboundBatch::create(['warehouse_id'=>$ny->id,'reference'=>'MATRIX-E2E-SEA','transport_mode'=>'sea','status'=>'in_transit','quantity_total'=>30]);
+        WarehouseInboundItem::create(['batch_id'=>$batch->id,'product_id'=>$product->id,'source_sku'=>$product->sku,'canonical_sku'=>$product->sku,'quantity'=>30,'match_status'=>'matched']);
+    });
+    fwrite(STDOUT, "INVENTORY_MATRIX_EXTRA_FIXTURES_PASS\n");
+}
 fwrite(STDOUT, "GLOBAL_GRID_SYNTHETIC_FIXTURES_PASS: 1 product, 1 inventory, 1 procurement, 1 domestic review; disposable SQLite only\n");
