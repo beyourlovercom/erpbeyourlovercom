@@ -1,0 +1,49 @@
+{
+  "dateBeijing": "2026-11-25 14:51",
+  "ownerAcceptance": {
+    "status": "PASS",
+    "verbatim": "效果pass\n验收通过",
+    "scope": "ERP2 Canonical URL V1 deployed Dev visual/route acceptance"
+  },
+  "runtime": {
+    "indexSha256": "80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37",
+    "verifiedAtBeijing": "2026-11-25 14:51:44",
+    "sourceFiles": 12,
+    "allSourceMatches": true,
+    "allBackupMatches": true,
+    "liveGatewayMatches": true,
+    "backupGatewayMatches": true,
+    "liveDistMatches": true,
+    "backupDistMatches": true,
+    "productionConnected": false,
+    "businessWrites": "disabled; account preferences only"
+  },
+  "integrationReadback": {
+    "main": "ce2ad70c7033a6b317edfae664ee6e77d7ca5948",
+    "dependencies": [
+      {
+        "pr": 766,
+        "head": "4221361483220be28395e0ce063da5606e219bae",
+        "base": "main",
+        "merged": false
+      },
+      {
+        "pr": 846,
+        "head": "97a1aa1ec930566e4fce9c966350615168aed47f",
+        "base": "main",
+        "merged": false
+      },
+      {
+        "pr": 848,
+        "head": "0ff61ae2a70f43838aebc6171cb5e284a1d915e4",
+        "base": "feat/erp2-unified-grid-domestic-d6-20261124",
+        "merged": false
+      }
+    ],
+    "archivePr": 858,
+    "mergeAuthorized": false,
+    "productionAuthorized": false
+  },
+  "employeeUat": "No separate Vita/Liang/Dede confirmations received; remain tracked in main employee UAT U0–U6; do not mark as individually PASS.",
+  "disposition": "Canonical route implementation and Owner Dev acceptance PASS; C5 evidence archive complete. Integration/individual staff UAT remain explicit handoff gates; no new feature work in this branch."
+}
