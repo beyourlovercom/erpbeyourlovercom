@@ -1,0 +1,674 @@
+--- /dev/null
++++ b/frontend/apps/web-antd/src/router/erp-canonical-paths.ts
+@@ -0,0 +1,124 @@
++// ERP2 Canonical URL V1 candidate: only current verified Laravel GET paths.
++// Page routing is separate from existing Inertia/JSON request URIs.
++export const canonicalPagePaths = new Set<string>(["/accounting","/accounting/order-costs","/customers","/customers/companies","/customers/groups","/customers/import","/customers/library","/customers/orders","/dashboard","/guides","/guides/manuals","/guides/videos","/inventory","/inventory/list","/inventory/packaging","/inventory/products","/inventory/sync","/kol","/kol/affiliatewp","/kol/approvals/collaborations","/kol/approvals/kols","/kol/approvals/payouts","/kol/collaborations","/kol/commissions","/kol/communications","/kol/content","/kol/library","/kol/library/create","/kol/logistics","/kol/opportunities","/kol/orders","/kol/samples","/logistics","/logistics/awaiting-tracking","/logistics/carriers","/logistics/china","/logistics/exceptions","/logistics/in-transit","/logistics/oversea","/logistics/tingon","/logistics/wait-stock","/marketing","/marketing/automations","/marketing/campaigns","/marketing/newsletters","/marketing/promotions","/marketing/subscribers","/marketing/traffic","/orders","/orders/archive","/orders/collaboration","/orders/procurement","/products","/products/factory-parameters","/products/list","/products/sku-aliases","/products/skus","/products/weight-evidence","/purchase","/purchase/external","/purchase/files","/purchase/records","/settings","/settings/audit-logs","/settings/backup","/settings/changelog","/settings/fx","/settings/roles-permissions","/settings/statuses","/settings/users","/settings/warehouses","/sync","/sync/customers/import","/sync/exports","/sync/kol","/sync/orders","/sync/warehouses"]);
++const legacyPaths: Record<string,string> = {
++  "/erp/overview": "/dashboard",
++  "/erp/orders": "/orders",
++  "/erp/orders/orders-master": "/orders",
++  "/erp/orders/orders-customers": "/customers/orders",
++  "/erp/orders/orders-kol": "/kol/orders",
++  "/erp/orders/orders-collaboration": "/orders/collaboration",
++  "/erp/orders/orders-procurement": "/orders/procurement",
++  "/erp/orders/orders-archive": "/orders/archive",
++  "/erp/logistics": "/logistics",
++  "/erp/logistics/logistics-wait-stock": "/logistics/wait-stock",
++  "/erp/logistics/logistics-china": "/logistics/china",
++  "/erp/logistics/logistics-tingon": "/logistics/tingon",
++  "/erp/logistics/logistics-awaiting-tracking": "/logistics/awaiting-tracking",
++  "/erp/logistics/logistics-in-transit": "/logistics/in-transit",
++  "/erp/logistics/logistics-exceptions": "/logistics/exceptions",
++  "/erp/logistics/logistics-carriers": "/logistics/carriers",
++  "/erp/sync": "/sync",
++  "/erp/sync/sync-orders": "/sync/orders",
++  "/erp/sync/sync-warehouses": "/sync/warehouses",
++  "/erp/sync/sync-kol": "/sync/kol",
++  "/erp/sync/sync-customers-import": "/sync/customers/import",
++  "/erp/sync/sync-exports": "/sync/exports",
++  "/erp/customers": "/customers",
++  "/erp/customers/customers-library": "/customers/library",
++  "/erp/customers/customers-groups": "/customers/groups",
++  "/erp/customers/customers-companies": "/customers/companies",
++  "/erp/customers/customers-orders": "/customers/orders",
++  "/erp/customers/customers-import": "/customers/import",
++  "/erp/marketing": "/marketing",
++  "/erp/marketing/marketing-traffic": "/marketing/traffic",
++  "/erp/marketing/marketing-subscribers": "/marketing/subscribers",
++  "/erp/marketing/marketing-newsletters": "/marketing/newsletters",
++  "/erp/marketing/marketing-campaigns": "/marketing/campaigns",
++  "/erp/marketing/marketing-automations": "/marketing/automations",
++  "/erp/marketing/marketing-promotions": "/marketing/promotions",
++  "/erp/kol": "/kol",
++  "/erp/kol/kol-library": "/kol/library",
++  "/erp/kol/kol-orders": "/kol/orders",
++  "/erp/kol/kol-logistics": "/kol/logistics",
++  "/erp/kol/kol-library-create": "/kol/library/create",
++  "/erp/kol/kol-approval-kols": "/kol/approvals/kols",
++  "/erp/kol/kol-approval-collaborations": "/kol/approvals/collaborations",
++  "/erp/kol/kol-approval-payouts": "/kol/approvals/payouts",
++  "/erp/kol/kol-opportunities": "/kol/opportunities",
++  "/erp/kol/kol-collaborations": "/kol/collaborations",
++  "/erp/kol/kol-communications": "/kol/communications",
++  "/erp/kol/kol-samples": "/kol/samples",
++  "/erp/kol/kol-content": "/kol/content",
++  "/erp/kol/kol-commissions": "/kol/commissions",
++  "/erp/kol/kol-affiliatewp": "/kol/affiliatewp",
++  "/erp/inventory": "/inventory",
++  "/erp/inventory/inventory-overview": "/inventory",
++  "/erp/inventory/inventory-list": "/inventory/list",
++  "/erp/inventory/inventory-products": "/inventory/products",
++  "/erp/inventory/inventory-sync": "/inventory/sync",
++  "/erp/inventory/inventory-packaging": "/inventory/packaging",
++  "/erp/inventory/inventory-factory-parameters": "/products/factory-parameters",
++  "/erp/procurement": "/purchase",
++  "/erp/procurement/procurement-overview": "/purchase",
++  "/erp/procurement/procurement-external": "/purchase/external",
++  "/erp/procurement/procurement-files": "/purchase/files",
++  "/erp/procurement/procurement-records": "/purchase/records",
++  "/erp/products": "/products",
++  "/erp/products/products-list": "/products/list",
++  "/erp/products/products-skus": "/products/skus",
++  "/erp/products/products-sku-aliases": "/products/sku-aliases",
++  "/erp/products/products-weight-evidence": "/products/weight-evidence",
++  "/erp/guides": "/guides",
++  "/erp/guides/guides-index": "/guides",
++  "/erp/guides/guides-videos": "/guides/videos",
++  "/erp/guides/guides-manuals": "/guides/manuals",
++  "/erp/accounting": "/accounting",
++  "/erp/accounting/accounting-overview": "/accounting",
++  "/erp/accounting/accounting-order-costs": "/accounting/order-costs",
++  "/erp/accounting/accounting-loss-orders": "/accounting/order-costs?profit_status=loss",
++  "/erp/settings": "/settings",
++  "/erp/settings/settings-statuses": "/settings/statuses",
++  "/erp/settings/settings-warehouses": "/settings/warehouses",
++  "/erp/settings/settings-users": "/settings/users",
++  "/erp/settings/settings-roles-permissions": "/settings/roles-permissions",
++  "/erp/settings/settings-fx": "/settings/fx",
++  "/erp/settings/settings-audit-logs": "/settings/audit-logs",
++  "/erp/settings/settings-changelog": "/settings/changelog",
++  "/erp/settings/settings-backup": "/settings/backup",
++  "/erp/logistics/logistics-oversea": "/logistics/oversea"
++};
++export const orderDetailPath = (path: string) => new RegExp("^/(?:orders|customers/orders|kol/orders)/[1-9][0-9]*$").test(path);
++export const overseasWarehousePath = (path: string) => new RegExp("^/logistics/oversea/(?:us-ny|us-moreplus|us-3sm|us-sm|de-tianyun|ca)$").test(path);
++export const inventoryWarehousePath = (path: string) => /^\/inventory\/[a-z0-9-]+$/.test(path);
++export function resolveCanonicalPage(value: string): string | undefined {
++  if (!value.startsWith("/") || value.startsWith("//") || /[\\\u0000-\u001f]/.test(value)) return;
++  const q = value.indexOf("?");
++  const pathname = q < 0 ? value : value.slice(0,q);
++  const query = q < 0 ? "" : value.slice(q+1);
++  if (!/^\/[a-zA-Z0-9/_-]*$/.test(pathname) || pathname.includes("//")) return;
++  const target = legacyPaths[pathname] ?? (canonicalPagePaths.has(pathname) || orderDetailPath(pathname) || overseasWarehousePath(pathname) || inventoryWarehousePath(pathname) ? pathname : undefined);
++  if (!target) return;
++  const [page, fixed = ""] = target.split("?",2);
++  const params = new URLSearchParams(query);
++  new URLSearchParams(fixed).forEach((v,k)=>params.set(k,v));
++  const suffix = params.toString();
++  return page + (suffix ? "?" + suffix : "");
++}
++export const legacyInventoryAlias = (path: string) => /^\/erp\/inventory\/inventory-warehouse-[1-9][0-9]*$/.test(path);
++export function canonicalizeLegacyHash(location: Location, history: History) {
++  if (location.pathname !== "/") return;
++  if (/^#\/auth\/login(?:\?|$)/.test(location.hash)) { history.replaceState(history.state,"","/login"+location.hash.slice("#/auth/login".length)); return; }
++  if (!location.hash.startsWith("#/erp/")) return;
++  const raw = location.hash.slice(1);
++  const target = resolveCanonicalPage(raw) ?? (legacyInventoryAlias(raw.split("?")[0]??"") ? raw : undefined);
++  if (target) history.replaceState(history.state,"",target);
++}
++export const canonicalPathname = (value: string) => resolveCanonicalPage(value)?.split("?")[0];
++export function canonicalMenuTarget(groupKey: string, key: string, originalPath: string): string | undefined {
++  if (!/^[a-z0-9_-]+$/.test(groupKey) || !/^[a-z0-9_-]+$/.test(key)) return;
++  const legacy = groupKey===key ? (key==="dashboard"?"/erp/overview":"/erp/"+key) : "/erp/"+groupKey+"/"+key;
++  if (groupKey === "inventory" && /^inventory-warehouse-[1-9][0-9]*$/.test(key) && inventoryWarehousePath(originalPath) && !canonicalPagePaths.has(originalPath)) return originalPath;
++  if (legacyPaths[legacy] !== originalPath) return;
++  return resolveCanonicalPage(originalPath);
++}
+
+--- a/frontend/apps/web-antd/src/router/index.ts
++++ b/frontend/apps/web-antd/src/router/index.ts
+@@ -8,7 +8,12 @@
+ 
+ import { createRouterGuard } from './guard';
+ import { routes } from './routes';
++import { canonicalizeLegacyHash } from './erp-canonical-paths';
+ 
++if (import.meta.env.VITE_ROUTER_HISTORY !== 'hash' && typeof window !== 'undefined') {
++  canonicalizeLegacyHash(window.location, window.history);
++}
++
+ /**
+  *  @zh_CN 创建vue-router实例
+  */
+
+--- a/frontend/apps/web-antd/src/preferences.ts
++++ b/frontend/apps/web-antd/src/preferences.ts
+@@ -20,7 +20,7 @@
+   // overrides
+   app: {
+     name: import.meta.env.VITE_APP_TITLE,
+-    defaultHomePath: '/erp/overview',
++    defaultHomePath: '/dashboard',
+     accessMode: 'frontend',
+     locale: 'zh-CN',
+     compact: true,
+
+--- a/frontend/apps/web-antd/src/router/erp-live-navigation.ts
++++ b/frontend/apps/web-antd/src/router/erp-live-navigation.ts
+@@ -5,6 +5,8 @@
+ import { useAccessStore, useTabbarStore, useUserStore } from '@vben/stores';
+ import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
+ import { erpViewFor } from './erp-view-resolver';
++import { canonicalMenuTarget, canonicalPathname, resolveCanonicalPage, orderDetailPath, overseasWarehousePath, legacyInventoryAlias } from './erp-canonical-paths';
++import { erpMenuSource } from './erp-menu-source';
+ 
+ import { getCurrentDevReadOnlyOrders, type ErpCurrentDevPage, type ErpDevMenuNode } from '#/api/erp-orders';
+ import { getCanonicalErpIdentity, canonicalAuthorityFingerprint, type CanonicalErpIdentity } from '#/api/erp-identity';
+@@ -14,25 +16,48 @@
+ export const devBootstrapError = ref('');
+ export const canonicalDevIdentity = ref<CanonicalErpIdentity | undefined>();
+ const canonicalAllowedPaths = new Set<string>();
+-export const isCanonicalErpPathAllowed = (path: string) => canonicalAllowedPaths.has(path);
++export const isCanonicalErpPathAllowed = (path: string) => canonicalAllowedPaths.has(path) ||
++  (orderDetailPath(path) && !!canonicalDevIdentity.value?.effectivePermissionKeys.includes("orders.view") && ["/orders","/customers/orders","/kol/orders"].some(p=>canonicalAllowedPaths.has(p))) ||
++  (overseasWarehousePath(path) && canonicalAllowedPaths.has("/logistics/oversea"));
+ 
+-export function canonicalHomePath(identity: CanonicalErpIdentity): string {
+-  const safeKey = /^[a-z0-9_-]+$/;
+-  if (identity.effectivePermissionKeys.includes('orders.view') && identity.navigation.some(group => group.key === 'orders'))
+-    return '/erp/orders/orders-master';
++function authorizedTargets(identity: CanonicalErpIdentity) {
++  const targets = new Set<string>();
+   for (const group of identity.navigation) {
+-    if (!safeKey.test(group.key)) continue;
+-    const parent = group.key === 'dashboard' ? '/erp/overview' : '/erp/' + group.key;
+-    if (group.key === 'orders' && identity.effectivePermissionKeys.includes('orders.view'))
+-      return '/erp/orders/orders-master';
++    if (group.key === 'orders' && identity.effectivePermissionKeys.includes('orders.view')) targets.add('/orders');
++    if (!group.children?.length) {
++      const target = canonicalMenuTarget(group.key,group.key,group.path);
++      if (target) targets.add(target);
++    }
+     for (const child of group.children ?? []) {
+-      if (safeKey.test(child.key)) return parent + '/' + child.key;
++      const target = canonicalMenuTarget(group.key,child.key,child.path);
++      if (target) targets.add(target);
+     }
+-    if (!group.children?.length) return parent;
+   }
+-  return '/403';
++  return targets;
+ }
+-
++export function canonicalHomePath(identity: CanonicalErpIdentity): string {
++  const targets = authorizedTargets(identity);
++  return targets.has('/orders') ? '/orders' : targets.values().next().value ?? '/403';
++}
++export function canonicalRequestedTarget(identity: CanonicalErpIdentity, target: unknown): string | undefined {
++  if(typeof target!=='string')return;
++  const [rawPath, ...queryParts]=target.split('?');
++  const suffix=queryParts.length?'?'+queryParts.join('?'):'';
++  if(legacyInventoryAlias(rawPath??'')){
++    const group=identity.navigation.find(g=>g.key==='inventory');
++    const child=group?.children?.find(c=>rawPath==='/erp/inventory/'+c.key);
++    const route=group&&child?canonicalMenuTarget(group.key,child.key,child.path):undefined;
++    return route ? route+suffix : undefined;
++  }
++  const resolved = resolveCanonicalPage(target);
++  const targets = [...authorizedTargets(identity)].map(p=>canonicalPathname(p));
++  const pathname = resolved ? canonicalPathname(resolved) : undefined;
++  return resolved && pathname && (targets.includes(pathname) || (orderDetailPath(pathname) && identity.effectivePermissionKeys.includes("orders.view") && targets.some(p=>["/orders","/customers/orders","/kol/orders"].includes(p??""))) || (overseasWarehousePath(pathname) && targets.includes("/logistics/oversea")))
++    ? resolved : undefined;
++}
++export function canonicalLoginTarget(identity: CanonicalErpIdentity, target: unknown): string {
++  return canonicalRequestedTarget(identity,target) ?? canonicalHomePath(identity);
++}
+ // Route changes are read-only against the last verified scope. An independent
+ // timer/focus check performs revalidation, never a fetch on every sidebar click.
+ let canonicalRefresh: Promise<boolean> | undefined;
+@@ -76,16 +101,9 @@
+         });
+       }
+       canonicalAllowedPaths.clear();
+-      for (const group of identity.navigation) {
+-        if (!/^[a-z0-9_-]+$/.test(group.key)) continue;
+-        const parent = group.key === 'dashboard' ? '/erp/overview' : '/erp/' + group.key;
+-        if (!group.children?.length) canonicalAllowedPaths.add(parent);
+-        for (const child of group.children ?? []) {
+-          if (/^[a-z0-9_-]+$/.test(child.key))
+-            canonicalAllowedPaths.add(parent + '/' + child.key);
+-        }
+-        if (group.key === 'orders' && identity.effectivePermissionKeys.includes('orders.view'))
+-          canonicalAllowedPaths.add('/erp/orders/orders-master');
++      for (const target of authorizedTargets(identity)) {
++        const pathname = canonicalPathname(target);
++        if (pathname) canonicalAllowedPaths.add(pathname);
+       }
+       return true;
+     } catch (reason) {
+@@ -144,7 +162,7 @@
+ // Browser sidebar is NOT a security boundary; server-side Laravel permissions and
+ // order scopes are still enforced per request. Never restore all owner menu routes
+ // while a per-role Dev request is pending or failed.
+-export function applyAuthorizedDevNavigation(
++function applyLegacyAuthorizedDevNavigation(
+   navigation: ErpDevMenuNode[], router: Router,
+   options: {allowOrdersMaster?: boolean} = {},
+ ) {
+@@ -191,6 +209,76 @@
+     .map((tab) => String(tab.key ?? tab.path));
+   if (forbidden.length) void tabbar._bulkCloseByKeys(forbidden);
+ }
++
++export function applyAuthorizedDevNavigation(
++  navigation: ErpDevMenuNode[], router: Router,
++  options: {allowOrdersMaster?: boolean} = {},
++) {
++  const menus: MenuRecordRaw[] = [];
++  if (options.allowOrdersMaster === undefined) return applyLegacyAuthorizedDevNavigation(navigation,router,options);
++  const register = (group: ErpDevMenuNode, child: ErpDevMenuNode, target: string) => {
++    const pathname = canonicalPathname(target);
++    if (!pathname) return;
++    const routeName = 'ERPCanonical-' + pathname.replace(/[^a-z0-9]+/gi,'-');
++    if (!router.hasRoute(routeName)) {
++      const staticGroup = erpMenuSource.find(g=>g.key===group.key);
++      const staticItem = staticGroup?.children?.find(c=>c.key===child.key);
++      router.addRoute('Root', {
++        name: routeName, path: pathname, component: erpViewFor(child.key),
++        meta: { title: child.label, keepAlive:false, erpMenuKey:child.key,
++          erpModule:group.key, erpOriginalPath:child.path,
++          erpSourceStatus:staticItem?.status ?? staticGroup?.status ?? 'in_progress' },
++      });
++    }
++  };
++  for (const [index, group] of navigation.entries()) {
++    if (!/^[a-z0-9_-]+$/.test(group.key)) continue;
++    const parentPath = group.key === 'dashboard' ? '/erp/overview' : '/erp/' + group.key;
++    const original = approvedSource.find(item=>item.path===parentPath);
++    if (!original) continue;
++    const children: MenuRecordRaw[] = [];
++    const seen = new Set<string>();
++    const items = [...(group.children ?? [])];
++    if (group.key==='orders' && options.allowOrdersMaster!==false && !items.some(c=>c.key==='orders-master'))
++      items.unshift({key:'orders-master',label:'\u8ba2\u5355\u603b\u8868',path:'/orders'});
++    for (const child of items) {
++      const target = canonicalMenuTarget(group.key,child.key,child.path);
++      if (!target || seen.has(target)) continue;
++      seen.add(target);
++      register(group,child,target);
++      children.push({name:child.label,path:target});
++    }
++    if (!children.length) {
++      const target = canonicalMenuTarget(group.key,group.key,group.path);
++      if (!target || items.length) continue;
++      register(group,group,target);
++      menus.push({name:group.label,path:target,icon:original.icon,order:index});
++    } else {
++      // Vben group keys are structural only, never final public URLs.
++      menus.push({name:group.label,path:parentPath,icon:original.icon,order:index,children});
++    }
++  }
++  const detailRoutes = [
++    {name:'ERPCanonical-order-detail',path:'/orders/:orderId([1-9][0-9]*)',key:'orders-master',original:'/orders'},
++    {name:'ERPCanonical-customer-detail',path:'/customers/orders/:orderId([1-9][0-9]*)',key:'orders-customers',original:'/customers/orders'},
++    {name:'ERPCanonical-kol-detail',path:'/kol/orders/:orderId([1-9][0-9]*)',key:'orders-kol',original:'/kol/orders'},
++  ];
++  for(const entry of detailRoutes) if(!router.hasRoute(entry.name)) router.addRoute('Root',{name:entry.name,path:entry.path,component:erpViewFor(entry.key),meta:{title:'\u8ba2\u5355\u8be6\u60c5',erpMenuKey:entry.key,erpOriginalPath:entry.original,erpModule:'orders',activePath:entry.original,breadcrumbUseActivePath:true,hideInMenu:true,keepAlive:false}});
++  if(!router.hasRoute('ERPCanonical-overseas-warehouse')) router.addRoute('Root',{name:'ERPCanonical-overseas-warehouse',path:'/logistics/oversea/:warehouse(us-ny|us-moreplus|us-3sm|us-sm|de-tianyun|ca)',component:erpViewFor('logistics-oversea'),meta:{title:'\u6d77\u5916\u4ed3\u53d1\u8d27',erpMenuKey:'logistics-oversea',erpOriginalPath:'/logistics/oversea',erpModule:'logistics',activePath:'/logistics/oversea',breadcrumbUseActivePath:true,hideInMenu:true,keepAlive:false}});
++  useAccessStore().setAccessMenus(menus);
++  // A former Owner tab (even pinned) must not outlive a narrower Dev test role.
++  // Remove forbidden cached/bookmarked ERP routes whenever server scope changes.
++  const allowed = new Set<string>();
++  for (const menu of menus) {
++    allowed.add(menu.path);
++    for (const child of menu.children ?? []) allowed.add(child.path);
++  }
++  const tabbar = useTabbarStore();
++  const forbidden = tabbar.tabs
++    .filter((tab) => (tab.path.startsWith('/erp/') || !!canonicalPathname(tab.path)) && !allowed.has(tab.path))
++    .map((tab) => String(tab.key ?? tab.path));
++  if (forbidden.length) void tabbar._bulkCloseByKeys(forbidden);
++}
+ export function clearAuthorizedDevNavigation() {
+   authorityGeneration++;
+   canonicalLoginIdentitySeed = undefined;
+@@ -200,7 +288,7 @@
+   clearHotOrderSnapshots();
+   const tabbar = useTabbarStore();
+   const stale = tabbar.tabs
+-    .filter((tab) => tab.path.startsWith('/erp/'))
++    .filter((tab) => tab.path.startsWith('/erp/') || !!canonicalPathname(tab.path))
+     .map((tab) => String(tab.key ?? tab.path));
+   if (stale.length) void tabbar._bulkCloseByKeys(stale);
+   initialPage = undefined;
+
+--- a/frontend/apps/web-antd/src/router/guard.ts
++++ b/frontend/apps/web-antd/src/router/guard.ts
+@@ -12,9 +12,10 @@
+ import {
+   bootstrapAuthorizedDevNavigation, bootstrapCanonicalDevNavigation,
+   isCanonicalErpPathAllowed, setApprovedMenuSource, devBootstrapError,
+-  canonicalDevIdentity,
++  canonicalDevIdentity, canonicalHomePath, canonicalRequestedTarget,
+ } from './erp-live-navigation';
+ import { installDevPinLimit } from './erp-workspace-tab-policy';
++import { resolveCanonicalPage } from './erp-canonical-paths';
+ import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
+ 
+ /**
+@@ -61,8 +62,8 @@
+       if (!canonicalRoutesReady || !canonicalDevIdentity.value) return;
+       void bootstrapCanonicalDevNavigation(router, true).then((valid) => {
+         if (!valid && devBootstrapError.value === 'ERP2_CANONICAL_SESSION_REQUIRED')
+-          void router.replace({path: LOGIN_PATH, replace: true});
+-        else if (!valid) void router.replace({path:'/403', replace:true});
++          void router.replace({path: '/login', query:{redirect:router.currentRoute.value.fullPath}, replace: true});
++        else if (!valid || (!coreRouteNames.includes(router.currentRoute.value.name) && !isCanonicalErpPathAllowed(router.currentRoute.value.path))) void router.replace({path:'/403', replace:true});
+       });
+     };
+     // Revalidate in the background and when resuming a stale 007 browser tab.
+@@ -81,7 +82,12 @@
+     // the ONLY authority. Ignore Vben's local JWT and synthetic role selectors.
+     // Routes reuse the verified scope; background checks detect live revocation.
+     if (import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel') {
++      if(to.path==='/auth/login')return {path:'/login',query:to.query,replace:true};
+       if (to.path === '/403' || coreRouteNames.includes(to.name)) return true;
++      if (to.path.startsWith('/erp/')) {
++        const target = resolveCanonicalPage(to.fullPath);
++        if (target) return { ...router.resolve(target), replace:true };
++      }
+       const firstCanonicalNavigation = !canonicalRoutesReady;
+       if (firstCanonicalNavigation) {
+         const { accessibleMenus, accessibleRoutes } = await generateAccess({
+@@ -97,16 +103,19 @@
+         // Missing or expired Laravel session must present the genuine employee
+         // login, while endpoint/contract failures stay denied rather than fake.
+         return devBootstrapError.value === 'ERP2_CANONICAL_SESSION_REQUIRED'
+-          ? { path: LOGIN_PATH, replace: true }
++          ? { path: '/login', query: to.redirectedFrom?.path==='/'?{}:{redirect:to.fullPath}, replace: true }
+           : { path: '/403', replace: true };
+       }
++      if(to.redirectedFrom?.path==='/' && canonicalDevIdentity.value){const home=canonicalHomePath(canonicalDevIdentity.value);if(home!==to.path)return {path:home,replace:true};}
++      if(to.path.startsWith('/erp/')&&canonicalDevIdentity.value){const target=canonicalRequestedTarget(canonicalDevIdentity.value,to.fullPath);if(target&&target!==to.fullPath)return {...router.resolve(target),replace:true};}
+       if (!isCanonicalErpPathAllowed(to.path)) {
+         return { path: '/403', replace: true };
+       }
+       // generateAccess dynamically registers route records; resolve the very
+       // first route a second time so the new component is mounted correctly.
+-      return firstCanonicalNavigation
+-        ? {...router.resolve(to.fullPath), replace:true}
++      const resolved = router.resolve(to.fullPath);
++      return firstCanonicalNavigation || resolved.name !== to.name
++        ? {...resolved, replace:true}
+         : true;
+     }
+ 
+
+--- a/frontend/apps/web-antd/src/router/routes/core.ts
++++ b/frontend/apps/web-antd/src/router/routes/core.ts
+@@ -51,6 +51,7 @@
+       {
+         name: 'Login',
+         path: 'login',
++        alias: '/login',
+         component: () => import('#/views/_core/authentication/login.vue'),
+         meta: {
+           title: $t('page.auth.login'),
+
+--- a/frontend/apps/web-antd/src/views/_core/authentication/login.vue
++++ b/frontend/apps/web-antd/src/views/_core/authentication/login.vue
+@@ -5,7 +5,7 @@
+ import { useRouter } from 'vue-router';
+ import { resetAllStores } from '@vben/stores';
+ import { loginCanonicalErp } from '#/api/erp-laravel-auth';
+-import { canonicalDevIdentity, canonicalHomePath, clearAuthorizedDevNavigation, seedCanonicalVerifiedLogin } from '#/router/erp-live-navigation';
++import { canonicalDevIdentity, canonicalLoginTarget, clearAuthorizedDevNavigation, seedCanonicalVerifiedLogin } from '#/router/erp-live-navigation';
+ import { clearHotOrderSnapshots } from '#/api/erp-hot-snapshots';
+ 
+ const canonicalMode = import.meta.env.VITE_ERP_IDENTITY_MODE === 'laravel';
+@@ -32,7 +32,7 @@
+       // The router guard must register route templates before consuming the verified login seed.
+       // Bootstrapping here would cache an identity against an empty approved menu source.
+       stage='router-replace';
+-      await router.replace(canonicalHomePath(verifiedIdentity));
++      await router.replace(canonicalLoginTarget(verifiedIdentity, router.currentRoute.value.query.redirect));
+       if (canonicalDevIdentity.value?.user.id !== verifiedIdentity.user.id || router.currentRoute.value.path === '/403')
+         throw new Error('ERP2_VERIFIED_LOGIN_NAVIGATION_BOOTSTRAP_FAILED');
+       stage='complete';
+
+--- a/frontend/apps/web-antd/src/views/erp/workspace.vue
++++ b/frontend/apps/web-antd/src/views/erp/workspace.vue
+@@ -76,9 +76,14 @@
+ const detailError = ref('');
+ const detailLoading = ref(false);
+ let detailSequence=0;
+-function closeOrderDetail(){++detailSequence;orderDetail.value=null;detailError.value='';detailLoading.value=false;noteBody.value='';noteResult.value='';}
+-watch(()=>[route.path,canonicalDevIdentity.value?.user.id],closeOrderDetail);
++function resetOrderDetail(){++detailSequence;orderDetail.value=null;detailError.value='';detailLoading.value=false;noteBody.value='';noteResult.value='';}
++function closeOrderDetail(){ resetOrderDetail(); if(canonicalIdentityMode && route.params.orderId) void router.replace({path:originalPath.value,query:route.query}); }
++watch(()=>[route.path,canonicalDevIdentity.value?.user.id],resetOrderDetail);
+ async function openOrderDetail(row: Row) {
++  if(canonicalIdentityMode && row.id>0){const kind=row.kind==="fulfillment_derived"?"/orders/":isKolOrders.value||/kol|\u7f51\u7ea2/i.test(row.kind)?"/kol/orders/":"/customers/orders/";const target=kind+row.id;if(route.path!==target){await router.push({path:target,query:route.query});return;}}
++  await loadOrderDetail(row);
++}
++async function loadOrderDetail(row: Row) {
+   if (!canonicalIdentityMode || row.id < 1) return;
+   const ticket=++detailSequence,actor=canonicalDevIdentity.value?.user.id;
+   detailLoading.value = true; detailError.value = ''; orderDetail.value = null;
+@@ -258,8 +263,22 @@
+     }
+   }
+   initialOrdersLoaded = true;
+-  void loadExisting(1, isCustomerOrders.value ? 20 : 50);
++  const q=route.query;
++  const str=(v:unknown)=>typeof v==='string'?v:'';
++  const page=Number(str(q.page)), per=Number(str(q.per_page));
++  if(canonicalIdentityMode){
++    search.value=str(q.search);
++    const requested=str(q.view);if(['all','normal','pending','operational'].includes(requested)||requested==='trash'&&canonicalDevIdentity.value?.effectivePermissionKeys.includes('system.permissions.manage'))masterView.value=requested;
++    masterFilters.value=Object.fromEntries(Object.entries(masterFilterMap).map(([k,v])=>[k,str(q[v])]).filter(([,v])=>v));
++    const sort=Object.entries(masterSortMap).find(([,v])=>v===q.sort);if(sort)masterSort.value={colId:sort[0],direction:q.direction==='asc'?'asc':'desc'};
++  }
++  void loadExisting(canonicalIdentityMode&&Number.isSafeInteger(page)&&page>0?page:1,canonicalIdentityMode&&[20,50,100].includes(per)?per:isCustomerOrders.value?20:50);
+ }
++watch(()=>[route.path,canonicalDevIdentity.value?.user.id],()=>{
++  if(!canonicalIdentityMode||!canonicalDevIdentity.value||!route.params.orderId)return;
++  const id=Number(route.params.orderId);if(!Number.isSafeInteger(id)||id<1)return;
++  void loadOrderDetail({id,kind:route.path.startsWith("/orders/")?"fulfillment_derived":route.path.startsWith("/kol/")?"kol":"customer"} as Row);
++},{immediate:true});
+ onMounted(initCurrentDevOrders);
+ watch(() => [route.meta.erpMenuKey,canonicalDevIdentity.value?.user.id], () => {
+   masterFilters.value={};masterSort.value={colId:'updated_at',direction:'desc'};masterView.value='all';
+
+--- a/frontend/apps/web-antd/src/views/erp/logistics-projection.vue
++++ b/frontend/apps/web-antd/src/views/erp/logistics-projection.vue
+@@ -1,5 +1,6 @@
+ <script setup lang="ts">
+ import { computed, ref, watch } from 'vue';
++import { useRoute, useRouter } from 'vue-router';
+ import type { CellClickedEvent } from 'ag-grid-community';
+ import { logisticsOrderColumns, logisticsPageNamespace, logisticsQueryCapabilities } from '#/components/erp-global-grid/logisticsOrderGrid';
+ import type {LogisticsFilterKey,LogisticsSortKey} from '#/api/logistics-query-contract';
+@@ -19,6 +20,8 @@
+ 
+ defineOptions({ name: 'ERP2LogisticsProjection' });
+ const props = defineProps<{ scope: LogisticsScope }>();
++const route=useRoute(), router=useRouter();
++const historyMode=import.meta.env.VITE_ERP_IDENTITY_MODE==='laravel' && import.meta.env.VITE_ROUTER_HISTORY!=='hash';
+ const pageConfig = {
+   allocation:{title:'待分仓',subtitle:'尚未分配发货仓的订单 · 运营分仓前只读确认',path:'待分仓'},
+   domestic:{title:'国内发货',subtitle:'中国工厂 · 原 Laravel 九个业务队列',path:'国内发货'},
+@@ -261,6 +264,7 @@
+ }
+ function switchWarehouse(next:string){
+   if(props.scope!=='overseas' || !warehouses.some(w=>w.value===next))return;
++  if(historyMode){const target='/logistics/oversea'+(next?'/'+(next==='us-sm'?'us-3sm':next):'');if(route.path!==target){void router.push({path:target,query:route.query});return;}}
+   omsCapabilities.value=null;warehouse.value=next;pager.value.perPage=20;search.value='';filters.value={};sorting.value=null;reviewSuccess.value='';shippingSuccess.value='';void load(1);
+ }
+ function onCellClick(event:CellClickedEvent<Record<string,unknown>>){
+@@ -357,9 +361,11 @@
+   }finally{shippingBusy.value=false;}
+ }
+ watch(() => [props.scope,canonicalDevIdentity.value?.user.id,
+-  canonicalDevIdentity.value?.effectivePermissionKeys.join('|')],()=>{
+-  clearReturnPreview();clearData();search.value='';warehouse.value='';view.value='review';
+-  filters.value={};sorting.value=null;selectedRows.value=[];void load(1);
++  canonicalDevIdentity.value?.effectivePermissionKeys.join('|'),route.params.warehouse],()=>{
++  clearReturnPreview();clearData();search.value='';const slug=String(route.params.warehouse??'');warehouse.value=props.scope==='overseas'&&warehouses.some(w=>w.value===(slug==='us-3sm'?'us-sm':slug))?(slug==='us-3sm'?'us-sm':slug):'';view.value='review';
++  const q=route.query;const requested=typeof q.view==='string'?q.view:'';const per=Number(q.per_page),page=Number(q.page);
++  if(historyMode){if(views.value.some(v=>v.key===requested))view.value=requested as DomesticView|OverseasView;search.value=typeof q.search==='string'?q.search:'';if(per===20||per===50||per===100)pager.value.perPage=per;}
++  filters.value={};sorting.value=null;selectedRows.value=[];void load(historyMode&&Number.isSafeInteger(page)&&page>0?page:1);
+ },{immediate:true});
+ </script>
+ 
+
+--- a/frontend/apps/web-antd/src/router/erp-live-navigation.test.ts
++++ b/frontend/apps/web-antd/src/router/erp-live-navigation.test.ts
+@@ -36,7 +36,7 @@
+   roleKeys:['operations'],
+   effectivePermissionKeys:['orders.view'],
+   navigation:[{key:'orders',label:'Orders',path:'/orders',children:[
+-    {key:'pending',label:'Pending',path:'/orders/pending'},
++    {key:'orders-customers',label:'Pending',path:'/customers/orders'},
+   ]}],
+ };
+ beforeEach(() => {
+@@ -52,11 +52,11 @@
+         {key:'logistics-wait-stock',label:'Pending stock',path:'/logistics/wait-stock'},
+       ]},
+     ]};
+-    expect(canonicalHomePath(staff as any)).toBe('/erp/logistics/logistics-wait-stock');
++    expect(canonicalHomePath(staff as any)).toBe('/logistics/wait-stock');
+     expect(canonicalHomePath({...staff,navigation:[{key:'../../orders',label:'Invalid',path:'/',children:[]}] } as any)).toBe('/403');
+   });
+   it('sends authorized orders staff to orders master and no-module users to 403', () => {
+-    expect(canonicalHomePath(canonical as any)).toBe('/erp/orders/orders-master');
++    expect(canonicalHomePath(canonical as any)).toBe('/orders');
+     expect(canonicalHomePath({...canonical, navigation:[]} as any)).toBe('/403');
+   });
+   it('uses the just-verified login identity for the first route, without an immediate second fetch', async () => {
+@@ -64,7 +64,7 @@
+     seedCanonicalVerifiedLogin(canonical as any);
+     expect(await bootstrapCanonicalDevNavigation(router)).toBe(true);
+     expect(canonicalDevIdentity.value?.user.id).toBe(18);
+-    expect(isCanonicalErpPathAllowed('/erp/orders/pending')).toBe(true);
++    expect(isCanonicalErpPathAllowed('/customers/orders')).toBe(true);
+     expect(fixtures.identity).not.toHaveBeenCalled();
+     expect(await bootstrapCanonicalDevNavigation(router, true)).toBe(true);
+     expect(fixtures.identity).toHaveBeenCalledTimes(1);
+@@ -79,7 +79,7 @@
+   it('loads once; repeated route changes never refetch or blank the sidebar', async () => {
+     fixtures.identity.mockResolvedValue(canonical);
+     expect(await bootstrapCanonicalDevNavigation(router)).toBe(true);
+-    expect(isCanonicalErpPathAllowed('/erp/orders/pending')).toBe(true);
++    expect(isCanonicalErpPathAllowed('/customers/orders')).toBe(true);
+     expect(await bootstrapCanonicalDevNavigation(router)).toBe(true);
+     expect(await bootstrapCanonicalDevNavigation(router)).toBe(true);
+     expect(fixtures.identity).toHaveBeenCalledTimes(1);
+@@ -90,7 +90,7 @@
+     fixtures.identity.mockResolvedValueOnce(canonical)
+       .mockRejectedValueOnce(new Error('ERP2_CANONICAL_ENDPOINT_UNAVAILABLE'));
+     await bootstrapCanonicalDevNavigation(router);
+-    fixtures.tabs=[{path:'/erp/orders/pending',key:'pending'}];
++    fixtures.tabs=[{path:'/customers/orders',key:'pending'}];
+     fixtures.setMenus.mockClear();
+     fixtures.closeTabs.mockClear();
+     expect(await bootstrapCanonicalDevNavigation(router,true)).toBe(true);
+@@ -106,9 +106,9 @@
+       }],
+     });
+     await bootstrapCanonicalDevNavigation(router);
+-    fixtures.tabs=[{path:'/erp/orders/pending',key:'pending'}];
++    fixtures.tabs=[{path:'/customers/orders',key:'pending'}];
+     expect(await bootstrapCanonicalDevNavigation(router,true)).toBe(true);
+-    expect(isCanonicalErpPathAllowed('/erp/orders/pending')).toBe(false);
++    expect(isCanonicalErpPathAllowed('/customers/orders')).toBe(false);
+     expect(fixtures.closeTabs).toHaveBeenCalledWith(['pending']);
+     expect(fixtures.clearSnapshots).toHaveBeenCalled();
+   });
+@@ -118,7 +118,7 @@
+     await bootstrapCanonicalDevNavigation(router);
+     expect(await bootstrapCanonicalDevNavigation(router,true)).toBe(false);
+     expect(canonicalDevIdentity.value).toBeUndefined();
+-    expect(isCanonicalErpPathAllowed('/erp/orders/pending')).toBe(false);
++    expect(isCanonicalErpPathAllowed('/customers/orders')).toBe(false);
+     expect(fixtures.setMenus).toHaveBeenLastCalledWith([]);
+   });
+   it('cannot restore a stale in-flight identity after logout', async () => {
+@@ -140,13 +140,13 @@
+     const staff = {...canonical, navigation:[{key:'dashboard',label:'Dashboard',path:'/dashboard',children:[]},
+       {key:'orders',label:'Orders',path:'/orders',children:[{key:'orders-master',label:'Master',path:'/orders'}]}]};
+     seedCanonicalVerifiedLogin(staff as any);
+-    expect(canonicalHomePath(staff as any)).toBe('/erp/orders/orders-master');
++    expect(canonicalHomePath(staff as any)).toBe('/orders');
+     expect(canonicalDevIdentity.value).toBeUndefined();
+     setApprovedMenuSource([{name:'Dashboard',path:'/erp/overview'},{name:'Orders',path:'/erp/orders'}]);
+     expect(await bootstrapCanonicalDevNavigation(router)).toBe(true);
+     const menus = fixtures.setMenus.mock.calls.at(-1)?.[0];
+     expect(menus).toHaveLength(2);
+-    expect(menus[1].children).toEqual([{name:'Master',path:'/erp/orders/orders-master'}]);
++    expect(menus[1].children).toEqual([{name:'Master',path:'/orders'}]);
+     expect(fixtures.identity).not.toHaveBeenCalled();
+   });
+ });
+
+--- a/frontend/apps/web-antd/.env
++++ b/frontend/apps/web-antd/.env
+@@ -5,1 +5,1 @@
+-VITE_ROUTER_HISTORY=hash
++VITE_ROUTER_HISTORY=history
+
+--- a/frontend/apps/web-antd/.env.production
++++ b/frontend/apps/web-antd/.env.production
+@@ -5,1 +5,1 @@
+-VITE_ROUTER_HISTORY=hash
++VITE_ROUTER_HISTORY=history
+
+--- a/ops/vben-local-gateway-20261125.cjs
++++ b/ops/vben-local-gateway-20261125.cjs
+@@ -40,7 +40,7 @@
+  '/orders/collaboration','/orders/procurement','/orders/archive']);
+ const inertiaLogistics=new Set(['/logistics/china','/logistics/oversea','/logistics/wait-stock','/logistics/awaiting-tracking','/logistics/in-transit','/logistics/exceptions']);
+ const logisticsDetail=(pathname)=>/^\/logistics\/oversea\/(us-ny|us-moreplus|us-3sm|de-tianyun|ca)$/.test(pathname);
+-const inertiaDetail=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*$/.test(pathname);
++const inertiaDetail=(pathname)=>/^\/(?:orders|customers\/orders|kol\/orders)\/[1-9][0-9]*$/.test(pathname);
+ const noteWrite=(pathname)=>/^\/(customers|kol)\/orders\/[1-9][0-9]*\/notes$/.test(pathname);
+ const reviewWrite=new Set(['/logistics/china/batch-review',...domesticFlowWrite]);
+ // Exact original ERP1 domestic XLSX downloads, never a duplicate exporter.
+@@ -162,13 +162,25 @@
+  res.writeHead(upstream.status,responseHeaders);
+  res.end(Buffer.from(await upstream.arrayBuffer()));
+ }
++const canonicalPages=new Set(["/accounting","/accounting/order-costs","/customers","/customers/companies","/customers/groups","/customers/import","/customers/library","/customers/orders","/dashboard","/guides","/guides/manuals","/guides/videos","/inventory","/inventory/list","/inventory/packaging","/inventory/products","/inventory/sync","/kol","/kol/affiliatewp","/kol/approvals/collaborations","/kol/approvals/kols","/kol/approvals/payouts","/kol/collaborations","/kol/commissions","/kol/communications","/kol/content","/kol/library","/kol/library/create","/kol/logistics","/kol/opportunities","/kol/orders","/kol/samples","/logistics","/logistics/awaiting-tracking","/logistics/carriers","/logistics/china","/logistics/exceptions","/logistics/in-transit","/logistics/oversea","/logistics/tingon","/logistics/wait-stock","/marketing","/marketing/automations","/marketing/campaigns","/marketing/newsletters","/marketing/promotions","/marketing/subscribers","/marketing/traffic","/orders","/orders/archive","/orders/collaboration","/orders/procurement","/products","/products/factory-parameters","/products/list","/products/sku-aliases","/products/skus","/products/weight-evidence","/purchase","/purchase/external","/purchase/files","/purchase/records","/settings","/settings/audit-logs","/settings/backup","/settings/changelog","/settings/fx","/settings/roles-permissions","/settings/statuses","/settings/users","/settings/warehouses","/sync","/sync/customers/import","/sync/exports","/sync/kol","/sync/orders","/sync/warehouses","/","/auth/login","/403","/login"]);
++function isDocumentNavigation(req,url){
++ if(!["GET","HEAD"].includes(req.method)||req.headers["x-inertia"]||req.headers["x-requested-with"]||!String(req.headers.accept||"").includes("text/html"))return false;
++ return req.headers["sec-fetch-mode"]==="navigate" && req.headers["sec-fetch-dest"]==="document" && (canonicalPages.has(url.pathname)||inertiaDetail(url.pathname)||logisticsDetail(url.pathname)||/^\/inventory\/[a-z0-9-]+$/.test(url.pathname)||/^\/erp\/inventory\/inventory-warehouse-[1-9][0-9]*$/.test(url.pathname));
++}
++function spaIndex(req,res){
++ const file=path.join(DIST,"index.html");
++ if(!fs.existsSync(file))return json(res,503,{error:"DEV_VBEN_BUILD_MISSING"});
++ res.writeHead(200,{"content-type":"text/html; charset=utf-8","x-content-type-options":"nosniff","cache-control":"no-store"});
++ if(req.method==="HEAD")return res.end();
++ fs.createReadStream(file).pipe(res);
++}
+ function staticFile(req,res,url){
+  if(!['GET','HEAD'].includes(req.method))return json(res,405,{error:'STATIC_READ_ONLY'});
+  let decoded;try{decoded=decodeURIComponent(url.pathname);}catch{return json(res,400,{error:'BAD_URL'});}
+  const target=path.resolve(DIST,'.'+decoded);
+  if(target!==DIST&&!target.startsWith(DIST+path.sep))return json(res,403,{error:'BAD_FILE'});
+- let file=target;try{if(!fs.statSync(file).isFile())file=path.join(DIST,'index.html');}
+- catch{file=path.join(DIST,'index.html');}
++ let file=target;try{if(!fs.statSync(file).isFile())return json(res,404,{error:'ERP2_DEV_PATH_NOT_FOUND'});}
++ catch{return json(res,404,{error:'ERP2_DEV_PATH_NOT_FOUND'});}
+  if(!fs.existsSync(file))return json(res,503,{error:'DEV_VBEN_BUILD_MISSING'});
+  res.writeHead(200,{'content-type':mime[path.extname(file)]||'application/octet-stream',
+   'x-content-type-options':'nosniff','cache-control':file.endsWith('index.html')?'no-store':'public,max-age=300'});
+@@ -182,6 +194,7 @@
+     source:'ISOLATED_007WINDOWS_DEV_MYSQL',production_connected:false,
+     write_enabled:OVERSEA_DEV_WRITE?'oversea-flow-test-only':REVIEW_DEV_WRITE?'domestic-flow-test-only':'account-preferences-only',release:'ERP2 local integration 20261125',order_create_enabled:false,oversea_flow_enabled:OVERSEA_DEV_WRITE,oms_simulation_write_enabled:OMS_SIM_WRITE,
+     domestic_apply_enabled:DOMESTIC_APPLY_DEV_WRITE,mode:'laravel-session',app:'ERP2 Vben Logistics Dev',backend:'127.0.0.1:18823'});}
++  if(isDocumentNavigation(req,url))return spaIndex(req,res);
+   // Never let nested Laravel business URLs fall through to a misleading SPA 200.
+   if(url.pathname.startsWith('/logistics/')&&!isInertia(url.pathname)&&
+      !overseaRoute(url.pathname)&&!reviewWrite.has(url.pathname)&&!allocationWrite(url.pathname)&&!allocationRead(url.pathname)&&!barcodeRead(url.pathname)&&!shippingWrite(url.pathname)&&!domesticExportRead.has(url.pathname)&&!domesticTrackingPreview.has(url.pathname)&&!domesticTrackingApply.has(url.pathname))
