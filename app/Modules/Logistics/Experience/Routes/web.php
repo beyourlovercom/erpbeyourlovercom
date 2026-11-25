@@ -225,6 +225,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/wait-stock/batch-allocation', [LogisticsController::class, 'batchAllocate'])
         ->middleware([...$allocation, 'throttle:6,1'])->name('logistics.fulfillment-allocation.batch');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/recommended', [LogisticsController::class, 'submitRecommendedAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.recommended');
+    Route::get('/logistics/wait-stock/allocation-products', [LogisticsController::class, 'allocationProducts'])->middleware($allocation)->name('logistics.allocation-products');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/preflight', [LogisticsController::class, 'preflightManualAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.preflight');
     Route::get('/logistics/orders/{order}/fulfillment-allocation/status', [LogisticsController::class, 'allocationSubmissionStatus'])->middleware($allocation)->name('logistics.fulfillment-allocation.status');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/manual', [LogisticsController::class, 'submitManualAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.manual');

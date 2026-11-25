@@ -20,7 +20,7 @@ import { allocationGuidance } from '../../lib/allocationGuidance'
 
 type Availability = { warehouse_id:number; warehouse_slug:string; warehouse_name:string; inventory_state:string; can_auto_allocate:boolean; quantity_on_hand:number|null; quantity_reserved:number|null; quantity_available:number|null }
 type GiftOption = { mapping_id:number; warehouse_id:number; warehouse_code:string; warehouse_name:string; fulfillment_product_id:number; fulfillment_sku:string; fulfillment_name:string; quantity_available:number|null; erp_quantity_available?:number|null; stock_gate_reason?:string|null; can_fulfill:boolean; priority:number }
-type Item = { id:number; product_id:number|null; product_url:string|null; sku:string|null; source_sku:string|null; resolved_fulfillment_sku:string|null; product_summary:string|null; quantity:number; availability:Availability[]; is_gift:boolean; gift_options_by_warehouse:Record<string,GiftOption[]> }
+type Item = { id:number; product_id:number|null; product_url:string|null; sku:string|null; source_sku:string|null; resolved_fulfillment_sku:string|null; product_summary:string|null; product_name?:string|null; material_full_name?:string|null; source_product_id?:number|null; source_availability?:Availability[]; previous_replacement_product_id?:number|null; quantity:number; availability:Availability[]; is_gift:boolean; gift_options_by_warehouse:Record<string,GiftOption[]> }
 type PlanItem = { product_id:number|null; quantity:number; sku?:string|null; source_sku?:string|null; resolved_fulfillment_sku?:string|null; product_summary?:string|null }
 type Segment = { source_type:'factory'|'warehouse'; source_code:string; warehouse_id:number|null; warehouse_name:string; carrier?:string|null; service?:string|null; carrier_selection_source?:string|null; items:PlanItem[] }
 type PlanCost = { status:string; amount:number|null; currency:string|null; reason_code?:string|null; reason?:string|null }
@@ -92,6 +92,72 @@ const localSubmitted = reactive<Record<number,{source:'system_recommendation'|'m
 const manualAssignments = reactive<Record<number,Record<number,string>>>({})
 const manualGiftMappings = reactive<Record<number,Record<number,string>>>({})
 const manualCarriers = reactive<Record<number,Record<string,string>>>({})
+type AllocationProduct = {id:number;sku:string;name:string;material_full_name?:string|null}
+const replacementProducts = ref<AllocationProduct[]>([])
+const replacementCatalogLoaded = ref(false)
+const replacementCatalogLoading = ref(false)
+const replacementSelections = reactive<Record<number,Record<number,string>>>({})
+const replacementAvailability = reactive<Record<number,Availability[]>>({})
+const replacementLoading = ref(0)
+const replacementSearch = reactive<Record<number,string>>({})
+const replacementOpen = ref<number|null>(null)
+function openReplacement(item:Item){
+  if(replacementOpen.value!==item.id)replacementSearch[item.id]=''
+  replacementOpen.value=item.id
+  void loadReplacementCatalog()
+}
+function replacementLabel(order:Order,item:Item){
+  const p=chosenReplacement(order,item)
+  return p ? p.sku+' · '+p.name : ((item.previous_replacement_product_id?item.source_sku:item.sku)||'原商品')+' · 保持原商品'
+}
+function closeReplacement(){ replacementOpen.value=null }
+function chosenReplacement(order:Order,item:Item) {
+  const id = Number(replacementSelections[order.id]?.[item.id] || 0)
+  return replacementProducts.value.find(p=>p.id===id)
+}
+function effectiveItem(order:Order,item:Item):Item {
+  const p=chosenReplacement(order,item)
+  if(p)return {...item,product_id:p.id,sku:p.sku,product_summary:p.name,availability:replacementAvailability[p.id]??[]}
+  if(replacementSelections[order.id]?.[item.id])return {...item,availability:[]}
+  return item.previous_replacement_product_id ? {...item,product_id:item.source_product_id??null,sku:item.source_sku??item.sku,availability:item.source_availability??[]} : item
+}
+function filteredReplacementProducts(item:Item,order:Order) {
+  const term=(replacementSearch[item.id]??'').trim().toLowerCase()
+  const selected=chosenReplacement(order,item)
+  const matches = replacementProducts.value.filter(p=>p.id!==(item.previous_replacement_product_id?item.source_product_id:item.product_id) && (p.id===selected?.id || !term || [p.sku,p.name,p.material_full_name].some(v=>v?.toLowerCase().includes(term))))
+  const visible = matches.slice(0,100)
+  if(selected && !visible.some(p=>p.id===selected.id))visible.unshift(selected)
+  return visible
+}
+async function loadReplacementCatalog(){
+  if(replacementCatalogLoaded.value||replacementCatalogLoading.value)return
+  replacementCatalogLoading.value=true
+  try{
+    const r=await fetch('/logistics/wait-stock/allocation-products',{credentials:'same-origin',headers:{Accept:'application/json'}})
+    if(!r.ok)throw new Error('产品目录读取失败')
+    replacementProducts.value=(await r.json()).products??[]
+    replacementCatalogLoaded.value=true
+  }catch{submitError.value='产品目录读取失败，请重试。'}finally{replacementCatalogLoading.value=false}
+}
+async function selectReplacement(order:Order,item:Item,value:string){
+  closeReplacement()
+  replacementSearch[item.id]=''
+  replacementSelections[order.id] ||= {}
+  replacementSelections[order.id][item.id]=value
+  manualAssignments[order.id][item.id]=''
+  submitError.value=''
+  if(!value)return
+  await fetchReplacementAvailability(Number(value))
+}
+async function fetchReplacementAvailability(id:number){
+  delete replacementAvailability[id]
+  replacementLoading.value++
+  try{
+    const r=await fetch('/logistics/wait-stock/allocation-products?product_id='+id,{credentials:'same-origin',headers:{Accept:'application/json'}})
+    if(!r.ok)throw new Error('库存读取失败')
+    replacementAvailability[id]=(await r.json()).availability??[]
+  }catch{replacementAvailability[id]=[];submitError.value='替换商品库存读取失败，库存未知，请人工核实。'}finally{replacementLoading.value--}
+}
 
 // Reuse the domestic Global Grid's selection and single compact footer.
 // Selection is intentionally scoped to the visible server page and business tab.
@@ -226,10 +292,11 @@ const selectedStockWarnings = computed(() => {
   return allocationStockWarnings(order.items.filter(item => manualAssignments[order.id]?.[item.id] !== 'OUTSOURCE').map(item => {
     const code = canonicalWarehouseCode(manualAssignments[order.id]?.[item.id] ?? '')
     const warehouse = props.warehouses.find(w => w.code.toUpperCase() === code.toUpperCase())
-    const availability = item.availability.find(stock => stock.warehouse_id === warehouse?.id)
+    const actual = effectiveItem(order,item)
+    const availability = actual.availability.find(stock => stock.warehouse_id === warehouse?.id)
     return {
-      productId: item.product_id,
-      sku: item.sku ?? '未绑定 SKU',
+      productId: actual.product_id,
+      sku: actual.sku ?? '未绑定 SKU',
       quantity: item.quantity,
       warehouseCode: code,
       warehouseName: warehouse?.name ?? code,
@@ -398,8 +465,20 @@ function ensureManual(order:Order){
     if(source && !(source in manualCarriers[order.id])) manualCarriers[order.id][source]=recommendedSegment(order,item)?.carrier ?? defaultCarrier(order,source)
   }
 }
-function openPlan(order:Order){ selectedOrderId.value=order.id; decisionNote.value=order.fulfillment_allocation?.decision_note??''; submitError.value=''; ensureManual(order) }
-function closePlan(){ selectedOrderId.value=null; submitError.value=''; stockConfirmOpen.value=false }
+function openPlan(order:Order){
+  replacementSelections[order.id] ||= {}
+  selectedOrderId.value=order.id; decisionNote.value=order.fulfillment_allocation?.decision_note??''; submitError.value=''; ensureManual(order)
+  if(processed(order))return
+  for(const item of order.items){
+    if(item.previous_replacement_product_id && !(item.id in replacementSelections[order.id])){
+      replacementSelections[order.id][item.id]=String(item.previous_replacement_product_id)
+      manualAssignments[order.id][item.id]=''
+      void loadReplacementCatalog()
+      void fetchReplacementAvailability(item.previous_replacement_product_id)
+    }
+  }
+}
+function closePlan(){ closeReplacement(); selectedOrderId.value=null; submitError.value=''; stockConfirmOpen.value=false }
 function availabilityFor(item:Item,w:Warehouse){ return item.availability.find(r=>r.warehouse_id===w.id) }
 function availabilityLabel(item:Item,w:Warehouse){ if(w.code==='OUTSOURCE')return '待采购到货'; if(w.code==='FACTORY')return '国内工厂'; const r=availabilityFor(item,w); if(w.code==='TINGON')return '人工可分仓 · 不管理合作仓库存'; if(w.code==='US-AMZ')return r?.quantity_available==null?'人工可分仓 · 未登记库存':`人工可分仓 · 库存 ${r.quantity_available}`; if(!r||r.quantity_available==null)return '库存未知'; if(canonicalWarehouseCode(w.code)==='US-LA')return 'ERP参考 '+r.quantity_available+' · OMS待核验'; return r.quantity_available>=item.quantity?`有货 ${r.quantity_available}`:`不足 ${r.quantity_available}` }
 function availabilityClass(item:Item,w:Warehouse){ if(canonicalWarehouseCode(w.code)==='US-LA')return 'stock-neutral'; if(['OUTSOURCE','FACTORY','US-AMZ','TINGON'].includes(w.code))return 'stock-neutral'; const r=availabilityFor(item,w); if(!r||r.quantity_available==null)return 'stock-unknown'; return r.quantity_available>=item.quantity?'stock-ok':'stock-short' }
@@ -483,7 +562,7 @@ function onWarehouseChanged(order:Order,item:Item){
   if(selected && !giftOptions(item,source).some(o=>String(o.mapping_id)===selected)) manualGiftMappings[order.id][item.id]=''
 }
 function onCarrierChanged(order:Order,item:Item,event:Event){ const source=manualAssignments[order.id]?.[item.id]??''; if(!source)return; manualCarriers[order.id][source]=(event.target as HTMLSelectElement).value }
-function resolvedSkuLabel(order:Order,item:Item){ return item.is_gift ? (chosenGift(item,order)?.fulfillment_sku ?? 'gift · 待解析') : (item.resolved_fulfillment_sku ?? item.sku ?? item.product_summary ?? '无 SKU') }
+function resolvedSkuLabel(order:Order,item:Item){ const replacement=chosenReplacement(order,item); if(replacement)return replacement.sku; if(item.previous_replacement_product_id&&!item.is_gift)return item.source_sku??item.sku??'无 SKU'; return item.is_gift ? (chosenGift(item,order)?.fulfillment_sku ?? 'gift · 待解析') : (item.resolved_fulfillment_sku ?? item.sku ?? item.product_summary ?? '无 SKU') }
 function selectedSources(order:Order){ const result:string[]=[]; for(const item of order.items){ const source=manualAssignments[order.id]?.[item.id]??''; if(source && !result.includes(source)) result.push(source) } return result }
 function fulfillmentGroups(order:Order){
   const sources=selectedSources(order)
@@ -504,7 +583,10 @@ function splitConstraintError(order:Order){
   if(sources.length>maxSources)return `最多允许 ${maxSources} 个履约来源`
   // Carrier may be selected during shipment; manual allocation only needs the warehouse.
   for(const item of order.items){
-    if(!item.is_gift)continue
+    if(!item.is_gift){
+      if(replacementSelections[order.id]?.[item.id]&&!chosenReplacement(order,item))return '替换商品尚未读取或已停用，请重新选择。'
+      continue
+    }
     const source=manualAssignments[order.id][item.id]
     if(source==='OUTSOURCE')return '请先把礼品转换成指定的真实商品 SKU，再选择外采'
     const selected=manualGiftMappings[order.id][item.id]
@@ -516,8 +598,8 @@ function splitConstraintError(order:Order){
   }
   return null
 }
-type SubmissionStatus = { status: string; decision_source?: string|null; submitted_at?: string|null; selected_plan_key?: string|null; assignments?: Array<{order_item_id:number;source_code:string;gift_mapping_id?:number|null}> }
-type AllocationAssignment = { order_item_id:number; source_code:string; gift_mapping_id:number|null; carrier:string|null; service:string|null }
+type SubmissionStatus = { status: string; decision_source?: string|null; submitted_at?: string|null; selected_plan_key?: string|null; assignments?: Array<{order_item_id:number;source_code:string;gift_mapping_id?:number|null;replacement_product_id?:number|null}> }
+type AllocationAssignment = { order_item_id:number; source_code:string; gift_mapping_id:number|null; replacement_product_id?:number|null; carrier:string|null; service:string|null }
 function submissionMessage(body:{message?:string;errors?:Record<string,string[]>},httpStatus:number,requestId:string|null){
   const specific=Object.values(body.errors??{}).flat().filter(Boolean)[0]
   const reason=specific||body.message||(httpStatus===500?'服务器处理异常':'提交失败（HTTP '+httpStatus+'）')
@@ -538,6 +620,7 @@ function matchingManualAllocation(status:SubmissionStatus,assignments:Allocation
     const row=actual.find(a=>a.order_item_id===expected.order_item_id)
     return !!row && canonicalWarehouseCode(row.source_code)===canonicalWarehouseCode(expected.source_code)
       && Number(row.gift_mapping_id||0)===Number(expected.gift_mapping_id||0)
+      && Number(row.replacement_product_id||0)===Number(expected.replacement_product_id||0)
   })
 }
 function submittedResult(order:Order,source:'manual'|'system_recommendation',submittedAt?:string|null){
@@ -547,7 +630,7 @@ function submittedResult(order:Order,source:'manual'|'system_recommendation',sub
 }
 function matchesRecommendation(order:Order){
   const plan=order.allocation_decision.recommended_plan
-  if(!plan || !order.allocation_decision.can_use_recommendation || hasGift(order))return false
+  if(!plan || !order.allocation_decision.can_use_recommendation || hasGift(order) || order.items.some(item=>item.previous_replacement_product_id||replacementSelections[order.id]?.[item.id]))return false
   return order.items.every(item=>{
     const segment=recommendedSegment(order,item); if(!segment)return false
     const source=manualAssignments[order.id]?.[item.id]??''
@@ -581,7 +664,7 @@ async function submitRecommended(){
 }
 async function submitManual(stockExceptionAcknowledged = false) {
   const order = selectedOrder.value
-  if (!order || !props.canOperate || submitting.value) return
+  if (!order || !props.canOperate || submitting.value || replacementLoading.value) return
   const validation = splitConstraintError(order)
   if (validation) { submitError.value = validation; return }
   // Stock availability is displayed as advice; no extra confirmation blocks manual choice.
@@ -592,6 +675,7 @@ async function submitManual(stockExceptionAcknowledged = false) {
     return {
       order_item_id: item.id, source_code: source,
       gift_mapping_id: item.is_gift ? Number(manualGiftMappings[order.id][item.id]) : null,
+      ...(chosenReplacement(order,item) ? {replacement_product_id:chosenReplacement(order,item)!.id} : {}),
       carrier, service: carrier && carrier === route?.carrier ? route?.service ?? null : null,
     }
   })
@@ -654,7 +738,7 @@ function confirmStockException() {
   stockConfirmOpen.value = false
   void submitManual(true)
 }
-async function submitPrimary(){ const order=selectedOrder.value; if(!order)return; if(matchesRecommendation(order)) await submitRecommended(); else await submitManual() }
+async function submitPrimary(){ const order=selectedOrder.value; if(!order||replacementLoading.value)return; if(matchesRecommendation(order)) await submitRecommended(); else await submitManual() }
 </script>
 
 <template>
@@ -755,16 +839,19 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
       <header class="modal-header"><div><p class="eyebrow">FULFILLMENT PLAN</p><h2>履约方案详情</h2></div><button class="icon-button" @click="closePlan">×</button></header>
 
       <section v-if="!processed(selectedOrder)" class="primary-allocation">
-        <div class="section-title"><div><h3>SKU 履约分配</h3><p>先确认发货仓，再确认物流商；系统不能判断的项目由 Vita 人工补齐。</p></div><span class="limit-chip">最多 {{ selectedOrder.allocation_decision.policy.max_sources }} 个履约来源</span></div>
-        <div class="manual-table-wrap"><table><thead><tr><th>SKU</th><th>数量</th><th>库存参考</th><th>系统推荐 / 人工备选</th><th>选择发货仓</th><th>选择物流商</th><th>实际履约 SKU</th></tr></thead><tbody>
+        <div class="section-title"><div><h3>SKU 履约分配</h3><p>可先更换实际发货产品；先确认发货仓，再确认物流商。系统不能判断的项目由 Vita 人工补齐。</p></div><span class="limit-chip">最多 {{ selectedOrder.allocation_decision.policy.max_sources }} 个履约来源</span></div>
+        <div class="manual-table-wrap"><table><thead><tr><th>SKU / 产品</th><th>数量</th><th>库存参考</th><th>系统推荐 / 人工备选</th><th>选择发货仓</th><th>选择物流商</th><th>实际履约 SKU</th></tr></thead><tbody>
           <tr v-for="item in selectedOrder.items" :key="item.id">
-            <td><strong>{{ item.sku??item.product_summary }}</strong><span v-if="item.is_gift" class="gift-tag">礼品</span></td>
+            <td><strong>{{ (item.previous_replacement_product_id?item.source_sku:item.sku)??item.product_summary }}</strong><span v-if="item.is_gift" class="gift-tag">礼品</span><template v-else><small class="product-name">{{ item.product_name || item.product_summary }}</small><small v-if="item.material_full_name && item.material_full_name!==item.product_name" class="product-name">{{ item.material_full_name }}</small></template></td>
             <td>{{ item.quantity }}</td>
-            <td><div class="stock-list"><span v-for="warehouse in warehouseOptions" :key="warehouse.code" :class="item.is_gift?giftStockClass(item,warehouse):availabilityClass(item,warehouse)">{{ warehouse.name }}：{{ item.is_gift?giftStockLabel(item,warehouse):availabilityLabel(item,warehouse) }}</span></div></td>
-            <td><div class="warehouse-advice" :class="warehouseAdvice(selectedOrder,item).kind"><strong>{{ warehouseAdvice(selectedOrder,item).label }}</strong><small>{{ warehouseAdvice(selectedOrder,item).detail }}</small></div></td>
+            <td><div class="stock-list"><span v-for="warehouse in warehouseOptions" :key="warehouse.code" :class="item.is_gift?giftStockClass(item,warehouse):availabilityClass(effectiveItem(selectedOrder,item),warehouse)">{{ warehouse.name }}：{{ item.is_gift?giftStockLabel(item,warehouse):availabilityLabel(effectiveItem(selectedOrder,item),warehouse) }}</span></div></td>
+            <td><div v-if="replacementSelections[selectedOrder.id]?.[item.id]||item.previous_replacement_product_id" class="warehouse-advice manual"><strong>已选择替换商品</strong><small>按替换商品库存人工分仓</small></div><div v-else class="warehouse-advice" :class="warehouseAdvice(selectedOrder,item).kind"><strong>{{ warehouseAdvice(selectedOrder,item).label }}</strong><small>{{ warehouseAdvice(selectedOrder,item).detail }}</small></div></td>
             <td><select v-model="manualAssignments[selectedOrder.id][item.id]" @change="onWarehouseChanged(selectedOrder,item)"><option value="">请选择</option><option v-for="warehouse in warehouseOptions" :key="warehouse.code" :value="canonicalWarehouseCode(warehouse.code)">{{ warehouse.name }}</option></select><small v-if="canonicalWarehouseCode(manualAssignments[selectedOrder.id][item.id])==='US-LA'" class="mapping-missing">提交前核验 MorePlus 实际 SKU；ERP 库存仅供参考</small></td>
             <td><div class="carrier-cell"><span v-if="['FACTORY','OUTSOURCE'].includes(manualAssignments[selectedOrder.id][item.id])" class="manual-route">{{ manualAssignments[selectedOrder.id][item.id]==='OUTSOURCE' ? '待采购到货 · Vita 放行后选物流商' : '待发货阶段人工确认' }}</span><select v-else :value="carrierForItem(selectedOrder,item)" :disabled="!manualAssignments[selectedOrder.id][item.id]" @change="onCarrierChanged(selectedOrder,item,$event)"><option value="">请选择物流商</option><option v-for="carrier in props.carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="manualAssignments[selectedOrder.id][item.id] && carrierForItem(selectedOrder,item)" :class="carrierIsDefault(selectedOrder,item)?'auto-route':'manual-route'">{{ carrierIsDefault(selectedOrder,item)?'系统默认':'人工覆盖' }}</small></div></td>
-            <td><template v-if="item.is_gift"><select v-model="manualGiftMappings[selectedOrder.id][item.id]" :disabled="!manualAssignments[selectedOrder.id][item.id]"><option value="">请选择实际礼品</option><option v-for="option in giftOptions(item,manualAssignments[selectedOrder.id][item.id])" :key="option.mapping_id" :value="String(option.mapping_id)">{{ option.fulfillment_sku }} · {{ option.fulfillment_name }} · {{option.can_fulfill ? '可出库 '+option.quantity_available : '人工可选 · '+giftBlockReason(option)}}</option></select><small v-if="chosenGift(item,selectedOrder)" class="resolved-note">{{ chosenGift(item,selectedOrder)?.fulfillment_sku }} · {{ sourceLabel(manualAssignments[selectedOrder.id][item.id]) }}</small><small v-if="chosenGift(item,selectedOrder) && !chosenGift(item,selectedOrder)?.can_fulfill" class="mapping-missing">人工库存例外：{{giftBlockReason(chosenGift(item,selectedOrder)!)}}；仅确认分仓，不代表已发货</small><small v-else-if="manualAssignments[selectedOrder.id][item.id]&&giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])" class="mapping-missing">{{giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])}}</small></template><span v-else>—</span></td>
+            <td><template v-if="item.is_gift"><select v-model="manualGiftMappings[selectedOrder.id][item.id]" :disabled="!manualAssignments[selectedOrder.id][item.id]"><option value="">请选择实际礼品</option><option v-for="option in giftOptions(item,manualAssignments[selectedOrder.id][item.id])" :key="option.mapping_id" :value="String(option.mapping_id)">{{ option.fulfillment_sku }} · {{ option.fulfillment_name }} · {{option.can_fulfill ? '可出库 '+option.quantity_available : '人工可选 · '+giftBlockReason(option)}}</option></select><small v-if="chosenGift(item,selectedOrder)" class="resolved-note">{{ chosenGift(item,selectedOrder)?.fulfillment_sku }} · {{ sourceLabel(manualAssignments[selectedOrder.id][item.id]) }}</small><small v-if="chosenGift(item,selectedOrder) && !chosenGift(item,selectedOrder)?.can_fulfill" class="mapping-missing">人工库存例外：{{giftBlockReason(chosenGift(item,selectedOrder)!)}}；仅确认分仓，不代表已发货</small><small v-else-if="manualAssignments[selectedOrder.id][item.id]&&giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])" class="mapping-missing">{{giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])}}</small></template><div v-else class="replacement-picker" @focusout="(event)=>{if(!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node))closeReplacement()}">
+              <div class="replacement-control"><input role="combobox" aria-label="搜索或选择实际发货商品" aria-autocomplete="list" :aria-expanded="replacementOpen===item.id" :value="replacementOpen===item.id?(replacementSearch[item.id]??''):replacementLabel(selectedOrder,item)" placeholder="搜索 SKU / 中英文名" :disabled="!props.canOperate||submitting" @focus="openReplacement(item)" @click="openReplacement(item)" @input="replacementSearch[item.id]=($event.target as HTMLInputElement).value; replacementOpen=item.id" @keydown.esc.prevent="closeReplacement()" /><button type="button" class="replacement-arrow" aria-label="展开商品列表" :disabled="!props.canOperate||submitting" @click="replacementOpen===item.id?closeReplacement():openReplacement(item)">⌄</button></div>
+              <div v-if="replacementOpen===item.id" class="replacement-options" role="listbox"><button type="button" role="option" :aria-selected="!chosenReplacement(selectedOrder,item)" @mousedown.prevent @click="selectReplacement(selectedOrder,item,'')">保持原商品</button><small v-if="replacementCatalogLoading">正在读取商品…</small><small v-else-if="!filteredReplacementProducts(item,selectedOrder).length">没有匹配商品</small><button v-for="product in filteredReplacementProducts(item,selectedOrder)" :key="product.id" type="button" role="option" :aria-selected="chosenReplacement(selectedOrder,item)?.id===product.id" @mousedown.prevent @click="selectReplacement(selectedOrder,item,String(product.id))"><strong>{{ product.sku }}</strong><span>{{ product.name }}</span><small v-if="product.material_full_name && product.material_full_name!==product.name">{{ product.material_full_name }}</small></button></div>
+              <small v-if="replacementLoading" class="resolved-note">正在更新替换商品库存…</small><small v-if="replacementSelections[selectedOrder.id]?.[item.id]&&!chosenReplacement(selectedOrder,item)&&replacementCatalogLoaded" class="mapping-missing">此前选择的商品已停用，请重新选择。</small><small v-if="chosenReplacement(selectedOrder,item)" class="resolved-note">实际发货：{{ chosenReplacement(selectedOrder,item)?.sku }} · {{ chosenReplacement(selectedOrder,item)?.name }}</small></div></td>
           </tr>
         </tbody></table></div>
         <div v-if="fulfillmentGroups(selectedOrder).length" class="group-preview"><div class="group-heading"><strong>当前将生成 {{ fulfillmentGroups(selectedOrder).length }} 个履约订单</strong><span>系统按发货仓自动归组，不需要 Vita 手工创建 A/B。</span></div><div class="group-grid"><article v-for="group in fulfillmentGroups(selectedOrder)" :key="group.source" class="group-card"><header><div><small>{{ group.suffix?`履约组 ${group.suffix}`:'单仓履约' }}</small><strong>{{ group.erpOrderId }}</strong></div><div class="group-route"><b>{{ group.warehouse }}</b><span>{{ carrierLabel(group.carrier) }}</span></div></header><div class="group-items"><span v-for="item in group.items" :key="item.id">{{ resolvedSkuLabel(selectedOrder,item) }} × {{ item.quantity }}</span></div></article></div></div>
@@ -774,7 +861,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
       <section v-else class="processed-primary"><div class="record-banner"><div><strong>分仓已完成</strong><span>后续物流只处理已确定仓库、物流商与实际履约 SKU 的执行订单。</span></div><span class="status-chip done">{{ selectedOrder.fulfillment_allocation?.decision_source==='manual'?'人工确认':'采用系统推荐' }}</span></div><div class="segment-grid"><article v-for="child in selectedOrder.fulfillment_allocation?.plan_snapshot?.derived_orders??[]" :key="child.order_id" class="segment-card"><header><div><small>{{ child.derived?`衍生订单 ${child.suffix??''}`:'原订单直接履约' }}</small><h3>{{ child.erp_order_id }}</h3></div><div class="record-route"><span>{{ child.warehouse_code?sourceLabel(child.warehouse_code):(child.warehouse_name??'—') }}</span><strong>{{ carrierLabel(child.carrier) }}</strong></div></header><table><thead><tr><th>实际履约 SKU</th><th>来源</th><th>数量</th></tr></thead><tbody><tr v-for="item in child.items" :key="`${child.order_id}-${item.sku}`"><td><strong>{{ item.resolved_fulfillment_sku??item.sku }}</strong></td><td>{{ item.source_sku??item.sku }}</td><td>{{ item.quantity }}</td></tr></tbody></table></article></div></section>
 
       <div class="top-grid">
-        <section class="info-card"><header><strong>订单信息</strong><span :class="selectedOrder.allocation_decision.status==='manual_review'?'mini-warn':'mini-good'">{{ selectedOrder.allocation_decision.status_label }}</span></header><dl><dt>订单号</dt><dd>{{ selectedOrder.erp_order_id }}</dd><dt>收件人</dt><dd>{{ selectedOrder.recipient_name ?? '—' }}</dd><dt>联系电话</dt><dd>{{ selectedOrder.phone ?? '—' }}</dd><dt>订单商品</dt><dd><span class="order-item-chip" v-for="item in selectedOrder.items" :key="item.id">{{ item.sku??item.product_summary }} × {{ item.quantity }}</span></dd><dt>收货地址</dt><dd>{{ addressLine(selectedOrder) || '—' }}</dd></dl></section>
+        <section class="info-card"><header><strong>订单信息</strong><span :class="selectedOrder.allocation_decision.status==='manual_review'?'mini-warn':'mini-good'">{{ selectedOrder.allocation_decision.status_label }}</span></header><dl><dt>订单号</dt><dd>{{ selectedOrder.erp_order_id }}</dd><dt>收件人</dt><dd>{{ selectedOrder.recipient_name ?? '—' }}</dd><dt>联系电话</dt><dd>{{ selectedOrder.phone ?? '—' }}</dd><dt>订单商品</dt><dd><span class="order-item-chip" v-for="item in selectedOrder.items" :key="item.id">{{ item.sku??item.product_summary }} × {{ item.quantity }}</span></dd><dt>收货地址</dt><dd>{{ addressLine(selectedOrder) || '—' }}</dd><dt>订单联络人</dt><dd>{{ selectedOrder.contact_user_name || '未分配' }}</dd></dl></section>
         <section class="info-card"><header><strong>地址区域判定</strong><small>国家 + ZIP Code；州用于一致性校验</small></header><dl><dt>国家/地区</dt><dd>{{ selectedOrder.country ?? '—' }}</dd><dt>州 / 邮编</dt><dd>{{ selectedOrder.province_state ?? '—' }} · {{ selectedOrder.postal_code ?? '—' }}</dd><dt>所属区域</dt><dd><span :class="['zone-chip',selectedOrder.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(selectedOrder) }}</span></dd><dt>区域优先仓（不代表有货）</dt><dd>{{ zonePriorityLabel(selectedOrder.us_fulfillment_zone) }}</dd></dl></section>
         <section v-if="selectedOrder.country==='US'" class="map-card"><header><strong>地图区域划分</strong><small>美国物理美东 / 美西区域</small></header><svg viewBox="0 0 420 230" role="img" aria-label="美国美东美西分仓区域示意图"><defs><clipPath id="usClip"><path d="M30 70 L55 38 L95 43 L125 53 L165 46 L200 58 L235 53 L270 65 L305 61 L345 75 L380 98 L395 122 L378 143 L350 150 L330 169 L300 164 L280 185 L244 190 L215 175 L185 182 L152 171 L122 175 L96 159 L68 154 L52 135 L35 126 Z"/></clipPath></defs><g clip-path="url(#usClip)"><rect x="0" y="0" width="212" height="230" class="map-west"/><rect x="212" y="0" width="208" height="230" class="map-east"/></g><path d="M30 70 L55 38 L95 43 L125 53 L165 46 L200 58 L235 53 L270 65 L305 61 L345 75 L380 98 L395 122 L378 143 L350 150 L330 169 L300 164 L280 185 L244 190 L215 175 L185 182 L152 171 L122 175 L96 159 L68 154 L52 135 L35 126 Z" class="map-outline"/><line x1="212" y1="43" x2="212" y2="184" class="map-divider"/><text x="83" y="112" class="map-label">美西区</text><text x="293" y="112" class="map-label">美东区</text><g v-if="selectedOrder.us_fulfillment_zone?.status==='matched'" :transform="selectedOrder.us_fulfillment_zone?.zone==='west'?'translate(110 132)':'translate(310 132)'" class="map-pin"><circle r="12"/><text x="0" y="4" text-anchor="middle">●</text></g><g v-else class="map-unknown"><circle cx="212" cy="132" r="13"/><text x="212" y="137" text-anchor="middle">?</text></g></svg><div class="map-result"><strong>{{ selectedOrder.postal_code ?? 'ZIP 未知' }}</strong><span>{{ zoneShort(selectedOrder) }}</span></div></section>
       </div>
@@ -786,7 +873,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         <small>来源：{{ selectedOrder.allocation_rejection.source }} · 驳回人：{{ selectedOrder.allocation_rejection.by ?? '—' }} · 时间：{{ selectedOrder.allocation_rejection.at ? new Date(selectedOrder.allocation_rejection.at).toLocaleString('zh-CN') : '—' }}</small>
       </div>
       <label v-if="!processed(selectedOrder)" class="note-field">运营备注（选填）<textarea v-model="decisionNote" rows="2" placeholder="客户特殊要求、临时仓库情况、人工调整原因…" maxlength="500"/><small>{{ decisionNote.length }}/500</small></label><div v-else-if="selectedOrder.fulfillment_allocation?.decision_note" class="record-note"><strong>运营备注</strong><span>{{ selectedOrder.fulfillment_allocation.decision_note }}</span></div>
-      <footer class="modal-actions"><p v-if="submitError" class="submit-error" role="alert" aria-live="assertive">{{ submitError }}</p><button class="secondary" :disabled="submitting" @click="closePlan">关闭</button><button v-if="!processed(selectedOrder)&&props.canOperate" class="primary green" :disabled="submitting" @click="submitPrimary">{{ submitting?'提交中…':(matchesRecommendation(selectedOrder)?'采用推荐并提交分仓':'确认人工分配并提交') }}</button><span v-else-if="processed(selectedOrder)" class="submitted-note">该订单分仓决策已提交</span></footer>
+      <footer class="modal-actions"><p v-if="submitError" class="submit-error" role="alert" aria-live="assertive">{{ submitError }}</p><button class="secondary" :disabled="submitting" @click="closePlan">关闭</button><button v-if="!processed(selectedOrder)&&props.canOperate" class="primary green" :disabled="submitting||replacementLoading>0" @click="submitPrimary">{{ submitting?'提交中…':(matchesRecommendation(selectedOrder)?'采用推荐并提交分仓':'确认人工分配并提交') }}</button><span v-else-if="processed(selectedOrder)" class="submitted-note">该订单分仓决策已提交</span></footer>
     </section></div></Teleport>
     <StockExceptionConfirmDialog v-if="stockConfirmOpen && selectedOrder"
       :order-number="selectedOrder.erp_order_id ?? String(selectedOrder.id)"
@@ -848,4 +935,6 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
 .domestic-rejection{display:block;margin-top:4px;color:#a16207;font-weight:750}
 .rejection-plan-alert{display:grid;gap:5px;margin:12px 18px;padding:10px 12px;border-radius:8px;border:1px solid #f4cf7a;background:#fffbeb;color:#92400e}
 .rejection-plan-alert small{color:#92400e}
+.product-name{display:block;margin-top:4px;color:#64748b;line-height:1.35;max-width:220px;overflow-wrap:anywhere}.replacement-picker{display:grid;gap:5px}.replacement-picker input{max-width:220px;min-width:120px;padding:6px 8px;border:1px solid #aebdce;border-radius:6px}
+.replacement-control{position:relative;min-width:155px}.replacement-control input{width:100%;box-sizing:border-box;padding-right:30px;max-width:none}.replacement-arrow{position:absolute;right:3px;top:1px;bottom:1px;width:27px;border:0;background:transparent;color:#475569;cursor:pointer}.replacement-options{display:grid;max-height:230px;overflow:auto;min-width:155px;border:1px solid #dbe3ec;border-radius:6px;background:#fff;padding:3px}.replacement-options button{display:grid;gap:2px;text-align:left;padding:6px 8px;border:0;background:white;color:#334155;cursor:pointer;border-radius:4px;overflow-wrap:anywhere}.replacement-options button:hover,.replacement-options button[aria-selected=true]{background:#eaf2ff}.replacement-options small{color:#64748b}
 </style>

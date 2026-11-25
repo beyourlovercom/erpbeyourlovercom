@@ -16,6 +16,20 @@ class OrderItem extends Model
         return $this->belongsTo(Order::class);
     }
 
+    /** An explicitly resolved unbound source remains unbound; never substitute the outbound ID. */
+    public function fulfillmentSourceProductId(): ?int
+    {
+        if ($this->source_product_id) return (int) $this->source_product_id;
+        if ($this->source_sku && $this->source_product_summary !== null && $this->resolved_fulfillment_sku) return null;
+
+        return $this->product_id ? (int) $this->product_id : null;
+    }
+
+    public function sourceProduct(): BelongsTo
+    {
+        return $this->belongsTo('App\\Modules\\Products\\Infrastructure\\Models\\Product', 'source_product_id');
+    }
+
     public function product(): BelongsTo
     {
         return $this->belongsTo('App\\Modules\\Products\\Infrastructure\\Models\\Product');

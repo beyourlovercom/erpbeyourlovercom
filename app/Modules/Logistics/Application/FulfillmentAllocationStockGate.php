@@ -37,7 +37,8 @@ final class FulfillmentAllocationStockGate
             if (in_array($code, ['US-AMZ', 'OUTSOURCE', 'TINGON'], true)) {
                 continue;
             }
-            $productId = (int) ($item->source_product_id ?: $item->product_id);
+            $productId = (int) ($assignment['replacement_product_id'] ?? ($item->source_product_id ?: $item->product_id));
+            $replacement = isset($assignment['replacement_product_id']) ? \App\Modules\Products\Infrastructure\Models\Product::find($productId) : null;
             $key = $code.':'.($productId > 0 ? $productId : 'sku:'.($item->sku ?? $item->id));
             if (! isset($groups[$key])) {
                 $groups[$key] = [
@@ -45,7 +46,7 @@ final class FulfillmentAllocationStockGate
                     'warehouse_name' => $warehouseByCode->get($code)['name'] ?? $code,
                     'warehouse_id' => (int) ($warehouseByCode->get($code)['id'] ?? 0),
                     'product_id' => $productId,
-                    'sku' => (string) ($item->sku ?? '未绑定 SKU'),
+                    'sku' => (string) ($replacement?->sku ?? $item->sku ?? '未绑定 SKU'),
                     'required_quantity' => 0,
                 ];
             }

@@ -89,6 +89,7 @@ final class FulfillmentAllocationSubmissionService
                 'source_code' => strtoupper(trim((string) ($row['source_code'] ?? ''))) === ExternalProcurementWorkflow::SOURCE_CODE
                     ? ExternalProcurementWorkflow::SOURCE_CODE
                     : ($this->warehouseRouting->canonicalWarehouseCode((string) ($row['source_code'] ?? '')) ?? ''),
+                'replacement_product_id' => isset($row['replacement_product_id']) ? (int) $row['replacement_product_id'] : null,
                 'gift_mapping_id' => isset($row['gift_mapping_id']) && $row['gift_mapping_id'] !== '' ? (int) $row['gift_mapping_id'] : null,
                 'carrier' => trim((string) ($row['carrier'] ?? '')),
                 'service' => isset($row['service']) && trim((string) $row['service']) !== '' ? trim((string) $row['service']) : null,
@@ -111,7 +112,7 @@ final class FulfillmentAllocationSubmissionService
                 $outsource = $row['source_code'] === ExternalProcurementWorkflow::SOURCE_CODE;
                 abort_if($outsource && strcasecmp(trim((string) ($item->source_sku ?: $item->sku)), 'gift') === 0,
                     422, '外采礼品需先指定实际商品 SKU；不可采购未确认的 gift 占位符');
-                $resolution = $this->physicalSkus->resolve($item, $outsource ? 'FACTORY' : $row['source_code'], $row['gift_mapping_id'], true);
+                $resolution = $this->physicalSkus->resolve($item, $outsource ? 'FACTORY' : $row['source_code'], $row['gift_mapping_id'], true, $row['replacement_product_id']);
 
                 // Warehouse allocation must not preselect domestic dispatch logistics.
                 // Overseas allocation retains its existing recommended routing.
@@ -249,6 +250,7 @@ final class FulfillmentAllocationSubmissionService
                     'order_item_id' => $row['order_item_id'],
                     'source_code' => $row['source_code'],
                     'gift_mapping_id' => $row['gift_mapping_id'],
+                    'replacement_product_id' => $row['replacement_product_id'],
                     'carrier' => $row['carrier'],
                     'service' => $row['service'],
                     'carrier_selection_source' => $row['carrier_selection_source'],
