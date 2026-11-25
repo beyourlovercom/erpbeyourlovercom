@@ -1,0 +1,224 @@
+{
+  "dateBeijing": "2026-11-25",
+  "deployment": {
+    "status": "DEV_DEPLOYED",
+    "time": "2026-11-25T14:37:47.7012327+08:00",
+    "actor": "007windows / Administrator",
+    "backup": "E:\\ai\\erp2beyourlover\\backups\\canonical-url-v1-20261125-143745",
+    "oldIndex": "d291a12ffd00194048ce02ca7b8af313c1cf10a67dc5834bab5b6f8b26ec7f8d",
+    "newIndex": "80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37",
+    "oldGatewayPid": 33164,
+    "newGatewayPid": 44184,
+    "laravelPid": 3524,
+    "ingressPid": 74836,
+    "health": {
+      "source": "ISOLATED_007WINDOWS_DEV_MYSQL",
+      "production_connected": false,
+      "write_enabled": "account-preferences-only",
+      "release": "ERP2 local integration 20261125",
+      "order_create_enabled": false,
+      "oversea_flow_enabled": false,
+      "oms_simulation_write_enabled": false,
+      "domestic_apply_enabled": false,
+      "mode": "laravel-session",
+      "app": "ERP2 Vben Logistics Dev",
+      "backend": "127.0.0.1:18823"
+    },
+    "anonymousInertia": "401",
+    "employeeUat": "HOLD",
+    "executionPolicy": "Process-only RemoteSigned; parent Restricted; exit 0"
+  },
+  "sourceReadback": {
+    "time": "2026-11-25T06:40:14.475Z",
+    "sourceFiles": 12,
+    "allSourceMatches": true,
+    "allBackupMatches": true,
+    "liveDistMatches": true,
+    "backupDistMatches": true,
+    "liveGatewayMatches": true,
+    "backupGatewayMatches": true,
+    "patchHash": "aa8843eff2d85afc8db49382a7cdbffe70d57d7774fd7a8f9181bb551681ff9e",
+    "results": [
+      {
+        "path": "src/router/erp-canonical-paths.ts",
+        "liveMatches": true,
+        "backupMatches": true
+      },
+      {
+        "path": "src/router/index.ts",
+        "liveMatches": true,
+        "backupMatches": true
+      },
+      {
+        "path": "src/preferences.ts",
+        "liveMatches": true,
+        "backupMatches": true
+      },
+      {
+        "path": "src/router/erp-live-navigation.ts",
+        "liveMatches": true,
+        "backupMatches": true
+      },
+      {
+        "path": "src/router/guard.ts",
+        "liveMatches": true,
+        "backupMatches": true
+      },
+      {
+        "path": "src/router/routes/core.ts",
+        "liveMatches": true,
+        "backupMatches": true
+      },
+      {
+        "path": "src/views/_core/authentication/login.vue",
+        "liveMatches": true,
+        "backupMatches": true
+      },
+      {
+        "path": "src/views/erp/workspace.vue",
+        "liveMatches": true,
+        "backupMatches": true
+      },
+      {
+        "path": "src/views/erp/logistics-projection.vue",
+        "liveMatches": true,
+        "backupMatches": true
+      },
+      {
+        "path": "src/router/erp-live-navigation.test.ts",
+        "liveMatches": true,
+        "backupMatches": true
+      },
+      {
+        "path": ".env",
+        "liveMatches": true,
+        "backupMatches": true
+      },
+      {
+        "path": ".env.production",
+        "liveMatches": true,
+        "backupMatches": true
+      }
+    ]
+  },
+  "public": {
+    "initialStrictHashTest": {
+      "time": "2026-11-25T06:38:41.463Z",
+      "publicOrigin": "https://erp2.beyourlover.com",
+      "results": [
+        {
+          "name": "live dist hash",
+          "pass": true,
+          "detail": "80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37"
+        },
+        {
+          "name": "public /login",
+          "pass": false,
+          "error": "public HTML is not final build\n+ actual - expected\n\n+ 'df51a92cfdb7d0ab8a13f3e2ef6137e485b1ec91987c7d33a9333489583e7189'\n- '80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37'\n"
+        },
+        {
+          "name": "public /customers/orders",
+          "pass": false,
+          "error": "public HTML is not final build\n+ actual - expected\n\n+ 'd521a8ef568f40f0dde7764a1d46d42a9b3d154471fc510c94da73e172085e26'\n- '80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37'\n"
+        },
+        {
+          "name": "public /customers/orders/8278",
+          "pass": false,
+          "error": "public HTML is not final build\n+ actual - expected\n\n+ 'e06fde87a2bd1022d0aef3caa91cca685de8866c6c9d340d17e2ae9049c13561'\n- '80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37'\n"
+        },
+        {
+          "name": "public /logistics/china",
+          "pass": false,
+          "error": "public HTML is not final build\n+ actual - expected\n\n+ 'f52f677c16bfa8463b3081a134535fbe1b3f211df4a24d465894f97310b59c70'\n- '80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37'\n"
+        },
+        {
+          "name": "public /logistics/oversea/de-tianyun",
+          "pass": false,
+          "error": "public HTML is not final build\n+ actual - expected\n\n+ '3f6ede34cc3bc3d6b6cdd2d50ff686b1f8807690198c1fe97d5882663e2390cd'\n- '80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37'\n"
+        },
+        {
+          "name": "public /#/erp/orders/orders-customers?page=2",
+          "pass": false,
+          "error": "public HTML is not final build\n+ actual - expected\n\n+ '28566aa2518277d517124ab578031633ff09568fb6726bbb6e967743738864d3'\n- '80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37'\n"
+        },
+        {
+          "name": "public anonymous runtime",
+          "pass": true
+        },
+        {
+          "name": "public anonymous data /_erp2/identity",
+          "pass": true,
+          "detail": 401
+        },
+        {
+          "name": "public anonymous data /customers/orders",
+          "pass": true,
+          "detail": 401
+        }
+      ],
+      "passed": 4,
+      "total": 10
+    },
+    "subsequentVerified": [
+      {
+        "path": "/customers/orders",
+        "redirect": "/customers/orders",
+        "status": 200,
+        "originHeader": "007windows",
+        "indexSha256": "80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37",
+        "loginRendered": true
+      },
+      {
+        "path": "/customers/orders/8278",
+        "redirect": "/customers/orders/8278",
+        "status": 200,
+        "originHeader": "007windows",
+        "indexSha256": "80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37",
+        "loginRendered": true
+      },
+      {
+        "path": "/logistics/china",
+        "redirect": "/logistics/china",
+        "status": 200,
+        "originHeader": "007windows",
+        "indexSha256": "80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37",
+        "loginRendered": true
+      },
+      {
+        "path": "/logistics/oversea/de-tianyun",
+        "redirect": "/logistics/oversea/de-tianyun",
+        "status": 200,
+        "originHeader": "007windows",
+        "indexSha256": "80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37",
+        "loginRendered": true
+      },
+      {
+        "path": "/#/erp/orders/orders-customers?page=2",
+        "redirect": "/customers/orders?page=2",
+        "status": 200,
+        "originHeader": "007windows",
+        "indexSha256": "80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37",
+        "loginRendered": true
+      }
+    ],
+    "directLoginRetest": {
+      "ready": true,
+      "url": "https://erp2.beyourlover.com/login",
+      "failedRequests": [],
+      "badResponses": [],
+      "runtimeErrors": [],
+      "extraInlineScriptLength": 1097,
+      "consoleWarnings": [
+        "Permissions policy violation: unload is not allowed in this document."
+      ]
+    },
+    "limitations": "Initial public HTML byte hashes differed; an extra inline script was observed on direct login. Five subsequent route navigations returned exact final index bytes and correct login redirects. Direct /login later rendered; first public render did not complete in initial timeout. Cause of injection/latency not proven."
+  },
+  "employeeUat": {
+    "Vita": "HOLD",
+    "Liang": "HOLD",
+    "Dede": "HOLD",
+    "reason": "No verified employee session in this conversation; no credential reset or impersonation."
+  },
+  "closure": "C4.1 deployed; C4.2 employee UAT HOLD; C5 evidence archive updated; no merge or Production deployment."
+}
