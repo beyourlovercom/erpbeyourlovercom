@@ -174,16 +174,15 @@ const breadcrumbs = [{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/
   <Head title="产品库存 · BYL ERP"/>
   <AuthenticatedLayout title="产品库存" :breadcrumbs="breadcrumbs">
     <section class="mvp-page">
-      <div class="mvp-page-heading">
-        <div><p class="mvp-kicker">产品 × 仓库</p><h2>{{view==='product'?'全球多仓库存总表':'产品对应仓库清单'}}</h2><p>{{view==='product'?'按 SKU 查看实际库存与海运在途，快速判断各仓备货需求。':'统一统计产品在各仓库的库存、上架时间与停留时间。'}}</p></div>
+      <div class="inventory-view-toolbar">
+        <div class="inventory-view-switch" role="group" aria-label="库存视图">
+          <button type="button" :aria-pressed="view==='product'" :class="{active:view==='product'}" @click="switchView('product')" data-testid="inventory-view-product">按产品查看</button>
+          <button type="button" :aria-pressed="view==='warehouse'" :class="{active:view==='warehouse'}" @click="switchView('warehouse')" data-testid="inventory-view-warehouse">按仓库查看</button>
+        </div>
         <div class="inventory-actions">
           <button v-if="view==='warehouse' && globalGridPilotAvailable" type="button" class="mvp-button" data-testid="inventory-global-toggle" @click="toggleGlobalPilot">{{warehouseGrid?'返回原列表':'新版仓库表'}}</button>
           <Link class="mvp-button" href="/inventory/list">仓库清单</Link>
         </div>
-      </div>
-      <div class="inventory-view-switch" role="group" aria-label="库存视图">
-        <button type="button" :aria-pressed="view==='product'" :class="{active:view==='product'}" @click="switchView('product')" data-testid="inventory-view-product">按产品查看</button>
-        <button type="button" :aria-pressed="view==='warehouse'" :class="{active:view==='warehouse'}" @click="switchView('warehouse')" data-testid="inventory-view-warehouse">按仓库查看</button>
       </div>
       <InventoryMatrix v-if="view==='product'" :rows="matrixRows??[]" />
       <template v-else>
@@ -233,6 +232,6 @@ const breadcrumbs = [{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/
 </template>
 
 <style scoped>
-.inventory-view-switch{display:inline-flex;align-self:flex-start;gap:2px;background:#e8eef0;border:1px solid #d6e0e3;border-radius:7px;padding:3px;margin-bottom:8px}.inventory-view-switch button{background:transparent;color:#536775;border:0;border-radius:5px;padding:8px 18px;cursor:pointer;font-weight:600}.inventory-view-switch button.active{background:#fff;color:#116b57;box-shadow:0 1px 3px #2037421a}
+.inventory-view-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.inventory-view-switch{display:inline-flex;align-self:flex-start;gap:2px;background:#e8eef0;border:1px solid #d6e0e3;border-radius:7px;padding:3px;margin-bottom:0}.inventory-view-switch button{background:transparent;color:#536775;border:0;border-radius:5px;padding:8px 18px;cursor:pointer;font-weight:600}.inventory-view-switch button.active{background:#fff;color:#116b57;box-shadow:0 1px 3px #2037421a}
 .inventory-actions{display:flex;gap:8px;align-items:center}.filters{display:flex;gap:10px;flex-wrap:wrap}.filters input,.filters select{padding:9px;border:1px solid #dbe2e8;border-radius:8px}.filters input{min-width:280px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:left;white-space:nowrap}th{font-size:12px;color:#64748b}.stock-badge{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:700}.stock-out_of_stock{background:#fee2e2;color:#991b1b}.stock-low_stock{background:#ffedd5;color:#9a3412}.stock-in_stock{background:#dcfce7;color:#166534}.replenishment-badge{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:700}.replenishment-reorder{background:#fee2e2;color:#991b1b}.replenishment-healthy{background:#dcfce7;color:#166534}.replenishment-no_demand,.replenishment-unconfigured{background:#f1f5f9;color:#475569}@media(max-width:700px){.filters>*{min-width:0!important;flex:1 1 100%}}
 </style>
