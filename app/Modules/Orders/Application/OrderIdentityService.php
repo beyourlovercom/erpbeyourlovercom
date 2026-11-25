@@ -3,6 +3,7 @@
 namespace App\Modules\Orders\Application;
 
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Infrastructure\Models\OrderCollaborationPartner;
 use App\Modules\Orders\Infrastructure\Models\OrderIdentitySetting;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +38,30 @@ final class OrderIdentityService
 
             return $setting;
         });
+    }
+
+    public function previewCollaboration(?int $partnerId, string $externalOrderNumber): string
+    {
+        $code = OrderCollaborationPartner::query()->whereKey($partnerId)->value('code');
+        $prefix = config('erp_orders.collaboration_identity_prefixes.'.($code ?? ''));
+        if (! is_string($prefix) || preg_match('/^[A-Z]{2,8}$/D', $prefix) !== 1) {
+            throw ValidationException::withMessages(['partner_id' => '该合作商尚未配置唯一的订单编号缩写。']);
+        }
+        if (preg_match('/([0-9]{5})$/D', trim($externalOrderNumber), $matches) !== 1) {
+            throw ValidationException::withMessages(['external_order_number' => '合作订单来源号必须以至少5位数字结尾。']);
+        }
+
+        return $prefix.$matches[1].'-007';
+    }
+
+    public function generateCollaboration(?int $partnerId, string $externalOrderNumber): string
+    {
+        $identity = $this->previewCollaboration($partnerId, $externalOrderNumber);
+        if (Order::withTrashed()->whereRaw('UPPER(erp_order_id) = ?', [$identity])->exists()) {
+            throw ValidationException::withMessages(['external_order_number' => '合作订单编号冲突：'.$identity.'，请人工核对来源订单号。']);
+        }
+
+        return $identity;
     }
 
     public function allocateCustomer(string $businessDate): string
