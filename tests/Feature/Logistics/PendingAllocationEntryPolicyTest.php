@@ -78,6 +78,32 @@ final class PendingAllocationEntryPolicyTest extends TestCase
         $this->assertSame([], $policy->eligibleIdsForPreview([]));
     }
 
+    public function test_collaboration_orders_enter_allocation_without_woo_payment_but_keep_existing_queue_gates(): void
+    {
+        $partnerIds = \Illuminate\Support\Facades\DB::table('order_collaboration_partners')->pluck('id');
+        $this->assertGreaterThanOrEqual(2, $partnerIds->count());
+        $first = $this->order('collaboration', 'customer', '2026-11-25');
+        $first->update(['collaboration_partner_id' => $partnerIds[0]]);
+        $second = $this->order('collaboration', 'customer', '2026-11-25');
+        $second->update(['collaboration_partner_id' => $partnerIds[1]]);
+        $allocated = $this->order('collaboration', 'customer', '2026-11-25');
+        $allocated->fulfillmentAllocation()->create(['status' => 'submitted', 'decision_source' => 'manual']);
+        $archived = $this->order('collaboration', 'customer', '2026-11-25');
+        $archived->update(['operational_archived_at' => now()]);
+        $cancelled = $this->order('collaboration', 'customer', '2026-11-25');
+        $cancelled->update(['order_status' => 'cancelled']);
+
+        $policy = app(PendingAllocationEntryPolicy::class);
+        $policy->assertAllowed($first);
+        $policy->assertAllowed($second);
+        $this->assertEqualsCanonicalizing([$first->id, $second->id], $policy->eligibleIdsForPreview([$first->id, $second->id]));
+        $this->assertEqualsCanonicalizing(
+            [$first->id, $second->id],
+            app(LogisticsStatusSummary::class)->pendingAllocationQuery()->pluck('id')->all(),
+        );
+        $this->assertSame(2, app(LogisticsStatusSummary::class)->waitStockCount());
+    }
+
     private function order(string $source, string $kind, string $date): Order
     {
         return Order::query()->create([
