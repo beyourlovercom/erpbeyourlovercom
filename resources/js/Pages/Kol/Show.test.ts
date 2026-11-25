@@ -49,3 +49,17 @@ describe('P0: failed AffiliateWP creation remains actionable', () => {
     expect(source).toContain('kolCreateFailureReason')
   })
 })
+
+
+describe('KOL profile referral link projection', () => {
+  it('shows the stored KOL profile URL in basic information, rather than the affiliate slug', () => {
+    const basicInfo = source.slice(source.indexOf('<dl class="kol-basic-list">'), source.indexOf('</dl>', source.indexOf('<dl class="kol-basic-list">')))
+    expect(basicInfo).toContain('Referral Link')
+    expect(basicInfo).toContain(':href="kol.kol_profile_url"')
+    expect(basicInfo).toContain('{{ kol.kol_profile_url }}')
+    expect(basicInfo).toContain("kol.kol_profile_url || '—'")
+    expect(basicInfo).toContain('target="_blank" rel="noopener noreferrer"')
+    expect(basicInfo).toContain('data-testid="kol-referral-link"')
+    expect(basicInfo).not.toContain('affiliateAdminUrl')
+  })
+})

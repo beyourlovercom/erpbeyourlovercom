@@ -18,6 +18,7 @@ type KolDetail = {
   id: number; display_name: string; avatar_url?: string | null; avatar_source?: string | null; avatar_updated_at?: string | null; legal_name: string | null; country_code: string | null; language: string | null
   status: string; relationship_stage: string; cooperation_type: string | null; owner_id: number | null
   owner: { id: number; name: string } | null; joined_at: string | null; archived_at: string | null; notes: string | null
+  kol_profile_url?: string | null
   contact_email: string | null; contact_phone: string | null; contact_whatsapp: string | null; other_contact: string | null
   preferred_contact_method: string
   tax_id: string | null; payout_method: string | null; payout_account: string | null
@@ -222,6 +223,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <dl class="kol-basic-list">
               <div class="kol-basic-row"><dt><span class="kol-basic-icon">♙</span><span>显示名称</span></dt><dd>{{ kol.display_name }}</dd></div>
               <div class="kol-basic-row"><dt><span class="kol-basic-icon">✉</span><span>邮箱</span></dt><dd>{{ kol.contact_email ?? '—' }}</dd></div>
+              <div class="kol-basic-row"><dt><span class="kol-basic-icon">↗</span><span>Referral Link</span></dt><dd><a v-if="kol.kol_profile_url && /^https?:\/\//i.test(kol.kol_profile_url)" class="kol-profile-link" :href="kol.kol_profile_url" target="_blank" rel="noopener noreferrer" data-testid="kol-referral-link">{{ kol.kol_profile_url }}</a><span v-else>{{ kol.kol_profile_url || '—' }}</span></dd></div>
               <div class="kol-basic-row"><dt><span class="kol-basic-icon">◎</span><span>国籍地</span></dt><dd>{{ countryLabel(kol.country_code) }}</dd></div>
               <div class="kol-basic-row"><dt><span class="kol-basic-icon">◉</span><span>语言</span></dt><dd>{{ languageLabel(kol.language) }}</dd></div>
               <div class="kol-basic-row"><dt><span class="kol-basic-icon">✚</span><span>合作类型</span></dt><dd>{{ cooperationLabel(kol.cooperation_type) }}</dd></div>
@@ -535,6 +537,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
 .kol-basic-row:last-child { border-bottom: 0; }
 .kol-basic-row dt { min-width: 0; display: flex; align-items: center; gap: 9px; margin: 0; color: #64748b; font-size: 12px; font-weight: 500; }
 .kol-basic-row dd { min-width: 0; margin: 0; color: #202733; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.kol-profile-link { color: #2563eb; text-decoration: underline; text-underline-offset: 2px; }
 .kol-basic-icon { width: 17px; flex: 0 0 17px; display: inline-flex; align-items: center; justify-content: center; color: #475569; font-size: 14px; line-height: 1; }
 .kol-basic-status { display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
 .kol-basic-status.is-active { background: #e9f7ec; color: #2f7d46; }
