@@ -52,17 +52,18 @@ type ShipOutStatus = {
   shipped_time_utc?:string|null; read_only:boolean; erp_shipment_unchanged?:boolean
 }
 type Row = {
-  line:number; order_id:number; erp_order_id:string|null; order_url:string|null; order_date?:string|null; recipient_name:string|null; country:string|null
+  line:number; order_id:number; erp_order_id:string|null; contact_user_name?:string|null; order_url:string|null; order_date?:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_code?:string|null; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
   progress:string; note:string|null; reviewer_name?:string|null; reviewed_at?:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'|'stockout'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; order_kind?:string; routing_warehouse?:{code:string;name:string;source:string;revision:number}; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
   web_draft?:WebDraft|null
   shipout_production?:ShipOutDispatchState|null
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page:number; total:number; from:number|null; to:number|null; links?:{url:string|null;label:string;active:boolean}[] }
-type ColumnKey = 'line'|'order'|'order_date'|'status'|'route'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'|'material_full_name'
+type ColumnKey = 'line'|'order'|'contact'|'order_date'|'status'|'route'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'|'material_full_name'
 const columnDefinitions: GridColumnDefinition<ColumnKey>[] = [
   { key:'line', label:'#', defaultVisible:true },
   { key:'order', label:'订单号', defaultVisible:true },
+  { key:'contact', label:'订单联络人', defaultVisible:true },
   { key:'order_date', label:'订单日期', defaultVisible:true },
   { key:'status', label:'统一状态', defaultVisible:true },
   { key:'route', label:'所属分仓', defaultVisible:true },
@@ -105,11 +106,13 @@ const gridSearchText = ref(props.gridSearch??'')
 const showGridFilters = ref(false)
 const gridCarrierDraft = ref(props.gridFilters?.carrier??'')
 const gridTrackingDraft = ref(props.gridFilters?.tracking??'')
-watch(()=>[props.gridFilters?.carrier,props.gridFilters?.tracking],()=>{
+const gridContactDraft = ref(props.gridFilters?.contact??'')
+watch(()=>[props.gridFilters?.carrier,props.gridFilters?.tracking,props.gridFilters?.contact],()=>{
   gridCarrierDraft.value=props.gridFilters?.carrier??''
   gridTrackingDraft.value=props.gridFilters?.tracking??''
+  gridContactDraft.value=props.gridFilters?.contact??''
 })
-const activeFilterCount = computed(()=>['carrier','tracking'].filter(key=>Boolean(props.gridFilters?.[key])).length)
+const activeFilterCount = computed(()=>['carrier','tracking','contact'].filter(key=>Boolean(props.gridFilters?.[key])).length)
 
 watch(() => props.gridSearch, value => {gridSearchText.value=value??''})
 watch(() => [props.warehouseKey, props.view, props.rows.current_page], () => {activeOperationId.value=null})
@@ -930,7 +933,7 @@ const gridNavigate = (overrides:Record<string,GridQueryValue> = {}, path = baseP
     view:props.view, page:props.rows.current_page, per_page:props.rows.per_page||50,
     global_grid:gridEnabled.value?'1':'0',search:gridSearchText.value,
     sort_col:props.gridSort?.colId??'line',sort_dir:props.gridSort?.direction??'desc',
-    filter_carrier:props.gridFilters?.carrier??'',filter_tracking:props.gridFilters?.tracking??'',
+    filter_carrier:props.gridFilters?.carrier??'',filter_tracking:props.gridFilters?.tracking??'',filter_contact:props.gridFilters?.contact??'',
     ...overrides,
   }
   const query = new URLSearchParams()
@@ -949,13 +952,14 @@ const sortGrid = (sort:{colId:string;direction:'asc'|'desc'|null}) => gridNaviga
 })
 const applyGridFilters = () => {
   showGridFilters.value=false
-  gridNavigate({filter_carrier:gridCarrierDraft.value.trim(),filter_tracking:gridTrackingDraft.value.trim(),page:1})
+  gridNavigate({filter_carrier:gridCarrierDraft.value.trim(),filter_tracking:gridTrackingDraft.value.trim(),filter_contact:gridContactDraft.value.trim(),page:1})
 }
 const clearGridFilters = () => {
   gridCarrierDraft.value=''
   gridTrackingDraft.value=''
+  gridContactDraft.value=''
   showGridFilters.value=false
-  gridNavigate({filter_carrier:'',filter_tracking:'',page:1})
+  gridNavigate({filter_carrier:'',filter_tracking:'',filter_contact:'',page:1})
 }
 type InlineDraftSaved = {
   order_id:number;shipment_status:string;tracking_number:string|null
@@ -1287,7 +1291,7 @@ const pageUrl = (page:number, perPage:number = props.rows.per_page || 50) => {
     if(gridSearchText.value)q.set('search',gridSearchText.value)
     if(props.gridSort?.colId)q.set('sort_col',props.gridSort.colId)
     if(props.gridSort?.direction)q.set('sort_dir',props.gridSort.direction)
-    for(const key of ['carrier','tracking'])if(props.gridFilters?.[key])q.set('filter_'+key,props.gridFilters[key])
+    for(const key of ['carrier','tracking','contact'])if(props.gridFilters?.[key])q.set('filter_'+key,props.gridFilters[key])
   }
   return basePath.value+'?'+q.toString()
 }
@@ -1397,7 +1401,7 @@ const saveGridTracking = async (event:NewValueParams<GridListRow>) => {
   publishGlobalFeedback({state:'SUCCESS',title:'Tracking 已保存',message:`订单 ${row.erp_order_id??row.order_id} 的物流单号已写入 ERP`})
 }
 const overseaGridRows = computed<GridListRow[]>(()=>visibleRows.value.map(row=>({
-  id:row.order_id,line:row.line,order_number:row.erp_order_id??'—',order_url:row.order_url,order_date:row.order_date??'—',
+  id:row.order_id,line:row.line,order_number:row.erp_order_id??'—',contact_user_name:row.contact_user_name??'未分配',order_url:row.order_url,order_date:row.order_date??'—',
   workflow_status:row.workflow_status_projection?.zh??'—',
   workflow_status_projection:row.workflow_status_projection,
   workflow_revision:row.workflow_revision??0,
@@ -1425,6 +1429,7 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'order',field:'order_number',headerName:'订单号',width:194,minWidth:165,
     pinned:'left',lockPinned:true,lockVisible:true,suppressMovable:true,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>String(r.order_url??'')}}),
+  gridColumn({colId:'contact',field:'contact_user_name',headerName:'订单联络人',width:145}),
   gridColumn({colId:'line',field:'line',headerName:'#',width:70,sortable:true}),
   gridColumn({colId:'order_date',field:'order_date',headerName:'订单日期',width:128,minWidth:108}),
   gridColumn({colId:'status',field:'workflow_status',headerName:'统一状态',width:182,
@@ -1698,6 +1703,9 @@ const compactPages = computed<(number|string)[]>(() => {
                 <label>Tracking
                   <input v-model="gridTrackingDraft" aria-label="筛选 Tracking" placeholder="追踪单号包含…" maxlength="100" @keydown.enter.prevent="applyGridFilters" />
                 </label>
+                <label>订单联络人
+                  <input v-model="gridContactDraft" aria-label="筛选订单联络人" placeholder="负责人姓名包含…" maxlength="80" @keydown.enter.prevent="applyGridFilters" />
+                </label>
                 <div class="oversea-filter-panel-buttons">
                   <button type="button" @click="clearGridFilters">清空筛选</button>
                   <button type="button" class="oversea-filter-apply" @click="applyGridFilters">应用筛选</button>
@@ -1942,6 +1950,7 @@ const compactPages = computed<(number|string)[]>(() => {
               <td v-for="column in grid.visibleColumns" :key="column.key" :class="{ 'line-col':column.key === 'line', 'tracking-cell':column.key === 'tracking', 'items-cell':column.key === 'items' }">
                 <template v-if="column.key === 'line'">{{ row.line }}</template>
                 <template v-else-if="column.key === 'order'"><a class="order-link" :href="row.order_url ?? `/orders/${row.order_id}`">{{ row.erp_order_id ?? '—' }}</a></template>
+                <template v-else-if="column.key === 'contact'">{{ row.contact_user_name ?? '未分配' }}</template>
                 <template v-else-if="column.key === 'order_date'">{{row.order_date??'—'}}</template>
                 <template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(row.can_edit_workflow_status)" :options="row.workflow_status_options ?? workflowStatusOptions ?? []" /><span v-else>—</span></template>
                 <template v-else-if="column.key === 'route'"><OrderWarehouseRouteSelect v-if="row.routing_warehouse"

@@ -22,7 +22,7 @@ class Order extends Model
     protected $fillable = [
         'customer_id', 'fulfillment_parent_id', 'fulfillment_suffix', 'fulfillment_role', 'fulfillment_origin_id', 'fulfillment_reason', 'fulfillment_note',
         'internal_order_number', 'erp_order_id', 'source_type', 'order_kind', 'external_order_number', 'collaboration_partner_id', 'order_date',
-        'order_note', 'owner_id', 'kol_id', 'order_status', 'currency',
+        'order_note', 'owner_id', 'contact_user_id', 'kol_id', 'order_status', 'currency',
         'workflow_status', 'workflow_revision', 'routing_warehouse_code', 'routing_revision',
         'domestic_reject_reason', 'domestic_rejected_at', 'domestic_rejected_by',
         'operational_archived_at', 'operational_archived_by',
@@ -89,6 +89,11 @@ class Order extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo('App\\Modules\\Identity\\Infrastructure\\Models\\User', 'owner_id');
+    }
+
+    public function contactUser(): BelongsTo
+    {
+        return $this->belongsTo(\App\Modules\Identity\Infrastructure\Models\User::class, 'contact_user_id');
     }
 
     public function operationalArchivedByUser(): BelongsTo

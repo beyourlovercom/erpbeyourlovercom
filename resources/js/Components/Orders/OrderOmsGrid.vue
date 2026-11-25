@@ -58,6 +58,7 @@ const columns = computed<ColDef<Record<string, unknown>>[]>(() => [
   // One AG Grid row per SKU line; server pagination and status remain per original order.
   { ...basic('order_number', 'display_order_number', '订单号', 170, true, true),
     cellRenderer: OrderOmsCell, cellRendererParams: { mode: 'number' } },
+  basic('contact', 'contact', '订单联络人', 140, true),
   { ...basic('order_note', 'order_note', '备注', 265, true),
     cellStyle: params => params.value && params.value !== '—' ? { color: '#c62828', fontWeight: '600' } : null,
     tooltipField: 'order_note' },
@@ -139,7 +140,7 @@ const pagination = computed(() => ({
   page_size_mode: props.filters.per_page === 'all' ? 'all' as const : props.orders.per_page,
 }))
 const columnSearchKeys = [
-  'order_number', 'sku', 'quantity', 'product_names', 'source', 'date',
+  'order_number', 'contact', 'sku', 'quantity', 'product_names', 'source', 'date',
   'recipient', 'country', 'warehouse', 'status', 'tracking', 'owner',
   'city', 'postal_code', 'carrier', 'external_number',
 ]

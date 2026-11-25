@@ -4,6 +4,7 @@ use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
 use App\Modules\Orders\Experience\Controllers\KolOrderLinkPreviewController;
 use App\Modules\Orders\Experience\Controllers\OrderCollaborationPartnerController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
+use App\Modules\Orders\Experience\Controllers\OrderContactController;
 use App\Modules\Orders\Experience\Controllers\OrderAddressController;
 use App\Modules\Orders\Experience\Controllers\OrderMasterController;
 use App\Modules\Orders\Experience\Controllers\OrderNoteController;
@@ -46,6 +47,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::patch('/orders/views/{savedView}', [OrderSavedViewController::class, 'update'])->middleware('can:orders.view')->name('orders.views.update');
     Route::delete('/orders/views/{savedView}', [OrderSavedViewController::class, 'destroy'])->middleware('can:orders.view')->name('orders.views.destroy');
     Route::post('/orders/{order}/operational-markers/{marker}', [OrderController::class, 'setOperationalMarker'])->middleware('can:orders.edit')->where('order', '[0-9]+')->whereIn('marker', ['exception', 'in_transit', 'return', 'stockout'])->name('orders.operational-markers.update');
+    Route::patch('/orders/{order}/contact', [OrderContactController::class, 'update'])
+        ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.contact.update');
     Route::patch('/orders/{order}/warehouse-route', [OrderWarehouseRouteController::class, 'update'])
         ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.warehouse-route.update');
     Route::patch('/orders/{order}/workflow-status', [OrderController::class, 'updateWorkflowStatus'])->middleware('can:orders.view')->whereNumber('order')->name('orders.workflow-status.update');

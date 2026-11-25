@@ -4,11 +4,12 @@ import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
 import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
 import { router } from '@inertiajs/vue3'
+import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 
 export type L2Mode = 'awaiting' | 'transit' | 'exceptions'
 export type L2Row = {
-  shipment_id:number;order_id:number;external_order_number:string|null;erp_order_id:string|null
+  shipment_id:number;order_id:number;external_order_number:string|null;erp_order_id:string|null;contact_user_name?:string|null
   recipient_name:string|null;country:string|null;warehouse_name:string|null;carrier:string|null
   service:string|null;tracking_number:string|null;shipped_at:string|null;logistics_note:string|null
   shipment_status:string;order_url:string|null;paused?:boolean
@@ -31,11 +32,11 @@ watch(()=>props.sort,v=>{orderSort.value=v??{colId:'shipped_at',direction:'desc'
 const navigation = useGlobalGridListAdapter({
   path:props.path,enabled:()=>true,search:()=>term.value,
   pageSize:()=>props.shipments.per_page,
-  context:()=>({sort:orderSort.value.colId,direction:orderSort.value.direction}),
+  context:()=>({...currentContactQuery(),sort:orderSort.value.colId,direction:orderSort.value.direction}),
 })
 const rows = computed<GridListRow[]>(()=>props.shipments.data.map(row=>({
   ...row, id:row.shipment_id,
-  order_number:row.erp_order_id??row.external_order_number??'—',
+  order_number:row.erp_order_id??row.external_order_number??'—',contact_user_name:row.contact_user_name??'未分配',
   logistics_company:[row.carrier,row.service].filter(Boolean).join(' / ')||'—',
   date:row.shipped_at?.replace('T',' ').slice(0,16)??'—',
   tracking:row.tracking_number??'—',
@@ -45,6 +46,7 @@ const columns = computed<ColDef<GridListRow>[]>(()=>{
   const base:ColDef<GridListRow>[]=[
     gridColumn({colId:'order',field:'order_number',headerName:'订单号',width:185,
       cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
+    gridColumn({colId:'contact',field:'contact_user_name',headerName:'订单联络人',width:145}),
     gridColumn({colId:'recipient',field:'recipient_name',headerName:'收件人',width:145}),
     gridColumn({colId:'country',field:'country',headerName:'国家',width:95}),
     gridColumn({colId:'warehouse',field:'warehouse_name',headerName:'仓库',width:135}),
@@ -89,7 +91,7 @@ const onSort = (next:{colId:string;direction:'asc'|'desc'|null})=>{
   if(!['carrier','tracking_number','shipped_at'].includes(next.colId))return
   orderSort.value={colId:next.colId,direction:next.direction}
   router.get(props.path,{
-    global_grid:'1',...(term.value.trim()?{search:term.value.trim()}:{}),
+    ...currentContactQuery(),global_grid:'1',...(term.value.trim()?{search:term.value.trim()}:{}),
     sort:next.colId,direction:next.direction,per_page:props.shipments.per_page,page:1,
   },{preserveScroll:true,preserveState:true,replace:true})
 }

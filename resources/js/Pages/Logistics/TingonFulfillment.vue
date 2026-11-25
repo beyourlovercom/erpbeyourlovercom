@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
+import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import { Head, router } from '@inertiajs/vue3'
 import type { ColDef } from 'ag-grid-community'
@@ -10,7 +12,7 @@ import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../Co
 const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 
 type TingonRow = {
-  id:number;order_id:number;order_number:string|null;order_url:string
+  id:number;order_id:number;order_number:string|null;contact_user_name?:string|null;order_url:string
   recipient_name:string|null;country:string|null;sku:string
   warehouse:string|null;carrier:string|null;service:string|null
   tracking_number:string|null;logistics_note:string|null
@@ -32,14 +34,14 @@ const term=ref(props.search)
 watch(()=>props.search,v=>term.value=v)
 const nav=useGlobalGridListAdapter({
   path:'/logistics/tingon',enabled:()=>true,search:()=>term.value,
-  pageSize:()=>props.orders.per_page,context:()=>({view:props.view}),
+  pageSize:()=>props.orders.per_page,context:()=>({...currentContactQuery(),view:props.view}),
 })
 function changeView(view:string){
   term.value=''
-  router.get('/logistics/tingon',{view,per_page:props.orders.per_page,page:1},{replace:true,preserveScroll:true})
+  router.get('/logistics/tingon',{...currentContactQuery(),view,per_page:props.orders.per_page,page:1},{replace:true,preserveScroll:true})
 }
 const rows=computed<GridListRow[]>(()=>props.orders.data.map(r=>({
-  ...r,order_number:r.order_number??'—',
+  ...r,order_number:r.order_number??'—',contact_user_name:r.contact_user_name??'未分配',
   carrier_service:[r.carrier,r.service].filter(Boolean).join(' / ')||'—',
   routing_warehouse:r.routing_warehouse,
   routing_warehouse_name:r.routing_warehouse?.name??r.warehouse??'未分仓',
@@ -84,6 +86,7 @@ function save(action:'save'|'ship'|'tracking'){
   })
 }
 const columns=computed<ColDef<GridListRow>[]>(()=>[
+  gridColumn({colId:'contact',field:'contact_user_name',headerName:'订单联络人',width:145}),
   gridColumn({colId:'order',field:'order_number',headerName:'订单号',width:190,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
   gridColumn({colId:'recipient',field:'recipient_name',headerName:'收件人',width:150}),
@@ -117,6 +120,7 @@ const columns=computed<ColDef<GridListRow>[]>(()=>[
   <Head title="Tingon发货 · BYL ERP" />
   <AuthenticatedLayout title="Tingon发货" :breadcrumbs="['物流','Tingon发货']">
     <section class="space-y-3 px-3 pb-4 pt-2">
+      <OrderContactFilter />
       <div class="flex flex-wrap items-center gap-2">
         <button v-for="t in tabs" :key="t.key" type="button"
           class="rounded-md border px-3 py-1.5 text-sm"

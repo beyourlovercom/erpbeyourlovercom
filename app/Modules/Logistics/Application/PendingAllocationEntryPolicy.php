@@ -30,6 +30,12 @@ final class PendingAllocationEntryPolicy
         });
     }
 
+    /** Read-only list preview: evaluate the same SQL policy once for the page. */
+    public function eligibleIdsForPreview(array $ids): array
+    {
+        return $ids === [] ? [] : $this->constrain(Order::query())->whereKey($ids)->pluck('id')->map(fn ($id) => (int) $id)->all();
+    }
+
     public function allows(Order $order): bool
     {
         return $this->constrain(Order::query())->whereKey($order->getKey())->exists();

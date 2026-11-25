@@ -17,6 +17,8 @@ vi.mock('@inertiajs/vue3', async () => {
     ...initial,
     processing: false,
     errors: {},
+    setError: vi.fn(),
+    clearErrors: vi.fn(),
     post: postMock,
   }),
   usePage: () => ({ url: '/customers/orders/create', props: { auth: { user: { id: 1, name: 'Test', email: 't@t.com' } }, shellNavigation: [] } }),
@@ -41,6 +43,8 @@ const kolProps = {
   defaultOrderKind: 'kol_fulfillment',
   orderKindLabel: '网红履约订单',
   generatedExternalOrderNumber: 'KOL20260825XYZ007',
+  contactOptions: [{value: 71, label: 'Synthetic KOL Staff'}],
+  selectedKolContactId: 71,
 }
 
 describe('Orders/Create V2', () => {
@@ -52,6 +56,20 @@ describe('Orders/Create V2', () => {
   })
 
   afterEach(() => publishGlobalFeedback({ state: 'IDLE', title: '', message: '' }))
+
+  it('requires an eligible contact, places system information after products and allows a manual choice', async () => {
+    const wrapper = mount(Create, { props: {...kolProps, selectedKolContactId: null} })
+    const select = wrapper.get('#contact_user_id')
+    expect(select.attributes('required')).toBeDefined()
+    expect(select.text()).toContain('Synthetic KOL Staff')
+    expect(wrapper.text().indexOf('网红联络人（负责人）')).toBeLessThan(wrapper.text().indexOf('收件与地址'))
+    expect(wrapper.text().indexOf('订单商品')).toBeLessThan(wrapper.text().indexOf('系统订单信息'))
+    await wrapper.get('form').trigger('submit')
+    expect(postMock).not.toHaveBeenCalled()
+    await select.setValue('71')
+    expect((select.element as HTMLSelectElement).value).toBe('71')
+    wrapper.unmount()
+  })
 
   it('renders 新建客户订单 title for customer route', () => {
     const wrapper = mount(Create, { props: customerProps })
@@ -204,9 +222,18 @@ describe('Orders/Create V2', () => {
     expect(wrapper.find('.sku-combobox-stub').exists()).toBe(true)
   })
 
+  it('defaults customer contact to operations and allows another employee', async () => {
+    const wrapper = mount(Create, { props: { ...customerProps, defaultCustomerContactId: 11, contactOptions: [{value:11,label:'Vita'},{value:12,label:'Guts'}] } })
+    const select = wrapper.get('#contact_user_id')
+    expect((select.element as HTMLSelectElement).value).toBe('11')
+    expect(select.attributes('required')).toBeUndefined()
+    await select.setValue('12')
+    expect((select.element as HTMLSelectElement).value).toBe('12')
+  })
+
   it('defaults manual orders to USD and labels unit price with currency', () => {
     const wrapper = mount(Create, { props: customerProps })
-    const currencySelect = wrapper.find('select')
+    const currencySelect = wrapper.find('#order_currency')
     expect(currencySelect.exists()).toBe(true)
     expect((currencySelect.element as HTMLSelectElement).value).toBe('USD')
     expect(wrapper.text()).toContain('单价（USD）')

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
+import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
@@ -6,11 +8,11 @@ import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatus
 
 type Workflow = { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean }
 type WorkflowOption = { code: string; en: string; zh: string; color: string; mutable: boolean }
-type Order = { id: number; erp_order_id: string | null; order_kind: string | null; order_status: string | null; workflow_revision: number; workflow_status_projection: Workflow; workflow_status_options: WorkflowOption[]; can_change_status: boolean; operational_archived_at: string | null; archived_by: string | null; owner: string | null; direct_archive: boolean; fulfillment_parent_id: number | null }
+type Order = { contact_user_name?: string | null; id: number; erp_order_id: string | null; order_kind: string | null; order_status: string | null; workflow_revision: number; workflow_status_projection: Workflow; workflow_status_options: WorkflowOption[]; can_change_status: boolean; operational_archived_at: string | null; archived_by: string | null; owner: string | null; direct_archive: boolean; fulfillment_parent_id: number | null }
 const props = defineProps<{ orders: { data: Order[]; current_page: number; last_page: number; total: number }; canRestore: boolean; canChangeStatus: boolean; filters: { search: string; per_page: string } }>()
 const search = ref(props.filters.search)
-const submitSearch = () => router.get('/orders/archive', { search: search.value.trim(), per_page: props.filters.per_page, page: 1 }, { preserveState: true, replace: true })
-const pageHref = (page: number) => '/orders/archive?' + new URLSearchParams({ search: props.filters.search, per_page: props.filters.per_page, page: String(page) }).toString()
+const submitSearch = () => router.get('/orders/archive', { ...currentContactQuery(), search: search.value.trim(), per_page: props.filters.per_page, page: 1 }, { preserveState: true, replace: true })
+const pageHref = (page: number) => '/orders/archive?' + new URLSearchParams({ ...currentContactQuery(), search: props.filters.search, per_page: props.filters.per_page, page: String(page) }).toString()
 const detailPath = (order: Order) => '/orders/' + order.id
 const statusLabel = (status: string | null): string => {
   const labels: Record<string, string> = {
@@ -38,17 +40,18 @@ const restore = (order: Order) => {
         <button v-if="props.filters.search" class="mvp-button" type="button" @click="search = ''; submitSearch()">清除</button>
         <span class="archive-result-count">匹配 {{ props.orders.total }} 单 · 搜索覆盖全部分页</span>
       </form>
+      <OrderContactFilter />
       <div class="mvp-table-wrap"><table class="mvp-table archive-table">
-        <thead><tr><th>ERP订单号</th><th>类型</th><th>归档时间</th><th>归档人</th><th>状态</th><th>操作</th></tr></thead>
+        <thead><tr><th>ERP订单号</th><th>订单联络人</th><th>类型</th><th>归档时间</th><th>归档人</th><th>状态</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="order in props.orders.data" :key="order.id">
-            <td data-label="ERP订单号"><Link :href="detailPath(order)">{{ order.erp_order_id ?? ('#' + order.id) }}</Link></td>
+            <td data-label="ERP订单号"><Link :href="detailPath(order)">{{ order.erp_order_id ?? ('#' + order.id) }}</Link></td><td data-label="订单联络人">{{ order.contact_user_name ?? '未分配' }}</td>
             <td data-label="类型">{{ order.order_kind === 'fulfillment_derived' ? '履约子订单' : order.order_kind === 'kol_fulfillment' ? '网红订单' : '客户订单' }}</td>
             <td data-label="归档时间">{{ order.operational_archived_at ? new Date(order.operational_archived_at).toLocaleString('zh-CN', { hour12: false }) : '—' }}</td>
             <td data-label="归档人">{{ order.archived_by ?? '—' }}</td><td data-label="状态"><OrderWorkflowStatusPill :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :options="order.workflow_status_options" :can-edit="props.canChangeStatus && order.can_change_status" /><small class="archive-canonical-status">原业务状态：{{ statusLabel(order.order_status) }}</small></td>
             <td data-label="操作"><button v-if="props.canRestore && order.direct_archive" class="mvp-button" type="button" @click="restore(order)">恢复运营</button><span v-else-if="!order.direct_archive" class="text-slate-500">随主单归档 · <Link v-if="order.fulfillment_parent_id" :href="detailPath({ ...order, id: order.fulfillment_parent_id })">查看主单</Link></span><span v-else-if="props.canChangeStatus && order.can_change_status" class="text-slate-500">可在状态列修改</span><span v-else>只读</span></td>
           </tr>
-          <tr v-if="!props.orders.data.length"><td colspan="6" class="mvp-empty">暂无运营归档订单</td></tr>
+          <tr v-if="!props.orders.data.length"><td colspan="7" class="mvp-empty">暂无运营归档订单</td></tr>
         </tbody>
       </table></div>
       <nav v-if="props.orders.last_page > 1" class="mvp-actions" aria-label="归档订单分页">

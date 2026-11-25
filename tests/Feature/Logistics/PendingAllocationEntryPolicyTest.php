@@ -57,6 +57,27 @@ final class PendingAllocationEntryPolicyTest extends TestCase
         $this->assertFalse(app(LogisticsStatusSummary::class)->pendingAllocationQuery()->whereKey($kol->id)->exists());
     }
 
+    public function test_batch_preview_matches_live_entry_policy_including_force_return(): void
+    {
+        $paid = $this->order('woocommerce', 'customer', '2026-11-04');
+        $this->financials($paid, 'processing');
+        $unpaid = $this->order('woocommerce', 'customer', '2026-11-04');
+        $this->financials($unpaid, 'pending');
+        $forced = $this->order('woocommerce', 'customer', '2026-11-04');
+        $this->financials($forced, 'completed');
+        $forced->update(['workflow_status' => 'pending_allocation']);
+        $kol = $this->order('manual', 'kol_fulfillment', '2026-10-01');
+        $manual = $this->order('manual', 'customer', '2026-11-04');
+        $orders = collect([$paid, $unpaid, $forced, $kol, $manual]);
+        $policy = app(PendingAllocationEntryPolicy::class);
+        $this->assertEqualsCanonicalizing(
+            $orders->filter(fn (Order $order) => $policy->allows($order))->pluck('id')->all(),
+            $policy->eligibleIdsForPreview($orders->pluck('id')->all()),
+        );
+        $this->assertEqualsCanonicalizing([$paid->id, $forced->id, $kol->id, $manual->id], $policy->eligibleIdsForPreview($orders->pluck('id')->all()));
+        $this->assertSame([], $policy->eligibleIdsForPreview([]));
+    }
+
     private function order(string $source, string $kind, string $date): Order
     {
         return Order::query()->create([

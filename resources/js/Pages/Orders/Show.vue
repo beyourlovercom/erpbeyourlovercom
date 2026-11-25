@@ -41,6 +41,7 @@ type OrderItem = {
 }
 
 type FulfillmentSegment = {
+  contact_user_name?: string | null
   order_id: number
   erp_order_id: string | null
   suffix: string | null
@@ -121,6 +122,8 @@ type Order = {
   currency: string
   owner: { id: number; name: string } | null
   owner_label: string | null
+  contact_user_id?: number | null
+  contact_user_name?: string | null
   address: Record<string, string> | null
   items: OrderItem[]
   shipment: {
@@ -159,6 +162,8 @@ const props = withDefaults(defineProps<{
   isDomesticFactory?: boolean
   canMarkDomesticStockout?: boolean
   canEditOrder?: boolean
+  canEditContact?: boolean
+  contactOptions?: {value: number; label: string}[]
   canSyncChildAddresses?: boolean
   canEditWorkflowStatus?: boolean
   canManageAuxiliary?: boolean
@@ -285,6 +290,17 @@ const makeFormData = () => ({
 })
 
 const form = useForm(makeFormData())
+const contactForm = useForm({contact_user_id: (props.order.contact_user_id ?? null) as number | null})
+const editingContact = ref(false)
+watch(() => props.order.contact_user_id, id => { if (!editingContact.value) contactForm.contact_user_id = id ?? null })
+const saveOrderContact = () => {
+  if (!props.canEditContact || !contactForm.contact_user_id || contactForm.processing) return
+  contactForm.patch('/orders/' + props.order.id + '/contact', {
+    preserveScroll: true,
+    onSuccess: () => { editingContact.value = false },
+  })
+}
+
 
 const currencyOptions = computed(() => {
   const current = form.currency || props.order.currency || 'USD'
@@ -1195,6 +1211,7 @@ onBeforeUnmount(() => {
                 <thead>
                   <tr>
                     <th>履约</th>
+                    <th>订单联络人</th>
                     <th>商品</th>
                     <th>仓库</th>
                     <th>状态</th>
@@ -1213,6 +1230,7 @@ onBeforeUnmount(() => {
                         <small v-if="segment.origin_erp_order_id">关联 {{ segment.origin_erp_order_id }}</small>
                       </div>
                     </td>
+                    <td>{{ segment.contact_user_name ?? order.contact_user_name ?? '未分配' }}</td>
                     <td>
                       <div class="ord-fulfillment-items">
                         <div v-for="item in segment.items" :key="item.id">
@@ -1403,6 +1421,22 @@ onBeforeUnmount(() => {
             <div class="ord-summary-field"><dt>{{ isImportedOrder ? '原始订单号' : '订单号' }}</dt><dd>{{ sourceNumber }}</dd></div>
             <div class="ord-summary-field"><dt>订单类型</dt><dd>{{ displayedOrderKind }}</dd></div>
             <div class="ord-summary-field"><dt>来源</dt><dd>{{ displayedSourceLabel }}</dd></div>
+            <div class="ord-summary-field"><dt>订单联络人</dt><dd>
+              <template v-if="editingContact && canEditContact">
+                <select v-model="contactForm.contact_user_id" class="erp-input" aria-label="订单联络人">
+                  <option :value="null" disabled>请选择负责人</option>
+                  <option v-for="option in (contactOptions ?? [])" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+                <button type="button" class="erp-btn erp-btn-primary" :disabled="!contactForm.contact_user_id || contactForm.processing" @click="saveOrderContact">保存</button>
+                <button type="button" class="erp-btn erp-btn-secondary" @click="editingContact = false; contactForm.reset(); contactForm.clearErrors()">取消</button>
+                <p v-if="contactForm.errors.contact_user_id" class="erp-field-error">{{ contactForm.errors.contact_user_id }}</p>
+              </template>
+              <template v-else>
+                {{ order.contact_user_name ?? '未分配' }}
+                <button v-if="canEditContact" type="button" class="erp-btn erp-btn-secondary" @click="contactForm.contact_user_id = order.contact_user_id ?? null; editingContact = true">更换</button>
+                <span v-else-if="order.fulfillment_parent" class="ord-hint-inline">（继承母订单）</span>
+              </template>
+            </dd></div>
             <div class="ord-summary-field"><dt>负责人</dt><dd>{{ order.owner?.name ?? '—' }}</dd></div>
             <div class="ord-summary-field"><dt>币种</dt><dd>{{ order.currency }}</dd></div>
             <div class="ord-summary-field"><dt>订单日期</dt><dd>{{ order.order_date }}</dd></div>

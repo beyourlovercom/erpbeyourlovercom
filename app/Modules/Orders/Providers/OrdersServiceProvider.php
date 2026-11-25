@@ -20,6 +20,7 @@ final class OrdersServiceProvider extends ServiceProvider
         $this->app->bind(WooCommerceOrderGateway::class, HttpWooCommerceOrderGateway::class);
         $this->app->bind(WooCommerceFinancialEvidenceReader::class, EloquentWooCommerceFinancialEvidenceReader::class);
         $this->app->scoped(OrderWorkflowStatusDisplayCatalog::class);
+        $this->app->scoped(\App\Modules\Orders\Application\OrderContactProjection::class);
     }
 
     public function boot(): void

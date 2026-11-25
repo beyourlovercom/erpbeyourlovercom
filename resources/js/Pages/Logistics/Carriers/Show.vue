@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import OrderContactFilter from '../../../Components/Orders/OrderContactFilter.vue'
+import { currentContactQuery } from '../../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
@@ -20,7 +22,7 @@ type Summary = {
   last_shipped_at: string | null
 }
 type Item = { sku: string | null; product_summary: string | null; product_url?: string | null; quantity: number }
-type LedgerRow = {
+type LedgerRow = { contact_user_name?: string | null;
   id: number; shipped_at: string | null; erp_order_id: string | null
   order_kind: string | null; order_url?: string | null; warehouse_name: string | null; destination_country: string | null; carrier: string | null
   service: string | null; service_display_name?: string | null; tracking_number: string | null; items: Item[]; chargeable_weight_kg: string | number | null
@@ -51,9 +53,9 @@ type CarrierMaster = {
   default_service_id: number | null
   services: CarrierServiceMaster[]
 }
-type ColumnKey = 'order_number' | 'shipped_at' | 'order_kind' | 'warehouse' | 'destination' | 'channel' | 'tracking' | 'items' | 'weight' | 'cost' | 'shipment_status' | 'delivery_status' | 'handler' | 'recipient' | 'billing' | 'source' | 'evidence'
+type ColumnKey = 'order_number' | 'contact' | 'shipped_at' | 'order_kind' | 'warehouse' | 'destination' | 'channel' | 'tracking' | 'items' | 'weight' | 'cost' | 'shipment_status' | 'delivery_status' | 'handler' | 'recipient' | 'billing' | 'source' | 'evidence'
 const definitions: GridColumnDefinition<ColumnKey>[] = [
-  { key: 'order_number', label: 'ERP订单号' }, { key: 'shipped_at', label: '发货日期' }, { key: 'order_kind', label: '订单类型' }, { key: 'warehouse', label: '发货仓库' },
+  { key: 'order_number', label: 'ERP订单号' }, { key: 'contact', label: '订单联络人' }, { key: 'shipped_at', label: '发货日期' }, { key: 'order_kind', label: '订单类型' }, { key: 'warehouse', label: '发货仓库' },
   { key: 'destination', label: '目的地' }, { key: 'channel', label: '运输 / 服务类型' }, { key: 'tracking', label: 'Tracking' }, { key: 'items', label: '产品/数量' },
   { key: 'weight', label: '计费重量' }, { key: 'cost', label: '物流费用' }, { key: 'shipment_status', label: 'Shipment状态' }, { key: 'delivery_status', label: '签收状态' },
   { key: 'handler', label: '发货人' }, { key: 'recipient', label: '收件人' }, { key: 'billing', label: '账单/单据' }, { key: 'source', label: '数据来源' }, { key: 'evidence', label: '原始凭证' },
@@ -70,7 +72,7 @@ const rowMoney = (row: LedgerRow) => row.actual_cost === null ? '—' : `${row.c
 const orderKind = (value: string | null) => value === 'customer' ? '客户订单' : value === 'kol_fulfillment' ? '网红履约订单' : (value ?? '—')
 const itemText = (items: Item[]) => items.length === 0 ? '—' : items.map((item) => `${item.sku || item.product_summary || '未命名'} × ${item.quantity}`).join('；')
 const deliveryCount = (value: number) => props.summary.delivery_status_coverage === 0 ? '—' : String(value)
-const goToPage = (page: number) => router.get(`/logistics/carriers/${encodeURIComponent(props.carrier)}`, { page }, { preserveState: true, replace: true })
+const goToPage = (page: number) => router.get(`/logistics/carriers/${encodeURIComponent(props.carrier)}`, { ...currentContactQuery(), page }, { preserveState: true, replace: true })
 
 const editorOpen = ref(false)
 const editorSaving = ref(false)
@@ -127,6 +129,7 @@ const saveCarrier = () => {
   <Head :title="`${carrierDisplayName} · 物流商 · BYL ERP`" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '物流商', carrierDisplayName]">
     <section class="mvp-page carrier-detail-page">
+      <OrderContactFilter />
       <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading carrier-heading">
         <div><p class="mvp-kicker">Carrier Shipment Ledger</p><h2>{{ carrierDisplayName }}</h2><p>真实 Shipment 历史、计费重量、实际物流费用与 Provider raw evidence。</p></div>
@@ -151,7 +154,7 @@ const saveCarrier = () => {
           <thead><tr><th v-for="column in grid.visibleColumns" :key="column.key">{{ column.label }}</th><ColumnSettingsHeader :columns="grid.columns" :required-keys="['order_number']" :sync-state="grid.syncState" @toggle="grid.toggle" @start-drag="grid.startDrag" @drop="grid.drop" @reset="grid.reset" /></tr></thead>
           <tbody>
             <tr v-for="row in shipments.data" :key="row.id">
-              <td v-for="column in grid.visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link"><strong>{{ row.erp_order_id ?? '—' }}</strong></Link><span v-else><strong>{{ row.erp_order_id ?? '—' }}</strong></span></template><template v-else-if="column.key === 'shipped_at'">{{ dateTime(row.shipped_at) }}</template><template v-else-if="column.key === 'order_kind'">{{ orderKind(row.order_kind) }}</template><template v-else-if="column.key === 'warehouse'">{{ row.warehouse_name ?? '—' }}</template><template v-else-if="column.key === 'destination'">{{ row.destination_country ?? '—' }}</template><template v-else-if="column.key === 'channel'"><span class="service-cell">{{ row.service_display_name ?? row.service ?? '—' }}</span></template><template v-else-if="column.key === 'tracking'">{{ row.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'items'" class="items-cell"><template v-for="item in row.items" :key="item.product_url ?? item.sku"><Link v-if="item.product_url" :href="item.product_url" class="mvp-link">{{ item.sku || item.product_summary || '未命名' }}</Link><span v-else>{{ item.sku || item.product_summary || '未命名' }}</span> × {{ item.quantity }}；</template></template><template v-else-if="column.key === 'weight'">{{ row.chargeable_weight_kg === null ? '—' : `${Number(row.chargeable_weight_kg).toFixed(3)} kg` }}</template><template v-else-if="column.key === 'cost'">{{ rowMoney(row) }}</template><template v-else-if="column.key === 'shipment_status'">{{ row.shipment_status ?? '—' }}</template><template v-else-if="column.key === 'delivery_status'">{{ row.delivery_status ?? '—' }}</template><template v-else-if="column.key === 'handler'">{{ row.handler_name ?? '—' }}</template><template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'billing'">{{ row.billing_document_number ?? row.provider_reference ?? '—' }}</template><template v-else-if="column.key === 'source'">{{ row.data_source ?? '—' }}</template><template v-else><details v-if="row.raw_evidence"><summary>查看</summary><pre>{{ JSON.stringify(row.raw_evidence, null, 2) }}</pre></details><span v-else>—</span></template></td>
+              <td v-for="column in grid.visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link"><strong>{{ row.erp_order_id ?? '—' }}</strong></Link><span v-else><strong>{{ row.erp_order_id ?? '—' }}</strong></span></template><template v-else-if="column.key === 'contact'">{{ row.contact_user_name ?? '未分配' }}</template><template v-else-if="column.key === 'shipped_at'">{{ dateTime(row.shipped_at) }}</template><template v-else-if="column.key === 'order_kind'">{{ orderKind(row.order_kind) }}</template><template v-else-if="column.key === 'warehouse'">{{ row.warehouse_name ?? '—' }}</template><template v-else-if="column.key === 'destination'">{{ row.destination_country ?? '—' }}</template><template v-else-if="column.key === 'channel'"><span class="service-cell">{{ row.service_display_name ?? row.service ?? '—' }}</span></template><template v-else-if="column.key === 'tracking'">{{ row.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'items'" class="items-cell"><template v-for="item in row.items" :key="item.product_url ?? item.sku"><Link v-if="item.product_url" :href="item.product_url" class="mvp-link">{{ item.sku || item.product_summary || '未命名' }}</Link><span v-else>{{ item.sku || item.product_summary || '未命名' }}</span> × {{ item.quantity }}；</template></template><template v-else-if="column.key === 'weight'">{{ row.chargeable_weight_kg === null ? '—' : `${Number(row.chargeable_weight_kg).toFixed(3)} kg` }}</template><template v-else-if="column.key === 'cost'">{{ rowMoney(row) }}</template><template v-else-if="column.key === 'shipment_status'">{{ row.shipment_status ?? '—' }}</template><template v-else-if="column.key === 'delivery_status'">{{ row.delivery_status ?? '—' }}</template><template v-else-if="column.key === 'handler'">{{ row.handler_name ?? '—' }}</template><template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'billing'">{{ row.billing_document_number ?? row.provider_reference ?? '—' }}</template><template v-else-if="column.key === 'source'">{{ row.data_source ?? '—' }}</template><template v-else><details v-if="row.raw_evidence"><summary>查看</summary><pre>{{ JSON.stringify(row.raw_evidence, null, 2) }}</pre></details><span v-else>—</span></template></td>
             </tr>
             <tr v-if="shipments.data.length === 0"><td :colspan="grid.visibleColumns.length" class="mvp-empty">暂无该物流商物流记录。</td></tr>
           </tbody>

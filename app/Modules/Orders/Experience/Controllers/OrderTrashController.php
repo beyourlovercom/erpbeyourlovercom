@@ -42,14 +42,18 @@ final class OrderTrashController
     public function index(Request $request): Response
     {
         $this->authorizeAdmin($request);
+        $query = Order::withTrashed()->where(fn ($q) => $q->whereNotNull('deleted_at')->orWhereNotNull('archived_at'))
+                ->with('owner');
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($query, $request);
+        $orders = $query->orderByRaw('COALESCE(archived_at, deleted_at) DESC')->paginate(50)->withQueryString();
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($orders->getCollection());
         return Inertia::render('Orders/Trash', [
-            'orders' => Order::withTrashed()->where(fn ($q) => $q->whereNotNull('deleted_at')->orWhereNotNull('archived_at'))
-                ->with('owner')->orderByRaw('COALESCE(archived_at, deleted_at) DESC')
-                ->paginate(50)->through(fn (Order $order): array => [
+            'orders' => $orders->through(fn (Order $order): array => [
                     'id' => $order->id,
                     'number' => $order->erp_order_id ?: $order->internal_order_number,
                     'kind' => $order->order_kind?->value,
                     'owner' => $order->owner?->name,
+                    ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
                     'deleted_at' => ($order->archived_at ?? $order->deleted_at)?->toDateTimeString(),
                     'deleted_by' => $order->archived_by ?? $order->deleted_by,
                     'archival_mode' => $order->archived_at !== null ? 'preserved' : 'soft_deleted',

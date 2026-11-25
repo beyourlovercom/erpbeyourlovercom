@@ -193,8 +193,8 @@ DB::transaction(function () use ($runId, $activePassword, $inactivePassword): vo
     ]);
     // All records below are constrained by the fail-closed disposable SQLite
     // checks at the top of this file; they never touch a real ERP database.
-    $specialistRole = Role::query()->create(['key' => 'e2e_kol_specialist', 'label' => 'E2E KOL Specialist']);
-    $managerRole = Role::query()->create(['key' => 'e2e_kol_manager', 'label' => 'E2E KOL Manager']);
+    $specialistRole = Role::query()->create(['key' => \App\Modules\Identity\Application\RolePreset::KolSpecialist->roleKey(), 'label' => 'E2E KOL Specialist']);
+    $managerRole = Role::query()->create(['key' => \App\Modules\Identity\Application\RolePreset::KolManager->roleKey(), 'label' => 'E2E KOL Manager']);
     foreach (['dashboard.view', 'kol.view', 'orders.view', 'orders.create', 'products.view'] as $key) {
         $permission = Permission::query()->firstOrCreate(['key' => $key], ['label' => $key]);
         $specialistRole->permissions()->attach($permission);
@@ -220,6 +220,16 @@ DB::transaction(function () use ($runId, $activePassword, $inactivePassword): vo
         ]);
         $user->roles()->attach($role);
         $roleUsers[$label] = $user;
+    }
+    if (getenv('BYL_E2E_SUITE') === 'order-contact') {
+        $specialistRole->permissions()->attach(Permission::firstOrCreate(['key'=>'orders.edit'],['label'=>'orders.edit']));
+        \App\Modules\Kol\Infrastructure\Models\Kol::create([
+            'display_name' => 'Synthetic Contact Creator', 'owner_id' => $roleUsers['emma']->id,
+            'status' => 'active', 'relationship_stage' => 'cooperating', 'shipping_country' => 'US',
+            'shipping_recipient_name' => 'Synthetic Recipient', 'shipping_address_line_1' => '10 Test Street',
+            'shipping_province_state' => 'CA', 'shipping_city' => 'Test City', 'shipping_postal_code' => '90001',
+            'contact_phone' => '0005550100', 'contact_email' => 'contact-creator@example.test',
+        ]);
     }
     foreach (['emma', 'other', 'manager'] as $label) {
         $owner = $roleUsers[$label];

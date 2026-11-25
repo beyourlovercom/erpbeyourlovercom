@@ -18,7 +18,7 @@ const props = {
       order_kind: 'customer', source_label: 'WooCommerce', order_date: '2026-11-04',
       order_status_label: '待发货', workflow_status_projection: {
         code: 'sending', en: 'Sending', zh: '待发货', color: 'amber', source: 'canonical_projection',
-      }, address: { recipient_name: 'Tester', country: 'US' }, owner_label: 'Vita' }],
+      }, address: { recipient_name: 'Tester', country: 'US' }, owner_label: 'Vita', contact_user_name: 'Emma' }],
     current_page: 2, last_page: 12, per_page: 50, total: 580,
   },
   filters: { sort: 'date', direction: 'desc', per_page: '50' },
@@ -35,7 +35,7 @@ describe('Order OMS server adapter', () => {
     const rows = grid.props('rows') as any[]
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ id: 7870, erp_order_id: '007-0910-40414',
-      recipient: 'Tester', country: 'US', status_label: '待发货', owner_label: 'Vita' })
+      recipient: 'Tester', country: 'US', status_label: '待发货', owner_label: 'Vita', contact: 'Emma' })
     const columns = grid.props('columns') as any[]
     expect(columns.find(c => c.colId === 'status').cellRendererParams).toMatchObject({
       mode: 'status', canEdit: true,
@@ -43,14 +43,15 @@ describe('Order OMS server adapter', () => {
     expect(columns.find(c => c.colId === 'order_number')).toMatchObject({ field: 'display_order_number' })
     const noteColumn = columns.find(c => c.colId === 'order_note')
     expect(noteColumn).toMatchObject({ headerName: '备注', field: 'order_note', hide: false })
-    expect(columns.indexOf(noteColumn)).toBe(1)
+    expect(columns[1]).toMatchObject({ colId: 'contact', field: 'contact', headerName: '订单联络人', hide: false })
+    expect(columns.indexOf(noteColumn)).toBe(2)
     expect(noteColumn.cellStyle({value:'紧急：请注意'})).toMatchObject({color:'#c62828'})
     expect(columns.find(c => c.colId === 'actions').cellRendererParams.mode).toBe('action')
     expect(grid.props('serverPagination')).toMatchObject({ current_page: 2, total: 580 })
     expect(grid.props('serverSort')).toEqual({ colId: 'date', direction: 'desc' })
     expect(grid.props('requiredColumnIds')).toEqual(['order_number','warehouse'])
     // 46 data fields + 1 actions column. SKU and total quantity must not be hidden by default.
-    expect(columns).toHaveLength(50)
+    expect(columns).toHaveLength(51)
     expect(columns.find(c => c.colId === 'sku')).toMatchObject({ hide: false, field: 'sku_list' })
     expect(columns.find(c => c.colId === 'quantity')).toMatchObject({ hide: false, field: 'order_quantity' })
     expect(columns.find(c => c.colId === 'product_names')).toMatchObject({ hide: true })

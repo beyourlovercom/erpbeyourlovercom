@@ -14,6 +14,7 @@ use Tests\TestCase;
 final class KolOnboardingDraftTest extends TestCase
 {
     use RefreshDatabase;
+    use \Tests\Support\OrderContactFixture;
 
     private function staff(array $permissions=['kol.view','kol.operate','orders.create']): User
     {
@@ -41,7 +42,7 @@ final class KolOnboardingDraftTest extends TestCase
         self::assertDatabaseCount('orders',0);
         $this->get('/kol/library/create?onboarding_token='.$token)->assertOk()->assertInertia(fn($p)=>$p->where('onboardingToken',$token)->where('onboardingSmartDraft.username_hint','demo_profile'));
         $this->get('/kol/orders/create?kol_id='.$kol->id.'&onboarding_token='.$token)->assertOk()->assertInertia(fn($p)=>$p->where('resumeOrderDraft.smart.product_hint','Synthetic Product')->where('selectedKolId',$kol->id));
-        $order=['external_order_number'=>'DRAFT-ORDER-1','kol_id'=>$kol->id,'currency'=>'USD','onboarding_token'=>$token,'address_confirmed'=>false,'recipient_name'=>'New Synthetic','country'=>'US','address_line_1'=>'New Street','items'=>[['product_id'=>$product->id,'product_summary'=>'Synthetic Product','quantity'=>1,'unit_price'=>'0.00']]];
+        $order=['contact_user_id'=>$this->fixtureContactId(),'external_order_number'=>'DRAFT-ORDER-1','kol_id'=>$kol->id,'currency'=>'USD','onboarding_token'=>$token,'address_confirmed'=>false,'recipient_name'=>'New Synthetic','country'=>'US','address_line_1'=>'New Street','items'=>[['product_id'=>$product->id,'product_summary'=>'Synthetic Product','quantity'=>1,'unit_price'=>'0.00']]];
         $this->postJson('/kol/orders',$order)->assertUnprocessable();
         self::assertDatabaseCount('orders',0);
         $order['address_confirmed']=true;

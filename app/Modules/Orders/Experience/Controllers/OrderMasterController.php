@@ -36,6 +36,7 @@ final class OrderMasterController
             'direction' => ['nullable', Rule::in(['asc', 'desc'])],
             'per_page' => ['nullable', Rule::in(['20', '50', '100'])],
             'grid_order_number' => ['nullable', 'string', 'max:120'],
+            'grid_contact' => ['nullable', 'string', 'max:80'],
             'grid_external_number' => ['nullable', 'string', 'max:120'],
             'grid_recipient' => ['nullable', 'string', 'max:120'],
             'grid_sku' => ['nullable', 'string', 'max:120'],
@@ -107,6 +108,8 @@ final class OrderMasterController
                     ->orWhereHas('shipment', fn (Builder $shipment) => $shipment->where('tracking_number', 'like', $like)));
             }
         }
+        $filters['grid_contact'] = trim((string) ($data['grid_contact'] ?? ''));
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->applyNameFilter($base, $filters['grid_contact']);
         $this->applyColumnFilters($base, $filters);
 
         $counts = [];
@@ -131,6 +134,7 @@ final class OrderMasterController
             ->paginate((int) $filters['per_page'])->withQueryString();
 
         $fallback = $metadata->fallbackProductsForOrders($orders->getCollection());
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($orders->getCollection());
 
         return Inertia::render('Orders/Master', [
             'orders' => $orders->through(function (Order $order) use ($metadata, $fallback): array {
@@ -164,6 +168,7 @@ final class OrderMasterController
                     })->filter()->unique()->implode('；'),
                     'date' => $order->order_date?->toDateString(),
                     'owner' => $order->owner?->name,
+                    ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
                     'detail_url' => $isTrash ? '/orders/trash' : '/orders/'.$order->id,
                 ];
             })->toArray(),

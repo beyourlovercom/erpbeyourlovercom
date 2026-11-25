@@ -14,6 +14,7 @@ use Tests\TestCase;
 final class KolOrderAddressAutofillTest extends TestCase
 {
     use RefreshDatabase;
+    use \Tests\Support\OrderContactFixture;
 
     protected function setUp(): void
     {
@@ -81,7 +82,7 @@ final class KolOrderAddressAutofillTest extends TestCase
 
         $product = Product::create(['source_type' => 'manual', 'sku' => 'SYN-CUSTOMS-OK-01', 'name' => 'Synthetic Product', 'is_active' => true]);
         $this->actingAs($actor)->post('/kol/orders', [
-            'external_order_number' => 'SYN-CUSTOMS-OK-ORDER', 'kol_id' => $kol->id,
+            'contact_user_id' => $this->fixtureContactId(), 'external_order_number' => 'SYN-CUSTOMS-OK-ORDER', 'kol_id' => $kol->id,
             'order_date' => '2026-11-23', 'currency' => 'USD',
             'items' => [['product_id' => $product->id, 'product_summary' => 'Synthetic Product', 'quantity' => 1, 'unit_price' => '0.00']],
         ])->assertRedirect();
@@ -100,7 +101,7 @@ final class KolOrderAddressAutofillTest extends TestCase
         $kol->update(['shipping_country' => 'MX', 'shipping_customs_id' => null]);
         $product = Product::create(['source_type' => 'manual', 'sku' => 'SYN-CUSTOMS-FAIL-01', 'name' => 'Synthetic Product', 'is_active' => true]);
         $payload = [
-            'external_order_number' => 'SYN-CUSTOMS-NO-ID', 'kol_id' => $kol->id,
+            'contact_user_id' => $this->fixtureContactId(), 'external_order_number' => 'SYN-CUSTOMS-NO-ID', 'kol_id' => $kol->id,
             'order_date' => '2026-11-23', 'currency' => 'USD',
             'items' => [['product_id' => $product->id, 'product_summary' => 'Synthetic Product', 'quantity' => 1, 'unit_price' => '0.00']],
         ];
@@ -120,7 +121,7 @@ final class KolOrderAddressAutofillTest extends TestCase
         $kol = $this->kol($actor);
         $product = Product::create(['source_type' => 'manual', 'sku' => 'SYN-KOL-AUTO-01', 'name' => 'Test Sample', 'is_active' => true]);
         $payload = [
-            'external_order_number' => 'SYN-KOL-AUTO-ORDER', 'kol_id' => $kol->id,
+            'contact_user_id' => $this->fixtureContactId(), 'external_order_number' => 'SYN-KOL-AUTO-ORDER', 'kol_id' => $kol->id,
             'order_date' => '2026-11-23', 'currency' => 'USD',
             'address_line_1' => 'Shipment-specific address',
             'items' => [['product_id' => $product->id, 'product_summary' => 'Test Sample', 'quantity' => 1, 'unit_price' => '0.00']],

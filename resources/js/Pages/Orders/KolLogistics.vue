@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
+import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { reactive } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type Row = {
+  contact_user_name?: string | null;
   id: number; erp_order_id: string | null; external_order_number: string
   order_date: string | null; owner: string | null
   shipment_status: string; warehouse: string | null
@@ -20,8 +23,8 @@ const statuses: Record<string, string> = {
   pending: '待发货', shipped: '已发货', in_transit: '运输中',
   exception: '异常', completed: '已完结', cancelled: '已取消',
 }
-const search = () => router.get('/kol/logistics', filters, { preserveState: true, replace: true })
-const page = (number: number) => router.get('/kol/logistics', { ...filters, page: number }, { preserveState: true, replace: true })
+const search = () => router.get('/kol/logistics', {...currentContactQuery(), ...filters, page:1}, { preserveState: true, replace: true })
+const page = (number: number) => router.get('/kol/logistics', { ...currentContactQuery(), ...filters, page: number }, { preserveState: true, replace: true })
 </script>
 
 <template>
@@ -47,6 +50,7 @@ const page = (number: number) => router.get('/kol/logistics', { ...filters, page
         </select>
         <button type="submit" class="mvp-button mvp-button-primary">查询</button>
       </form>
+      <OrderContactFilter />
       <p class="scope-notice">仅显示有权限的 KOL 订单。不提供跨部门导出、发货或修改物流操作。</p>
 
       <div class="rows">
@@ -55,7 +59,7 @@ const page = (number: number) => router.get('/kol/logistics', { ...filters, page
             <Link :href="`/kol/orders/${order.id}`">{{ order.erp_order_id || 'ERP 编号待生成' }}</Link>
             <span class="mvp-status">{{ statuses[order.shipment_status] ?? order.shipment_status }}</span>
           </div>
-          <div class="meta"><span>业务单号：{{ order.external_order_number }}</span><span>订单日期：{{ order.order_date || '—' }}</span></div>
+          <div class="meta"><span>订单联络人：{{ order.contact_user_name ?? '未分配' }}</span><span>业务单号：{{ order.external_order_number }}</span><span>订单日期：{{ order.order_date || '—' }}</span></div>
           <div class="details">
             <span>仓库：{{ order.warehouse || (order.shipment_status === 'pending' ? '待分配' : '未记录') }}</span>
             <span>物流商：{{ order.carrier || '待确认' }}</span>

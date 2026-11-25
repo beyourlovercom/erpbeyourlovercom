@@ -19,6 +19,7 @@ export type OrderGridOrder = Record<string, unknown> & {
   workflow_status_projection?: { zh?: string; code?: string }
   routing_warehouse?: {code:string;name:string;source:string;revision:number}
   owner_label?: string | null
+  contact_user_name?: string | null
   order_note?: string | null
   latest_order_note?: string | null
   currency?: string | null
@@ -132,6 +133,7 @@ export function toOrderOmsRow(order: OrderGridOrder): Record<string, unknown> {
     handled_by: order.shipment?.handled_by ?? null,
     status_label: order.workflow_status_projection?.zh ?? order.order_status_label ?? '—',
     owner_label: order.owner_label ?? '—',
+    contact: order.contact_user_name ?? '未分配',
     order_note: order.latest_order_note || order.order_note || '—',
     manual_sync_status: order.manual_sync?.status || '—',
     manual_sync_at: order.manual_sync?.synced_at || '—',

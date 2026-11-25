@@ -34,15 +34,17 @@ final class TingonFulfillmentController
             ? (int) $request->query('per_page', 50) : 50;
 
         if ($view === 'brand') {
-            $orders = Order::query()->eligibleForOperations()
+            $brandQuery = Order::query()->eligibleForOperations()
                 ->where('order_kind', '!=', 'fulfillment_derived')
                 ->whereHas('items.product', static fn ($product) => $product->whereRaw(
                     "LOWER(TRIM(CASE WHEN brand_local_override = 1 THEN COALESCE(brand, '') ELSE COALESCE(NULLIF(woocommerce_brand, ''), brand, '') END)) = ?",
                     ['tingon']
                 ))
                 ->with(['address', 'items.product', 'shipment.warehouse'])
-                ->when($search !== '', fn ($q) => $this->searchOrders($q, $search))
-                ->orderByDesc('id')->paginate($perPage)->withQueryString();
+                ->when($search !== '', fn ($q) => $this->searchOrders($q, $search));
+            app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($brandQuery, $request);
+            $orders = $brandQuery->orderByDesc('id')->paginate($perPage)->withQueryString();
+            app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($orders->getCollection());
             $rows = $orders->through(fn (Order $order): array => $this->orderRow($order))->toArray();
         } else {
             $query = Shipment::query()
@@ -68,7 +70,9 @@ final class TingonFulfillmentController
                             ->orWhereHas('order', fn ($order) => $this->searchOrders($order, $search));
                     });
                 });
+            app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($query, $request, true);
             $shipments = $query->orderByDesc('id')->paginate($perPage)->withQueryString();
+            app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($shipments->getCollection()->pluck('order'));
             $rows = $shipments->through(fn (Shipment $shipment): array => $this->shipmentRow($shipment))->toArray();
         }
 
@@ -158,6 +162,7 @@ final class TingonFulfillmentController
             'id' => (int) $order->id,
             'order_id' => (int) $order->id,
             'order_number' => $order->erp_order_id ?: $order->external_order_number,
+            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
             'order_url' => '/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,
             'country' => $order->address?->country,
@@ -187,6 +192,7 @@ final class TingonFulfillmentController
             'id' => (int) $shipment->id,
             'order_id' => (int) $order->id,
             'order_number' => $order->erp_order_id ?: $order->external_order_number,
+            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
             'order_url' => '/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,
             'country' => $order->address?->country,

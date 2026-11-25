@@ -71,13 +71,16 @@ final class OrderOperationalArchiveController
             }
         }
 
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($query, $request);
         $orders = $query->orderByRaw('COALESCE(orders.operational_archived_at, (SELECT parent.operational_archived_at FROM orders AS parent WHERE parent.id = orders.fulfillment_parent_id)) DESC')->latest('orders.id')
             ->paginate((int) ($filters['per_page'] ?? 50))->withQueryString();
 
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($orders->getCollection());
         return Inertia::render('Orders/Archive', [
             'orders' => $orders->through(fn (Order $order): array => [
                 'id' => $order->id,
                 'erp_order_id' => $order->erp_order_id,
+                ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
                 'order_kind' => $order->order_kind?->value,
                 'order_status' => $order->order_status?->value,
                 'workflow_revision' => (int) $order->workflow_revision,

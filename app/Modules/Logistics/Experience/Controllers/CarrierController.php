@@ -110,15 +110,17 @@ final class CarrierController
             ->where('carrier', $carrier)
             ->get();
 
-        $shipments = Shipment::query()
+        $query = Shipment::query()
             ->with(['order.address', 'order.items.product', 'warehouse', 'handler', 'billingEvidence', 'carrierService'])
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
-            ->where('carrier', $carrier)
-            ->latest('shipped_at')
+            ->where('carrier', $carrier);
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($query, $request, true);
+        $shipments = $query->latest('shipped_at')
             ->latest('id')
             ->paginate(self::PER_PAGE)
             ->withQueryString();
 
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($shipments->getCollection()->pluck('order'));
         return Inertia::render('Logistics/Carriers/Show', [
             'carrier' => $carrier,
             'carrierDisplayName' => $master->displayName(),
@@ -295,6 +297,7 @@ final class CarrierController
             'id' => $shipment->id,
             'shipped_at' => $shipment->shipped_at?->toIso8601String(),
             'erp_order_id' => $order?->erp_order_id,
+            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
             'order_kind' => $order?->order_kind?->value,
             'order_url' => $this->orderUrl($order),
             'warehouse_name' => $shipment->warehouse?->name,

@@ -1,3 +1,15 @@
+# HIGHEST OWNER-FROZEN LOCAL / UAT LOGIN STANDARD (2026-11-25)
+
+**Rule ID: OWNER_UAT_UNIFIED_LOGIN_P0 · OWNER APPROVED · MANDATORY across projects and agents.**
+
+Every Owner-facing, isolated Local/Dev/UAT acceptance environment must support the same synthetic test administrator login: username **admin**, password **password**. Do not hand the Owner randomized test credentials or require a separate login identity for each acceptance URL. Provision the account before handoff, verify actual authentication and target pages, and proactively leave the relevant pages open for review. Internal automated test fixtures may retain randomly generated accounts and credentials.
+
+This standard is exclusively for verified isolated, non-public test environments (local machine or access-controlled private network), with no Production database, real customer records, live provider credentials or outbound real OMS/Woo/payment/email writes. Never enable this predictable credential on a public-facing or Production system, on shared real-data staging, or as an authentication bypass. Public Dev access requires a separate independent access-control gate; if isolation or safe access cannot be verified, report BLOCKED rather than weakening authentication. Do not alter real employee accounts or expose real secrets. Preserve all existing release, permissions, UAT and device-selection gates.
+
+Before handing off an acceptance URL, explicitly verify the unified login; do not declare Owner UAT PASS without Owner acceptance. This is the highest-priority Owner-facing acceptance credential rule, subject to the above isolation and security boundaries.
+
+---
+
 # HIGHEST OWNER-FROZEN ERP2 FRONTEND-ONLY ARCHITECTURE V1 (2026-11-23)
 
 **Rule ID: `ERP2_OWNER_FROZEN_FRONTEND_ONLY_V1` · Owner approved · ERP2 highest priority.** This is the canonical ERP2 upgrade architecture, superseding earlier ERP2 parallel-system / rebuilding roadmap assumptions. **ERP2 is a Vben/Vue/AG Grid FRONTEND replacement for ERP1, NOT a second ERP.** Reuse the existing ERP1 Laravel Controllers/Services, business rules, user authentication and permissions, products/SKUs, KOL, orders, inventory, warehouse mapping, shipment and accounting models unchanged. For Dev, restore a matching-schema copy of the existing ERP1 database into a **separate isolated ERP2 Dev database**; never write from Dev to ERP1 Production DB. Do not rebuild a second SKU, auth, warehouse, logistics or order service. JSON transport adapters are allowed; extra business engines are not.

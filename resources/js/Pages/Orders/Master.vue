@@ -16,7 +16,7 @@ type MasterOrder = {
   workflow_revision?: number; can_edit_workflow_status?: boolean
   workflow_status_options?: { code: string; en: string; zh: string; color: string; mutable: boolean }[]
   warehouse: string | null; recipient: string | null; email: string | null
-  skus: string; material_full_name: string; date: string | null; owner: string | null; detail_url: string
+  skus: string; material_full_name: string; date: string | null; owner: string | null; contact_user_name?: string | null; detail_url: string
 }
 type Pager = { data: MasterOrder[]; current_page: number; last_page: number; per_page: number; total: number }
 type MasterFilters = Record<string, string>
@@ -102,11 +102,13 @@ const rows = computed<GridListRow[]>(() => props.orders.data.map(order => ({
   material_full_name: order.material_full_name || '—',
   date: order.date ?? '—',
   owner: order.owner ?? '—',
+  contact: order.contact_user_name ?? '未分配',
   order_url: order.detail_url,
 })))
 const columns: ColDef<GridListRow>[] = [
   gridColumn({ colId: 'order_number', field: 'order_number', headerName: 'ERP订单号', width: 210, sortable: true,
     cellRenderer: GlobalGridCell, cellRendererParams: { mode: 'link', hrefFor: (row: GridListRow) => String(row.order_url) } }),
+  gridColumn({ colId: 'contact', field: 'contact', headerName: '订单联络人', width: 140 }),
   gridColumn({ colId: 'external_number', field: 'external_number', headerName: '来源单号', width: 188 }),
   gridColumn({ colId: 'kind', field: 'kind', headerName: '订单类型', width: 140 }),
   gridColumn({ colId: 'collaboration_partner', field: 'collaboration_partner', headerName: '合作商', width: 160 }),
@@ -128,7 +130,7 @@ const columns: ColDef<GridListRow>[] = [
     cellRenderer: GlobalGridCell, cellRendererParams: { mode: 'actions',
       actionsFor: (row: GridListRow) => [{ label: row.archive_state === '回收站' ? '回收站' : '查看', href: String(row.order_url) }] } }),
 ]
-const filterColumns = ['order_number', 'external_number', 'recipient', 'sku', 'warehouse', 'status', 'date', 'source']
+const filterColumns = ['order_number', 'contact', 'external_number', 'recipient', 'sku', 'warehouse', 'status', 'date', 'source']
 const filterValues = computed(() => Object.fromEntries(filterColumns.map(key => [key, props.filters['grid_' + key] ?? ''])))
 const changeColumnSearch = ({ colId, value }: { colId: string; value: string }) => {
   if (filterColumns.includes(colId)) go({ ['grid_' + colId]: value, page: 1 })

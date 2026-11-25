@@ -28,7 +28,7 @@ type Item = { sku:string|null; quantity:number; has_liquid?:boolean; material_fu
 type PurchaseLine = { id:number; sku:string; quantity:number; purchase_quantity:number; purchase_url:string|null; purchase_size:string|null; received_quantity:number; received_sku:string|null }
 type PurchaseInfo = { id:number; number:string; status:string; carrier:string|null; tracking_number:string|null; received_at:string|null; released_at:string|null; items:PurchaseLine[] }
 type Row = {
-  line:number; order_id:number; paid_date:string|null; paid_date_source?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; erp_order_id:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
+  line:number; order_id:number; paid_date:string|null; paid_date_source?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; erp_order_id:string|null; contact_user_name?:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null
   workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; order_kind?:string; routing_warehouse?:{code:string;name:string;source:string;revision:number}
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; carrier_selection_source?:string|null; carrier_ready?:boolean; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
@@ -110,19 +110,18 @@ const gridNavigation = useGlobalGridListAdapter({
   enabled:()=>!!props.globalGridPilotEnabled,
   search:()=>domesticGridSearch.value,
   pageSize:()=>props.rows.per_page??50,
-  context:()=>props.view==='outsource' ? {} : {view:props.view,...(isAllDomesticView(props.view)
-    ? Object.fromEntries(Object.entries(props.gridFilters??{}).filter(([,value])=>value).map(([key,value])=>['filter_'+key,value])) : {})},
+  context:()=>props.view==='outsource' ? {} : {view:props.view,...Object.fromEntries(Object.entries(props.gridFilters??{}).filter(([key,value])=>value&&(key==='contact'||isAllDomesticView(props.view))).map(([key,value])=>['filter_'+key,value]))},
 })
-const allGridFilterColumns=['status','warehouse_route','review','sku','carrier','service','shipment_status','tracking','recipient','destination']
+const allGridFilterColumns=['contact','status','warehouse_route','review','sku','carrier','service','shipment_status','tracking','recipient','destination']
 const allGridFilterValues = computed(()=>Object.fromEntries(allGridFilterColumns.map(key=>[key,props.gridFilters?.[key]??''])))
 const selectFilter = (options:{value:string;label:string}[],placeholder:string)=>({
   floatingFilterComponent:DomesticGridSelectFilter,
   floatingFilterComponentParams:{options,placeholder},
 })
 function filterAllDomestic({colId,value}:{colId:string;value:string}){
-  if(!isAllDomesticView(props.view)||!allGridFilterColumns.includes(colId))return
+  if(!allGridFilterColumns.includes(colId)||(!isAllDomesticView(props.view)&&colId!=='contact'))return
   router.get('/logistics/china',{
-    view:'all',global_grid:'1',per_page:props.rows.per_page??50,page:1,
+    view:props.view,global_grid:'1',per_page:props.rows.per_page??50,page:1,
     ...Object.fromEntries(Object.entries(props.gridFilters??{}).filter(([,filter])=>filter).map(([key,filter])=>['filter_'+key,filter])),
     ...(domesticGridSearch.value.trim()?{search:domesticGridSearch.value.trim()}:{}),
     ['filter_'+colId]:value||undefined,
@@ -183,7 +182,7 @@ const nativeOperationRows = computed(()=>!props.globalGridPilotEnabled || showBa
 const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   id:row.order_id,
   line:row.line,
-  order_number:row.erp_order_id??'—',
+  order_number:row.erp_order_id??'—',contact_user_name:row.contact_user_name??'未分配',
   order_url:row.order_url,
   workflow_status:row.workflow_status_projection?.zh ?? '—',
   routing_warehouse:row.routing_warehouse,
@@ -226,6 +225,7 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'order',field:'order_number',headerName:'ERP 订单',width:props.view==='pending'?252:186,
     cellRenderer:props.view==='pending'?DomesticGridOrderLiquidCell:GlobalGridCell,
     cellRendererParams:props.view==='pending'?{showLiquid:true}:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
+  gridColumn({colId:'contact',field:'contact_user_name',headerName:'订单联络人',width:145}),
   gridColumn({colId:'status',field:'workflow_status',headerName:'订单状态',width:182,
     ...selectFilter(['pending_review','sending','out_of_stock','sent','shipping','completed','progress_conflict','partially_shipped']
       .map(code=>({value:code,label:props.workflowStatusOptions?.find(item=>item.code===code)?.zh??code})),'全部状态'),
@@ -926,8 +926,8 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           :cell-text-selection="view==='pending'"
           :enable-selection="true" :selected-order-ids="selectedBulkOrderIds"
           :page="domesticPager" :search="gridSearch??''"
-          :filter-columns="isAllDomesticView(view)?allGridFilterColumns:[]"
-          :filter-values="isAllDomesticView(view)?allGridFilterValues:{}"
+          :filter-columns="isAllDomesticView(view)?allGridFilterColumns:['contact']"
+          :filter-values="allGridFilterValues"
           search-placeholder="搜索当前视图全部订单号 / 收件人..."
           @search-change="searchDomesticGrid($event)"
           @column-search-change="filterAllDomestic($event)"
@@ -950,7 +950,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
       </div>
       <div v-if="view!=='outsource' && (!globalGridPilotEnabled || (view!=='review' && view!=='stockout' && !isProviderWorkView(view) && (activeOperationId!==null || showBatchLegacyOperations)))" class="table-wrap orders">
         <table>
-          <thead><tr><th v-if="canTrackingSync && view!=='stockout'">选择</th><th>#</th><th>{{ view==='stockout' ? '操作' : '审核' }}</th><th>ERP 订单</th><th>订单状态</th><th>所属分仓</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>物流商</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view==='pending'">SKU</th><th v-if="view==='pending'">数量</th><th v-if="view==='pending'">金额</th><th v-if="view!=='review' && view!=='pending'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync && view!=='stockout'">操作</th></tr></thead>
+          <thead><tr><th v-if="canTrackingSync && view!=='stockout'">选择</th><th>#</th><th>{{ view==='stockout' ? '操作' : '审核' }}</th><th>ERP 订单</th><th>订单联络人</th><th>订单状态</th><th>所属分仓</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>物流商</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view==='pending'">SKU</th><th v-if="view==='pending'">数量</th><th v-if="view==='pending'">金额</th><th v-if="view!=='review' && view!=='pending'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync && view!=='stockout'">操作</th></tr></thead>
           <tbody>
             <tr v-for="row in nativeOperationRows" :key="row.order_id">
               <td v-if="canTrackingSync && view!=='stockout'"><input v-if="eligibleForBatchTracking(row)" type="checkbox"
@@ -970,7 +970,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                 <div v-else-if="row.review_status==='approved'" class="approved">已通过 <button v-if="canReview && row.shipment_status==='pending'" type="button" @click="reopen(row)">重新审核</button></div>
                 <span v-else :class="row.review_status==='conflict' ? 'danger' : ''">{{ row.review_status==='conflict' ? '状态待对账' : row.review_status==='stockout' ? '缺货' : '待审核' }}</span>
               </td>
-              <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a><span v-if="view==='pending' && row.has_liquid" class="domestic-liquid-inline" role="note" :title="'含液体 SKU：'+(row.liquid_skus??[]).join('、')">⚠ 含液体</span></td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(row.can_edit_workflow_status)" :options="row.workflow_status_options ?? workflowStatusOptions ?? []" /><span v-else>—</span></td>
+              <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a><span v-if="view==='pending' && row.has_liquid" class="domestic-liquid-inline" role="note" :title="'含液体 SKU：'+(row.liquid_skus??[]).join('、')">⚠ 含液体</span></td><td>{{ row.contact_user_name ?? '未分配' }}</td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(row.can_edit_workflow_status)" :options="row.workflow_status_options ?? workflowStatusOptions ?? []" /><span v-else>—</span></td>
               <td><OrderWarehouseRouteSelect v-if="row.routing_warehouse" :order-id="row.order_id"
                 :projection="row.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute)"
                 :options="warehouseRouteOptions??[]" /></td>

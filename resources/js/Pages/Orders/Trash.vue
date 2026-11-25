@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
 import { Head, router } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
-type Row = { id: number; number: string; kind: string | null; owner: string | null; deleted_at: string | null; deleted_by: number | null; archival_mode: 'preserved' | 'soft_deleted' }
+type Row = { contact_user_name?: string | null; id: number; number: string; kind: string | null; owner: string | null; deleted_at: string | null; deleted_by: number | null; archival_mode: 'preserved' | 'soft_deleted' }
 defineProps<{ orders: { data: Row[]; links: { url: string | null; label: string; active: boolean }[] } }>()
 const restore = (order: Row) => {
   if (!window.confirm(`恢复订单 ${order.number}？`)) return
@@ -18,14 +19,15 @@ const restore = (order: Row) => {
           <a href="/orders" class="erp-btn erp-btn-secondary">返回订单</a>
         </div>
         <div class="erp-form-card">
-          <table class="w-full text-left text-sm">
-            <thead><tr><th class="p-3">订单编号</th><th class="p-3">类型</th><th class="p-3">负责人</th><th class="p-3">方式</th><th class="p-3">移除时间</th><th class="p-3">操作</th></tr></thead>
+          <OrderContactFilter />
+      <table class="w-full text-left text-sm">
+            <thead><tr><th class="p-3">订单编号</th><th class="p-3">订单联络人</th><th class="p-3">类型</th><th class="p-3">负责人</th><th class="p-3">方式</th><th class="p-3">移除时间</th><th class="p-3">操作</th></tr></thead>
             <tbody>
               <tr v-for="order in orders.data" :key="order.id" class="border-t">
-                <td class="p-3">{{ order.number }}</td><td class="p-3">{{ order.kind }}</td><td class="p-3">{{ order.owner || '—' }}</td><td class="p-3">{{ order.archival_mode === 'preserved' ? '保留业务证据' : '软删除' }}</td><td class="p-3">{{ order.deleted_at }}</td>
+                <td class="p-3">{{ order.number }}</td><td class="p-3">{{ order.contact_user_name ?? '未分配' }}</td><td class="p-3">{{ order.kind }}</td><td class="p-3">{{ order.owner || '—' }}</td><td class="p-3">{{ order.archival_mode === 'preserved' ? '保留业务证据' : '软删除' }}</td><td class="p-3">{{ order.deleted_at }}</td>
                 <td class="p-3 flex gap-2"><button type="button" class="erp-btn erp-btn-secondary" @click="restore(order)">恢复</button><span class="text-slate-500 text-xs self-center">保留记录 · 不可永久删除</span></td>
               </tr>
-              <tr v-if="!orders.data.length"><td colspan="6" class="p-3">回收站为空</td></tr>
+              <tr v-if="!orders.data.length"><td colspan="7" class="p-3">回收站为空</td></tr>
             </tbody>
           </table>
           <div class="flex gap-2 mt-4"><template v-for="(link, index) in orders.links" :key="index"><a v-if="link.url" :href="link.url" class="erp-btn erp-btn-secondary" :aria-current="link.active ? 'page' : undefined" v-html="link.label" /></template></div>
