@@ -14,7 +14,8 @@ final class InventoryMatrixService
     /** Read-only projection. A missing inventory record is unknown, not zero. */
     public function rows(): array
     {
-        $warehouses = Warehouse::query()->whereIn('code', self::WAREHOUSE_CODES)->pluck('code', 'id');
+        $warehouses = Warehouse::query()->whereIn(DB::raw('UPPER(code)'), self::WAREHOUSE_CODES)
+            ->pluck('code', 'id')->map(fn (string $code): string => strtoupper($code));
         $ids = $warehouses->keys()->all();
 
         // One aggregate statement keeps the inventory/manifest read consistent
