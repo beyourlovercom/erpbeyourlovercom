@@ -61,6 +61,16 @@ final class InventoryMatrixTest extends TestCase
         $this->assertSame(['on_hand'=>51,'transit'=>0,'pending'=>0],$this->row($product)['warehouses']['US-LA']);
     }
 
+    public function test_lowercase_moreplus_code_resolves_to_canonical_matrix_column(): void
+    {
+        $warehouse = Warehouse::where('code','US-LA')->firstOrFail();
+        $warehouse->update(['code'=>'us-la']);
+        $product = Product::create(['sku'=>'MATRIX-MP-LOWER','name'=>'Lowercase warehouse','is_active'=>true]);
+        WarehouseInventory::create(['warehouse_id'=>$warehouse->id,'product_id'=>$product->id,'quantity_on_hand'=>51,'quantity_reserved'=>0]);
+        $this->batch($warehouse,$product,'MP-SEA-LOWER','sea','in_transit',30);
+        $this->assertSame(['on_hand'=>51,'transit'=>30,'pending'=>0],$this->row($product)['warehouses']['US-LA']);
+    }
+
     private function row(Product $product): array
     {
         return collect(app(InventoryMatrixService::class)->rows())->firstWhere('id',$product->id);
