@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
-import { computed, defineAsyncComponent, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
 const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
@@ -51,9 +51,14 @@ let saved: {view?:'product'|'warehouse';warehouseFilters?:{search?:string;wareho
 try { if(preferenceKey) saved=JSON.parse(localStorage.getItem(preferenceKey)??'{}') ?? {} } catch { /* optional cache */ }
 const view = ref<'product'|'warehouse'>(props.inventoryView ?? (saved.view==='warehouse'?'warehouse':'product'))
 const warehouseGrid = computed(()=>props.warehouseGridEnabled ?? props.globalGridPilotEnabled ?? true)
-const search = ref(props.filters.search || '')
+const initialFilters = props.inventoryView==='warehouse' ? props.filters : (saved.warehouseFilters??props.filters)
+const search = ref(initialFilters.search || '')
 // Keep the legacy filter model coherent with in-grid server-side search.
-watch(() => props.filters.search, value => { search.value = value || '' })
+watch(() => props.filters, value => {
+  if(props.inventoryView==='warehouse') {
+    search.value=value.search||''; warehouse.value=value.warehouse||''; stockStatus.value=value.stock_status||''
+  }
+})
 const globalGridSearch = (value:string) => {
   search.value = value
   router.get('/inventory/products', {
@@ -61,8 +66,8 @@ const globalGridSearch = (value:string) => {
     view:'warehouse', global_grid:'1', per_page:String(props.rows.per_page??100), page:1,
   }, {preserveState:true,replace:true})
 }
-const warehouse = ref(props.filters.warehouse || '')
-const stockStatus = ref(props.filters.stock_status || '')
+const warehouse = ref(initialFilters.warehouse || '')
+const stockStatus = ref(initialFilters.stock_status || '')
 const remember = () => {
   saved={view:view.value,warehouseFilters:{search:search.value,warehouse:warehouse.value,stock_status:stockStatus.value}}
   try { if(preferenceKey) localStorage.setItem(preferenceKey,JSON.stringify(saved)) } catch { /* optional cache */ }
@@ -76,17 +81,15 @@ const switchView = (target:'product'|'warehouse') => {
     ? {...currentFilters(),view:target,global_grid:warehouseGrid.value?'1':'0'} : {view:target},
     {preserveState:true,replace:true,preserveScroll:true})
 }
-watch(()=>props.inventoryView,next=>{ if(next) view.value=next })
+watch(()=>props.inventoryView,next=>{ if(next) { view.value=next; remember() } })
 watch([search,warehouse,stockStatus],()=>{if(view.value==='warehouse')remember()})
 // Restore prior warehouse filters on a default entry; do not overwrite explicit links.
-if(!props.inventoryView && saved.view==='warehouse' && saved.warehouseFilters) {
-  search.value=saved.warehouseFilters.search??''
-  warehouse.value=saved.warehouseFilters.warehouse??''
-  stockStatus.value=saved.warehouseFilters.stock_status??''
-  if(search.value || warehouse.value || stockStatus.value) router.get('/inventory/products',{
-    search:search.value,warehouse:warehouse.value,stock_status:stockStatus.value,view:'warehouse',global_grid:'1',
-  },{preserveState:true,replace:true})
-}
+onMounted(()=>{
+  if(!props.inventoryView && view.value==='warehouse' && (search.value || warehouse.value || stockStatus.value)) {
+    router.get('/inventory/products',{...currentFilters(),view:'warehouse',global_grid:'1'}, {preserveState:true,replace:true})
+  }
+  remember()
+})
 const apply = () => router.get('/inventory/products', {
   search: search.value,
   warehouse: warehouse.value,
