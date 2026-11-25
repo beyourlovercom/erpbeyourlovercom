@@ -1,7 +1,8 @@
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import Dashboard from './Dashboard.vue'
 import Products from './Products.vue'
+import { router } from '@inertiajs/vue3'
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
@@ -92,7 +93,7 @@ describe('Inventory foundation UI', () => {
     const wrapper = mount(Products, { props: {
       rows: { data: [{ id: 7, warehouse: { slug: 'us-moreplus', public_slug: 'us-la', name: '美西 MorePlus 仓' }, product: { id: 9, sku: 'SKU-007', name: 'Test Product' }, inbound_at: '2026-08-20', stay_days: 5, location: 'A-01', quantity_on_hand: 12, quantity_reserved: 2, quantity_available: 10, stock_status: 'in_stock', stock_status_label: '有货', standard_qoh: 8, expected_restock_qty: 4, replenishment: { policy_status: 'reorder', policy_label: '建议补货', shipped_90d_qty: 90, monthly_average: 30, daily_average: 1, days_of_cover: 10, safety_stock_qty: 3, reorder_point_qty: 8, recommended_restock_qty: 4 } }], links: [], current_page: 1, last_page: 1 },
       warehouses: [{ slug: 'us-moreplus', public_slug: 'us-la', name: '美西 MorePlus 仓' }],
-      filters: {},
+      filters: {}, matrixRows: [], inventoryView: 'warehouse', warehouseGridEnabled: false,
     } })
     expect(wrapper.text()).toContain('SKU-007')
     expect(wrapper.text()).toContain('10')
@@ -103,5 +104,22 @@ describe('Inventory foundation UI', () => {
     expect(wrapper.find('input[placeholder="搜索 SKU / 产品名称"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/inventory/us-la"]').exists()).toBe(true)
     expect((wrapper.find('select').element as HTMLSelectElement).options[1].value).toBe('us-la')
+  })
+  it('defaults to the matrix and switches to the preserved warehouse view', async () => {
+    localStorage.clear()
+    const wrapper = mount(Products, { props: {
+      rows:{data:[],links:[],current_page:1,last_page:1}, warehouses:[], filters:{}, matrixRows:[],
+      warehouseGridEnabled:false,
+    }, global:{stubs:{InventoryMatrix:{template:'<div data-testid="matrix-stub">Matrix</div>'}}} })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="inventory-view-product"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.text()).toContain('全球多仓库存总表')
+    await wrapper.get('[data-testid="inventory-view-warehouse"]').trigger('click')
+    expect(wrapper.text()).toContain('产品对应仓库清单')
+    expect(router.get).toHaveBeenLastCalledWith('/inventory/products',expect.objectContaining({view:'warehouse'}),expect.any(Object))
+    await wrapper.get('[data-testid="inventory-view-product"]').trigger('click')
+    expect(router.get).toHaveBeenLastCalledWith('/inventory/products',{view:'product'},expect.any(Object))
+    wrapper.unmount()
+    localStorage.clear()
   })
 })
