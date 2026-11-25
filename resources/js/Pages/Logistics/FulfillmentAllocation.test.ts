@@ -540,8 +540,8 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     const buttons=wrapper.findAll('button').filter(button=>button.text()==='查看方案')
     await buttons[1].trigger('click')
     await flushPromises()
-    const selects=Array.from(document.body.querySelectorAll('.manual-table-wrap tbody tr select')) as HTMLSelectElement[]
-    for(const select of selects.filter((_,i)=>i%2===0)){
+    const selects=Array.from(document.body.querySelectorAll('.manual-table-wrap tbody tr td:nth-child(5) select')) as HTMLSelectElement[]
+    for(const select of selects){
       select.value='US-LA';select.dispatchEvent(new Event('change',{bubbles:true}))
     }
     await flushPromises()
@@ -752,4 +752,46 @@ it('keeps allocation advice but adds an editable canonical status column to the 
   expect(entry.workflow_revision).toBe(7)
   expect(entry.workflow_status).toBe('待分仓')
   expect(entry.can_edit_workflow_status).toBe(true)
+})
+
+describe('Actual fulfillment product selection', () => {
+  it('shows master names, searches replacement SKUs, refreshes inventory and submits the selected product', async () => {
+    const target = {id:99,sku:'TW05R',name:'TARA - RED',material_full_name:'红色产品'}
+    const fetchMock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({products:[target]})})
+      .mockResolvedValueOnce({ok:true,json:async()=>({availability:[{...itemA.availability[0],quantity_available:15}]})})
+      .mockResolvedValueOnce({ok:true,json:async()=>({can_submit:true})})
+      .mockResolvedValueOnce({ok:true,json:async()=>({status:'submitted',decision_source:'manual'})})
+    vi.stubGlobal('fetch',fetchMock)
+    const original={...itemA,product_name:'Original English',material_full_name:'原商品中文'}
+    const order={...manualOrder,items:[original],item_count:1}
+    const wrapper=mountPage({...props,orders:{...props.orders,data:[order]}})
+    await wrapper.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
+    await flushPromises()
+    const row=document.body.querySelector('.manual-table-wrap tbody tr')!
+    expect(row.querySelector('td')?.textContent).toContain('Original English')
+    expect(row.querySelector('td')?.textContent).toContain('原商品中文')
+    const search=row.querySelector('.replacement-picker input') as HTMLInputElement
+    search.dispatchEvent(new Event('focus'))
+    await flushPromises()
+    search.value='tw05r';search.dispatchEvent(new Event('input',{bubbles:true}))
+    await flushPromises()
+    const select=row.querySelector('.replacement-picker select') as HTMLSelectElement
+    expect(select.textContent).toContain('红色产品')
+    select.value='99';select.dispatchEvent(new Event('change',{bubbles:true}))
+    await flushPromises()
+    expect(row.textContent).toContain('ERP参考 15')
+    expect(row.textContent).toContain('实际发货：TW05R')
+    const warehouse=row.querySelector('td:nth-child(5) select') as HTMLSelectElement
+    warehouse.value='US-LA';warehouse.dispatchEvent(new Event('change',{bubbles:true}))
+    await flushPromises()
+    const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认人工分配并提交')!
+    submit.click()
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    for(const call of fetchMock.mock.calls.slice(2)){
+      expect(JSON.parse(call[1].body).assignments[0]).toMatchObject({order_item_id:original.id,replacement_product_id:99,source_code:'US-LA'})
+    }
+    wrapper.unmount()
+  })
 })

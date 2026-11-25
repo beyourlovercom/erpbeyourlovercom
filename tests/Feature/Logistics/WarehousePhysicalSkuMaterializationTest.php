@@ -183,6 +183,75 @@ final class WarehousePhysicalSkuMaterializationTest extends TestCase
             ->where('warehouse_id', $warehouse->id)->value('quantity_on_hand'));
     }
 
+    public function test_manual_replacement_preserves_source_and_materializes_actual_product(): void
+    {
+        [$user, $order, $item, $product, $warehouse] = $this->ordinaryScenario();
+        $target = $this->product('REPLACEMENT-01', 'Replacement product');
+        $this->inventory($warehouse, $target, 7);
+        config()->set('shipout.production_read_enabled', false);
+        $allocation = app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $item->id, 'source_code' => 'US-LA', 'replacement_product_id' => $target->id],
+        ], null, $user);
+        $actual = $item->fresh();
+        self::assertSame($target->id, $actual->product_id);
+        self::assertSame($target->sku, $actual->sku);
+        self::assertSame($target->name, $actual->product_summary);
+        self::assertSame($product->id, $actual->source_product_id);
+        self::assertSame($item->sku, $actual->source_sku);
+        self::assertSame($item->quantity, $actual->quantity);
+        self::assertSame($item->line_revenue, $actual->line_revenue);
+        self::assertSame($target->id, $allocation->manual_assignments[0]['replacement_product_id']);
+        self::assertSame($target->id, $allocation->plan_snapshot['segments'][0]['items'][0]['resolved_product_id']);
+        self::assertNull($allocation->plan_snapshot['stock_exception_acknowledgement']);
+    }
+
+    public function test_manual_replacement_rejects_inactive_product_without_writes(): void
+    {
+        [$user, $order, $item] = $this->ordinaryScenario();
+        $target = $this->product('INACTIVE-01', 'Inactive product');
+        $target->forceFill(['is_active' => false])->save();
+        try {
+            app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+                ['order_item_id' => $item->id, 'source_code' => 'US-LA', 'replacement_product_id' => $target->id],
+            ], null, $user);
+            self::fail('Inactive replacement was accepted');
+        } catch (HttpException $exception) {
+            self::assertSame(422, $exception->getStatusCode());
+        }
+        self::assertSame($item->product_id, $item->fresh()->product_id);
+        self::assertNull($order->fresh()->fulfillmentAllocation);
+    }
+
+    public function test_manual_replacement_materializes_child_and_keeps_split_parent_source(): void
+    {
+        [$user, $order, $item, $product, $warehouse] = $this->ordinaryScenario();
+        $target = $this->product('REPLACEMENT-SPLIT', 'Replacement split product');
+        $this->inventory($warehouse, $target, 5);
+        $otherWarehouse = $this->warehouse('US-NY');
+        $other = $this->product('OTHER-SPLIT', 'Other original product');
+        $this->inventory($otherWarehouse, $other, 4);
+        $second = $order->items()->create([
+            'product_id' => $other->id, 'sku' => $other->sku, 'product_summary' => $other->name,
+            'quantity' => 1, 'unit_price' => '10.00', 'line_revenue' => '10.00',
+        ]);
+        config()->set('shipout.production_read_enabled', false);
+        $allocation = app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $item->id, 'source_code' => 'US-LA', 'replacement_product_id' => $target->id],
+            ['order_item_id' => $second->id, 'source_code' => 'US-NY'],
+        ], null, $user);
+        self::assertSame($product->id, $item->fresh()->product_id);
+        self::assertSame($product->sku, $item->fresh()->sku);
+        $children = $order->fresh()->originalFulfillmentChildren()->with('items', 'shipment.warehouse')->get();
+        self::assertCount(2, $children);
+        $actual = $children->first(fn ($child) => $child->shipment->warehouse->code === 'US-LA')->items->sole();
+        self::assertSame($target->id, $actual->product_id);
+        self::assertSame($target->sku, $actual->sku);
+        self::assertSame($product->id, $actual->source_product_id);
+        self::assertSame($product->sku, $actual->source_sku);
+        self::assertSame($item->line_revenue, $actual->line_revenue);
+        self::assertSame('submitted', $allocation->status);
+    }
+
     private function giftScenario(): array
     {
         $user = $this->operator();

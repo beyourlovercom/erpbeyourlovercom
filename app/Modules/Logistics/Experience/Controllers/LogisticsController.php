@@ -3,6 +3,8 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
+use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\AllocationRejectionReadModel;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
@@ -98,7 +100,7 @@ final class LogisticsController
         );
         $rejectionCount = $rejectionSnapshot['count'];
         $query = (clone $base)
-            ->with(['address', 'items.product', 'owner', 'financials', 'shipment.warehouse',
+            ->with(['address', 'items.product', 'items.sourceProduct', 'owner', 'financials', 'shipment.warehouse',
                 'shipment.overseaReview', 'operationalMarkers', 'fulfillmentParent.operationalMarkers',
                 'originalFulfillmentChildren.operationalMarkers',
                 'originalFulfillmentChildren.shipment.warehouse',
@@ -128,7 +130,7 @@ final class LogisticsController
             ->paginate($pageSize)->withQueryString();
         app(OrderContactProjection::class)->prime($orders->getCollection());
 
-        $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
+        $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->flatMap(fn ($item) => [$item->product_id, $item->source_product_id]))->filter()->unique()->values()->all();
         $context = array_replace($this->recommendations->prepare($productIds), $this->fulfillmentPlans->prepare($productIds));
         $context['gift_resolution'] = $this->giftSkuResolutions->prepare();
         $activeReservations = InventoryReservation::query()
@@ -273,10 +275,20 @@ final class LogisticsController
         return back()->with('success', '已采用系统推荐并提交分仓');
     }
 
-    /**
-     * Read-only physical SKU validation for the currently selected plan.
-     * The submission revalidates every identity and stock check under its own transaction.
-     */
+    /** Read-only active product catalogue and per-product warehouse inventory. */
+    public function allocationProducts(Request $request, InventoryAvailabilityReader $availability): JsonResponse
+    {
+        $data = $request->validate(['product_id' => ['nullable', 'integer']]);
+        $query = Product::query()->where('is_active', true)->whereNotNull('sku')->where('sku', '!=', '')->whereRaw('LOWER(TRIM(sku)) != ?', ['gift']);
+        if (! empty($data['product_id'])) {
+            $product = $query->findOrFail($data['product_id']);
+            return response()->json(['availability' => $availability->forProductIds([(int) $product->id])[$product->id] ?? []]);
+        }
+
+        return response()->json(['products' => $query->orderBy('sku')->get(['id', 'sku', 'name', 'material_full_name'])]);
+    }
+
+    /** Read-only validation; submission revalidates under its transaction. */
     public function preflightManualAllocation(Request $request, Order $order): JsonResponse
     {
         $data = $request->validate([
@@ -284,6 +296,7 @@ final class LogisticsController
             'assignments.*.order_item_id' => ['required', 'integer', 'distinct'],
             'assignments.*.source_code' => ['required', 'string', 'max:32'],
             'assignments.*.gift_mapping_id' => ['nullable', 'integer'],
+            'assignments.*.replacement_product_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $items = $order->items->keyBy('id');
@@ -298,13 +311,13 @@ final class LogisticsController
                 : ($this->warehouseRouting->canonicalWarehouseCode($warehouse) ?? '');
             $sku = trim((string) ($item?->source_sku ?: $item?->sku ?: $itemId));
             $seen[] = $itemId;
-            if (! $item || ! in_array($warehouse, ['OUTSOURCE', 'FACTORY', 'US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA'], true)) {
+            if (! $item || (! in_array($warehouse, ['OUTSOURCE', 'FACTORY', 'US-NY', 'US-LA', 'US-SM', 'US-AMZ', 'DE', 'CA'], true) && ! ($warehouse === 'TINGON' && ! empty($row['replacement_product_id'])))) {
                 $issues[] = ['order_item_id' => $itemId, 'sku' => $sku, 'warehouse' => $warehouse,
                     'reason' => '商品或仓库无效，请刷新订单重新选择。'];
 
                 continue;
             }
-            if ($warehouse === 'OUTSOURCE') {
+            if ($warehouse === 'OUTSOURCE' && empty($row['replacement_product_id'])) {
                 if (strcasecmp($sku, 'gift') === 0) {
                     $issues[] = ['order_item_id' => $itemId, 'sku' => $sku, 'warehouse' => $warehouse,
                         'reason' => '外采礼品必须先指定真实 SKU。'];
@@ -313,7 +326,7 @@ final class LogisticsController
                 continue;
             }
             try {
-                $this->physicalSkus->resolve($item, $warehouse, isset($row['gift_mapping_id']) ? (int) $row['gift_mapping_id'] : null, true);
+                $this->physicalSkus->resolve($item, $warehouse === 'OUTSOURCE' ? 'FACTORY' : $warehouse, isset($row['gift_mapping_id']) ? (int) $row['gift_mapping_id'] : null, true, isset($row['replacement_product_id']) ? (int) $row['replacement_product_id'] : null);
             } catch (HttpException $error) {
                 if ($error->getStatusCode() !== 422) {
                     throw $error;
@@ -354,6 +367,7 @@ final class LogisticsController
             'assignments.*.order_item_id' => ['required', 'integer'],
             'assignments.*.source_code' => ['required', 'string', 'max:32'],
             'assignments.*.gift_mapping_id' => ['nullable', 'integer'],
+            'assignments.*.replacement_product_id' => ['nullable', 'integer', 'min:1'],
             'assignments.*.carrier' => ['nullable', 'string', 'max:128', Rule::exists('logistics_carriers', 'name')->where('is_active', true)],
             'assignments.*.service' => ['nullable', 'string', 'max:191'],
             'decision_note' => ['nullable', 'string', 'max:1000'],
@@ -1039,6 +1053,11 @@ final class LogisticsController
                 'source_sku' => $item->source_sku ?: $item->sku,
                 'resolved_fulfillment_sku' => $item->resolved_fulfillment_sku,
                 'final_sku' => $item->final_sku,
+                'product_name' => $item->sourceProduct?->name ?? $item->product?->name,
+                'material_full_name' => $item->sourceProduct?->material_full_name ?? $item->product?->material_full_name,
+                'source_product_id' => $item->source_product_id,
+                'source_availability' => $context['availability'][$item->source_product_id ?: $item->product_id] ?? [],
+                'previous_replacement_product_id' => collect($allocation?->manual_assignments ?? [])->firstWhere('order_item_id', $item->id)['replacement_product_id'] ?? null,
                 'product_summary' => $item->product_summary,
                 'quantity' => $item->quantity,
                 'availability' => $context['availability'][$item->product_id] ?? [],

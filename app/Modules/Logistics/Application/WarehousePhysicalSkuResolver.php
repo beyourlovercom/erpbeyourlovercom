@@ -7,6 +7,7 @@ use App\Modules\Products\Application\OutboundOrderSkuResolver;
 use App\Modules\Products\Application\SkuMatchKey;
 use App\Modules\Products\Application\VerifiedOmsProductIdentityResolver;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
+use App\Modules\Products\Infrastructure\Models\Product;
 
 /**
  * Resolve the physical SKU before an order enters warehouse fulfillment.
@@ -25,7 +26,7 @@ final class WarehousePhysicalSkuResolver
     ) {}
 
     /** @return array<string,mixed> */
-    public function resolve(OrderItem $item, string $warehouseCode, ?int $giftMappingId, bool $allowManualGiftStockException = false): array
+    public function resolve(OrderItem $item, string $warehouseCode, ?int $giftMappingId, bool $allowManualGiftStockException = false, ?int $replacementProductId = null): array
     {
         $sourceSku = trim((string) ($item->source_sku ?: $item->sku));
         $sourceProductId = (int) ($item->source_product_id ?: $item->product_id);
@@ -34,12 +35,20 @@ final class WarehousePhysicalSkuResolver
         $gift = $this->gifts->resolve($item, $warehouseCode, $giftMappingId, $allowManualGiftStockException);
         $targetId = (int) ($gift['resolved_product_id'] ?? $sourceProductId);
         $targetSku = trim((string) ($gift['resolved_fulfillment_sku'] ?? $sourceSku));
+        $replacement = null;
+        if ($replacementProductId !== null) {
+            abort_unless($allowManualGiftStockException && $gift === null && strcasecmp($sourceSku, 'gift') !== 0, 422, '礼品须使用原有礼品映射');
+            $replacement = Product::query()->where('is_active', true)->find($replacementProductId);
+            abort_unless($replacement && filled($replacement->sku) && strcasecmp(trim($replacement->sku), 'gift') !== 0, 422, '替换商品无效或已停用');
+            $targetId = (int) $replacement->id;
+            $targetSku = trim($replacement->sku);
+        }
 
         $targetSku = $this->finalSkus->resolve($targetId, $warehouseCode, $targetSku);
 
         if (strtoupper($warehouseCode) === 'US-LA' && config('shipout.production_read_enabled', false)) {
             try {
-                [$targetId, $targetSku] = $this->morePlusPhysical($sourceSku, $targetId, $targetSku, (int) $item->quantity, $gift !== null, $allowManualGiftStockException);
+                [$targetId, $targetSku] = $this->morePlusPhysical($replacement ? (string) $replacement->sku : $sourceSku, $targetId, $targetSku, (int) $item->quantity, $gift !== null, $allowManualGiftStockException);
             } catch (\Exception $exception) {
                 if (! $allowManualGiftStockException) throw $exception;
                 // OMS read failure is advisory during an explicit manual allocation.
@@ -55,7 +64,7 @@ final class WarehousePhysicalSkuResolver
             'manual_gift_stock_exception' => $gift['manual_gift_stock_exception'] ?? null,
             'resolved_product_id' => $targetId,
             'resolved_fulfillment_sku' => $targetSku,
-            'resolved_product_summary' => $gift['resolved_product_summary'] ?? null,
+            'resolved_product_summary' => $replacement?->name ?? $gift['resolved_product_summary'] ?? null,
         ];
     }
 
