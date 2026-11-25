@@ -377,7 +377,7 @@ final class OrderOmsBatchImportTest extends TestCase
 
         foreach (OrderOmsBatchImport::IMPORT_TYPES as $type) {
             foreach (['VA617A-PINK', 'VA617A-Pink', 'va617a-pink', '  Va617a-pInK  '] as $index => $sku) {
-                $number = 'CASE-'.$type.'-'.$index;
+                $number = 'CASE-'.$type.'-'.sprintf('%05d', $index);
                 $file = $this->xlsx($number, sku: $sku);
                 $payload = ['file' => $file, 'import_type' => $type];
                 if ($type === 'collaboration') {

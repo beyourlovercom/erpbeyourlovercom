@@ -86,7 +86,7 @@ final class OrderCollaborationPartnerImportTest extends TestCase
         Product::query()->create(['sku' => 'MF414A', 'name' => 'Product']);
         $chunyi = OrderCollaborationPartner::query()->where('code', 'CHUNYI')->firstOrFail();
         $jenny = OrderCollaborationPartner::query()->where('code', 'AMAZON_JENNY')->firstOrFail();
-        $file = $this->xlsx('TEST-CHUNYI-0001');
+        $file = $this->xlsx('103769360358527552');
         $inactive = OrderCollaborationPartner::query()->create(['code' => 'INACTIVE', 'name' => 'Disabled', 'is_active' => false]);
         $this->actingAs($user)->postJson('/orders/oms/import/preview',
             ['file' => $file, 'import_type' => 'collaboration', 'partner_id' => $inactive->id])->assertUnprocessable();
@@ -106,8 +106,9 @@ final class OrderCollaborationPartnerImportTest extends TestCase
         $this->actingAs($user)->postJson('/orders/oms/import/confirm',
             ['file' => $file, 'import_type' => 'collaboration', 'partner_id' => $chunyi->id,
                 'token' => $preview['token'], 'confirm' => '1'])->assertOk()->assertJsonPath('created', 1);
-        $order = Order::query()->where('external_order_number', 'TEST-CHUNYI-0001')->firstOrFail();
+        $order = Order::query()->where('external_order_number', '103769360358527552')->firstOrFail();
         $this->assertSame('collaboration', $order->source_type->value);
+        $this->assertSame('CY27552-007', $order->erp_order_id);
         $this->assertSame($chunyi->id, $order->collaboration_partner_id);
         $this->assertSame('春意', $order->collaborationPartner?->name);
         $this->assertDatabaseCount('oms_order_import_claims', 1);
@@ -115,6 +116,47 @@ final class OrderCollaborationPartnerImportTest extends TestCase
             ->assertOk()->assertInertia(fn (Assert $page) => $page->component('Orders/Index')->where('orders.total', 1));
         $this->actingAs($user)->get('/orders/collaboration?partner_id='.$jenny->id)
             ->assertOk()->assertInertia(fn (Assert $page) => $page->component('Orders/Index')->where('orders.total', 0));
+    }
+
+    public function test_collaboration_identity_preserves_zero_and_rejects_collision_before_creation(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        Product::query()->create(['sku' => 'MF414A', 'name' => 'Product']);
+        $partner = OrderCollaborationPartner::query()->where('code', 'CHUNYI')->firstOrFail();
+        $identities = app(\App\Modules\Orders\Application\OrderIdentityService::class);
+        $before = $identities->setting()->next_customer_number;
+        $file = $this->xlsx('103769142557701265');
+        $data = ['file' => $file, 'import_type' => 'collaboration', 'partner_id' => $partner->id];
+        $preview = $this->actingAs($user)->postJson('/orders/oms/import/preview', $data)->assertOk()->json();
+        $this->assertSame([], $preview['errors']);
+        $this->postJson('/orders/oms/import/confirm', [...$data, 'token' => $preview['token'], 'confirm' => '1'])
+            ->assertOk()->assertJsonPath('orders.0.erp_order_id', 'CY01265-007');
+        $this->assertSame($before, $identities->setting()->next_customer_number);
+        $this->postJson('/orders/oms/import/preview', [...$data, 'file' => $this->xlsx('9999901265')])
+            ->assertOk()->assertJsonPath('valid_count', 0)->assertJsonPath('token', null);
+        $this->assertDatabaseCount('orders', 1);
+        $jenny = OrderCollaborationPartner::query()->where('code', 'AMAZON_JENNY')->firstOrFail();
+        $this->assertSame('AJ01265-007', $identities->previewCollaboration($jenny->id, '9999901265'));
+    }
+
+    public function test_repair_requires_explicit_ids_and_count_and_preserves_source_and_audit(): void
+    {
+        $partner = OrderCollaborationPartner::query()->where('code', 'CHUNYI')->firstOrFail();
+        $order = Order::query()->create([
+            'source_type' => 'collaboration', 'order_kind' => 'customer',
+            'collaboration_partner_id' => $partner->id, 'internal_order_number' => 'LEGACY-CY',
+            'external_order_number' => '103769360358527552', 'erp_order_id' => '007-1125-c6175',
+            'order_date' => '2026-11-25', 'order_status' => 'pending_shipment', 'currency' => 'USD',
+        ]);
+        $args = ['--ids' => (string) $order->id];
+        $this->artisan('orders:repair-collaboration-identities', $args)->assertExitCode(0);
+        $this->assertSame('007-1125-c6175', $order->fresh()->erp_order_id);
+        $this->artisan('orders:repair-collaboration-identities', [...$args, '--apply' => true, '--expect-change' => '2'])->assertExitCode(1);
+        $this->assertSame('007-1125-c6175', $order->fresh()->erp_order_id);
+        $this->artisan('orders:repair-collaboration-identities', [...$args, '--apply' => true, '--expect-change' => '1'])->assertExitCode(0);
+        $this->assertSame('CY27552-007', $order->fresh()->erp_order_id);
+        $this->assertSame('103769360358527552', $order->fresh()->external_order_number);
+        $this->assertDatabaseHas('audit_records', ['action' => 'order.erp_identity_repaired', 'entity_id' => (string) $order->id]);
     }
 
     public function test_old_tingon_orders_remain_unassigned_in_collaboration_page(): void

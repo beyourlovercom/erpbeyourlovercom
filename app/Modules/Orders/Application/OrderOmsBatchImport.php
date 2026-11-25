@@ -361,6 +361,22 @@ final class OrderOmsBatchImport
             }
         }
 
+        if ($importType === OrderSourceType::Collaboration->value) {
+            $identities = app(OrderIdentityService::class);
+            $seen = [];
+            foreach ($orders as $order) {
+                try {
+                    $identity = $identities->generateCollaboration($partnerId, $order['external_order_number']);
+                    if (isset($seen[$identity])) {
+                        $errors[] = ['row' => $order['row'], 'message' => '同一批次合作订单编号冲突：'.$identity];
+                    }
+                    $seen[$identity] = true;
+                } catch (ValidationException $exception) {
+                    $errors[] = ['row' => $order['row'], 'message' => $exception->getMessage()];
+                }
+            }
+        }
+
         $products = Product::query()->whereIn(DB::raw('LOWER(sku)'), array_keys($allSku))
             ->get(['id', 'sku', 'name'])->groupBy(fn (Product $product): string => mb_strtolower($product->sku));
         foreach ($orders as &$order) {
