@@ -29,10 +29,11 @@ const term = ref(props.search??'')
 watch(()=>props.search,v=>{term.value=v??''})
 const orderSort = ref(props.sort??{colId:'shipped_at',direction:'desc' as const})
 watch(()=>props.sort,v=>{orderSort.value=v??{colId:'shipped_at',direction:'desc'}})
+const contactSearch = ref(currentContactQuery().filter_contact ?? '')
 const navigation = useGlobalGridListAdapter({
   path:props.path,enabled:()=>true,search:()=>term.value,
   pageSize:()=>props.shipments.per_page,
-  context:()=>({...currentContactQuery(),sort:orderSort.value.colId,direction:orderSort.value.direction}),
+  context:()=>({...(contactSearch.value ? {filter_contact:contactSearch.value}:{}),sort:orderSort.value.colId,direction:orderSort.value.direction}),
 })
 const rows = computed<GridListRow[]>(()=>props.shipments.data.map(row=>({
   ...row, id:row.shipment_id,
@@ -91,17 +92,21 @@ const onSort = (next:{colId:string;direction:'asc'|'desc'|null})=>{
   if(!['carrier','tracking_number','shipped_at'].includes(next.colId))return
   orderSort.value={colId:next.colId,direction:next.direction}
   router.get(props.path,{
-    ...currentContactQuery(),global_grid:'1',...(term.value.trim()?{search:term.value.trim()}:{}),
+    ...(contactSearch.value ? {filter_contact:contactSearch.value}:{}),global_grid:'1',...(term.value.trim()?{search:term.value.trim()}:{}),
     sort:next.colId,direction:next.direction,per_page:props.shipments.per_page,page:1,
   },{preserveScroll:true,preserveState:true,replace:true})
 }
 const runSearch = (value:string)=>{term.value=value;navigation.search(value)}
+const filterColumn = (filter:{colId:string;value:string}) => {
+  if(filter.colId!=='contact')return
+  contactSearch.value=filter.value.trim();navigation.page(1)
+}
 </script>
 <template>
   <GlobalGrid :namespace="'grid.logistics.l2.'+mode+'.global.v1'"
     :title="title" :columns="columns" :rows="rows" :required-column-ids="['order']"
     :row-identity-key="'shipment_id'" :page="shipments" :search="props.search??''"
-    :sort="orderSort" search-placeholder="搜索全部订单号 / 收件人 / Tracking / 物流商..."
+    :sort="orderSort" :filter-columns="['contact']" :filter-values="{contact:contactSearch}" @column-search-change="filterColumn" search-placeholder="搜索全部订单号 / 收件人 / Tracking / 物流商..."
     :default-pinned-right="1" @search-change="runSearch"
     @page-change="navigation.page($event)" @page-size-change="navigation.pageSize($event)"
     @sort-change="onSort($event)" />

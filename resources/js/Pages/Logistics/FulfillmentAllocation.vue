@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
 import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { defineAsyncComponent } from 'vue'
@@ -36,14 +35,26 @@ type Order = { order_kind?:string; workflow_status_projection?:{code:string;en:s
 type Warehouse = { id:number; slug:string; code:string; name:string; country_code:string|null; can_auto_allocate:boolean }
 type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
-type TabKey = 'pending'|'rejected'|'recommendation'|'inventory'|'manual'|'gift'|'processed'
+type TabKey = 'pending'|'rejected'|'recommendation'|'inventory'|'manual'|'gift'|'processed'|'all'
+type AllocationView = 'pending'|'rejected'|'processed'|'all'
+const viewForTab = (tab:TabKey):AllocationView => ['rejected','processed','all'].includes(tab) ? tab as AllocationView : 'pending'
 
-const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; rejectionCount:number; rejectionNoticeVersion:string; rejectionFilter:boolean; canOperate:boolean; canArchive?:boolean; canViewHistoricalImportTool?:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string; canEditWorkflowStatus?:boolean; workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[]; warehouseRouteOptions?:{code:string;name:string}[]; canEditWarehouseRoute?:boolean }>()
-const activeTab = ref<TabKey>(props.rejectionFilter ? 'rejected' : 'pending')
-watch(() => props.rejectionFilter, isRejected => {
-  if (isRejected) activeTab.value = 'rejected'
-  else if (activeTab.value === 'rejected') activeTab.value = 'pending'
+const props = defineProps<{ orders:Paginated<Order>; warehouses:Warehouse[]; carrierOptions:CarrierOption[]; pendingTotal:number; allTotal?:number; processedTotal?:number; allocationView?:AllocationView; gridContact?:string; rejectionCount:number; rejectionNoticeVersion:string; rejectionFilter:boolean; canOperate:boolean; canArchive?:boolean; canViewHistoricalImportTool?:boolean; globalGridPilotAvailable?:boolean; globalGridPilotEnabled?:boolean; gridSearch?:string; canEditWorkflowStatus?:boolean; workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[]; warehouseRouteOptions?:{code:string;name:string}[]; canEditWarehouseRoute?:boolean }>()
+const serverView = computed<AllocationView>(() => props.allocationView ?? (props.rejectionFilter ? 'rejected' : 'pending'))
+const activeTab = ref<TabKey>(serverView.value)
+watch(serverView, view => {
+  if (viewForTab(activeTab.value) !== view) activeTab.value = view
 })
+const contactSearch = ref(props.gridContact ?? currentContactQuery().filter_contact ?? '')
+watch(() => props.gridContact, value => { contactSearch.value = value ?? '' })
+function allocationContext(tab:TabKey = activeTab.value) {
+  const view = viewForTab(tab)
+  return {
+    ...(contactSearch.value ? { filter_contact:contactSearch.value } : {}),
+    ...(view === 'rejected' ? { rejected:'1' } : {}),
+    ...(view === 'all' || view === 'processed' ? { allocation_view:view } : {}),
+  }
+}
 // Only the dismissible banner is acknowledged per browser tab. The visible
 // rejected tab and its server-backed count are never suppressed.
 const rejectionNoticeKey = computed(() => 'erp-wait-stock-rejection-alert-v2:' + props.rejectionNoticeVersion)
@@ -59,12 +70,11 @@ function dismissRejectionNotice() {
   try { sessionStorage.setItem(rejectionNoticeKey.value, 'dismissed') } catch { /* no storage permission */ }
 }
 function changeTab(tab:TabKey) {
-  if ((tab === 'rejected') === props.rejectionFilter) { activeTab.value = tab; return }
+  if (viewForTab(tab) === serverView.value) { activeTab.value = tab; return }
   activeTab.value = tab
   const term = (props.gridSearch ?? '').trim()
   router.get('/logistics/wait-stock', {
-    ...currentContactQuery(),
-    ...(tab === 'rejected' ? { rejected:'1' } : {}),
+    ...allocationContext(tab),
     ...(term ? { search:term } : {}),
     per_page:props.orders.per_page,
     global_grid:props.globalGridPilotEnabled ? '1' : '0',
@@ -98,8 +108,13 @@ const gridNavigation = useGlobalGridListAdapter({
   enabled: () => !!props.globalGridPilotEnabled,
   search: () => gridSearchText.value,
   pageSize: () => props.orders.per_page,
-  context: () => ({...currentContactQuery(), ...(props.rejectionFilter ? { rejected:'1' } : {})}),
+  context: () => allocationContext(),
 })
+function filterAllocationColumn(filter:{colId:string;value:string}) {
+  if (filter.colId !== 'contact') return
+  contactSearch.value = filter.value.trim()
+  gridNavigation.page(1)
+}
 const allocationGridRows = computed<GridListRow[]>(() => filteredOrders.value.map((order,index) => ({
   id: order.id,
   line: (props.orders.current_page-1)*props.orders.per_page+index+1,
@@ -233,16 +248,19 @@ const hasGift = (order:Order) => order.items.some(item => item.is_gift)
 const guidanceById = computed(() => new Map(props.orders.data.map(order =>
   [order.id, allocationGuidance(order, props.warehouses, processed(order))] as const)))
 const guidanceFor = (order:Order) => guidanceById.value.get(order.id)!
+const newlyProcessed = computed(() => props.orders.data.filter(order => localSubmitted[order.id] && !(order.fulfillment_allocation?.status === 'submitted' && !order.allocation_rejection)).length)
 const counts = computed(() => ({
-  pending: props.pendingTotal,
+  pending: Math.max(0, props.pendingTotal - newlyProcessed.value),
+  all: props.allTotal ?? props.pendingTotal,
   rejected: props.rejectionCount,
   recommendation: props.orders.data.filter(order => !processed(order) && guidanceFor(order).group === 'recommendation').length,
   inventory: props.orders.data.filter(order => !processed(order) && guidanceFor(order).group === 'inventory').length,
   manual: props.orders.data.filter(order => !processed(order) && guidanceFor(order).group === 'manual').length,
   gift: props.orders.data.filter(order => !processed(order) && hasGift(order)).length,
-  processed: props.orders.data.filter(processed).length,
+  processed: props.processedTotal === undefined ? props.orders.data.filter(processed).length : props.processedTotal + newlyProcessed.value,
 }))
 const filteredOrders = computed(() => props.orders.data.filter(order => {
+  if (activeTab.value === 'all') return true
   if (activeTab.value === 'rejected') return !processed(order) && !!order.allocation_rejection
   if (activeTab.value === 'processed') return processed(order)
   if (processed(order)) return false
@@ -348,7 +366,7 @@ async function confirmGridBatch(){
         return (order?.erp_order_id??row.order_id)+'：'+row.message
       }).join('；'):(archive?'已归档至运营归档清单。':'所有成功订单均已逐单经过原有分仓门禁。'),
     })
-    router.reload({only:['orders','pendingTotal','rejectionCount']})
+    router.reload({only:['orders','pendingTotal','allTotal','processedTotal','rejectionCount']})
   } catch(error){
     publishGlobalFeedback({state:'ERROR',title:archive?'批量归档未确认':'批量分仓未确认',
       message:(error instanceof Error?error.message:'请求失败')+
@@ -525,7 +543,7 @@ function matchingManualAllocation(status:SubmissionStatus,assignments:Allocation
 function submittedResult(order:Order,source:'manual'|'system_recommendation',submittedAt?:string|null){
   localSubmitted[order.id]={source,submittedAt:submittedAt??new Date().toISOString()}
   closePlan()
-  router.reload({only:['orders','pendingTotal','rejectionCount']})
+  router.reload({only:['orders','pendingTotal','allTotal','processedTotal','rejectionCount']})
 }
 function matchesRecommendation(order:Order){
   const plan=order.allocation_decision.recommended_plan
@@ -643,7 +661,6 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
   <Head title="待分仓 · BYL ERP" />
   <AuthenticatedLayout title="待分仓" :breadcrumbs="['BYL ERP','物流','待分仓']">
     <section class="allocation-page">
-      <OrderContactFilter />
       <header class="page-heading">
         <div class="title-row"><h1>待分仓</h1><span class="version">V1.2.1</span></div>
         <div class="header-actions">
@@ -652,13 +669,14 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         </div>
       </header>
       <nav class="tabs">
-        <button :class="{active:activeTab==='pending'}" @click="changeTab('pending')">全部 <span>{{ counts.pending }}</span></button>
+        <button :class="{active:activeTab==='pending'}" @click="changeTab('pending')">待分仓 <span>{{ counts.pending }}</span></button>
         <button data-testid="allocation-rejected-tab" :class="{active:activeTab==='rejected',warning:counts.rejected>0}" @click="changeTab('rejected')">⚠ 驳回待处理 <span>{{ counts.rejected }}</span></button>
         <button :class="{active:activeTab==='recommendation'}" @click="changeTab('recommendation')">仓库建议 <span>{{ counts.recommendation }}</span></button>
         <button :class="{active:activeTab==='inventory'}" @click="changeTab('inventory')">库存待核实 <span>{{ counts.inventory }}</span></button>
         <button :class="{active:activeTab==='manual'}" @click="changeTab('manual')">人工处理 <span>{{ counts.manual }}</span></button>
         <button :class="{active:activeTab==='gift'}" @click="changeTab('gift')">礼品待确认 <span>{{ counts.gift }}</span></button>
         <button :class="{active:activeTab==='processed'}" @click="changeTab('processed')">已处理 <span>{{ counts.processed }}</span></button>
+        <button :class="{active:activeTab==='all'}" @click="changeTab('all')">全部 <span>{{ counts.all }}</span></button>
       </nav>
       <div v-if="props.rejectionCount > 0 && !rejectionNoticeDismissed" class="rejection-alert" role="alert" data-testid="allocation-rejection-alert">
         <strong>⚠ {{ props.rejectionCount }} 个订单被驳回，等待 Vita 重新处理</strong>
@@ -672,6 +690,8 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         :enable-selection="canArchive || (canOperate && activeTab!=='processed' && activeTab!=='gift')"
         :selected-order-ids="selectedBulkOrderIds"
         :page="allocationPager" :search="gridSearch ?? ''" search-placeholder="搜索全部订单号 / 收件人..."
+        :filter-columns="['contact']" :filter-values="{contact:contactSearch}"
+        @column-search-change="filterAllocationColumn($event)"
         @selection-change="onBulkSelectionChanged($event)"
         @search-change="searchAllocationGrid($event)" @page-change="gridNavigation.page($event)"
         @page-size-change="gridNavigation.pageSize($event)">

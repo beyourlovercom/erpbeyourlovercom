@@ -88,6 +88,22 @@ DB::transaction(static function () use ($owner, $product, $domestic, $overseas):
             'address_line_1'=>'123 Synthetic Road','postal_code'=>'90001',
         ]);
     }
+    $processed = Order::query()->create([
+        'internal_order_number'=>'INT-VISUAL-PROCESSED',
+        'erp_order_id'=>'007-VISUAL-PROCESSED',
+        'external_order_number'=>'E2E-VISUAL-PROCESSED',
+        'source_type'=>OrderSourceType::Manual,
+        'order_kind'=>OrderKind::Customer,
+        'order_date'=>now()->addDays(2)->toDateString(),
+        'owner_id'=>$owner->id,
+        'contact_user_id'=>$owner->id,
+        'order_status'=>OrderStatus::PendingShipment,
+        'workflow_status'=>'pending_allocation',
+        'currency'=>'USD',
+    ]);
+    $processed->fulfillmentAllocation()->create([
+        'status'=>'submitted','decision_source'=>'manual','submitted_by'=>$owner->id,'submitted_at'=>now(),
+    ]);
 });
 $rejection = app(\App\Modules\Logistics\Application\AllocationRejectionReadModel::class);
 $count = $rejection->onlyRejected(app(\App\Modules\Logistics\Application\LogisticsStatusSummary::class)

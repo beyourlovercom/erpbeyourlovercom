@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
 import { Head, router } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 type Row = { contact_user_name?: string | null; id: number; number: string; kind: string | null; owner: string | null; deleted_at: string | null; deleted_by: number | null; archival_mode: 'preserved' | 'soft_deleted' }
@@ -19,7 +18,6 @@ const restore = (order: Row) => {
           <a href="/orders" class="erp-btn erp-btn-secondary">返回订单</a>
         </div>
         <div class="erp-form-card">
-          <OrderContactFilter />
       <table class="w-full text-left text-sm">
             <thead><tr><th class="p-3">订单编号</th><th class="p-3">订单联络人</th><th class="p-3">类型</th><th class="p-3">负责人</th><th class="p-3">方式</th><th class="p-3">移除时间</th><th class="p-3">操作</th></tr></thead>
             <tbody>

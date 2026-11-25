@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
 import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import { Head, router } from '@inertiajs/vue3'
@@ -32,13 +31,19 @@ const tabs=[
 ]
 const term=ref(props.search)
 watch(()=>props.search,v=>term.value=v)
+const contactSearch = ref(currentContactQuery().filter_contact ?? '')
+function filterContactColumn(filter:{colId:string;value:string}) {
+  if(filter.colId !== 'contact') return
+  contactSearch.value=filter.value.trim()
+  nav.page(1)
+}
 const nav=useGlobalGridListAdapter({
   path:'/logistics/tingon',enabled:()=>true,search:()=>term.value,
-  pageSize:()=>props.orders.per_page,context:()=>({...currentContactQuery(),view:props.view}),
+  pageSize:()=>props.orders.per_page,context:()=>({...(contactSearch.value ? {filter_contact:contactSearch.value}:{}),view:props.view}),
 })
 function changeView(view:string){
   term.value=''
-  router.get('/logistics/tingon',{...currentContactQuery(),view,per_page:props.orders.per_page,page:1},{replace:true,preserveScroll:true})
+  router.get('/logistics/tingon',{...(contactSearch.value ? {filter_contact:contactSearch.value}:{}),view,per_page:props.orders.per_page,page:1},{replace:true,preserveScroll:true})
 }
 const rows=computed<GridListRow[]>(()=>props.orders.data.map(r=>({
   ...r,order_number:r.order_number??'—',contact_user_name:r.contact_user_name??'未分配',
@@ -120,7 +125,6 @@ const columns=computed<ColDef<GridListRow>[]>(()=>[
   <Head title="Tingon发货 · BYL ERP" />
   <AuthenticatedLayout title="Tingon发货" :breadcrumbs="['物流','Tingon发货']">
     <section class="space-y-3 px-3 pb-4 pt-2">
-      <OrderContactFilter />
       <div class="flex flex-wrap items-center gap-2">
         <button v-for="t in tabs" :key="t.key" type="button"
           class="rounded-md border px-3 py-1.5 text-sm"
@@ -130,6 +134,7 @@ const columns=computed<ColDef<GridListRow>[]>(()=>[
       <GlobalGrid namespace="grid.logistics.tingon.v1" title="Tingon发货" :columns="columns"
         :rows="rows" :page="props.orders" :search="props.search"
         :required-column-ids="['order','workflow_status','route']" row-identity-key="id"
+        :filter-columns="['contact']" :filter-values="{contact:contactSearch}" @column-search-change="filterContactColumn"
         search-placeholder="搜索订单号 / 收件人 / SKU / Tracking..."
         :default-pinned-right="1" @search-change="v=>{term=v;nav.search(v)}"
         @page-change="nav.page($event)" @page-size-change="nav.pageSize($event)"/>

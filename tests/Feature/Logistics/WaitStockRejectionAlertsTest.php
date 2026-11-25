@@ -187,6 +187,41 @@ final class WaitStockRejectionAlertsTest extends TestCase
                 ->etc());
     }
 
+    public function test_pending_processed_and_all_are_filtered_before_pagination_and_counted_across_pages(): void
+    {
+        $operator = $this->viewer();
+        $pending = $this->pendingOrder($operator, 'TAB-PENDING');
+        $pending->update(['contact_user_id' => $operator->id]);
+        $returned = $this->pendingOrder($operator, 'TAB-RETURNED');
+        $returned->forceFill(['workflow_status' => 'pending_allocation', 'domestic_reject_reason' => '重新处理'])->save();
+        $returned->fulfillmentAllocation()->create(['status' => 'submitted', 'decision_source' => 'manual']);
+        for ($i = 0; $i < 21; $i++) {
+            $processed = $this->pendingOrder($operator, 'TAB-PROCESSED-'.$i);
+            $processed->forceFill(['workflow_status' => 'pending_allocation'])->save();
+            $processed->fulfillmentAllocation()->create(['status' => 'submitted', 'decision_source' => 'manual']);
+        }
+        $this->actingAs($operator)->get('/logistics/wait-stock?per_page=20')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('allocationView', 'pending')->where('pendingTotal', 2)
+                ->where('processedTotal', 21)->where('allTotal', 23)
+                ->where('orders.total', 2)->has('orders.data', 2)
+                ->where('orders.data.0.id', $returned->id)->where('orders.data.1.id', $pending->id)->etc());
+        $this->actingAs($operator)->get('/logistics/wait-stock?allocation_view=processed&per_page=20&page=2')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('allocationView', 'processed')->where('orders.total', 21)
+                ->where('orders.current_page', 2)->has('orders.data', 1)
+                ->where('pendingTotal', 2)->etc());
+        $this->actingAs($operator)->get('/logistics/wait-stock?allocation_view=all&per_page=20&page=2')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('allocationView', 'all')->where('orders.total', 23)
+                ->has('orders.data', 3)->where('orders.data.1.id', $returned->id)
+                ->where('orders.data.2.id', $pending->id)->etc());
+        $this->actingAs($operator)->get('/logistics/wait-stock?filter_contact='.urlencode($operator->name))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('gridContact', $operator->name)->where('orders.total', 1)
+                ->where('orders.data.0.id', $pending->id)->etc());
+    }
+
     private function viewer(): User
     {
         $role = Role::query()->create(['key' => 'rejection-queue-viewer', 'label' => 'Rejection Queue Viewer']);
