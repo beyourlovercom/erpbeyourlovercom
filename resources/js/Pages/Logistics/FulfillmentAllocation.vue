@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
+import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { defineAsyncComponent } from 'vue'
 import type { ColDef } from 'ag-grid-community'
@@ -26,11 +28,11 @@ type PlanCost = { status:string; amount:number|null; currency:string|null; reaso
 type Zone = { status:string; zone:'west'|'east'|null; zone_label:string|null; postal_code:string|null; zip3:number|null; state:string|null; warehouse_priority:string[] }
 type Plan = { plan_key:string; plan_type:'single'|'factory'|'split'; is_split:boolean; shipment_count:number; label:string; segments:Segment[]; cost:PlanCost; effective_cost?:number|null; execution_status:string; destination_zone?:Zone|null }
 type AllocationDecision = { status:'system_recommendation'|'manual_review'; status_label:string; reason_code:string; manual_reasons:string[]; recommended_plan_key:string|null; recommended_plan:Plan|null; baseline_plan:Plan|null; estimated_cost:number|null; currency:string|null; estimated_saving:number|null; plans:Plan[]; can_use_recommendation:boolean; policy:{ system_is_advisory:boolean; human_confirmation_required:boolean; missing_data_falls_back_to_manual:boolean; same_order_item_quantity_split_allowed:boolean; max_sources:number; split_pattern:string } }
-type DerivedOrderRecord = { order_id:number; erp_order_id:string|null; derived:boolean; suffix:string|null; warehouse_id:number|null; warehouse_code:string|null; warehouse_name:string|null; carrier?:string|null; service?:string|null; carrier_selection_source?:string|null; items:Array<{ sku:string|null; source_sku?:string|null; resolved_fulfillment_sku?:string|null; product_summary:string|null; quantity:number }> }
+type DerivedOrderRecord = { order_id:number; erp_order_id:string|null; contact_user_name?:string|null; derived:boolean; suffix:string|null; warehouse_id:number|null; warehouse_code:string|null; warehouse_name:string|null; carrier?:string|null; service?:string|null; carrier_selection_source?:string|null; items:Array<{ sku:string|null; source_sku?:string|null; resolved_fulfillment_sku?:string|null; product_summary:string|null; quantity:number }> }
 type ExistingAllocation = { status:string; decision_source:'system_recommendation'|'manual'; selected_plan_key:string|null; decision_note:string|null; plan_snapshot:(Plan & { derived_orders?:DerivedOrderRecord[] })|null; submitted_at:string|null }
 type CarrierRoute = { carrier:string|null; carrier_label:string|null; service:string|null; automatic:boolean }
 type AllocationRejection = { source:string; reason:string; by:string|null; at:string|null }
-type Order = { order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
+type Order = { order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; contact_user_name?:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
 type Warehouse = { id:number; slug:string; code:string; name:string; country_code:string|null; can_auto_allocate:boolean }
 type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
@@ -61,6 +63,7 @@ function changeTab(tab:TabKey) {
   activeTab.value = tab
   const term = (props.gridSearch ?? '').trim()
   router.get('/logistics/wait-stock', {
+    ...currentContactQuery(),
     ...(tab === 'rejected' ? { rejected:'1' } : {}),
     ...(term ? { search:term } : {}),
     per_page:props.orders.per_page,
@@ -95,12 +98,12 @@ const gridNavigation = useGlobalGridListAdapter({
   enabled: () => !!props.globalGridPilotEnabled,
   search: () => gridSearchText.value,
   pageSize: () => props.orders.per_page,
-  context: () => props.rejectionFilter ? { rejected:'1' } : {},
+  context: () => ({...currentContactQuery(), ...(props.rejectionFilter ? { rejected:'1' } : {})}),
 })
 const allocationGridRows = computed<GridListRow[]>(() => filteredOrders.value.map((order,index) => ({
   id: order.id,
   line: (props.orders.current_page-1)*props.orders.per_page+index+1,
-  order_number: order.erp_order_id ?? '—',
+  order_number: order.erp_order_id ?? '—',contact_user_name:order.contact_user_name??'未分配',
   order_url: order.order_url,
   workflow_status: order.workflow_status_projection?.zh ?? '—',
   workflow_status_projection: order.workflow_status_projection,
@@ -148,6 +151,7 @@ const allocationGridColumns: ColDef<GridListRow>[] = [
   gridColumn({colId:'order_number',field:'order_number',headerName:'订单号',width:185,
     pinned:'left',lockPinned:true,
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
+  gridColumn({colId:'contact',field:'contact_user_name',headerName:'订单联络人',width:145}),
   gridColumn({colId:'workflow_status',field:'workflow_status',headerName:'订单状态',width:182,
     cellRenderer:OrderWorkflowGridCell,
     cellRendererParams:{workflowStatusOptions:props.workflowStatusOptions??[],canEditWorkflowStatus:props.canEditWorkflowStatus??false}}),
@@ -639,6 +643,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
   <Head title="待分仓 · BYL ERP" />
   <AuthenticatedLayout title="待分仓" :breadcrumbs="['BYL ERP','物流','待分仓']">
     <section class="allocation-page">
+      <OrderContactFilter />
       <header class="page-heading">
         <div class="title-row"><h1>待分仓</h1><span class="version">V1.2.1</span></div>
         <div class="header-actions">
@@ -675,10 +680,10 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
             :busy="bulkBusy" @apply="prepareGridBatch" />
         </template>
       </GlobalGrid>
-      <div v-else class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>订单状态</th><th>所属分仓</th><th>SKU 摘要</th><th>收件信息摘要</th><th>区域 / 优先仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
+      <div v-else class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>订单联络人</th><th>订单状态</th><th>所属分仓</th><th>SKU 摘要</th><th>收件信息摘要</th><th>区域 / 优先仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
         <tr v-for="(order,index) in filteredOrders" :key="order.id" :class="{'rejected-row':!!order.allocation_rejection}">
           <td>{{ index+1 }}</td>
-          <td><Link v-if="order.order_url" class="order-link" :href="order.order_url">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.allocation_rejection" class="domestic-rejection">⚠ {{ order.allocation_rejection.source }}驳回：{{ order.allocation_rejection.reason }}</small></td>
+          <td><Link v-if="order.order_url" class="order-link" :href="order.order_url">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.allocation_rejection" class="domestic-rejection">⚠ {{ order.allocation_rejection.source }}驳回：{{ order.allocation_rejection.reason }}</small></td><td>{{ order.contact_user_name ?? '未分配' }}</td>
           <td><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id"
             :projection="order.workflow_status_projection" :revision="order.workflow_revision"
             :can-edit="Boolean(order.can_edit_workflow_status)"

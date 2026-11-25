@@ -109,8 +109,10 @@ final class LogisticsController
         }
         $requestedSize = (int) $request->query('per_page', self::PER_PAGE);
         $pageSize = $gridPilot && in_array($requestedSize, [20, 50, 100], true) ? $requestedSize : self::PER_PAGE;
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($query, $request);
         $orders = $query->latest('order_date')->latest('id')
             ->paginate($pageSize)->withQueryString();
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($orders->getCollection());
 
         $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
         $context = array_replace($this->recommendations->prepare($productIds), $this->fulfillmentPlans->prepare($productIds));
@@ -461,6 +463,7 @@ final class LogisticsController
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
         $grid = $this->l2GridSettings($request, $shipments);
         $shipments = $shipments->paginate($grid['pageSize'])->withQueryString();
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($shipments->getCollection()->pluck('order'));
 
         return Inertia::render('Logistics/AwaitingTracking', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
@@ -484,6 +487,7 @@ final class LogisticsController
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
         $grid = $this->l2GridSettings($request, $shipments);
         $shipments = $shipments->paginate($grid['pageSize'])->withQueryString();
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($shipments->getCollection()->pluck('order'));
 
         return Inertia::render('Logistics/InTransit', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
@@ -505,6 +509,7 @@ final class LogisticsController
             ->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
         $grid = $this->l2GridSettings($request, $shipments);
         $shipments = $shipments->paginate($grid['pageSize'])->withQueryString();
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($shipments->getCollection()->pluck('order'));
 
         return Inertia::render('Logistics/Exceptions', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
@@ -541,6 +546,7 @@ final class LogisticsController
                         ->where('recipient_name', 'like', $term))));
         }
 
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($query, $request, true);
         // Sort only fields on the shipments table. No untrusted SQL columns.
         $sortMap = [
             'shipped_at' => 'shipped_at',
@@ -585,7 +591,9 @@ final class LogisticsController
         }
         $requestedSize = (int) $request->query('per_page', self::PER_PAGE);
         $pageSize = $gridPilot && in_array($requestedSize, [20, 50, 100], true) ? $requestedSize : self::PER_PAGE;
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($query, $request, true);
         $reviews = $query->latest('requested_at')->paginate($pageSize)->withQueryString();
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($reviews->getCollection()->pluck('order'));
 
         return Inertia::render('Logistics/Review', [
             'reviews' => $reviews->through(fn (LogisticsReview $review): array => [...$this->queueRow($review->order->shipment), 'review_id' => $review->id, 'reason' => $review->reason, 'trigger' => $review->trigger, 'requested_at' => $review->requested_at?->toIso8601String()])->toArray(),
@@ -604,8 +612,11 @@ final class LogisticsController
 
     public function cancelled(Request $request): Response
     {
-        $orders = Order::query()->eligibleForOperations()->with(['address', 'items.product', 'shipment.warehouse'])->where('order_status', 'cancelled')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->latest('order_date')->latest('id')->paginate(self::PER_PAGE)->withQueryString();
+        $query = Order::query()->eligibleForOperations()->with(['address', 'items.product', 'shipment.warehouse'])->where('order_status', 'cancelled')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'));
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($query, $request);
+        $orders = $query->latest('order_date')->latest('id')->paginate(self::PER_PAGE)->withQueryString();
 
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($orders->getCollection());
         return Inertia::render('Logistics/Cancelled', ['orders' => $orders->through(fn (Order $order) => $this->orderProjection($order))->toArray(), 'statusBar' => $this->statusSummary->statusBar()]);
     }
 
@@ -811,6 +822,7 @@ final class LogisticsController
             'order_number' => $order->erp_order_id,
             'source_order_number' => $order->external_order_number,
             'erp_order_id' => $order->erp_order_id,
+            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
             'recipient_name' => $order->address?->recipient_name,
             'phone' => $order->address?->phone,
             'country' => $order->address?->country,
@@ -841,6 +853,7 @@ final class LogisticsController
             'order_id' => $order?->id,
             'external_order_number' => $order?->external_order_number,
             'erp_order_id' => $order?->erp_order_id,
+            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
             'recipient_name' => $order?->address?->recipient_name,
             'country' => $order?->address?->country,
             'warehouse_name' => $shipment->warehouse?->name,
@@ -859,8 +872,11 @@ final class LogisticsController
 
     private function projection(Request $request, string $kind, string $component, \Closure $filter): Response
     {
-        $shipments = Shipment::query()->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])->where($filter)->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
-            ->latest('shipped_at')->latest('id')->paginate(self::PER_PAGE)->withQueryString();
+        $query = Shipment::query()->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])->where($filter)->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))->whereHas('order', fn ($q) => $q->eligibleForOperations()->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
+            ;
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($query, $request, true);
+        $shipments = $query->latest('shipped_at')->latest('id')->paginate(self::PER_PAGE)->withQueryString();
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($shipments->getCollection()->pluck('order'));
 
         return Inertia::render($component, ['shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(), 'statusBar' => $this->statusSummary->statusBar()]);
     }
@@ -872,6 +888,7 @@ final class LogisticsController
             'order_id' => $order->id,
             'order_number' => $order->erp_order_id,
             'erp_order_id' => $order->erp_order_id,
+            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
             'external_order_number' => $order->external_order_number,
             'order_date' => $order->order_date?->toDateString(),
             'recipient_name' => $order->address?->recipient_name,
@@ -973,6 +990,7 @@ final class LogisticsController
             'domestic_reject_reason' => $order->domestic_reject_reason,
             'allocation_rejection' => $this->rejectionReadModel->forOrder($order),
             'erp_order_id' => $order->erp_order_id,
+            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
             'internal_order_number' => $order->internal_order_number,
             'order_kind' => $order->order_kind?->value,
             'order_kind_label' => match ($order->order_kind) {

@@ -33,6 +33,9 @@ const props = defineProps<{
   generatedExternalOrderNumber: string
   kolOptions?: { value: number; label: string; account?: string | null }[]
   selectedKolId?: number | null
+  contactOptions?: {value: number; label: string}[]
+  defaultCustomerContactId?: number | null
+  selectedKolContactId?: number | null
   selectedKolAddress?: KolAddress | null
 }>()
 
@@ -49,6 +52,7 @@ const form = useForm<{
   onboarding_token: string|null
   address_confirmed: boolean|null
   kol_id: number | null
+  contact_user_id: number | null
   order_date: string
   order_note: string
   currency: string
@@ -68,6 +72,7 @@ const form = useForm<{
   onboarding_token: props.onboardingToken ?? null,
   address_confirmed: null,
   kol_id: props.defaultOrderKind === 'kol_fulfillment' ? (props.selectedKolId ?? null) : null,
+  contact_user_id: props.defaultOrderKind === 'kol_fulfillment' ? (props.selectedKolContactId ?? null) : (props.defaultCustomerContactId ?? null),
   order_date: props.resumeOrderDraft?.order?.order_date ?? (props.defaultOrderKind === 'kol_fulfillment' ? '' : new Date().toISOString().slice(0, 10)),
   order_note: props.resumeOrderDraft?.order?.order_note ?? '',
   currency: props.resumeOrderDraft?.order?.currency ?? 'USD',
@@ -89,6 +94,10 @@ const addressLoading = ref(false)
 const addressWarning = ref('')
 const addressFields = ['recipient_name', 'phone', 'email', 'country', 'recipient_customs_id', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code'] as const
 let addressRequestId = 0
+const contactManuallySelected = ref(false)
+const prefillContact = (id: number | null | undefined) => {
+  if (!contactManuallySelected.value) form.contact_user_id = (props.contactOptions ?? []).some(option => option.value === id) ? id ?? null : null
+}
 let lastKolShippingCountry = ''
 const fillKolAddress = (address: KolAddress | null) => {
   for (const field of addressFields) form[field] = address?.[field] ?? ''
@@ -103,18 +112,24 @@ watch(() => form.country, country => {
 watch(() => form.kol_id, async kolId => {
   if (props.defaultOrderKind !== 'kol_fulfillment') return
   const requestId = ++addressRequestId
+  contactManuallySelected.value = false
+  prefillContact(null)
   fillKolAddress(null)
   addressWarning.value = ''
   addressLoading.value = false
   if (!kolId) return
   if (kolId === props.selectedKolId && props.selectedKolAddress) {
     fillKolAddress(props.selectedKolAddress)
+    prefillContact(props.selectedKolContactId)
     return
   }
   addressLoading.value = true
   try {
-    const response = await axios.get<{ kol_id: number; address: KolAddress }>('/kol/orders/kol-address', { params: { kol_id: kolId } })
-    if (requestId === addressRequestId && response.data.kol_id === kolId) fillKolAddress(response.data.address)
+    const response = await axios.get<{ kol_id: number; address: KolAddress; contact_user_id?: number | null }>('/kol/orders/kol-address', { params: { kol_id: kolId } })
+    if (requestId === addressRequestId && response.data.kol_id === kolId) {
+      fillKolAddress(response.data.address)
+      prefillContact(response.data.contact_user_id)
+    }
   } catch {
     if (requestId === addressRequestId) addressWarning.value = '未能读取网红档案地址，请重新选择网红。'
   } finally {
@@ -238,6 +253,11 @@ const validationFeedback = (errors: Record<string, string>) => {
 }
 
 const submit = () => {
+  if (isKol.value && !form.contact_user_id) {
+    form.setError('contact_user_id', '请选择网红联络人（负责人）。')
+    publishGlobalFeedback({state:'BLOCKED',title:'请选择网红联络人',message:'网红联络人为必填项。'})
+    return
+  }
   if (isKol.value && (!form.kol_id || addressLoading.value || !smartAddressConfirmed.value)) {
     publishGlobalFeedback({state:'BLOCKED',title:'请确认收件信息',message:'请先关联已有网红并核对本次收件地址。'})
     return
@@ -288,15 +308,15 @@ const submit = () => {
           <div class="erp-form-card">
             <h2 class="erp-form-card-title">订单信息</h2>
             <div class="erp-form-grid">
-              <div class="erp-form-field">
+              <div v-if="!isKol" class="erp-form-field">
                 <label class="erp-form-label">订单类型</label>
                 <div class="erp-readonly-input">{{ props.orderKindLabel }}</div>
               </div>
-              <div class="erp-form-field">
+              <div v-if="!isKol" class="erp-form-field">
                 <label class="erp-form-label">来源</label>
                 <div class="erp-readonly-input">手动创建</div>
               </div>
-              <div v-if="isKol" class="erp-form-field ord-span-2">
+              <div v-if="isKol" class="erp-form-field">
                 <label for="linked_kol_id" class="erp-form-label">关联网红 <span class="erp-form-required">*</span></label>
                 <KolIdentityCombobox
                   v-model="form.kol_id"
@@ -308,6 +328,14 @@ const submit = () => {
                 <p v-if="form.errors.kol_id" class="erp-field-error">{{ form.errors.kol_id }}</p>
               </div>
               <div class="erp-form-field">
+                <label for="contact_user_id" class="erp-form-label">{{ isKol ? '网红联络人（负责人）' : '订单联络人' }} <span v-if="isKol" class="erp-form-required">*</span></label>
+                <select id="contact_user_id" v-model="form.contact_user_id" class="erp-input" :required="isKol" :class="{ 'has-error': form.errors.contact_user_id }" @change="contactManuallySelected = true; form.clearErrors('contact_user_id')">
+                  <option :value="null" :disabled="isKol">{{ isKol ? "请选择负责人" : "默认运营负责人" }}</option>
+                  <option v-for="option in (contactOptions ?? [])" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+                <p v-if="form.errors.contact_user_id" class="erp-field-error">{{ form.errors.contact_user_id }}</p>
+              </div>
+              <div class="erp-form-field">
                 <label class="erp-form-label">{{ isKol ? '合作日期（可选）' : '订单日期' }} <span v-if="!isKol" class="erp-form-required">*</span></label>
                 <input v-model="form.order_date" type="date" class="erp-input" :class="{ 'has-error': form.errors.order_date }" :required="!isKol">
                 <small v-if="isKol">有合作日期请填写真实日期；留空则使用本订单实际创建日期</small>
@@ -315,12 +343,12 @@ const submit = () => {
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">订单币种 <span class="erp-form-required">*</span></label>
-                <select v-model="form.currency" class="erp-input" required>
+                <select id="order_currency" v-model="form.currency" class="erp-input" required>
                   <option v-for="option in currencyOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
                 </select>
                 <p v-if="form.errors.currency" class="erp-field-error">{{ form.errors.currency }}</p>
               </div>
-              <div class="erp-form-field ord-span-2">
+              <div v-if="!isKol" class="erp-form-field ord-span-2">
                 <label for="external_order_number" class="erp-form-label">
                   业务订单号 <span class="erp-form-required">*</span>
                   <span class="ord-hint-inline">（系统已预生成，保存前可修改）</span>
@@ -466,6 +494,45 @@ const submit = () => {
 
 
 
+          <div v-if="isKol" class="erp-form-card">
+            <h2 class="erp-form-card-title">系统订单信息</h2>
+            <div class="erp-form-grid">
+              <div class="erp-form-field">
+                <label class="erp-form-label">订单类型</label>
+                <div class="erp-readonly-input">{{ props.orderKindLabel }}</div>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">来源</label>
+                <div class="erp-readonly-input">手动创建</div>
+              </div>
+              <div class="erp-form-field ord-span-2">
+                <label for="external_order_number" class="erp-form-label">
+                  业务订单号 <span class="erp-form-required">*</span>
+                  <span class="ord-hint-inline">（系统已预生成，保存前可修改）</span>
+                </label>
+                <div class="ord-inline-row">
+                  <input
+                    id="external_order_number"
+                    v-model="form.external_order_number"
+                    class="erp-input"
+                    :class="{ 'erp-input-readonly-style': !numberEditable, 'has-error': form.errors.external_order_number }"
+                    :readonly="!numberEditable"
+                    required
+                  >
+                  <button
+                    v-if="!numberEditable"
+                    type="button"
+                    class="erp-btn erp-btn-secondary ord-icon-btn"
+                    aria-label="编辑订单号"
+                    @click="numberEditable = true"
+                  >
+                    编辑
+                  </button>
+                </div>
+                <p v-if="form.errors.external_order_number" class="erp-field-error">{{ form.errors.external_order_number }}</p>
+              </div>
+            </div>
+          </div>
         </form>
       </div>
     </div>

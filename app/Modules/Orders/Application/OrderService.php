@@ -138,6 +138,7 @@ final class OrderService
                     'currency' => $data->currency,
                     'order_status' => $data->orderStatus,
                     'owner_id' => null,
+                    'contact_user_id' => OrderContactPolicy::operationsDefault(),
                 ]);
                 $reference = $order->externalReferences()->create([
                     'provider' => $data->provider,
@@ -516,6 +517,9 @@ final class OrderService
         });
 
         // OMS Grid column inputs are always server-authoritative, never browser-page filters.
+        if (! empty($filters['contact_filter'])) {
+            app(OrderContactProjection::class)->applyNameFilter($query, (string) $filters['contact_filter']);
+        }
         $grid = $filters['oms_grid_columns'] ?? [];
         if (is_array($grid)) {
             // These queries are evaluated against the full filtered orders dataset,
@@ -884,6 +888,7 @@ final class OrderService
             'order_kind' => $order->order_kind instanceof \BackedEnum ? $order->order_kind->value : $order->order_kind,
             'order_status' => $order->order_status instanceof \BackedEnum ? $order->order_status->value : $order->order_status,
             'owner_id' => $order->owner_id,
+            'contact_user_id' => $order->contact_user_id,
             'currency' => $order->currency,
         ];
     }

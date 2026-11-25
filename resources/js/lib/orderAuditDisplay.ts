@@ -5,6 +5,7 @@ const labels: Record<string, string> = {
   'order.inbound_updated': '更新同步订单信息',
   'order.inbound_items_conflict_preserved': '同步时保留人工修改的商品',
   'order.updated': '修改订单信息',
+  'order.contact_changed': '修改订单联络人',
   'order.note_appended': '添加订单备注',
   'order.workflow_status_changed': '修改工作状态',
   'order.core_status_changed': '修改订单状态',

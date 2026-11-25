@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
+import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
@@ -7,7 +9,7 @@ import StatusBar from '../../Components/Logistics/StatusBar.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
 
-type ShipmentRow = {
+type ShipmentRow = { contact_user_name?: string | null;
   shipment_id: number
   order_id: number
   external_order_number: string | null
@@ -31,11 +33,11 @@ const props = defineProps<{ shipments: Paginated<ShipmentRow>; statusBar?: { key
 const selectedGridRow = ref<L2Row|null>(null)
 const toggleGrid = () => {
   selectedGridRow.value=null
-  router.get('/logistics/in-transit',{global_grid:props.globalGridPilotEnabled?'0':'1',page:1},
+  router.get('/logistics/in-transit',{...currentContactQuery(),global_grid:props.globalGridPilotEnabled?'0':'1',page:1},
     {preserveScroll:true,preserveState:true,replace:true})
 }
-type ColumnKey = 'order_number' | 'recipient' | 'country' | 'warehouse' | 'carrier' | 'tracking' | 'shipped_at'
-const definitions: GridColumnDefinition<ColumnKey>[] = [{ key: 'order_number', label: '订单号' }, { key: 'recipient', label: '收件人' }, { key: 'country', label: '国家' }, { key: 'warehouse', label: '仓库' }, { key: 'carrier', label: '物流商 / 渠道' }, { key: 'tracking', label: '追踪号' }, { key: 'shipped_at', label: '发货时间' }]
+type ColumnKey = 'order_number' | 'contact' | 'recipient' | 'country' | 'warehouse' | 'carrier' | 'tracking' | 'shipped_at'
+const definitions: GridColumnDefinition<ColumnKey>[] = [{ key: 'order_number', label: '订单号' }, { key: 'contact', label: '订单联络人' }, { key: 'recipient', label: '收件人' }, { key: 'country', label: '国家' }, { key: 'warehouse', label: '仓库' }, { key: 'carrier', label: '物流商 / 渠道' }, { key: 'tracking', label: '追踪号' }, { key: 'shipped_at', label: '发货时间' }]
 const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = useAccountGridPreferences<ColumnKey>({ namespace: 'grid.logistics.in-transit.v1', definitions, requiredKeys: ['order_number'] })
 const exceptionNotes = ref<Record<number, string>>({})
 const exceptionOpen = ref<number | null>(null)
@@ -67,13 +69,14 @@ const submitException = (row: ShipmentRow) => {
   exceptionOpen.value = null
 }
 
-const goToPage = (page: number) => router.get('/logistics/in-transit', { page }, { preserveState: true, replace: true })
+const goToPage = (page: number) => router.get('/logistics/in-transit', { ...currentContactQuery(), page }, { preserveState: true, replace: true })
 </script>
 
 <template>
   <Head title="运输中 · BYL ERP" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '运输中']">
     <section class="mvp-page">
+      <OrderContactFilter />
       <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading"><div><p class="mvp-kicker">Logistics OS V1</p><h2>运输中</h2><p>已有追踪号、正在运输的物流单。<strong v-if="!props.canOperate"> 当前角色为只读模式。</strong></p></div>
         <div v-if="globalGridPilotAvailable" class="l2-grid-switch"><button
@@ -97,7 +100,7 @@ const goToPage = (page: number) => router.get('/logistics/in-transit', { page },
       </tr></thead><tbody>
         <template v-for="row in shipments.data" :key="row.shipment_id">
           <tr>
-            <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.erp_order_id ?? '—' }}</Link><span v-else>{{ row.erp_order_id ?? '—' }}</span></template><template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template><template v-else-if="column.key === 'warehouse'">{{ row.warehouse_name ?? '—' }}</template><template v-else-if="column.key === 'carrier'">{{ [row.carrier, row.service].filter(Boolean).join(' / ') || '—' }}</template><template v-else-if="column.key === 'tracking'">{{ row.tracking_number ?? '—' }}</template><template v-else>{{ row.shipped_at ? row.shipped_at.slice(0, 10) : '—' }}</template></td>
+            <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.erp_order_id ?? '—' }}</Link><span v-else>{{ row.erp_order_id ?? '—' }}</span></template><template v-else-if="column.key === 'contact'">{{ row.contact_user_name ?? '未分配' }}</template><template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template><template v-else-if="column.key === 'warehouse'">{{ row.warehouse_name ?? '—' }}</template><template v-else-if="column.key === 'carrier'">{{ [row.carrier, row.service].filter(Boolean).join(' / ') || '—' }}</template><template v-else-if="column.key === 'tracking'">{{ row.tracking_number ?? '—' }}</template><template v-else>{{ row.shipped_at ? row.shipped_at.slice(0, 10) : '—' }}</template></td>
             <td class="mvp-actions">
               <button class="mvp-button" type="button" @click="copyTracking(row)">复制追踪</button>
               <button v-if="props.canOperate" class="mvp-button" type="button" @click="exceptionOpen = exceptionOpen === row.order_id ? null : row.order_id">标记异常</button>

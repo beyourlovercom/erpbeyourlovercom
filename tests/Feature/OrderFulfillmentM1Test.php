@@ -17,6 +17,7 @@ use Tests\TestCase;
 final class OrderFulfillmentM1Test extends TestCase
 {
     use RefreshDatabase;
+    use \Tests\Support\OrderContactFixture;
 
     public function test_customer_create_defaults_and_preserves_the_business_order_number(): void
     {
@@ -379,7 +380,7 @@ final class OrderFulfillmentM1Test extends TestCase
             'origin' => 'external_sync',
         ]);
 
-        return [...$this->payload($externalOrderNumber, 'kol_fulfillment'), 'kol_id' => $kol->id];
+        return [...$this->payload($externalOrderNumber, 'kol_fulfillment'), 'kol_id' => $kol->id, 'contact_user_id' => $this->fixtureContactId()];
     }
 
     private function payload(string $externalOrderNumber, string $orderKind = 'customer'): array

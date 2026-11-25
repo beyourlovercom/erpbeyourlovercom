@@ -19,6 +19,7 @@ use Tests\TestCase;
 class ErpNavigationTest extends TestCase
 {
     use RefreshDatabase;
+    use \Tests\Support\OrderContactFixture;
 
     protected function setUp(): void
     {
@@ -78,7 +79,7 @@ class ErpNavigationTest extends TestCase
         $kolId = $this->fixtureKolId();
         $kolProduct = Product::firstOrCreate(['sku' => 'KOL-1'], ['name' => 'Synthetic KOL Product', 'product_type' => 'simple', 'woocommerce_product_id' => 6001]);
         $this->post('/kol/orders', [
-            'kol_id' => $kolId, 'order_kind' => 'kol_fulfillment', 'source_type' => 'kol', 'external_order_number' => 'PHASE2-KOL-1',
+            'contact_user_id' => $this->fixtureContactId(), 'kol_id' => $kolId, 'order_kind' => 'kol_fulfillment', 'source_type' => 'kol', 'external_order_number' => 'PHASE2-KOL-1',
             'order_date' => '2026-08-05', 'recipient_name' => 'Synthetic KOL', 'phone' => '+1 555 0101',
             'country' => 'US', 'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => 'Synthetic Street',
             'items' => [['product_id' => $kolProduct->id, 'product_summary' => 'Synthetic KOL Product', 'sku' => 'KOL-1', 'quantity' => 1, 'unit_price' => '10.00']],
@@ -97,7 +98,7 @@ class ErpNavigationTest extends TestCase
             'items' => [['product_id' => $product->id, 'product_summary' => 'All Orders Product', 'quantity' => 1, 'unit_price' => '10.00']],
         ];
         $this->post('/customers/orders', [...$base, 'external_order_number' => 'ALL-CUSTOMER-1'])->assertRedirect();
-        $this->post('/kol/orders', [...$base, 'kol_id' => $this->fixtureKolId(), 'external_order_number' => 'ALL-KOL-1'])->assertRedirect();
+        $this->post('/kol/orders', [...$base, 'contact_user_id' => $this->fixtureContactId(), 'kol_id' => $this->fixtureKolId(), 'external_order_number' => 'ALL-KOL-1'])->assertRedirect();
 
         $this->get('/orders')->assertInertia(fn (Assert $page) => $page
             ->component('Orders/Master')

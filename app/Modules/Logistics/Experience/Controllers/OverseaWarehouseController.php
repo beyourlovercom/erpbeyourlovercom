@@ -112,6 +112,10 @@ final class OverseaWarehouseController
             'carrier' => mb_substr(trim((string) $request->query('filter_carrier', '')), 0, 80),
             'tracking' => mb_substr(trim((string) $request->query('filter_tracking', '')), 0, 100),
         ];
+        $gridFilters['contact'] = mb_substr(trim((string) $request->query('filter_contact', '')), 0, 80);
+        if ($gridFilters['contact'] !== '') {
+            $base->whereHas('order', fn ($q) => app(\App\Modules\Orders\Application\OrderContactProjection::class)->applyNameFilter($q, $gridFilters['contact']));
+        }
         $sortable = ['line' => 'id', 'shipped_at' => 'shipped_at', 'tracking' => 'tracking_number'];
         $sortCol = (string) $request->query('sort_col', 'line');
         $sortCol = array_key_exists($sortCol, $sortable) ? $sortCol : 'line';
@@ -135,6 +139,7 @@ final class OverseaWarehouseController
 
         $shipments = $base->orderBy($sortable[$gridEnabled ? $sortCol : 'line'], $gridEnabled ? $sortDir : 'desc')
             ->paginate($perPage)->withQueryString();
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($shipments->getCollection()->pluck('order'));
         $trackingStatuses = app(LogisticsTrackingListStatus::class)
             ->forShipments($shipments->getCollection()->pluck('id')->all());
         $start = ($shipments->currentPage() - 1) * $shipments->perPage();
@@ -186,7 +191,7 @@ final class OverseaWarehouseController
             'globalGridEnabled' => $gridEnabled,
             'gridSearch' => $gridEnabled ? $gridSearch : '',
             'gridSort' => $gridEnabled ? ['colId' => $sortCol, 'direction' => $sortDir] : null,
-            'gridFilters' => $gridEnabled ? $gridFilters : ['carrier' => '', 'tracking' => ''],
+            'gridFilters' => $gridEnabled ? $gridFilters : ['carrier' => '', 'tracking' => '', 'contact' => $gridFilters['contact']],
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => [
                 ...$this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id), $shipOutAttempts->get($shipment->order_id), $shipOutBatchItems->get($shipment->order_id), $shipOutReadbacks->get($shipment->order_id)),
                 // Logistics access alone is not enough for editing an order's staff workflow progress.
@@ -807,6 +812,7 @@ final class OverseaWarehouseController
             'line' => $line,
             'order_id' => $order?->id,
             'erp_order_id' => $order?->erp_order_id,
+            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
             'order_url' => $order ? "/orders/{$order->id}" : null,
             'recipient_name' => $order?->address?->recipient_name,
             'order_date' => $order?->order_date?->toDateString(),

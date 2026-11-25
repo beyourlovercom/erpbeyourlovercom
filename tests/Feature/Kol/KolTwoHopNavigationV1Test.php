@@ -16,6 +16,7 @@ use Tests\TestCase;
 final class KolTwoHopNavigationV1Test extends TestCase
 {
     use RefreshDatabase;
+    use \Tests\Support\OrderContactFixture;
 
     protected function setUp(): void
     {
@@ -105,6 +106,7 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $this->bindAffiliate($kol);
         $product = Product::create(['source_type' => 'manual', 'sku' => 'TW-HOP-SKU', 'name' => 'Two Hop Product', 'is_active' => true]);
         $payload = [
+            'contact_user_id' => $this->fixtureContactId(),
             'external_order_number' => 'TW-HOP-ORDER', 'order_date' => '2026-10-29',
             'currency' => 'USD',
             'recipient_name' => 'Test', 'phone' => '123', 'country' => 'US',
@@ -126,6 +128,7 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $this->bindAffiliate($kol);
         $product = Product::create(['source_type' => 'manual', 'sku' => 'KOL-NO-DATE', 'name' => 'No Date Sample', 'is_active' => true]);
         $payload = [
+            'contact_user_id' => $this->fixtureContactId(),
             'external_order_number' => 'KOL-NO-DATE-ORDER', 'kol_id' => $kol->id,
             'order_date' => '', 'currency' => 'USD',
             'recipient_name' => 'Creator', 'phone' => '123', 'country' => 'US',
@@ -147,6 +150,7 @@ final class KolTwoHopNavigationV1Test extends TestCase
 
         $product = Product::create(['source_type' => 'manual', 'sku' => 'APPROVED-ID-001', 'name' => 'Approved ID', 'is_active' => true]);
         $payload = [
+            'contact_user_id' => $this->fixtureContactId(),
             'external_order_number' => 'KOL-APPROVED-ID', 'order_date' => '2026-10-30',
             'kol_id' => $kol->id, 'currency' => 'USD',
             'recipient_name' => 'Synthetic', 'phone' => '123', 'country' => 'US',
@@ -173,6 +177,7 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $kol = $this->kol($staff);
         $product = Product::create(['source_type' => 'manual', 'sku' => 'R61-ITEM', 'name' => 'R61', 'is_active' => true]);
         $payload = [
+            'contact_user_id' => $this->fixtureContactId(),
             'external_order_number' => 'R61-MANUAL-ORDER', 'order_date' => '2026-10-30',
             'currency' => 'USD', 'kol_id' => $kol->id,
             'recipient_name' => 'Test', 'phone' => '123', 'country' => 'US',

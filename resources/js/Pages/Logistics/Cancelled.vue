@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import OrderContactFilter from '../../Components/Orders/OrderContactFilter.vue'
+import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import StatusBar from '../../Components/Logistics/StatusBar.vue'
@@ -6,26 +8,27 @@ import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
 
 type Item = { sku: string | null; product_summary: string | null; product_url: string | null; quantity: number }
-type Row = { order_url: string | null; erp_order_id: string | null; order_date: string | null; recipient_name: string | null; country: string | null; items: Item[] }
+type Row = { contact_user_name?: string | null; order_url: string | null; erp_order_id: string | null; order_date: string | null; recipient_name: string | null; country: string | null; items: Item[] }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 
 const props = defineProps<{ orders: Paginated<Row>; statusBar: { key: string; label: string; url: string; count: number }[] }>()
-type ColumnKey = 'order_number' | 'order_date' | 'recipient' | 'country' | 'items'
+type ColumnKey = 'order_number' | 'contact' | 'order_date' | 'recipient' | 'country' | 'items'
 const definitions: GridColumnDefinition<ColumnKey>[] = [
-  { key: 'order_number', label: '订单号' },
+  { key: 'order_number', label: '订单号' }, { key: 'contact', label: '订单联络人' },
   { key: 'order_date', label: '订单日期' },
   { key: 'recipient', label: '收件人' },
   { key: 'country', label: '国家' },
   { key: 'items', label: '商品 / SKU' },
 ]
 const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = useAccountGridPreferences<ColumnKey>({ namespace: 'grid.logistics.cancelled.v2', definitions, requiredKeys: ['order_number'] })
-const goToPage = (page: number) => router.get('/logistics/cancelled', { page }, { preserveState: true, replace: true })
+const goToPage = (page: number) => router.get('/logistics/cancelled', { ...currentContactQuery(), page }, { preserveState: true, replace: true })
 </script>
 
 <template>
   <Head title="已取消 · BYL ERP" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '已取消']">
     <section class="mvp-page">
+      <OrderContactFilter />
       <StatusBar :statuses="statusBar" />
       <div class="mvp-page-heading">
         <div>
@@ -41,7 +44,7 @@ const goToPage = (page: number) => router.get('/logistics/cancelled', { page }, 
       </tr></thead><tbody>
         <tr v-for="row in orders.data" :key="row.erp_order_id ?? row.order_url ?? 'cancelled-row'">
           <td v-for="column in visibleColumns" :key="column.key">
-            <template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.erp_order_id ?? '—' }}</Link><span v-else>{{ row.erp_order_id ?? '—' }}</span></template>
+            <template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.erp_order_id ?? '—' }}</Link><span v-else>{{ row.erp_order_id ?? '—' }}</span></template><template v-else-if="column.key === 'contact'">{{ row.contact_user_name ?? '未分配' }}</template>
             <template v-else-if="column.key === 'order_date'">{{ row.order_date ?? '—' }}</template>
             <template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template>
             <template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template>

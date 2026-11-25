@@ -71,7 +71,7 @@ describe('oversea Global Grid with narrow persistent warehouse rail', () => {
     expect(wrapper.find('.oversea-native-workflow').exists()).toBe(false)
     expect(wrapper.find('[data-testid="oversea-global-grid-toggle"]').text()).toBe('返回原表')
   })
-  it('removes the empty floating-filter second header row and keeps both filters in a compact top popover', async () => {
+  it('keeps contact, carrier and tracking filters in a compact top popover without a second header row', async () => {
     const wrapper=mountPage({globalGridEnabled:true,rows:usSmPendingRows,view:'review',gridSearch:'',
       gridFilters:{carrier:'',tracking:''}})
     await flushPromises()
@@ -82,10 +82,12 @@ describe('oversea Global Grid with narrow persistent warehouse rail', () => {
     expect(wrapper.find('[data-testid="oversea-grid-filter-panel"]').exists()).toBe(true)
     await wrapper.find('input[aria-label="筛选物流商"]').setValue('USPS')
     await wrapper.find('input[aria-label="筛选 Tracking"]').setValue('9400')
+    await wrapper.find('input[aria-label="筛选订单联络人"]').setValue('Emma')
     await wrapper.find('.oversea-filter-apply').trigger('click')
     const url=routerVisit.mock.lastCall?.[0] as string
     expect(url).toContain('filter_carrier=USPS')
     expect(url).toContain('filter_tracking=9400')
+    expect(url).toContain('filter_contact=Emma')
     expect(url).toContain('view=review')
     expect(url).toContain('page=1')
   })

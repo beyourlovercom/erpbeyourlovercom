@@ -31,6 +31,8 @@ use App\Modules\Orders\Application\OrderAuxiliaryStatusService;
 use App\Modules\Orders\Application\OrderItemAmendmentPreflight;
 use App\Modules\Orders\Application\ManualOrderItemAmendment;
 use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderContactPolicy;
+use App\Modules\Orders\Application\OrderContactProjection;
 use App\Modules\Orders\Application\OrderOmsAvailability;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderProgressTransitionService;
@@ -83,6 +85,8 @@ final class OrderController
     {
         $kind = $this->kindOrNull($request);
         $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view', 'warehouse_route_code']);
+        $contactFilter = $request->query('grid_contact');
+        $filters['contact_filter'] = is_string($contactFilter) ? mb_substr(trim($contactFilter), 0, 80) : '';
         $scope = (string) $request->route('order_scope');
         if ($scope === 'collaboration') {
             $filters['collaboration_scope'] = true;
@@ -134,12 +138,15 @@ final class OrderController
             $orders->getCollection()->map(fn (Order $order): int => (int) $order->shipment?->id)->all()
         );
 
+        app(OrderContactProjection::class)->prime($orders->getCollection());
+
         return Inertia::render('Orders/Index', [
             'orderKind' => $kind?->value ?? 'all',
             'orderScope' => in_array($scope, ['external_warehouse', 'collaboration'], true) ? $scope : 'all',
             'carrierLabels' => collect($this->carrierServices->options())->mapWithKeys(fn (array $row): array => [$row['value'] => $row['label']])->all(),
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order, $trackingStatuses[(int) $order->shipment?->id] ?? null, $customerGlobalGridEnabled))->toArray(),
             'filters' => [
+                'grid_contact' => $filters['contact_filter'],
                 ...$request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view', 'warehouse_route_code']),
                 ...($scope === 'collaboration' ? ['partner_id' => $this->partnerFilter($request) ?? ''] : []),
                 ...($serverGridEnabled ? ['sort' => $sort, 'direction' => $direction, 'per_page' => $allRowsAllowed ? 'all' : (string) $orders->perPage(), ...($omsGridEnabled ? ['oms_grid' => '1'] : []), ...$gridColumnFilters] : []),
@@ -215,7 +222,7 @@ final class OrderController
         $data = $request->validate(['kol_id' => ['required', 'integer', 'min:1']]);
         $kol = $this->scopedKolSelection($request)->findOrFail((int) $data['kol_id']);
 
-        return response()->json(['kol_id' => (int) $kol->id, 'address' => $this->kolShippingData($kol)]);
+        return response()->json(['kol_id' => (int) $kol->id, 'address' => $this->kolShippingData($kol), 'contact_user_id' => OrderContactPolicy::isEligible(OrderKind::KolFulfillment, $kol->owner_id) ? (int) $kol->owner_id : null]);
     }
 
     public function searchKolOptions(Request $request): JsonResponse
@@ -302,6 +309,9 @@ final class OrderController
             'generatedExternalOrderNumber' => $this->orders->generateExternalOrderNumber($kind),
             'kolOptions' => $kolOptions,
             'selectedKolId' => $selectedKolId,
+            'contactOptions' => $kind === OrderKind::KolFulfillment ? OrderContactPolicy::options($kind) : OrderContactPolicy::manualOptions(),
+            'defaultCustomerContactId' => $kind === OrderKind::Customer ? OrderContactPolicy::operationsDefault((int) $request->user()->getAuthIdentifier()) : null,
+            'selectedKolContactId' => $requestedKol && OrderContactPolicy::isEligible($kind, $requestedKol->owner_id) ? (int) $requestedKol->owner_id : null,
             'selectedKolAddress' => $requestedKol ? $this->kolShippingData($requestedKol) : null,
             'onboardingToken' => $requestedKol && OnboardingDraft::readForKol($request, $request->query('onboarding_token'), $requestedKolId) ? $request->query('onboarding_token') : null,
             'resumeOrderDraft' => $requestedKol ? OnboardingDraft::readForKol($request, $request->query('onboarding_token'), $requestedKolId) : null,
@@ -331,10 +341,17 @@ final class OrderController
         }
         $data = $request->validate([
             ...$orderRules,
+            'contact_user_id' => $kind === OrderKind::KolFulfillment ? ['required', 'integer', 'min:1'] : ['nullable', 'integer', 'min:1'],
             'kol_id' => $kind === OrderKind::KolFulfillment
                 ? ['required', 'integer', Rule::exists('kols', 'id')->whereNull('archived_at')]
                 : ['prohibited'],
         ]);
+        if ($kind === OrderKind::KolFulfillment && ! OrderContactPolicy::isEligible($kind, (int) $data['contact_user_id'])) {
+            throw ValidationException::withMessages(['contact_user_id' => '请选择有效的网红联络人（负责人）。']);
+        }
+        if ($kind === OrderKind::Customer && isset($data['contact_user_id']) && ! OrderContactPolicy::isManualEligible((int) $data['contact_user_id'])) {
+            throw ValidationException::withMessages(['contact_user_id' => '请选择有效的在职员工。']);
+        }
         if ($kind === OrderKind::KolFulfillment && filled($data['kol_id'] ?? null)) {
             abort_unless($request->user()->can('kol.view'), 403);
             $kol = Kol::query()->findOrFail($data['kol_id']);
@@ -372,6 +389,9 @@ final class OrderController
         $data['source_type'] = OrderSourceType::Manual->value;
         $data['currency'] ??= 'USD';
         $data['owner_id'] = $request->user()->getAuthIdentifier();
+        if ($kind === OrderKind::Customer) {
+            $data['contact_user_id'] ??= OrderContactPolicy::operationsDefault((int) $data['owner_id']);
+        }
         $order = $this->orders->create($data, $items, $request->user());
         if ($kind === OrderKind::KolFulfillment && is_string($token)) OnboardingDraft::forget($request);
 
@@ -408,7 +428,13 @@ final class OrderController
         $warehouses = $this->availability->activeWarehouses();
         $allocationUi = $isDerived ? null : $this->allocationUi($request, $order, $productIds, $warehouses, $inventoryAvailability);
 
+        app(OrderContactProjection::class)->prime([$order, ...$order->fulfillmentChildren]);
+        $canEditContact = in_array($authority->order_kind, [OrderKind::Customer, OrderKind::KolFulfillment], true) && ! $isDerived && ! $order->trashed() && $order->archived_at === null && ! $order->isOperationallyArchived()
+            && OrderContactPolicy::canEdit($request->user());
+
         return Inertia::render('Orders/Show', [
+            'canEditContact' => $canEditContact,
+            'contactOptions' => $canEditContact ? OrderContactPolicy::manualOptions() : [],
             'order' => $this->orderData($order),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'canEditWarehouseRoute' => ! $order->isOperationallyArchived() && $order->archived_at === null
@@ -998,6 +1024,7 @@ final class OrderController
             'currency' => $order->currency,
             'owner' => $order->owner ? ['id' => $order->owner->id, 'name' => $order->owner->name] : null,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
+            ...app(OrderContactProjection::class)->for($order),
             'customer_email' => $includeCustomerEmail ? ($order->address?->email ?: $order->customer?->email) : null,
             'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code', 'recipient_customs_id']),
             'items' => $order->items->map(fn ($item): array => [
@@ -1069,6 +1096,7 @@ final class OrderController
             'segments' => $allSegments->map(fn (Order $segment): array => [
                 'order_id' => (int) $segment->getKey(),
                 'erp_order_id' => $segment->erp_order_id,
+                ...app(OrderContactProjection::class)->for($segment),
                 'suffix' => $segment->fulfillment_suffix,
                 'role' => (string) ($segment->fulfillment_role ?? '') === 'replacement' ? 'replacement' : 'original',
                 'role_label' => (string) ($segment->fulfillment_role ?? '') === 'replacement' ? '售后补发' : '原始履约',

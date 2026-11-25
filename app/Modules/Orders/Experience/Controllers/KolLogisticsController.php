@@ -38,7 +38,7 @@ final class KolLogisticsController
         }
 
         // The owner/kind predicates are always ANDed outside search, status,
-        // pagination and any joins. Never search recipient/contact columns.
+        // pagination and any joins. Never search recipient personal data.
         if ($search !== '') {
             if (preg_match('/^dbid:([0-9]+)$/i', $search, $match)) {
                 $query->whereKey((int) $match[1]);
@@ -60,13 +60,16 @@ final class KolLogisticsController
             $query->whereHas('shipment', fn ($ship) => $ship->where('shipment_status', $status));
         }
 
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($query, $request);
         $orders = $query->orderByDesc('id')->paginate(20)->withQueryString();
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($orders->getCollection());
         $orders->through(static function (Order $order): array {
             $shipment = $order->shipment;
 
             return [
                 'id' => (int) $order->id,
                 'erp_order_id' => $order->erp_order_id,
+                ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
                 'external_order_number' => $order->external_order_number,
                 'order_date' => $order->order_date?->format('Y-m-d'),
                 'owner' => $order->owner?->name,

@@ -129,9 +129,12 @@ final class DomesticLogisticsController
             }
             $this->applyAllFilters($query, $gridFilters);
         }
+        $gridFilters['contact'] = mb_substr(trim((string) $request->query('filter_contact', '')), 0, 80);
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->applyNameFilter($query, $gridFilters['contact']);
         $requestedSize = (int) $request->query('per_page', 50);
         $pageSize = $gridPilot && in_array($requestedSize, [20, 50, 100], true) ? $requestedSize : 50;
         $rows = $query->orderBy('order_date')->orderBy('id')->paginate($pageSize)->withQueryString();
+        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($rows->getCollection());
         $itemMetadata = app(ProductOrderItemMetadata::class);
         $fallbackProducts = $itemMetadata->fallbackProductsForOrders($rows->getCollection());
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments($rows->getCollection()
@@ -628,6 +631,7 @@ final class DomesticLogisticsController
             'tracking_sync_reason' => $trackingState['reason'],
             'tracking_sync_verified_at' => $trackingState['verified_at'] ?? null,
             'erp_order_id' => $order->erp_order_id,
+            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
             'workflow_status_projection' => $projection,
             'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
             'workflow_revision' => (int) $order->workflow_revision,

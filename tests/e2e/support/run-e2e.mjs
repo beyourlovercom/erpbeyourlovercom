@@ -73,7 +73,7 @@ async function runFoundation() {
     await runManagedChild('php', ['tests/e2e/support/provision-users.php'], { env, signal: abortController.signal });
     assertNotAborted(abortController.signal);
     const suite = process.env.BYL_E2E_SUITE ?? 'all';
-    if (!['all', 'kol-role', 'kol-smart-local', 'tracking-ux', 'oms-import', 'orders-master', 'global-grid', 'rejection-visual'].includes(suite)) {
+    if (!['all', 'kol-role', 'kol-smart-local', 'tracking-ux', 'oms-import', 'orders-master', 'global-grid', 'rejection-visual', 'order-contact'].includes(suite)) {
         throw new Error('BYL_E2E_SUITE must be all, kol-role, tracking-ux, oms-import, orders-master, global-grid or rejection-visual.');
     }
     if (suite === 'global-grid' || suite === 'rejection-visual') {
@@ -86,7 +86,9 @@ async function runFoundation() {
             env, signal: abortController.signal,
         });
     }
-    const testArgs = suite === 'kol-smart-local'
+    const testArgs = suite === 'order-contact'
+        ? [playwrightCli, 'test', 'tests/e2e/orders/order-contact-browser.spec.ts', '--project=chromium', '--timeout=45000']
+        : suite === 'kol-smart-local'
         ? [playwrightCli, 'test', 'tests/e2e/orders/kol-smart-local.spec.ts', '--project=chromium', '--timeout=90000']
         : suite === 'rejection-visual'
         ? [playwrightCli, 'test', 'tests/e2e/global-grid/rejection-visual.spec.ts', '--project=chromium', '--timeout=90000']
