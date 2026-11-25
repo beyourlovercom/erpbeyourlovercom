@@ -1,0 +1,11 @@
+# ERP2 Canonical URL V1 — candidate archive (007windows)
+
+2026-11-25 Beijing time. C1/C2 candidate and C3 automated regression passed; C4 real employee UAT HOLD. C5 archive only, DO NOT merge or deploy Production. Dev switch attempt was rejected by the existing Windows PowerShell script execution policy before execution. Live ERP2 remained on d291a12ffd00194048ce02ca7b8af313c1cf10a67dc5834bab5b6f8b26ec7f8d.
+
+- Original public ERP1 customer URL verified: /customers/orders. /orders/customers returned 404.
+- Scope: History router, canonical menu/ACL mapping, legacy hash/dynamic inventory aliases, /login document vs Laravel CSRF request, original Inertia paths, detail and overseas routes, initial URL filter hydration. Existing U1.1 menu login seed preserved.
+- C3: final Vue TypeScript exit 0; Vite build exit 0, 259 files; Vitest 13/13; loopback HTTP + independent Edge anonymous and synthetic authority fixtures 27/27. Fixtures are not staff UAT. No real employee credentials or business mutations used.
+- Candidate index SHA256: 80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37.
+- Local patch SHA256: aa8843eff2d85afc8db49382a7cdbffe70d57d7774fd7a8f9181bb551681ff9e. The patch is against verified 007windows app/runtime source, not directly applicable to GitHub main. Existing unmerged candidate PRs #766, #846, #848 must be reconciled before a reproducible integration branch. This PR archives the actual minimal source diff, not entire accumulated overlays.
+- Backend, DB, tunnel and real warehouse flags were not modified. /api/health confirmed production_connected=false and business writes disabled. Existing live source and build must be verified again before Dev switch. Prepared local controlled switch script with source/hash preflight, backup, gateway-only task restart, local/ingress probes and rollback; not executed because of script policy. Use approved administrative execution only.
+- C4: real Vita/Liang/Dede sessions, menus, direct details, refresh, forward/back, share/filter behavior, role revocation and no cross-account cache. C5 final closure requires these and Owner acceptance. No Production publish or domain switch authorized.
