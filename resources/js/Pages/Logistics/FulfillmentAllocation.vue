@@ -743,6 +743,7 @@ async function resetParentAllocation(){
   if(!order?.reallocation_token || !props.canOperate || submitting.value)return
   reallocationConfirmOpen.value=false
   submitting.value=true; submitError.value=''
+  let refreshing=false
   try{
     const response=await fetch('/logistics/orders/'+order.id+'/fulfillment-allocation/reset',{
       method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},
@@ -758,6 +759,7 @@ async function resetParentAllocation(){
     closePlan()
     // Reopen only with fresh server data and the new workflow revision.
     activeTab.value='pending'
+    refreshing=true
     router.get('/logistics/wait-stock',{...allocationContext('pending'),search:order.erp_order_id??'',per_page:props.orders.per_page,global_grid:props.globalGridPilotEnabled?'1':'0',page:1},{
       preserveScroll:true,preserveState:true,replace:true,
       onSuccess:()=>{const fresh=props.orders.data.find(row=>row.id===order.id);if(fresh)openPlan(fresh)},
@@ -765,8 +767,9 @@ async function resetParentAllocation(){
     })
     publishGlobalFeedback({state:'SUCCESS',title:'原履约已归档',message:'母订单已返回待分仓，请重新选择仓库。'})
   }catch(error){
+    refreshing=false
     submitError.value=(error instanceof Error?error.message:'重新分仓未确认')+'；如状态不明，请刷新后核对，不要重复提交。'
-  }finally{submitting.value=false}
+  }finally{if(!refreshing)submitting.value=false}
 }
 function confirmStockException() {
   stockConfirmOpen.value = false

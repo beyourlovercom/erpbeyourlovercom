@@ -35,7 +35,7 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
     public function reserve(int $orderId, int $warehouseId, string $reservationKey, ?DateTimeInterface $expiresAt, ?int $actorUserId): array
     {
         $order = Order::query()->whereKey($orderId)->lockForUpdate()->first();
-        if (! $order || $order->order_status?->value !== 'pending_shipment') {
+        if (! $order || $order->isOperationallyArchived() || $order->order_status?->value !== 'pending_shipment') {
             throw new DomainException('Only pending-shipment orders can reserve inventory.');
         }
 

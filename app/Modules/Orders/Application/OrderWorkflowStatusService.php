@@ -61,7 +61,7 @@ final class OrderWorkflowStatusService
 
         return DB::transaction(function () use ($order, $next, $expectedRevision, $actor): Order {
             $locked = Order::withTrashed()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
-            if ($locked->archived_at !== null || $locked->trashed()) {
+            if ($locked->archived_at !== null || $locked->trashed() || $locked->isOperationallyArchived()) {
                 throw new HttpException(422, 'Archived or deleted orders cannot change workflow status.');
             }
             $current = $locked->workflow_status;

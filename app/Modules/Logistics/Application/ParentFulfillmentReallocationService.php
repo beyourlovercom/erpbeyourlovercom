@@ -63,16 +63,20 @@ final class ParentFulfillmentReallocationService
             // have an empty pending draft after a prior warehouse rejection.
             $parentShipment = $shipments->get($root->id);
             abort_if($parentShipment && $parentShipment->warehouse_id !== null, 409, '母订单仍有独立发货仓，请先核对。');
-            abort_if(DB::table('inventory_reservations')->whereIn('order_id', $ids)->where('status', 'committed')->exists(),
-                409, '已有库存扣减记录，不能重新分仓。');
+            // Lock reservation rows before testing committed state. A concurrent
+            // commit must either finish before this check or observe the release.
+            $reservations = DB::table('inventory_reservations')->whereIn('order_id', $ids)->orderBy('id')->lockForUpdate()->get();
+            abort_if($reservations->contains(fn ($reservation) => ! in_array($reservation->status, ['reserved', 'released', 'expired'], true)),
+                409, '存在已扣减或未核实的库存记录，不能重新分仓。');
             abort_if(DB::table('procurement_orders')->whereIn('source_order_id', $ids)->where('status', '!=', 'cancelled')->exists(),
                 409, '存在尚未取消的采购任务，请先处理采购单。');
             // All validation is complete. Release reservations via canonical
             // repository and archive only the old children, never delete them.
-            foreach ($family as $member) {
-                if ($reservation = $this->reservations->activeForOrder((int) $member->id)) {
-                    $this->reservations->release((int) $reservation['id'], (int) $actor->getAuthIdentifier(), 'parent_fulfillment_reallocation');
-                }
+            foreach ($reservations->where('status', 'reserved') as $reservation) {
+                $released = $this->reservations->release((int) $reservation->id, (int) $actor->getAuthIdentifier(), 'parent_fulfillment_reallocation');
+                $this->audit->record(AuditActor::user($actor, AuditSource::Web), 'inventory.reservation.released',
+                    \App\Modules\Inventory\Infrastructure\Models\InventoryReservation::class, $reservation->id,
+                    ['status' => 'reserved'], $released, 'parent_fulfillment_reallocation');
             }
             $before = [
                 'workflow_status' => $root->workflow_status,
@@ -157,10 +161,16 @@ final class ParentFulfillmentReallocationService
         });
     }
 
+    private const DISPATCH_RISK_WORKFLOW = ['sending', 'sent', 'resent', 'partially_shipped', 'shipped', 'shipping', 'shared', 'arrived', 'completed', 'finished'];
+
     private function assertNoDispatch(Order $member, ?Shipment $shipment, bool $isRoot): void
     {
         $message = '履约 '.$member->erp_order_id.' 存在真实发货或仓库接单风险，请先核实并撤单，不能直接归档。';
         abort_if(! in_array($member->order_status?->value, ['pending_shipment', 'cancelled'], true)
+            || in_array($member->workflow_status, self::DISPATCH_RISK_WORKFLOW, true)
+            || $member->workflowStatusHistory()->where(fn ($history) => $history
+                ->whereIn('from_status', self::DISPATCH_RISK_WORKFLOW)
+                ->orWhereIn('to_status', self::DISPATCH_RISK_WORKFLOW))->exists()
             || $member->manualSync()->whereNotNull('synced_at')->exists()
             || $member->shipmentAttempts()->exists()
             || $member->logisticsReview()->exists()
@@ -177,6 +187,10 @@ final class ParentFulfillmentReallocationService
             // Manual exporters have no reliable per-order download ledger.
             // Never reset routes without a mandatory warehouse review gate.
             $code = strtoupper((string) $shipment->warehouse?->code);
+            // The domestic ready query also accepts legacy null workflow. A
+            // factory segment must positively be in a pre-export phase.
+            abort_if($code === 'FACTORY' && ! in_array($member->workflow_status,
+                ['pending_review', 'pending_allocation', 'out_of_stock'], true), 409, $message);
             abort_if($shipment->warehouse_id !== null && ! in_array($code, ['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'DE', 'CA'], true), 409, $message);
         }
         foreach (['shipout_dispatch_attempts', 'shipout_production_batch_items', 'shipout_oms_readbacks',

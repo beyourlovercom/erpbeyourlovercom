@@ -821,4 +821,27 @@ describe('parent reallocation confirmation', () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({confirmed:true,token:'a'.repeat(64)})
     wrapper.unmount()
   })
+  it('preserves the plan and displays a dispatch conflict without a retry', async () => {
+    const order={...manualOrder,reallocation_token:'b'.repeat(64),workflow_revision:2}
+    const fetchMock=vi.fn().mockResolvedValue({ok:false,status:409,headers:{get:()=>null},json:async()=>({message:'存在仓库接单风险，不能直接归档。'})})
+    vi.stubGlobal('fetch',fetchMock)
+    const wrapper=mountPage({...props,orders:{...props.orders,data:[order],total:1}})
+    await wrapper.findAll('button').find(button=>button.text()==='查看方案')!.trigger('click')
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-open"]')!.click()
+    await flushPromises()
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-confirm-submit"]')!.click()
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(document.body.querySelector('.modal-actions .submit-error')?.textContent).toContain('存在仓库接单风险')
+    expect(document.body.querySelector('[data-testid="reallocation-open"]')).not.toBeNull()
+    wrapper.unmount()
+  })
+  it('does not expose reset to a read-only operator', async () => {
+    const order={...manualOrder,reallocation_token:'c'.repeat(64),workflow_revision:2}
+    const wrapper=mountPage({...props,canOperate:false,orders:{...props.orders,data:[order],total:1}})
+    await wrapper.findAll('button').find(button=>button.text()==='查看方案')!.trigger('click')
+    await flushPromises()
+    expect(document.body.querySelector('[data-testid="reallocation-open"]')).toBeNull()
+    wrapper.unmount()
+  })
 })
