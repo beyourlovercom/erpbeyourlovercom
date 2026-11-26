@@ -11,18 +11,7 @@ final class LocalDatabaseBackupService
     /** @return array{path:string,filename:string,size:int,sha256:string,stream:resource} */
     public function create(): array
     {
-        $directory = (string) config('backup.local.directory', base_path('backup'));
-        if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
-            throw new RuntimeException('Backup directory unavailable.');
-        }
-        $root = realpath($directory);
-        $public = realpath(public_path());
-        if ($root === false || $public === false || $root === $public || str_starts_with($root, $public.DIRECTORY_SEPARATOR)) {
-            throw new RuntimeException('Backup directory must be private.');
-        }
-        if (! chmod($root, 0700)) {
-            throw new RuntimeException('Backup directory permissions failed.');
-        }
+        $root = $this->root(true);
         $lock = fopen($root.'/.backup.lock', 'c');
         if ($lock === false) {
             throw new RuntimeException('Backup lock unavailable.');
@@ -96,6 +85,86 @@ final class LocalDatabaseBackupService
             }
             flock($lock, LOCK_UN);
             fclose($lock);
+        }
+    }
+
+    private function root(bool $create = false): ?string
+    {
+        $directory = (string) config('backup.local.directory', base_path('backup'));
+        if (! is_dir($directory)) {
+            if (! $create) {
+                return null;
+            }
+            if (! mkdir($directory, 0700, true) && ! is_dir($directory)) {
+                throw new RuntimeException('Backup directory unavailable.');
+            }
+        }
+        $root = realpath($directory);
+        $public = realpath(public_path());
+        if ($root === false || $public === false || $root === $public || str_starts_with($root, $public.DIRECTORY_SEPARATOR)) {
+            throw new RuntimeException('Backup directory must be private.');
+        }
+        if ($create && ! chmod($root, 0700)) {
+            throw new RuntimeException('Backup directory permissions failed.');
+        }
+
+        return $root;
+    }
+
+    private function validFilename(string $filename): bool
+    {
+        return preg_match('/^erp-db-\d{8}-\d{6}-\d{6}-[a-f0-9]{8}\.sql\.gz$/D', $filename) === 1;
+    }
+
+    public function recent(): array
+    {
+        $root = $this->root();
+        if ($root === null) {
+            return [];
+        }
+        $files = array_filter(glob($root.'/erp-db-*.sql.gz') ?: [], fn ($file) => $this->validFilename(basename($file)) && is_file($file) && ! is_link($file));
+        rsort($files, SORT_STRING);
+        $rows = [];
+        foreach (array_slice($files, 0, 3) as $file) {
+            $size = filesize($file);
+            if ($size !== false && $size >= 20) {
+                $rows[] = ['filename' => basename($file), 'size' => $size];
+            }
+        }
+
+        return $rows;
+    }
+
+    /** Open only a retained, verified backup; never accept a filesystem path. */
+    public function open(string $filename): ?array
+    {
+        if (! $this->validFilename($filename)) {
+            return null;
+        }
+        $root = $this->root();
+        if ($root === null || ! in_array($filename, array_column($this->recent(), 'filename'), true)) {
+            return null;
+        }
+        $path = $root.'/'.$filename;
+        if (is_link($path) || ! is_file($path) || str_replace('\\', '/', (string) realpath($path)) !== str_replace('\\', '/', $path)) {
+            return null;
+        }
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            return null;
+        }
+        try {
+            $this->verifyGzip($path);
+            $sha = hash_file('sha256', $path);
+            $size = fstat($stream)['size'] ?? false;
+            if ($sha === false || $size === false || $size < 20) {
+                throw new RuntimeException('Backup integrity check failed.');
+            }
+
+            return ['filename' => $filename, 'size' => $size, 'sha256' => $sha, 'stream' => $stream];
+        } catch (\Throwable $e) {
+            fclose($stream);
+            throw $e;
         }
     }
 

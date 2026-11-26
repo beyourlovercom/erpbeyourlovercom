@@ -1,57 +1,40 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
-
 vi.mock('@inertiajs/vue3', () => ({ Head: { template: '<span />' } }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
-
 afterEach(() => vi.unstubAllGlobals())
-
-describe('Manual database backup', () => {
-  it('only shows the single manual action to authorized staff', () => {
-    const wrapper = mount(Index, { props: { canDownloadDatabase: true } })
-    expect(wrapper.findAll('button')).toHaveLength(1)
-    expect(wrapper.text()).toContain('一键备份并下载到电脑')
-    expect(wrapper.text()).toContain('最多保留 3 份')
-    expect(wrapper.text()).not.toContain('自动备份')
-    expect(wrapper.text()).not.toContain('GitHub')
-  })
-
-  it('does not render a download control for view-only staff', () => {
-    const wrapper = mount(Index, { props: { canDownloadDatabase: false } })
-    expect(wrapper.find('button').exists()).toBe(false)
-    expect(wrapper.text()).toContain('仅管理员')
-  })
-
-  it('starts a local file download only after a successful gzip response', async () => {
-    const filename = 'erp-db-20261126-140000-000000-abcd1234.sql.gz'
-    const blob = new Blob(['synthetic gzip'], { type: 'application/gzip' })
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, headers: new Headers({
-      'content-type': 'application/gzip', 'content-disposition': 'attachment; filename="' + filename + '"',
-    }), blob: async () => blob }))
-    const create = vi.fn().mockReturnValue('blob:synthetic-test')
-    vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() })
-    const clicked = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-      expect(this.download).toBe(filename)
-    })
-    const wrapper = mount(Index, { props: { canDownloadDatabase: true } })
-    await wrapper.get('button').trigger('click')
+const file = {filename:'erp-db-20261126-140000-000000-abcd1234.sql.gz',size:1234}
+const ok = (data: unknown) => ({ok:true,json:async()=>data})
+describe('Two-stage manual backup', () => {
+  it('creates backup without downloading and exposes a repeatable file link', async () => {
+    const request=vi.fn().mockResolvedValueOnce(ok({files:[]})).mockResolvedValueOnce(ok({success:true,backup:file,files:[file]}))
+    vi.stubGlobal('fetch',request)
+    const w=mount(Index,{props:{canDownloadDatabase:true}})
     await flushPromises()
-    expect(create).toHaveBeenCalledWith(blob)
-    expect(clicked).toHaveBeenCalledOnce()
-    expect(wrapper.get('[role=status]').text()).toContain('已发起浏览器下载')
-    clicked.mockRestore()
-    wrapper.unmount()
+    expect(w.find('a[download]').exists()).toBe(false)
+    await w.get('button').trigger('click');await flushPromises()
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(request).toHaveBeenLastCalledWith('/settings/backup/create',expect.objectContaining({method:'POST'}))
+    expect(w.get('[role=status]').text()).toContain('数据库备份成功')
+    expect(w.get('a[download]').attributes('href')).toBe('/settings/backup/file?filename='+file.filename)
   })
-
-  it('reports failure and unlocks the button without downloading an error response', async () => {
-    const request = vi.fn().mockResolvedValue({ ok: false })
-    vi.stubGlobal('fetch', request)
-    const wrapper = mount(Index, { props: { canDownloadDatabase: true } })
-    await wrapper.get('button').trigger('click')
-    await flushPromises()
-    expect(request).toHaveBeenCalledWith('/settings/backup/download', expect.objectContaining({ method: 'POST', credentials: 'same-origin' }))
-    expect(wrapper.get('[role=alert]').text()).toContain('失败')
-    expect(wrapper.get('button').attributes('disabled')).toBeUndefined()
+  it('lists existing backup after reopening page, with no new creation',async()=>{
+    const request=vi.fn().mockResolvedValue(ok({files:[file]}));vi.stubGlobal('fetch',request)
+    const w=mount(Index,{props:{canDownloadDatabase:true}});await flushPromises()
+    expect(w.get('a[download]').attributes('download')).toBe(file.filename)
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+  it('does not access files for non-authorized staff',async()=>{
+    const request=vi.fn();vi.stubGlobal('fetch',request)
+    const w=mount(Index,{props:{canDownloadDatabase:false}});await flushPromises()
+    expect(w.find('button').exists()).toBe(false);expect(request).not.toHaveBeenCalled()
+  })
+  it('does not claim success on a rejected create',async()=>{
+    const request=vi.fn().mockResolvedValueOnce(ok({files:[file]})).mockResolvedValueOnce({ok:false}).mockResolvedValueOnce(ok({files:[file]}));vi.stubGlobal('fetch',request)
+    const w=mount(Index,{props:{canDownloadDatabase:true}});await flushPromises()
+    await w.get('button').trigger('click');await flushPromises()
+    expect(w.get('[role=alert]').text()).toContain('未确认')
+    expect(w.find('a[download]').exists()).toBe(true)
   })
 })
