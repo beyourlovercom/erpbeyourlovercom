@@ -52,6 +52,22 @@ final class OrderIdentityContractTest extends TestCase
         }
     }
 
+    public function test_warehouse_reference_preserves_collaboration_prefix_and_split_suffix(): void
+    {
+        $reference = app(\App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference::class);
+        $model = \App\Modules\Orders\Infrastructure\Models\Order::class;
+        foreach (['CY01265-007', 'PARTNERX00001-007'] as $id) {
+            $parent = new $model(['erp_order_id' => $id, 'source_type' => 'collaboration']);
+            $this->assertSame($id, $reference->warehouse($parent));
+            $this->assertSame(substr($id, 0, -4), $reference->canada($parent));
+            $child = new $model(['erp_order_id' => $id.'A', 'source_type' => 'manual_other', 'fulfillment_parent_id' => 1]);
+            $child->setRelation('fulfillmentParent', $parent);
+            $this->assertSame($id.'A', $reference->warehouse($child));
+        }
+        $this->expectException(\DomainException::class);
+        $reference->warehouse(new $model(['erp_order_id' => 'CY01265-007', 'source_type' => 'manual_other']));
+    }
+
     public function test_kol_daily_sequence_uses_china_creation_date_and_never_reuses_numbers(): void
     {
         $service = app(OrderIdentityService::class);
