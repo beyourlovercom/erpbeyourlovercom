@@ -94,7 +94,7 @@ final class PendingFulfillmentReallocationService
             ], $actor);
 
             foreach ($child->items as $item) {
-                $mapped = $this->finalSkus->mapped((int) $item->product_id, (int) $warehouse->getKey());
+                $mapped = $this->finalSkus->expected((int) $item->product_id, (int) $warehouse->getKey());
                 $finalSku = $mapped ?? $this->finalSkus->resolve(
                     (int) $item->product_id, $canonicalCode,
                     (string) ($item->source_sku ?: $item->sku),

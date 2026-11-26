@@ -48,4 +48,12 @@ jobs:
             tests/Feature/Logistics/ShipOutProductionBatchTest.php \
             tests/Feature/Logistics/ShipOutProductionCanaryDispatchServiceTest.php \
             tests/Feature/Logistics/ShipOutProductionDuplicateRiskGuardTest.php \
+            tests/Feature/Logistics/WarehouseFinalSkuContractTest.php \
+            tests/Feature/Logistics/WarehousePhysicalSkuMaterializationTest.php \
+            tests/Feature/Logistics/ExternalProcurementWorkflowTest.php \
+            tests/Feature/Logistics/FulfillmentAllocationV1Test.php \
+            tests/Feature/Logistics/PendingFulfillmentReallocationTest.php \
+            tests/Feature/Orders/OrderItemAmendmentPreflightTest.php \
+            tests/Feature/Logistics/DomesticTodayOrdersExportTest.php \
+            tests/Feature/Logistics/DomesticLogisticsProductionClosureTest.php \
             --no-ansi

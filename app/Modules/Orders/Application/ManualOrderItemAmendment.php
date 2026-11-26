@@ -39,7 +39,10 @@ final class ManualOrderItemAmendment
             foreach ($items->whereIn('id', $changedIds) as $item) {
                 // Stock availability is not a prerequisite for a staff edit.
                 // A verified warehouse alias, when present, remains authoritative.
-                $sku = $this->finalSkus->mapped((int) $item->product_id, $warehouseId);
+                $sku = $this->finalSkus->expected((int) $item->product_id, $warehouseId);
+                if (config('warehouse_final_sku.require_verified_mapping')) {
+                    abort_if($sku === null, 422, '目标仓库没有经过确认的商品 SKU 映射');
+                }
                 $item->forceFill([
                     'sku' => $sku ?? $item->sku,
                     'resolved_fulfillment_sku' => $sku ?? $item->sku,

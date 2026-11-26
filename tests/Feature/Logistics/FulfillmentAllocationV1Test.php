@@ -242,6 +242,7 @@ final class FulfillmentAllocationV1Test extends TestCase
 
     public function test_factory_allocation_waits_for_liang_review_before_ready_queue(): void
     {
+        config()->set('warehouse_final_sku.require_verified_mapping', true);
         [$user, $order] = $this->scenario(1);
         $item = $order->items()->firstOrFail();
         app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
