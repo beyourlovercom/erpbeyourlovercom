@@ -108,6 +108,27 @@ final class LocalDatabaseBackupTest extends TestCase
         }
     }
 
+    public function test_two_stage_create_lists_and_downloads_without_running_dump_again(): void
+    {
+        $this->actingAs($this->admin());
+        $this->getJson('/settings/backup/files')->assertOk()->assertExactJson(['files' => []]);
+        $created = $this->postJson('/settings/backup/create')->assertOk()->assertJsonPath('success', true);
+        $filename = $created->json('backup.filename');
+        self::assertSame(1, $this->dumper->calls);
+        $this->getJson('/settings/backup/files')->assertOk()->assertJsonPath('files.0.filename', $filename);
+        for ($i = 0; $i < 2; $i++) {
+            $download = $this->get('/settings/backup/file?filename='.urlencode($filename))->assertOk();
+            self::assertSame($created->json('backup.sha256'), $download->headers->get('X-Backup-SHA256'));
+            self::assertSame($this->dumper->sql, gzdecode($download->streamedContent()));
+        }
+        self::assertSame(1, $this->dumper->calls);
+        $this->get('/settings/backup/file?filename=..%2F.env')->assertNotFound();
+        $this->actingAs($this->userWith(['backup.view']));
+        $this->postJson('/settings/backup/create')->assertForbidden();
+        $this->getJson('/settings/backup/files')->assertForbidden();
+        $this->get('/settings/backup/file?filename='.urlencode($filename))->assertForbidden();
+    }
+
     public function test_parallel_backup_is_rejected_without_running_dumper(): void
     {
         mkdir($this->directory, 0700, true);
