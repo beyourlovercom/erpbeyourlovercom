@@ -1,9 +1,12 @@
-import { createInertiaApp } from '@inertiajs/vue3'
+import { createInertiaApp, router } from '@inertiajs/vue3'
 import { createApp, h } from 'vue'
 import type { DefineComponent } from 'vue'
 import { installAssetRecovery } from './lib/assetRecovery'
 
+import { handleHttpFeedback } from './lib/httpFeedback'
+
 installAssetRecovery()
+router.on('httpException', event => handleHttpFeedback(event.detail.response))
 
 // Load only the requested ERP page. Importing all pages eagerly made every
 // first navigation pay for unrelated order, warehouse, accounting and admin UI.
