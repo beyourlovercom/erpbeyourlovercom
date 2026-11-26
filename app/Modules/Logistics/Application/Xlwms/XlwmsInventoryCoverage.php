@@ -16,6 +16,27 @@ final class XlwmsInventoryCoverage
         return $limits === null ? null : array_keys($limits);
     }
 
+    /** Exact wire spelling of a proven DE stock row; never change SKU identity. */
+    public function deProviderSkuSpelling(int $warehouseId, int $productId, string $sku): string
+    {
+        if ($sku === '' || ! Schema::hasTable('xlwms_inventory_snapshots')) return $sku;
+        $snapshot = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouseId)
+            ->orderByDesc('fetched_at')->orderByDesc('id')->first();
+        if (! $snapshot || $snapshot->wh_code !== 'Hannover'
+            || ($snapshot->summary['de_authoritative_physical_v1'] ?? false) !== true
+            || $snapshot->errors || in_array($snapshot->status, ['failed', 'not_ready'], true)
+            || $snapshot->rows()->count() !== (int) $snapshot->provider_sku_count
+            || ! in_array($productId, array_map('intval', (array) ($snapshot->summary['de_physical_applied_product_ids'] ?? [])), true)) return $sku;
+        $rows = $snapshot->rows()->where('product_id', $productId)->whereNotNull('oms_total')->get();
+        if ($rows->count() !== 1) return $sku;
+        $row = $rows->first();
+        $native = (string) $row->provider_sku;
+        if (strcasecmp($sku, $native) !== 0 || ! in_array($row->resolution_status, ['matched', 'blocked'], true)
+            || in_array(mb_strtolower(trim($native), 'UTF-8'), array_map(static fn ($s) => mb_strtolower(trim((string) $s), 'UTF-8'), (array) config('xlwms.de_excluded_inventory_skus', [])), true)) return $sku;
+        $resolved = app(\App\Modules\Products\Application\VerifiedOmsProductIdentityResolver::class)->resolve($native);
+        return ($resolved['status'] ?? null) === 'resolved' && (int) $resolved['product_id'] === $productId ? $native : $sku;
+    }
+
     /**
      * Last authoritative V2 applied snapshot's provider *available* units,
      * excluding stock the OMS already locked for pending outbound shipment.

@@ -82,6 +82,12 @@ final class SingleOrderPreview
                 $blocking[] = 'final_sku_not_verified';
                 continue;
             }
+            // ERP SKU identity is case-insensitive; the external OMS wire
+            // contract is not. Use only the exact spelling of the same verified
+            // physical SKU, never substitute a different alias or product.
+            if ($warehouseCode === 'DE' && $shipment?->warehouse?->code === 'DE' && $item->product_id) {
+                $sku = $this->coverage->deProviderSkuSpelling((int) $shipment->warehouse_id, (int) $item->product_id, $sku);
+            }
             $qty = (int) $item->quantity;
             if ($sku === '' || $qty <= 0) {
                 $blocking[] = 'invalid_item';
