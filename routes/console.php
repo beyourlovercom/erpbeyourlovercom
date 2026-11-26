@@ -127,26 +127,7 @@ Schedule::command('runtime:health --quiet --no-interaction')
     ->withoutOverlapping(10)
     ->onOneServer();
 
-Schedule::command('backup:scheduled-run daily')
-    ->dailyAt((string) config('backup.automatic.time', '02:00'))
-    ->name('backup.scheduled.daily')
-    ->timezone((string) config('backup.automatic.timezone', 'UTC'))
-    ->withoutOverlapping(180)
-    ->onOneServer();
-
-Schedule::command('backup:scheduled-run weekly')
-    ->weeklyOn((int) config('backup.automatic.weekly_day', 1), (string) config('backup.automatic.time', '02:00'))
-    ->name('backup.scheduled.weekly')
-    ->timezone((string) config('backup.automatic.timezone', 'UTC'))
-    ->withoutOverlapping(180)
-    ->onOneServer();
-
-Schedule::command('backup:scheduled-run monthly')
-    ->monthlyOn((int) config('backup.automatic.monthly_day', 1), (string) config('backup.automatic.time', '02:00'))
-    ->name('backup.scheduled.monthly')
-    ->timezone((string) config('backup.automatic.timezone', 'UTC'))
-    ->withoutOverlapping(180)
-    ->onOneServer();
+// Database backup V1 is manual only; legacy scheduled backup commands are not scheduled.
 
 if ((bool) config('services.woocommerce.product_sync_enabled', false)) {
     Schedule::command('products:sync-woocommerce --incremental')

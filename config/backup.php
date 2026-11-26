@@ -6,6 +6,9 @@ return [
         'version' => 1,
         'asset_suffix' => '.tar.zst.enc',
     ],
+    'local' => [
+        'directory' => env('ERP_LOCAL_BACKUP_DIRECTORY', base_path('backup')),
+    ],
     'storage' => [
         'included_roots' => [
             'storage/app/private',

@@ -2,14 +2,20 @@
 
 namespace App\Modules\Backup\Experience\Controllers;
 
+use App\Modules\Audit\Application\AuditActor;
+use App\Modules\Audit\Application\AuditSource;
+use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Backup\Application\BackupRunData;
 use App\Modules\Backup\Application\BackupScheduleCadence;
 use App\Modules\Backup\Application\BackupScheduleSettings;
 use App\Modules\Backup\Application\Contracts\BackupRepository;
+use App\Modules\Backup\Application\LocalDatabaseBackupService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class BackupController
 {
@@ -25,6 +31,7 @@ final class BackupController
         $timezone = (string) config('backup.automatic.timezone', 'UTC');
 
         return Inertia::render('Backup/Index', [
+            'canDownloadDatabase' => $this->canDownload($request),
             'actions' => [
                 ['key' => 'create', 'label' => '立即备份', 'available' => false],
                 ['key' => 'download', 'label' => '下载备份', 'available' => false],
@@ -54,6 +61,46 @@ final class BackupController
                 'local' => ['available' => false, 'status' => '恢复基础已就绪，操作入口尚未启用'],
                 'github' => ['available' => false, 'status' => 'GitHub 恢复基础已就绪，操作入口尚未启用'],
             ],
+        ]);
+    }
+
+    private function canDownload(Request $request): bool
+    {
+        $user = $request->user();
+
+        return $user && $user->can('backup.manage') && $user->can('backup.create') && $user->can('backup.download');
+    }
+
+    public function download(Request $request, LocalDatabaseBackupService $backup, AuditRecorder $audit): StreamedResponse|JsonResponse
+    {
+        abort_unless($this->canDownload($request), 403);
+        try {
+            $result = $backup->create();
+        } catch (\Throwable $e) {
+            // Never send database configuration, SQL or subprocess output to the browser.
+            return response()->json(['message' => '数据库备份失败或已有备份正在执行，请稍后重试。'], 503);
+        }
+        try {
+            $audit->record(AuditActor::user($request->user(), AuditSource::Web), 'backup.database.download', 'database_backup',
+                after: ['filename' => $result['filename'], 'bytes' => $result['size'], 'sha256' => $result['sha256'], 'beijing_time' => now('Asia/Shanghai')->toIso8601String()]);
+        } catch (\Throwable $e) {
+            fclose($result['stream']);
+
+            return response()->json(['message' => '备份审计记录失败，请联系管理员。'], 503);
+        }
+
+        return response()->streamDownload(static function () use ($result): void {
+            try {
+                fpassthru($result['stream']);
+            } finally {
+                fclose($result['stream']);
+            }
+        }, $result['filename'], [
+            'Content-Type' => 'application/gzip',
+            'Content-Length' => (string) $result['size'],
+            'Cache-Control' => 'no-store, private',
+            'X-Content-Type-Options' => 'nosniff',
+            'X-Backup-SHA256' => $result['sha256'],
         ]);
     }
 
