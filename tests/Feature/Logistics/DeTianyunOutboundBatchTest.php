@@ -281,6 +281,178 @@ final class DeTianyunOutboundBatchTest extends TestCase
         }
     }
 
+    #[\PHPUnit\Framework\Attributes\DataProvider('preCreateRecoveryScenarios')]
+    public function test_explicit_pre_create_recovery_reuses_attempt_and_never_reposts(string $scenario, string $expectedStatus, string $expectedState, int $expectedCalls): void
+    {
+        $operator = $this->operator();
+        $order = $this->order($operator, 'RECOVER-LIVE');
+        $this->actingAs($operator);
+        $productId = (int) $order->items()->firstOrFail()->product_id;
+        $warehouseId = (int) $order->shipment->warehouse_id;
+        WarehouseInventory::query()->where('warehouse_id', $warehouseId)
+            ->where('product_id', $productId)
+            ->update(['provider_available_quantity' => 8]);
+        $snapshot = XlwmsInventorySnapshot::query()->create([
+            'warehouse_id' => $warehouseId, 'wh_code' => 'Hannover',
+            'checksum' => str_repeat('a', 64), 'status' => 'blocked',
+            'fetched_at' => now(), 'mapped_sku_count' => 1,
+            'provider_sku_count' => 1, 'unmatched_sku_count' => 0,
+            'blocked_sku_count' => 0,
+            'summary' => ['v2' => true, 'de_authoritative_physical_v1' => true,
+                'de_physical_applied_product_ids' => [$productId], 'de_authoritative_physical_sku_count' => 1],
+        ]);
+        $snapshot->rows()->create([
+            'provider_sku' => 'DE-Existing', 'product_id' => $productId,
+            'resolution_status' => 'matched', 'oms_total' => 8,
+            'oms_available' => 8, 'oms_locked' => 0, 'oms_in_transit' => 0,
+        ]);
+        $oldEnv = $this->app['env'];
+        $this->app->instance('env', 'production');
+        config()->set('xlwms.de_order_batch_read_enabled', true);
+        config()->set('xlwms.de_order_batch_live_enabled', true);
+        config()->set('xlwms.de_order_batch_live_order_ids', []);
+        config()->set('xlwms.de_operator_batch_enabled', true);
+        config()->set('xlwms.de_production_read_enabled', true);
+        config()->set('xlwms.de_authoritative_auto_apply_enabled', true);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('inventory_sku_gate.enabled', true);
+        $inventory = \Mockery::mock(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryGateway::class);
+        $inventory->shouldReceive('productPage')->andReturn(['code'=>200,'data'=>[
+            'records'=>[['sku'=>'DE-Existing','productName'=>'Synthetic'], ['sku'=>'UNKNOWN-ZERO'], ['sku'=>'UNKNOWN-POSITIVE']],
+            'total'=>3,'page'=>1,'pageSize'=>10,'pages'=>1,
+        ]]);
+        $inventory->shouldReceive('integratedInventoryPage')->andReturn(['code'=>200,'data'=>[
+            'records'=>[['sku'=>'DE-Existing','whCode'=>'Hannover','stockType'=>0,'productTotalAmount'=>8,
+                'productStockDtl'=>['availableAmount'=>8,'lockAmount'=>0,'transportAmount'=>0]],
+                ['sku'=>'UNKNOWN-ZERO','whCode'=>'Hannover','stockType'=>0,'productTotalAmount'=>0,
+                    'productStockDtl'=>['availableAmount'=>0,'lockAmount'=>0,'transportAmount'=>0]],
+                ['sku'=>'UNKNOWN-POSITIVE','whCode'=>'Hannover','stockType'=>0,'productTotalAmount'=>3,
+                    'productStockDtl'=>['availableAmount'=>3,'lockAmount'=>0,'transportAmount'=>0]]],
+            'total'=>3,'page'=>1,'pageSize'=>10,'pages'=>1,
+        ]]);
+        $this->app->instance(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryGateway::class, $inventory);
+        Queue::fake();
+        $createCalls = 0;
+        Http::fake(function ($request) use (&$createCalls, $order, $scenario) {
+            $path = parse_url($request->url(), PHP_URL_PATH);
+            if (str_ends_with($path, '/outboundOrder/detail')) {
+                if ($scenario === 'duplicate') {
+                    return Http::response(['code' => 200, 'data' => [[
+                        'outboundOrderNo' => 'DE-DUPLICATE-1', 'whCode' => 'Hannover',
+                        'thirdOrderNo' => 'BYL-ERP-'.$order->id,
+                        'platformOrderNo' => (string) $order->erp_order_id,
+                        'productList' => [['sku' => 'DE-Existing', 'quantity' => 1]],
+                    ]]]);
+                }
+                return Http::response(['code' => 200, 'data' => []]);
+            }
+            if (str_ends_with($path, '/outboundOrder/pageList')) {
+                if ($createCalls === 0) {
+                    return Http::response(['code' => 200,
+                        'data' => ['records' => [], 'total' => 0]]);
+                }
+                return Http::response(['code' => 200, 'data' => [
+                    'records' => [[
+                        'outboundOrderNo' => 'DE-LIVE-0001', 'whCode' => 'Hannover',
+                        'thirdOrderNo' => 'BYL-ERP-'.$order->id,
+                        'platformOrderNo' => (string) $order->erp_order_id,
+                        'referOrderNo' => (string) $order->erp_order_id, 'status' => 0,
+                    ]], 'total' => 1,
+                ]]);
+            }
+            if (str_ends_with($path, '/logistics/channel/list')) {
+                return Http::response(['code' => 200, 'data' => [
+                    ['channelCode' => 'DHL PAKET DOMESTIC', 'whCodes' => ['Hannover']],
+                ]]);
+            }
+            if (str_ends_with($path, '/product/pagelist')) {
+                return Http::response(['code' => 200, 'data' => [
+                    'records' => [['sku' => 'DE-Existing', 'approveStatus' => 2]],
+                ]]);
+            }
+            if (str_ends_with($path, '/outboundOrder/create')) {
+                self::assertSame('DE-Existing', json_decode(json_encode($request['data']), true)[0]['productList'][0]['sku']);
+                $createCalls++;
+                if ($scenario === 'uncertain') return Http::response([], 500);
+                return Http::response(['code' => 200, 'data' => [[
+                    'thirdOrderNo' => 'BYL-ERP-'.$order->id,
+                    'success' => true, 'orderNo' => 'DE-LIVE-0001',
+                ]]]);
+            }
+            return Http::response([], 500);
+        });
+        try {
+            $service = app(DeTianyunOutboundBatchService::class);
+            $oldHash = str_repeat('e', 64);
+            $attemptId = DB::table('xlwms_dispatch_attempts')->insertGetId([
+                'order_id' => $order->id, 'warehouse_id' => $warehouseId,
+                'third_order_no' => 'BYL-ERP-'.$order->id, 'state' => 'blocked_preflight_error',
+                'request_fingerprint' => $oldHash, 'requested_by' => $operator->id,
+                'failure_code' => 'DE_OMS_PREFLIGHT_OR_DUPLICATE_LOOKUP_FAILED',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $oldBatch = (string) \Illuminate\Support\Str::uuid();
+            DB::table('xlwms_de_dispatch_batches')->insert([
+                'id' => $oldBatch, 'operator_user_id' => $operator->id, 'status' => 'completed_partial',
+                'dry_run' => false, 'total' => 1, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            DB::table('xlwms_de_dispatch_batch_items')->insert([
+                'batch_id' => $oldBatch, 'order_id' => $order->id, 'order_no' => $order->erp_order_id,
+                'payload_hash' => $oldHash, 'status' => 'skipped',
+                'result_code' => 'DE_OMS_PREFLIGHT_OR_DUPLICATE_LOOKUP_FAILED',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            self::assertSame(0, $service->preview([$order->id])['count']);
+            self::assertSame(1, $service->preview([$order->id], [$order->id => $attemptId])['count']);
+            foreach (['request_in_flight', 'uncertain_manual_reconcile', 'oms_create_confirmed', 'blocked_existing_oms_order'] as $unsafe) {
+                DB::table('xlwms_dispatch_attempts')->where('id', $attemptId)->update(['state' => $unsafe]);
+                self::assertSame(0, $service->preview([$order->id], [$order->id => $attemptId])['count']);
+            }
+            DB::table('xlwms_dispatch_attempts')->where('id', $attemptId)->update(['state' => 'blocked_preflight_error']);
+            DB::table('xlwms_dispatch_attempts')->where('id', $attemptId)->update(['oms_order_no' => 'EXISTING-OMS']);
+            self::assertSame(0, $service->preview([$order->id], [$order->id => $attemptId])['count']);
+            DB::table('xlwms_dispatch_attempts')->where('id', $attemptId)->update(['oms_order_no' => null]);
+            self::assertSame(0, $service->preview([$order->id], [$order->id => $attemptId + 1])['count']);
+            try {
+                $service->startRecovery($operator->id, $order->id, $attemptId, 'WRONG');
+                self::fail('Missing exact confirmation must not create a batch');
+            } catch (\RuntimeException $e) {
+                self::assertSame('DE_PREFLIGHT_RECOVERY_NOT_AUTHORIZED', $e->getMessage());
+            }
+            $batch = $service->startRecovery($operator->id, $order->id, $attemptId,
+                'RECOVER_DE_PREFLIGHT_'.$order->id.'_'.$attemptId);
+            Queue::assertNothingPushed();
+            $job = new ProcessDeTianyunOutboundBatch($batch);
+            $job->handle(app(DeTianyunOutboundBatchService::class),
+                app(LogisticsExecutionAccess::class), app(DeTianyunLiveOrderCreateService::class));
+            $this->getJson('/logistics/oversea/de-tianyun/xlwms/batch/'.$batch.'/status')
+                ->assertOk()->assertJsonPath('items.0.status', $expectedStatus);
+            self::assertSame($expectedCalls, $createCalls);
+            self::assertSame(1, DB::table('xlwms_dispatch_attempts')
+                ->where('order_id', $order->id)->count());
+            self::assertSame($expectedState, DB::table('xlwms_dispatch_attempts')
+                ->where('order_id', $order->id)->value('state'));
+            self::assertSame($attemptId, DB::table('xlwms_dispatch_attempts')->where('order_id', $order->id)->value('id'));
+            self::assertSame(1, DB::table('audit_records')->where('action', 'logistics.de_preflight_recovery')->count());
+            self::assertSame(0, $service->preview([$order->id], [$order->id => $attemptId])['count']);
+            self::assertSame('pending', $order->fresh()->shipment->shipment_status);
+            $job->handle(app(DeTianyunOutboundBatchService::class),
+                app(LogisticsExecutionAccess::class), app(DeTianyunLiveOrderCreateService::class));
+            self::assertSame($expectedCalls, $createCalls);
+        } finally {
+            $this->app->instance('env', $oldEnv);
+        }
+    }
+
+    public static function preCreateRecoveryScenarios(): array
+    {
+        return [
+            'confirmed exact native spelling' => ['success', 'created', 'oms_create_confirmed', 1],
+            'existing OMS prevents any POST' => ['duplicate', 'skipped', 'blocked_existing_oms_order', 0],
+            'unknown POST result cannot reopen' => ['uncertain', 'uncertain', 'uncertain_manual_reconcile', 1],
+        ];
+    }
+
     public function test_de_preflight_rejects_only_unproven_or_insufficient_order_items_and_stale_source(): void
     {
         config()->set('inventory_sku_gate.enabled', true);

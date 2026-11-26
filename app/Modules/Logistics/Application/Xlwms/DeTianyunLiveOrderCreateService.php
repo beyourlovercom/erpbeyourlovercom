@@ -24,7 +24,7 @@ final class DeTianyunLiveOrderCreateService
     ) {}
 
     /** @return array{status:string,code:string,oms_order_no:?string} */
-    public function create(int $orderId, string $expectedFingerprint, int $actorId): array
+    public function create(int $orderId, string $expectedFingerprint, int $actorId, ?int $recoveryAttemptId = null): array
     {
         if (! app()->environment('production', 'testing')
             || ! (bool) config('xlwms.de_order_batch_live_enabled', false)
@@ -56,13 +56,30 @@ final class DeTianyunLiveOrderCreateService
             throw new RuntimeException('DE_OMS_WAREHOUSE_MISMATCH');
         }
 
-        // Unique order and third-party reference ledger are established BEFORE
-        // touching OMS; any existing record blocks a second CREATE forever.
-        $attempt = DB::transaction(function () use ($order, $actorId, $fresh) {
-            if (XlwmsDispatchAttempt::query()->where('order_id', $order->id)
-                ->lockForUpdate()->exists()) {
-                throw new RuntimeException('DE_ORDER_ALREADY_HAS_PROVIDER_ATTEMPT');
+        // Retain the unique attempt ledger forever. A separately claimed and
+        // audited recovery may reopen ONLY a proven pre-CREATE failure.
+        $attempt = DB::transaction(function () use ($order, $actorId, $fresh, $recoveryAttemptId) {
+            $prior = XlwmsDispatchAttempt::query()->where('order_id', $order->id)->lockForUpdate()->first();
+            if ($recoveryAttemptId !== null) {
+                if (! $prior || ! DeTianyunPreflightRecovery::eligible($prior, $order, $recoveryAttemptId)
+                    || ! DeTianyunPreflightRecovery::claimed((int) $order->id, $actorId, $fresh['payload_hash'], $recoveryAttemptId)) {
+                    throw new RuntimeException('DE_PREFLIGHT_RECOVERY_NOT_SAFE');
+                }
+                $actor = \App\Models\User::query()->findOrFail($actorId);
+                if (! $actor->is_active || ! app(\App\Modules\Logistics\Application\LogisticsExecutionAccess::class)->allows($actor)) {
+                    throw new RuntimeException('DE_PREFLIGHT_RECOVERY_NOT_AUTHORIZED');
+                }
+                app(\App\Modules\Audit\Application\Contracts\AuditRecorder::class)->record(
+                    \App\Modules\Audit\Application\AuditActor::user($actor, \App\Modules\Audit\Application\AuditSource::InternalSystem),
+                    'logistics.de_preflight_recovery', XlwmsDispatchAttempt::class, $prior->id,
+                    before: ['state' => $prior->state, 'failure_code' => $prior->failure_code, 'request_fingerprint' => $prior->request_fingerprint, 'requested_by' => $prior->requested_by],
+                    after: ['state' => 'checking_existing', 'request_fingerprint' => $fresh['payload_hash'], 'requested_by' => $actorId],
+                    reason: 'explicit_pre_create_only_recovery');
+                $prior->forceFill(['state' => 'checking_existing', 'request_fingerprint' => $fresh['payload_hash'],
+                    'requested_by' => $actorId, 'failure_code' => null, 'last_checked_at' => now()])->save();
+                return $prior;
             }
+            if ($prior) throw new RuntimeException('DE_ORDER_ALREADY_HAS_PROVIDER_ATTEMPT');
             return XlwmsDispatchAttempt::query()->create([
                 'order_id' => $order->id,
                 'warehouse_id' => $order->shipment->warehouse_id,
@@ -149,11 +166,31 @@ final class DeTianyunLiveOrderCreateService
             ], true);
             $code = $uncertain ? 'DE_OMS_CREATE_RESULT_UNCERTAIN'
                 : 'DE_OMS_PREFLIGHT_OR_DUPLICATE_LOOKUP_FAILED';
+            $stage = $attempt->state;
             $attempt->forceFill([
                 'state' => $uncertain ? 'uncertain_manual_reconcile' : 'blocked_preflight_error',
                 'failure_code' => $code,
                 'last_checked_at' => now(),
             ])->save();
+            // Only allowlisted machine codes, no provider payload or credentials.
+            $reason = explode(':', $error->getMessage(), 2)[0];
+            if (! in_array($reason, [
+                'OMS_TRANSPORT_UNCERTAIN', 'OMS_SERVER_UNCERTAIN', 'OMS_HTTP_REJECTED', 'OMS_BUSINESS_REJECTED',
+                'OMS_DUPLICATE_LOOKUP_INPUT_INVALID', 'OMS_DETAIL_RESPONSE_INVALID', 'OMS_PAGE_RESPONSE_INVALID',
+                'OMS_DUPLICATE_SCAN_INCOMPLETE', 'OMS_STATUS_IDENTITY_MISMATCH', 'OMS_DUPLICATE_AMBIGUOUS',
+                'OMS_ITEM_QUANTITY_INVALID', 'OMS_CATALOG_INPUT_INVALID', 'OMS_CHANNEL_NOT_AVAILABLE',
+                'OMS_PRODUCT_CATALOG_UNAVAILABLE', 'OMS_SKU_NOT_APPROVED_OR_MISSING', 'DE_ORDER_CHANGED_DURING_SCAN',
+                'DE_PHYSICAL_SYNC_ALREADY_RUNNING', 'DE_PHYSICAL_SNAPSHOT_NOT_FRESH_OR_WRONG_WAREHOUSE',
+                'DE_PHYSICAL_PROVIDER_NOT_READY', 'DE_PHYSICAL_INCOMPLETE_PROVIDER_COVERAGE',
+                'DE_PHYSICAL_INVALID_SOURCE_STOCK', 'DE_OMS_CREATE_UNCONFIRMED', 'OMS_CREATE_NOT_CONFIRMED',
+                'OMS_STATUS_RESPONSE_INVALID', 'OMS_STATUS_QUERY_INVALID', 'XLWMS_OPENAPI_CREATE_BLOCKED_USE_OMS_DRAFT_IMPORT',
+            ], true)) $reason = 'DE_UNCLASSIFIED_GUARD_FAILURE';
+            try {
+                logger()->warning('DE_OMS_OUTBOUND_GUARD_FAILURE', ['order_id' => $orderId,
+                    'attempt_id' => $attempt->id, 'stage' => $stage, 'reason' => $reason]);
+            } catch (Throwable) {
+                // Durable failure state already saved; log transport cannot change it.
+            }
             return $this->result($attempt, $uncertain ? 'uncertain' : 'skipped', $code);
         }
     }
