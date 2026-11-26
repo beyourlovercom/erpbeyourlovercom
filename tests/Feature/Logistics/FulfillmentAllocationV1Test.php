@@ -724,7 +724,7 @@ final class FulfillmentAllocationV1Test extends TestCase
         $this->assertCount(6, $parent->fulfillmentChildren()->get());
     }
 
-    public function test_parent_reset_rejects_tracking_or_shipped_child_without_partial_archival(): void
+    public function test_parent_reset_blocks_tracking_but_allows_previous_review_and_dispatch_without_tracking(): void
     {
         [$actor, $parent] = $this->scenario(2);
         $this->actingAs($actor)->postJson('/logistics/orders/'.$parent->id.'/fulfillment-allocation/manual', [
@@ -737,36 +737,45 @@ final class FulfillmentAllocationV1Test extends TestCase
         $children->last()->shipment()->update(['tracking_number' => 'TEST-TRACKING']);
         $parent->refresh();
         $token = \App\Modules\Logistics\Application\ParentFulfillmentReallocationService::token($parent, $parent->fulfillmentAllocation);
-        $this->actingAs($actor)->postJson('/logistics/orders/'.$parent->id.'/fulfillment-allocation/reset', [
+        $reset = '/logistics/orders/'.$parent->id.'/fulfillment-allocation/reset';
+        $this->actingAs($actor)->postJson($reset, [
             'confirmed' => true, 'token' => $token,
-        ])->assertConflict();
+        ])->assertConflict()->assertJsonPath('message', '履约 '.$children->last()->erp_order_id.' 已有物流单号，请人工确认是否已发货，并手工调整母订单。不能自动归档。');
         $this->assertCount(2, $parent->originalFulfillmentChildren()->get());
         $this->assertSame('submitted', $parent->fulfillmentAllocation()->firstOrFail()->status);
         $this->assertDatabaseMissing('audit_records', ['action' => 'fulfillment.parent_reallocation_reset', 'entity_id' => (string) $parent->id]);
         $children->last()->shipment()->update(['tracking_number' => null]);
-        // Staff can manually advance to sending and return to review; the
-        // prior status is evidence that a manual export may have occurred.
+        $historical = \App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt::query()->create([
+            'order_id' => $children->last()->id, 'attempt_number' => 1, 'shipment_status' => 'historical_evidence',
+            'tracking_number' => 'HISTORICAL-TRACKING', 'snapshotted_at' => now(),
+        ]);
+        $this->actingAs($actor)->postJson($reset, ['confirmed' => true, 'token' => $token])->assertConflict();
+        $this->assertCount(2, $parent->originalFulfillmentChildren()->get());
+        // Retain a prior attempt but remove the synthetic tracking value to test the no-number branch.
+        $historical->forceFill(['tracking_number' => null])->save();
+        // Prior manual export status and uncertain OMS dispatch without tracking
+        // are retained but are not standalone vetoes under the Owner rule.
         $factory = $children->last();
         $workflow = app(\App\Modules\Orders\Application\OrderWorkflowStatusService::class);
         $workflow->set($factory, 'sending', $factory->workflow_revision, $actor);
         $factory->refresh();
         $workflow->set($factory, 'pending_review', $factory->workflow_revision, $actor);
-        $this->actingAs($actor)->postJson('/logistics/orders/'.$parent->id.'/fulfillment-allocation/reset', [
-            'confirmed' => true, 'token' => $token,
-        ])->assertConflict();
-        $this->assertCount(2, $parent->originalFulfillmentChildren()->get());
-        // Isolate the next synthetic case from the preceding history.
-        $factory->workflowStatusHistory()->whereIn('to_status', ['sending', 'pending_review'])->delete();
-        // No tracking is not proof that an OMS push did not succeed.
-        \Illuminate\Support\Facades\DB::table('shipout_dispatch_attempts')->insert([
+        $attemptId = \Illuminate\Support\Facades\DB::table('shipout_dispatch_attempts')->insertGetId([
             'order_id' => $children->first()->id, 'order_no' => $children->first()->erp_order_id,
             'provider_warehouse_id' => 'synthetic', 'payload_hash' => str_repeat('0', 64),
             'status' => 'uncertain', 'created_at' => now(), 'updated_at' => now(),
         ]);
-        $this->actingAs($actor)->postJson('/logistics/orders/'.$parent->id.'/fulfillment-allocation/reset', [
+        $children->first()->forceFill(['order_status'=>'completed'])->save();
+        $children->first()->overseaWarehouseReview()->update(['status'=>'approved']);
+        $factory->shipment()->update(['tracking_number' => '   ']);
+        $this->actingAs($actor)->postJson($reset, [
             'confirmed' => true, 'token' => $token,
-        ])->assertConflict();
-        $this->assertCount(2, $parent->originalFulfillmentChildren()->get());
+        ])->assertOk()->assertJsonPath('archived_count',2);
+        $this->assertCount(0, $parent->originalFulfillmentChildren()->get());
+        $this->assertCount(2, $parent->fulfillmentChildren()->get());
+        $this->assertDatabaseHas('shipout_dispatch_attempts', ['id'=>$attemptId,'status'=>'uncertain']);
+        $this->assertDatabaseHas('shipment_attempts', ['id'=>$historical->id,'tracking_number'=>null]);
+        $this->assertDatabaseHas('order_workflow_status_histories', ['order_id'=>$factory->id,'to_status'=>'sending']);
     }
 
     private function scenario(int $itemCount): array
