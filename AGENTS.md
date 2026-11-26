@@ -1,3 +1,15 @@
+# HIGHEST OWNER-FROZEN ERP2 ADVANCED PARITY STANDARD V2 (2026-11-26)
+
+**Rule ID: `ERP2_ADVANCED_PARITY_P0_V2` · OWNER APPROVED · PERMANENT P0.** Mandatory for every existing, migrated and new ERP2 business page, feature, version sync and release acceptance. ERP1 is the minimum functional and UX baseline; ERP2 MUST inherit all valid functionality and equal or improve interaction and design. No simplified workbenches, missing actions, developer-form replacements or unjustified extra steps. Canonical Laravel business rules, role-based effective permissions, security and safety gates remain authoritative.
+
+**Only L5 Advanced Parity is PASS:** L1 route + L2 data + L3 complete function + L4 interaction + L5 approved shared components, compact design and real dual-site workflow evidence. Eight mandatory gates: S01 functional completeness, S02 data, S03 permissions, S04 interaction, S05 layout/design, S06 Unified Grid V2/shared components, S07 compact UI/feedback, S08 same-record/equivalent-snapshot and same-role real browser UAT. CI/build/HTTP 200/mock/actingAs alone cannot establish parity or employee UAT. Missing evidence = OPEN/FAIL; no parity-complete release or closure. Preserve Owner visual/UAT, CI, production authorization and all mutation/rollback gates; no production write tests.
+
+**PA4–PA6 upgrade in place:** PA4 rebaseline and reopen previously partial or simplified pages (P0 order detail/edit/create, logistics/allocation/fulfillment, KOL); PA5 verify full actual workflows and visual/permission/data equivalence, reuse U5–U6 evidence; PA6 require route-level L5 evidence and Owner acceptance. No duplicate implementation stream. Retain compliant work and historical evidence. Do not silently omit mature ERP1 functions or regress ERP2 approved improvements.
+
+Canonical full standard and acceptance-record contract: [docs/ERP2_ADVANCED_PARITY_V2.md](docs/ERP2_ADVANCED_PARITY_V2.md). Read it before every applicable task. Documentation adoption does not certify existing pages or authorize Production deployment.
+
+---
+
 # HIGHEST OWNER-FROZEN ERP2 GLOBAL FRONTEND STANDARDS P0 (2026-11-26)
 
 **Rule ID: ERP2_GLOBAL_FRONTEND_STANDARDS_P0_V1 · OWNER APPROVED · MANDATORY.** Applies to every existing, migrated and new ERP2 business page. Incorporate into the existing PA4–PA6 full-page consistency work package; no independent implementation stream or separate production release.
