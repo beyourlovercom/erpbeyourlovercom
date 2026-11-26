@@ -147,7 +147,7 @@ final class AffiliateSnapshotSyncService
     }
 
     /** @param array<string,mixed> $item @return array<string,mixed> */
-    private function normalizeItem(array $item, int $affiliateId): array
+    public function normalizeItem(array $item, int $affiliateId): array
     {
         $email = $this->nullableString($item['email'] ?? null, 255, 'email');
         $displayName = $this->nullableString($item['display_name'] ?? $item['username'] ?? null, 255, 'display_name');

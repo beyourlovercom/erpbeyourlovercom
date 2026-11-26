@@ -161,6 +161,135 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertStringNotContainsString('Abcdefg', $persisted);
     }
 
+    private function historicalAccount(): KolAffiliateAccount
+    {
+        return KolAffiliateAccount::create([
+            'connection_key' => self::CONNECTION, 'affiliate_id' => 260,
+            'wordpress_user_id' => 655, 'wordpress_user_login' => 'creator-login',
+            'wordpress_user_email' => 'legacy@example.test', 'email' => 'legacy@example.test',
+            'display_name' => 'Legacy creator', 'provider_status' => 'active',
+            'sync_status' => 'synced', 'reconciliation_status' => 'present',
+            'affiliate_referral_url' => 'https://example.test/ref/creator-login/',
+        ]);
+    }
+
+    private function historicalPayload(): array
+    {
+        $payload = $this->payload('legacy@example.test');
+        unset($payload['wordpress_password'], $payload['wordpress_password_confirmation'], $payload['affiliate_coupon_code']);
+        return $payload;
+    }
+
+    public function test_historical_identity_creates_only_erp_profile_and_binds_original_account_and_coupon(): void
+    {
+        $specialist = $this->specialist();
+        $account = $this->historicalAccount();
+        $coupon = KolAffiliateCoupon::create([
+            'connection_key' => self::CONNECTION, 'coupon_id' => 17506,
+            'affiliate_id' => 260, 'code' => 'legacy', 'normalized_code' => 'legacy',
+            'date_expires' => '2029-07-21', 'provider_status' => 'publish',
+            'sync_status' => 'synced', 'reconciliation_status' => 'present',
+        ]);
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('checkAffiliateIdentity')->once()->with('legacy@example.test')
+            ->andReturn($this->response(['available' => false, 'wp_user_id' => 655, 'affiliate_id' => 260], 'legacy'));
+        $mock->shouldNotReceive('provisionAffiliate');
+        $mock->shouldNotReceive('provisionCoupon');
+        $mock->shouldNotReceive('updateWordpressPassword');
+        $this->actingAs($specialist)->getJson('/kol/library/duplicate-check?wordpress_username=creator-login')
+            ->assertOk()->assertJsonPath('exists', false)->assertJsonPath('historical_account.affiliate_id', 260)
+            ->assertJsonMissing(['email' => 'legacy@example.test']);
+        $payload = $this->historicalPayload();
+        $payload['owner_id'] = User::factory()->create()->id;
+        $this->post('/kol/library', $payload)->assertSessionHas('success');
+        $kol = Kol::query()->sole();
+        self::assertSame($specialist->id, (int) $kol->owner_id);
+        self::assertSame((int) $kol->id, (int) $account->fresh()->kol_id);
+        self::assertSame(655, $account->fresh()->wordpress_user_id);
+        self::assertSame(260, $account->fresh()->affiliate_id);
+        self::assertSame('https://example.test/ref/creator-login/', $account->fresh()->affiliate_referral_url);
+        self::assertSame((int) $kol->id, (int) $coupon->fresh()->kol_id);
+        self::assertSame('2029-07-21', $coupon->fresh()->date_expires->format('Y-m-d'));
+        self::assertSame(17506, $coupon->fresh()->coupon_id);
+        self::assertDatabaseCount('kol_affiliate_accounts', 1);
+        self::assertDatabaseCount('kol_affiliate_coupons', 1);
+        $this->post('/kol/library', $this->payload('legacy@example.test'))->assertSessionHasErrors('wordpress_username');
+        self::assertDatabaseCount('kols', 1);
+    }
+
+    public function test_historical_identity_wrong_email_or_live_conflict_never_creates_profile(): void
+    {
+        $specialist = $this->specialist();
+        $account = $this->historicalAccount();
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('checkAffiliateIdentity')->once()->with('legacy@example.test')
+            ->andReturn($this->response(['available' => false, 'wp_user_id' => 999, 'affiliate_id' => 260], 'mismatch'));
+        $mock->shouldNotReceive('provisionAffiliate');
+        $mock->shouldNotReceive('provisionCoupon');
+        $payload = $this->historicalPayload();
+        $this->actingAs($specialist)->post('/kol/library', [...$payload, 'contact_email' => 'wrong@example.test'])
+            ->assertSessionHasErrors('contact_email');
+        $this->post('/kol/library', $payload)->assertSessionHasErrors('contact_email');
+        self::assertDatabaseCount('kols', 0);
+        self::assertNull($account->fresh()->kol_id);
+    }
+
+    public function test_unsynced_provider_identity_is_imported_on_demand_without_importing_other_accounts(): void
+    {
+        $specialist = $this->specialist();
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('checkAffiliateIdentity')->once()->with('legacy@example.test')
+            ->andReturn($this->response(['available' => false, 'wp_user_id' => 655, 'affiliate_id' => 260], 'legacy'));
+        $mock->shouldReceive('snapshot')->once()->with('affiliates', null, null)->andReturn($this->response([
+            'items' => [
+                ['affiliate_id' => 999, 'user_id' => 888, 'username' => 'unrelated', 'email' => 'unrelated@example.test', 'status' => 'active'],
+                ['affiliate_id' => 260, 'user_id' => 655, 'username' => 'creator-login', 'email' => 'legacy@example.test', 'status' => 'active'],
+            ],
+            'next_cursor' => null,
+        ], 'affiliate-snapshot'));
+        $mock->shouldReceive('snapshot')->once()->with('coupons', null, null)->andReturn($this->response([
+            'items' => [
+                ['coupon_id' => 17506, 'code' => 'legacy', 'discount_type' => 'percent', 'amount' => '15', 'status' => 'publish', 'linked_affiliate_id' => 260, 'date_expires' => '2029-07-21'],
+                ['coupon_id' => 17507, 'code' => 'unrelated', 'discount_type' => 'percent', 'amount' => '15', 'status' => 'publish', 'linked_affiliate_id' => 999],
+            ],
+            'next_cursor' => null,
+        ], 'coupon-snapshot'));
+        $mock->shouldNotReceive('provisionAffiliate');
+        $mock->shouldNotReceive('provisionCoupon');
+        $mock->shouldNotReceive('updateWordpressPassword');
+        $this->actingAs($specialist)->post('/kol/library', [...$this->historicalPayload(), 'reuse_existing_account' => true])
+            ->assertSessionHas('success');
+        $kol = Kol::query()->sole();
+        self::assertSame($specialist->id, (int) $kol->owner_id);
+        self::assertDatabaseCount('kol_affiliate_accounts', 1);
+        self::assertDatabaseHas('kol_affiliate_accounts', ['affiliate_id' => 260, 'wordpress_user_id' => 655, 'kol_id' => $kol->id]);
+        self::assertDatabaseCount('kol_affiliate_coupons', 1);
+        self::assertDatabaseHas('kol_affiliate_coupons', ['coupon_id' => 17506, 'affiliate_id' => 260, 'kol_id' => $kol->id]);
+    }
+
+    public function test_unsynced_provider_identity_login_conflict_or_missing_account_is_fail_closed(): void
+    {
+        $specialist = $this->specialist();
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('checkAffiliateIdentity')->once()->with('legacy@example.test')
+            ->andReturn($this->response(['available' => false, 'wp_user_id' => 655, 'affiliate_id' => 260], 'legacy'));
+        $mock->shouldReceive('snapshot')->once()->with('affiliates', null, null)->andReturn($this->response([
+            'items' => [['affiliate_id' => 260, 'user_id' => 655, 'username' => 'other-login', 'email' => 'legacy@example.test', 'status' => 'active']],
+            'next_cursor' => null,
+        ], 'affiliate-snapshot'));
+        $mock->shouldReceive('checkAffiliateIdentity')->once()->with('absent@example.test')
+            ->andReturn($this->response(['available' => true], 'absent'));
+        $mock->shouldNotReceive('provisionAffiliate');
+        $mock->shouldNotReceive('provisionCoupon');
+        $this->actingAs($specialist)->post('/kol/library', [...$this->historicalPayload(), 'reuse_existing_account' => true])
+            ->assertSessionHasErrors('contact_email');
+        $this->post('/kol/library', [...$this->historicalPayload(), 'contact_email' => 'absent@example.test', 'reuse_existing_account' => true])
+            ->assertSessionHasErrors('contact_email');
+        self::assertDatabaseCount('kols', 0);
+        self::assertDatabaseCount('kol_affiliate_accounts', 0);
+        self::assertDatabaseCount('kol_affiliate_coupons', 0);
+    }
+
     public function test_existing_provider_identity_blocks_before_kol_creation(): void
     {
         $specialist = $this->specialist();

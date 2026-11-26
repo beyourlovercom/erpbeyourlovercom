@@ -4,6 +4,7 @@ namespace App\Modules\Kol\Application;
 
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Application\AffiliateWp\CouponProvisioningService;
+use App\Modules\Kol\Application\AffiliateWp\ConnectorResponse;
 use App\Modules\Kol\Application\AffiliateWp\KolCouponExpiry;
 use App\Modules\Kol\Application\AffiliateWp\KolProvisioningService;
 use App\Modules\Kol\Application\Approval\KolApprovalService;
@@ -27,6 +28,7 @@ final class KolCreateAutoProvisionService
         private readonly CouponProvisioningService $coupons,
         private readonly AffiliateWpGateway $gateway,
         private readonly NotificationPublisher $notifications,
+        private readonly KolHistoricalAccountBinding $historical,
     ) {}
 
     /** @return array{kol:Kol,success:bool,affiliate_status:?string,coupon_status:?string} */
@@ -41,6 +43,7 @@ final class KolCreateAutoProvisionService
         ?string $affiliateName = null,
         ?string $affiliateUrlSlug = null,
         ?string $couponExpiryDate = null,
+        bool $reuseExisting = false,
     ): array {
         if (! KolScope::canOperate($actor)) {
             throw new AuthorizationException('KOL operation permission is required.');
@@ -61,8 +64,17 @@ final class KolCreateAutoProvisionService
             throw ValidationException::withMessages(['contact_email' => 'WordPress Connector 尚未配置，无法完成自动建号。']);
         }
 
-        $couponPolicy = $this->couponPolicy();
-        $this->preflight($connectionKey, $email, $code);
+        $historical = $this->historical->bindIfPresent($connectionKey, $username, $data, $socialAccounts, $salesPerformanceEntries, $actor);
+        if ($historical !== null) return $historical;
+        // New signup retains its original policy. Explicit reuse requests do not require new credentials.
+        $couponPolicy = $reuseExisting ? null : $this->couponPolicy();
+        $existing = $this->preflight($connectionKey, $email, $code, $reuseExisting);
+        if ($existing !== null) {
+            return $this->historical->bindFromProvider($connectionKey, $username, $data, $socialAccounts, $salesPerformanceEntries, $actor, $existing);
+        }
+        if ($reuseExisting || mb_strlen($password) < 7 || ! preg_match('/^[A-Za-z]/', $password) || $code === '') {
+            throw ValidationException::withMessages(['wordpress_username' => '历史账号状态已变化，请重新查重后再创建。']);
+        }
 
         /** @var Kol $kol */
         $kol = $this->kols->create($data, $socialAccounts, $actor, $salesPerformanceEntries, false);
@@ -124,7 +136,7 @@ final class KolCreateAutoProvisionService
         ];
     }
 
-    private function preflight(string $connectionKey, string $email, string $code): void
+    private function preflight(string $connectionKey, string $email, string $code, bool $reuseExisting): ?ConnectorResponse
     {
         if (Kol::query()->whereRaw('LOWER(TRIM(contact_email)) = ?', [$email])->exists()) {
             throw ValidationException::withMessages(['contact_email' => '该邮箱已经属于现有 ERP KOL。']);
@@ -143,10 +155,19 @@ final class KolCreateAutoProvisionService
             throw ValidationException::withMessages(['contact_email' => '无法完成 WordPress / AffiliateWP 实时邮箱检查，请稍后重试。']);
         }
         $identityData = is_array($identity->data) ? $identity->data : [];
-        if (($identityData['available'] ?? null) !== true) {
+        if ($identity->ok && $identity->connectionKey === $connectionKey
+            && ($identityData['available'] ?? null) === false
+            && (int) ($identityData['wp_user_id'] ?? $identityData['wordpress_user_id'] ?? 0) > 0
+            && (int) ($identityData['affiliate_id'] ?? 0) > 0) {
+            return $identity;
+        }
+        if (! $identity->ok || $identity->connectionKey !== $connectionKey || ($identityData['available'] ?? null) !== true) {
             throw ValidationException::withMessages(['contact_email' => '该邮箱已存在 WordPress / AffiliateWP 账户，自动建号已阻止。']);
         }
 
+        if ($reuseExisting || $code === '') {
+            throw ValidationException::withMessages(['contact_email' => '未发现完整的历史官网账号，请核对邮箱或选择正常新建。']);
+        }
         $normalizedCode = mb_strtolower(trim($code));
         if (KolAffiliateCoupon::query()->where('connection_key', $connectionKey)->where('normalized_code', $normalizedCode)->exists()) {
             throw ValidationException::withMessages(['affiliate_coupon_code' => '该 Code 已存在于 ERP Coupon mirror。']);
@@ -162,6 +183,7 @@ final class KolCreateAutoProvisionService
         if (($couponData['available'] ?? null) !== true) {
             throw ValidationException::withMessages(['affiliate_coupon_code' => '该 Code 已存在 WordPress / WooCommerce，自动创建已阻止。']);
         }
+        return null;
     }
 
     /** @return array{discount_type:string,amount:string} */

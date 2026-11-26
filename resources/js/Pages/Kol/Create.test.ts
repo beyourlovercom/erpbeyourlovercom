@@ -73,6 +73,39 @@ describe('Kol/Create VI contract', () => {
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
+  it('shows existing account binding without requesting a new password or coupon', async () => {
+    vi.useFakeTimers()
+    axiosGetMock.mockResolvedValue({data:{exists:false,historical_account:{wordpress_user_id:655,affiliate_id:260}}})
+    const wrapper=mount(Create,{props:defaultProps})
+    await wrapper.get('[data-testid="kol-preflight-username"]').setValue('legacy-creator')
+    await wrapper.get('[data-testid="kol-preflight-search"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="kol-historical-account"]').text()).toContain('AffiliateWP #260')
+    const note = wrapper.get('[data-testid="kol-historical-account"]').element
+    const card = wrapper.get('.kol-account-card').element
+    expect(note.parentElement).toBe(card)
+    expect(card.lastElementChild).toBe(note)
+    expect(wrapper.get('.kol-credential-rows').element.contains(note)).toBe(false)
+    expect(note.textContent).toContain('历史推广链接及优惠码保持不变。')
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+    expect(wrapper.get('button[type="submit"]').text()).toContain('创建并绑定已有账号')
+    wrapper.unmount()
+  })
+
+  it('allows an unsynced historical account to request live binding without a new password', async () => {
+    vi.useFakeTimers()
+    axiosGetMock.mockResolvedValue({data:{exists:false}})
+    const wrapper=mount(Create,{props:defaultProps})
+    await wrapper.get('[data-testid="kol-preflight-username"]').setValue('legacy-unsynced')
+    await wrapper.get('[data-testid="kol-preflight-search"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('input[type="password"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="kol-unsynced-reuse"] button:nth-child(2)').trigger('click')
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+    expect(wrapper.get('button[type="submit"]').text()).toContain('创建并绑定已有账号')
+    wrapper.unmount()
+  })
+
   it('uses erp-form-page wrapper — no mvp-page', () => {
     const wrapper = mount(Create, { props: defaultProps })
     expect(wrapper.find('.erp-form-page').exists()).toBe(true)
