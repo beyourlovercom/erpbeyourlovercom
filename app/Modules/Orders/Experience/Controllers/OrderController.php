@@ -894,7 +894,7 @@ final class OrderController
             fputcsv($handle, [
                 'ERP订单号', '来源订单号', '来源', ...($includePartner ? ['合作商'] : []), '订单日期', '收件人',
                 ...($includeCustomerEmail ? ['客户邮箱'] : []), '国家', '状态', '负责人',
-                ...($includePartner ? ['发货单号'] : []),
+                ...($includePartner ? ['物流商', '发货单号'] : []),
             ]);
             foreach ($orders as $order) {
                 fputcsv($handle, [
@@ -903,7 +903,7 @@ final class OrderController
                     $order->order_date?->toDateString(), $order->address?->recipient_name,
                     ...($includeCustomerEmail ? [$order->address?->email ?: $order->customer?->email] : []),
                     $order->address?->country, $order->order_status->value, $order->owner?->name,
-                    ...($includePartner ? [$order->shipment?->tracking_number] : []),
+                    ...($includePartner ? [$order->shipment?->carrier, $order->shipment?->tracking_number] : []),
                 ]);
             }
             fclose($handle);

@@ -209,29 +209,32 @@ final class OrderCollaborationPartnerImportTest extends TestCase
         $other = $make('AJ27552-007', 2);
         $west->shipment()->create(['shipment_status' => 'pending', 'carrier' => 'USPS', 'tracking_number' => '9235990424546100441192']);
         $east->shipment()->create(['shipment_status' => 'pending', 'carrier' => 'USPS', 'tracking_number' => '0035990416422203119422']);
-        $pending->shipment()->create(['shipment_status' => 'pending', 'tracking_number' => null]);
+        $pending->shipment()->create(['shipment_status' => 'pending', 'carrier' => 'USPS', 'tracking_number' => null]);
         $other->shipment()->create(['shipment_status' => 'pending', 'carrier' => 'DHL', 'tracking_number' => 'OTHER-TRACK']);
 
         $csv = $this->actingAs($user)->get('/orders/collaboration/export?partner_id=1')->assertOk()->streamedContent();
         $rows = array_map('str_getcsv', preg_split('/\r?\n/', trim($csv)));
         $headers = array_shift($rows);
-        $this->assertSame(['ERP订单号', '来源订单号', '来源', '合作商', '订单日期', '收件人', '国家', '状态', '负责人', '发货单号'], $headers);
+        $this->assertSame(['ERP订单号', '来源订单号', '来源', '合作商', '订单日期', '收件人', '国家', '状态', '负责人', '物流商', '发货单号'], $headers);
         $this->assertCount(3, $rows);
         $byNumber = [];
         foreach ($rows as $row) {
             $this->assertCount(count($headers), $row);
             $byNumber[$row[0]] = array_combine($headers, $row);
         }
+        $this->assertSame('USPS', $byNumber['CY27552-007']['物流商']);
+        $this->assertSame('USPS', $byNumber['CY02301-007']['物流商']);
         $this->assertSame('9235990424546100441192', $byNumber['CY27552-007']['发货单号']);
         $this->assertSame('0035990416422203119422', $byNumber['CY90004-007']['发货单号']);
         $this->assertSame('', $byNumber['CY02301-007']['发货单号']);
         $this->assertArrayNotHasKey('AJ27552-007', $byNumber);
 
         $all = $this->get('/orders/collaboration/export')->assertOk()->streamedContent();
-        $this->assertStringContainsString('OTHER-TRACK', $all);
+        $this->assertStringContainsString('DHL,OTHER-TRACK', $all);
         $admin = $this->userWith(['orders.view', 'customers.export', 'system.permissions.manage']);
         $customer = $this->actingAs($admin)->get('/customers/orders/export')->assertOk()->streamedContent();
         $this->assertNotContains('发货单号', str_getcsv(explode("\n", $customer)[0]));
+        $this->assertNotContains('物流商', str_getcsv(explode("\n", $customer)[0]));
     }
 
     public function test_old_tingon_orders_remain_unassigned_in_collaboration_page(): void
