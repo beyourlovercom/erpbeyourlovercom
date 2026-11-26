@@ -97,10 +97,22 @@ final class ProcessDeTianyunOutboundBatch implements ShouldQueue
                             $code = 'DEV_SIMULATED_NO_PROVIDER_IO';
                         }
                     }
-                } catch (Throwable) {
+                } catch (Throwable $error) {
                     $status = 'skipped';
                     $code = $production ? 'DE_PRODUCTION_CREATE_GATE_OR_PREVIEW_BLOCKED'
                         : 'DE_PREFLIGHT_FAILED';
+                    // Persist only allowlisted machine codes; never raw API errors or customer data.
+                    $reason = explode(':', $error->getMessage(), 2)[0];
+                    if ($production && in_array($reason, [
+                        'DE_PHYSICAL_INCOMPLETE_PROVIDER_COVERAGE', 'DE_PHYSICAL_INVALID_SOURCE_STOCK',
+                        'DE_PHYSICAL_SNAPSHOT_NOT_FRESH_OR_WRONG_WAREHOUSE', 'DE_PHYSICAL_PROVIDER_NOT_READY',
+                        'DE_AUTHORITATIVE_PHYSICAL_APPLY_DISABLED', 'DE_PHYSICAL_SYNC_ALREADY_RUNNING',
+                        'DE_LIVE_ORDER_CREATE_NOT_AUTHORIZED', 'DE_LIVE_ORDER_PREFLIGHT_STALE_OR_BLOCKED',
+                        'DE_ORDER_WRONG_WAREHOUSE', 'DE_OMS_WAREHOUSE_MISMATCH',
+                        'DE_ORDER_ALREADY_HAS_PROVIDER_ATTEMPT',
+                    ], true)) {
+                        $code = $reason;
+                    }
                 }
                 DB::table('xlwms_de_dispatch_batch_items')->where('id', $item->id)
                     ->update(['status' => $status, 'result_code' => $code, 'updated_at' => now()]);

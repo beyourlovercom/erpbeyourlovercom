@@ -289,6 +289,56 @@ final class InventoryReservationFoundationTest extends TestCase
         self::assertSame(30,(int)WarehouseInventory::where('product_id',$unknown->id)->value('quantity_on_hand'));
     }
 
+    public function test_de_provider_proof_isolates_availability_and_reservation_and_preserves_other_warehouse(): void
+    {
+        config()->set('inventory_sku_gate.enabled', true);
+        config()->set('xlwms.de_authoritative_auto_apply_enabled', true);
+        $user = $this->userWith(['inventory.operate']);
+        $de = Warehouse::query()->where('code', 'DE')->firstOrFail();
+        $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        $good = $this->product('GLOBAL-DE-GOOD');
+        $bad = $this->product('GLOBAL-DE-UNKNOWN');
+        WarehouseInventory::create(['warehouse_id' => $de->id, 'product_id' => $bad->id,
+            'quantity_on_hand' => 30, 'quantity_reserved' => 0]);
+        WarehouseInventory::create(['warehouse_id' => $ny->id, 'product_id' => $bad->id,
+            'quantity_on_hand' => 6, 'quantity_reserved' => 0]);
+        $snapshot = XlwmsInventorySnapshot::query()->create([
+            'warehouse_id' => $de->id, 'wh_code' => 'Hannover', 'checksum' => str_repeat('d', 64),
+            'status' => 'blocked', 'fetched_at' => now(), 'provider_sku_count' => 2,
+            'mapped_sku_count' => 1, 'unmatched_sku_count' => 1, 'blocked_sku_count' => 1,
+            'summary' => ['v2' => true],
+        ]);
+        $snapshot->rows()->create(['provider_sku' => $good->sku, 'product_id' => $good->id,
+            'resolution_status' => 'matched', 'oms_total' => 8, 'oms_available' => 8, 'oms_locked' => 0]);
+        $snapshot->rows()->create(['provider_sku' => 'UNMATCHED-DE', 'product_id' => null,
+            'resolution_status' => 'unmatched', 'oms_total' => 0, 'oms_available' => 0, 'oms_locked' => 0]);
+        app(\App\Modules\Logistics\Application\Xlwms\DeAuthoritativePhysicalStockSyncService::class)
+            ->reconcileSnapshot($snapshot->id, true);
+        $reader = app(\App\Modules\Inventory\Infrastructure\EloquentInventoryAvailabilityReader::class);
+        $rows = $reader->forProductIds([$good->id, $bad->id]);
+        self::assertSame(8, collect($rows[$good->id])->firstWhere('warehouse_id', $de->id)['quantity_available']);
+        self::assertSame(0, collect($rows[$bad->id])->firstWhere('warehouse_id', $de->id)['quantity_available']);
+        self::assertSame(6, collect($rows[$bad->id])->firstWhere('warehouse_id', $ny->id)['quantity_available']);
+        $service = app(InventoryReservationService::class);
+        $goodOrder = $this->order([[$good, 2]]);
+        $reserved = $service->reserve($goodOrder->id, $de->id, 'res-de-good', null, $user);
+        self::assertSame('reserved', $reserved['status']);
+        $mixed = $this->order([[$good, 1], [$bad, 1]]);
+        try {
+            $service->reserve($mixed->id, $de->id, 'res-de-mixed', null, $user);
+            self::fail('Unconfirmed DE SKU must block the entire affected order');
+        } catch (DomainException $e) {
+            self::assertStringContainsString('OMS inventory SKU not confirmed', $e->getMessage());
+        }
+        $stock = WarehouseInventory::query()->where('warehouse_id', $de->id)->where('product_id', $good->id)->firstOrFail();
+        self::assertSame(2, $stock->quantity_reserved);
+        $service->commit($reserved['id'], $user);
+        self::assertSame(8, $stock->fresh()->quantity_on_hand);
+        self::assertSame(0, $stock->fresh()->quantity_reserved);
+        $nyOrder = $this->order([[$bad, 1]]);
+        self::assertSame('reserved', $service->reserve($nyOrder->id, $ny->id, 'res-ny-independent', null, $user)['status']);
+    }
+
     /** @return array{0:Order,1:Warehouse,2:Product} */
     private function scenario(int $qoh, array $lineQuantities, bool $authoritative = true): array
     {
