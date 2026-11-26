@@ -1,0 +1,2 @@
+# Preserve exact candidate bytes for manifest verification on all platforms.
+* -text
