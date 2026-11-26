@@ -36,4 +36,3 @@ final class GlobalHttpFeedbackTest extends TestCase
             ->assertStatus(409)->assertHeader('X-Inertia-Location','/dashboard');
     }
 }
-
