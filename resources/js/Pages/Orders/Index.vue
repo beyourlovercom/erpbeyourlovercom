@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
-import { computed, defineAsyncComponent, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
 import { gridColumn, type GridListRow } from '../../Components/DataGrid/useGlobalGridListAdapter'
@@ -166,6 +166,25 @@ const saveCurrentView = () => {
   })
 }
 const deleteSavedView = (saved: SavedView) => router.delete(`/orders/views/${saved.id}`, { preserveScroll: true })
+// Match the domestic pending grid: selection is scoped to the current page.
+const selectedCollaborationIds = ref<number[]>([])
+const collaborationSelectionEnabled = computed(() => props.orderScope === 'collaboration' && props.canExport)
+const clearCollaborationSelection = () => { selectedCollaborationIds.value = [] }
+const onCollaborationSelection = (rows: GridListRow[]) => {
+  if (!collaborationSelectionEnabled.value) return
+  const visible = new Set(props.orders.data.map(row => row.id))
+  selectedCollaborationIds.value = [...new Set(rows.map(row => Number(row.id)).filter(id => Number.isSafeInteger(id) && id > 0 && visible.has(id)))]
+}
+watch(() => [props.orderScope, props.canExport, props.orders.current_page, props.orders.per_page, props.filters], clearCollaborationSelection, { deep: true })
+watch(() => props.orders.data, rows => {
+  const visible = new Set(rows.map(row => row.id))
+  selectedCollaborationIds.value = selectedCollaborationIds.value.filter(id => visible.has(id))
+})
+const selectedCollaborationExportUrl = computed(() => {
+  const params = new URLSearchParams(filters)
+  for (const id of selectedCollaborationIds.value) params.append('order_ids[]', String(id))
+  return basePath.value + '/export?' + params.toString()
+})
 const exportUrl = () => `${basePath.value}/export?${new globalThis.URLSearchParams(filters).toString()}`
 const omsExportUrl = () => `/orders/oms/export?${new globalThis.URLSearchParams(Object.entries({ ...filters, ...gridParams() }).filter(([, value]) => value !== undefined).map(([key, value]): [string, string] => [key, String(value)])).toString()}`
 const goToPage = (page: number) => nav({ ...filters, page })
@@ -267,6 +286,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
           <Link v-if="canManageTrash" class="mvp-button" href="/orders/trash">回收站（管理员）</Link>
           <Link class="mvp-button" href="/orders/archive">归档清单</Link>
           <a v-if="canExport && !omsGridEnabled" class="mvp-button" :href="exportUrl()">导出 CSV</a>
+          <a v-if="collaborationSelectionEnabled && selectedCollaborationIds.length" class="mvp-button mvp-button-primary" :href="selectedCollaborationExportUrl" data-testid="download-collaboration-selected">下载已选 {{ selectedCollaborationIds.length }} 单</a>
           <Link v-if="orderKind === 'kol_fulfillment' && canPreviewKolLinks" class="mvp-button" href="/kol/orders/link-preview" data-testid="kol-order-link-preview">历史关联预览</Link>
           <template v-if="orderKind === 'all' && orderScope !== 'external_warehouse'">
             <Link class="mvp-button" href="/customers/orders/create">新建客户订单</Link>
@@ -319,7 +339,12 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         @sort-change="gridSort"
         @search-change="gridSearch"
         @column-search-change="gridColumnSearch"
-        />
+        :enable-selection="collaborationSelectionEnabled"
+        :selected-order-ids="selectedCollaborationIds"
+        @selection-change="onCollaborationSelection"
+        >
+          <template #footer-left><div v-if="collaborationSelectionEnabled && selectedCollaborationIds.length" class="mvp-actions"><strong>已选 {{ selectedCollaborationIds.length }} 条</strong><button type="button" class="mvp-button" @click="clearCollaborationSelection">清空选择</button></div></template>
+        </GlobalGrid>
         <template #fallback>
           <div class="orders-grid-loading" role="status">正在加载订单表格… 网络较慢时可 <Link :href="gridToggleUrl(false)">返回原表</Link></div>
         </template>

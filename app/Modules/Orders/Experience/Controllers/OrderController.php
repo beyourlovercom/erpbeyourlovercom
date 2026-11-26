@@ -886,6 +886,20 @@ final class OrderController
         }
         $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
         $includePartner = $scope === 'collaboration';
+        if ($includePartner && $request->query->has('order_ids')) {
+            // Same explicit-ID download contract as domestic pending shipments.
+            // Never fall back to the full filtered export for an empty or stale selection.
+            $selected = $request->query('order_ids');
+            abort_unless(is_array($selected) && array_is_list($selected) && count($selected) >= 1 && count($selected) <= 200, 422, '请勾选 1–200 笔合作订单。');
+            $ids = [];
+            foreach ($selected as $id) {
+                abort_unless((is_string($id) || is_int($id)) && filter_var($id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) !== false, 422, '订单 ID 无效。');
+                $ids[] = (int) $id;
+            }
+            abort_unless(count(array_unique($ids)) === count($ids), 422, '已选订单不能重复。');
+            $filters['oms_selected_ids'] = $ids;
+            abort_unless($this->orders->list($filters, 200)->total() === count($ids), 422, '部分已选订单已不可见或不在合作订单范围内，请重新勾选。');
+        }
         $orders = ($includeCustomerEmail || $includePartner) ? $this->orders->exportBatched($filters) : $this->orders->exportCursor($filters);
         $partnerNames = $includePartner ? OrderCollaborationPartner::query()->pluck('name', 'id')->all() : [];
 
