@@ -1059,6 +1059,32 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertSame('pending', $second->fresh()->shipment->shipment_status);
     }
 
+    public function test_usny_selected_collaboration_orders_export_exact_references(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $references = ['CY90004-007', 'CY36399-007', 'CY39702-007', 'CY78973-007', 'CY63002-007',
+            'CY40772-007', 'CY24016-007', 'CY44898-007', 'CY49494-007', 'CY01265-007'];
+        $ids = [];
+        foreach ($references as $reference) {
+            $order = $this->orderAt($warehouses['US-NY'], $reference);
+            $order->update(['source_type' => 'collaboration']);
+            $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+            $ids[] = $order->id;
+        }
+        $other = $this->orderAt($warehouses['US-NY'], 'C42137-007A');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$other->id}/approve")->assertRedirect();
+        $url = '/logistics/oversea/us-ny/export';
+        $response = $this->actingAs($user)->get($url.'?'.http_build_query(['order_ids' => $ids]))->assertOk();
+        $response->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $rows = $this->xlsxRows($response->getContent());
+        $this->assertCount(11, $rows);
+        $this->assertEqualsCanonicalizing($references, array_column(array_slice($rows, 1), 3));
+        $full = $this->actingAs($user)->get($url)->assertOk();
+        $this->assertCount(12, $this->xlsxRows($full->getContent()));
+        $this->assertSame('pending', $other->fresh()->shipment->shipment_status);
+    }
+
     public function test_wms_family_exports_real_usny_us3sm_and_de_profiles(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
