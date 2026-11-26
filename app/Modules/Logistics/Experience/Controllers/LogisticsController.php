@@ -161,9 +161,9 @@ final class LogisticsController
             'rejectionFilter' => $rejectionFilter,
             'canOperate' => $this->allocationAccess->allows($request->user()),
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
-            'canEditWorkflowStatus' => (bool) $request->user()?->can('orders.edit'),
+            'canEditWorkflowStatus' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
-            'canEditWarehouseRoute' => (bool) $request->user()?->can('orders.edit'),
+            'canEditWarehouseRoute' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             // Approved V3 menu button only, preserving GET and mutation gates.
             'canViewHistoricalImportTool' => (bool) ($request->user()?->can('system.permissions.manage') && $request->user()?->can('logistics.view')),

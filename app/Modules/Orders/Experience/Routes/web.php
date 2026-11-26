@@ -50,7 +50,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::patch('/orders/{order}/contact', [OrderContactController::class, 'update'])
         ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.contact.update');
     Route::patch('/orders/{order}/warehouse-route', [OrderWarehouseRouteController::class, 'update'])
-        ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.warehouse-route.update');
+        ->middleware('can:orders.view')->whereNumber('order')->name('orders.warehouse-route.update');
     Route::patch('/orders/{order}/workflow-status', [OrderController::class, 'updateWorkflowStatus'])->middleware('can:orders.view')->whereNumber('order')->name('orders.workflow-status.update');
     Route::delete('/orders/{order}/auxiliary-status/{code}', [OrderController::class, 'removeAuxiliaryStatus'])
         ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->where('code', '[a-z_]+')->name('orders.auxiliary-status.remove');

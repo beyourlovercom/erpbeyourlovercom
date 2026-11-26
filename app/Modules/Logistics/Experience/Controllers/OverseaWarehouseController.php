@@ -202,7 +202,7 @@ final class OverseaWarehouseController
                     ? app(OrderWorkflowStatusPolicy::class)->for($shipment->order, $request->user())['options'] : [],
             ])->toArray(),
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
-            'canEditWarehouseRoute' => (bool) $request->user()?->can('orders.edit'),
+            'canEditWarehouseRoute' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'xlwmsAuthorizedOrderId' => $canRunXlwms ? (int) config('xlwms.live_order_id', 0) : 0,
             'xlwmsOmsWebEnabled' => $warehouseKey === 'us-3sm'

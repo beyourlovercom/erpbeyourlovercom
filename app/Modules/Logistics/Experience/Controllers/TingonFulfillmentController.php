@@ -81,9 +81,9 @@ final class TingonFulfillmentController
             'view' => $view,
             'search' => $search,
             'canOperate' => $request->user()?->can('logistics.operate') ?? false,
-            'canEditWarehouseRoute' => $request->user()?->can('orders.edit') ?? false,
+            'canEditWarehouseRoute' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
-            'canEditWorkflowStatus' => $request->user()?->can('orders.edit') ?? false,
+            'canEditWorkflowStatus' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
             'carrierOptions' => $carrierCatalog->options(),
         ]);

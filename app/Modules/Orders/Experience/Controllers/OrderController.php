@@ -168,8 +168,8 @@ final class OrderController
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
             'collaborationPartners' => $scope === 'collaboration' ? OrderCollaborationPartner::query()->orderBy('name')->get(['id', 'code', 'name']) : [],
             'canExport' => $canExport,
-            'canEditWorkflowStatus' => $request->user()->can('orders.edit'),
-            'canEditWarehouseRoute' => $request->user()->can('orders.edit'),
+            'canEditWorkflowStatus' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
+            'canEditWarehouseRoute' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'canPreviewKolLinks' => $kind === OrderKind::KolFulfillment && $request->user()->can('kol.views.manage'),
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
@@ -438,7 +438,7 @@ final class OrderController
             'order' => $this->orderData($order),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'canEditWarehouseRoute' => ! $order->isOperationallyArchived() && $order->archived_at === null
-                && ($request->user()?->can('orders.edit') ?? false),
+                && \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
             'orderNotes' => $order->noteEntries()->get()->map(fn ($entry): array => [
                 'id' => $entry->id, 'author_name' => $entry->author_name,
                 'body' => $entry->body, 'created_at' => $entry->created_at?->toIso8601String(),
@@ -818,7 +818,7 @@ final class OrderController
         if ($reactivating) {
             abort_unless($request->user()?->can('orders.edit'), 403);
         }
-        abort_unless($request->user()?->can('orders.edit') || $request->user()?->can('domestic.review')
+        abort_unless(\App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()) || $request->user()?->can('domestic.review')
             || app(LogisticsReviewAccess::class)->allows($request->user()), 403);
 
         $data = $request->validate([
@@ -829,7 +829,7 @@ final class OrderController
             'expected_workflow_revision' => ['required', 'integer', 'min:0'],
             'reason' => ['nullable', 'string', 'max:2000'],
         ]);
-        if (! $request->user()->can('orders.edit')) {
+        if (! \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user())) {
             abort_unless(in_array($data['workflow_status'], ['sending', 'out_of_stock', 'resolve_stockout'], true), 403);
             $order->loadMissing('shipment.warehouse');
             $factory = strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY';

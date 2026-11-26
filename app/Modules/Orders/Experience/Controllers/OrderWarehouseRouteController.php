@@ -14,7 +14,7 @@ final class OrderWarehouseRouteController
     public function update(Request $request, Order $order, OrderWarehouseRouting $routing): JsonResponse
     {
         KolOrderAccessScope::authorize($request->user(), $order);
-        abort_unless($request->user()?->can('orders.edit'), 403);
+        abort_unless(\App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()), 403);
         $allowed = collect($routing->options())->pluck('code')->all();
         $data = $request->validate([
             'warehouse_code' => ['required', 'string', Rule::in($allowed)],

@@ -168,7 +168,7 @@ final class OrderWarehouseRouting
 
     public function select(Order $order, string $code, int $revision, Authenticatable $actor, bool $stockExceptionAcknowledged = false): array
     {
-        abort_unless($actor->can('orders.edit'), 403, '没有修改所属分仓的权限。');
+        abort_unless(OrderLogisticsAuthority::allows($actor), 403, '没有修改所属分仓的权限。');
         $allowed = collect($this->options())->pluck('code')->all();
         if (! in_array($code, $allowed, true)) {
             throw new HttpException(422, '所属分仓不在可用选项中。');
