@@ -47,6 +47,11 @@ jobs:
           BYL_E2E_BROWSER: ''
           BYL_E2E_SUITE: kol-role
         run: npm run test:e2e
+      - name: Parent reallocation Chromium UAT in disposable loopback SQLite
+        env:
+          BYL_E2E_BROWSER: ''
+          BYL_E2E_VISUAL_EVIDENCE_DIR: ${{ runner.temp }}/parent-reallocation-evidence
+        run: node tests/e2e/support/run-parent-reallocation.mjs
       - name: No in-repository environment or test database
         if: always()
         run: |

@@ -3,6 +3,8 @@ import { loginThroughUi, syntheticUsers } from '../support/auth-helpers'
 import { installBrowserGuards } from '../support/browser-guards'
 import path from 'node:path'
 
+test.skip(process.env.BYL_E2E_PARENT_REALLOCATION !== '1', 'Requires the dedicated disposable reallocation fixture')
+
 test('R5 real browser: cancel reset, confirm archive, reopen fresh allocation, submit new split', async ({page,context}) => {
   const guard = await installBrowserGuards(context,page)
   await page.setViewportSize({width:1586,height:928})

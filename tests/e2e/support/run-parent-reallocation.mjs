@@ -5,6 +5,7 @@ let run
 try {
   run=await createDisposableRun()
   const {env,runRoot}=run
+  env.BYL_E2E_PARENT_REALLOCATION='1'
   const evidence=process.env.BYL_E2E_VISUAL_EVIDENCE_DIR
   if (!evidence || !path.isAbsolute(evidence)) throw new Error('Absolute evidence directory required')
   await mkdir(evidence,{recursive:true,mode:0o700})
