@@ -87,6 +87,10 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
         $usSm = $warehouses->firstWhere('code', 'US-SM');
         $providerAvailable = $usSm !== null
             ? app(XlwmsInventoryCoverage::class)->providerAvailableByProductId((int) $usSm['id']) : null;
+        $de = $warehouses->firstWhere('code', 'DE');
+        $deProviderAvailable = $de !== null && config('xlwms.de_authoritative_auto_apply_enabled', false)
+            ? (app(XlwmsInventoryCoverage::class)->providerAvailableByProductId((int) $de['id']) ?? [])
+            : null;
         // Read-only diagnostics. Never use a blocked OMS snapshot to authorize a shipment.
         $latestUsSmSnapshot = $usSm !== null && Schema::hasTable('xlwms_inventory_snapshots')
             ? XlwmsInventorySnapshot::query()->where('warehouse_id', $usSm['id'])->orderByDesc('id')->first()
@@ -103,7 +107,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
 
         $result = [];
         foreach ($ids as $productId) {
-            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId, $usSm, $unknown, $dated, $providerAvailable, $omsSnapshotUnapplied, $latestUsSmSnapshot): array {
+            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId, $usSm, $unknown, $dated, $providerAvailable, $omsSnapshotUnapplied, $latestUsSmSnapshot, $de, $deProviderAvailable): array {
                 /** @var WarehouseInventory|null $row */
                 $row = $rows->get($productId.':'.$warehouse['id']);
                 $state = (string) $warehouse['inventory_state'];
@@ -148,6 +152,14 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     $available = min($available, max((int) $dated->get($productId, 0) - $reserved, 0));
                     $unverified = (int) $unknown->get($productId, 0);
                     if ($unverified > 0) $available = min($available, max($onHand - $unverified - $reserved, 0));
+                }
+
+                if ($deProviderAvailable !== null && (int) $warehouse['id'] === (int) $de['id']) {
+                    $confirmed = array_key_exists((int) $productId, $deProviderAvailable);
+                    $available = $confirmed && $available !== null
+                        ? min($available, max(0, (int) $deProviderAvailable[(int) $productId] - (int) $reserved))
+                        : 0;
+                    if (! $confirmed) $stockGateReason = 'oms_sku_not_confirmed';
                 }
 
                 if (($isUsSm || $isMorePlus) && $stockGateReason === null

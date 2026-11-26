@@ -5,6 +5,7 @@ namespace Tests\Feature\Logistics;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Application\Xlwms\DeAuthoritativePhysicalStockSyncService;
+use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -79,7 +80,7 @@ final class DeAuthoritativePhysicalStockSyncTest extends TestCase
         app(DeAuthoritativePhysicalStockSyncService::class)->reconcileSnapshot(1, true);
     }
 
-    public function test_unverified_owned_sku_aborts_every_inventory_change(): void
+    public function test_unrelated_unknown_zero_and_positive_skus_are_quarantined_while_healthy_stock_applies(): void
     {
         config()->set('xlwms.de_authoritative_auto_apply_enabled', true);
         $de = Warehouse::query()->where('code', 'DE')->firstOrFail();
@@ -93,15 +94,49 @@ final class DeAuthoritativePhysicalStockSyncTest extends TestCase
                 'status' => 'matched', 'qoh' => 2, 'available' => 2, 'locked' => 0],
             ['sku' => 'UNVERIFIED-SKU', 'product_id' => null,
                 'status' => 'unmatched', 'qoh' => 8, 'available' => 8, 'locked' => 0],
+            ['sku' => 'UNKNOWN-ZERO', 'product_id' => null,
+                'status' => 'unmatched', 'qoh' => 0, 'available' => 0, 'locked' => 0],
+        ], 1);
+        $result = app(DeAuthoritativePhysicalStockSyncService::class)->reconcileSnapshot($snapshot->id, true);
+        self::assertSame(2, $stock->fresh()->quantity_on_hand);
+        self::assertSame(2, $result['quarantined_sku_count']);
+        self::assertSame([$product->id], $snapshot->fresh()->summary['de_physical_applied_product_ids']);
+        self::assertSame([$product->id => 2], app(XlwmsInventoryCoverage::class)->providerAvailableByProductId($de->id));
+        self::assertSame(1, DB::table('inventory_adjustments')->where('warehouse_id', $de->id)->count());
+    }
+
+    public function test_bad_provider_quantities_abort_without_any_inventory_write(): void
+    {
+        config()->set('xlwms.de_authoritative_auto_apply_enabled', true);
+        $de = Warehouse::query()->where('code', 'DE')->firstOrFail();
+        $product = Product::query()->create(['sku' => 'HEALTHY', 'name' => 'Healthy']);
+        $snapshot = $this->snapshot($de, [
+            ['sku' => 'HEALTHY', 'product_id' => $product->id, 'status' => 'matched', 'qoh' => 2, 'available' => 2, 'locked' => 0],
+            ['sku' => 'INVALID', 'product_id' => null, 'status' => 'unmatched', 'qoh' => 8, 'available' => 3, 'locked' => 0],
         ], 1);
         try {
             app(DeAuthoritativePhysicalStockSyncService::class)->reconcileSnapshot($snapshot->id, true);
-            self::fail('Unverified OMS identity should abort');
+            self::fail('Invalid provider total must stop source');
         } catch (RuntimeException $e) {
-            self::assertStringContainsString('DE_PHYSICAL_SKU_NOT_VERIFIED', $e->getMessage());
+            self::assertStringContainsString('DE_PHYSICAL_INVALID_SOURCE_STOCK', $e->getMessage());
         }
-        self::assertSame(10, $stock->fresh()->quantity_on_hand);
-        self::assertSame(0, DB::table('inventory_adjustments')->where('warehouse_id', $de->id)->count());
+        self::assertSame(0, WarehouseInventory::query()->where('warehouse_id', $de->id)->where('product_id', $product->id)->count());
+        self::assertArrayNotHasKey('de_physical_applied_product_ids', $snapshot->fresh()->summary);
+    }
+
+    public function test_unrelated_local_readback_drift_does_not_invalidate_healthy_product(): void
+    {
+        config()->set('xlwms.de_authoritative_auto_apply_enabled', true);
+        $de = Warehouse::query()->where('code', 'DE')->firstOrFail();
+        $a = Product::query()->create(['sku' => 'DE-HEALTHY-A', 'name' => 'A']);
+        $b = Product::query()->create(['sku' => 'DE-DRIFT-B', 'name' => 'B']);
+        $snapshot = $this->snapshot($de, [
+            ['sku' => $a->sku, 'product_id' => $a->id, 'status' => 'matched', 'qoh' => 2, 'available' => 2, 'locked' => 0],
+            ['sku' => $b->sku, 'product_id' => $b->id, 'status' => 'matched', 'qoh' => 4, 'available' => 4, 'locked' => 0],
+        ], 2);
+        app(DeAuthoritativePhysicalStockSyncService::class)->reconcileSnapshot($snapshot->id, true);
+        WarehouseInventory::query()->where('warehouse_id', $de->id)->where('product_id', $b->id)->update(['quantity_on_hand' => 9]);
+        self::assertSame([$a->id => 2], app(XlwmsInventoryCoverage::class)->providerAvailableByProductId($de->id));
     }
 
     private function snapshot(Warehouse $warehouse, array $items, int $mapped): XlwmsInventorySnapshot

@@ -198,11 +198,11 @@ final class SingleOrderPreview
             ? in_array($snapshot?->status, ['applied', 'partial_applied'], true)
             : $snapshot?->status === 'applied');
         if (! $snapshot || ! $validStatus
-            || ($snapshot->status === 'partial_applied'
+            || (! $isDePhysical && $snapshot->status === 'partial_applied'
                 && ($summary['sku_isolation_write_proof'] ?? false) !== true)
             || ($summary['v2'] ?? false) !== true
             || (! $isDePhysical && ($summary['v2_applied'] ?? false) !== true)
-            || (! $isolated && ((int) $snapshot->unmatched_sku_count !== 0
+            || (! $isDePhysical && ! $isolated && ((int) $snapshot->unmatched_sku_count !== 0
                 || (int) $snapshot->blocked_sku_count !== 0))
             || $snapshot->rows()->count() !== (int) $snapshot->provider_sku_count
             || ! $fresh) {
@@ -214,10 +214,12 @@ final class SingleOrderPreview
             $blocking[] = 'OMS_SNAPSHOT_STOCK_INVALID';
             return;
         }
+        $required = [];
         foreach ($items as $item) {
             $productId = (int) ($item->product_id ?? 0);
             $quantity = (int) ($item->quantity ?? 0);
-            if ($productId < 1 || $quantity < 1 || ($available[$productId] ?? -1) < $quantity) {
+            $required[$productId] = ($required[$productId] ?? 0) + $quantity;
+            if ($productId < 1 || $quantity < 1 || ($available[$productId] ?? -1) < $required[$productId]) {
                 $blocking[] = 'OMS_SNAPSHOT_STOCK_INSUFFICIENT';
             }
         }
