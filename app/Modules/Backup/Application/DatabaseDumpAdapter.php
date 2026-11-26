@@ -27,8 +27,17 @@ class DatabaseDumpAdapter implements DatabaseDumper
     /** @param list<string> $command */
     protected function run(array $command, string $destination, string $password): void
     {
-        $descriptor = [1 => ['file', $destination, 'w'], 2 => ['pipe', 'w']];
-        $process = proc_open($command, $descriptor, $pipes, base_path(), ['MYSQL_PWD' => $password]);
+        $descriptor = [1 => ['file', $destination, 'wb'], 2 => ['pipe', 'w']];
+        $environment = ['MYSQL_PWD' => $password];
+        if (PHP_OS_FAMILY === 'Windows') {
+            foreach (['SystemRoot', 'WINDIR', 'TEMP', 'TMP'] as $key) {
+                $value = getenv($key);
+                if ($value !== false && $value !== '') {
+                    $environment[$key] = $value;
+                }
+            }
+        }
+        $process = proc_open($command, $descriptor, $pipes, base_path(), $environment);
         if (! is_resource($process)) {
             throw new RuntimeException('Unable to start mysqldump.');
         }

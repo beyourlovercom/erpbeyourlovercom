@@ -3,7 +3,6 @@
 namespace App\Modules\Backup\Application;
 
 use RuntimeException;
-use Symfony\Component\Process\Process;
 
 final class LocalDatabaseBackupService
 {
@@ -46,9 +45,7 @@ final class LocalDatabaseBackupService
             if (! is_file($temp) || filesize($temp) < 20) {
                 throw new RuntimeException('Empty database backup.');
             }
-            $verify = new Process(['gzip', '-t', $temp]);
-            $verify->setTimeout(120);
-            $verify->mustRun();
+            $this->verifyGzip($temp);
             $sha = hash_file('sha256', $temp);
             if ($sha === false) {
                 throw new RuntimeException('Cannot checksum backup.');
@@ -99,6 +96,43 @@ final class LocalDatabaseBackupService
             }
             flock($lock, LOCK_UN);
             fclose($lock);
+        }
+    }
+
+    /** Verify gzip payload and trailer with PHP zlib, including on Windows. */
+    private function verifyGzip(string $path): void
+    {
+        $input = fopen($path, 'rb');
+        if ($input === false) {
+            throw new RuntimeException('Cannot open compressed database backup.');
+        }
+        try {
+            $inflater = inflate_init(ZLIB_ENCODING_GZIP);
+            if ($inflater === false) {
+                throw new RuntimeException('Cannot initialize gzip verifier.');
+            }
+            $read = 0;
+            while (! feof($input)) {
+                $chunk = fread($input, 8192);
+                if ($chunk === false) {
+                    throw new RuntimeException('Cannot read compressed backup.');
+                }
+                if ($chunk === '') {
+                    break;
+                }
+                if (inflate_get_status($inflater) === ZLIB_STREAM_END) {
+                    throw new RuntimeException('Unexpected bytes after gzip trailer.');
+                }
+                $read += strlen($chunk);
+                if (@inflate_add($inflater, $chunk, ZLIB_NO_FLUSH) === false) {
+                    throw new RuntimeException('Invalid compressed backup.');
+                }
+            }
+            if (inflate_get_status($inflater) !== ZLIB_STREAM_END || inflate_get_read_len($inflater) !== $read) {
+                throw new RuntimeException('Incomplete or invalid gzip trailer.');
+            }
+        } finally {
+            fclose($input);
         }
     }
 }
