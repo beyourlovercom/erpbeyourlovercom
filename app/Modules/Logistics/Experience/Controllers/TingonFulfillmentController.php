@@ -8,9 +8,12 @@ use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\ShipmentWebsiteSyncHandoff;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Orders\Application\OrderContactProjection;
+use App\Modules\Orders\Application\OrderLogisticsAuthority;
 use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowGridOptions;
+use App\Modules\Orders\Application\OrderWorkflowStatusPolicy;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\RedirectResponse;
@@ -42,9 +45,9 @@ final class TingonFulfillmentController
                 ))
                 ->with(['address', 'items.product', 'shipment.warehouse'])
                 ->when($search !== '', fn ($q) => $this->searchOrders($q, $search));
-            app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($brandQuery, $request);
+            app(OrderContactProjection::class)->filterRequest($brandQuery, $request);
             $orders = $brandQuery->orderByDesc('id')->paginate($perPage)->withQueryString();
-            app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($orders->getCollection());
+            app(OrderContactProjection::class)->prime($orders->getCollection());
             $rows = $orders->through(fn (Order $order): array => $this->orderRow($order))->toArray();
         } else {
             $query = Shipment::query()
@@ -70,9 +73,9 @@ final class TingonFulfillmentController
                             ->orWhereHas('order', fn ($order) => $this->searchOrders($order, $search));
                     });
                 });
-            app(\App\Modules\Orders\Application\OrderContactProjection::class)->filterRequest($query, $request, true);
+            app(OrderContactProjection::class)->filterRequest($query, $request, true);
             $shipments = $query->orderByDesc('id')->paginate($perPage)->withQueryString();
-            app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($shipments->getCollection()->pluck('order'));
+            app(OrderContactProjection::class)->prime($shipments->getCollection()->pluck('order'));
             $rows = $shipments->through(fn (Shipment $shipment): array => $this->shipmentRow($shipment))->toArray();
         }
 
@@ -81,9 +84,9 @@ final class TingonFulfillmentController
             'view' => $view,
             'search' => $search,
             'canOperate' => $request->user()?->can('logistics.operate') ?? false,
-            'canEditWarehouseRoute' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
+            'canEditWarehouseRoute' => OrderLogisticsAuthority::allows($request->user()),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
-            'canEditWorkflowStatus' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
+            'canEditWorkflowStatus' => OrderLogisticsAuthority::allows($request->user()),
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
             'carrierOptions' => $carrierCatalog->options(),
         ]);
@@ -162,7 +165,7 @@ final class TingonFulfillmentController
             'id' => (int) $order->id,
             'order_id' => (int) $order->id,
             'order_number' => $order->erp_order_id ?: $order->external_order_number,
-            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
+            ...app(OrderContactProjection::class)->for($order),
             'order_url' => '/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,
             'country' => $order->address?->country,
@@ -178,8 +181,8 @@ final class TingonFulfillmentController
             'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
             'workflow_revision' => (int) $order->workflow_revision,
             'order_kind' => $order->order_kind?->value,
-            'can_edit_workflow_status' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
-            'workflow_status_options' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
+            'can_edit_workflow_status' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
+            'workflow_status_options' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             'can_edit_warehouse_route' => ! $order->isOperationallyArchived(),
         ];
     }
@@ -192,7 +195,7 @@ final class TingonFulfillmentController
             'id' => (int) $shipment->id,
             'order_id' => (int) $order->id,
             'order_number' => $order->erp_order_id ?: $order->external_order_number,
-            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
+            ...app(OrderContactProjection::class)->for($order),
             'order_url' => '/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,
             'country' => $order->address?->country,
@@ -208,8 +211,8 @@ final class TingonFulfillmentController
             'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
             'workflow_revision' => (int) $order->workflow_revision,
             'order_kind' => $order->order_kind?->value,
-            'can_edit_workflow_status' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
-            'workflow_status_options' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
+            'can_edit_workflow_status' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
+            'workflow_status_options' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             'can_edit_warehouse_route' => ! $order->isOperationallyArchived(),
         ];
     }

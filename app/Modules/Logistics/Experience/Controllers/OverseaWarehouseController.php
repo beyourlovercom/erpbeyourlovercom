@@ -21,6 +21,7 @@ use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
 use App\Modules\Orders\Application\OrderContactProjection;
+use App\Modules\Orders\Application\OrderLogisticsAuthority;
 use App\Modules\Orders\Application\OrderManualHoldStatus;
 use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
@@ -202,7 +203,7 @@ final class OverseaWarehouseController
                     ? app(OrderWorkflowStatusPolicy::class)->for($shipment->order, $request->user())['options'] : [],
             ])->toArray(),
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
-            'canEditWarehouseRoute' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
+            'canEditWarehouseRoute' => OrderLogisticsAuthority::allows($request->user()),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'xlwmsAuthorizedOrderId' => $canRunXlwms ? (int) config('xlwms.live_order_id', 0) : 0,
             'xlwmsOmsWebEnabled' => $warehouseKey === 'us-3sm'

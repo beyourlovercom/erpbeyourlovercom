@@ -8,9 +8,9 @@ use App\Modules\Identity\Application\UserDirectory;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolScope;
-use App\Modules\Kol\Application\SmartInput\OnboardingDraft;
 use App\Modules\Kol\Application\RecipientCustomsPolicy;
 use App\Modules\Kol\Application\SavedViewService;
+use App\Modules\Kol\Application\SmartInput\OnboardingDraft;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
@@ -27,12 +27,13 @@ use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\KolOrderAccessScope;
-use App\Modules\Orders\Application\OrderAuxiliaryStatusService;
-use App\Modules\Orders\Application\OrderItemAmendmentPreflight;
 use App\Modules\Orders\Application\ManualOrderItemAmendment;
-use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderAuxiliaryStatusService;
 use App\Modules\Orders\Application\OrderContactPolicy;
 use App\Modules\Orders\Application\OrderContactProjection;
+use App\Modules\Orders\Application\OrderItemAmendmentPreflight;
+use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderLogisticsAuthority;
 use App\Modules\Orders\Application\OrderOmsAvailability;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderProgressTransitionService;
@@ -40,8 +41,8 @@ use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowStatus;
-use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Application\OrderWorkflowStatusPolicy;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Application\WooCommerceAdminOrderLink;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -168,8 +169,8 @@ final class OrderController
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
             'collaborationPartners' => $scope === 'collaboration' ? OrderCollaborationPartner::query()->orderBy('name')->get(['id', 'code', 'name']) : [],
             'canExport' => $canExport,
-            'canEditWorkflowStatus' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
-            'canEditWarehouseRoute' => \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
+            'canEditWorkflowStatus' => OrderLogisticsAuthority::allows($request->user()),
+            'canEditWarehouseRoute' => OrderLogisticsAuthority::allows($request->user()),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'canPreviewKolLinks' => $kind === OrderKind::KolFulfillment && $request->user()->can('kol.views.manage'),
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
@@ -330,10 +331,10 @@ final class OrderController
         $token = $request->input('onboarding_token');
         if ($kind === OrderKind::KolFulfillment && $token !== null) {
             abort_unless(is_string($token) && OnboardingDraft::readForKol($request, $token, $request->integer('kol_id')), 422, '订单草稿已失效，请重新发起。');
-            $request->validate(['address_confirmed'=>['accepted']]);
+            $request->validate(['address_confirmed' => ['accepted']]);
         }
         if ($kind === OrderKind::KolFulfillment && $request->input('address_confirmed') !== null) {
-            $request->validate(['address_confirmed'=>['accepted']]);
+            $request->validate(['address_confirmed' => ['accepted']]);
         }
         $orderRules = $this->rules();
         if ($kind === OrderKind::KolFulfillment) {
@@ -363,7 +364,7 @@ final class OrderController
                     && RecipientCustomsPolicy::code($data['country']) !== RecipientCustomsPolicy::code($kol->shipping_country)) {
                     continue;
                 }
-                if (!$request->boolean('address_confirmed') && blank($data[$field] ?? null) && filled($value)) {
+                if (! $request->boolean('address_confirmed') && blank($data[$field] ?? null) && filled($value)) {
                     $data[$field] = $value;
                 }
             }
@@ -393,7 +394,9 @@ final class OrderController
             $data['contact_user_id'] ??= OrderContactPolicy::operationsDefault((int) $data['owner_id']);
         }
         $order = $this->orders->create($data, $items, $request->user());
-        if ($kind === OrderKind::KolFulfillment && is_string($token)) OnboardingDraft::forget($request);
+        if ($kind === OrderKind::KolFulfillment && is_string($token)) {
+            OnboardingDraft::forget($request);
+        }
 
         $routeName = $order->order_kind === OrderKind::KolFulfillment ? 'kol.orders.show' : 'customers.orders.show';
 
@@ -438,7 +441,7 @@ final class OrderController
             'order' => $this->orderData($order),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'canEditWarehouseRoute' => ! $order->isOperationallyArchived() && $order->archived_at === null
-                && \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()),
+                && OrderLogisticsAuthority::allows($request->user()),
             'orderNotes' => $order->noteEntries()->get()->map(fn ($entry): array => [
                 'id' => $entry->id, 'author_name' => $entry->author_name,
                 'body' => $entry->body, 'created_at' => $entry->created_at?->toIso8601String(),
@@ -818,7 +821,7 @@ final class OrderController
         if ($reactivating) {
             abort_unless($request->user()?->can('orders.edit'), 403);
         }
-        abort_unless(\App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user()) || $request->user()?->can('domestic.review')
+        abort_unless(OrderLogisticsAuthority::allows($request->user()) || $request->user()?->can('domestic.review')
             || app(LogisticsReviewAccess::class)->allows($request->user()), 403);
 
         $data = $request->validate([
@@ -829,7 +832,7 @@ final class OrderController
             'expected_workflow_revision' => ['required', 'integer', 'min:0'],
             'reason' => ['nullable', 'string', 'max:2000'],
         ]);
-        if (! \App\Modules\Orders\Application\OrderLogisticsAuthority::allows($request->user())) {
+        if (! OrderLogisticsAuthority::allows($request->user())) {
             abort_unless(in_array($data['workflow_status'], ['sending', 'out_of_stock', 'resolve_stockout'], true), 403);
             $order->loadMissing('shipment.warehouse');
             $factory = strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY';
