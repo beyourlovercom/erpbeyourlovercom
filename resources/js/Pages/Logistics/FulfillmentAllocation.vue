@@ -31,7 +31,7 @@ type DerivedOrderRecord = { order_id:number; erp_order_id:string|null; contact_u
 type ExistingAllocation = { status:string; decision_source:'system_recommendation'|'manual'; selected_plan_key:string|null; decision_note:string|null; plan_snapshot:(Plan & { derived_orders?:DerivedOrderRecord[] })|null; submitted_at:string|null }
 type CarrierRoute = { carrier:string|null; carrier_label:string|null; service:string|null; automatic:boolean }
 type AllocationRejection = { source:string; reason:string; by:string|null; at:string|null }
-type Order = { order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; contact_user_name?:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
+type Order = { reallocation_token?:string|null; reallocation_generation?:number|null; order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; contact_user_name?:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
 type Warehouse = { id:number; slug:string; code:string; name:string; country_code:string|null; can_auto_allocate:boolean }
 type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
@@ -86,6 +86,7 @@ const decisionNote = ref('')
 const submitError = ref('')
 const submitting = ref(false)
 const stockConfirmOpen = ref(false)
+const reallocationConfirmOpen = ref(false)
 const stockServerWarning = ref('')
 
 const localSubmitted = reactive<Record<number,{source:'system_recommendation'|'manual';submittedAt:string}>>({})
@@ -478,7 +479,7 @@ function openPlan(order:Order){
     }
   }
 }
-function closePlan(){ closeReplacement(); selectedOrderId.value=null; submitError.value=''; stockConfirmOpen.value=false }
+function closePlan(){ closeReplacement(); selectedOrderId.value=null; submitError.value=''; stockConfirmOpen.value=false; reallocationConfirmOpen.value=false }
 function availabilityFor(item:Item,w:Warehouse){ return item.availability.find(r=>r.warehouse_id===w.id) }
 function availabilityLabel(item:Item,w:Warehouse){ if(w.code==='OUTSOURCE')return '待采购到货'; if(w.code==='FACTORY')return '国内工厂'; const r=availabilityFor(item,w); if(w.code==='TINGON')return '人工可分仓 · 不管理合作仓库存'; if(w.code==='US-AMZ')return r?.quantity_available==null?'人工可分仓 · 未登记库存':`人工可分仓 · 库存 ${r.quantity_available}`; if(!r||r.quantity_available==null)return '库存未知'; if(canonicalWarehouseCode(w.code)==='US-LA')return 'ERP参考 '+r.quantity_available+' · OMS待核验'; return r.quantity_available>=item.quantity?`有货 ${r.quantity_available}`:`不足 ${r.quantity_available}` }
 function availabilityClass(item:Item,w:Warehouse){ if(canonicalWarehouseCode(w.code)==='US-LA')return 'stock-neutral'; if(['OUTSOURCE','FACTORY','US-AMZ','TINGON'].includes(w.code))return 'stock-neutral'; const r=availabilityFor(item,w); if(!r||r.quantity_available==null)return 'stock-unknown'; return r.quantity_available>=item.quantity?'stock-ok':'stock-short' }
@@ -566,10 +567,12 @@ function resolvedSkuLabel(order:Order,item:Item){ const replacement=chosenReplac
 function selectedSources(order:Order){ const result:string[]=[]; for(const item of order.items){ const source=manualAssignments[order.id]?.[item.id]??''; if(source && !result.includes(source)) result.push(source) } return result }
 function fulfillmentGroups(order:Order){
   const sources=selectedSources(order)
+  const generation=order.reallocation_generation??1
+  const suffixFor=(index:number)=>sources.length>1?String.fromCharCode(65+index)+(generation>1?'-'+generation:''):''
   return sources.map((source,index)=>({
     source,
-    suffix:sources.length>1?String.fromCharCode(65+index):'',
-    erpOrderId:order.erp_order_id ? `${order.erp_order_id}${sources.length>1?String.fromCharCode(65+index):''}` : '—',
+    suffix:suffixFor(index),
+    erpOrderId:order.erp_order_id ? order.erp_order_id+suffixFor(index) : '—',
     warehouse:sourceLabel(source),
     carrier:['FACTORY','OUTSOURCE'].includes(source) ? '' : (manualCarriers[order.id]?.[source] ?? defaultCarrier(order,source)),
     items:order.items.filter(item=>manualAssignments[order.id]?.[item.id]===source),
@@ -646,7 +649,7 @@ async function submitRecommended(){
   try{
     const response=await fetch('/logistics/orders/'+order.id+'/fulfillment-allocation/recommended',{
       method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},
-      body:JSON.stringify({plan_key:decision.recommended_plan_key,decision_note:decisionNote.value}),
+      body:JSON.stringify({plan_key:decision.recommended_plan_key,decision_note:decisionNote.value,expected_workflow_revision:order.workflow_revision}),
     })
     const body=await response.json().catch(()=>({})) as {message?:string;submitted_at?:string;errors?:Record<string,string[]>}
     if(!response.ok)throw new Error(submissionMessage(body,response.status,response.headers.get('X-Request-ID')))
@@ -704,6 +707,7 @@ async function submitManual(stockExceptionAcknowledged = false) {
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...csrfHeaders() },
       body: JSON.stringify({
         assignments, decision_note: decisionNote.value,
+        expected_workflow_revision:order.workflow_revision,
         stock_exception_acknowledged: stockExceptionAcknowledged,
       }),
     })
@@ -733,6 +737,36 @@ async function submitManual(stockExceptionAcknowledged = false) {
   } finally {
     submitting.value = false
   }
+}
+async function resetParentAllocation(){
+  const order=selectedOrder.value
+  if(!order?.reallocation_token || !props.canOperate || submitting.value)return
+  reallocationConfirmOpen.value=false
+  submitting.value=true; submitError.value=''
+  try{
+    const response=await fetch('/logistics/orders/'+order.id+'/fulfillment-allocation/reset',{
+      method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},
+      body:JSON.stringify({confirmed:true,token:order.reallocation_token}),
+    })
+    const body=await response.json().catch(()=>({})) as {message?:string;errors?:Record<string,string[]>;status?:string}
+    if(!response.ok || body.status!=='reset')throw new Error(submissionMessage(body,response.status,response.headers.get('X-Request-ID')))
+    delete localSubmitted[order.id]
+    delete manualAssignments[order.id]
+    delete manualGiftMappings[order.id]
+    delete manualCarriers[order.id]
+    delete replacementSelections[order.id]
+    closePlan()
+    // Reopen only with fresh server data and the new workflow revision.
+    activeTab.value='pending'
+    router.get('/logistics/wait-stock',{...allocationContext('pending'),search:order.erp_order_id??'',per_page:props.orders.per_page,global_grid:props.globalGridPilotEnabled?'1':'0',page:1},{
+      preserveScroll:true,preserveState:true,replace:true,
+      onSuccess:()=>{const fresh=props.orders.data.find(row=>row.id===order.id);if(fresh)openPlan(fresh)},
+      onFinish:()=>{submitting.value=false},
+    })
+    publishGlobalFeedback({state:'SUCCESS',title:'原履约已归档',message:'母订单已返回待分仓，请重新选择仓库。'})
+  }catch(error){
+    submitError.value=(error instanceof Error?error.message:'重新分仓未确认')+'；如状态不明，请刷新后核对，不要重复提交。'
+  }finally{submitting.value=false}
 }
 function confirmStockException() {
   stockConfirmOpen.value = false
@@ -873,8 +907,16 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order||repl
         <small>来源：{{ selectedOrder.allocation_rejection.source }} · 驳回人：{{ selectedOrder.allocation_rejection.by ?? '—' }} · 时间：{{ selectedOrder.allocation_rejection.at ? new Date(selectedOrder.allocation_rejection.at).toLocaleString('zh-CN') : '—' }}</small>
       </div>
       <label v-if="!processed(selectedOrder)" class="note-field">运营备注（选填）<textarea v-model="decisionNote" rows="2" placeholder="客户特殊要求、临时仓库情况、人工调整原因…" maxlength="500"/><small>{{ decisionNote.length }}/500</small></label><div v-else-if="selectedOrder.fulfillment_allocation?.decision_note" class="record-note"><strong>运营备注</strong><span>{{ selectedOrder.fulfillment_allocation.decision_note }}</span></div>
-      <footer class="modal-actions"><p v-if="submitError" class="submit-error" role="alert" aria-live="assertive">{{ submitError }}</p><button class="secondary" :disabled="submitting" @click="closePlan">关闭</button><button v-if="!processed(selectedOrder)&&props.canOperate" class="primary green" :disabled="submitting||replacementLoading>0" @click="submitPrimary">{{ submitting?'提交中…':(matchesRecommendation(selectedOrder)?'采用推荐并提交分仓':'确认人工分配并提交') }}</button><span v-else-if="processed(selectedOrder)" class="submitted-note">该订单分仓决策已提交</span></footer>
+      <footer class="modal-actions"><p v-if="submitError" class="submit-error" role="alert" aria-live="assertive">{{ submitError }}</p><button v-if="props.canOperate&&selectedOrder.reallocation_token" type="button" class="secondary reallocation-danger" data-testid="reallocation-open" :disabled="submitting" @click="reallocationConfirmOpen=true">重新分仓</button><button class="secondary" :disabled="submitting" @click="closePlan">关闭</button><button v-if="!processed(selectedOrder)&&props.canOperate" class="primary green" :disabled="submitting||replacementLoading>0" @click="submitPrimary">{{ submitting?'提交中…':(matchesRecommendation(selectedOrder)?'采用推荐并提交分仓':'确认人工分配并提交') }}</button><span v-else-if="processed(selectedOrder)" class="submitted-note">该订单分仓决策已提交</span></footer>
     </section></div></Teleport>
+    <div v-if="reallocationConfirmOpen && selectedOrder" class="modal-backdrop reallocation-confirm" data-testid="reallocation-confirm">
+      <section class="batch-confirm" role="alertdialog" aria-modal="true" aria-label="确认重新分仓">
+        <header><h2>⚠️ 确认重新分仓？</h2></header>
+        <p class="batch-caution"><strong>警告：此操作将归档所有相关子订单！</strong></p>
+        <p>母订单将恢复待分仓，历史记录保留。已有实际发货或仓库接单证据时将阻止操作。</p>
+        <footer><button class="secondary" type="button" @click="reallocationConfirmOpen=false">取消</button><button class="secondary reallocation-danger" type="button" data-testid="reallocation-confirm-submit" :disabled="submitting" @click="resetParentAllocation">确认归档并重新分仓</button></footer>
+      </section>
+    </div>
     <StockExceptionConfirmDialog v-if="stockConfirmOpen && selectedOrder"
       :order-number="selectedOrder.erp_order_id ?? String(selectedOrder.id)"
       :warnings="selectedStockWarnings"
@@ -893,7 +935,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order||repl
 .top-grid{display:grid;grid-template-columns:1.15fr .9fr 1.2fr;gap:10px;margin:14px 18px}.info-card,.map-card{border:1px solid #dfe6ee;border-radius:9px;background:#fff;overflow:hidden}.info-card header,.map-card header{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e8edf3}.info-card header small,.map-card header small{color:#64748b}.mini-good,.mini-warn{padding:2px 7px;border-radius:5px;font-size:10px;font-weight:750}.mini-good{background:#e7f8ef;color:#0d7f4b}.mini-warn{background:#fff0dc;color:#ad5c00}.info-card dl{display:grid;grid-template-columns:86px 1fr;gap:7px 9px;padding:11px 12px;margin:0}.info-card dt{color:#64748b}.info-card dd{margin:0;color:#111827;font-weight:650;line-height:1.45}.order-item-chip{display:inline-flex;margin:0 4px 4px 0;padding:2px 6px;border-radius:5px;background:#f1f5f9;font-size:11px}.map-card svg{display:block;width:100%;height:185px;padding:7px 8px 0}.map-west{fill:#ffd8b4}.map-east{fill:#dbeafe}.map-outline{fill:none;stroke:#64748b;stroke-width:2}.map-divider{stroke:#ef4444;stroke-width:3}.map-label{font-size:17px;font-weight:800;fill:#334155}.map-pin circle{fill:#0f766e}.map-pin text{font-size:12px;fill:#fff}.map-unknown circle{fill:#f59e0b}.map-unknown text{font-size:14px;font-weight:900;fill:#fff}.map-result{display:flex;justify-content:center;gap:10px;padding:7px 10px 11px;color:#334155}.map-result span{font-weight:750}
 .system-explanation{margin:12px 18px;padding:0;border:1px solid #e4e8ed;border-radius:8px;background:#f4f6f8;color:#475569;overflow:hidden}.system-explanation>header{display:flex;justify-content:space-between;padding:10px 13px;border-bottom:1px solid #e2e6ea}.system-explanation>header strong{color:#334155}.system-explanation>header span{font-size:11px;color:#7b8794}.explanation-grid{display:grid;grid-template-columns:1fr 1fr}.explanation-grid>div{padding:10px 14px}.explanation-grid>div+div{border-left:1px solid #dde2e7}.explanation-grid h4{margin:0 0 5px;color:#475569;font-size:12px}.explanation-grid ul{margin:0;padding-left:18px;line-height:1.65}.explanation-grid li{color:#667281}
 .record-banner{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:11px 13px;border-bottom:1px solid #dce7df;background:#eefaf3}.record-banner>div{display:grid;gap:4px}.segment-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;padding:12px}.segment-card{border:1px solid #dfe6ee;border-radius:8px;overflow:hidden}.segment-card>header{display:flex;justify-content:space-between;padding:10px 12px;background:#f8fafc}.segment-card h3{margin:2px 0 0;color:#175ebf;font-size:14px}.segment-card table{width:100%;border-collapse:collapse}.segment-card th,.segment-card td{padding:8px 10px;border-top:1px solid #e5e7eb;text-align:left}.record-route{display:grid;text-align:right;gap:3px}.record-route span{color:#334155}.record-route strong{color:#087f5b;font-size:11px}
-.note-field{position:relative;display:grid;gap:6px;margin:13px 18px;color:#374151;font-weight:650}.note-field textarea{padding:9px 10px 22px;border:1px solid #b8c4d1;border-radius:7px;color:#111827;resize:vertical}.note-field>small{position:absolute;right:9px;bottom:6px;color:#64748b;font-weight:500}.record-note{display:grid;gap:5px;margin:13px 18px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc}.submit-error{margin:0 auto 0 0;max-width:70%;padding:8px 10px;border-radius:6px;background:#fff0f0;color:#b42318}.modal-actions{position:sticky;bottom:0;z-index:8;display:flex;justify-content:flex-end;gap:9px;align-items:center;padding:13px 18px;border-top:1px solid #e7ebf1;background:#fff}.submitted-note{color:#16814f;font-weight:750}
+.note-field{position:relative;display:grid;gap:6px;margin:13px 18px;color:#374151;font-weight:650}.note-field textarea{padding:9px 10px 22px;border:1px solid #b8c4d1;border-radius:7px;color:#111827;resize:vertical}.note-field>small{position:absolute;right:9px;bottom:6px;color:#64748b;font-weight:500}.record-note{display:grid;gap:5px;margin:13px 18px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc}.submit-error{margin:0 auto 0 0;max-width:70%;padding:8px 10px;border-radius:6px;background:#fff0f0;color:#b42318}.modal-actions{position:sticky;bottom:0;z-index:8;display:flex;justify-content:flex-end;gap:9px;align-items:center;padding:13px 18px;border-top:1px solid #e7ebf1;background:#fff}.submitted-note{color:#16814f;font-weight:750}.reallocation-danger{color:#b42318!important;border-color:#dc2626!important}.reallocation-confirm{z-index:1100}
 @media(max-width:980px){.top-grid{grid-template-columns:1fr}.explanation-grid{grid-template-columns:1fr}.explanation-grid>div+div{border-left:0;border-top:1px solid #dde2e7}.map-card svg{height:150px}.plan-modal{width:100%}.modal-backdrop{padding:5px}.group-heading{display:grid}}
 
 /* V1.2: evidence-aware allocation guidance, visually separate from executable recommendation. */

@@ -34,11 +34,12 @@ final class FulfillmentAllocationSubmissionService
         private readonly ExternalProcurementWorkflow $externalProcurement,
     ) {}
 
-    public function submitRecommended(Order $order, string $planKey, ?string $note, Authenticatable $actor): FulfillmentAllocation
+    public function submitRecommended(Order $order, string $planKey, ?string $note, Authenticatable $actor, ?int $expectedWorkflowRevision = null): FulfillmentAllocation
     {
-        return DB::transaction(function () use ($order, $planKey, $note, $actor): FulfillmentAllocation {
+        return DB::transaction(function () use ($order, $planKey, $note, $actor, $expectedWorkflowRevision): FulfillmentAllocation {
             $locked = Order::query()->with(['address', 'items.product', 'fulfillmentAllocation'])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             abort_if($locked->isOperationallyArchived(), 409, '运营归档订单不可分仓。');
+            $this->assertReallocationRevision($locked, $expectedWorkflowRevision);
             $this->paymentGate->assertAllowed($locked);
             $this->entryPolicy->assertAllowed($locked);
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以提交分仓');
@@ -59,7 +60,7 @@ final class FulfillmentAllocationSubmissionService
     }
 
     /** @param list<array{order_item_id:int,source_code:string,gift_mapping_id?:int|null,carrier?:string|null,service?:string|null}> $assignments */
-    public function submitManual(Order $order, array $assignments, ?string $note, Authenticatable $actor, bool $stockExceptionAcknowledged = false): FulfillmentAllocation
+    public function submitManual(Order $order, array $assignments, ?string $note, Authenticatable $actor, bool $stockExceptionAcknowledged = false, ?int $expectedWorkflowRevision = null): FulfillmentAllocation
     {
         $started = hrtime(true);
         $previous = $started;
@@ -75,9 +76,10 @@ final class FulfillmentAllocationSubmissionService
             $previous = $now;
         };
 
-        return DB::transaction(function () use ($order, $assignments, $note, $actor, $stockExceptionAcknowledged, $measure): FulfillmentAllocation {
+        return DB::transaction(function () use ($order, $assignments, $note, $actor, $stockExceptionAcknowledged, $measure, $expectedWorkflowRevision): FulfillmentAllocation {
             $locked = Order::query()->with(['address', 'items.product', 'fulfillmentAllocation'])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             abort_if($locked->isOperationallyArchived(), 409, '运营归档订单不可分仓。');
+            $this->assertReallocationRevision($locked, $expectedWorkflowRevision);
             $this->paymentGate->assertAllowed($locked);
             $this->entryPolicy->assertAllowed($locked);
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以提交分仓');
@@ -289,6 +291,14 @@ final class FulfillmentAllocationSubmissionService
         );
 
         return $this->decisions->present($order, $preview);
+    }
+
+    private function assertReallocationRevision(Order $order, ?int $expectedRevision): void
+    {
+        if ($order->fulfillmentChildren()->where('fulfillment_role', Order::SUPERSEDED_FULFILLMENT_ROLE)->exists()) {
+            abort_unless($expectedRevision !== null && (int) $order->workflow_revision === $expectedRevision,
+                409, '历史分仓已归档，请刷新履约方案后重新提交，勿使用旧分仓页面。');
+        }
     }
 
     private function assertExternalProcurementMayReallocate(Order $order): void

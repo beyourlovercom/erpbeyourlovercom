@@ -108,7 +108,7 @@ final class WooCommerceManualTrackingOverrideService
                 // Never notify the first package again.
                 $suffix = strtoupper(trim((string) $order->fulfillment_suffix));
                 $laterSplit = $order->fulfillment_parent_id !== null
-                    && preg_match('/^[B-Z][0-9]*$/', $suffix) === 1;
+                    && preg_match('/^[B-Z](?:[0-9]*|-(?:[2-9]|[1-9][0-9]))$/', $suffix) === 1;
                 $legacyManual = $root->operationalMarkers()
                     ->where('marker', 'woo_manual_force_completed')->exists();
                 $notification = null;
@@ -243,7 +243,7 @@ final class WooCommerceManualTrackingOverrideService
         // uses only the Completed email (no duplicate first-package mail).
         $suffix = strtoupper(trim((string) $order->fulfillment_suffix));
         $isLaterSplitPackage = $order->fulfillment_parent_id !== null
-            && preg_match('/^[B-Z][0-9]*$/', $suffix) === 1;
+            && preg_match('/^[B-Z](?:[0-9]*|-(?:[2-9]|[1-9][0-9]))$/', $suffix) === 1;
         $shouldSendCustomerNote = $isLaterSplitPackage && $beforeStatus === 'completed';
         $notice = null;
 

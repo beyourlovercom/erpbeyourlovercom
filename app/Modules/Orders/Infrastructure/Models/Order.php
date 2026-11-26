@@ -55,6 +55,14 @@ class Order extends Model
         return $this->hasMany(self::class, 'fulfillment_parent_id');
     }
 
+    public const SUPERSEDED_FULFILLMENT_ROLE = 'superseded_original';
+
+    public function activeFulfillmentChildren(): HasMany
+    {
+        return $this->fulfillmentChildren()->where(fn ($query) => $query->whereNull('fulfillment_role')
+            ->orWhere('fulfillment_role', '!=', self::SUPERSEDED_FULFILLMENT_ROLE));
+    }
+
     public function originalFulfillmentChildren(): HasMany
     {
         return $this->hasMany(self::class, 'fulfillment_parent_id')
@@ -194,6 +202,7 @@ class Order extends Model
     public function scopeEligibleForOperations(Builder $query, bool $includeLegacyTrash = true): Builder
     {
         return $query
+            ->where(fn ($active) => $active->whereNull('fulfillment_role')->orWhere('fulfillment_role', '!=', self::SUPERSEDED_FULFILLMENT_ROLE))
             ->whereNull('operational_archived_at')
             ->whereDoesntHave('fulfillmentParent', function (Builder $parent) use ($includeLegacyTrash): void {
                 $parent->withTrashed();
@@ -211,7 +220,8 @@ class Order extends Model
             ? $this->getRelation('fulfillmentParent')
             : $this->fulfillmentParent()->withTrashed()->first();
 
-        return $this->operational_archived_at !== null
+        return $this->fulfillment_role === self::SUPERSEDED_FULFILLMENT_ROLE
+            || $this->operational_archived_at !== null
             || $parent?->operational_archived_at !== null;
     }
 }

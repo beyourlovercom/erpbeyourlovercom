@@ -668,7 +668,7 @@ final class OrderController
         }
 
         $originalChildren = $order->relationLoaded('fulfillmentChildren')
-            ? $order->fulfillmentChildren->filter(fn (Order $child): bool => (string) ($child->fulfillment_role ?? '') !== 'replacement')->values()
+            ? $order->fulfillmentChildren->filter(fn (Order $child): bool => in_array($child->fulfillment_role, [null, 'original'], true))->values()
             : collect();
         $hasCommittedDerivedFulfillment = $originalChildren->isNotEmpty();
         $allocationCommitted = $order->fulfillmentAllocation !== null || $hasCommittedDerivedFulfillment;
@@ -1081,7 +1081,7 @@ final class OrderController
     private function fulfillmentData(Order $order): array
     {
         $originalChildren = $order->fulfillmentChildren
-            ->filter(fn (Order $child): bool => (string) ($child->fulfillment_role ?? '') !== 'replacement')
+            ->filter(fn (Order $child): bool => in_array($child->fulfillment_role, [null, 'original'], true))
             ->sortBy('fulfillment_suffix')->values();
         $replacements = $order->fulfillmentChildren
             ->filter(fn (Order $child): bool => (string) ($child->fulfillment_role ?? '') === 'replacement')
@@ -1187,7 +1187,7 @@ final class OrderController
     private function originalLogisticsStarted(Order $order): bool
     {
         $originalChildren = $order->fulfillmentChildren
-            ->filter(fn (Order $child): bool => (string) ($child->fulfillment_role ?? '') !== 'replacement')->values();
+            ->filter(fn (Order $child): bool => in_array($child->fulfillment_role, [null, 'original'], true))->values();
         $segments = $originalChildren->isNotEmpty() ? $originalChildren : collect([$order]);
 
         return $segments->contains(fn (Order $segment): bool => $this->segmentLogisticsStarted($segment));

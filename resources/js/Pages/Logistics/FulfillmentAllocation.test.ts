@@ -796,3 +796,29 @@ describe('Actual fulfillment product selection', () => {
     wrapper.unmount()
   })
 })
+
+
+describe('parent reallocation confirmation', () => {
+  it('requires a second confirmation and sends the exact reset route and token', async () => {
+    const order={...manualOrder,reallocation_token:'a'.repeat(64),workflow_revision:2}
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({status:'reset',archived_count:2})})
+    vi.stubGlobal('fetch',fetchMock)
+    const wrapper=mountPage({...props,orders:{...props.orders,data:[order],total:1}})
+    await wrapper.findAll('button').find(button=>button.text()==='查看方案')!.trigger('click')
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-open"]')!.click()
+    await flushPromises()
+    expect(document.body.querySelector('[data-testid="reallocation-confirm"]')?.textContent).toContain('警告：此操作将归档所有相关子订单！')
+    expect(fetchMock).not.toHaveBeenCalled()
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-confirm"] button')!.click()
+    await flushPromises()
+    expect(fetchMock).not.toHaveBeenCalled()
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-open"]')!.click()
+    await flushPromises()
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-confirm-submit"]')!.click()
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe('/logistics/orders/11/fulfillment-allocation/reset')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({confirmed:true,token:'a'.repeat(64)})
+    wrapper.unmount()
+  })
+})

@@ -105,6 +105,7 @@ final class LogisticsController
                 'originalFulfillmentChildren.operationalMarkers',
                 'originalFulfillmentChildren.shipment.warehouse',
                 'originalFulfillmentChildren.shipment.overseaReview',
+                'fulfillmentChildren' => fn ($q) => $q->withTrashed()->select(['id', 'fulfillment_parent_id', 'fulfillment_suffix']),
                 'fulfillmentAllocation', 'externalReferences:id,order_id,provider',
                 'domesticRejecter:id,name', 'overseaWarehouseReview.reviewer:id,name']);
         if ($rejectionFilter) {
@@ -261,13 +262,20 @@ final class LogisticsController
         ]);
     }
 
+    public function resetParentAllocation(Request $request, Order $order, \App\Modules\Logistics\Application\ParentFulfillmentReallocationService $reallocation): JsonResponse
+    {
+        $data = $request->validate(['confirmed' => ['required', 'accepted'], 'token' => ['required', 'string', 'size:64']]);
+        return response()->json(['status' => 'reset', ...$reallocation->reset($order, $data['token'], $request->user())]);
+    }
+
     public function submitRecommendedAllocation(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'plan_key' => ['required', 'string', 'max:128'],
+            'expected_workflow_revision' => ['nullable', 'integer', 'min:0'],
             'decision_note' => ['nullable', 'string', 'max:1000'],
         ]);
-        $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitRecommended($order, $data['plan_key'], $data['decision_note'] ?? null, $request->user()));
+        $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitRecommended($order, $data['plan_key'], $data['decision_note'] ?? null, $request->user(), isset($data['expected_workflow_revision']) ? (int) $data['expected_workflow_revision'] : null));
         if ($request->expectsJson()) {
             return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
         }
@@ -372,6 +380,7 @@ final class LogisticsController
             'assignments.*.service' => ['nullable', 'string', 'max:191'],
             'decision_note' => ['nullable', 'string', 'max:1000'],
             'stock_exception_acknowledged' => ['sometimes', 'boolean'],
+            'expected_workflow_revision' => ['nullable', 'integer', 'min:0'],
         ]);
         $startedAt = microtime(true);
         $outcome = 'failed';
@@ -380,7 +389,7 @@ final class LogisticsController
             'request_id' => $request->attributes->get('erp_request_id'),
         ]);
         try {
-            $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false)));
+            $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false), isset($data['expected_workflow_revision']) ? (int) $data['expected_workflow_revision'] : null));
             $outcome = 'submitted';
         } finally {
             Log::info('allocation.manual.finished', [
@@ -1011,6 +1020,9 @@ final class LogisticsController
             'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
             'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
             'workflow_revision' => (int) $order->workflow_revision,
+            'reallocation_generation' => $order->fulfillment_parent_id === null ? $this->reallocationGenerationForPreview($order) : null,
+            'reallocation_token' => $order->fulfillment_parent_id === null && $order->originalFulfillmentChildren->isNotEmpty()
+                ? \App\Modules\Logistics\Application\ParentFulfillmentReallocationService::token($order, $allocation) : null,
             'can_edit_workflow_status' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
             'workflow_status_options' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             'external_order_number' => $order->external_order_number,
@@ -1089,6 +1101,18 @@ final class LogisticsController
                 'warehouse_name' => $order->shipment->warehouse?->name,
             ] : null,
         ];
+    }
+
+    private function reallocationGenerationForPreview(Order $order): ?int
+    {
+        try {
+            return \App\Modules\Logistics\Application\FulfillmentOriginalIdentity::forAllocation(
+                $order->originalFulfillmentChildren->pluck('fulfillment_suffix')->filter()->all(),
+                $order->fulfillmentChildren->pluck('fulfillment_suffix')->filter()->all(), 1,
+            );
+        } catch (\DomainException) {
+            return null;
+        }
     }
 
     /** @return array<string,mixed> */

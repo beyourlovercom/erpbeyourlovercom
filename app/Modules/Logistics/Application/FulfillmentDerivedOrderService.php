@@ -53,8 +53,10 @@ final class FulfillmentDerivedOrderService
         $parent->shipment?->delete();
 
         $children = collect();
+        $generation = $this->allocationGeneration($parent, $segments->count());
         foreach ($segments as $index => $segment) {
-            $suffix = $this->suffixForIndex($index);
+            $suffix = FulfillmentOriginalIdentity::suffix($index, $generation);
+            abort_if(strlen((string) $parent->erp_order_id.$suffix) > 64, 422, '原订单号过长，不能追加新履约编号');
             $children->push($this->upsertChild($parent, $suffix, $segment, $actor));
         }
 
@@ -89,17 +91,24 @@ final class FulfillmentDerivedOrderService
         })->values()->all();
     }
 
-    private function suffixForIndex(int $index): string
+    public function allocationGeneration(Order $parent, int $count): int
     {
-        abort_if($index < 0 || $index >= self::MAX_SEGMENTS, 422, '履约段序号超出范围');
-        return chr(ord('A') + $index);
+        $active = $parent->originalFulfillmentChildren()->pluck('fulfillment_suffix')->filter()->all();
+        $occupied = $parent->fulfillmentChildren()->withTrashed()->pluck('fulfillment_suffix')->filter()->all();
+        try {
+            return FulfillmentOriginalIdentity::forAllocation($active, $occupied, $count);
+        } catch (\DomainException $exception) {
+            abort(409, $exception->getMessage());
+        }
     }
 
     private function indexForSuffix(string $suffix): int
     {
-        $suffix = strtoupper(trim($suffix));
-        abort_unless(strlen($suffix) === 1 && $suffix >= 'A' && $suffix <= 'Z', 422, '履约后缀无效');
-        return ord($suffix) - ord('A');
+        try {
+            return FulfillmentOriginalIdentity::index($suffix);
+        } catch (\DomainException $exception) {
+            abort(422, $exception->getMessage());
+        }
     }
 
     private function upsertChild(Order $parent, string $suffix, array $segment, Authenticatable $actor): Order
