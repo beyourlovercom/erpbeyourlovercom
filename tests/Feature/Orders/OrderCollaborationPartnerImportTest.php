@@ -229,6 +229,25 @@ final class OrderCollaborationPartnerImportTest extends TestCase
         $this->assertSame('', $byNumber['CY02301-007']['发货单号']);
         $this->assertArrayNotHasKey('AJ27552-007', $byNumber);
 
+        $selectedUrl = '/orders/collaboration/export?partner_id=1&'.http_build_query(['order_ids' => [$west->id, $pending->id]]);
+        $selectedCsv = $this->get($selectedUrl)->assertOk()->streamedContent();
+        $selectedRows = array_map('str_getcsv', preg_split('/\r?\n/', trim($selectedCsv)));
+        $this->assertSame($headers, array_shift($selectedRows));
+        $this->assertEqualsCanonicalizing(['CY27552-007', 'CY02301-007'], array_column($selectedRows, 0));
+        $this->assertStringContainsString('USPS,9235990424546100441192', $selectedCsv);
+        foreach ([
+            ['order_ids' => [$other->id]],
+            ['order_ids' => [$west->id, $west->id]],
+            ['order_ids' => [$west->id, 99999999]],
+            ['order_ids' => ''],
+            ['order_ids' => ['bad']],
+        ] as $invalid) {
+            $this->get('/orders/collaboration/export?partner_id=1&'.http_build_query($invalid))->assertUnprocessable();
+        }
+        $pending->update(['operational_archived_at' => now()]);
+        $this->get($selectedUrl)->assertUnprocessable();
+        $this->get('/orders/collaboration/export?order_ids%5B%5D=')->assertUnprocessable();
+
         $all = $this->get('/orders/collaboration/export')->assertOk()->streamedContent();
         $this->assertStringContainsString('DHL,OTHER-TRACK', $all);
         $admin = $this->userWith(['orders.view', 'customers.export', 'system.permissions.manage']);
