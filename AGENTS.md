@@ -1,3 +1,15 @@
+# HIGHEST OWNER-FROZEN ERP2 GLOBAL FRONTEND STANDARDS P0 (2026-11-26)
+
+**Rule ID: ERP2_GLOBAL_FRONTEND_STANDARDS_P0_V1 · OWNER APPROVED · MANDATORY.** Applies to every existing, migrated and new ERP2 business page. Incorporate into the existing PA4–PA6 full-page consistency work package; no independent implementation stream or separate production release.
+
+1. **Unified Grid V2:** All ERP2 business lists MUST reuse the approved shared Unified Grid V2 component and its account-level column preferences, search, filters, sorting and pagination contracts. No page-specific duplicate grid or column-settings implementation. Preserve canonical data and permissions.
+2. **Global Feedback Island V1:** Route dynamic operation success, failure, exceptions and HTTP 403/404/409 feedback through the shared feedback island with understandable messages. Do not replace the business workspace with raw error screens for recoverable errors. Keep required field validation, blocking safety alerts and destructive confirmations visible in context; never weaken authentication, authorization or error semantics.
+3. **Global Compact UI Standard V1:** Maximize visible business data and minimize top-of-page space. Put status counters, view switches and relevant buttons beside the page title wherever feasible; keep page-level actions in the canonical header action zone. Consolidate search/filter controls in the shared grid toolbar. Remove redundant titles, unnecessary whitespace, decorative cards and nonessential notices. Necessary static explanatory text belongs in the footer after business content. Dev/security-gate informational banners must not occupy business-page space; actual security gates remain enforced. Allow responsive wrapping and preserve accessibility and usability. Every avoidable row must be removed.
+
+**PA4:** Apply all three standards while fixing each page. **PA5:** Verify actual pages and workflow states, including layout density and feedback. **PA6:** Require route-by-route evidence of shared grid reuse, feedback handling and compact layout; any noncompliant business page blocks final acceptance. Preserve existing Owner visual/UAT, CI, frontend-only architecture, security and production release gates. Documentation adoption is not evidence of implementation or authorization to deploy. These ERP2-specific presentation requirements supplement existing compact workspace, grid and action-placement rules.
+
+---
+
 # HIGHEST OWNER-FROZEN ERP GLOBAL SKU ISOLATION P0 V2 (2026-11-26)
 
 **Rule ID: ERP_GLOBAL_SKU_ISOLATION_P0 · OWNER APPROVED · MANDATORY for ERP1, ERP2 and every existing/future warehouse and provider.** This supplements and enforces the 2026-11-15 global SKU stock gate (#782/#783). One SKU-specific exception must not block unrelated healthy SKUs/orders in the same warehouse or other warehouses. Warehouse/provider-specific code MUST reuse the global per-SKU decision contract; do not introduce conflicting all-or-nothing SKU validation. ERP2 reuses ERP1 Laravel business rules, not a second stock engine.
