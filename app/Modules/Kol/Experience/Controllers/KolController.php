@@ -79,7 +79,7 @@ final class KolController
         ]);
     }
 
-    public function create(Request $request): Response
+    public function create(Request $request): Response|JsonResponse
     {
         $user = $request->user();
 
@@ -91,7 +91,7 @@ final class KolController
 
         $canManageViews = KolScope::canManageViews($user);
 
-        return Inertia::render('Kol/Create', [
+        $props = [
             'ownerOptions' => $ownerOptions,
             'approvalManagerOptions' => $canManageViews ? $this->usersWithPermission('kol.approvals.manage') : [],
             'financeOwnerOptions' => $canManageViews ? $this->usersWithPermission('kol.payouts.manage') : [],
@@ -99,7 +99,12 @@ final class KolController
             'canManageViews' => $canManageViews,
             'onboardingToken' => OnboardingDraft::read($request, $request->query('onboarding_token')) ? $request->query('onboarding_token') : null,
             'onboardingSmartDraft' => OnboardingDraft::read($request, $request->query('onboarding_token'))['smart'] ?? null,
-        ]);
+        ];
+        if ($request->expectsJson() && ! $request->header('X-Inertia')) {
+            return response()->json($props)->header('Cache-Control', 'no-store, private');
+        }
+
+        return Inertia::render('Kol/Create', $props);
     }
 
     public function duplicateCheck(Request $request): JsonResponse
@@ -122,7 +127,7 @@ final class KolController
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
         $token = $request->input('onboarding_token');
         if ($token !== null) {
@@ -253,6 +258,19 @@ final class KolController
             $redirect = $result['success']
                 ? redirect()->route('kol.orders.create', ['kol_id'=>$result['kol']->getKey(), 'onboarding_token'=>$token])
                 : redirect()->route('kol.library.show', ['kol'=>$result['kol']->getKey(), 'onboarding_token'=>$token]);
+        }
+
+        if ($request->expectsJson() && ! $request->header('X-Inertia')) {
+            return response()->json([
+                'success' => (bool) $result['success'],
+                'kol_id' => (int) $result['kol']->getKey(),
+                'historical_binding' => (bool) ($result['historical_binding'] ?? false),
+                'next_url' => parse_url($redirect->getTargetUrl(), PHP_URL_PATH),
+                'onboarding_pending' => is_string($token),
+                'message' => $result['success']
+                    ? (($result['historical_binding'] ?? false) ? 'KOL 已创建并绑定已有账号。' : 'KOL 已创建，自动开户完成。')
+                    : '档案已保存但开户未确认成功，请核查该档案，勿重复创建。',
+            ], $result['success'] ? 201 : 409)->header('Cache-Control', 'no-store, private');
         }
 
         return $result['success']
