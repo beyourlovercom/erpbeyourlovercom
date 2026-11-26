@@ -565,7 +565,6 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <input v-model="form.affiliate_url_slug" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_url_slug }" required placeholder="推广链接标识" @input="affiliateUrlManuallyEdited = true">
                 <p v-if="form.errors.affiliate_url_slug" class="erp-field-error">{{ form.errors.affiliate_url_slug }}</p>
               </div>
-              <div v-if="historicalAccount" class="erp-form-helper" data-testid="kol-historical-account">已有 WordPress #{{ historicalAccount.wordpress_user_id }} / AffiliateWP #{{ historicalAccount.affiliate_id }}。历史推广链接及优惠码保持不变。</div>
               <div v-if="!reuseExisting" class="kol-password-pair">
                 <div class="erp-form-field">
                   <label class="erp-form-label">Password <span class="erp-form-required">*</span></label>
@@ -602,6 +601,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
               </div>
             </div>
             <p class="erp-form-helper">前三项默认继承网红 Username，可单独覆盖；Affiliate URL 为推广链接标识，独立标识需 Custom Affiliate Slugs 支持。用户名开户后不可修改；密码不保存到 ERP。</p>
+            <p v-if="historicalAccount" class="erp-form-helper kol-historical-account-note" data-testid="kol-historical-account" role="status">已有 WordPress #{{ historicalAccount.wordpress_user_id }} / AffiliateWP #{{ historicalAccount.affiliate_id }}。历史推广链接及优惠码保持不变。</p>
           </div>
 
           <!-- Card 4: 社交账号 -->
@@ -897,6 +897,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
     grid-template-columns: 1fr;
   }
 }
+.kol-historical-account-note { display: block; width: 100%; margin-top: 8px; white-space: normal; overflow-wrap: anywhere; }
 .kol-credential-rows { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px 18px; align-items: start; }
 .kol-credential-rows > .erp-form-field { grid-column: span 4; min-width: 0; }
 .kol-credential-rows > .kol-credential-secondary { grid-column: span 6; }

@@ -81,6 +81,12 @@ describe('Kol/Create VI contract', () => {
     await wrapper.get('[data-testid="kol-preflight-search"]').trigger('click')
     await flushPromises()
     expect(wrapper.get('[data-testid="kol-historical-account"]').text()).toContain('AffiliateWP #260')
+    const note = wrapper.get('[data-testid="kol-historical-account"]').element
+    const card = wrapper.get('.kol-account-card').element
+    expect(note.parentElement).toBe(card)
+    expect(card.lastElementChild).toBe(note)
+    expect(wrapper.get('.kol-credential-rows').element.contains(note)).toBe(false)
+    expect(note.textContent).toContain('历史推广链接及优惠码保持不变。')
     expect(wrapper.find('input[type="password"]').exists()).toBe(false)
     expect(wrapper.get('button[type="submit"]').text()).toContain('创建并绑定已有账号')
     wrapper.unmount()
