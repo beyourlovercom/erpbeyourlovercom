@@ -916,7 +916,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order||repl
       <section class="batch-confirm" role="alertdialog" aria-modal="true" aria-label="确认重新分仓">
         <header><h2>⚠️ 确认重新分仓？</h2></header>
         <p class="batch-caution"><strong>警告：此操作将归档所有相关子订单！</strong></p>
-        <p>母订单将恢复待分仓，历史记录保留。已有实际发货或仓库接单证据时将阻止操作。</p>
+        <p>所有子订单均无物流单号时直接归档，母订单恢复待分仓；任一子订单已有物流单号时，请人工确认发货并手工调整母订单。归档不等于外部仓库撤单，已推送订单请核实仓库是否仍会发货。</p>
         <footer><button class="secondary" type="button" @click="reallocationConfirmOpen=false">取消</button><button class="secondary reallocation-danger" type="button" data-testid="reallocation-confirm-submit" :disabled="submitting" @click="resetParentAllocation">确认归档并重新分仓</button></footer>
       </section>
     </div>

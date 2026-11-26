@@ -7,7 +7,6 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
-use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderAuxiliaryStatusService;
@@ -16,7 +15,7 @@ use App\Modules\Orders\Infrastructure\Models\OrderWorkflowStatusHistory;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 
-/** Explicit, pre-dispatch-only reset of a failed original split allocation. */
+/** Explicit reset of a failed original split allocation using the tracking-number gate. */
 final class ParentFulfillmentReallocationService
 {
     public function __construct(
@@ -55,21 +54,22 @@ final class ParentFulfillmentReallocationService
             $family = collect([$root])->concat($children);
             $ids = $family->pluck('id')->all();
             $shipments = Shipment::query()->whereIn('order_id', $ids)->orderBy('order_id')->lockForUpdate()->get()->keyBy('order_id');
+            // Owner business rule: an existing tracking number requires manual
+            // reconciliation; a historical review or dispatch attempt alone does not.
+            // Check the entire family before any writes, including historical tracking
+            // retained by shipment attempts. Archival never cancels a remote OMS order.
             foreach ($family as $member) {
                 $shipment = $shipments->get($member->id);
-                $this->assertNoDispatch($member, $shipment, $member->is($root));
+                $attempts = $member->shipmentAttempts()->lockForUpdate()->get(['id', 'tracking_number']);
+                abort_if(filled($shipment?->tracking_number)
+                    || $attempts->contains(fn ($attempt) => filled($attempt->tracking_number)), 409,
+                    '履约 '.$member->erp_order_id.' 已有物流单号，请人工确认是否已发货，并手工调整母订单。不能自动归档。');
             }
-            // Do not archive a live parent shipment. A split mother may only
-            // have an empty pending draft after a prior warehouse rejection.
             $parentShipment = $shipments->get($root->id);
             abort_if($parentShipment && $parentShipment->warehouse_id !== null, 409, '母订单仍有独立发货仓，请先核对。');
-            // Lock reservation rows before testing committed state. A concurrent
-            // commit must either finish before this check or observe the release.
+            // Release only currently reserved stock. Never reverse committed stock or
+            // alter historical procurement/dispatch evidence based on missing tracking.
             $reservations = DB::table('inventory_reservations')->whereIn('order_id', $ids)->orderBy('id')->lockForUpdate()->get();
-            abort_if($reservations->contains(fn ($reservation) => ! in_array($reservation->status, ['reserved', 'released', 'expired'], true)),
-                409, '存在已扣减或未核实的库存记录，不能重新分仓。');
-            abort_if(DB::table('procurement_orders')->whereIn('source_order_id', $ids)->where('status', '!=', 'cancelled')->exists(),
-                409, '存在尚未取消的采购任务，请先处理采购单。');
             // All validation is complete. Release reservations via canonical
             // repository and archive only the old children, never delete them.
             foreach ($reservations->where('status', 'reserved') as $reservation) {
@@ -161,48 +161,4 @@ final class ParentFulfillmentReallocationService
         });
     }
 
-    private const DISPATCH_RISK_WORKFLOW = ['sending', 'sent', 'resent', 'partially_shipped', 'shipped', 'shipping', 'shared', 'arrived', 'completed', 'finished'];
-
-    private function assertNoDispatch(Order $member, ?Shipment $shipment, bool $isRoot): void
-    {
-        $message = '履约 '.$member->erp_order_id.' 存在真实发货或仓库接单风险，请先核实并撤单，不能直接归档。';
-        abort_if(! in_array($member->order_status?->value, ['pending_shipment', 'cancelled'], true)
-            || in_array($member->workflow_status, self::DISPATCH_RISK_WORKFLOW, true)
-            || $member->workflowStatusHistory()->where(fn ($history) => $history
-                ->whereIn('from_status', self::DISPATCH_RISK_WORKFLOW)
-                ->orWhereIn('to_status', self::DISPATCH_RISK_WORKFLOW))->exists()
-            || $member->manualSync()->whereNotNull('synced_at')->exists()
-            || $member->shipmentAttempts()->exists()
-            || $member->logisticsReview()->exists()
-            || $member->operationalMarkers()->whereIn('marker', ['domestic_reviewed', 'woo_manual_tracking_verified', 'woo_manual_force_completed'])->exists()
-            || $member->externalReferences()->when($isRoot, fn ($q) => $q->where('provider', '!=', 'woocommerce'))->exists(), 409, $message);
-        if ($shipment) {
-            // The canonical exception transition originates in shipped;
-            // never treat absence of tracking as proof of non-dispatch.
-            abort_if($shipment->shipment_status !== 'pending'
-                || filled($shipment->tracking_number) || $shipment->shipped_at !== null
-                || $shipment->billingEvidence()->exists() || $shipment->overseasHandlingEvidence()->exists()
-                || DB::table('shipment_item_packaging_snapshots')->where('shipment_id', $shipment->id)->exists()
-                || DB::table('warehouse_dispatch_events')->where('shipment_id', $shipment->id)->exists(), 409, $message);
-            // Manual exporters have no reliable per-order download ledger.
-            // Never reset routes without a mandatory warehouse review gate.
-            $code = strtoupper((string) $shipment->warehouse?->code);
-            // The domestic ready query also accepts legacy null workflow. A
-            // factory segment must positively be in a pre-export phase.
-            abort_if($code === 'FACTORY' && ! in_array($member->workflow_status,
-                ['pending_review', 'pending_allocation', 'out_of_stock'], true), 409, $message);
-            abort_if($shipment->warehouse_id !== null && ! in_array($code, ['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'DE', 'CA'], true), 409, $message);
-        }
-        foreach (['shipout_dispatch_attempts', 'shipout_production_batch_items', 'shipout_oms_readbacks',
-            'shipout_label_stages', 'xlwms_dispatch_attempts', 'xlwms_de_dispatch_batch_items', 'warehouse_dispatch_states'] as $table) {
-            abort_if(DB::table($table)->where('order_id', $member->id)->exists(), 409, $message);
-        }
-        abort_if(DB::table('xlwms_reshipments')->where('original_order_id', $member->id)->exists(), 409, $message);
-        $review = $member->overseaWarehouseReview()->first();
-        abort_if($review?->status === 'approved'
-            || DB::table('audit_records')->where('entity_type', Order::class)->where('entity_id', (string) $member->id)
-                ->whereIn('action', ['domestic.review_approve', 'domestic.review_restock'])->exists()
-            || ($review && DB::table('audit_records')->where('entity_type', OverseaWarehouseReview::class)->where('entity_id', (string) $review->id)
-                ->whereIn('action', ['oversea.review_approve', 'oversea.review_restock'])->exists()), 409, $message);
-    }
 }
