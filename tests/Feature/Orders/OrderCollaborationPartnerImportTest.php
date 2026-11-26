@@ -191,6 +191,49 @@ final class OrderCollaborationPartnerImportTest extends TestCase
         $this->assertDatabaseHas('audit_records', ['action' => 'order.erp_identity_repaired', 'entity_id' => (string) $order->id]);
     }
 
+    public function test_collaboration_csv_exports_exact_tracking_numbers_and_preserves_partner_scope(): void
+    {
+        $user = $this->userWith(['orders.view']);
+        $make = function (string $number, int $partnerId) use ($user): Order {
+            return Order::query()->create([
+                'source_type' => 'collaboration', 'order_kind' => 'customer',
+                'collaboration_partner_id' => $partnerId, 'internal_order_number' => $number,
+                'external_order_number' => 'SOURCE-'.$number, 'erp_order_id' => $number,
+                'order_date' => '2026-11-25', 'order_status' => 'pending_shipment',
+                'currency' => 'USD', 'owner_id' => $user->id,
+            ]);
+        };
+        $west = $make('CY27552-007', 1);
+        $east = $make('CY90004-007', 1);
+        $pending = $make('CY02301-007', 1);
+        $other = $make('AJ27552-007', 2);
+        $west->shipment()->create(['shipment_status' => 'pending', 'carrier' => 'USPS', 'tracking_number' => '9235990424546100441192']);
+        $east->shipment()->create(['shipment_status' => 'pending', 'carrier' => 'USPS', 'tracking_number' => '0035990416422203119422']);
+        $pending->shipment()->create(['shipment_status' => 'pending', 'tracking_number' => null]);
+        $other->shipment()->create(['shipment_status' => 'pending', 'carrier' => 'DHL', 'tracking_number' => 'OTHER-TRACK']);
+
+        $csv = $this->actingAs($user)->get('/orders/collaboration/export?partner_id=1')->assertOk()->streamedContent();
+        $rows = array_map('str_getcsv', preg_split('/\r?\n/', trim($csv)));
+        $headers = array_shift($rows);
+        $this->assertSame(['ERP订单号', '来源订单号', '来源', '合作商', '订单日期', '收件人', '国家', '状态', '负责人', '发货单号'], $headers);
+        $this->assertCount(3, $rows);
+        $byNumber = [];
+        foreach ($rows as $row) {
+            $this->assertCount(count($headers), $row);
+            $byNumber[$row[0]] = array_combine($headers, $row);
+        }
+        $this->assertSame('9235990424546100441192', $byNumber['CY27552-007']['发货单号']);
+        $this->assertSame('0035990416422203119422', $byNumber['CY90004-007']['发货单号']);
+        $this->assertSame('', $byNumber['CY02301-007']['发货单号']);
+        $this->assertArrayNotHasKey('AJ27552-007', $byNumber);
+
+        $all = $this->get('/orders/collaboration/export')->assertOk()->streamedContent();
+        $this->assertStringContainsString('OTHER-TRACK', $all);
+        $admin = $this->userWith(['orders.view', 'customers.export', 'system.permissions.manage']);
+        $customer = $this->actingAs($admin)->get('/customers/orders/export')->assertOk()->streamedContent();
+        $this->assertNotContains('发货单号', str_getcsv(explode("\n", $customer)[0]));
+    }
+
     public function test_old_tingon_orders_remain_unassigned_in_collaboration_page(): void
     {
         $user = $this->userWith(['orders.view']);
