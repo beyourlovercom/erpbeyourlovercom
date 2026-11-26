@@ -183,4 +183,43 @@ final class WarehouseFinalSkuContractTest extends TestCase
         $this->expectException(HttpException::class);
         app(WarehouseFinalSkuResolver::class)->resolve($product->id, 'US-LA', 'BY489A-Lubes');
     }
+    public function test_strict_factory_uses_selected_product_master_not_old_alias_and_external_warehouse_stays_strict(): void
+    {
+        config()->set('warehouse_final_sku.require_verified_mapping', true);
+        $product = $this->product('M2');
+        $factory = $this->warehouse('FACTORY');
+        $external = $this->warehouse('US-LA');
+        $resolver = app(WarehouseFinalSkuResolver::class);
+        self::assertSame('M2', $resolver->resolve($product->id, 'FACTORY', 'OLD-WAREHOUSE-SKU'));
+        $order = $this->order($product, $factory);
+        $item = $order->items->firstOrFail();
+        $item->forceFill(['final_sku' => 'M2', 'resolved_fulfillment_sku' => 'M2'])->save();
+        self::assertSame('M2', $resolver->forShipment($order->shipment, $item->fresh()));
+        self::assertSame('BY489A-Lubes', $item->fresh()->source_sku);
+        $this->verified($product, $factory, 'CN-M2');
+        self::assertSame('CN-M2', $resolver->resolve($product->id, 'FACTORY', 'M2'));
+        try {
+            $resolver->forShipment($order->shipment, $item->fresh());
+            self::fail('Old factory SKU must fail after a verified override');
+        } catch (HttpException $e) {
+            self::assertSame(422, $e->getStatusCode());
+        }
+        $this->expectException(HttpException::class);
+        $resolver->resolve($product->id, 'US-LA', 'M2');
+    }
+
+    public function test_strict_factory_never_accepts_gift_placeholder_or_inactive_product(): void
+    {
+        config()->set('warehouse_final_sku.require_verified_mapping', true);
+        $factory = $this->warehouse('FACTORY');
+        $gift = $this->product('gift');
+        $inactive = $this->product('STOPPED');
+        $inactive->forceFill(['is_active' => false])->save();
+        $resolver = app(WarehouseFinalSkuResolver::class);
+        self::assertNull($resolver->expected($gift->id, $factory->id));
+        self::assertNull($resolver->expected($inactive->id, $factory->id));
+        $this->expectException(HttpException::class);
+        $resolver->resolve($inactive->id, 'FACTORY', 'STOPPED');
+    }
+
 }

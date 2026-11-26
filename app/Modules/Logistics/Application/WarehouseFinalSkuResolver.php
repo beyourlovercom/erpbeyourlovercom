@@ -6,6 +6,7 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\OrderItem;
 use App\Modules\Products\Application\OutboundOrderSkuResolver;
+use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductWarehouseSku;
 
 /** One warehouse-specific SKU contract shared by allocation and every outbound path. */
@@ -31,13 +32,37 @@ final class WarehouseFinalSkuResolver
         return $sku !== '' ? $sku : null;
     }
 
+    /**
+     * FACTORY (including OUTSOURCE received/fulfilled there) uses the selected
+     * active Product OS SKU when no explicit factory override exists. There is
+     * no independent warehouse SKU catalog for a future procurement. Never
+     * use the caller's old SKU, gift placeholder or another warehouse's alias.
+     * Every external warehouse still requires its own verified mapping.
+     */
+    public function expected(int $productId, int $warehouseId): ?string
+    {
+        $mapped = $this->mapped($productId, $warehouseId);
+        if ($mapped !== null || ! config('warehouse_final_sku.require_verified_mapping')) {
+            return $mapped;
+        }
+
+        $warehouse = Warehouse::query()->whereKey($warehouseId)->where('is_active', true)->first();
+        if (strtoupper(trim((string) $warehouse?->code)) !== 'FACTORY') {
+            return null;
+        }
+
+        $sku = trim((string) Product::query()->whereKey($productId)->where('is_active', true)->value('sku'));
+
+        return $sku !== '' && strcasecmp($sku, 'gift') !== 0 ? $sku : null;
+    }
+
     public function resolve(int $productId, string $warehouseCode, string $fallbackSku): string
     {
         $code = strtoupper(trim($warehouseCode));
         $warehouse = Warehouse::query()->whereRaw('UPPER(code) = ?', [$code])->first();
         abort_unless($warehouse, 422, "找不到发货仓 {$warehouseCode}");
 
-        $mapped = $this->mapped($productId, (int) $warehouse->getKey());
+        $mapped = $this->expected($productId, (int) $warehouse->getKey());
         if ($mapped !== null) {
             return $mapped;
         }
@@ -61,7 +86,7 @@ final class WarehouseFinalSkuResolver
 
         if ((bool) config('warehouse_final_sku.require_verified_mapping')) {
             $warehouseId = (int) $shipment->warehouse_id;
-            $mapped = $this->mapped((int) $item->product_id, $warehouseId);
+            $mapped = $this->expected((int) $item->product_id, $warehouseId);
             abort_unless($mapped !== null && $final !== '' && strcasecmp($mapped, $final) === 0, 422,
                 '订单最终 SKU 与已校验的发货仓 SKU 映射不一致，请重新分仓或校对 SKU');
         }

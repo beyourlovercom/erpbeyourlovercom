@@ -21,6 +21,7 @@ final class ExternalProcurementWorkflowTest extends TestCase
 
     public function test_vita_allocates_external_and_zhang_receives_and_vita_releases_without_kaven(): void
     {
+        config()->set('warehouse_final_sku.require_verified_mapping', true);
         $factory = $this->warehouse('FACTORY');
         $vita = $this->operator(['logistics.view', 'logistics.operate', 'orders.edit', 'domestic.review']);
         $zhang = $this->operator(['procurement.view', 'procurement.operate']);
@@ -32,6 +33,8 @@ final class ExternalProcurementWorkflowTest extends TestCase
 
         $order->refresh()->load('shipment.warehouse', 'procurementOrder.items');
         self::assertSame('FACTORY', $order->shipment->warehouse->code);
+        self::assertSame('M1', $item->fresh()->final_sku);
+        self::assertSame('M1', app(\App\Modules\Logistics\Application\WarehouseFinalSkuResolver::class)->forShipment($order->shipment, $item->fresh()));
         self::assertSame('pending', $order->shipment->shipment_status);
         self::assertNull($order->shipment->tracking_number);
         $procurement = $order->procurementOrder;
@@ -89,6 +92,7 @@ final class ExternalProcurementWorkflowTest extends TestCase
 
     public function test_split_only_purchased_item_creates_procurement_for_real_fulfillment_child(): void
     {
+        config()->set('warehouse_final_sku.require_verified_mapping', true);
         $this->warehouse('FACTORY');
         $this->warehouse('US-SM');
         $vita = $this->operator(['logistics.view', 'logistics.operate', 'orders.edit', 'domestic.review']);
@@ -120,6 +124,7 @@ final class ExternalProcurementWorkflowTest extends TestCase
 
     public function test_external_reallocation_or_gift_placeholder_cannot_bypass_purchase_identity(): void
     {
+        config()->set('warehouse_final_sku.require_verified_mapping', true);
         $this->warehouse('FACTORY');
         $vita = $this->operator(['logistics.view', 'logistics.operate']);
         [$order,$item] = $this->orderWithItem('gift');
@@ -136,6 +141,7 @@ final class ExternalProcurementWorkflowTest extends TestCase
 
     public function test_vita_reallocation_before_purchase_cancels_superseded_external_task(): void
     {
+        config()->set('warehouse_final_sku.require_verified_mapping', true);
         $this->warehouse('FACTORY');
         $vita = $this->operator(['logistics.view', 'logistics.operate', 'orders.edit', 'domestic.review']);
         [$order, $item] = $this->orderWithItem('M1-REASSIGN');
@@ -156,6 +162,7 @@ final class ExternalProcurementWorkflowTest extends TestCase
 
     public function test_after_purchase_started_vita_cannot_silently_reallocate_or_kaven_approve(): void
     {
+        config()->set('warehouse_final_sku.require_verified_mapping', true);
         $this->warehouse('FACTORY');
         $vita = $this->operator(['logistics.view', 'logistics.operate', 'orders.edit', 'domestic.review']);
         $kaven = $this->operator(['domestic.review', 'logistics.view']);
