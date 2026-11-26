@@ -1,0 +1,38 @@
+name: ERP2 Offline Warehouse Map V2 candidate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/erp-siteops-vben/candidates/offline-warehouse-map-v2-20261126/**'
+      - '.github/workflows/erp2-offline-warehouse-map-v2.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Verify exact archived candidate, Vue compile and transport contracts
+        run: node apps/erp-siteops-vben/candidates/offline-warehouse-map-v2-20261126/verify-archive.mjs
+      - name: Gateway syntax
+        run: node --check apps/erp-siteops-vben/candidates/offline-warehouse-map-v2-20261126/gateway/vben-local-gateway.cjs
+  backend-replacement-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Original Laravel allocation and actual SKU persistence (isolated test DB)
+        run: php artisan test tests/Feature/FulfillmentAllocationAccessTest.php tests/Feature/Logistics/WarehousePhysicalSkuMaterializationTest.php
