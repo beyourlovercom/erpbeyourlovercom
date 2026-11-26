@@ -81,7 +81,8 @@ final class DeTianyunOutboundBatchTest extends TestCase
             'fetched_at' => now(), 'mapped_sku_count' => 1,
             'provider_sku_count' => 1, 'unmatched_sku_count' => 0,
             'blocked_sku_count' => 0,
-            'summary' => ['v2' => true, 'de_authoritative_physical_v1' => true],
+            'summary' => ['v2' => true, 'de_authoritative_physical_v1' => true,
+                'de_physical_applied_product_ids' => [$productId], 'de_authoritative_physical_sku_count' => 1],
         ]);
         $snapshot->rows()->create([
             'provider_sku' => 'DE-EXISTING', 'product_id' => $productId,
@@ -178,7 +179,8 @@ final class DeTianyunOutboundBatchTest extends TestCase
             'fetched_at' => now(), 'mapped_sku_count' => 1,
             'provider_sku_count' => 1, 'unmatched_sku_count' => 0,
             'blocked_sku_count' => 0,
-            'summary' => ['v2' => true, 'de_authoritative_physical_v1' => true],
+            'summary' => ['v2' => true, 'de_authoritative_physical_v1' => true,
+                'de_physical_applied_product_ids' => [$productId], 'de_authoritative_physical_sku_count' => 1],
         ]);
         $snapshot->rows()->create([
             'provider_sku' => 'DE-EXISTING', 'product_id' => $productId,
@@ -197,13 +199,17 @@ final class DeTianyunOutboundBatchTest extends TestCase
         config()->set('inventory_sku_gate.enabled', true);
         $inventory = \Mockery::mock(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryGateway::class);
         $inventory->shouldReceive('productPage')->andReturn(['code'=>200,'data'=>[
-            'records'=>[['sku'=>'DE-EXISTING','productName'=>'Synthetic']],
-            'total'=>1,'page'=>1,'pageSize'=>10,'pages'=>1,
+            'records'=>[['sku'=>'DE-EXISTING','productName'=>'Synthetic'], ['sku'=>'UNKNOWN-ZERO'], ['sku'=>'UNKNOWN-POSITIVE']],
+            'total'=>3,'page'=>1,'pageSize'=>10,'pages'=>1,
         ]]);
         $inventory->shouldReceive('integratedInventoryPage')->andReturn(['code'=>200,'data'=>[
             'records'=>[['sku'=>'DE-EXISTING','whCode'=>'Hannover','stockType'=>0,'productTotalAmount'=>8,
-                'productStockDtl'=>['availableAmount'=>8,'lockAmount'=>0,'transportAmount'=>0]]],
-            'total'=>1,'page'=>1,'pageSize'=>10,'pages'=>1,
+                'productStockDtl'=>['availableAmount'=>8,'lockAmount'=>0,'transportAmount'=>0]],
+                ['sku'=>'UNKNOWN-ZERO','whCode'=>'Hannover','stockType'=>0,'productTotalAmount'=>0,
+                    'productStockDtl'=>['availableAmount'=>0,'lockAmount'=>0,'transportAmount'=>0]],
+                ['sku'=>'UNKNOWN-POSITIVE','whCode'=>'Hannover','stockType'=>0,'productTotalAmount'=>3,
+                    'productStockDtl'=>['availableAmount'=>3,'lockAmount'=>0,'transportAmount'=>0]]],
+            'total'=>3,'page'=>1,'pageSize'=>10,'pages'=>1,
         ]]);
         $this->app->instance(\App\Modules\Logistics\Application\Xlwms\XlwmsInventoryGateway::class, $inventory);
         Queue::fake();
@@ -273,6 +279,45 @@ final class DeTianyunOutboundBatchTest extends TestCase
         } finally {
             $this->app->instance('env', $oldEnv);
         }
+    }
+
+    public function test_de_preflight_rejects_only_unproven_or_insufficient_order_items_and_stale_source(): void
+    {
+        config()->set('inventory_sku_gate.enabled', true);
+        config()->set('xlwms.de_authoritative_auto_apply_enabled', true);
+        $operator = $this->operator();
+        $good = $this->order($operator, 'SKU-ISOLATED-GOOD');
+        $bad = $this->order($operator, 'SKU-ISOLATED-BAD', 'DE', true, 'DE-NOT-PROVEN');
+        $mixed = $this->order($operator, 'SKU-ISOLATED-MIXED');
+        $tooMany = $this->order($operator, 'SKU-ISOLATED-QUANTITY');
+        $goodId = (int) $good->items()->firstOrFail()->product_id;
+        $badId = (int) $bad->items()->firstOrFail()->product_id;
+        $warehouseId = (int) $good->shipment->warehouse_id;
+        $mixed->items()->create(['product_id' => $badId, 'sku' => 'DE-NOT-PROVEN',
+            'product_summary' => 'Synthetic', 'quantity' => 1, 'unit_price' => 10, 'line_revenue' => 10]);
+        $tooMany->items()->firstOrFail()->update(['quantity' => 5]);
+        $tooMany->items()->create(['product_id' => $goodId, 'sku' => 'DE-EXISTING',
+            'product_summary' => 'Synthetic', 'quantity' => 5, 'unit_price' => 10, 'line_revenue' => 50]);
+        $snapshot = XlwmsInventorySnapshot::query()->create([
+            'warehouse_id' => $warehouseId, 'wh_code' => 'Hannover', 'checksum' => str_repeat('c', 64),
+            'status' => 'blocked', 'fetched_at' => now(), 'mapped_sku_count' => 1,
+            'provider_sku_count' => 2, 'unmatched_sku_count' => 1, 'blocked_sku_count' => 1,
+            'summary' => ['v2' => true],
+        ]);
+        $snapshot->rows()->create(['provider_sku' => 'DE-EXISTING', 'product_id' => $goodId,
+            'resolution_status' => 'matched', 'oms_total' => 8, 'oms_available' => 8, 'oms_locked' => 0, 'oms_in_transit' => 0]);
+        $snapshot->rows()->create(['provider_sku' => 'UNKNOWN-SKU', 'product_id' => null,
+            'resolution_status' => 'unmatched', 'oms_total' => 5, 'oms_available' => 5, 'oms_locked' => 0, 'oms_in_transit' => 0]);
+        app(\App\Modules\Logistics\Application\Xlwms\DeAuthoritativePhysicalStockSyncService::class)
+            ->reconcileSnapshot($snapshot->id, true);
+        $preview = app(\App\Modules\Logistics\Application\Xlwms\SingleOrderPreview::class);
+        self::assertSame([], $preview->forOrder($good, true, false, 'DE')['blockers']);
+        foreach ([$bad, $mixed, $tooMany] as $order) {
+            self::assertContains('OMS_SNAPSHOT_STOCK_INSUFFICIENT', $preview->forOrder($order, true, false, 'DE')['blockers']);
+        }
+        $snapshot->forceFill(['fetched_at' => now()->subMinutes(3)])->save();
+        self::assertContains('OMS_SNAPSHOT_NOT_FRESH', $preview->forOrder($good, true, false, 'DE')['blockers']);
+        Http::assertNothingSent();
     }
 
     public function test_operator_confirmed_batch_uses_persistent_exact_claim_not_global_order_whitelist(): void

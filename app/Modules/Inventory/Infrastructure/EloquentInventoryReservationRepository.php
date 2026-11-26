@@ -83,8 +83,9 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
         }
 
         $providerAuthoritative = strtoupper((string) $warehouse->code) === 'US-LA';
+        $deAuthoritative = $warehouse->code === 'DE' && config('xlwms.de_authoritative_auto_apply_enabled', false);
         // MorePlus signed-stock mirror, not an old CSV full import, owns US-LA quantity.
-        $authoritative = $providerAuthoritative || InventorySyncBatch::query()
+        $authoritative = $providerAuthoritative || $deAuthoritative || InventorySyncBatch::query()
             ->where('warehouse_id', $warehouseId)
             ->where('status', 'confirmed')
             ->where('sync_mode', 'full')
@@ -117,11 +118,12 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
             ->get()
             ->keyBy('product_id');
 
-        $xlwmsProviderAvailable = $warehouse->code === 'US-SM'
+        $xlwmsProviderAvailable = $warehouse->code === 'US-SM' || $deAuthoritative
             ? app(XlwmsInventoryCoverage::class)->providerAvailableByProductId((int) $warehouseId) : null;
+        if ($deAuthoritative && $xlwmsProviderAvailable === null) $xlwmsProviderAvailable = [];
         foreach ($required as $productId => $quantity) {
             if ($xlwmsProviderAvailable !== null && ! array_key_exists((int) $productId, $xlwmsProviderAvailable)) {
-                throw new DomainException('OMS inventory SKU not confirmed for US-SM.');
+                throw new DomainException('OMS inventory SKU not confirmed for '.$warehouse->code.'.');
             }
             $inventory = $lockedInventory->get($productId);
             if (! $inventory) {
@@ -212,7 +214,8 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
         $code = strtoupper((string) Warehouse::query()
             ->whereKey($reservation->warehouse_id)->value('code'));
         $providerAuthoritative = $code === 'US-LA'
-            || (config('inventory_sku_gate.enabled', false) && $code === 'US-SM');
+            || (config('inventory_sku_gate.enabled', false) && $code === 'US-SM')
+            || ($code === 'DE' && config('xlwms.de_authoritative_auto_apply_enabled', false));
         foreach ($reservation->items as $item) {
             /** @var WarehouseInventory $inventory */
             $inventory = $inventories->get($item->warehouse_inventory_id);
@@ -224,7 +227,7 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
             }
             $afterQoh = $providerAuthoritative ? $qoh : $qoh - $quantity;
             // Shipping evidence is not a warehouse physical-count update.
-            // For MorePlus, only release the ERP reservation ledger.
+            // For provider-authoritative warehouses, only release the ERP reservation ledger.
             $inventory->forceFill(['quantity_on_hand' => $afterQoh, 'quantity_reserved' => $reserved - $quantity])->save();
             $this->adjustment($inventory, $actorUserId, $qoh, $afterQoh, $reserved, $reserved - $quantity, 'reservation_committed');
         }
