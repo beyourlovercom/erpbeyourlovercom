@@ -1,3 +1,11 @@
+# OWNER-FROZEN ERP RELEASE LOG AND RISK-BASED BACKUP (2026-11-26)
+
+**Mandatory for ERP1 and ERP2.** Each verified release must be recorded in the single canonical Markdown file `resources/content/changelog/erp-changelog.md`. Add a dated section (`## YYYY-MM-DD`, Beijing date; append to an existing same-date section), concise Chinese user-facing changes grouped by module, and actual ERP1/ERP2 release scope. Do not label merged-only, candidate-only or pending UAT work as released. Preserve prior entries; no database-backed changelog editor, no separate ERP2 copy of the content. Synchronize the committed Markdown to the affected runtime and verify the read-only `/settings/changelog` page; later content changes require no frontend rebuild.
+
+Routine low-risk and normal releases do not require a new database backup by default. Assess actual data impact, not the name of the feature. Schema changes, migrations, destructive or mass historical writes require a verified pre-change database backup. For other high-impact business changes assess risk explicitly. Use ERP's authorized two-stage backup entry when needed; confirm file integrity and timestamp, without requiring download. Preserve CI, authorization, rollback and readback gates; never bypass a blocked security action.
+
+---
+
 # HIGHEST OWNER-FROZEN ERP GLOBAL SKU ISOLATION P0 V2 (2026-11-26)
 
 **Rule ID: ERP_GLOBAL_SKU_ISOLATION_P0 · OWNER APPROVED · MANDATORY for ERP1, ERP2 and every existing/future warehouse and provider.** This supplements and enforces the 2026-11-15 global SKU stock gate (#782/#783). One SKU-specific exception must not block unrelated healthy SKUs/orders in the same warehouse or other warehouses. Warehouse/provider-specific code MUST reuse the global per-SKU decision contract; do not introduce conflicting all-or-nothing SKU validation. ERP2 reuses ERP1 Laravel business rules, not a second stock engine.

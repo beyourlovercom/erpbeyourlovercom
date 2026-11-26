@@ -217,6 +217,27 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertDatabaseCount('kols', 1);
     }
 
+    public function test_vben_json_contract_reuses_historical_binding_and_original_permissions(): void
+    {
+        $specialist = $this->specialist();
+        $account = $this->historicalAccount();
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('checkAffiliateIdentity')->once()->with('legacy@example.test')
+            ->andReturn($this->response(['available' => false, 'wp_user_id' => 655, 'affiliate_id' => 260], 'legacy'));
+        $mock->shouldNotReceive('provisionAffiliate');
+        $mock->shouldNotReceive('provisionCoupon');
+        $this->actingAs($specialist)->getJson('/kol/library/create')
+            ->assertOk()->assertJsonPath('currentUserId', $specialist->id)->assertJsonPath('canManageViews', false);
+        $response = $this->postJson('/kol/library', $this->historicalPayload())->assertCreated()
+            ->assertJsonPath('success', true)->assertJsonPath('historical_binding', true);
+        $kol = Kol::query()->sole();
+        $response->assertJsonPath('kol_id', $kol->id);
+        self::assertSame($kol->id, $account->fresh()->kol_id);
+        $this->postJson('/kol/library', [...$this->historicalPayload(), 'reuse_existing_account' => true])->assertUnprocessable()
+            ->assertJsonValidationErrors('wordpress_username');
+        self::assertDatabaseCount('kols', 1);
+    }
+
     public function test_historical_identity_wrong_email_or_live_conflict_never_creates_profile(): void
     {
         $specialist = $this->specialist();

@@ -52,7 +52,8 @@ class DatabaseDumpAdapter implements DatabaseDumper
     protected function gzip(string $destination): void
     {
         $input = fopen($destination, 'rb');
-        $output = gzopen($destination.'.gz', 'wb9');
+        // Fast compression keeps interactive backups within the HTTP request budget.
+        $output = gzopen($destination.'.gz', 'wb1');
         if (! is_resource($input) || $output === false) {
             throw new RuntimeException('Unable to gzip database dump.');
         }

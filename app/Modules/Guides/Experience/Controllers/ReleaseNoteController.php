@@ -4,6 +4,7 @@ namespace App\Modules\Guides\Experience\Controllers;
 
 use App\Modules\Guides\Application\MarkdownContentRenderer;
 use App\Modules\Orders\Application\OrderIdentityService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -17,7 +18,7 @@ final class ReleaseNoteController
         private readonly OrderIdentityService $identities,
     ) {}
 
-    public function index(Request $request): Response
+    public function index(Request $request): Response|JsonResponse
     {
         $entries = $this->changelogEntries();
         $requestedDate = $request->query('date');
@@ -26,10 +27,12 @@ final class ReleaseNoteController
                 ? $requestedDate
                 : ($entries[0]['date'] ?? null);
 
-        return Inertia::render('Guides/Releases/Index', [
-            'entries' => $entries,
-            'initialDate' => $initialDate,
-        ]);
+        $props = ['entries' => $entries, 'initialDate' => $initialDate];
+        if ($request->expectsJson() && ! $request->header('X-Inertia')) {
+            return response()->json($props)->header('Cache-Control', 'no-store, private');
+        }
+
+        return Inertia::render('Guides/Releases/Index', $props);
     }
 
     public function settings(): Response
