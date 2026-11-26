@@ -228,6 +228,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/wait-stock/allocation-products', [LogisticsController::class, 'allocationProducts'])->middleware($allocation)->name('logistics.allocation-products');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/preflight', [LogisticsController::class, 'preflightManualAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.preflight');
     Route::get('/logistics/orders/{order}/fulfillment-allocation/status', [LogisticsController::class, 'allocationSubmissionStatus'])->middleware($allocation)->name('logistics.fulfillment-allocation.status');
+    Route::post('/logistics/orders/{order}/fulfillment-allocation/reset', [LogisticsController::class, 'resetParentAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.reset');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/manual', [LogisticsController::class, 'submitManualAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.manual');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/quick', [LogisticsController::class, 'submitQuickAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.quick');
     Route::post('/logistics/orders/{order}/reallocate-pending-fulfillment', [LogisticsController::class, 'reallocatePendingFulfillment'])->middleware($allocation)->name('logistics.fulfillment.reallocate-pending');

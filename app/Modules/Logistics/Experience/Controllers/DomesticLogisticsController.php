@@ -476,7 +476,7 @@ final class DomesticLogisticsController
     {
         return Order::query()->eligibleForOperations()
             ->where('order_status', '!=', 'cancelled')
-            ->whereDoesntHave('fulfillmentChildren')
+            ->whereDoesntHave('activeFulfillmentChildren')
             ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
             ->where(function (Builder $routes) use ($factoryId): void {
                 $routes->whereIn('routing_warehouse_code', ['FACTORY', 'OUTSOURCE'])

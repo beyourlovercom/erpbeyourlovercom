@@ -613,6 +613,162 @@ final class FulfillmentAllocationV1Test extends TestCase
     }
 
     /** @return array{User,Order} */
+    public function test_parent_reset_archives_original_children_and_can_materialize_fresh_generation(): void
+    {
+        [$actor, $parent] = $this->scenario(2);
+        $parent->forceFill(['erp_order_id' => 'C99001-007'])->save();
+        $assignments = [
+            ['order_item_id' => $parent->items[0]->id, 'source_code' => 'US-LA'],
+            ['order_item_id' => $parent->items[1]->id, 'source_code' => 'FACTORY'],
+        ];
+        $submit = '/logistics/orders/'.$parent->id.'/fulfillment-allocation/manual';
+        $reset = '/logistics/orders/'.$parent->id.'/fulfillment-allocation/reset';
+        $this->actingAs($actor)->postJson($submit, [
+            'assignments' => $assignments, 'stock_exception_acknowledged' => true,
+        ])->assertOk();
+        $children = $parent->originalFulfillmentChildren()->orderBy('fulfillment_suffix')->get();
+        $this->assertSame(['A', 'B'], $children->pluck('fulfillment_suffix')->all());
+        $oldShipments = $children->map(fn ($c) => $c->shipment()->firstOrFail()->getAttributes())->all();
+        $parent->refresh();
+        $oldRevision = (int) $parent->workflow_revision;
+        $token = \App\Modules\Logistics\Application\ParentFulfillmentReallocationService::token($parent, $parent->fulfillmentAllocation);
+        $viewer = $this->userWith(['logistics.view']);
+        $this->actingAs($viewer)->postJson($reset, ['confirmed' => true, 'token' => $token])->assertForbidden();
+        $this->actingAs($actor)->postJson($reset, ['token' => $token])->assertUnprocessable();
+        $this->actingAs($actor)->postJson($reset, ['confirmed' => true, 'token' => str_repeat('0',64)])->assertConflict();
+        $this->assertCount(2, $parent->originalFulfillmentChildren()->get());
+        $factory = $children->last();
+        $inventory = WarehouseInventory::query()->create([
+            'warehouse_id' => $factory->shipment->warehouse_id, 'product_id' => $factory->items()->firstOrFail()->product_id,
+            'quantity_on_hand' => 10, 'quantity_reserved' => 1,
+        ]);
+        $reservationId = \Illuminate\Support\Facades\DB::table('inventory_reservations')->insertGetId([
+            'reservation_key' => 'synthetic-reallocation-reservation', 'payload_hash' => str_repeat('a', 64),
+            'order_id' => $factory->id, 'warehouse_id' => $inventory->warehouse_id,
+            'status' => 'reserved', 'created_by' => $actor->id, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        \Illuminate\Support\Facades\DB::table('inventory_reservation_items')->insert([
+            'inventory_reservation_id' => $reservationId, 'warehouse_inventory_id' => $inventory->id,
+            'product_id' => $inventory->product_id, 'quantity' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->actingAs($actor)->postJson($reset, ['confirmed' => true, 'token' => $token])
+            ->assertOk()->assertJsonPath('archived_count', 2);
+        $parent->refresh();
+        $this->assertSame('pending_allocation', $parent->workflow_status);
+        $this->assertDatabaseHas('inventory_reservations', ['id' => $reservationId, 'status' => 'released']);
+        $this->assertSame(0, (int) $inventory->fresh()->quantity_reserved);
+        $this->assertSame(10, (int) $inventory->fresh()->quantity_on_hand);
+        $this->assertDatabaseHas('audit_records', ['action' => 'inventory.reservation.released', 'entity_id' => (string) $reservationId]);
+        $this->assertSame('UNASSIGNED', $parent->routing_warehouse_code);
+        $this->assertSame('rejected', $parent->fulfillmentAllocation->status);
+        $this->assertNull($parent->fulfillmentAllocation->plan_snapshot);
+        $this->assertCount(0, $parent->originalFulfillmentChildren()->get());
+        $this->assertCount(2, $parent->fulfillmentChildren()->get());
+        $this->actingAs($actor)->get('/logistics/wait-stock')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('orders.data.0.id', $parent->id)->where('orders.data.0.reallocation_generation', 2)
+            ->where('orders.data.0.reallocation_token', null));
+        foreach ($children as $index => $old) {
+            $old->refresh();
+            $this->assertSame(Order::SUPERSEDED_FULFILLMENT_ROLE, $old->fulfillment_role);
+            $this->assertNotNull($old->operational_archived_at);
+            $this->assertSame($actor->id, $old->operational_archived_by);
+            $this->assertSame($oldShipments[$index], $old->shipment()->firstOrFail()->getAttributes());
+            $this->assertFalse(Order::query()->eligibleForOperations()->whereKey($old->id)->exists());
+        }
+        $this->assertDatabaseHas('audit_records', ['action' => 'fulfillment.parent_reallocation_reset', 'entity_id' => (string) $parent->id, 'actor_id' => $actor->id]);
+        $administrator = $this->userWith(['orders.view', 'system.permissions.manage']);
+        $this->actingAs($administrator)->post('/orders/archive/'.$children->first()->id.'/restore')->assertConflict();
+        $this->actingAs($actor)->postJson($reset, ['confirmed' => true, 'token' => $token])->assertConflict();
+        $this->actingAs($actor)->postJson($submit, [
+            'assignments' => $assignments, 'stock_exception_acknowledged' => true,
+            'expected_workflow_revision' => $oldRevision,
+        ])->assertConflict();
+        $this->actingAs($actor)->postJson($submit, [
+            'assignments' => $assignments, 'stock_exception_acknowledged' => true,
+            'expected_workflow_revision' => $parent->workflow_revision,
+        ])->assertOk();
+        $this->assertSame(['A-2', 'B-2'], $parent->originalFulfillmentChildren()->orderBy('fulfillment_suffix')->pluck('fulfillment_suffix')->all());
+        $this->assertCount(4, $parent->fulfillmentChildren()->get());
+        $this->assertSame(['C99001-007A-2', 'C99001-007B-2'], $parent->originalFulfillmentChildren()->orderBy('fulfillment_suffix')->pluck('erp_order_id')->all());
+
+        // A further reset must not touch the already archived generation.
+        $parent->refresh();
+        $token2 = \App\Modules\Logistics\Application\ParentFulfillmentReallocationService::token($parent, $parent->fulfillmentAllocation);
+        $archivedBefore = $parent->fulfillmentChildren()->where('fulfillment_role', Order::SUPERSEDED_FULFILLMENT_ROLE)->orderBy('id')->get()->map->getAttributes()->all();
+        $this->actingAs($actor)->postJson($reset, ['confirmed' => true, 'token' => $token2])
+            ->assertOk()->assertJsonPath('archived_count', 2);
+        $parent->refresh();
+        $this->assertCount(0, $parent->originalFulfillmentChildren()->get());
+        foreach ($archivedBefore as $old) {
+            $this->assertSame($old, Order::query()->findOrFail($old['id'])->getAttributes());
+        }
+        $this->actingAs($actor)->postJson($submit, [
+            'assignments' => $assignments, 'stock_exception_acknowledged' => true,
+            'expected_workflow_revision' => $parent->workflow_revision,
+        ])->assertOk();
+        $this->assertSame(['A-3', 'B-3'], $parent->originalFulfillmentChildren()->orderBy('fulfillment_suffix')->pluck('fulfillment_suffix')->all());
+        $this->assertCount(6, $parent->fulfillmentChildren()->get());
+
+        // A later single-warehouse allocation can use the root identity safely.
+        $parent->refresh();
+        $token3 = \App\Modules\Logistics\Application\ParentFulfillmentReallocationService::token($parent, $parent->fulfillmentAllocation);
+        $this->actingAs($actor)->postJson($reset, ['confirmed' => true, 'token' => $token3])->assertOk();
+        $parent->refresh();
+        $this->actingAs($actor)->postJson($submit, [
+            'assignments' => array_map(fn ($row) => [...$row, 'source_code' => 'FACTORY'], $assignments),
+            'stock_exception_acknowledged' => true,
+            'expected_workflow_revision' => $parent->workflow_revision,
+        ])->assertOk();
+        $this->assertSame('FACTORY', $parent->fresh()->shipment->warehouse->code);
+        $this->assertCount(0, $parent->originalFulfillmentChildren()->get());
+        $this->assertCount(6, $parent->fulfillmentChildren()->get());
+    }
+
+    public function test_parent_reset_rejects_tracking_or_shipped_child_without_partial_archival(): void
+    {
+        [$actor, $parent] = $this->scenario(2);
+        $this->actingAs($actor)->postJson('/logistics/orders/'.$parent->id.'/fulfillment-allocation/manual', [
+            'assignments' => [
+                ['order_item_id' => $parent->items[0]->id, 'source_code' => 'US-LA'],
+                ['order_item_id' => $parent->items[1]->id, 'source_code' => 'FACTORY'],
+            ], 'stock_exception_acknowledged' => true,
+        ])->assertOk();
+        $children = $parent->originalFulfillmentChildren()->orderBy('fulfillment_suffix')->get();
+        $children->last()->shipment()->update(['tracking_number' => 'TEST-TRACKING']);
+        $parent->refresh();
+        $token = \App\Modules\Logistics\Application\ParentFulfillmentReallocationService::token($parent, $parent->fulfillmentAllocation);
+        $this->actingAs($actor)->postJson('/logistics/orders/'.$parent->id.'/fulfillment-allocation/reset', [
+            'confirmed' => true, 'token' => $token,
+        ])->assertConflict();
+        $this->assertCount(2, $parent->originalFulfillmentChildren()->get());
+        $this->assertSame('submitted', $parent->fulfillmentAllocation()->firstOrFail()->status);
+        $this->assertDatabaseMissing('audit_records', ['action' => 'fulfillment.parent_reallocation_reset', 'entity_id' => (string) $parent->id]);
+        $children->last()->shipment()->update(['tracking_number' => null]);
+        // Staff can manually advance to sending and return to review; the
+        // prior status is evidence that a manual export may have occurred.
+        $factory = $children->last();
+        $workflow = app(\App\Modules\Orders\Application\OrderWorkflowStatusService::class);
+        $workflow->set($factory, 'sending', $factory->workflow_revision, $actor);
+        $factory->refresh();
+        $workflow->set($factory, 'pending_review', $factory->workflow_revision, $actor);
+        $this->actingAs($actor)->postJson('/logistics/orders/'.$parent->id.'/fulfillment-allocation/reset', [
+            'confirmed' => true, 'token' => $token,
+        ])->assertConflict();
+        $this->assertCount(2, $parent->originalFulfillmentChildren()->get());
+        // Isolate the next synthetic case from the preceding history.
+        $factory->workflowStatusHistory()->whereIn('to_status', ['sending', 'pending_review'])->delete();
+        // No tracking is not proof that an OMS push did not succeed.
+        \Illuminate\Support\Facades\DB::table('shipout_dispatch_attempts')->insert([
+            'order_id' => $children->first()->id, 'order_no' => $children->first()->erp_order_id,
+            'provider_warehouse_id' => 'synthetic', 'payload_hash' => str_repeat('0', 64),
+            'status' => 'uncertain', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->actingAs($actor)->postJson('/logistics/orders/'.$parent->id.'/fulfillment-allocation/reset', [
+            'confirmed' => true, 'token' => $token,
+        ])->assertConflict();
+        $this->assertCount(2, $parent->originalFulfillmentChildren()->get());
+    }
+
     private function scenario(int $itemCount): array
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);

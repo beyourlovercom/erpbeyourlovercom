@@ -49,6 +49,9 @@ final class OrderIdentityContractTest extends TestCase
             $order->erp_order_id = $id.'A';
             $this->assertSame('C40618-007A', $reference->warehouse($order));
             $this->assertSame('C40618A', $reference->canada($order));
+            $order->erp_order_id = $id.'A-2';
+            $this->assertSame('C40618-007A-2', $reference->warehouse($order));
+            $this->assertSame('C40618A-2', $reference->canada($order));
         }
     }
 
@@ -63,6 +66,8 @@ final class OrderIdentityContractTest extends TestCase
             $child = new $model(['erp_order_id' => $id.'A', 'source_type' => 'manual_other', 'fulfillment_parent_id' => 1]);
             $child->setRelation('fulfillmentParent', $parent);
             $this->assertSame($id.'A', $reference->warehouse($child));
+            $child->erp_order_id = $id.'B-2';
+            $this->assertSame($id.'B-2', $reference->warehouse($child));
         }
         $this->expectException(\DomainException::class);
         $reference->warehouse(new $model(['erp_order_id' => 'CY01265-007', 'source_type' => 'manual_other']));

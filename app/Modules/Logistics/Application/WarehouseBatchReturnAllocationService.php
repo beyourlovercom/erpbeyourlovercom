@@ -42,6 +42,8 @@ final class WarehouseBatchReturnAllocationService
             $root = $family->get($rootId);
             $selected = $family->get((int) $order->getKey());
             abort_unless($root && $selected, 404);
+            abort_if($selected->fulfillment_role === Order::SUPERSEDED_FULFILLMENT_ROLE, 409, '重新分仓历史履约不可恢复运营。');
+            $family = $family->reject(fn (Order $member) => $member->fulfillment_role === Order::SUPERSEDED_FULFILLMENT_ROLE);
             $targets = $selected->is($root)
                 ? $family->values()
                 : $family->filter(fn (Order $member) => $member->is($root) || $member->is($selected))->values();

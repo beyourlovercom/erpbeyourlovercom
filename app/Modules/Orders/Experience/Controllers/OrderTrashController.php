@@ -93,6 +93,7 @@ final class OrderTrashController
             $locked = Order::withTrashed()
                 ->where(fn ($q) => $q->whereNotNull('deleted_at')->orWhereNotNull('archived_at'))
                 ->whereKey($order)->lockForUpdate()->firstOrFail();
+            abort_if($locked->fulfillment_role === Order::SUPERSEDED_FULFILLMENT_ROLE, 409, '重新分仓历史履约不可恢复运营。');
             if ($locked->archived_at !== null) {
                 $locked->archived_at = null;
                 $locked->archived_by = null;

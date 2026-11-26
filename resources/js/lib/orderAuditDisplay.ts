@@ -15,6 +15,8 @@ const labels: Record<string, string> = {
   'order.operational_marker.updated': '更新辅助标记',
   'order.operational_archived': '归档订单',
   'order.operational_archive_restored': '恢复归档订单',
+  'fulfillment.child_superseded': '重新分仓：归档历史子订单',
+  'fulfillment.parent_reallocation_reset': '归档原履约并重新分仓',
   'order.archived_with_evidence': '归档订单并保留记录',
   'order.trashed': '移入回收站',
   'order.restored': '恢复订单',

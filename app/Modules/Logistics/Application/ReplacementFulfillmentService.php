@@ -73,7 +73,7 @@ final class ReplacementFulfillmentService
             $origin = null;
             if ($originFulfillmentId !== null) {
                 $origin = Order::query()->whereKey($originFulfillmentId)->where('fulfillment_parent_id', $root->getKey())->first();
-                abort_unless($origin && $origin->fulfillment_role !== 'replacement', 422, '关联原履约无效');
+                abort_unless($origin && in_array($origin->fulfillment_role, [null, 'original'], true), 422, '关联原履约无效');
                 $origin->loadMissing('items');
             }
 
