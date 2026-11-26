@@ -71,6 +71,52 @@ final class BackupController
         return $user && $user->can('backup.manage') && $user->can('backup.create') && $user->can('backup.download');
     }
 
+    public function files(Request $request, LocalDatabaseBackupService $backup): JsonResponse
+    {
+        abort_unless($this->canDownload($request), 403);
+
+        return response()->json(['files' => $backup->recent()])->header('Cache-Control', 'no-store, private');
+    }
+
+    public function create(Request $request, LocalDatabaseBackupService $backup, AuditRecorder $audit): JsonResponse
+    {
+        abort_unless($this->canDownload($request), 403);
+        try {
+            $result = $backup->create();
+            fclose($result['stream']);
+            $record = ['filename' => $result['filename'], 'size' => $result['size'], 'sha256' => $result['sha256']];
+            $audit->record(AuditActor::user($request->user(), AuditSource::Web), 'backup.database.created', 'database_backup',
+                after: [...$record, 'beijing_time' => now('Asia/Shanghai')->toIso8601String()]);
+
+            return response()->json(['success' => true, 'backup' => $record, 'files' => $backup->recent()])->header('Cache-Control', 'no-store, private');
+        } catch (\Throwable $e) {
+            return response()->json(['message' => '数据库备份未确认成功，请检查备份列表。'], 503);
+        }
+    }
+
+    public function file(Request $request, LocalDatabaseBackupService $backup, AuditRecorder $audit): StreamedResponse|JsonResponse
+    {
+        abort_unless($this->canDownload($request), 403);
+        $filename = $request->query('filename');
+        abort_unless(is_string($filename), 404);
+        try {
+            $result = $backup->open($filename);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => '备份文件校验失败。'], 503);
+        }
+        abort_if($result === null, 404);
+        try {
+            $audit->record(AuditActor::user($request->user(), AuditSource::Web), 'backup.database.download', 'database_backup',
+                after: ['filename' => $result['filename'], 'bytes' => $result['size'], 'sha256' => $result['sha256'], 'beijing_time' => now('Asia/Shanghai')->toIso8601String()]);
+        } catch (\Throwable $e) {
+            fclose($result['stream']);
+
+            return response()->json(['message' => '备份审计记录失败，请联系管理员。'], 503);
+        }
+
+        return $this->stream($result);
+    }
+
     public function download(Request $request, LocalDatabaseBackupService $backup, AuditRecorder $audit): StreamedResponse|JsonResponse
     {
         abort_unless($this->canDownload($request), 403);
@@ -89,6 +135,11 @@ final class BackupController
             return response()->json(['message' => '备份审计记录失败，请联系管理员。'], 503);
         }
 
+        return $this->stream($result);
+    }
+
+    private function stream(array $result): StreamedResponse
+    {
         return response()->streamDownload(static function () use ($result): void {
             try {
                 fpassthru($result['stream']);
@@ -98,7 +149,7 @@ final class BackupController
         }, $result['filename'], [
             'Content-Type' => 'application/gzip',
             'Content-Length' => (string) $result['size'],
-            'Cache-Control' => 'no-store, private',
+            'Cache-Control' => 'no-store, private, no-transform',
             'X-Content-Type-Options' => 'nosniff',
             'X-Backup-SHA256' => $result['sha256'],
         ]);
