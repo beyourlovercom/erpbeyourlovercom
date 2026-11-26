@@ -84,9 +84,11 @@ final class GuidesKnowledgeBaseTest extends TestCase
         $this->actingAs($viewer)->get('/settings/changelog?date=2026-09-07')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Guides/Releases/Index')
             ->where('initialDate', '2026-09-07')
-            ->where('entries.0.date', '2026-09-08')
-            ->where('entries.1.date', '2026-09-07')
-            ->where('entries.0.html', fn (string $html): bool => str_contains($html, 'Accounting / Order Profit')));
+            ->where('entries', fn ($entries): bool => collect($entries)->contains(fn ($entry): bool => $entry['date'] === '2026-09-08' && str_contains($entry['html'], 'Logistics / Carrier')) && collect($entries)->contains(fn ($entry): bool => $entry['date'] === '2026-09-07' && str_contains($entry['html'], 'Accounting / Order Profit'))));
+
+        $json = $this->actingAs($viewer)->getJson('/settings/changelog?date=2026-11-26')->assertOk()->assertJsonPath('initialDate', '2026-11-26');
+        self::assertStringContainsString('立即备份数据库', collect($json->json('entries'))->firstWhere('date', '2026-11-26')['html']);
+        $this->actingAs($this->userWith([]))->getJson('/settings/changelog')->assertForbidden();
 
         $this->actingAs($manager)->get('/settings/changelog/create')->assertNotFound();
         $this->actingAs($manager)->post('/settings/changelog', [])->assertStatus(405);
@@ -98,11 +100,11 @@ final class GuidesKnowledgeBaseTest extends TestCase
 
         $this->actingAs($settingsAdmin)->get('/settings')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Settings/Index')
-            ->where('currentRelease.version', '2026-09-08')
-            ->where('currentRelease.released_on', '2026-09-08')
+            ->where('currentRelease.version', fn (string $date): bool => $date >= '2026-11-26')
+            ->where('currentRelease.released_on', fn (string $date): bool => $date >= '2026-11-26')
             ->where('orderIdentity.prefix_token', '007erp')
             ->where('orderIdentity.example', '007erp-0901-c3721')
-            ->has('recentReleases', 2));
+            ->has('recentReleases', 3));
 
         $this->actingAs($settingsAdmin)->put('/settings/order-identity', ['prefix_token' => ' 007 '])->assertRedirect();
         $this->assertDatabaseHas('order_identity_settings', ['id' => 1, 'prefix_token' => '007', 'updated_by' => $settingsAdmin->id]);
