@@ -1,51 +1,57 @@
-import { mount } from '@vue/test-utils'
-import { router } from '@inertiajs/vue3'
-import { describe, expect, it, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
 
-vi.mock('@inertiajs/vue3', () => ({ Head: { template: '<span />' }, router: { put: vi.fn() } }))
+vi.mock('@inertiajs/vue3', () => ({ Head: { template: '<span />' } }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
 
-const props = {
-  actions: [
-    { key: 'create', label: '立即备份', available: false },
-    { key: 'download', label: '下载备份', available: false },
-    { key: 'encrypted_download', label: '加密并下载', available: false },
-    { key: 'publish_github', label: '加密并发布到 GitHub', available: false },
-  ],
-  history: [], storageUsage: null,
-  policy: { format: 'backup-format-v1', includedRoots: ['storage/app/private', 'storage/app/public'], workspace: 'storage/app/backups', status: '备份引擎已接入；手动操作入口暂未启用' },
-  automaticBackup: {
-    enabled: false, cadence: 'daily' as const, canManage: false, retentionCount: 5,
-    options: [
-      { value: 'daily' as const, label: '每天', detail: '每天 02:00 UTC' },
-      { value: 'weekly' as const, label: '每周', detail: '每周一 02:00 UTC' },
-      { value: 'monthly' as const, label: '每月', detail: '每月 1 日 02:00 UTC' },
-    ],
-  },
-  restore: { local: { available: false, status: '恢复基础已就绪，操作入口尚未启用' }, github: { available: false, status: 'GitHub 恢复基础已就绪，操作入口尚未启用' } },
-}
+afterEach(() => vi.unstubAllGlobals())
 
-describe('Backup automatic policy', () => {
-  it('shows the five-backup policy and keeps controls read-only without manage permission', () => {
-    const wrapper = mount(Index, { props })
-    for (const label of ['自动备份', '立即备份', '最近备份', '存储使用情况', '备份策略', '本地恢复', 'GitHub 恢复']) expect(wrapper.text()).toContain(label)
-    expect(wrapper.text()).toContain('最多保留 5 份')
-    expect(wrapper.text()).toContain('每天 02:00 UTC')
-    expect(wrapper.text()).toContain('开启自动备份')
-    expect(wrapper.find('.toggle-button').attributes('disabled')).toBeDefined()
-    expect(wrapper.find('select').attributes('disabled')).toBeDefined()
+describe('Manual database backup', () => {
+  it('only shows the single manual action to authorized staff', () => {
+    const wrapper = mount(Index, { props: { canDownloadDatabase: true } })
+    expect(wrapper.findAll('button')).toHaveLength(1)
+    expect(wrapper.text()).toContain('一键备份并下载到电脑')
+    expect(wrapper.text()).toContain('最多保留 3 份')
+    expect(wrapper.text()).not.toContain('自动备份')
+    expect(wrapper.text()).not.toContain('GitHub')
   })
 
-  it('saves one-click enable and cadence changes for a manager', async () => {
-    vi.mocked(router.put).mockClear()
-    const toggleWrapper = mount(Index, { props: { ...props, automaticBackup: { ...props.automaticBackup, canManage: true } } })
-    await toggleWrapper.find('.toggle-button').trigger('click')
-    expect(router.put).toHaveBeenCalledWith('/settings/backup/automatic', { enabled: true, cadence: 'daily' }, expect.any(Object))
+  it('does not render a download control for view-only staff', () => {
+    const wrapper = mount(Index, { props: { canDownloadDatabase: false } })
+    expect(wrapper.find('button').exists()).toBe(false)
+    expect(wrapper.text()).toContain('仅管理员')
+  })
 
-    vi.mocked(router.put).mockClear()
-    const cadenceWrapper = mount(Index, { props: { ...props, automaticBackup: { ...props.automaticBackup, canManage: true } } })
-    await cadenceWrapper.find('select').setValue('weekly')
-    expect(router.put).toHaveBeenCalledWith('/settings/backup/automatic', { enabled: false, cadence: 'weekly' }, expect.any(Object))
+  it('starts a local file download only after a successful gzip response', async () => {
+    const filename = 'erp-db-20261126-140000-000000-abcd1234.sql.gz'
+    const blob = new Blob(['synthetic gzip'], { type: 'application/gzip' })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, headers: new Headers({
+      'content-type': 'application/gzip', 'content-disposition': 'attachment; filename="' + filename + '"',
+    }), blob: async () => blob }))
+    const create = vi.fn().mockReturnValue('blob:synthetic-test')
+    vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() })
+    const clicked = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      expect(this.download).toBe(filename)
+    })
+    const wrapper = mount(Index, { props: { canDownloadDatabase: true } })
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(create).toHaveBeenCalledWith(blob)
+    expect(clicked).toHaveBeenCalledOnce()
+    expect(wrapper.get('[role=status]').text()).toContain('已发起浏览器下载')
+    clicked.mockRestore()
+    wrapper.unmount()
+  })
+
+  it('reports failure and unlocks the button without downloading an error response', async () => {
+    const request = vi.fn().mockResolvedValue({ ok: false })
+    vi.stubGlobal('fetch', request)
+    const wrapper = mount(Index, { props: { canDownloadDatabase: true } })
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(request).toHaveBeenCalledWith('/settings/backup/download', expect.objectContaining({ method: 'POST', credentials: 'same-origin' }))
+    expect(wrapper.get('[role=alert]').text()).toContain('失败')
+    expect(wrapper.get('button').attributes('disabled')).toBeUndefined()
   })
 })
