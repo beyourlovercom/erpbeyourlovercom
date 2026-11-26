@@ -20,9 +20,13 @@ final class LocalDatabaseBackupService
         $path = null;
         $stream = null;
         $committed = false;
+        $previousExecutionLimit = (int) ini_get('max_execution_time');
         try {
             if (! flock($lock, LOCK_EX | LOCK_NB)) {
                 throw new RuntimeException('Backup already running.');
+            }
+            if ($previousExecutionLimit > 0 && $previousExecutionLimit < 120) {
+                set_time_limit(120);
             }
             $temp = tempnam($root, '.pending-');
             if ($temp === false) {
@@ -85,6 +89,9 @@ final class LocalDatabaseBackupService
             }
             flock($lock, LOCK_UN);
             fclose($lock);
+            if ($previousExecutionLimit > 0 && $previousExecutionLimit < 120) {
+                set_time_limit($previousExecutionLimit);
+            }
         }
     }
 
