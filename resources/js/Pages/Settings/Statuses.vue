@@ -18,7 +18,7 @@ const orderKeys = ref(props.statuses.map((row) => row.code))
 const compare = (left: string, right: string): number => {
   const a = left.split('.').map(Number), b = right.split('.').map(Number)
   for (let index = 0; index < Math.max(a.length, b.length); index++) {
-    const difference = (Number.isFinite(a[index]) ? a[index] : 999999) - (Number.isFinite(b[index]) ? b[index] : 999999)
+    const difference = (a[index] ?? 0) - (b[index] ?? 0)
     if (difference !== 0) return difference
   }
   return left.localeCompare(right)
@@ -31,7 +31,7 @@ const rows = computed(() => orderKeys.value.map(code => {
   return { ...props.statuses.find(row => row.code === code), ...form.statuses[index], index }
 }))
 const duplicates = computed(() => new Set(form.statuses.map(row => row.sequence)).size !== form.statuses.length)
-const invalidSequence = computed(() => form.statuses.some(row => !/^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$/.test(row.sequence)))
+const invalidSequence = computed(() => form.statuses.some(row => !/^(0|[1-9][0-9]{0,2})(?:\.(0|[1-9][0-9]{0,2})){1,2}$/.test(row.sequence)))
 const firstError = computed(() => Object.values(form.errors)[0] ?? '')
 watch(() => props.version, next => { form.expected_version = next })
 const restore = () => {
@@ -66,7 +66,7 @@ const submit = () => {
         </div>
         <p v-if="firstError" class="status-settings-error" role="alert">{{ firstError }}</p>
         <p v-if="duplicates" class="status-settings-error" role="alert">数字序号不能重复，请修改后保存。</p>
-        <p v-if="invalidSequence" class="status-settings-error" role="alert">数字序号必须为数字点数字，例如 0.1、1.2 或 1.10。</p>
+        <p v-if="invalidSequence" class="status-settings-error" role="alert">数字序号必须为数字点数字，例如 0.1、1.2、1.10 或 1.1.1。</p>
         <div class="status-settings-columns"><span>数字序号</span><span>状态名称</span></div>
         <div v-for="row in rows" :key="row.code" class="status-settings-row">
           <div class="status-settings-fields">

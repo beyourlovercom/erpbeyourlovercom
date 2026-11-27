@@ -124,6 +124,15 @@ final class OrderWorkflowStatusSettingsTest extends TestCase
     public function test_sequence_is_compared_by_numeric_segments(): void
     {
         $this->assertLessThan(0, OrderWorkflowStatusDisplayCatalog::compareSequence('1.2', '1.10'));
+        $this->assertLessThan(0, OrderWorkflowStatusDisplayCatalog::compareSequence('1.1', '1.1.1'));
+        $this->assertLessThan(0, OrderWorkflowStatusDisplayCatalog::compareSequence('1.1.1', '1.1.2'));
+        $this->assertLessThan(0, OrderWorkflowStatusDisplayCatalog::compareSequence('1.1.2', '1.2'));
+        $registry = OrderWorkflowStatus::defaults();
+        $this->assertSame('1.1.1', $registry['domestic_hold_tracking_stockout']['sequence']);
+        $this->assertSame('有单号/缺货', $registry['domestic_hold_tracking_stockout']['zh']);
+        $this->assertSame('1.1.2', $registry['domestic_hold_missing_info']['sequence']);
+        $this->assertSame('信息缺失', $registry['domestic_hold_missing_info']['zh']);
+        $this->assertSame('1.5', $registry['missing_info']['sequence']);
         $this->assertGreaterThan(0, OrderWorkflowStatusDisplayCatalog::compareSequence('3.4', '1.10'));
     }
 

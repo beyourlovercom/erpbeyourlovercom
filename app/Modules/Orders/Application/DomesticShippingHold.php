@@ -58,7 +58,7 @@ final class DomesticShippingHold
             return '仍有未通过的仓库审核、缺货或异常，请先处理实际业务问题。';
         }
         if ($command === self::TRACKING_STOCKOUT && blank($shipment->tracking_number)) {
-            return '有单号-缺货必须保留已有真实物流单号。';
+            return '有单号/缺货必须保留已有真实物流单号。';
         }
 
         return null;

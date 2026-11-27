@@ -37,14 +37,14 @@ describe('Settings status editor', () => {
   it('reorders by numeric sequence after editing and persists the stable code', async () => {
     const wrapper = mount(Statuses, { props:{ statuses, defaults, version:'b'.repeat(64) } })
     const stockout = wrapper.find('input[id="sequence-out_of_stock"]')
-    await stockout.setValue('1.2')
+    await stockout.setValue('1.1.1')
     await stockout.trigger('blur')
     const names = wrapper.findAll('.status-settings-row input[id^="name-"]').map(x=>(x.element as HTMLInputElement).value)
     expect(names).toEqual(['待分仓','待发','缺货','信息缺失'])
     await wrapper.findAll('button').find(button=>button.text().includes('保存状态设置'))!.trigger('click')
     expect(put).toHaveBeenCalledWith('/settings/statuses', expect.objectContaining({preserveScroll:true}))
     const editable = wrapper.find('input[id="sequence-out_of_stock"]').element as HTMLInputElement
-    expect(editable.value).toBe('1.2')
+    expect(editable.value).toBe('1.1.1')
   })
 
   it('blocks duplicate sequences before save', async () => {
