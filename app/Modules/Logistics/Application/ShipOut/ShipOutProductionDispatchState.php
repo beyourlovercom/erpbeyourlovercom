@@ -137,7 +137,9 @@ final class ShipOutProductionDispatchState
                 ? '本单已从自动发货队列隔离，请物流主管核对，不允许直接重发'
                 : ($state['status'] === 'oms_ack_pending' ? 'API ACK 非最终业务成功；请通过正式 OMS 只读核实'
                     : ($state['status'] === 'oms_shipped_pending_tracking'
-                        ? '官方 OMS status=4 Shipped；须读取仓库真实 Tracking、出库时间和包裹后才可写入 ERP，并交同步模块处理官网'
+                        ? (($omsReadback->reason_code ?? '') === 'TERMINAL_TRACKING_REVIEW'
+                            ? 'OMS 已出库但有效 Tracking 或包裹证据缺失；已停止自动查询，请物流人员核对'
+                            : '官方 OMS status=4 Shipped；须读取仓库真实 Tracking、出库时间和包裹后才可写入 ERP，并交同步模块处理官网')
                         : ''))),
             'oms_order_no' => $state['provider_order_id'],
             'last_checked_at' => $omsReadback->checked_at ?? null,
