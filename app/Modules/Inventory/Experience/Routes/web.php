@@ -37,6 +37,7 @@ Route::middleware(['web','auth','can:inventory.view'])->group(function (): void 
     Route::get('/inventory',[InventoryController::class,'dashboard'])->name('shell.inventory');
     Route::get('/inventory/list',[InventoryController::class,'warehouses'])->name('inventory.list');
     Route::get('/inventory/products',[InventoryController::class,'products'])->name('inventory.products');
+    Route::get('/inventory/products/export-logistics',[InventoryController::class,'exportProductLogistics'])->name('inventory.products.export-logistics');
     Route::get('/inventory/overdue',[WarehouseOverdueInventoryController::class,'index'])->name('inventory.overdue');
     Route::get('/inventory/overdue/export',[WarehouseOverdueInventoryController::class,'export'])->name('inventory.overdue.export');
     Route::get('/inventory/warehouses',fn()=>redirect()->route('inventory.list'))->name('inventory.warehouses');
