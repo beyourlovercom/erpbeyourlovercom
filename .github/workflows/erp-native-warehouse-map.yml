@@ -1,0 +1,28 @@
+name: ERP1 Native Warehouse Map
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'resources/js/Components/Logistics/OfflineWarehouseMap.vue'
+      - 'resources/js/Pages/Logistics/FulfillmentAllocation.vue'
+      - 'resources/js/Pages/Logistics/FulfillmentAllocation.test.ts'
+      - 'resources/js/lib/offlineWarehouseMap*'
+      - 'resources/js/lib/offline-geography.json'
+      - 'resources/js/lib/offline-cities/**'
+      - '.github/workflows/erp-native-warehouse-map.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-map:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: ln -s Pages resources/js/pages
+      - run: npm run typecheck
+      - run: npx vitest run resources/js/lib/offlineWarehouseMap.test.ts resources/js/Pages/Logistics/FulfillmentAllocation.test.ts -t 'native offline geographic reference|renders canonical table|read-only offline world map'
