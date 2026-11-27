@@ -35,7 +35,7 @@ final class OrderWorkflowStatusV1Test extends TestCase
         $order = $this->order($editor);
 
         $response = $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'missing_info',
+            'workflow_status' => 'renew',
         ])->getStatusCode();
         // patchJson must return native Laravel HTTP 422 for a missing required
         // revision; JSON requests must never be treated as HTML redirects.
@@ -43,8 +43,8 @@ final class OrderWorkflowStatusV1Test extends TestCase
         self::assertNull($order->fresh()->workflow_status);
 
         $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info')->assertJsonPath('workflow_status.auxiliary', []);
+            'workflow_status' => 'renew', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'renew')->assertJsonPath('workflow_status.auxiliary', []);
         self::assertSame(1, $order->fresh()->workflow_revision);
     }
 
@@ -54,10 +54,10 @@ final class OrderWorkflowStatusV1Test extends TestCase
         $order = $this->order($editor);
 
         $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info')->assertJsonPath('workflow_status.auxiliary', []);
+            'workflow_status' => 'renew', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'renew')->assertJsonPath('workflow_status.auxiliary', []);
 
-        $this->assertDatabaseHas('orders', ['id' => $order->id, 'order_status' => 'pending_shipment', 'workflow_status' => 'missing_info', 'workflow_revision' => 1]);
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'order_status' => 'pending_shipment', 'workflow_status' => 'renew', 'workflow_revision' => 1]);
         $this->assertDatabaseMissing('order_operational_markers', ['order_id' => $order->id, 'marker' => 'workflow_aux_missing_info']);
         $this->assertDatabaseCount('order_workflow_status_histories', 1);
         $this->assertDatabaseHas('audit_records', ['entity_id' => (string) $order->id, 'action' => 'order.core_status_changed']);

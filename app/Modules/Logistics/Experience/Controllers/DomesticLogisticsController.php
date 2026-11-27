@@ -515,10 +515,10 @@ final class DomesticLogisticsController
         }
         if (! in_array($view, ['frozen', 'all'], true)) {
             $query->where(fn (Builder $q) => $q->whereNull('workflow_status')
-                ->orWhereNotIn('workflow_status', \App\Modules\Orders\Application\DomesticShippingHold::CODES));
+                ->orWhereNotIn('workflow_status', \App\Modules\Orders\Application\DomesticShippingHold::STORED_CODES));
         }
         match ($view) {
-            'frozen' => $query->whereIn('workflow_status', \App\Modules\Orders\Application\DomesticShippingHold::CODES)
+            'frozen' => $query->whereIn('workflow_status', \App\Modules\Orders\Application\DomesticShippingHold::STORED_CODES)
                 ->where('order_status', 'pending_shipment')
                 ->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending')->whereNull('shipped_at')),
             'outsource' => $query->where('order_status', 'pending_shipment')

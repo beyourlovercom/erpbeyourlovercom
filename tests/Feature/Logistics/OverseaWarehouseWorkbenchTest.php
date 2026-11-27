@@ -329,7 +329,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         self::assertSame(1, Order::query()->whereKey($order->id)->count());
     }
 
-    public function test_missing_info_manual_hold_enters_overseas_exception_queue_and_preserves_warehouse_filter(): void
+    public function test_missing_info_is_rejected_overseas_but_generic_exception_preserves_warehouse_filter(): void
     {
         $actor = $this->userWith(['logistics.view', 'orders.view', 'orders.edit']);
         $warehouses = $this->warehouses();
@@ -339,13 +339,18 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->actingAs($actor)->patchJson("/orders/{$sm->id}/workflow-status", [
             'workflow_status' => 'missing_info',
             'expected_workflow_revision' => 0,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info');
+        ])->assertStatus(409);
+        self::assertNull($sm->fresh()->workflow_status);
+        $this->actingAs($actor)->patchJson("/orders/{$sm->id}/workflow-status", [
+            'workflow_status' => 'exception',
+            'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'exception');
 
         $this->get('/logistics/oversea/us-3sm?view=exceptions')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('rows.total', 1)
             ->where('rows.data.0.order_id', $sm->id)
-            ->where('rows.data.0.workflow_status_projection.zh', '信息缺失')
+            ->where('rows.data.0.workflow_status_projection.zh', '异常')
             ->where('viewCounts.exceptions', 1)
             ->where('viewCounts.review', 0));
         $this->get('/logistics/oversea/us-ny?view=exceptions')

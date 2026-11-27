@@ -130,13 +130,13 @@ final class OrderWorkflowUnifiedPolicyTest extends TestCase
         ])->save();
 
         $this->actingAs($admin)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info');
+            'workflow_status' => 'renew', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'renew');
 
         $fresh = $order->fresh();
         $this->assertNull($fresh->archived_at);
         $this->assertSame('shipped', $fresh->order_status->value);
-        $this->assertSame('missing_info', $fresh->workflow_status);
+        $this->assertSame('renew', $fresh->workflow_status);
         $this->assertSame('shipped', $fresh->shipment->shipment_status);
         $this->assertSame('R41-EXISTING-KOL-TRACK', $fresh->shipment->tracking_number);
         $this->assertNotNull($fresh->shipment->shipped_at);

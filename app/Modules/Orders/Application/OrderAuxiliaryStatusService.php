@@ -16,7 +16,6 @@ final class OrderAuxiliaryStatusService
     private const PREFIX = 'workflow_aux_';
 
     public const CODES = [
-        'missing_info',
         'returned_follow_up',
         'claims',
         'renew',

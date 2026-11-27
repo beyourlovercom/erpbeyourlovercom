@@ -309,7 +309,7 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         foreach ([
             ['out_of_stock', 'stockout', 1],
             ['exception', 'exceptions', 2],
-            ['missing_info', 'exceptions', 3],
+            ['renew', 'exceptions', 3],
             ['sending', 'pending', 4],
         ] as [$status, $bucket, $revision]) {
             $this->patchJson('/orders/'.$order->id.'/workflow-status', [

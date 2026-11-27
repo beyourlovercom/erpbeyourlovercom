@@ -95,7 +95,7 @@ final class OrderWarehouseRouting
             DomesticShippingHold::MISSING_INFO, DomesticShippingHold::TRACKING_STOCKOUT => 'frozen',
             'pending_allocation', 'allocated' => 'pending_allocation',
             'out_of_stock' => 'stockout',
-            'exception', 'missing_info', 'progress_conflict',
+            'exception', 'progress_conflict',
             'claims', 'returned_follow_up', 'renew',
             'freight_product_cost_follow_up' => 'exceptions',
             'pending_review' => 'review',
