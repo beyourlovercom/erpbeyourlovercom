@@ -54,7 +54,7 @@ final class PackagingOptimizationQuoteComparisonTest extends TestCase
         $sid=DB::table('shipments')->insertGetId(['order_id'=>$o,'warehouse_id'=>$w->id,'shipment_status'=>'shipped','carrier'=>'TEST','service'=>'test','tracking_number'=>'SYNTH-RANK-1','shipped_at'=>'2026-10-02']);
         DB::table('shipment_item_packaging_snapshots')->insert(['shipment_id'=>$sid,'order_item_id'=>$i,'product_id'=>$p->id,'packaging_length_cm'=>39,'packaging_width_cm'=>25.5,'packaging_height_cm'=>18.7,'packaged_weight_kg'=>2.232,'captured_at'=>'2026-10-01']);
         $r=\App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord::create(['product_id'=>$p->id,'status'=>'approved','packaging_method_key'=>'carton','created_by'=>$route['actor_id'],'reviewed_by'=>$route['actor_id'],'reviewed_at'=>now(),'packaging_length_cm'=>39,'packaging_width_cm'=>25.5,'packaging_height_cm'=>13.4,'packaged_weight_kg'=>2.232,'measured_at'=>now()]);
-        foreach(['weight','measurement'] as $kind) $r->media()->create(['kind'=>$kind,'disk'=>'local','path'=>'synthetic/'.$kind.'.jpg','mime_type'=>'image/jpeg','size_bytes'=>1]);
+        self::assertSame(0,$r->media()->count());
         $end=\Carbon\CarbonImmutable::parse('2026-11-27');
         $sample=app(\App\Modules\Inventory\Application\PackagingOptimizationRouteSamples::class)->forProduct($p->id,$end);
         $key=array_key_first($sample['cohorts']);

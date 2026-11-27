@@ -7,20 +7,24 @@ type Media = { id:number; kind:string; name:string|null; url:string }
 type SopStep = { position:number; title:string; instruction:string; image_url?:string|null }
 type SopExample = { title:string; image_url?:string|null }
 type PackagingSop = { id:number; title:string; method:string; scenario?:string|null; version?:string|null; materials:string[]; steps:SopStep[]; tips:string[]; examples:SopExample[] }
-const props = defineProps<{record:any; packagingSop:PackagingSop|null; canReview:boolean; canEdit:boolean; canAdoptStandard:boolean; isCurrentStandard:boolean; currentStandardRecordId:number|null}>()
+const props = defineProps<{record:any; packagingSop:PackagingSop|null; canReview:boolean; canResubmit?:boolean; canEdit:boolean; canAdoptStandard:boolean; isCurrentStandard:boolean; currentStandardRecordId:number|null}>()
 const labels:any = { draft:'草稿', submitted:'待审核', approved:'已批准', rejected:'已驳回' }
 const reviewNote = ref('')
+const requirePhotos = ref(false)
 
 function review(decision:string) {
     router.post(`/inventory/packaging/${props.record.id}/review`, {
         decision,
         review_note: reviewNote.value || null,
+        require_photos: decision === 'rejected' && requirePhotos.value,
     })
 }
 
 function adoptStandard() {
-    router.post(`/inventory/packaging/${props.record.id}/adopt-standard`)
+    router.post(`/inventory/packaging/${props.record.id}/adopt-standard`, {expected_current_standard_record_id:props.currentStandardRecordId})
 }
+
+function resubmit() { router.post(`/inventory/packaging/${props.record.id}/resubmit`) }
 
 function mediaFor(kind:string): Media[] {
     return (props.record.media ?? []).filter((media:Media) => media.kind === kind)
@@ -41,6 +45,7 @@ function mediaFor(kind:string): Media[] {
                     <span class="status-pill" :class="`status-${record.status}`">{{labels[record.status]}}</span>
                     <Link class="mvp-button" href="/inventory/packaging">返回列表</Link>
                     <Link v-if="canEdit" class="mvp-button" :href="`/inventory/packaging/${record.id}/edit`">编辑草稿</Link>
+                    <button v-if="canResubmit" class="mvp-button mvp-button-primary" @click="resubmit">重新测量</button>
                     <span v-if="isCurrentStandard" class="current-standard-pill">当前包装标准</span>
                     <button v-else-if="canAdoptStandard" class="mvp-button mvp-button-primary" @click="adoptStandard">设为当前包装标准</button>
                     <button v-if="canReview && record.status === 'submitted'" class="mvp-button" @click="review('rejected')">驳回</button>
@@ -62,7 +67,7 @@ function mediaFor(kind:string): Media[] {
                             <img :src="media.url" :alt="media.name || '测量记录图'" />
                             <span>测量记录图</span>
                         </a>
-                        <p v-if="!mediaFor('measurement').length" class="empty-evidence">未上传测量记录图</p>
+                        <p v-if="!mediaFor('measurement').length" class="empty-evidence">未上传测量记录图{{record.photo_requirement_reason?'（复核必传）':'（选填）'}}</p>
                     </div>
                 </article>
 
@@ -75,7 +80,7 @@ function mediaFor(kind:string): Media[] {
                             <img :src="media.url" :alt="media.name || '称重记录图'" />
                             <span>称重记录图</span>
                         </a>
-                        <p v-if="!mediaFor('weight').length" class="empty-evidence">未上传称重记录图</p>
+                        <p v-if="!mediaFor('weight').length" class="empty-evidence">未上传称重记录图{{record.photo_requirement_reason?'（复核必传）':'（选填）'}}</p>
                     </div>
                 </article>
 
@@ -92,7 +97,8 @@ function mediaFor(kind:string): Media[] {
 
             <div v-if="canReview && record.status === 'submitted'" class="mvp-card review-box">
                 <h3>审核备注</h3>
-                <textarea v-model="reviewNote" rows="3" placeholder="可填写审核意见；驳回时建议说明原因"></textarea>
+                <textarea v-model="reviewNote" rows="3" placeholder="填写审核意见；驳回必须说明原因"></textarea>
+                <label><input v-model="requirePhotos" type="checkbox"/> 驳回后要求拍照复核</label>
             </div>
 
             <div v-if="record.note || record.review_note" class="mvp-card note-card">

@@ -28,7 +28,10 @@ final class PackagingOptimizationHistoricalComparison
         $record = PackagingMeasurementRecord::query()->whereKey($candidateRecordId)->where('product_id',$productId)->where('status','approved')->first();
         $method = $record?->packaging_method_key;
         $eligibleCandidate = $record && in_array($method,$this->presets->keys(),true)
-            && $record->media()->where('kind','measurement')->exists() && $record->media()->where('kind','weight')->exists();
+            && (float) $record->packaged_weight_kg > 0 && (float) $record->packaging_length_cm > 0
+            && (float) $record->packaging_width_cm > 0 && (float) $record->packaging_height_cm > 0
+            && (! $record->photo_requirement_reason || ($record->media()->where('kind','measurement')->exists()
+                && $record->media()->where('kind','weight')->exists()));
         $rows = [];
         foreach ($sample['cohorts'] as $key=>$cohort) {
             $proof = $verified[$key] ?? [];

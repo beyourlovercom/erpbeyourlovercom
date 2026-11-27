@@ -246,7 +246,7 @@ final class PackagingMeasurementEvidenceTest extends TestCase
         $this->actingAs($factory)->patch("/inventory/packaging/{$record->id}", [...$data,'product_id'=>$different->id])->assertStatus(422);
         $this->actingAs($factory)->post("/inventory/packaging/{$record->id}/submit",$data)->assertRedirect();
         $this->actingAs($reviewer)->post("/inventory/packaging/{$record->id}/review",['decision'=>'rejected'])->assertSessionHasErrors('review_note');
-        $this->actingAs($reviewer)->post("/inventory/packaging/{$record->id}/review",['decision'=>'rejected','review_note'=>'Synthetic protection evidence missing'])->assertRedirect();
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$record->id}/review",['decision'=>'rejected','review_note'=>'Synthetic protection evidence missing','require_photos'=>true])->assertRedirect();
         $this->actingAs($other)->post("/inventory/packaging/{$record->id}/resubmit")->assertForbidden();
         $this->actingAs($factory)->post("/inventory/packaging/{$record->id}/resubmit")->assertRedirect();
         $new = PackagingMeasurementRecord::query()->where('resubmission_of_id',$record->id)->firstOrFail();
@@ -255,7 +255,7 @@ final class PackagingMeasurementEvidenceTest extends TestCase
         $this->assertSame('rejected',$record->fresh()->status);
         $this->assertSame(2,$record->media()->count());
         $this->assertSame(0,$new->media()->count());
-        $this->actingAs($factory)->post("/inventory/packaging/{$new->id}/submit",$data)->assertStatus(422);
+        $this->actingAs($factory)->postJson("/inventory/packaging/{$new->id}/submit",$data)->assertUnprocessable()->assertJsonValidationErrors("photos");
         $upload($new);
         $this->actingAs($factory)->post("/inventory/packaging/{$new->id}/submit",$data)->assertRedirect();
         $this->actingAs($factory)->post("/inventory/packaging/{$new->id}/review",['decision'=>'approved'])->assertForbidden();
@@ -272,6 +272,51 @@ final class PackagingMeasurementEvidenceTest extends TestCase
         $this->assertSame('approved',$old->fresh()->status);
         $this->assertSame('rejected',$record->fresh()->status);
         $this->assertSame(2,$record->media()->count());
+    }
+
+    public function test_normal_measurement_and_ordinary_rejection_do_not_require_photos(): void
+    {
+        $factory=$this->userWith(['inventory.packaging.submit']);
+        $reviewer=$this->userWith(['inventory.packaging.review']);
+        $p=Product::create(['name'=>'Optional evidence','sku'=>'OPTIONAL-PHOTO']);
+        $r=PackagingMeasurementRecord::create(['product_id'=>$p->id,'status'=>'draft','created_by'=>$factory->id]);
+        $data=['product_id'=>$p->id,'packaging_method_key'=>'carton','packaging_length_cm'=>30,'packaging_width_cm'=>20,'packaging_height_cm'=>10,'packaged_weight_kg'=>1,'measured_at'=>'2026-11-27 10:00:00'];
+        $this->actingAs($factory)->post("/inventory/packaging/{$r->id}/submit",[...$data,'photo_requirement_reason'=>'reviewer_requested','require_photos'=>true])->assertRedirect()->assertSessionDoesntHaveErrors();
+        $this->assertNull($r->fresh()->photo_requirement_reason);
+        $this->assertSame(0,$r->media()->count());
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$r->id}/review",['decision'=>'rejected','review_note'=>'Correct note'])->assertRedirect();
+        $this->actingAs($factory)->post("/inventory/packaging/{$r->id}/resubmit")->assertRedirect();
+        $new=PackagingMeasurementRecord::where('resubmission_of_id',$r->id)->firstOrFail();
+        $this->assertNull($new->photo_requirement_reason);
+        $this->actingAs($factory)->post("/inventory/packaging/{$new->id}/submit",$data)->assertRedirect()->assertSessionDoesntHaveErrors();
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$new->id}/review",['decision'=>'approved'])->assertRedirect();
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$new->id}/adopt-standard",['expected_current_standard_record_id'=>null])->assertRedirect();
+        $this->assertDatabaseHas('product_packaging_profiles',['product_id'=>$p->id,'current_measurement_record_id'=>$new->id]);
+        $this->assertSame(0,$new->media()->count());
+    }
+
+    public function test_clear_same_method_weight_or_volume_deviation_requires_photos_but_changed_method_is_optional(): void
+    {
+        Storage::fake('local');
+        $factory=$this->userWith(['inventory.packaging.submit']);
+        $reviewer=$this->userWith(['inventory.packaging.review']);
+        $p=Product::create(['name'=>'Deviation evidence','sku'=>'DEVIATION-PHOTO']);
+        $data=['product_id'=>$p->id,'packaging_method_key'=>'carton','packaging_length_cm'=>30,'packaging_width_cm'=>20,'packaging_height_cm'=>10,'packaged_weight_kg'=>1,'measured_at'=>'2026-11-27 10:00:00'];
+        $old=PackagingMeasurementRecord::create([...$data,'status'=>'approved','created_by'=>$reviewer->id]);
+        ProductPackagingProfile::create(['product_id'=>$p->id,'current_measurement_record_id'=>$old->id,'preset_key'=>'carton','is_active'=>true]);
+        $r=PackagingMeasurementRecord::create(['product_id'=>$p->id,'status'=>'draft','created_by'=>$factory->id]);
+        $this->actingAs($factory)->postJson("/inventory/packaging/{$r->id}/submit",[...$data,'packaged_weight_kg'=>2])->assertUnprocessable()->assertJsonValidationErrors('photos');
+        $this->actingAs($factory)->postJson("/inventory/packaging/{$r->id}/submit",[...$data,'packaging_height_cm'=>5])->assertUnprocessable()->assertJsonValidationErrors('photos');
+        $this->assertSame('draft',$r->fresh()->status);
+        $this->actingAs($factory)->post("/inventory/packaging/{$r->id}/media",['kind'=>'weight','files'=>[UploadedFile::fake()->image('weight.jpg')]])->assertRedirect();
+        $this->actingAs($factory)->postJson("/inventory/packaging/{$r->id}/submit",[...$data,'packaged_weight_kg'=>2])->assertUnprocessable()->assertJsonValidationErrors('photos');
+        $this->actingAs($factory)->post("/inventory/packaging/{$r->id}/media",['kind'=>'measurement','files'=>[UploadedFile::fake()->image('measurement.jpg')]])->assertRedirect();
+        $this->actingAs($factory)->post("/inventory/packaging/{$r->id}/submit",[...$data,'packaged_weight_kg'=>2])->assertRedirect()->assertSessionDoesntHaveErrors();
+        $this->assertSame('material_deviation',$r->fresh()->photo_requirement_reason);
+        $other=PackagingMeasurementRecord::create(['product_id'=>$p->id,'status'=>'draft','created_by'=>$factory->id]);
+        $this->actingAs($factory)->post("/inventory/packaging/{$other->id}/submit",[...$data,'packaging_method_key'=>'document_bubble_mailer','packaging_height_cm'=>4])->assertRedirect()->assertSessionDoesntHaveErrors();
+        $this->assertNull($other->fresh()->photo_requirement_reason);
+        $this->assertSame(0,$other->media()->count());
     }
 
     private function userWith(array $keys): User
