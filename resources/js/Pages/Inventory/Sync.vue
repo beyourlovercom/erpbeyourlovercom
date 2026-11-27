@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, defineAsyncComponent } from 'vue'
+import type { ColDef } from 'ag-grid-community'
+const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 import { Head } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import axios from 'axios'
@@ -98,7 +100,27 @@ const selectedWarehouseId = ref<number | null>(props.warehouses.some(w => w.id =
 const syncMode = ref<'partial' | 'full'>('partial')
 const stockCountAt = ref('')
 const nativeFactory = computed(() => props.warehouses.find(w=>w.id===selectedWarehouseId.value)?.slug === 'factory' && activeTab.value==='file')
-const nativeResult = ref<{material_count:number;linked:number;unmapped:number;conflicts:number;applied_products:number;held_products:number;legacy_preserved_products?:number;availability_held_products?:number;duplicate:boolean}|null>(null)
+type NativeChange={scope:string;sku:string;material_code:string;field:string;before:string|number|null;after:string|number|null;status:'added'|'modified'|'zeroed'|'blocked'|'unchanged';note:string|null}
+type NativeResult={material_count:number;linked:number;unmapped:number;conflicts:number;applied_products:number;held_products:number;legacy_preserved_products?:number;availability_held_products?:number;duplicate:boolean;preview_token?:string|null;sync_mode:'partial'|'full';changes:NativeChange[];summary:Record<string,number>}
+const nativeResult=ref<NativeResult|null>(null)
+const nativePreview=ref<NativeResult|null>(null)
+const nativeFilter=ref('changed')
+const diffSource=computed(()=>nativeResult.value??nativePreview.value)
+const nativeStatusLabels:Record<string,string>={added:'新增',modified:'修改',zeroed:'归零',blocked:'待核实 / 保留',unchanged:'未变化'}
+const nativeDiffRows=computed(()=> (diffSource.value?.changes??[]).filter(r=>nativeFilter.value==='all'||(nativeFilter.value==='changed'?['added','modified','zeroed'].includes(r.status):r.status===nativeFilter.value)).map((r,i)=>({
+  ...r,id:i+1,status_label:nativeStatusLabels[r.status],before_display:r.before??'—',after_display:r.after??'—',
+  delta:typeof r.before==='number'&&typeof r.after==='number'?r.after-r.before:null,
+})))
+const nativeDiffColumns:ColDef<Record<string,unknown>>[]=[
+  {field:'sku',headerName:'ERP SKU',width:140,pinned:'left'},
+  {field:'material_code',headerName:'库存表代码',width:210},
+  {field:'field',headerName:'变化字段',width:185},
+  {field:'before_display',headerName:'导入前',width:270,tooltipField:'before_display'},
+  {field:'after_display',headerName:'导入后',width:270,tooltipField:'after_display'},
+  {field:'delta',headerName:'数量变化',width:115},
+  {field:'status_label',headerName:'状态',width:145,cellStyle:p=>({color:p.data?.status==='zeroed'?'#b91c1c':p.data?.status==='blocked'?'#a16207':p.data?.status==='added'?'#15803d':p.data?.status==='modified'?'#1d4ed8':'#64748b'})},
+  {field:'note',headerName:'说明',width:300,tooltipField:'note'},
+]
 const pasteText = ref('')
 const selectedFile = ref<File | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -142,22 +164,43 @@ function resetForm() {
   if (fileInputRef.value) fileInputRef.value.value = ''
 }
 
-async function importFactoryNative() {
-  if (!nativeFactory.value || !selectedFile.value || !stockCountAt.value || loading.value) return
-  loading.value=true
-  nativeResult.value=null
+watch([selectedFile, stockCountAt, syncMode, selectedWarehouseId, activeTab],()=>{
+  nativePreview.value=null;nativeResult.value=null;error.value=null
+})
+function nativeForm() {
+  const fd=new FormData()
+  fd.append('file',selectedFile.value!)
+  fd.append('stock_count_at',stockCountAt.value)
+  fd.append('sync_mode',syncMode.value)
+  return fd
+}
+async function previewFactoryNative() {
+  if (!nativeFactory.value || !selectedFile.value || !stockCountAt.value || loading.value || confirming.value) return
+  loading.value=true;nativeResult.value=null;nativePreview.value=null;error.value=null
   try {
-    const fd=new FormData()
-    fd.append('file',selectedFile.value)
-    fd.append('stock_count_at',stockCountAt.value)
-    const {data}=await axios.post('/inventory/sync/factory-native',fd,{headers:{'Content-Type':'multipart/form-data'}})
-    nativeResult.value=data
-    publishGlobalFeedback({state:data.held_products||data.unmapped||data.conflicts?'BLOCKED':'SUCCESS',
-      title:data.duplicate?'该库存快照已导入':'工厂库存文件处理完成',
-      message:'原始物料 '+data.material_count+' 条；关联 '+data.linked+' 条；已覆盖商品 '+data.applied_products+' 个；待核实 '+data.unmapped+' 条，保留原库存商品 '+data.held_products+' 个；暂停已核准库存可用性 '+(data.availability_held_products??0)+' 个。'})
+    const {data}=await axios.post('/inventory/sync/factory-native/preview',nativeForm(),{headers:{'Content-Type':'multipart/form-data'}})
+    nativePreview.value=data;nativeFilter.value='changed'
+    if (data.duplicate) nativeResult.value=data
   } catch(e:any) {
-    publishGlobalFeedback({state:'ERROR',title:'工厂库存导入失败',message:e?.response?.data?.message??'请检查文件及库存日期。'})
+    error.value=e?.response?.data?.message??'预览失败，请检查文件及库存日期。'
+    publishGlobalFeedback({state:'ERROR',title:'工厂库存预览失败',message:error.value??''})
   } finally {loading.value=false}
+}
+async function importFactoryNative() {
+  if (!nativeFactory.value || !selectedFile.value || !nativePreview.value?.preview_token || confirming.value || loading.value) return
+  confirming.value=true;error.value=null
+  try {
+    const fd=nativeForm()
+    fd.append('preview_token',nativePreview.value.preview_token)
+    const {data}=await axios.post('/inventory/sync/factory-native',fd,{headers:{'Content-Type':'multipart/form-data'}})
+    nativeResult.value=data;nativePreview.value=null
+    publishGlobalFeedback({state:'SUCCESS',title:'工厂库存同步完成',
+      message:'原始物料 '+data.material_count+' 条；关联 '+data.linked+' 条；已覆盖商品 '+data.applied_products+' 个；未绑定 '+data.unmapped+' 条。'})
+  } catch(e:any) {
+    error.value=e?.response?.data?.message??'确认失败，请重新预览。'
+    nativePreview.value=null
+    publishGlobalFeedback({state:'ERROR',title:'工厂库存导入失败',message:error.value??''})
+  } finally {confirming.value=false}
 }
 
 async function doPreview() {
@@ -253,22 +296,22 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">目标仓库 <span class="text-red-500">*</span></label>
-            <select v-model="selectedWarehouseId" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" @change="batch = null">
+            <select v-model="selectedWarehouseId" :disabled="loading||confirming" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" @change="batch = null">
               <option :value="null" disabled>请选择仓库</option>
               <option v-for="w in props.warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
             </select>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">同步模式</label>
-            <select v-if="!nativeFactory" v-model="syncMode" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" @change="batch = null">
-              <option value="partial">部分同步（只更新来源 SKU）</option>
-              <option value="full">全量同步（不在来源中的 SKU 归零）</option>
+            <select v-model="syncMode" :disabled="loading||confirming" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" @change="batch = null">
+              <option value="partial">{{nativeFactory?'增量同步（只更新表内 SKU）':'部分同步（只更新来源 SKU）'}}</option>
+              <option value="full">{{nativeFactory?'覆盖同步（核准范围完整快照）':'全量同步（不在来源中的 SKU 归零）'}}</option>
             </select>
-            <div v-else class="text-sm py-2">已核实物料范围 · 最新库存覆盖</div>
+
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">库存统计日期</label>
-            <input v-model="stockCountAt" type="date" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" @change="batch = null" />
+            <input v-model="stockCountAt" :disabled="loading||confirming" type="date" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" @change="batch = null" />
           </div>
         </div>
       </div>
@@ -282,7 +325,7 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
               :key="tab"
               class="px-6 py-3 text-sm font-medium border-b-2 transition-colors"
               :class="activeTab === tab ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
-              @click="() => { activeTab = tab; batch = null; error = null }"
+              :disabled="loading||confirming" @click="() => { activeTab = tab; batch = null; error = null }"
             >
               <template v-if="tab === 'paste'">复制粘贴</template>
               <template v-else-if="tab === 'file'">XLSX / CSV</template>
@@ -306,7 +349,7 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
           <!-- File -->
           <template v-else-if="activeTab === 'file'">
             <p class="text-sm text-gray-500 mb-2">{{ nativeFactory ? '上传工厂原始 XLSX（谦禾库存明细），系统自动读取物料代码、名称、成品库存汇总。' : '上传 XLSX 或 CSV 文件（最大 10 MB）。首行为表头，必须包含 SKU 和 Qty/数量 列。' }}</p>
-            <input ref="fileInputRef" type="file" accept=".xlsx,.csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" @change="onFileChange" />
+            <input ref="fileInputRef" type="file" :disabled="loading||confirming" :accept="nativeFactory?'.xlsx':'.xlsx,.csv'" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" @change="onFileChange" />
             <p v-if="selectedFile" class="mt-2 text-sm text-gray-600">已选择：{{ selectedFile.name }} ({{ Math.round(selectedFile.size / 1024) }} KB)</p>
           </template>
 
@@ -320,7 +363,8 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
           </template>
 
           <div v-if="nativeFactory" class="mt-4 flex flex-wrap gap-3 items-center">
-            <button :disabled="!selectedFile || !stockCountAt || loading" class="px-4 py-2 bg-green-700 text-white rounded-md disabled:opacity-50" @click="importFactoryNative">{{loading?'导入中…':'导入并更新工厂库存'}}</button>
+            <button :disabled="!selectedFile || !stockCountAt || loading || confirming" class="px-4 py-2 bg-blue-600 text-white rounded-md disabled:opacity-50" @click="previewFactoryNative">{{loading?'分析差异中…':'1. 预览导入差异'}}</button>
+            <button :disabled="!nativePreview?.preview_token || confirming || loading" class="px-4 py-2 bg-green-700 text-white rounded-md disabled:opacity-50" @click="importFactoryNative">{{confirming?'同步中…':'2. 确认导入'}}</button>
             <span v-if="!stockCountAt" class="text-sm text-gray-500">请选择原表实际库存统计日期</span>
           </div>
           <div v-else-if="activeTab !== 'api'" class="mt-4 flex flex-wrap gap-3 items-center">
@@ -346,10 +390,20 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
         </div>
       </div>
 
-      <div v-if="nativeFactory && nativeResult" class="bg-white rounded-lg p-4 text-sm">
-        原表 {{nativeResult.material_count}} 条 · 已关联 {{nativeResult.linked}} 条 · 未绑定 {{nativeResult.unmapped}} 条 · 已覆盖 {{nativeResult.applied_products}} 个商品 · 未覆盖 {{nativeResult.held_products}} 个商品 · 保留旧库存口径 {{nativeResult.legacy_preserved_products??0}} 个 · 暂停已核准库存可用性 {{nativeResult.availability_held_products??0}} 个。
-        <a class="text-blue-700" href="/products/skus">查看 SKU 映射中心</a>
-      </div>
+      <section v-if="nativeFactory && diffSource" class="bg-white rounded-lg p-4 space-y-3">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <h2 class="font-semibold">{{nativeResult?'本次导入结果':'预览并确认导入'}}</h2>
+          <span class="text-sm">{{diffSource.sync_mode==='full'?'覆盖同步':'增量同步'}} · {{diffSource.duplicate?'该文件已同步，未重复写入':nativeResult?'已确认同步':'尚未写入库存'}}</span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button v-for="stat in [{key:'changed',label:'全部变化',count:(diffSource.summary?.added??0)+(diffSource.summary?.modified??0)+(diffSource.summary?.zeroed??0)},{key:'added',label:'新增',count:diffSource.summary?.added??0},{key:'modified',label:'修改',count:diffSource.summary?.modified??0},{key:'zeroed',label:'归零',count:diffSource.summary?.zeroed??0},{key:'blocked',label:'待核实 / 保留',count:diffSource.summary?.blocked??0},{key:'all',label:'全部记录',count:diffSource.changes?.length??0}]" :key="stat.key" type="button" class="px-3 py-2 rounded border text-sm" :class="nativeFilter===stat.key?'border-teal-700 text-teal-700 bg-teal-50':'border-gray-200'" @click="nativeFilter=stat.key">{{stat.label}} {{stat.count}}</button>
+        </div>
+        <div class="text-sm text-gray-600">原表 {{diffSource.material_count}} 条 · 变更统计按字段计数 · 已关联 {{diffSource.linked}} 条 · 未绑定 {{diffSource.unmapped}} 条 · {{nativeResult?'已覆盖':'预计覆盖'}} {{diffSource.applied_products}} 个商品 · 保留旧库存口径 {{diffSource.legacy_preserved_products??0}} 个 · 暂停可用性 {{diffSource.availability_held_products??0}} 个。</div>
+        <GlobalGrid v-if="nativeDiffRows.length" namespace="grid.inventory.factory-import-diff.v1" title="逐项变更明细" :rows="nativeDiffRows" :columns="nativeDiffColumns" :required-column-ids="['sku']" cell-text-selection/>
+        <p v-else class="text-sm text-gray-500 py-3">{{diffSource.duplicate && !diffSource.changes?.length?'该历史批次没有保存逐项差异；请使用新日期的实际库存原表进行预览。':'当前筛选没有变更记录。'}}</p>
+        <p class="text-xs text-gray-500">数量为新库存绝对值，不累加旧库存。增量同步保留表外 SKU；覆盖同步检查完整核准范围，缺失记录保留历史，必要时暂停可用性，不强制删除或归零。007 原表数量仅记录。</p>
+        <a class="text-blue-700 text-sm" href="/products/skus">查看 SKU 映射中心</a>
+      </section>
       <!-- Error -->
       <div v-if="error" class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{{ error }}</div>
 

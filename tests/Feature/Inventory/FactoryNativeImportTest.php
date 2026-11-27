@@ -42,10 +42,10 @@ final class FactoryNativeImportTest extends TestCase
         $path=$this->fixture([['CODE-A','Full name A',7,100],['CODE-B','Full name B',0,200],['CODE-HELD','Held name',9,0],['UNKNOWN','Unmatched name',500,50]]);
         try {
             $view=$this->actor(['inventory.view']);
-            $this->actingAs($view)->post('/inventory/sync/factory-native',['file'=>$this->upload($path),'stock_count_at'=>'2026-11-16'],['Accept'=>'application/json'])->assertForbidden();
+            $this->actingAs($view)->nativePost(['file'=>$this->upload($path),'stock_count_at'=>'2026-11-16'],['Accept'=>'application/json'])->assertForbidden();
             $date=now()->subDay()->toDateString();
             $payload=fn()=>['file'=>$this->upload($path),'stock_count_at'=>$date];
-            $this->actingAs($actor)->post('/inventory/sync/factory-native',$payload(),['Accept'=>'application/json'])
+            $this->actingAs($actor)->nativePost($payload(),['Accept'=>'application/json'])
                 ->assertOk()->assertJsonPath('material_count',4)->assertJsonPath('linked',3)
                 ->assertJsonPath('unmapped',1)->assertJsonPath('applied_products',1)->assertJsonPath('held_products',1)
                 ->assertJsonPath('legacy_preserved_products',1)->assertJsonPath('availability_held_products',0);
@@ -56,9 +56,9 @@ final class FactoryNativeImportTest extends TestCase
             $this->assertDatabaseHas('product_material_versions',['code_key'=>'CODE-B','factory_physical_qty'=>0,'warehouse_007_qty'=>200,'material_name'=>'Full name B']);
             $this->assertDatabaseHas('product_material_versions',['code_key'=>'UNKNOWN','product_id'=>null,'factory_physical_qty'=>500]);
             $this->assertDatabaseHas('products',['id'=>$p->id,'name'=>'Website title','standard_production_cost'=>88]);
-            $this->post('/inventory/sync/factory-native',$payload(),['Accept'=>'application/json'])->assertOk()->assertJsonPath('duplicate',true);
+            $this->nativePost($payload(),['Accept'=>'application/json'])->assertOk()->assertJsonPath('duplicate',true);
             $this->assertDatabaseCount('factory_material_snapshots',1);
-            $this->post('/inventory/sync/factory-native',['file'=>$this->upload($path),'stock_count_at'=>now()->subDays(2)->toDateString()],['Accept'=>'application/json'])->assertConflict();
+            $this->nativePost(['file'=>$this->upload($path),'stock_count_at'=>now()->subDays(2)->toDateString()],['Accept'=>'application/json'])->assertConflict();
             $this->withoutVite()->get('/products/skus?search=CODE-B')->assertOk()->assertInertia(fn($page)=>$page
                 ->component('Products/Skus')->where('products.data.0.sku','FCTEST')->has('products.data.0.material_versions',2));
         } finally { @unlink($path); }
@@ -76,9 +76,9 @@ final class FactoryNativeImportTest extends TestCase
         $path=$this->fixture([['CODE-A','Full name A',9,0],['CODE-B','Full name B',3,0]]);
         $next=$this->fixture([['CODE-A','Full name A',8,0]]);
         try {
-            $this->post('/inventory/sync/factory-native',['file'=>$this->upload($path),'stock_count_at'=>now()->subDay()->toDateString()],['Accept'=>'application/json'])
+            $this->nativePost(['file'=>$this->upload($path),'stock_count_at'=>now()->subDay()->toDateString()],['Accept'=>'application/json'])
                 ->assertOk()->assertJsonPath('applied_products',1);
-            $this->post('/inventory/sync/factory-native',['file'=>$this->upload($next),'stock_count_at'=>now()->toDateString()],['Accept'=>'application/json'])
+            $this->nativePost(['file'=>$this->upload($next),'stock_count_at'=>now()->toDateString()],['Accept'=>'application/json'])
                 ->assertOk()->assertJsonPath('applied_products',0)->assertJsonPath('availability_held_products',1)->assertJsonPath('legacy_preserved_products',0);
             $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$p->id,'quantity_on_hand'=>12,'factory_native_status'=>'held']);
             self::assertSame(0,WarehouseInventory::query()->where('warehouse_id',$factory->id)->where('product_id',$p->id)->firstOrFail()->quantity_available);
@@ -101,7 +101,7 @@ final class FactoryNativeImportTest extends TestCase
         ProductMaterialVersion::create(['material_code'=>'OTHER-VERSION','code_key'=>'OTHER-VERSION','material_name'=>'Another version','product_id'=>$p->id,'binding_source'=>'manual_verified','factory_stock_approved'=>false]);
         $path=$this->fixture([['EXACT-CODE','Exact Name(A)',0,100],['OTHER-VERSION','Another version',900,0],['DUP-1','Ambiguous Name',30,0],['DUP-2','Ambiguous Name',50,0]]);
         try {
-            $this->actingAs($actor)->post('/inventory/sync/factory-native',['file'=>$this->upload($path),'stock_count_at'=>now()->toDateString()],['Accept'=>'application/json'])
+            $this->actingAs($actor)->nativePost(['file'=>$this->upload($path),'stock_count_at'=>now()->toDateString()],['Accept'=>'application/json'])
                 ->assertOk()->assertJsonPath('legacy_scope_approved_materials',1)->assertJsonPath('applied_products',1)->assertJsonPath('unmapped',2);
             $this->assertDatabaseHas('product_material_versions',['code_key'=>'EXACT-CODE','product_id'=>$p->id,'factory_stock_approved'=>true,'binding_source'=>'confirmed_factory_history']);
             $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$p->id,'quantity_on_hand'=>0,'factory_native_status'=>'verified']);
@@ -120,7 +120,7 @@ final class FactoryNativeImportTest extends TestCase
             'created_at'=>now(),'updated_at'=>now()]);
         $path=$this->fixture([['A','Name A',12,0]]);
         try {
-            $this->actingAs($actor)->post('/inventory/sync/factory-native',['file'=>$this->upload($path),'stock_count_at'=>now()->subDay()->toDateString()],['Accept'=>'application/json'])->assertConflict();
+            $this->actingAs($actor)->nativePost(['file'=>$this->upload($path),'stock_count_at'=>now()->subDay()->toDateString()],['Accept'=>'application/json'])->assertConflict();
             $this->assertDatabaseCount('factory_material_snapshots',0);
         } finally {@unlink($path);}
     }
@@ -145,7 +145,7 @@ final class FactoryNativeImportTest extends TestCase
         $path=$this->fixture([['BAD','Incomplete',1,0]],2);
         try {
             $this->actingAs($this->actor(['inventory.operate']))
-                ->post('/inventory/sync/factory-native',['file'=>$this->upload($path),'stock_count_at'=>now()->toDateString()],['Accept'=>'application/json'])->assertUnprocessable();
+                ->nativePost(['file'=>$this->upload($path),'stock_count_at'=>now()->toDateString()],['Accept'=>'application/json'])->assertUnprocessable();
             $this->assertDatabaseCount('factory_material_snapshots',0);
             $this->assertDatabaseCount('product_material_versions',0);
         } finally {@unlink($path);}
@@ -159,7 +159,7 @@ final class FactoryNativeImportTest extends TestCase
         $actor=$this->actor(['products.operate','inventory.operate']);
         $path=$this->fixture([['SG-CODE','SG02可可新版美国',25,0],['PINK','va617a-pink 粉色',9,0],['SUFFIX','SG02B不同版本',8,0],['OLD','OLD99历史商品',3,0],['COMBO','SG02+VA617A组合',4,0]]);
         try {
-            $this->actingAs($actor)->post('/inventory/sync/factory-native',['file'=>$this->upload($path),'stock_count_at'=>now()->toDateString()],['Accept'=>'application/json'])
+            $this->actingAs($actor)->nativePost(['file'=>$this->upload($path),'stock_count_at'=>now()->toDateString()],['Accept'=>'application/json'])
                 ->assertOk()->assertJsonPath('name_auto_linked',2)->assertJsonPath('linked',2)->assertJsonPath('applied_products',0);
             $this->assertDatabaseHas('product_material_versions',['code_key'=>'SG-CODE','product_id'=>$p->id,'binding_source'=>'material_name_sku_exact','factory_stock_approved'=>false]);
             $this->assertDatabaseHas('product_material_versions',['code_key'=>'PINK','product_id'=>$q->id]);
@@ -242,6 +242,70 @@ final class FactoryNativeImportTest extends TestCase
         $path=tempnam(sys_get_temp_dir(),'sku-batch-');
         (new Xlsx($book))->save($path);$book->disconnectWorksheets();
         return $path;
+    }
+
+    public function test_preview_is_read_only_and_confirmation_rejects_changed_state_and_mode(): void
+    {
+        $factory=Warehouse::query()->where('code','FACTORY')->firstOrFail();
+        $p=Product::create(['sku'=>'DIFF-A','name'=>'Title','source_type'=>'manual','product_type'=>'simple','is_active'=>true,'material_full_name'=>'Old name']);
+        ProductMaterialVersion::create(['material_code'=>'DIFF-CODE','code_key'=>'DIFF-CODE','material_name'=>'Old name',
+            'product_id'=>$p->id,'binding_source'=>'manual_verified','factory_stock_approved'=>true,'factory_physical_qty'=>12]);
+        $stock=WarehouseInventory::create(['warehouse_id'=>$factory->id,'product_id'=>$p->id,'quantity_on_hand'=>12,'quantity_reserved'=>2]);
+        $this->actingAs($this->actor(['inventory.operate','products.operate']));
+        $path=$this->fixture([['DIFF-CODE','New full name',0,0]]);
+        try {
+            $payload=fn()=>['file'=>$this->upload($path),'stock_count_at'=>now()->toDateString(),'sync_mode'=>'full'];
+            $this->post('/inventory/sync/factory-native',$payload(),['Accept'=>'application/json'])->assertUnprocessable();
+            $preview=$this->post('/inventory/sync/factory-native/preview',$payload(),['Accept'=>'application/json'])->assertOk();
+            $diff=collect($preview->json('changes'));
+            self::assertTrue($diff->contains(fn($r)=>$r['field']==='库存名称'&&$r['before']==='Old name'&&$r['after']==='New full name'));
+            self::assertTrue($diff->contains(fn($r)=>$r['field']==='工厂库存'&&$r['before']===12&&$r['after']===0&&$r['status']==='zeroed'));
+            $this->assertDatabaseCount('factory_material_snapshots',0);
+            $this->assertDatabaseHas('warehouse_inventory',['id'=>$stock->id,'quantity_on_hand'=>12,'quantity_reserved'=>2]);
+            $token=$preview->json('preview_token');
+            $this->post('/inventory/sync/factory-native',[...$payload(),'sync_mode'=>'partial','preview_token'=>$token],['Accept'=>'application/json'])->assertConflict();
+            $stock->update(['quantity_on_hand'=>15]);
+            $this->post('/inventory/sync/factory-native',[...$payload(),'preview_token'=>$token],['Accept'=>'application/json'])->assertConflict();
+            $this->assertDatabaseCount('factory_material_snapshots',0);
+            $fresh=$this->post('/inventory/sync/factory-native/preview',$payload(),['Accept'=>'application/json'])->assertOk();
+            $done=$this->post('/inventory/sync/factory-native',[...$payload(),'preview_token'=>$fresh->json('preview_token')],['Accept'=>'application/json'])->assertOk();
+            self::assertSame($fresh->json('changes'),$done->json('changes'));
+            $this->assertDatabaseHas('warehouse_inventory',['id'=>$stock->id,'quantity_on_hand'=>0,'quantity_reserved'=>2]);
+            $this->assertDatabaseHas('products',['id'=>$p->id,'material_full_name'=>'New full name']);
+        } finally {@unlink($path);}
+    }
+
+    public function test_partial_preserves_absent_verified_sku_while_full_previews_hold(): void
+    {
+        $factory=Warehouse::query()->where('code','FACTORY')->firstOrFail();
+        $a=Product::create(['sku'=>'PART-A','name'=>'A','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
+        $b=Product::create(['sku'=>'PART-B','name'=>'B','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
+        foreach([[$a,'CODE-A'],[$b,'CODE-B']] as [$p,$code]){
+            ProductMaterialVersion::create(['material_code'=>$code,'code_key'=>$code,'material_name'=>$code,'product_id'=>$p->id,'factory_stock_approved'=>true,'factory_physical_qty'=>20]);
+            $inv=WarehouseInventory::create(['warehouse_id'=>$factory->id,'product_id'=>$p->id,'quantity_on_hand'=>20,'quantity_reserved'=>0]);
+            $inv->forceFill(['factory_native_status'=>'verified'])->save();
+        }
+        $this->actingAs($this->actor(['inventory.operate']));
+        $path=$this->fixture([['CODE-A','CODE-A',9,0]]);
+        try{
+            $payload=fn()=>['file'=>$this->upload($path),'stock_count_at'=>now()->toDateString()];
+            $full=$this->post('/inventory/sync/factory-native/preview',[...$payload(),'sync_mode'=>'full'],['Accept'=>'application/json'])->assertOk()->assertJsonPath('availability_held_products',1);
+            self::assertTrue(collect($full->json('changes'))->contains(fn($r)=>$r['sku']==='PART-B'&&$r['after']==='held'));
+            $partial=$this->post('/inventory/sync/factory-native/preview',[...$payload(),'sync_mode'=>'partial'],['Accept'=>'application/json'])->assertOk()->assertJsonPath('availability_held_products',0);
+            self::assertFalse(collect($partial->json('changes'))->contains(fn($r)=>$r['sku']==='PART-B'));
+            $this->post('/inventory/sync/factory-native',[...$payload(),'sync_mode'=>'partial','preview_token'=>$partial->json('preview_token')],['Accept'=>'application/json'])->assertOk();
+            $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$a->id,'quantity_on_hand'=>9]);
+            $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$b->id,'quantity_on_hand'=>20,'factory_native_status'=>'verified']);
+        }finally{@unlink($path);}
+    }
+
+    private function nativePost(array $payload,array $headers=[]): \Illuminate\Testing\TestResponse
+    {
+        $payload['sync_mode']??='full';
+        $preview=$this->post('/inventory/sync/factory-native/preview',$payload,$headers);
+        if ($preview->status()!==200 || $preview->json('duplicate')) return $preview;
+        $payload['preview_token']=$preview->json('preview_token');
+        return $this->post('/inventory/sync/factory-native',$payload,$headers);
     }
 
     private function fixture(array $rows, ?int $factoryTotal=null): string
