@@ -1032,6 +1032,75 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         self::assertSame(0, WarehouseInventory::query()->where('product_id', $products[0]->id)->count());
     }
 
+    public function test_us_ny_requires_warehouse_mapping_and_never_applies_stock(): void
+    {
+        [$ny, , $products] = $this->fixture(['NY-SKU-A', 'NY-SKU-B'], 'US-NY', 'US01');
+        $other = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        $mapping = \App\Modules\Products\Infrastructure\Models\ProductWarehouseSku::class;
+        $mapping::query()->create(['product_id' => $products[0]->id, 'warehouse_id' => $ny->id,
+            'sku' => 'NY-PHYSICAL-A', 'is_active' => true, 'verified_at' => now()]);
+        $mapping::query()->create(['product_id' => $products[1]->id, 'warehouse_id' => $other->id,
+            'sku' => 'NY-SKU-B', 'is_active' => true, 'verified_at' => now()]);
+        WarehouseInventory::query()->create(['warehouse_id' => $ny->id, 'product_id' => $products[0]->id,
+            'quantity_on_hand' => 3, 'quantity_reserved' => 0]);
+        $service = $this->service($products, ['NY-PHYSICAL-A', 'NY-SKU-B'], omsWarehouseCode: 'US01');
+        $result = $service->sync(false, 'US-NY');
+        self::assertSame(1, $result['unmatched_sku_count']);
+        $snapshot = XlwmsInventorySnapshot::findOrFail($result['snapshot_id']);
+        self::assertSame('matched', $snapshot->rows()->where('provider_sku', 'NY-PHYSICAL-A')->value('resolution_status'));
+        self::assertSame('unmatched', $snapshot->rows()->where('provider_sku', 'NY-SKU-B')->value('resolution_status'));
+        config()->set('xlwms.inventory_apply_enabled', true);
+        try {
+            $service->sync(true, 'US-NY');
+            self::fail('NY apply must stay disabled');
+        } catch (\RuntimeException $e) {
+            self::assertSame('XLWMS_US_NY_APPLY_NOT_AUTHORIZED', $e->getMessage());
+        }
+        self::assertSame(3, (int) WarehouseInventory::where('warehouse_id', $ny->id)->value('quantity_on_hand'));
+    }
+
+    public function test_us_ny_dev_apply_needs_independent_exact_checksum_and_never_changes_other_warehouse(): void
+    {
+        [$ny, , $products] = $this->fixture(['NY-APPLY'], 'US-NY', 'US01');
+        $other = Warehouse::query()->where('code', 'US-SM')->firstOrFail();
+        \App\Modules\Products\Infrastructure\Models\ProductWarehouseSku::query()->create([
+            'product_id' => $products[0]->id, 'warehouse_id' => $ny->id,
+            'sku' => 'NY-PHYSICAL', 'is_active' => true, 'verified_at' => now(),
+        ]);
+        foreach ([[$ny, 3], [$other, 80]] as [$warehouse, $quantity]) {
+            WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id,
+                'product_id' => $products[0]->id, 'quantity_on_hand' => $quantity, 'quantity_reserved' => 0]);
+        }
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.us_ny_inventory_dev_apply_enabled', true);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('inventory_sku_gate.enabled', true);
+        $service = $this->service($products, ['NY-PHYSICAL'], totals: ['NY-PHYSICAL' => 4], omsWarehouseCode: 'US01');
+        $preview = $service->sync(false, 'US-NY');
+        config()->set('xlwms.de_inventory_first_apply_approved_checksum', $preview['checksum']);
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $preview['checksum']);
+        self::assertSame('blocked', $service->sync(true, 'US-NY')['status']);
+        config()->set('xlwms.us_ny_inventory_first_apply_approved_checksum', $preview['checksum']);
+        self::assertSame('applied', $service->sync(true, 'US-NY')['status']);
+        self::assertSame(4, (int) WarehouseInventory::where('warehouse_id', $ny->id)->value('quantity_on_hand'));
+        self::assertSame(80, (int) WarehouseInventory::where('warehouse_id', $other->id)->value('quantity_on_hand'));
+        $this->app->detectEnvironment(static fn (): string => 'production');
+        try {
+            $this->expectExceptionMessage('XLWMS_US_NY_APPLY_NOT_AUTHORIZED');
+            $service->sync(true, 'US-NY');
+        } finally {
+            $this->app->detectEnvironment(static fn (): string => 'testing');
+        }
+    }
+
+    public function test_us_ny_rejects_wrong_warehouse_binding(): void
+    {
+        [, , $products] = $this->fixture(['NY-WRONG'], 'US-NY', 'Hannover');
+        $service = $this->service($products, ['NY-WRONG']);
+        $this->expectExceptionMessage('OMS_US_NY_WAREHOUSE_CODE_MISMATCH');
+        $service->sync(false, 'US-NY');
+    }
+
     /** @return array{0:Warehouse,1:WarehouseOpenApiConnection,2:list<Product>} */
     private function fixture(array $skus, string $warehouseCode = 'US-SM', string $omsWarehouseCode = 'US-SM'): array
     {

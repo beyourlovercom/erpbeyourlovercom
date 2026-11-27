@@ -89,6 +89,155 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         return $o->fresh();
     }
 
+    public function test_us_ny_preview_requires_own_mapping_and_verified_usps_channel_without_create(): void
+    {
+        $o = $this->orderFixture();
+        $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        $item = $o->items()->firstOrFail();
+        $o->shipment()->update(['warehouse_id' => $ny->id, 'carrier' => 'USPS', 'service' => 'USPS Priority Mail',
+            'carrier_service_id' => null]);
+        $o->fresh()->shipment->overseaReview()->update(['reviewed_warehouse_id' => $ny->id]);
+        WarehouseOpenApiConnection::query()->create(['warehouse_id' => $ny->id, 'provider' => 'xlwms',
+            'oms_warehouse_code' => 'US01', 'app_key_encrypted' => 'NY_TEST_KEY', 'app_secret_encrypted' => 'NY_TEST_SECRET']);
+        WarehouseInventory::query()->create(['warehouse_id' => $ny->id, 'product_id' => $item->product_id,
+            'quantity_on_hand' => 10, 'quantity_reserved' => 0]);
+        Http::fake();
+        $preview = app(\App\Modules\Logistics\Application\Xlwms\SingleOrderPreview::class);
+        self::assertContains('final_sku_not_verified', $preview->forOrder($o->fresh(), false, false, 'US-NY')['blockers']);
+        ProductWarehouseSku::query()->create(['warehouse_id' => $ny->id, 'product_id' => $item->product_id,
+            'sku' => 'NY-PHYSICAL', 'is_active' => true, 'verified_at' => now()]);
+        $p = $preview->forOrder($o->fresh(), false, false, 'US-NY');
+        self::assertSame([], $p['blockers']);
+        self::assertSame('US01', $p['payload']['whCode']);
+        self::assertSame('USPS-NJ', $p['payload']['logisticsChannel']);
+        self::assertSame('NY-PHYSICAL', $p['payload']['productList'][0]['sku']);
+        $o->shipment()->update(['carrier' => 'UPS', 'service' => 'UPS-NJ']);
+        self::assertContains('US_NY_OMS_CHANNEL_NOT_VERIFIED', $preview->forOrder($o->fresh(), false, false, 'US-NY')['blockers']);
+        Http::assertNothingSent();
+    }
+
+    public function test_us_ny_batch_preview_blocks_pending_review_and_wrong_warehouse(): void
+    {
+        $o = $this->orderFixture();
+        $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        $o->shipment()->update(['warehouse_id' => $ny->id, 'carrier' => 'USPS',
+            'service' => 'USPS Priority Mail', 'carrier_service_id' => null]);
+        $o->forceFill(['routing_warehouse_code' => 'US-NY', 'workflow_status' => 'pending_review'])->save();
+        $o->fresh()->shipment->overseaReview()->delete();
+        $other = $this->orderFixture();
+        Http::fake();
+        $p = app(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatchPreview::class)
+            ->preview([$o->id, $other->id]);
+        self::assertSame(0, $p['count']);
+        self::assertContains('US_NY_ORDER_NOT_REVIEWED_FOR_DISPATCH', $p['items'][0]['blockers']);
+        self::assertContains('warehouse_review_not_approved', $p['items'][0]['blockers']);
+        self::assertContains('US_NY_ORDER_WRONG_WAREHOUSE', $p['items'][1]['blockers']);
+        self::assertDatabaseCount('xlwms_dispatch_attempts', 0);
+        Http::assertNothingSent();
+    }
+
+    public static function nyCanaryActors(): array
+    {
+        return ['authenticated logistics operator'=>[false], 'owner-authorized system CLI'=>[true]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('nyCanaryActors')]
+    public function test_us_ny_canary_exact_order_creates_once_and_preserves_pending_status(bool $system): void
+    {
+        $o = $this->orderFixture();
+        $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        $item = $o->items()->firstOrFail();
+        $o->shipment()->update(['warehouse_id'=>$ny->id,'carrier'=>'USPS','service'=>'USPS Priority Mail','carrier_service_id'=>null]);
+        $o->forceFill(['routing_warehouse_code'=>'US-NY','workflow_status'=>'sending'])->save();
+        $o->fresh()->shipment->overseaReview()->update(['reviewed_warehouse_id'=>$ny->id]);
+        WarehouseOpenApiConnection::query()->create(['warehouse_id'=>$ny->id,'provider'=>'xlwms','oms_warehouse_code'=>'US01',
+            'app_key_encrypted'=>'FAKE_NY_KEY','app_secret_encrypted'=>'FAKE_NY_SECRET']);
+        ProductWarehouseSku::query()->create(['warehouse_id'=>$ny->id,'product_id'=>$item->product_id,'sku'=>'NY-PHYSICAL',
+            'is_active'=>true,'verified_at'=>now()]);
+        WarehouseInventory::query()->create(['warehouse_id'=>$ny->id,'product_id'=>$item->product_id,
+            'quantity_on_hand'=>10,'quantity_reserved'=>0]);
+        $role = \App\Modules\Identity\Infrastructure\Models\Role::query()->create(['key'=>'ny-test','label'=>'NY test']);
+        $perm = \App\Modules\Identity\Infrastructure\Models\Permission::query()->firstOrCreate(['key'=>'logistics.operate'],['label'=>'Logistics operate']);
+        $role->permissions()->attach($perm);
+        $actor = \App\Modules\Identity\Infrastructure\Models\User::factory()->create(['is_active'=>true]);
+        $actor->roles()->attach($role);
+        config()->set('xlwms.us_sm_outbound_entry_mode','oms_manual_draft');
+        config()->set('xlwms.us_ny_canary_enabled',true);
+        config()->set('xlwms.us_ny_canary_order_id',$o->id);
+        config()->set('xlwms.us_ny_canary_actor_id',$actor->id);
+        config()->set('xlwms.us_ny_canary_system_enabled',$system);
+        $executor = $system ? null : $actor->id;
+        $p = app(\App\Modules\Logistics\Application\Xlwms\SingleOrderPreview::class)->forOrder($o->fresh(),false,false,'US-NY');
+        self::assertSame([], $p['blockers']);
+        $payload = $p['payload'];
+        $created = false;
+        $remoteTracking = '9400111206213000000000';
+        $remotePlatform = $payload['platformOrderNo'];
+        Http::preventStrayRequests();
+        Http::fake(function ($req) use (&$created,$payload,&$remoteTracking,&$remotePlatform) {
+            $url=$req->url();
+            if (str_contains($url,'outboundOrder/detail')) return Http::response(['code'=>200,'data'=>[]]);
+            if (str_contains($url,'outboundOrder/pageList')) {
+                $rows=$created ? [['outboundOrderNo'=>'NY-OMS-001','whCode'=>'US01','status'=>2,'logisticsTrackNo'=>$remoteTracking,
+                    'thirdOrderNo'=>$payload['thirdOrderNo'],'referOrderNo'=>$payload['referOrderNo'],'platformOrderNo'=>$remotePlatform]] : [];
+                return Http::response(['code'=>200,'data'=>['records'=>$rows,'total'=>count($rows),'page'=>1,'pageSize'=>10,'pages'=>count($rows)]]);
+            }
+            if (str_contains($url,'logistics/channel/list')) return Http::response(['code'=>200,'data'=>[['channelCode'=>'USPS-NJ','whCodes'=>[]]]]);
+            if (str_contains($url,'product/pagelist')) return Http::response(['code'=>200,'data'=>['records'=>[['sku'=>'NY-PHYSICAL','approveStatus'=>2]]]]);
+            if (str_contains($url,'integratedInventory/pageOpen')) return Http::response(['code'=>200,'data'=>[
+                'records'=>[['sku'=>'NY-PHYSICAL','whCode'=>'US01','stockType'=>0,'productTotalAmount'=>10,'productStockDtl'=>['availableAmount'=>9,'lockAmount'=>1]],
+                    ['sku'=>'UNMAPPED-OTHER','whCode'=>'US01','stockType'=>0,'productTotalAmount'=>2,'productStockDtl'=>['availableAmount'=>2,'lockAmount'=>0]]],
+                'total'=>2,'page'=>1,'pageSize'=>10,'pages'=>1]]);
+            if (str_contains($url,'outboundOrder/create')) {
+                $created=true;
+                return Http::response(['code'=>200,'data'=>[['thirdOrderNo'=>$payload['thirdOrderNo'],'success'=>true,'orderNo'=>'NY-OMS-001']]]);
+            }
+            throw new \RuntimeException('unexpected fake');
+        });
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\UsNyCanaryDispatch::class);
+        if ($system) {
+            config()->set('xlwms.us_ny_canary_system_enabled',false);
+            $old=$this->app['env'];$this->app->instance('env','production');
+            try {
+                $this->artisan('xlwms:us-ny-canary',['order'=>$o->erp_order_id,'--execute'=>true,'--confirmation'=>'WRONG'])->assertExitCode(1);
+                Http::assertNothingSent();
+                $this->artisan('xlwms:us-ny-canary',['order'=>$o->erp_order_id,'--execute'=>true,
+                    '--confirmation'=>'OWNER_APPROVED_US_NY_'.$o->erp_order_id])->assertExitCode(0);
+                self::assertFalse(config('xlwms.us_ny_canary_system_enabled'));
+            } finally {$this->app->instance('env',$old);}
+            config()->set('xlwms.us_ny_canary_system_enabled',true);
+            $attempt=XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail();
+            $r=['state'=>$attempt->state,'oms_order_no'=>$attempt->oms_order_no,'tracking_present'=>filled($attempt->oms_tracking_no)];
+        } else {
+            $r=$svc->create($o->id,$executor,$p['payload_hash']);
+            self::assertNull($o->fresh()->shipment->tracking_number);
+        }
+        self::assertSame('oms_create_confirmed',$r['state']);
+        self::assertSame('NY-OMS-001',$r['oms_order_no']);
+        self::assertTrue($r['tracking_present']);
+        self::assertSame('pending',$o->fresh()->shipment->shipment_status);
+        self::assertCount(1,Http::recorded(fn($req)=>str_contains($req->url(),'outboundOrder/create')));
+        try {$svc->create($o->id,$executor,$p['payload_hash']);self::fail('duplicate must block');}
+        catch (\RuntimeException $e) {self::assertSame($system ? 'US_NY_PREFLIGHT_BLOCKED_OR_STALE' : 'US_NY_ATTEMPT_EXISTS',$e->getMessage());}
+        self::assertCount(1,Http::recorded(fn($req)=>str_contains($req->url(),'outboundOrder/create')));
+        $stage=app(\App\Modules\Logistics\Application\Xlwms\UsNyTrackingStage::class);
+        $r=$stage->refreshAndStage($o->id);
+        self::assertTrue($system ? $r['already_matches'] : $r['staged']);
+        self::assertSame('9400111206213000000000',$o->fresh()->shipment->tracking_number);
+        self::assertSame('pending',$o->fresh()->shipment->shipment_status);
+        self::assertSame('pending_shipment',$o->fresh()->order_status->value);
+        self::assertTrue($stage->refreshAndStage($o->id)['already_matches']);
+        $remoteTracking='9400111206213000000001';
+        self::assertFalse($stage->refreshAndStage($o->id)['staged']);
+        self::assertSame('9400111206213000000000',$o->fresh()->shipment->tracking_number);
+        $remotePlatform='WRONG-PLATFORM';
+        self::assertFalse($stage->refreshAndStage($o->id)['fresh']);
+        self::assertSame('9400111206213000000000',$o->fresh()->shipment->tracking_number);
+
+        self::assertCount(1,Http::recorded(fn($req)=>str_contains($req->url(),'outboundOrder/create')));
+        self::assertSame($executor, XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail()->requested_by === null ? null : (int)XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail()->requested_by);
+    }
+
     public function test_owner_selected_no_shipping_service_creates_draft_without_label_fields(): void
     {
         $o=$this->orderFixture();

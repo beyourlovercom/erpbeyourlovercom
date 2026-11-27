@@ -136,6 +136,47 @@ final class DeTianyunLiveOutboundGatewayTest extends TestCase
         app(XlwmsOrderGateway::class)->findExisting($this->connection(), 'BYL-ERP-321', '007-ORDER-321');
     }
 
+    public function test_us_ny_duplicate_scan_covers_811_rows_and_finds_legacy_reference(): void
+    {
+        $requests = 0;
+        Http::fake(function ($req) use (&$requests) {
+            if (str_contains($req->url(), '/outboundOrder/detail')) {
+                return Http::response(['code' => 200, 'data' => []]);
+            }
+            $page = (int) (is_object($req['data']) ? $req['data']->page : $req['data']['page']);
+            $requests++;
+            $rows = [];
+            for ($i = ($page - 1) * 10 + 1; $i <= min(811, $page * 10); $i++) {
+                $rows[] = ['outboundOrderNo' => 'NY-'.$i, 'whCode' => 'US01',
+                    'referOrderNo' => $i === 811 ? 'NY-LEGACY' : 'OTHER-'.$i];
+            }
+            return Http::response(['code' => 200, 'data' => [
+                'records' => $rows, 'total' => 811, 'page' => $page, 'pageSize' => 10, 'pages' => 82,
+            ]]);
+        });
+        $connection = $this->connection();
+        $connection->oms_warehouse_code = 'US01';
+        $matches = app(XlwmsOrderGateway::class)->findExisting($connection, 'BYL-ERP-321', '007-ORDER-321', ['NY-LEGACY']);
+        self::assertSame('NY-811', $matches[0]['outboundOrderNo']);
+        self::assertSame(82, $requests);
+    }
+
+    public function test_us_ny_cannot_reuse_german_live_create_authorization(): void
+    {
+        $old = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            $connection = $this->connection();
+            $connection->oms_warehouse_code = 'US01';
+            $this->expectExceptionMessage('XLWMS_OPENAPI_CREATE_BLOCKED_USE_OMS_DRAFT_IMPORT');
+            app(XlwmsOrderGateway::class)->createSingle($connection, array_replace($this->payload(),
+                ['whCode' => 'US01', 'logisticsChannel' => 'USPS-NJ']));
+        } finally {
+            $this->app->instance('env', $old);
+            Http::assertNothingSent();
+        }
+    }
+
     public function test_global_switch_off_denies_production_create(): void
     {
         $old = $this->app['env'];

@@ -29,7 +29,16 @@ final class XlwmsInventorySyncService
     /** @return array<string,mixed> */
     public function sync(bool $apply = false, string $warehouseCode = 'US-SM', array $resumeVerifiedSkus = []): array
     {
-        if (! in_array($warehouseCode, ['US-SM', 'DE'], true)) throw new RuntimeException('XLWMS_WAREHOUSE_UNSUPPORTED');
+        if (! in_array($warehouseCode, ['US-SM', 'DE', 'US-NY'], true)) throw new RuntimeException('XLWMS_WAREHOUSE_UNSUPPORTED');
+        if ($warehouseCode === 'US-NY' && $apply) {
+            if (! app()->environment('local', 'testing')
+                || ! (bool) config('xlwms.us_ny_inventory_dev_apply_enabled', false)) {
+                throw new RuntimeException('XLWMS_US_NY_APPLY_NOT_AUTHORIZED');
+            }
+            if (! $this->v2Enabled() || ! $this->skuIsolationEnabled()) {
+                throw new RuntimeException('XLWMS_US_NY_REQUIRES_V2_SKU_ISOLATION');
+            }
+        }
         if ($warehouseCode !== 'DE' && $resumeVerifiedSkus !== []) throw new RuntimeException('XLWMS_RESUME_ONLY_SUPPORTED_FOR_DE');
         // R4 permits DE inventory writes ONLY in isolated Local/Testing, with a
         // separate DE gate. V2 + per-SKU quarantine and first-checksum approval
@@ -53,6 +62,7 @@ final class XlwmsInventorySyncService
         $whCode = trim((string) $connection->oms_warehouse_code);
         if ($whCode === '') throw new RuntimeException('OMS_WAREHOUSE_CODE_NOT_CONFIGURED');
         if ($warehouseCode === 'DE' && $whCode !== 'Hannover') throw new RuntimeException('OMS_DE_WAREHOUSE_CODE_MISMATCH');
+        if ($warehouseCode === 'US-NY' && $whCode !== 'US01') throw new RuntimeException('OMS_US_NY_WAREHOUSE_CODE_MISMATCH');
         $pageSize = 10;
 
         // Product pages are account-level; a product row is not required to carry whCode.
@@ -105,7 +115,7 @@ final class XlwmsInventorySyncService
                     'stock' => $normalized[$sku], 'reason' => 'OMS_SKU_EXCLUDED_OTHER_CUSTOMER'];
                 continue;
             }
-            $resolution = $this->resolver->resolve($sku);
+            $resolution = $this->resolveWarehouseSku($warehouse, $sku);
             $resolved = $resolution['status'] === 'resolved' ? $resolution['product_id'] : null;
             if ($resolved === null) {
                 $rows[] = ['sku' => $sku, 'status' => 'unmatched', 'stock' => $normalized[$sku] ?? null,
@@ -136,7 +146,7 @@ final class XlwmsInventorySyncService
                     'reason' => 'OMS_SKU_EXCLUDED_OTHER_CUSTOMER'];
                 continue;
             }
-            $resolution = $this->resolver->resolve($sku);
+            $resolution = $this->resolveWarehouseSku($warehouse, $sku);
             $catalogProductId = $resolution['status'] === 'resolved' ? $resolution['product_id'] : null;
             $rows[] = ['sku' => $sku, 'status' => 'catalog_only',
                 'product_id' => $catalogProductId === null ? null : (int) $catalogProductId,
@@ -161,6 +171,20 @@ final class XlwmsInventorySyncService
         $snapshot = $this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline, $resumeVerifiedSkus);
         $this->audit->record(AuditActor::system(AuditSource::InternalSystem), 'inventory.xlwms_snapshot_'.$snapshot->status, $snapshot::class, $snapshot->id, after: $this->result($snapshot), reason: 'xlwms_inventory_sync');
         return $this->result($snapshot);
+    }
+
+    /** NY must use an active, verified warehouse mapping, never a global alias. */
+    private function resolveWarehouseSku(Warehouse $warehouse, string $sku): array
+    {
+        if ($warehouse->code !== 'US-NY') return $this->resolver->resolve($sku);
+        $matches = \App\Modules\Products\Infrastructure\Models\ProductWarehouseSku::query()
+            ->where('warehouse_id', $warehouse->id)->where('is_active', true)
+            ->whereNotNull('verified_at')->whereRaw('LOWER(sku) = ?', [mb_strtolower($sku)])
+            ->whereHas('product', fn ($query) => $query->where('is_active', true))
+            ->get()->filter(fn ($mapping) => strcasecmp(trim((string) $mapping->sku), $sku) === 0);
+        return $matches->count() === 1
+            ? ['status' => 'resolved', 'product_id' => (int) $matches->first()->product_id]
+            : ['status' => 'blocked', 'product_id' => null];
     }
 
     /** @return list<array<string,mixed>> */
@@ -409,9 +433,11 @@ final class XlwmsInventorySyncService
         if ($last === null || ! (bool) ($last->summary['v2'] ?? false)) {
             // DE approval is warehouse-specific: its Owner-reviewed checksum can
             // never replace or accidentally inherit the US-SM first-apply gate.
-            $approvedConfigKey = $warehouse->code === 'DE'
-                ? 'xlwms.de_inventory_first_apply_approved_checksum'
-                : 'xlwms.inventory_first_apply_approved_checksum';
+            $approvedConfigKey = match ($warehouse->code) {
+                'DE' => 'xlwms.de_inventory_first_apply_approved_checksum',
+                'US-NY' => 'xlwms.us_ny_inventory_first_apply_approved_checksum',
+                default => 'xlwms.inventory_first_apply_approved_checksum',
+            };
             $approved = trim((string) config($approvedConfigKey, ''));
             if (strlen($approved) !== 64 || ! ctype_xdigit($approved)
                 || ! hash_equals(strtolower($approved), strtolower($checksum))) {
