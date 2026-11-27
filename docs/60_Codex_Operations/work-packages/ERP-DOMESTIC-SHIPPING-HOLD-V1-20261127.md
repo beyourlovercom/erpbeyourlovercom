@@ -32,3 +32,8 @@ No code change, production order change, deployment or UAT PASS is claimed by th
 ## 2026-11-27 — ERP1 production closure (Beijing)
 - Owner explicitly authorized merge/release and subsequently confirmed formal page UAT PASS. PR #904 merged at e77cc88aba7397a96b38eccefcf38ae4fb3c51cd; scoped ERP1 production deployment verified 17:49:41 Beijing. Exact-head CI 8/8 PASS; PHP 80 tests / 1856 assertions and Vue 60 tests PASS; production build and workspace tabs gate PASS. No ERP2 change, migration, or real order test writes.
 - Release changelog PR #908 merged at 03b23d012c0320dfdbcbd0a30db2d87f1b8f34da; active changelog matched main on readback. R1–R5 CLOSED, no remaining feature work.
+
+## V1.1 — Owner-approved simplification (ERP1 only)
+- R1: Canonical missing_info is 1.1.2; tracking-stockout is 1.1.1. No 1.5 or new domestic_hold_missing_info selectable entry. Three-part numbering works in status settings.
+- R2: Only approved, unshipped domestic customer fulfillment can set missing_info; existing frozen guards and resume action apply. Production read-only preflight found one prior domestic_hold_missing_info record, zero missing_info records, zero legacy missing-info markers and zero relevant display overrides. Preserve old code as read-only stored alias; never write it again. No bulk rewrite or schema migration.
+- R3: Canonical display, frozen queue, global filters, permission and auxiliary cleanup; retain unrelated generic exception behavior. Tests changed only where Owner deliberately superseded old generic missing-info behavior. R4 browser UAT and R5 Production release remain separate gates.

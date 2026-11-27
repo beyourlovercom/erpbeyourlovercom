@@ -494,7 +494,7 @@ final class OrderService
             ->when($filters['order_status'] ?? null, fn ($query, string $status) => $query->where('order_status', $status));
 
         $query->when($filters['workflow_status'] ?? null, function ($query, string $status): void {
-            if (in_array($status, ['pending_allocation', 'pending_review', 'allocated', 'partially_shipped', 'sending', 'sent', 'shipping', 'out_of_stock', 'exception', 'cancelled', 'progress_conflict', 'completed'], true)) {
+            if (DomesticShippingHold::isHeld($status) || in_array($status, ['pending_allocation', 'pending_review', 'allocated', 'partially_shipped', 'sending', 'sent', 'shipping', 'out_of_stock', 'exception', 'cancelled', 'progress_conflict', 'completed'], true)) {
                 $this->progressQueries->applyPhase($query, $status);
 
                 return;
@@ -622,6 +622,9 @@ final class OrderService
                     if (str_contains($labels, $needle)) {
                         $codes[] = $code;
                     }
+                }
+                if (in_array(DomesticShippingHold::MISSING_INFO, $codes, true)) {
+                    $codes[] = DomesticShippingHold::LEGACY_MISSING_INFO;
                 }
                 if ($codes === []) {
                     $query->whereRaw('1 = 0');

@@ -63,7 +63,7 @@ const props = withDefaults(defineProps<{
   canEditWarehouseRoute?:boolean
 }>(),{canLogisticsView:true})
 
-const isHeld = (row:Row) => ['domestic_hold_missing_info','domestic_hold_tracking_stockout'].includes(row.workflow_status_projection?.code??'')
+const isHeld = (row:Row) => ['missing_info','domestic_hold_tracking_stockout'].includes(row.workflow_status_projection?.code??'')
 const canResumeHold = (row:Row) => isHeld(row) && !!row.workflow_status_options?.some(o=>o.code==='resume_domestic_hold'&&o.mutable)
 const resumeHoldBusy = ref<number|null>(null)
 const resumeHold = async (row:Row) => {
@@ -245,7 +245,7 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
     cellRendererParams:props.view==='pending'?{showLiquid:true}:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
   gridColumn({colId:'contact',field:'contact_user_name',headerName:'订单联络人',width:145}),
   gridColumn({colId:'status',field:'workflow_status',headerName:'订单状态',width:182,
-    ...selectFilter(['pending_review','sending','domestic_hold_missing_info','domestic_hold_tracking_stockout','out_of_stock','sent','shipping','completed','progress_conflict','partially_shipped']
+    ...selectFilter(['pending_review','sending','domestic_hold_tracking_stockout','missing_info','out_of_stock','sent','shipping','completed','progress_conflict','partially_shipped']
       .map(code=>({value:code,label:props.workflowStatusOptions?.find(item=>item.code===code)?.zh??code})),'全部状态'),
     cellRenderer:OrderWorkflowGridCell,
     cellRendererParams:{workflowStatusOptions:props.workflowStatusOptions??[],canEditWorkflowStatus:props.canEditWorkflowStatus??false}}),

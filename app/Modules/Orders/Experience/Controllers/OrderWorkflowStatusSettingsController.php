@@ -39,7 +39,7 @@ final class OrderWorkflowStatusSettingsController extends Controller
             'expected_version' => ['required', 'string', 'size:64'],
             'statuses' => ['required', 'array', 'size:'.count($defaults)],
             'statuses.*.code' => ['required', 'string', Rule::in(array_keys($defaults))],
-            'statuses.*.sequence' => ['required', 'string', 'max:16', 'regex:/^(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})$/'],
+            'statuses.*.sequence' => ['required', 'string', 'max:16', 'regex:/^(0|[1-9][0-9]{0,2})(?:\\.(0|[1-9][0-9]{0,2})){1,2}$/'],
             'statuses.*.name_zh' => ['required', 'string', 'max:80'],
             'statuses.*.name_en' => ['required', 'string', 'max:80'],
         ]);

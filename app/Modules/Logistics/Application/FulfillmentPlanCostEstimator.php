@@ -17,6 +17,18 @@ final class FulfillmentPlanCostEstimator
         private readonly GermanyDhlRoutingCostCalculator $dhl,
     ) {}
 
+    /** Read-only candidate quotation for packaging and allocation; no legacy estimate mutation. */
+    public function quoteVersioned(array $request): array
+    {
+        return app(VersionedRateQuoteService::class)->quote($request);
+    }
+
+    /** Unapproved transport-only reference for testing; never used for cost ranking. */
+    public function quoteDraftTransport(array $request): array
+    {
+        return app(VersionedRateQuoteService::class)->quoteDraftTransport($request);
+    }
+
     /** @param array<int,int> $productIds @return array<string,mixed> */
     public function prepare(array $productIds): array
     {

@@ -421,10 +421,9 @@ const operationalMarkerOptions = [
   { key: 'return', label: '退货关注（辅助）' },
   { key: 'stockout', label: '缺货' },
 ]
-// A missing-info hold projects to exception but is removed via its own subtype
-// tag; never make the generic exception button attempt to clear that hold.
+// Frozen shipment information holds are resolved only via resume pending shipment.
 const markerActive = (key: string) => key === 'exception'
-  ? (['exception', 'missing_info', 'renew', 'claims', 'freight_product_cost_follow_up']
+  ? (['exception', 'renew', 'claims', 'freight_product_cost_follow_up']
       .includes(props.order.workflow_status_projection?.code ?? ''))
   : key === 'stockout' && props.isDomesticFactory
     ? ((props.order.operational_markers?.includes('domestic_stockout') ?? false)
