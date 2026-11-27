@@ -1,0 +1,62 @@
+name: ERP1 Logistics Rate Center V1
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'database/migrations/**logistics_rate_center**'
+      - 'tests/Feature/Logistics/LogisticsRateCenter*Test.php'
+      - '.github/workflows/erp-logistics-rate-center-v1.yml'
+permissions:
+  contents: read
+jobs:
+  sqlite-rate-foundation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          DB_URL: ''
+          ERP_LOCAL_ADMIN_BYPASS: 'false'
+  mysql8-rate-foundation:
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: erp_rate_center_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_DATABASE: erp_rate_center_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          DB_URL: ''
+          ERP_LOCAL_ADMIN_BYPASS: 'false'
