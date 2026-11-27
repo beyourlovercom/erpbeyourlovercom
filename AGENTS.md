@@ -30,6 +30,10 @@ Routine low-risk and normal releases do not require a new database backup by def
 
 ---
 
+# HIGHEST OWNER-FROZEN ERP1 ONLY RELEASE (2026-11-27)
+
+Owner directive: stop independent ERP2 upgrades, feature development and synchronized releases. Preserve all historical ERP2 artifacts. ERP1 remains the sole business development and production release target; ERP V4 native reverse UI migration into ERP1 may continue. Do not redeploy ERP2 or resume the forward business migration without explicit new Owner authorization.
+
 # HIGHEST OWNER-FROZEN ERP GLOBAL SKU ISOLATION P0 V2 (2026-11-26)
 
 **Rule ID: ERP_GLOBAL_SKU_ISOLATION_P0 · OWNER APPROVED · MANDATORY for ERP1, ERP2 and every existing/future warehouse and provider.** This supplements and enforces the 2026-11-15 global SKU stock gate (#782/#783). One SKU-specific exception must not block unrelated healthy SKUs/orders in the same warehouse or other warehouses. Warehouse/provider-specific code MUST reuse the global per-SKU decision contract; do not introduce conflicting all-or-nothing SKU validation. ERP2 reuses ERP1 Laravel business rules, not a second stock engine.

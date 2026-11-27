@@ -1,5 +1,7 @@
 <?php
 
+use App\Modules\Inventory\Application\MorePlusInventorySyncService;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutSandboxLabelStage;
@@ -22,6 +24,31 @@ if ((bool) config('xlwms.inventory_sync_schedule_enabled', false)) {
     Schedule::command('xlwms:sync-inventory '.$xlwmsSyncMode)
         ->cron('*/'.(int) config('xlwms.inventory_sync_schedule_minutes', 30).' * * * *')
         ->name('xlwms.inventory.sync')->withoutOverlapping();
+}
+
+// Signed GET only; reuse the existing ERP mirror and its per-SKU quarantine.
+Artisan::command('shipout:sync-inventory', function (MorePlusInventorySyncService $sync): int {
+    if (! app()->environment('production') || ! config('shipout.production_inventory_schedule_enabled', false)
+        || ! config('shipout.production_read_enabled', false)) {
+        $this->error('MOREPLUS_SCHEDULE_DISABLED');
+        return Command::FAILURE;
+    }
+    try {
+        $warehouse = Warehouse::query()->whereRaw('UPPER(code) = ?', ['US-LA'])->where('is_active', true)->sole();
+        $result = $sync->syncProvider($warehouse, null);
+        $this->line(json_encode(array_intersect_key($result, array_flip(['updated', 'created', 'unchanged', 'blocked', 'absent_zeroed'])), JSON_THROW_ON_ERROR));
+        return Command::SUCCESS;
+    } catch (Throwable $error) {
+        report($error);
+        $this->error('MOREPLUS_INVENTORY_SYNC_FAILED');
+        return Command::FAILURE;
+    }
+});
+
+if (app()->environment('production') && config('shipout.production_inventory_schedule_enabled', false)
+    && config('shipout.production_read_enabled', false)) {
+    Schedule::command('shipout:sync-inventory --no-interaction')->everyTenMinutes()
+        ->name('shipout.moreplus.inventory.sync')->withoutOverlapping(15)->runInBackground();
 }
 
 // DE/Hannover owner policy: the OMS is physical-stock authority. The CLI

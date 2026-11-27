@@ -228,6 +228,10 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         config()->set('xlwms.inventory_first_apply_approved_checksum',$preview['checksum']);
         self::assertSame('applied',$remote->sync(true)['status']);
         self::assertSame(9,$this->usSmAvailable($warehouse->id,$products[0]->id));
+        $stock = WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $products[0]->id)->firstOrFail();
+        $projection = app(\App\Modules\Inventory\Application\InventoryAvailabilityProjection::class);
+        self::assertSame(9, $projection->forRows(collect([$stock]))[$stock->id]);
+        self::assertSame(10, $stock->quantity_on_hand);
         self::assertSame(0,(int)WarehouseInventory::query()->where('warehouse_id',$warehouse->id)
             ->where('product_id',$products[0]->id)->value('quantity_reserved'));
         $row=XlwmsInventorySnapshot::query()->findOrFail($preview['snapshot_id'])

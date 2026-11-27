@@ -4,6 +4,7 @@ namespace App\Modules\Inventory\Infrastructure;
 
 use App\Modules\Inventory\Application\Contracts\InventoryRepository;
 use App\Modules\Inventory\Application\InventoryStockStatus;
+use App\Modules\Inventory\Application\InventoryAvailabilityProjection;
 use App\Modules\Inventory\Application\WarehouseMasterRegistry;
 use App\Modules\Inventory\Infrastructure\Models\InventoryAdjustment;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
@@ -17,14 +18,15 @@ use Illuminate\Support\Facades\DB;
 
 final class EloquentInventoryRepository implements InventoryRepository
 {
-    public function __construct(private readonly WarehouseMasterRegistry $warehouseMaster) {}
+    public function __construct(private readonly WarehouseMasterRegistry $warehouseMaster, private readonly InventoryAvailabilityProjection $availability) {}
 
     public function dashboard(): array
     {
         $rows = WarehouseInventory::query()->get();
         $warehouses = $this->warehouseList();
 
-        $statusCounts = $rows->countBy(fn ($row) => InventoryStockStatus::classify((int) $row->quantity_available));
+        $available = $this->availability->forRows($rows);
+        $statusCounts = $rows->countBy(fn ($row) => InventoryStockStatus::classify($available[$row->id]));
 
         return [
             'warehouse_count' => collect($warehouses)->where('is_active', true)->count(),
@@ -36,7 +38,7 @@ final class EloquentInventoryRepository implements InventoryRepository
             'sku_rows' => $rows->count(),
             'quantity_on_hand' => $rows->sum('quantity_on_hand'),
             'quantity_reserved' => $rows->sum('quantity_reserved'),
-            'quantity_available' => $rows->sum(fn ($row) => $row->quantity_available),
+            'quantity_available' => array_sum($available),
             'out_of_stock_rows' => (int) $statusCounts->get(InventoryStockStatus::OUT_OF_STOCK, 0),
             'low_stock_rows' => (int) $statusCounts->get(InventoryStockStatus::LOW_STOCK, 0),
             'in_stock_rows' => (int) $statusCounts->get(InventoryStockStatus::IN_STOCK, 0),
@@ -154,19 +156,23 @@ final class EloquentInventoryRepository implements InventoryRepository
         $warehouseFilter = trim((string) ($filters['warehouse'] ?? ''));
         $stockStatus = trim((string) ($filters['stock_status'] ?? ''));
         $warehouse = $warehouseFilter !== '' ? $this->findWarehouseBySlug($warehouseFilter) : null;
-        $page = WarehouseInventory::query()->with(['warehouse','product'])
+        $query = WarehouseInventory::query()->with(['warehouse','product'])
             ->when($warehouseFilter !== '', fn ($q) => $warehouse ? $q->where('warehouse_id', $warehouse->getKey()) : $q->whereRaw('1 = 0'))
             ->when($filters['search'] ?? null, fn ($q,$search) => $q->whereHas('product', fn ($p) => $p
                 ->where('sku','like',"%{$search}%")
                 ->orWhere('name','like',"%{$search}%")
                 ->orWhere('gtin','like',"%{$search}%")
                 ->orWhereHas('skuAliases', fn ($aliases) => $aliases->where('alias_sku','like',"%{$search}%"))
-            ))
-            ->when($stockStatus === 'alert', fn ($q) => $q->whereRaw('COALESCE(provider_available_quantity, (quantity_on_hand - quantity_reserved)) <= 9'))
-            ->when($stockStatus === InventoryStockStatus::OUT_OF_STOCK, fn ($q) => $q->whereRaw('COALESCE(provider_available_quantity, (quantity_on_hand - quantity_reserved)) <= 1'))
-            ->when($stockStatus === InventoryStockStatus::LOW_STOCK, fn ($q) => $q->whereRaw('COALESCE(provider_available_quantity, (quantity_on_hand - quantity_reserved)) BETWEEN 2 AND 9'))
-            ->when($stockStatus === InventoryStockStatus::IN_STOCK, fn ($q) => $q->whereRaw('COALESCE(provider_available_quantity, (quantity_on_hand - quantity_reserved)) >= 10'))
-            ->orderByDesc('inbound_at')->orderBy('id')->paginate($perPage)->withQueryString();
+            ));
+        if (in_array($stockStatus, ['alert', InventoryStockStatus::OUT_OF_STOCK, InventoryStockStatus::LOW_STOCK, InventoryStockStatus::IN_STOCK], true)) {
+            // Filter before pagination using the same per-SKU availability rule.
+            $candidates = (clone $query)->without(['warehouse', 'product'])->get(['id', 'product_id', 'warehouse_id']);
+            $available = $this->availability->forRows($candidates);
+            $ids = array_keys(array_filter($available, fn (int $qty): bool => $stockStatus === 'alert'
+                ? $qty <= 9 : InventoryStockStatus::classify($qty) === $stockStatus));
+            $query->whereIntegerInRaw('id', $ids);
+        }
+        $page = $query->orderByDesc('inbound_at')->orderBy('id')->paginate($perPage)->withQueryString();
         $this->attachShippedDemand($page->getCollection());
         return $page;
     }
