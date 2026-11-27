@@ -23,6 +23,7 @@ Route::middleware(['web','auth'])->group(function (): void {
 Route::middleware(['web','auth','can:inventory.packaging.submit'])->group(function (): void {
     Route::post('/inventory/packaging', [PackagingMeasurementController::class, 'store'])->name('inventory.packaging.store');
     Route::patch('/inventory/packaging/{record}', [PackagingMeasurementController::class, 'update'])->whereNumber('record')->name('inventory.packaging.update');
+    Route::post('/inventory/packaging/{record}/resubmit', [PackagingMeasurementController::class, 'resubmit'])->whereNumber('record')->name('inventory.packaging.resubmit');
     Route::post('/inventory/packaging/{record}/submit', [PackagingMeasurementController::class, 'submit'])->whereNumber('record')->name('inventory.packaging.submit');
     Route::post('/inventory/packaging/{record}/media', [PackagingMeasurementController::class, 'upload'])->whereNumber('record')->name('inventory.packaging.media.store');
     Route::delete('/inventory/packaging/media/{media}', [PackagingMeasurementController::class, 'removeMedia'])->whereNumber('media')->name('inventory.packaging.media.destroy');

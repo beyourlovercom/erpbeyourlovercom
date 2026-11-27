@@ -224,6 +224,56 @@ final class PackagingMeasurementEvidenceTest extends TestCase
         );
     }
 
+    public function test_rejected_evidence_is_immutable_and_resubmission_requires_new_photos_and_preserves_standard_history(): void
+    {
+        Storage::fake('local');
+        $factory = $this->userWith(['inventory.packaging.submit']);
+        $other = $this->userWith(['inventory.packaging.submit']);
+        $reviewer = $this->userWith(['inventory.packaging.review']);
+        $product = Product::create(['name'=>'Synthetic','sku'=>'RESUBMIT-001']);
+        $different = Product::create(['name'=>'Different','sku'=>'RESUBMIT-002']);
+        $old = PackagingMeasurementRecord::create(['product_id'=>$product->id,'status'=>'approved','packaging_method_key'=>'carton','created_by'=>$reviewer->id,
+            'packaged_weight_kg'=>2.232,'packaging_length_cm'=>39,'packaging_width_cm'=>25.5,'packaging_height_cm'=>18.7,'measured_at'=>now()]);
+        $profile = ProductPackagingProfile::create(['product_id'=>$product->id,'preset_key'=>'carton','current_measurement_record_id'=>$old->id,'is_active'=>true]);
+        $record = PackagingMeasurementRecord::create(['product_id'=>$product->id,'status'=>'draft','packaging_method_key'=>'document_bubble_mailer','created_by'=>$factory->id]);
+        $upload = function ($r) use ($factory) {
+            foreach (['measurement','weight'] as $kind) {
+                $this->actingAs($factory)->post("/inventory/packaging/{$r->id}/media", ['kind'=>$kind,'files'=>[UploadedFile::fake()->image($kind.'.jpg')]])->assertRedirect();
+            }
+        };
+        $data = ['product_id'=>$product->id,'packaging_method_key'=>'document_bubble_mailer','packaging_length_cm'=>39,'packaging_width_cm'=>25.5,'packaging_height_cm'=>13.4,'packaged_weight_kg'=>2.232,'measured_at'=>'2026-11-27 10:00:00'];
+        $upload($record);
+        $this->actingAs($factory)->patch("/inventory/packaging/{$record->id}", [...$data,'product_id'=>$different->id])->assertStatus(422);
+        $this->actingAs($factory)->post("/inventory/packaging/{$record->id}/submit",$data)->assertRedirect();
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$record->id}/review",['decision'=>'rejected'])->assertSessionHasErrors('review_note');
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$record->id}/review",['decision'=>'rejected','review_note'=>'Synthetic protection evidence missing'])->assertRedirect();
+        $this->actingAs($other)->post("/inventory/packaging/{$record->id}/resubmit")->assertForbidden();
+        $this->actingAs($factory)->post("/inventory/packaging/{$record->id}/resubmit")->assertRedirect();
+        $new = PackagingMeasurementRecord::query()->where('resubmission_of_id',$record->id)->firstOrFail();
+        $this->actingAs($factory)->post("/inventory/packaging/{$record->id}/resubmit")->assertRedirect();
+        $this->assertSame(1,PackagingMeasurementRecord::where('resubmission_of_id',$record->id)->count());
+        $this->assertSame('rejected',$record->fresh()->status);
+        $this->assertSame(2,$record->media()->count());
+        $this->assertSame(0,$new->media()->count());
+        $this->actingAs($factory)->post("/inventory/packaging/{$new->id}/submit",$data)->assertStatus(422);
+        $upload($new);
+        $this->actingAs($factory)->post("/inventory/packaging/{$new->id}/submit",$data)->assertRedirect();
+        $this->actingAs($factory)->post("/inventory/packaging/{$new->id}/review",['decision'=>'approved'])->assertForbidden();
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$new->id}/review",['decision'=>'approved'])->assertRedirect();
+        $this->assertSame($old->id,$profile->fresh()->current_measurement_record_id);
+        $this->actingAs($factory)->post("/inventory/packaging/{$new->id}/adopt-standard")->assertForbidden();
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$new->id}/adopt-standard",['expected_current_standard_record_id'=>null])->assertStatus(409);
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$new->id}/adopt-standard",['expected_current_standard_record_id'=>$old->id])->assertRedirect();
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$old->id}/adopt-standard",['expected_current_standard_record_id'=>$old->id])->assertStatus(409);
+        $r=app(\App\Modules\Inventory\Application\ProductPackagingStandardReader::class)->forProductIds([$product->id])[$product->id];
+        $this->assertSame($new->id,$r['measurement_record_id']);
+        $this->assertSame('document_bubble_mailer',$r['packaging_method_key']);
+        $this->assertSame('13.40',$r['packaging_height_cm']);
+        $this->assertSame('approved',$old->fresh()->status);
+        $this->assertSame('rejected',$record->fresh()->status);
+        $this->assertSame(2,$record->media()->count());
+    }
+
     private function userWith(array $keys): User
     {
         $user = User::factory()->create(); $role = Role::create(['key'=>'test-'.uniqid(),'label'=>'Test']);

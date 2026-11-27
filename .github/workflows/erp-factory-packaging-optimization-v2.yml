@@ -1,0 +1,71 @@
+name: ERP1 Factory Packaging Optimization V2
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Inventory/Application/PackagingOptimization*.php'
+      - 'app/Modules/Inventory/Experience/Controllers/PackagingMeasurementController.php'
+      - 'app/Modules/Inventory/Experience/Routes/web.php'
+      - 'app/Modules/Inventory/Infrastructure/Models/PackagingMeasurementRecord.php'
+      - 'database/migrations/**packaging_measurement**'
+      - 'tests/Feature/Inventory/Packaging*Test.php'
+      - 'tests/Unit/Inventory/Packaging*Test.php'
+      - 'app/Modules/Logistics/Application/VersionedRateQuoteService.php'
+      - 'app/Modules/Logistics/Application/FulfillmentPlanCostEstimator.php'
+      - '.github/workflows/erp-factory-packaging-optimization-v2.yml'
+permissions:
+  contents: read
+jobs:
+  packaging-contracts:
+    name: packaging-contracts (${{ matrix.database }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, mysql]
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: erp_packaging_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, gd, pdo_sqlite, sqlite3, pdo_mysql
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: npm ci
+      - run: npm run typecheck && npm run build
+      - name: Packaging and A4 contract tests
+        run: >-
+          vendor/bin/phpunit
+          tests/Feature/Inventory/PackagingMeasurementEvidenceTest.php
+          tests/Feature/Inventory/PackagingOptimization*Test.php
+          tests/Unit/Inventory/PackagingOptimization*Test.php
+          tests/Feature/Products/ShippingWeightStandardCandidateTest.php
+          tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php
+          tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: ${{ matrix.database }}
+          DB_DATABASE: ${{ matrix.database == 'sqlite' && ':memory:' || 'erp_packaging_test' }}
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          DB_URL: ''
+          ERP_LOCAL_ADMIN_BYPASS: 'false'
