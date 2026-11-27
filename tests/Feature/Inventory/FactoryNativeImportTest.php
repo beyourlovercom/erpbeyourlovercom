@@ -85,6 +85,31 @@ final class FactoryNativeImportTest extends TestCase
         } finally {@unlink($path);@unlink($next);}
     }
 
+    public function test_first_import_reuses_exact_confirmed_factory_scope_not_other_versions(): void
+    {
+        $factory=Warehouse::query()->where('code','FACTORY')->firstOrFail();
+        $p=Product::create(['sku'=>'HISTORY-A','name'=>'A','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
+        $q=Product::create(['sku'=>'HISTORY-B','name'=>'B','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
+        $actor=$this->actor(['inventory.operate','products.operate','products.view']);
+        $stock=app(\App\Modules\Inventory\Application\InventoryBatchSyncService::class);
+        $date=now()->subDays(2)->toDateString();
+        $batch=$stock->preview($factory,[
+            new \App\Modules\Inventory\Application\Sync\NormalizedRow(1,'HISTORY-A','sellable',$date,null,50,rawProductName:'Exact Name（A）'),
+            new \App\Modules\Inventory\Application\Sync\NormalizedRow(2,'HISTORY-B','sellable',$date,null,80,rawProductName:'Ambiguous Name'),
+        ],'xlsx','partial','legacy.xlsx',$date,$actor);
+        $stock->confirm($batch,$actor);
+        ProductMaterialVersion::create(['material_code'=>'OTHER-VERSION','code_key'=>'OTHER-VERSION','material_name'=>'Another version','product_id'=>$p->id,'binding_source'=>'manual_verified','factory_stock_approved'=>false]);
+        $path=$this->fixture([['EXACT-CODE','Exact Name(A)',0,100],['OTHER-VERSION','Another version',900,0],['DUP-1','Ambiguous Name',30,0],['DUP-2','Ambiguous Name',50,0]]);
+        try {
+            $this->actingAs($actor)->post('/inventory/sync/factory-native',['file'=>$this->upload($path),'stock_count_at'=>now()->toDateString()],['Accept'=>'application/json'])
+                ->assertOk()->assertJsonPath('legacy_scope_approved_materials',1)->assertJsonPath('applied_products',1)->assertJsonPath('unmapped',2);
+            $this->assertDatabaseHas('product_material_versions',['code_key'=>'EXACT-CODE','product_id'=>$p->id,'factory_stock_approved'=>true,'binding_source'=>'confirmed_factory_history']);
+            $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$p->id,'quantity_on_hand'=>0,'factory_native_status'=>'verified']);
+            $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$q->id,'quantity_on_hand'=>80,'factory_native_status'=>null]);
+            $this->assertDatabaseHas('product_material_versions',['code_key'=>'OTHER-VERSION','factory_stock_approved'=>false,'factory_physical_qty'=>900]);
+        } finally {@unlink($path);}
+    }
+
     public function test_material_identity_and_stock_approval_permissions_are_separate(): void
     {
         $p=Product::create(['sku'=>'PROD-A','name'=>'A','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);

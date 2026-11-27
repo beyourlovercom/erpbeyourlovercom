@@ -49,6 +49,11 @@ final class ProductMaterialVersionController
             abort_if($version && $version->factory_stock_approved !== (bool)$data['factory_stock_approved'] && !$request->user()->can('inventory.operate'),403,'没有修改工厂库存范围权限');
             $version??=new ProductMaterialVersion(['material_code'=>trim($data['material_code']),'code_key'=>$key]);
             $before=$version->exists?$version->only(['product_id','material_name','binding_source','factory_stock_approved']):null;
+            if ($data['factory_stock_approved']) {
+                $version->factory_stock_evidence='manual_verified: '.trim($data['binding_evidence']);
+            } elseif ($version->factory_stock_approved) {
+                $version->factory_stock_evidence='manual_revoked: '.trim($data['binding_evidence']);
+            }
             $version->fill(['material_name'=>$data['material_name'],'product_id'=>$productId,'binding_source'=>'manual_verified',
                 'binding_evidence'=>trim($data['binding_evidence']),'factory_stock_approved'=>(bool)$data['factory_stock_approved'],
                 'verified_by'=>$request->user()->getAuthIdentifier(),'verified_at'=>now()])->save();

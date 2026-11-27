@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 final class ProductMaterialVersion extends Model
 {
     protected $fillable = ['material_code','code_key','material_name','product_id','binding_source',
-        'binding_evidence','factory_stock_approved','verified_by','verified_at',
+        'binding_evidence','factory_stock_approved','factory_stock_evidence','verified_by','verified_at',
         'factory_physical_qty','warehouse_007_qty','last_snapshot_id'];
 
     protected $casts = ['factory_stock_approved'=>'boolean','verified_at'=>'datetime',

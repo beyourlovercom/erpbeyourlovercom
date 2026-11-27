@@ -10,6 +10,8 @@ use App\Modules\Inventory\Application\Sync\XlsxAdapter;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductWarehouseSku;
+use App\Modules\Products\Application\SkuIdentityResolver;
 use App\Modules\Products\Infrastructure\Models\ProductCostSource;
 use App\Modules\Products\Infrastructure\Models\ProductMaterialVersion;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -19,7 +21,8 @@ use Illuminate\Support\Facades\DB;
 final class FactoryNativeImportService
 {
     public function __construct(private readonly XlsxAdapter $parser,
-        private readonly InventoryBatchSyncService $stock, private readonly AuditRecorder $audit) {}
+        private readonly InventoryBatchSyncService $stock, private readonly AuditRecorder $audit,
+        private readonly SkuIdentityResolver $identities) {}
 
     public function import(UploadedFile $file, string $date, Authenticatable $actor): array
     {
@@ -41,6 +44,11 @@ final class FactoryNativeImportService
             $priorDate = DB::table('inventory_sync_batches')->where('warehouse_id',$warehouse->id)
                 ->where('status','confirmed')->whereNotNull('stock_count_at')->max('stock_count_at');
             abort_if($priorDate && substr((string)$priorDate,0,10)>$date,409,'文件日期早于最近已确认工厂库存');
+            // Bootstrap only from the last confirmed legacy factory batch. An exact,
+            // unique complete material name and current verified physical SKU are
+            // required. This is evidence of the existing stock scope, not an
+            // expansion to unrelated versions or other departments.
+            $legacyScopes=$latest ? [] : $this->legacyScopes($warehouse,$rows,$date);
             $id = DB::table('factory_material_snapshots')->insertGetId([
                 'stock_count_at'=>$date,'file_sha256'=>$hash,'filename'=>mb_substr($file->getClientOriginalName(),0,255),
                 'imported_by'=>$actor->getAuthIdentifier(),'material_count'=>count($rows),
@@ -57,12 +65,14 @@ final class FactoryNativeImportService
                 $costOwners[$key][(int)$cost->product_id]=true;
             }
             $versions = ProductMaterialVersion::query()->lockForUpdate()->get()->keyBy('code_key');
-            $touched=[];$linked=0;$unmapped=0;$conflicts=0;
+            $touched=[];$linked=0;$unmapped=0;$conflicts=0;$legacyApproved=0;
             foreach($rows as $row) {
                 $key=ProductMaterialVersion::keyFor($row['material_code']);
                 abort_if(mb_strlen($key)>128 || mb_strlen($row['material_name'])>10000,422,'物料字段超出长度限制');
                 $version=$versions->get($key) ?? new ProductMaterialVersion(['code_key'=>$key,'material_code'=>$row['material_code']]);
+                $scope=$legacyScopes[$key]??null;
                 $owners=array_keys($costOwners[$key] ?? []);
+                if ($scope) $owners=array_values(array_unique([...$owners,$scope['product_id']]));
                 $conflict=count($owners)>1 || ($version->product_id && $owners!==[] && !in_array((int)$version->product_id,$owners,true));
                 if ($conflict) {
                     $conflicts++;
@@ -70,10 +80,16 @@ final class FactoryNativeImportService
                     $product=Product::query()->find($owners[0]);
                     if ($product) {
                         $version->product_id=$product->id;
-                        $version->binding_source='confirmed_cost_code';
-                        $version->binding_evidence='exact confirmed inventory_cost_book source_key';
+                        $version->binding_source=$scope?'confirmed_factory_history':'confirmed_cost_code';
+                        $version->binding_evidence=$scope?$scope['evidence']:'exact confirmed inventory_cost_book source_key';
                         $version->verified_at=now();
                     }
+                }
+                if (!$conflict && $scope && (int)$version->product_id===$scope['product_id']
+                    && !$version->factory_stock_approved && $version->factory_stock_evidence===null) {
+                    $version->factory_stock_approved=true;
+                    $version->factory_stock_evidence=$scope['evidence'];
+                    $legacyApproved++;
                 }
                 $version->fill(['material_name'=>$row['material_name'],'factory_physical_qty'=>$row['factory_qty'],
                     'warehouse_007_qty'=>$row['warehouse_007_qty'],'last_snapshot_id'=>$id]);
@@ -118,14 +134,16 @@ final class FactoryNativeImportService
                 }
                 // Only complete, explicitly approved product scopes may replace stock.
                 // Missing coverage holds previously native-authoritative stock only; legacy stock remains unchanged.
-                if ($materials->isEmpty() || $materials->count()!==$current->count()
-                    || $current->contains(fn($r)=>!$r->stock_approved)) {
+                $approvedMaterials=$materials->filter(fn($m)=>$m->factory_stock_approved);
+                $approvedRows=$current->filter(fn($r)=>$r->stock_approved);
+                if ($approvedMaterials->isEmpty() || $approvedMaterials->count()!==$approvedRows->count()
+                    || $approvedMaterials->pluck('id')->diff($approvedRows->pluck('material_version_id'))->isNotEmpty()) {
                     $held++;
                     if ($nativeAuthority->has($productId)) $heldIds[]=$productId;
                     else $legacyIds[]=$productId;
                     continue;
                 }
-                $qty=(int)$current->sum('factory_qty');
+                $qty=(int)$approvedRows->sum('factory_qty');
                 $stockRows[]=new NormalizedRow($applied+1,$product->sku,'sellable',$date,null,$qty,
                     rawProductName:$product->material_full_name,rawWarehouseName:'FACTORY',rawQuantity:(string)$qty);
                 $applied++; $appliedIds[]=$productId;
@@ -145,11 +163,46 @@ final class FactoryNativeImportService
                 'factory_physical_qty'=>array_sum(array_column($rows,'factory_qty')),
                 'warehouse_007_qty'=>array_sum(array_column($rows,'warehouse_007_qty')),
                 'stock_batch_id'=>$batchId,'duplicate'=>false,
-                'legacy_preserved_products'=>count($legacyIds),'availability_held_products'=>count($heldIds)];
+                'legacy_preserved_products'=>count($legacyIds),'availability_held_products'=>count($heldIds),
+                'legacy_scope_approved_materials'=>$legacyApproved];
             DB::table('factory_material_snapshots')->where('id',$id)->update(['result'=>json_encode($result,JSON_THROW_ON_ERROR),'updated_at'=>now()]);
             $this->audit->record(AuditActor::user($actor,AuditSource::Web),'inventory.factory_native_imported',
                 'factory_material_snapshot',$id,null,$result,'factory_native_import');
             return $result;
         });
+    }
+
+    /** Exact historical material-name matching, never model-prefix or quantity matching. */
+    private function legacyScopes(Warehouse $warehouse,array $rows,string $date): array
+    {
+        $batch=DB::table('inventory_sync_batches')->where('warehouse_id',$warehouse->id)
+            ->where('status','confirmed')->whereNotNull('confirmed_at')
+            ->orderByDesc('confirmed_at')->orderByDesc('id')->first();
+        if (!$batch || !$batch->confirmer_user_id || substr((string)($batch->stock_count_at??$batch->confirmed_at),0,10)>$date) return [];
+        $normalize=static fn(string $name):string=>mb_strtoupper(preg_replace('/\s+/u','',strtr(trim($name),['（'=>'(', '）'=>')','＋'=>'+'])), 'UTF-8');
+        $names=[];
+        foreach ($rows as $row) $names[$normalize($row['material_name'])][]=$row;
+        $history=DB::table('inventory_sync_rows')->where('sync_batch_id',$batch->id)
+            ->whereNotNull('product_id')->whereNotNull('raw_product_name')
+            ->where('validation_status','ok')->where('stock_status','sellable')->get();
+        $byProduct=$history->groupBy('product_id');
+        $byName=$history->groupBy(fn($r)=>$normalize((string)$r->raw_product_name));
+        $scopes=[];
+        foreach ($history as $r) {
+            $name=$normalize((string)$r->raw_product_name);
+            if ($name==='' || count($names[$name]??[])!==1 || $byName[$name]->count()!==1 || $byProduct[$r->product_id]->count()!==1) continue;
+            $p=Product::query()->where('is_active',true)->find($r->product_id);
+            if (!$p || !$p->sku || strcasecmp($p->sku,'gift')===0 || !filled($r->raw_sku)) continue;
+            $raw=trim((string)$r->raw_sku);
+            $resolved=$this->identities->resolve($raw);
+            if ($resolved->isResolved() && (int)$resolved->product->getKey()!==(int)$p->id) continue;
+            $verifiedFactory=ProductWarehouseSku::query()->where('warehouse_id',$warehouse->id)
+                ->where('product_id',$p->id)->where('is_active',true)->whereNotNull('verified_at')
+                ->whereRaw('UPPER(TRIM(sku)) = ?',[mb_strtoupper($raw)])->exists();
+            if (strcasecmp($raw,$p->sku)!==0 && !$verifiedFactory) continue;
+            $key=ProductMaterialVersion::keyFor($names[$name][0]['material_code']);
+            $scopes[$key]=['product_id'=>(int)$p->id,'evidence'=>'confirmed_factory_batch:'.$batch->id.'; row:'.$r->id.'; unique exact material name; current verified SKU:'.$raw];
+        }
+        return $scopes;
     }
 }

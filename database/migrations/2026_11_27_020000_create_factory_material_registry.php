@@ -32,6 +32,7 @@ return new class extends Migration
             $table->string('binding_source', 64)->nullable();
             $table->text('binding_evidence')->nullable();
             $table->boolean('factory_stock_approved')->default(false);
+            $table->text('factory_stock_evidence')->nullable();
             $table->foreignId('verified_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('verified_at')->nullable();
             $table->unsignedInteger('factory_physical_qty')->nullable();
