@@ -80,3 +80,24 @@ describe('R4-6 exceptions do not inherit dispatch/review mutations',()=>{
     expect(markup.find('button').exists()).toBe(false)
   })
 })
+
+describe('Domestic Shipping Hold V1 frozen queue',()=>{
+  it('only renders explicit resume for authorized frozen rows',async()=>{
+    const p={...base,view:'frozen',canReview:true,canOperate:true,canResumeHold:()=>true,resumeHold:vi.fn()}
+    const wrapper=mount(Cell,{props:{params:p}})
+    expect(wrapper.findAll('button').map(b=>b.text())).toEqual(['恢复待发货'])
+    await wrapper.get('button').trigger('click')
+    expect(p.resumeHold).toHaveBeenCalledWith(42)
+    expect(p.syncTracking).not.toHaveBeenCalled()
+    expect(p.reopen).not.toHaveBeenCalled()
+    expect(p.native).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('hides resume from viewers and prevents duplicate requests during submit',()=>{
+    const viewer=mount(Cell,{props:{params:{...base,view:'frozen',canResumeHold:()=>false}}})
+    expect(viewer.find('button').exists()).toBe(false)
+    const busy=mount(Cell,{props:{params:{...base,view:'frozen',canResumeHold:()=>true,holdBusy:()=>true}}})
+    expect(busy.get('button').attributes('disabled')).toBeDefined()
+    viewer.unmount();busy.unmount()
+  })
+})

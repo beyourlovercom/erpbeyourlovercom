@@ -40,6 +40,7 @@ final class ShipmentService
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertOperationallyEligible($lockedOrder);
+            abort_if(\App\Modules\Orders\Application\DomesticShippingHold::isHeld($lockedOrder->workflow_status), 409, '冻结发货订单请先恢复待发货再保存履约草稿。');
             $this->assertNoPendingReview($lockedOrder);
             $this->paymentGate->assertAllowed($lockedOrder);
             abort_unless($lockedOrder->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以保存履约草稿');
@@ -122,6 +123,7 @@ final class ShipmentService
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertOperationallyEligible($lockedOrder);
+            abort_if(\App\Modules\Orders\Application\DomesticShippingHold::isHeld($lockedOrder->workflow_status), 409, '冻结发货订单请先恢复待发货再确认发货。');
             // A physically allocated FACTORY child may ship independently while
             // its parent still appears in the staff pending-allocation queue.
             // Other parent holds (exception, stockout, etc.) remain blocking.

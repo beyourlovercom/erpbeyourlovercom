@@ -382,6 +382,58 @@ final class DomesticInlineTrackingTest extends TestCase
         self::assertNull($second->fresh()->shipment->tracking_number);
     }
 
+    public function test_domestic_shipping_hold_and_resume_preserve_physical_state(): void
+    {
+        $actor = $this->userWith(['orders.view', 'logistics.view', 'logistics.operate']);
+        $order = $this->factoryOrder(true);
+        $url = '/orders/'.$order->id.'/workflow-status';
+        $this->actingAs($actor)->patchJson($url, [
+            'workflow_status' => 'domestic_hold_tracking_stockout', 'expected_workflow_revision' => 0,
+        ])->assertStatus(409);
+        $this->actingAs($actor)->patchJson($url, [
+            'workflow_status' => 'domestic_hold_missing_info', 'expected_workflow_revision' => 0,
+        ])->assertOk();
+        self::assertSame('domestic_hold_missing_info', $order->fresh()->workflow_status);
+        self::assertFalse(app(\App\Modules\Logistics\Application\Domestic\DomesticDispatchEligibility::class)->allows($order->fresh()));
+        $this->get('/logistics/china?view=today')->assertInertia(fn ($page) => $page->where('rows.total', 0));
+        $this->get('/logistics/china?view=exceptions')->assertInertia(fn ($page) => $page->where('rows.total', 0));
+        $this->get('/logistics/china?view=all')->assertInertia(fn ($page) => $page->where('rows.total', 1));
+        $viewer = $this->userWith(['orders.view','logistics.view']);
+        $this->actingAs($viewer)->patchJson($url, ['workflow_status' => 'resume_domestic_hold', 'expected_workflow_revision' => 1])->assertForbidden();
+        $this->actingAs($actor);
+        $this->get('/logistics/china?view=frozen')->assertOk()->assertInertia(
+            fn ($page) => $page->where('rows.total', 1)->where('rows.data.0.order_id', $order->id)
+        );
+        $this->get('/logistics/china?view=pending')->assertInertia(fn ($page) => $page->where('rows.total', 0));
+        $this->post('/logistics/china/orders/'.$order->id.'/quick-ship', [
+            'tracking_number' => '4PX-FROZEN-TEST',
+        ])->assertSessionHasErrors('tracking_number');
+        self::assertNull($order->fresh()->shipment->shipped_at);
+        self::assertSame('pending_shipment', $order->fresh()->order_status->value);
+        $this->patchJson($url, ['workflow_status' => 'resume_domestic_hold', 'expected_workflow_revision' => 0])->assertStatus(409);
+        $this->patchJson($url, ['workflow_status' => 'sending', 'expected_workflow_revision' => 1])->assertStatus(409);
+        $this->patchJson($url, ['workflow_status' => 'resume_domestic_hold', 'expected_workflow_revision' => 1])->assertOk();
+        self::assertSame('sending', $order->fresh()->workflow_status);
+        $this->get('/logistics/china?view=frozen')->assertInertia(fn ($page) => $page->where('rows.total', 0));
+        $this->get('/logistics/china?view=pending')->assertInertia(fn ($page) => $page->where('rows.total', 1));
+        $this->post('/logistics/china/orders/'.$order->id.'/tracking-draft', [
+            'tracking_number' => '4PX-HELD-DRAFT',
+        ])->assertRedirect();
+        $this->patchJson($url, ['workflow_status' => 'domestic_hold_tracking_stockout', 'expected_workflow_revision' => 2])->assertOk();
+        $this->patchJson($url, ['workflow_status' => 'resume_domestic_hold', 'expected_workflow_revision' => 3])->assertOk();
+        self::assertSame('4PX-HELD-DRAFT', $order->fresh()->shipment->tracking_number);
+        self::assertSame('pending', $order->fresh()->shipment->shipment_status);
+        self::assertNull($order->fresh()->shipment->shipped_at);
+        self::assertNull($order->manualSync()->first());
+        self::assertSame(4, $order->fresh()->workflow_revision);
+        self::assertTrue($order->fresh()->operationalMarkers->contains('marker', 'domestic_reviewed'));
+        $this->post('/logistics/china/orders/'.$order->id.'/quick-ship', [
+            'tracking_number' => '4PX-HELD-DRAFT',
+        ])->assertRedirect();
+        $this->patchJson($url, ['workflow_status' => 'domestic_hold_missing_info', 'expected_workflow_revision' => 4])->assertStatus(409);
+        self::assertSame('shipped', $order->fresh()->shipment->shipment_status);
+    }
+
     private function userWith(array $permissions): User
     {
         $user=User::factory()->create(['is_active'=>true]);

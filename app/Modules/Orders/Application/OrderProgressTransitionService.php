@@ -100,7 +100,7 @@ final class OrderProgressTransitionService
 
     public function transition(Order $order, string $next, int $revision, Authenticatable $actor, ?string $reason = null): Order
     {
-        if (! in_array($next, ['resolve_exception', 'resolve_stockout', 'resolve_manual_hold', 'pending_allocation'], true)) {
+        if (! in_array($next, ['resolve_exception', 'resolve_stockout', 'resolve_manual_hold', 'pending_allocation', DomesticShippingHold::RESUME], true)) {
             OrderWorkflowStatus::assertMutable($next);
         }
         $order->loadMissing(['shipment.warehouse', 'operationalMarkers']);
@@ -109,6 +109,10 @@ final class OrderProgressTransitionService
         }
         if ($order->archived_at !== null || $order->trashed() || $order->isOperationallyArchived()) {
             throw new HttpException(422, '归档订单不可改变状态。');
+        }
+
+        if (DomesticShippingHold::isHeld($next) || $next === DomesticShippingHold::RESUME || DomesticShippingHold::isHeld($order->workflow_status)) {
+            return $this->core->transition($order, $next, $revision, $actor, $reason);
         }
 
         if (in_array($order->order_kind, [OrderKind::Customer, OrderKind::FulfillmentDerived], true)) {

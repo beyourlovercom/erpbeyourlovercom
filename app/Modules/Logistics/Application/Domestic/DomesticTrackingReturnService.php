@@ -145,6 +145,9 @@ final class DomesticTrackingReturnService
                     && (! app(DomesticCarrierDefaults::class)->ready($order))) {
                     $messages[] = '请先配置有效的物流商和服务类型';
                 }
+                if (\App\Modules\Orders\Application\DomesticShippingHold::isHeld($order->workflow_status)) {
+                    $messages[] = '冻结发货订单禁止由 Tracking 回传确认发货';
+                }
                 if ($order->workflow_status === 'out_of_stock' || $order->operationalMarkers->contains('marker', 'domestic_stockout')) {
                     $messages[] = '订单已标记缺货，不得由 Tracking 回传确认发货';
                 }
