@@ -125,6 +125,29 @@ final class OrderItemAmendmentPreflightTest extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_allocation_dialog_reuses_existing_item_patch_with_revision_and_permissions(): void
+    {
+        [$order, $combo, $a1, $mf, $untouched] = $this->fixture();
+        $actor = $this->actor(['orders.view', 'orders.edit']);
+        $viewer = $this->actor(['orders.view']);
+        $revision = \App\Modules\Orders\Application\OrderItemAmendmentPreflight::revisionForItems($order->items()->get());
+        $items = [
+            ['id' => $untouched->id, 'product_id' => $untouched->product_id, 'quantity' => 1, 'unit_price' => '39.60', 'product_summary' => 'ALAN'],
+            ['product_id' => $a1->id, 'quantity' => 1, 'unit_price' => '99.20', 'product_summary' => ''],
+            ['product_id' => $mf->id, 'quantity' => 1, 'unit_price' => '0.00', 'product_summary' => ''],
+        ];
+        $payload = ['items' => $items, 'expected_revision' => $revision, 'amendment_reason' => '确认分仓前修改实物 SKU'];
+        $path = "/customers/orders/{$order->id}";
+        $this->actingAs($viewer)->from('/logistics/wait-stock')->patch($path, $payload)->assertForbidden();
+        $this->assertCount(2, $order->items()->get());
+        $this->actingAs($actor)->from('/logistics/wait-stock')->patch($path, $payload)
+            ->assertRedirect('/logistics/wait-stock')->assertSessionHasNoErrors();
+        $this->assertSame(['A1', 'MF414A', 'VG515A'], $order->items()->orderBy('sku')->pluck('sku')->all());
+        $this->assertSame(77701, $order->items()->whereKey($untouched->id)->value('woocommerce_line_item_id'));
+        $this->actingAs($actor)->from('/logistics/wait-stock')->patch($path, $payload)->assertStatus(409);
+        $this->assertCount(3, $order->items()->get());
+    }
+
     private function fixture(): array
     {
         $combo = Product::create(['sku' => 'MF414A & A1', 'name' => 'Original Combo', 'product_type' => 'simple', 'woocommerce_product_id' => 71001]);

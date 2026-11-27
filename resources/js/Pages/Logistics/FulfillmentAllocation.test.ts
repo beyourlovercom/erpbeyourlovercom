@@ -1,3 +1,4 @@
+import { router } from '@inertiajs/vue3'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FulfillmentAllocation from './FulfillmentAllocation.vue'
@@ -5,7 +6,7 @@ import FulfillmentAllocation from './FulfillmentAllocation.vue'
 vi.mock('@inertiajs/vue3', () => ({
   Head: { template: '<span />' },
   Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
-  router: { reload: vi.fn(), get: vi.fn() },
+  router: { reload: vi.fn(), get: vi.fn(), patch:vi.fn() },
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { template: '<main><slot /></main>' },
@@ -390,7 +391,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
     await flushPromises()
     expect(document.body.textContent).toContain('实际履约 SKU')
-    expect(document.body.textContent).toContain('美国3世迈仓：有货 8')
+    expect(document.body.querySelector('.stock-list [title="礼品 GIFT-SM-01：有货 8"]')?.textContent).toBe('世迈仓8')
 
     const giftRow = Array.from(document.body.querySelectorAll('.primary-allocation tbody tr')).find(row => row.textContent?.includes('gift')) as HTMLTableRowElement
     expect(giftRow).toBeTruthy()
@@ -424,7 +425,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(giftSelect.options.length).toBe(1)
   })
 
-  it('shows the exact out-of-stock state and does not offer zero-stock clearance SKUs', async () => {
+  it('shows the exact out-of-stock state and preserves audited manual gift choice', async () => {
     const wrapper = mountPage({ ...props, orders: { ...props.orders, data: [giftOrder], total: 1 }, pendingTotal: 1 })
     await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
     await flushPromises()
@@ -437,7 +438,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(document.body.textContent).toContain('Gift 当前可出库库存不足')
     const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
     expect(Array.from(giftSelect.options).map(option => option.textContent).join(' ')).toContain('GIFT-MP-02')
-    expect(Array.from(giftSelect.options).find(option => option.textContent?.includes('GIFT-MP-02'))?.disabled).toBe(true)
+    expect(Array.from(giftSelect.options).find(option => option.textContent?.includes('GIFT-MP-02'))?.textContent).toContain('人工可选')
   })
 
 
@@ -463,12 +464,12 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     const gift = row.querySelectorAll('select')[2] as HTMLSelectElement
     const choices = Array.from(gift.options)
     expect(choices.find(option => option.textContent?.includes('GIFT-MP-02'))?.disabled).toBe(false)
-    expect(choices.find(option => option.textContent?.includes('UNSYNCED-GIFT'))?.disabled).toBe(true)
-    expect(document.body.textContent).toContain('有货 7')
+    expect(choices.find(option => option.textContent?.includes('UNSYNCED-GIFT'))?.textContent).toContain('人工可选')
+    expect(row.querySelector('.stock-list [title="礼品 GIFT-MP-02：有货 7"]')?.textContent).toBe('美西MorePlus7')
     wrapper.unmount()
   })
 
-  it('auto-detects blocked US-SM OMS snapshot and renders disabled Gift instead of false out-of-stock', async () => {
+  it('auto-detects blocked US-SM OMS snapshot and labels the manual exception', async () => {
     const blockedGift = {
       ...giftItem, gift_options_by_warehouse: {
         ...giftItem.gift_options_by_warehouse,
@@ -487,11 +488,11 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     warehouse.value = 'US-SM'
     warehouse.dispatchEvent(new Event('change', { bubbles: true }))
     await flushPromises()
-    expect(document.body.textContent).toContain('OMS 快照被阻断')
-    expect(document.body.textContent).toContain('OMS 核验阻断')
+    expect(document.body.textContent).toContain('OMS 库存待核验：快照被阻断')
+    expect(giftRow.querySelector('.stock-list [title*="GIFT-SM-01"]')).toBeNull()
     const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
     const blocked = Array.from(giftSelect.options).find(option => option.textContent?.includes('GIFT-SM-01'))
-    expect(blocked?.disabled).toBe(true)
+    expect(blocked?.textContent).toContain('人工可选')
     wrapper.unmount()
   })
 
@@ -515,7 +516,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(document.body.textContent).not.toContain('确认人工分配并提交')
   })
 
-  it('requires a visible acknowledgement before manual allocation to an out-of-stock warehouse', async () => {
+  it('preflights manual allocation directly while preserving server-side validation', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ can_submit: true, issues: [] }) })
       .mockResolvedValueOnce({
@@ -537,16 +538,10 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     const submit = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '确认人工分配并提交') as HTMLButtonElement
     submit.click()
     await flushPromises()
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(document.body.textContent).toContain('所选仓库库存不足或未知')
-    expect(document.body.textContent).toContain('SV205')
-    const confirm = document.body.querySelector('.stock-exception-confirm') as HTMLButtonElement
-    confirm.click()
-    await flushPromises()
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock.mock.calls[0][0]).toContain('/fulfillment-allocation/preflight')
     const payload = JSON.parse(fetchMock.mock.calls[1][1].body)
-    expect(payload.stock_exception_acknowledged).toBe(true)
+    expect(payload.stock_exception_acknowledged).toBe(false)
     expect(payload.assignments).toHaveLength(2)
     wrapper.unmount()
   })
@@ -603,10 +598,6 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     await flushPromises()
     const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认人工分配并提交') as HTMLButtonElement
     submit.click()
-    await flushPromises()
-    const confirm=document.body.querySelector('.stock-exception-confirm') as HTMLButtonElement
-    expect(confirm).toBeTruthy()
-    confirm.click()
     await flushPromises()
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(fetchMock.mock.calls[0][0]).toContain('/fulfillment-allocation/preflight')
@@ -802,7 +793,7 @@ describe('Actual fulfillment product selection', () => {
     expect(document.body.textContent).toContain('订单联络人Vita')
     ;(Array.from(select.querySelectorAll('button')).find(b=>b.textContent?.includes('TW05R'))!).click()
     await flushPromises()
-    expect(row.textContent).toContain('ERP参考 15')
+    expect(row.querySelector('.stock-list [title="ERP参考 15 · OMS待核验"]')?.textContent).toBe('美西MorePlus15')
     expect(row.textContent).toContain('实际发货：TW05R')
     const warehouse=row.querySelector('td:nth-child(5) select') as HTMLSelectElement
     warehouse.value='US-LA';warehouse.dispatchEvent(new Event('change',{bubbles:true}))
@@ -864,5 +855,109 @@ describe('parent reallocation confirmation', () => {
     await flushPromises()
     expect(document.body.querySelector('[data-testid="reallocation-open"]')).toBeNull()
     wrapper.unmount()
+  })
+})
+
+describe('ERP1 compact allocation dialog', () => {
+  it('shows only positive warehouse references with aligned quantities, keeping zero/unknown hidden', async () => {
+    const availability = [
+      {...itemA.availability[0], quantity_available:10},
+      {...itemA.availability[0], warehouse_id:2, quantity_available:20},
+      {...itemA.availability[0], warehouse_id:7, quantity_available:30},
+      {...itemA.availability[0], warehouse_id:4, quantity_available:2},
+      {...itemA.availability[0], warehouse_id:3, quantity_available:5},
+      {...itemA.availability[0], warehouse_id:5, quantity_available:0},
+    ]
+    const wrapper=mountPage({...props,orders:{...props.orders,data:[{...systemOrder,items:[{...itemA,availability},itemB]}]}})
+    await wrapper.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
+    await flushPromises()
+    const rows=document.body.querySelectorAll('.primary-allocation tbody tr')
+    expect(Array.from(rows[0].querySelectorAll('.stock-list span')).map(r=>r.textContent)).toEqual(['美西MorePlus10','美东20','世迈仓30','加拿大仓2','德国仓5'])
+    expect(rows[0].querySelector('.stock-list')?.getAttribute('style')).toContain('repeat(3,auto)')
+    expect(rows[1].textContent).toContain('暂无已知有货仓库')
+    expect(rows[1].querySelectorAll('.stock-list span')).toHaveLength(0)
+    expect(Array.from(rows[1].querySelectorAll('select option')).some(o=>o.textContent==='中国工厂')).toBe(true)
+    wrapper.unmount()
+  })
+  it('switches previous and next visible orders without submitting them', async () => {
+    const fetchMock=vi.fn()
+    vi.stubGlobal('fetch',fetchMock)
+    const wrapper=mountPage()
+    await wrapper.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
+    await flushPromises()
+    const previous=()=>document.body.querySelector('[aria-label="上一单"]') as HTMLButtonElement
+    const next=()=>document.body.querySelector('[aria-label="下一单"]') as HTMLButtonElement
+    expect(previous().disabled).toBe(true)
+    next().click(); await flushPromises()
+    expect(document.body.querySelector('.info-card')?.textContent).toContain(manualOrder.erp_order_id)
+    expect(next().disabled).toBe(true)
+    previous().click(); await flushPromises()
+    expect(document.body.querySelector('.info-card')?.textContent).toContain(systemOrder.erp_order_id)
+    expect(fetchMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('opens the next eligible order only after successful submission and reload', async () => {
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({submitted_at:'2026-11-27T00:00:00Z'})})
+    vi.stubGlobal('fetch',fetchMock)
+    const wrapper=mountPage()
+    await wrapper.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
+    await flushPromises()
+    const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='采用推荐并提交分仓')!
+    submit.click(); await flushPromises()
+    const reload=vi.mocked(router.reload)
+    const options=reload.mock.calls.at(-1)?.[0]
+    expect(options?.onSuccess).toBeTruthy()
+    options?.onSuccess?.({} as any)
+    await flushPromises()
+    expect(document.body.querySelector('.info-card')?.textContent).toContain(manualOrder.erp_order_id)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+})
+
+describe('ERP1 allocation reuses order item amendment', () => {
+  const editable={...systemOrder,order_kind:'customer',source_type:'woocommerce',currency:'USD',can_edit_items:true,items_revision:'a'.repeat(64),
+    items:[{...itemA,unit_price:'99.00'},{...itemB,unit_price:'0.00'}]}
+  it('removes a zero-price line through the existing order PATCH with revision, never an allocation submit',async()=>{
+    const wrapper=mountPage({...props,orders:{...props.orders,data:[editable]}})
+    await wrapper.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
+    await flushPromises()
+    const rows=document.body.querySelectorAll('.primary-allocation tbody tr')
+    const remove=Array.from(rows[1].querySelectorAll('button')).find(b=>b.textContent==='删除产品')!
+    remove.click();await flushPromises()
+    const edit=document.body.querySelector('[data-testid="allocation-item-editor"]')!
+    expect(edit.querySelectorAll('.allocation-edit-row')).toHaveLength(1)
+    expect(vi.mocked(router.patch)).not.toHaveBeenCalled()
+    Array.from(edit.querySelectorAll('button')).find(b=>b.textContent==='保存商品修改')!.click()
+    await flushPromises()
+    expect(router.patch).toHaveBeenLastCalledWith('/customers/orders/10',{
+      items:[{id:101,product_id:11,product_summary:'Product A',quantity:1,unit_price:'99.00'}],
+      expected_revision:'a'.repeat(64),amendment_reason:'',
+    },expect.objectContaining({preserveState:true,onSuccess:expect.any(Function),onError:expect.any(Function)}))
+    const options=vi.mocked(router.patch).mock.calls.at(-1)?.[2]
+    options?.onError?.({items:'订单商品修改失败'})
+    await flushPromises()
+    expect(edit.textContent).toContain('订单商品修改失败')
+    wrapper.unmount()
+    vi.mocked(router.patch).mockClear()
+  })
+  it('opens an add-product editor with the existing SKU combobox and blocks incomplete or unauthorized saves',async()=>{
+    const wrapper=mountPage({...props,orders:{...props.orders,data:[editable]}})
+    await wrapper.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
+    await flushPromises()
+    Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent?.includes('添加产品'))!.click()
+    await flushPromises()
+    const edit=document.body.querySelector('[data-testid="allocation-item-editor"]')!
+    expect(edit.querySelectorAll('.allocation-edit-row')).toHaveLength(3)
+    Array.from(edit.querySelectorAll('button')).find(b=>b.textContent==='保存商品修改')!.click()
+    await flushPromises()
+    expect(edit.textContent).toContain('请选择有效 SKU')
+    expect(router.patch).not.toHaveBeenCalled()
+    wrapper.unmount()
+    const view=mountPage({...props,orders:{...props.orders,data:[{...editable,can_edit_items:false}]}})
+    await view.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
+    await flushPromises()
+    expect(Array.from(document.body.querySelectorAll('.primary-allocation button')).some(b=>b.textContent?.includes('添加产品')||b.textContent==='删除产品')).toBe(false)
+    view.unmount()
   })
 })
