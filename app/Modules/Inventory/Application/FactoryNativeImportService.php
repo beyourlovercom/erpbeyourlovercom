@@ -90,10 +90,22 @@ final class FactoryNativeImportService
                 } else { $unmapped++; }
             }
             $applied=0;$held=0;$stockRows=[];$appliedIds=[];$heldIds=[];
+            $legacyIds=[];
+            // The first source-catalog import is not a stock revocation. Only
+            // products already using native-authoritative stock can be held
+            // when the newly observed material coverage becomes incomplete.
+            $nativeAuthority=WarehouseInventory::query()->where('warehouse_id',$warehouse->id)
+                ->whereIn('factory_native_status',['verified','held'])->pluck('product_id')
+                ->map(fn($id)=>(int)$id)->flip();
             $knownIds=ProductMaterialVersion::query()->whereNotNull('product_id')->distinct()->pluck('product_id')->map(fn($id)=>(int)$id)->all();
             foreach(array_unique([...array_keys($touched),...$knownIds]) as $productId) {
                 $product=Product::query()->lockForUpdate()->find($productId);
-                if (!$product || !$product->is_active || !$product->sku || strcasecmp($product->sku,'gift')===0) { $held++; $heldIds[]=$productId; continue; }
+                if (!$product || !$product->is_active || !$product->sku || strcasecmp($product->sku,'gift')===0) {
+                    $held++;
+                    if ($nativeAuthority->has($productId)) $heldIds[]=$productId;
+                    else $legacyIds[]=$productId;
+                    continue;
+                }
                 $materials=ProductMaterialVersion::query()->where('product_id',$productId)->get();
                 $current=DB::table('factory_material_snapshot_rows')->where('snapshot_id',$id)->where('product_id',$productId)->get();
                 // Do not choose an arbitrary display name from competing material versions.
@@ -105,9 +117,14 @@ final class FactoryNativeImportService
                         ['material_full_name'=>$before],['material_full_name'=>$product->material_full_name],'factory_native_import');
                 }
                 // Only complete, explicitly approved product scopes may replace stock.
-                // Missing or newly unapproved versions hold the product, never zero it.
+                // Missing coverage holds previously native-authoritative stock only; legacy stock remains unchanged.
                 if ($materials->isEmpty() || $materials->count()!==$current->count()
-                    || $current->contains(fn($r)=>!$r->stock_approved)) { $held++; $heldIds[]=$productId; continue; }
+                    || $current->contains(fn($r)=>!$r->stock_approved)) {
+                    $held++;
+                    if ($nativeAuthority->has($productId)) $heldIds[]=$productId;
+                    else $legacyIds[]=$productId;
+                    continue;
+                }
                 $qty=(int)$current->sum('factory_qty');
                 $stockRows[]=new NormalizedRow($applied+1,$product->sku,'sellable',$date,null,$qty,
                     rawProductName:$product->material_full_name,rawWarehouseName:'FACTORY',rawQuantity:(string)$qty);
@@ -127,7 +144,8 @@ final class FactoryNativeImportService
                 'conflicts'=>$conflicts,'applied_products'=>$applied,'held_products'=>$held,
                 'factory_physical_qty'=>array_sum(array_column($rows,'factory_qty')),
                 'warehouse_007_qty'=>array_sum(array_column($rows,'warehouse_007_qty')),
-                'stock_batch_id'=>$batchId,'duplicate'=>false];
+                'stock_batch_id'=>$batchId,'duplicate'=>false,
+                'legacy_preserved_products'=>count($legacyIds),'availability_held_products'=>count($heldIds)];
             DB::table('factory_material_snapshots')->where('id',$id)->update(['result'=>json_encode($result,JSON_THROW_ON_ERROR),'updated_at'=>now()]);
             $this->audit->record(AuditActor::user($actor,AuditSource::Web),'inventory.factory_native_imported',
                 'factory_material_snapshot',$id,null,$result,'factory_native_import');

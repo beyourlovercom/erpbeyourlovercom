@@ -47,11 +47,12 @@ final class FactoryNativeImportTest extends TestCase
             $payload=fn()=>['file'=>$this->upload($path),'stock_count_at'=>$date];
             $this->actingAs($actor)->post('/inventory/sync/factory-native',$payload(),['Accept'=>'application/json'])
                 ->assertOk()->assertJsonPath('material_count',4)->assertJsonPath('linked',3)
-                ->assertJsonPath('unmapped',1)->assertJsonPath('applied_products',1)->assertJsonPath('held_products',1);
+                ->assertJsonPath('unmapped',1)->assertJsonPath('applied_products',1)->assertJsonPath('held_products',1)
+                ->assertJsonPath('legacy_preserved_products',1)->assertJsonPath('availability_held_products',0);
             $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$p->id,'quantity_on_hand'=>7,'quantity_reserved'=>4]);
             $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$other->id,'product_id'=>$p->id,'quantity_on_hand'=>33]);
-            $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$held->id,'quantity_on_hand'=>71,'factory_native_status'=>'held']);
-            self::assertSame(0,WarehouseInventory::query()->where('warehouse_id',$factory->id)->where('product_id',$held->id)->firstOrFail()->quantity_available);
+            $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$held->id,'quantity_on_hand'=>71,'factory_native_status'=>null]);
+            self::assertSame(71,WarehouseInventory::query()->where('warehouse_id',$factory->id)->where('product_id',$held->id)->firstOrFail()->quantity_available);
             $this->assertDatabaseHas('product_material_versions',['code_key'=>'CODE-B','factory_physical_qty'=>0,'warehouse_007_qty'=>200,'material_name'=>'Full name B']);
             $this->assertDatabaseHas('product_material_versions',['code_key'=>'UNKNOWN','product_id'=>null,'factory_physical_qty'=>500]);
             $this->assertDatabaseHas('products',['id'=>$p->id,'name'=>'Website title','standard_production_cost'=>88]);
@@ -61,6 +62,27 @@ final class FactoryNativeImportTest extends TestCase
             $this->withoutVite()->get('/products/skus?search=CODE-B')->assertOk()->assertInertia(fn($page)=>$page
                 ->component('Products/Skus')->where('products.data.0.sku','FCTEST')->has('products.data.0.material_versions',2));
         } finally { @unlink($path); }
+    }
+
+    public function test_incomplete_new_snapshot_holds_previously_authoritative_stock_without_zeroing_it(): void
+    {
+        $factory=Warehouse::query()->where('code','FACTORY')->firstOrFail();
+        $p=Product::create(['sku'=>'COVERED','name'=>'Covered','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
+        foreach(['CODE-A','CODE-B'] as $code) ProductMaterialVersion::create([
+            'material_code'=>$code,'code_key'=>$code,'material_name'=>'Verified name','product_id'=>$p->id,
+            'binding_source'=>'manual_verified','factory_stock_approved'=>true]);
+        $actor=$this->actor(['products.operate','inventory.operate','products.view']);
+        $this->actingAs($actor);
+        $path=$this->fixture([['CODE-A','Full name A',9,0],['CODE-B','Full name B',3,0]]);
+        $next=$this->fixture([['CODE-A','Full name A',8,0]]);
+        try {
+            $this->post('/inventory/sync/factory-native',['file'=>$this->upload($path),'stock_count_at'=>now()->subDay()->toDateString()],['Accept'=>'application/json'])
+                ->assertOk()->assertJsonPath('applied_products',1);
+            $this->post('/inventory/sync/factory-native',['file'=>$this->upload($next),'stock_count_at'=>now()->toDateString()],['Accept'=>'application/json'])
+                ->assertOk()->assertJsonPath('applied_products',0)->assertJsonPath('availability_held_products',1)->assertJsonPath('legacy_preserved_products',0);
+            $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$p->id,'quantity_on_hand'=>12,'factory_native_status'=>'held']);
+            self::assertSame(0,WarehouseInventory::query()->where('warehouse_id',$factory->id)->where('product_id',$p->id)->firstOrFail()->quantity_available);
+        } finally {@unlink($path);@unlink($next);}
     }
 
     public function test_material_identity_and_stock_approval_permissions_are_separate(): void

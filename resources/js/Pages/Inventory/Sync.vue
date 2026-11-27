@@ -98,7 +98,7 @@ const selectedWarehouseId = ref<number | null>(props.warehouses.some(w => w.id =
 const syncMode = ref<'partial' | 'full'>('partial')
 const stockCountAt = ref('')
 const nativeFactory = computed(() => props.warehouses.find(w=>w.id===selectedWarehouseId.value)?.slug === 'factory' && activeTab.value==='file')
-const nativeResult = ref<{material_count:number;linked:number;unmapped:number;conflicts:number;applied_products:number;held_products:number;duplicate:boolean}|null>(null)
+const nativeResult = ref<{material_count:number;linked:number;unmapped:number;conflicts:number;applied_products:number;held_products:number;legacy_preserved_products?:number;availability_held_products?:number;duplicate:boolean}|null>(null)
 const pasteText = ref('')
 const selectedFile = ref<File | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -154,7 +154,7 @@ async function importFactoryNative() {
     nativeResult.value=data
     publishGlobalFeedback({state:data.held_products||data.unmapped||data.conflicts?'BLOCKED':'SUCCESS',
       title:data.duplicate?'该库存快照已导入':'工厂库存文件处理完成',
-      message:'原始物料 '+data.material_count+' 条；关联 '+data.linked+' 条；已覆盖商品 '+data.applied_products+' 个；待核实 '+data.unmapped+' 条，保留原库存商品 '+data.held_products+' 个。'})
+      message:'原始物料 '+data.material_count+' 条；关联 '+data.linked+' 条；已覆盖商品 '+data.applied_products+' 个；待核实 '+data.unmapped+' 条，保留原库存商品 '+data.held_products+' 个；暂停已核准库存可用性 '+(data.availability_held_products??0)+' 个。'})
   } catch(e:any) {
     publishGlobalFeedback({state:'ERROR',title:'工厂库存导入失败',message:e?.response?.data?.message??'请检查文件及库存日期。'})
   } finally {loading.value=false}
@@ -347,7 +347,7 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
       </div>
 
       <div v-if="nativeFactory && nativeResult" class="bg-white rounded-lg p-4 text-sm">
-        原表 {{nativeResult.material_count}} 条 · 已关联 {{nativeResult.linked}} 条 · 未绑定 {{nativeResult.unmapped}} 条 · 已覆盖 {{nativeResult.applied_products}} 个商品 · 保留原库存 {{nativeResult.held_products}} 个商品。
+        原表 {{nativeResult.material_count}} 条 · 已关联 {{nativeResult.linked}} 条 · 未绑定 {{nativeResult.unmapped}} 条 · 已覆盖 {{nativeResult.applied_products}} 个商品 · 未覆盖 {{nativeResult.held_products}} 个商品 · 保留旧库存口径 {{nativeResult.legacy_preserved_products??0}} 个 · 暂停已核准库存可用性 {{nativeResult.availability_held_products??0}} 个。
         <a class="text-blue-700" href="/products/skus">查看 SKU 映射中心</a>
       </div>
       <!-- Error -->
