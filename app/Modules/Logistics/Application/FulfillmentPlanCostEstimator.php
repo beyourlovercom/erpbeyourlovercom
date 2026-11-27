@@ -23,6 +23,12 @@ final class FulfillmentPlanCostEstimator
         return app(VersionedRateQuoteService::class)->quote($request);
     }
 
+    /** Unapproved transport-only reference for testing; never used for cost ranking. */
+    public function quoteDraftTransport(array $request): array
+    {
+        return app(VersionedRateQuoteService::class)->quoteDraftTransport($request);
+    }
+
     /** @param array<int,int> $productIds @return array<string,mixed> */
     public function prepare(array $productIds): array
     {

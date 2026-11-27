@@ -97,7 +97,7 @@ final class LogisticsRateDraftService
         $counts = ['added' => 0, 'changed' => 0, 'removed' => 0, 'unchanged' => 0];
         $changes = [];
         foreach (array_unique(array_merge(array_keys($old), array_keys($new))) as $key) {
-            $kind = ! isset($old[$key]) ? 'added' : (! isset($new[$key]) ? 'removed' : ($old[$key] !== $new[$key] ? 'changed' : 'unchanged'));
+            $kind = ! isset($old[$key]) ? 'added' : (! isset($new[$key]) ? 'removed' : ($this->canonical($old[$key]) !== $this->canonical($new[$key]) ? 'changed' : 'unchanged'));
             $counts[$kind]++;
             if ($kind !== 'unchanged' && count($changes) < 250) {
                 $changes[] = ['id' => $key, 'kind' => $kind, 'old' => $old[$key] ?? null, 'new' => $new[$key] ?? null];
@@ -112,11 +112,28 @@ final class LogisticsRateDraftService
             'approval_allowed' => false];
     }
 
+    private function canonical(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return is_float($value) && floor($value) === $value && abs($value) < PHP_INT_MAX ? (int) $value : $value;
+        }
+        if (! array_is_list($value)) {
+            ksort($value, SORT_STRING);
+        }
+
+        return array_map($this->canonical(...), $value);
+    }
+
     private function componentValue(array $row): array
     {
+        $sourceRule = is_array($row['rule_spec']) ? $row['rule_spec'] : json_decode($row['rule_spec'], true);
+        if (is_array($sourceRule)) {
+            $sourceRule['coverage_complete'] = false;
+        } // Approval state is not a supplier price change.
+
         return ['warehouse' => $row['warehouse_code'], 'carrier' => $row['carrier'], 'service' => $row['service'], 'country' => $row['destination_country'],
             'zone' => $row['destination_zone'], 'type' => $row['component_type'], 'currency' => $row['currency'], 'unit' => $row['weight_unit'],
-            'mode' => $row['pricing_mode'], 'rule' => is_array($row['rule_spec']) ? $row['rule_spec'] : json_decode($row['rule_spec'], true),
+            'mode' => $row['pricing_mode'], 'rule' => $sourceRule,
             'sheet' => $row['source_sheet'], 'cells' => $row['source_cells']];
     }
 
@@ -126,7 +143,8 @@ final class LogisticsRateDraftService
 
         return ['min' => $number($row['min_weight']), 'max' => $number($row['max_weight']), 'min_inclusive' => (bool) $row['min_inclusive'],
             'max_inclusive' => (bool) $row['max_inclusive'], 'fixed' => $number($row['fixed_amount']), 'per_weight' => $number($row['per_weight_amount']),
-            'per_extra_item' => $number($row['per_extra_item_amount']), 'cells' => $row['source_cells']];
+            'per_extra_item' => $number($row['per_extra_item_amount']), 'cells' => $row['source_cells'],
+            'source_values' => is_array($row['raw_values'] ?? null) ? $row['raw_values'] : json_decode($row['raw_values'] ?? 'null', true)];
     }
 
     private function zoneValue(array $row): array

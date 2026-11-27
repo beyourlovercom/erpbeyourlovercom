@@ -7,11 +7,13 @@ use App\Models\User;
 use App\Modules\Finance\Application\FxReferenceSettingsService;
 use App\Modules\Logistics\Application\FulfillmentPlanCostEstimator;
 use App\Modules\Logistics\Application\LogisticsRateDraftService;
+use App\Modules\Logistics\Application\LogisticsRatePostalEvidenceReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Tests\TestCase;
@@ -39,7 +41,7 @@ final class LogisticsRateCenterWorkflowTest extends TestCase
         return $user;
     }
 
-    private function fixture(float $firstRate = 3.82): UploadedFile
+    private function fixture(float $firstRate = 3.82, float $fuelPercent = 3, int $dimDivisor = 6000, float $extra = 0.8): UploadedFile
     {
         $path = tempnam(sys_get_temp_dir(), 'erp-rate-test-');
         $book = new Spreadsheet;
@@ -50,7 +52,14 @@ final class LogisticsRateCenterWorkflowTest extends TestCase
             $local->setCellValue('B'.($i + 5), $band);
             $local->setCellValue('C'.($i + 5), $prices[$i]);
         }
+        $local->setCellValue('B17', '燃油费率'.$fuelPercent.'%，燃油附加费=（运费+附加费）*燃油率');
+        $local->setCellValue('B18', '实重计费，采用向上进一取整原则');
+        $local->setCellValue('B19', '尺寸限制：L＜120cm，W＜60cm，H＜60cm，周长【L+2*(W+H)】＜360cm，包裹最小尺寸：15cm*11cm*1cm;');
+        $local->setCellValue('B20', '重量限制：31.5kg');
+        $local->setCellValue('C25', 0.19);
+        $local->setCellValue('E25', '11 月 1 号至 12 月 31 号期间');
         $handling = $book->createSheet()->setTitle('库内基础服务费用');
+        $handling->setCellValue('E12', '计费重以体积重与实重取大值计算，体积系数除以'.$dimDivisor.'。每增加1件加收 €'.$extra.';');
         foreach (['0 <x≤ 2 kg', '2 <x≤ 5 kg', '5<x≤ 10 kg', '10 <x≤ 20 kg', '20 <x≤ 30 kg'] as $i => $band) {
             $handling->setCellValue('C'.($i + 13), $band);
             $handling->setCellValue('D'.($i + 13), [0.8, 1.2, 1.68, 3, 4.2][$i]);
@@ -165,6 +174,98 @@ final class LogisticsRateCenterWorkflowTest extends TestCase
         $this->assertSame('ready', $this->actingAs($actor)->postJson('/logistics/rates/quote', $this->request($id))->assertOk()->json('status'));
     }
 
+    public function test_scoped_approval_rejects_missing_confirmation_and_preserves_history(): void
+    {
+        $actor = $this->actor(['logistics.view', 'logistics.operate', 'system.permissions.manage']);
+        $viewer = $this->actor(['logistics.view']);
+        $id = $this->saveFixture($actor);
+        $version = DB::table('logistics_rate_versions')->find($id);
+        $source = DB::table('logistics_rate_source_files')->find($version->source_file_id);
+        $url = '/logistics/rates/'.$id.'/approve-germany-domestic';
+        $approval = ['sha256' => $source->sha256, 'evidence' => 'Synthetic supplier scope and rule verification for test only',
+            'confirm_contract' => true, 'confirm_rules' => true, 'confirm_restrictions' => true];
+        $this->actingAs($viewer)->postJson($url, $approval)->assertForbidden();
+        $this->actingAs($actor)->postJson($url, [...$approval, 'confirm_rules' => false])->assertUnprocessable();
+        $this->actingAs($actor)->postJson($url, [...$approval, 'sha256' => str_repeat('0', 64)])->assertUnprocessable();
+        $this->assertDatabaseHas('logistics_rate_versions', ['id' => $id, 'status' => 'draft']);
+        $this->assertSame(0, DB::table('logistics_rate_components')->where('review_status', 'verified')->count());
+        app(FxReferenceSettingsService::class)->save(['EUR' => 8, 'USD' => 7.5], ['EUR' => false, 'USD' => false], null);
+        $estimator = app(FulfillmentPlanCostEstimator::class);
+        $draft = $estimator->quoteDraftTransport($this->request($id));
+        $this->assertSame('draft_estimate', $draft['status']);
+        $this->assertFalse($draft['eligible_for_ranking']);
+        $this->assertNull($draft['total_cny']);
+        $this->assertNull($draft['native_totals']);
+        $this->assertEqualsWithDelta(3.9346, $draft['reference_native_totals']['EUR'], 0.000001);
+        $this->assertCount(1, $draft['components']);
+        $this->actingAs($viewer)->postJson('/logistics/rates/quote', [...$this->request($id), 'mode' => 'draft_transport'])->assertOk()->assertJsonPath('status', 'draft_estimate');
+        $this->assertSame('rate_version_not_approved', $estimator->quoteVersioned($this->request($id))['reason']);
+        $this->actingAs($actor)->postJson($url, $approval)->assertOk()->assertJsonPath('status', 'approved');
+        $this->assertSame('ready', $estimator->quoteVersioned($this->request($id))['status']);
+        $this->assertSame('draft_rate_version_required', $estimator->quoteDraftTransport($this->request($id))['reason']);
+        $this->assertDatabaseHas('logistics_rate_versions', ['id' => $id, 'status' => 'approved', 'approved_by' => $actor->id]);
+        $this->actingAs($actor)->postJson($url, $approval)->assertUnprocessable();
+        $file = $this->fixture(4.12);
+        try {
+            $service = app(LogisticsRateDraftService::class);
+            $diff = $service->preview($file);
+            $this->assertSame(1, $diff['counts']['changed']);
+            $newId = $service->save($file, $diff['sha256'], $id, '2026-11-01', $actor->id)['version_id'];
+            $newApproval = [...$approval, 'sha256' => $diff['sha256']];
+            $this->actingAs($actor)->postJson('/logistics/rates/'.$newId.'/approve-germany-domestic', $newApproval)->assertOk();
+            $this->assertDatabaseHas('logistics_rate_versions', ['id' => $id, 'status' => 'approved', 'effective_until' => '2026-10-31']);
+            $this->assertSame('rate_version_outside_effective_dates', $estimator->quoteVersioned([...$this->request($id), 'as_of' => '2026-11-01'])['reason']);
+            $this->assertSame('ready', $estimator->quoteVersioned([...$this->request($newId), 'as_of' => '2026-11-01'])['status']);
+        } finally {
+            unlink($file->getPathname());
+        }
+    }
+
+    public function test_supplier_rule_values_are_read_from_new_workbook_not_frozen_constants(): void
+    {
+        $actor = $this->actor(['logistics.view', 'logistics.operate', 'system.permissions.manage']);
+        $id = $this->saveFixture($actor);
+        $file = $this->fixture(3.82, 4, 7000, 0.9);
+        try {
+            $service = app(LogisticsRateDraftService::class);
+            $preview = $service->preview($file);
+            $this->assertGreaterThan(0, $preview['counts']['changed']);
+            $newId = $service->save($file, $preview['sha256'], $id, '2026-11-01', $actor->id)['version_id'];
+            $rows = DB::table('logistics_rate_components')->where('version_id', $newId)->get();
+            $this->assertEquals(4, json_decode($rows->firstWhere('component_type', 'transport')->rule_spec, true)['fuel_percent']);
+            $handling = $rows->firstWhere('component_type', 'handling');
+            $this->assertEquals(7000, json_decode($handling->rule_spec, true)['dim_divisor']);
+            $this->assertEqualsWithDelta(0.9, (float) DB::table('logistics_rate_bands')->where('component_id', $handling->id)->first()->per_extra_item_amount, 0.000001);
+            $this->assertDatabaseHas('logistics_rate_versions', ['id' => $newId, 'status' => 'draft']);
+        } finally {
+            unlink($file->getPathname());
+        }
+    }
+
+    public function test_postal_reader_preserves_text_and_does_not_execute_or_read_formula_cells(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'erp-postal-');
+        $book = new Spreadsheet;
+        $sheet = $book->getActiveSheet()->setTitle('邮编分区');
+        $sheet->setCellValue('L1', '【澳大利亚】分区邮编');
+        $sheet->setCellValueExplicit('M3', '0200', DataType::TYPE_STRING);
+        $sheet->setCellValue('M4', '=1+1');
+        $sheet->setCellValue('Z3', 'not requested');
+        try {
+            $writer = new Xlsx($book);
+            $writer->setPreCalculateFormulas(false);
+            $writer->save($path);
+            $result = (new LogisticsRatePostalEvidenceReader)->read($path, '邮编分区', ['L', 'M'], 10);
+            $this->assertSame('0200', $result['M3']);
+            $this->assertSame('【澳大利亚】分区邮编', $result['L1']);
+            $this->assertArrayNotHasKey('M4', $result);
+            $this->assertArrayNotHasKey('Z3', $result);
+        } finally {
+            $book->disconnectWorksheets();
+            unlink($path);
+        }
+    }
+
     public function test_real_supplier_files_are_preserved_as_drafts_when_local_sources_are_available(): void
     {
         $dir = getenv('BYL_RATE_SOURCE_DIR');
@@ -176,7 +277,7 @@ final class LogisticsRateCenterWorkflowTest extends TestCase
         $this->assertSame(':memory:', config('database.connections.sqlite.database'));
         $actor = $this->actor(['logistics.view', 'logistics.operate', 'system.permissions.manage']);
         $service = app(LogisticsRateDraftService::class);
-        $expected = ['tianyun_de' => [2, 14, 0], 'speeda_us' => [26, 1836, 6944], 'speeda_sd' => [11, 44, 0], 'territory_evidence' => [0, 0, 0]];
+        $expected = ['tianyun_de' => [34, 46, 0], 'speeda_us' => [29, 1854, 6944], 'speeda_sd' => [389, 875, 28332], 'territory_evidence' => [0, 0, 0]];
         $files = glob($dir.'/*.{xlsx,xls}', GLOB_BRACE);
         $this->assertCount(4, $files);
         foreach ($files as $path) {
@@ -184,7 +285,8 @@ final class LogisticsRateCenterWorkflowTest extends TestCase
             $preview = $service->preview($file);
             $this->assertSame($expected[$preview['book_key']], [$preview['component_count'], $preview['band_count'], $preview['zone_count']]);
             $this->assertFalse($preview['approval_allowed']);
-            $id = $service->save($file, $preview['sha256'], $preview['previous_version_id'], null, $actor->id)['version_id'];
+            $effective = ['tianyun_de' => '2025-05-05', 'speeda_us' => '2026-05-01', 'speeda_sd' => '2026-11-23', 'territory_evidence' => null][$preview['book_key']];
+            $id = $service->save($file, $preview['sha256'], $preview['previous_version_id'], $effective, $actor->id)['version_id'];
             $this->assertDatabaseHas('logistics_rate_versions', ['id' => $id, 'status' => 'draft']);
             $again = $service->preview($file);
             $this->assertSame(0, $again['counts']['changed']);
@@ -192,11 +294,46 @@ final class LogisticsRateCenterWorkflowTest extends TestCase
             $this->assertSame(0, $again['counts']['removed']);
             $this->assertTrue($service->save($file, $again['sha256'], $again['previous_version_id'], null, $actor->id)['duplicate']);
         }
-        $this->assertDatabaseCount('logistics_rate_source_files',4);
-        $this->assertDatabaseCount('logistics_rate_versions',4);
-        $this->assertDatabaseCount('logistics_rate_components',39);
-        $this->assertDatabaseCount('logistics_rate_bands',1894);
-        $this->assertDatabaseCount('logistics_rate_zones',6944);
-        $this->assertSame(0,DB::table('logistics_rate_versions')->where('status','approved')->count());
+        $this->assertDatabaseCount('logistics_rate_source_files', 4);
+        $this->assertDatabaseCount('logistics_rate_versions', 4);
+        $this->assertDatabaseCount('logistics_rate_components', 452);
+        $this->assertDatabaseCount('logistics_rate_bands', 2775);
+        $this->assertDatabaseCount('logistics_rate_zones', 35276);
+        $this->assertSame(0, DB::table('logistics_rate_versions')->where('status', 'approved')->count());
+        $international = DB::table('logistics_rate_components')->where('component_key', 'de.dhl.international.fr')->first();
+        $this->assertSame('review_required', json_decode($international->rule_spec, true)['basis']);
+        $frBand = DB::table('logistics_rate_bands')->where('component_id', $international->id)->first();
+        $this->assertEqualsWithDelta(0.5345, (float) $frBand->per_weight_amount, 0.000001);
+        $this->assertEqualsWithDelta(8.0205, (float) $frBand->fixed_amount, 0.000001);
+        $this->assertStringContainsString('0.001', json_decode($frBand->raw_values, true)['formula_header']);
+        $us = DB::table('logistics_rate_components')->where('service', 'sd_standard_special')->where('destination_country', 'US')->first();
+        $usBand = DB::table('logistics_rate_bands')->where('component_id', $us->id)->orderBy('sequence')->first();
+        $this->assertEqualsWithDelta(134, (float) $usBand->per_weight_amount, 0.000001);
+        $this->assertEqualsWithDelta(27, (float) $usBand->fixed_amount, 0.000001);
+        $this->assertSame(8000, json_decode($us->rule_spec, true)['dim_divisor']);
+        $za = DB::table('logistics_rate_components')->where('service', 'sd_standard_general')->where('destination_country', 'ZA')->first();
+        $zaRule = json_decode($za->rule_spec, true);
+        $this->assertSame(6000, $zaRule['dim_divisor']);
+        $this->assertCount(3, $zaRule['rounding_tiers']);
+        $this->assertDatabaseHas('logistics_rate_components', ['warehouse_code' => 'US-NY', 'carrier' => 'USPS', 'service' => 'ground_advantage']);
+        $this->assertDatabaseHas('logistics_rate_components', ['warehouse_code' => 'SPEEDA-US-LA', 'carrier' => 'USPS', 'service' => 'ground_advantage']);
+        $this->assertSame(0, DB::table('logistics_rate_components')->where('warehouse_code', 'US-LA')->count());
+        $this->assertDatabaseHas('logistics_rate_zones', ['service' => 'evidence.au_zone_a', 'postal_start' => '0200', 'zone_label' => '澳大利亚-2区', 'review_status' => 'needs_review']);
+        $this->assertDatabaseHas('logistics_rate_zones', ['service' => 'evidence.us_island', 'postal_start' => '00602', 'review_status' => 'needs_review']);
+        $this->assertSame('rate_version_not_approved', app(FulfillmentPlanCostEstimator::class)->quoteVersioned([...$this->request((int) $us->version_id), 'warehouse_code' => 'FACTORY', 'carrier' => 'SPEEDA', 'service' => 'sd_standard_special', 'country' => 'US', 'postal_code' => '10001'])['reason']);
+        $estimator = app(FulfillmentPlanCostEstimator::class);
+        $request = [...$this->request((int) $us->version_id, ['weight_kg' => 0.08, 'dimensions_cm' => [15, 10, 1], 'item_count' => 1]),
+            'warehouse_code' => 'FACTORY', 'carrier' => 'SPEEDA', 'service' => 'sd_standard_special', 'country' => 'US', 'postal_code' => '10001', 'as_of' => '2026-11-23'];
+        $trial = $estimator->quoteDraftTransport($request);
+        $this->assertSame('draft_estimate', $trial['status']);
+        $this->assertNull($trial['total_cny']);
+        $this->assertEqualsWithDelta(37.72, $trial['reference_native_totals']['CNY'], 0.000001);
+        $this->assertSame('C3:E3', $trial['components'][0]['source_cells']);
+        $zaTrial = $estimator->quoteDraftTransport([...$request, 'service' => 'sd_standard_general', 'country' => 'ZA', 'postal_code' => '8001',
+            'packages' => [['weight_kg' => 2.001, 'weight_basis' => 'measured_packaged', 'dimensions_cm' => [20, 15, 10], 'item_count' => 1, 'eligibility' => 'confirmed']]]);
+        $this->assertSame('draft_estimate', $zaTrial['status']);
+        $this->assertEqualsWithDelta(2.5, $zaTrial['components'][0]['billable_weight'], 0.000001);
+        $this->assertDatabaseHas('logistics_rate_versions', ['id' => $us->version_id, 'status' => 'draft']);
+
     }
 }

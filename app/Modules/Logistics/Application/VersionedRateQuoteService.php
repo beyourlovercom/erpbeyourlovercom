@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application;
 
 use App\Modules\Finance\Application\FxReferenceSettingsService;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /** Read-only versioned quotation. Never falls back to a different warehouse, service or rate version. */
@@ -11,6 +12,17 @@ final class VersionedRateQuoteService
     public function __construct(private readonly FxReferenceSettingsService $fx) {}
 
     public function quote(array $request): array
+    {
+        return $this->calculate($request, false);
+    }
+
+    /** Draft transport-only reference, never an eligible/complete fulfillment quote. */
+    public function quoteDraftTransport(array $request): array
+    {
+        return $this->calculate($request, true);
+    }
+
+    private function calculate(array $request, bool $draft): array
     {
         $id = $request['version_id'] ?? null;
         $date = $request['as_of'] ?? null;
@@ -30,7 +42,11 @@ final class VersionedRateQuoteService
             return $this->blocked('invalid_input');
         }
         $version = DB::table('logistics_rate_versions')->find($id);
-        if (! $version || $version->status !== 'approved' || ! $version->approved_at || ! $version->approved_by) {
+        if ($draft) {
+            if (! $version || $version->status !== 'draft') {
+                return $this->blocked('draft_rate_version_required');
+            }
+        } elseif (! $version || $version->status !== 'approved' || ! $version->approved_at || ! $version->approved_by) {
             return $this->blocked('rate_version_not_approved');
         }
         if (! $version->effective_from || $date < $version->effective_from || ($version->effective_until && $date > $version->effective_until)) {
@@ -38,12 +54,12 @@ final class VersionedRateQuoteService
         }
         $rows = DB::table('logistics_rate_components')->where('version_id', $id)
             ->where('warehouse_code', $warehouse)->where('carrier', $carrier)->where('service', $service)
-            ->where('destination_country', $country)->get();
+            ->where('destination_country', $country)->orderBy('id')->get();
+        if ($draft) {
+            $rows = $rows->where('component_type', 'transport')->values();
+        }
         if ($rows->isEmpty()) {
             return $this->blocked('rate_scope_missing');
-        }
-        if ($rows->contains(fn ($r) => $r->review_status !== 'verified')) {
-            return $this->blocked('rate_rule_unreviewed');
         }
         $zone = null;
         if ($rows->contains(fn ($r) => $r->destination_zone !== null)) {
@@ -71,11 +87,14 @@ final class VersionedRateQuoteService
 
                 return strcmp($value, $start) >= 0 && strcmp($value, $end) <= 0;
             })->values();
-            if ($matches->count() !== 1 || $matches[0]->review_status !== 'verified' || ! preg_match('/^[1-9]$/D', $matches[0]->zone_label)) {
+            if ($matches->count() !== 1 || (! $draft && $matches[0]->review_status !== 'verified') || ! preg_match('/^[1-9]$/D', $matches[0]->zone_label)) {
                 return $this->blocked('postal_zone_missing_or_ambiguous');
             }
             $zone = $matches[0]->zone_label;
             $rows = $rows->filter(fn ($r) => $r->destination_zone === null || $r->destination_zone === $zone)->values();
+        }
+        if (! $draft && $rows->contains(fn ($r) => $r->review_status !== 'verified')) {
+            return $this->blocked('rate_rule_unreviewed');
         }
         // Explicit coverage marker on approved transport rule; no implicit zero handling.
         $transport = $rows->where('component_type', 'transport')->values();
@@ -84,11 +103,13 @@ final class VersionedRateQuoteService
             return $this->blocked('rate_components_missing_or_ambiguous');
         }
         $transportRule = json_decode($transport[0]->rule_spec, true);
-        if (! is_array($transportRule) || ($transportRule['coverage_complete'] ?? false) !== true
-            || ($handlingRows->isEmpty() && ($transportRule['handling_included'] ?? false) !== true)) {
+        if (! is_array($transportRule) || (! $draft && (($transportRule['coverage_complete'] ?? false) !== true
+            || ($handlingRows->isEmpty() && ($transportRule['handling_included'] ?? false) !== true)))) {
             return $this->blocked('rate_coverage_unverified');
         }
         $result = [];
+        $orderedRows = $transport->concat($handlingRows);
+        $rateBands = DB::table('logistics_rate_bands')->whereIn('component_id', $orderedRows->pluck('id'))->orderBy('sequence')->get()->groupBy('component_id');
         foreach ($packages as $index => $package) {
             if (! is_array($package) || ($package['eligibility'] ?? null) !== 'confirmed') {
                 return $this->blocked('eligibility_unconfirmed');
@@ -111,8 +132,8 @@ final class VersionedRateQuoteService
                 return $this->blocked('invalid_measurement');
             }
             $dims = array_values(array_map('floatval', $dims));
-            foreach ($rows as $row) {
-                $out = $this->component($row, $gross, $dims, $quantity, $date, $postal, $handling, $warehouse);
+            foreach ($orderedRows as $row) {
+                $out = $this->component($row, $gross, $dims, $quantity, $date, $postal, $handling, $warehouse, $rateBands->get($row->id, collect()));
                 if (isset($out['reason'])) {
                     return $this->blocked($out['reason']);
                 }
@@ -120,7 +141,7 @@ final class VersionedRateQuoteService
                     'component_type' => $row->component_type, 'source_sheet' => $row->source_sheet, 'weight_basis' => $basis,
                     'input_weight_kg' => (float) $rawWeight, 'gross_weight_kg' => $gross, 'currency' => $row->currency, ...$out];
             }
-            if ($warehouse !== 'FACTORY' && $handling === 'internal' && $quantity > 1) {
+            if (! $draft && $warehouse !== 'FACTORY' && $handling === 'internal' && $quantity > 1) {
                 $result[] = ['package_index' => $index, 'component_type' => 'extra_item_handling', 'component_key' => 'owner_internal_extra_item',
                     'currency' => 'USD', 'amount' => (float) ($quantity - 1), 'source_sheet' => null, 'source_cells' => null];
             }
@@ -130,6 +151,13 @@ final class VersionedRateQuoteService
             $totals[$line['currency']] = round(($totals[$line['currency']] ?? 0) + $line['amount'], 6);
         }
         $fx = $this->fx->convertToCny(array_map(fn ($currency, $amount) => ['currency' => $currency, 'revenue' => $amount], array_keys($totals), array_values($totals)));
+
+        if ($draft) {
+            return ['status' => 'draft_estimate', 'reason' => 'unapproved_transport_reference', 'version_id' => $id, 'as_of' => $date, 'zone' => $zone,
+                'components' => $result, 'native_totals' => null, 'total_cny' => null, 'reference_native_totals' => $totals,
+                'reference_total_cny' => ($fx['available'] ?? false) ? $fx['amount_cny'] : null, 'fx' => $fx,
+                'estimate_only' => true, 'eligible_for_ranking' => false, 'coverage' => 'transport_only'];
+        }
 
         return ['status' => ($fx['available'] ?? false) ? 'ready' : 'fx_unavailable',
             'reason' => ($fx['available'] ?? false) ? null : ($fx['reason'] ?? 'fx_unavailable'),
@@ -148,12 +176,12 @@ final class VersionedRateQuoteService
         return ['status' => 'unavailable', 'reason' => $reason, 'components' => [], 'native_totals' => null, 'total_cny' => null, 'estimate_only' => true];
     }
 
-    private function component(object $row, float $gross, array $dims, int $quantity, string $date, string $postal, string $handling, string $warehouse): array
+    private function component(object $row, float $gross, array $dims, int $quantity, string $date, string $postal, string $handling, string $warehouse, Collection $rateBands): array
     {
         $rule = json_decode($row->rule_spec, true);
         $known = ['basis', 'dim_divisor', 'volume_unit', 'volume_threshold', 'minimum', 'increment', 'max_actual_kg', 'max_billed',
             'max_dimensions_cm', 'min_dimensions_cm', 'max_girth_cm', 'excluded_zip_prefixes', 'fuel_percent', 'seasonal_fee', 'seasonal_mmdd',
-            'coverage_complete', 'handling_included'];
+            'coverage_complete', 'handling_included', 'rounding_tiers'];
         if (! is_array($rule) || array_diff(array_keys($rule), $known)) {
             return ['reason' => 'rule_unsupported'];
         }
@@ -187,6 +215,9 @@ final class VersionedRateQuoteService
             return ['reason' => 'package_weight_outside_rule'];
         }
         if (isset($rule['excluded_zip_prefixes'])) {
+            if (trim($postal) === '') {
+                return ['reason' => 'postal_code_invalid'];
+            }
             if (! is_array($rule['excluded_zip_prefixes'])) {
                 return ['reason' => 'rule_unsupported'];
             }
@@ -235,7 +266,37 @@ final class VersionedRateQuoteService
             }
             $billed = max($billed, (float) $rule['minimum']);
         }
-        if (isset($rule['increment'])) {
+        if (isset($rule['rounding_tiers'])) {
+            $tiers = $rule['rounding_tiers'];
+            if (isset($rule['increment']) || ! is_array($tiers) || ! array_is_list($tiers) || $tiers === []) {
+                return ['reason' => 'rule_unsupported'];
+            }
+            $previous = 0.0;
+            $step = null;
+            foreach ($tiers as $i => $tier) {
+                if (! is_array($tier) || ! array_key_exists('up_to', $tier) || ! $this->positive($tier['increment'] ?? null)) {
+                    return ['reason' => 'rule_unsupported'];
+                }
+                $limit = $tier['up_to'];
+                if ($limit === null) {
+                    if ($i !== count($tiers) - 1) {
+                        return ['reason' => 'rule_unsupported'];
+                    }
+                } elseif (! $this->positive($limit) || (float) $limit <= $previous) {
+                    return ['reason' => 'rule_unsupported'];
+                }
+                if ($step === null && ($limit === null || $billed <= (float) $limit)) {
+                    $step = (float) $tier['increment'];
+                }
+                if ($limit !== null) {
+                    $previous = (float) $limit;
+                }
+            }
+            if ($step === null || $tiers[count($tiers) - 1]['up_to'] !== null) {
+                return ['reason' => 'rule_unsupported'];
+            }
+            $billed = ceil(round($billed / $step, 10)) * $step;
+        } elseif (isset($rule['increment'])) {
             if (! $this->positive($rule['increment'])) {
                 return ['reason' => 'rule_unsupported'];
             }
@@ -246,7 +307,7 @@ final class VersionedRateQuoteService
         if (isset($rule['max_billed']) && (! $this->positive($rule['max_billed']) || $billed > (float) $rule['max_billed'])) {
             return ['reason' => 'package_weight_outside_rule'];
         }
-        $bands = DB::table('logistics_rate_bands')->where('component_id', $row->id)->get()->filter(function ($band) use ($billed) {
+        $bands = $rateBands->filter(function ($band) use ($billed) {
             $min = $band->min_weight === null || ($band->min_inclusive ? $billed >= (float) $band->min_weight : $billed > (float) $band->min_weight);
             $max = $band->max_weight === null || ($band->max_inclusive ? $billed <= (float) $band->max_weight : $billed < (float) $band->max_weight);
 

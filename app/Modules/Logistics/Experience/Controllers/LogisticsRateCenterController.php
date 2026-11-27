@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Logistics\Application\FulfillmentPlanCostEstimator;
 use App\Modules\Logistics\Application\LogisticsRateDraftService;
+use App\Modules\Logistics\Application\LogisticsRateReviewService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +20,7 @@ final class LogisticsRateCenterController
         $input = $request->validate(['version_id' => 'nullable|integer|min:1', 'view' => 'nullable|in:books,bands,zones', 'search' => 'nullable|string|max:100', 'page' => 'nullable|integer|min:1', 'per_page' => 'nullable|in:20,50,100']);
         $versions = DB::table('logistics_rate_versions as v')->join('logistics_rate_books as b', 'b.id', '=', 'v.book_id')
             ->join('logistics_rate_source_files as f', 'f.id', '=', 'v.source_file_id')
-            ->select('v.id', 'b.display_name', 'b.supplier_name', 'v.version_number', 'v.status', 'v.effective_from', 'v.effective_until', 'v.created_at', 'v.notes', 'f.original_filename', 'f.sha256')
+            ->select('v.id', 'b.key as book_key', 'b.display_name', 'b.supplier_name', 'v.version_number', 'v.status', 'v.effective_from', 'v.effective_until', 'v.created_at', 'v.notes', 'f.original_filename', 'f.sha256')
             ->orderByDesc('v.id')->get()->map(function ($row) {
                 $row->notes = json_decode($row->notes ?? '[]', true);
 
@@ -36,11 +37,23 @@ final class LogisticsRateCenterController
             $query = DB::table('logistics_rate_bands as r')->join('logistics_rate_components as c', 'c.id', '=', 'r.component_id')
                 ->where('c.version_id', $version?->id ?? 0)
                 ->select('r.id', 'c.warehouse_code', 'c.carrier', 'c.service', 'c.destination_country', 'c.destination_zone', 'c.component_type', 'c.currency', 'c.weight_unit',
-                    'c.pricing_mode', 'c.review_status', 'c.source_sheet', 'r.source_cells', 'r.min_weight', 'r.max_weight', 'r.fixed_amount', 'r.per_weight_amount', 'r.per_extra_item_amount');
+                    'c.pricing_mode', 'c.review_status', 'c.rule_spec', 'r.raw_values', 'c.source_sheet', 'r.source_cells', 'r.min_weight', 'r.max_weight', 'r.fixed_amount', 'r.per_weight_amount', 'r.per_extra_item_amount');
             if ($search !== '') {
                 $query->where(fn ($q) => $q->where('c.warehouse_code', 'like', '%'.$search.'%')->orWhere('c.destination_country', 'like', '%'.$search.'%')->orWhere('c.carrier', 'like', '%'.$search.'%')->orWhere('c.service', 'like', '%'.$search.'%'));
             }
-            $rows = $query->orderBy('c.id')->orderBy('r.sequence')->paginate($size);
+            $rows = $query->orderBy('c.id')->orderBy('r.sequence')->paginate($size)->through(function ($row) {
+                $rule = json_decode($row->rule_spec, true) ?? [];
+                $raw = json_decode($row->raw_values ?? '{}', true) ?? [];
+                $row->billing_basis = match ($rule['basis'] ?? null) {
+                    'actual' => '实重','max' => '实重/体积重取大','conditional_max' => '条件体积重',default => '待核验'
+                };
+                $row->dim_divisor = $rule['dim_divisor'] ?? null;
+                $row->rounding = isset($rule['rounding_tiers']) ? json_encode($rule['rounding_tiers'], JSON_UNESCAPED_UNICODE) : ($rule['increment'] ?? null);
+                $row->source_note = $raw['note'] ?? $raw['formula_header'] ?? null;
+                unset($row->rule_spec,$row->raw_values);
+
+                return $row;
+            });
         } elseif ($view === 'zones') {
             $query = DB::table('logistics_rate_zones')->where('version_id', $version?->id ?? 0)->select('id', 'warehouse_code', 'carrier', 'service', 'destination_country', 'postal_start', 'postal_end', 'zone_label', 'review_status', 'source_sheet', 'source_cells');
             if ($search !== '') {
@@ -72,6 +85,14 @@ final class LogisticsRateCenterController
         return response()->json($service->save($request->file('file'), $input['sha256'], isset($input['previous_version_id']) ? (int) $input['previous_version_id'] : null, $input['effective_from'] ?? null, (int) $request->user()->getAuthIdentifier()));
     }
 
+    public function approveGermanyDomestic(Request $request, int $version, LogisticsRateReviewService $service): JsonResponse
+    {
+        $input = $request->validate(['sha256' => 'required|regex:/^[a-f0-9]{64}$/D', 'evidence' => 'required|string|min:12|max:2000',
+            'confirm_contract' => 'accepted', 'confirm_rules' => 'accepted', 'confirm_restrictions' => 'accepted']);
+
+        return response()->json($service->approveGermanyDomestic($version, $input['sha256'], $input['evidence'], (int) $request->user()->getAuthIdentifier()));
+    }
+
     public function download(int $version): StreamedResponse
     {
         $source = DB::table('logistics_rate_versions as v')->join('logistics_rate_source_files as f', 'f.id', '=', 'v.source_file_id')->where('v.id', $version)->select('f.*')->first();
@@ -84,7 +105,7 @@ final class LogisticsRateCenterController
     public function quote(Request $request, FulfillmentPlanCostEstimator $estimator): JsonResponse
     {
         $input = $request->validate(['version_id' => 'required|integer|min:1', 'warehouse_code' => 'required|string|max:32', 'carrier' => 'required|string|max:64', 'service' => 'required|string|max:96', 'country' => 'required|string|size:2', 'postal_code' => 'nullable|string|max:32',
-            'as_of' => 'required|date_format:Y-m-d', 'handling_policy' => 'required|in:supplier,internal', 'packages' => 'required|array|min:1|max:100',
+            'mode' => 'nullable|in:approved,draft_transport', 'as_of' => 'required|date_format:Y-m-d', 'handling_policy' => 'required|in:supplier,internal', 'packages' => 'required|array|min:1|max:100',
             'packages.*.weight_kg' => 'required|numeric|gt:0|max:1000', 'packages.*.weight_basis' => 'required|in:measured_packaged,estimated_packaged,bare',
             'packages.*.dimensions_cm' => 'required|array|size:3', 'packages.*.dimensions_cm.*' => 'required|numeric|gt:0|max:10000',
             'packages.*.item_count' => 'required|integer|min:1|max:10000', 'packages.*.eligibility' => 'required|in:confirmed,unknown,denied']);
@@ -95,6 +116,6 @@ final class LogisticsRateCenterController
         }
         unset($package);
 
-        return response()->json($estimator->quoteVersioned($input));
+        return response()->json(($input['mode'] ?? 'approved') === 'draft_transport' ? $estimator->quoteDraftTransport($input) : $estimator->quoteVersioned($input));
     }
 }

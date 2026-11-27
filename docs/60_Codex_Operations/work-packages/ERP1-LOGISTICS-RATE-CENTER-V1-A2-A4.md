@@ -11,3 +11,9 @@ A4: add public read-only method FulfillmentPlanCostEstimator::quoteVersioned(arr
 - 两项 ApprovedMenuBaselineTest 失败与未修改基线完全一致（29 tests / 1779 assertions / 2 failures）；为避免新的菜单漂移及 V4 交叉冲突，报价中心入口置于已有物流商页面。
 - A4 PHP 只读入口：app(FulfillmentPlanCostEstimator::class)->quoteVersioned(array request)。传入显式版本、仓库、承运商、服务、国家、邮编、as_of、handling_policy 和 packages。返回 status/reason、native_totals、total_cny、fx、components（计费单位、实重、体积重、进位前后重量、原表及档位 ID）。未批准/缺失/规则冲突禁止返回正式合计。示例 DE 1kg、20×15×10cm、2件、supplier、测试汇率 EUR/CNY=8、非旺季：运费 EUR 3.9346，操作 EUR 1.60，合计 EUR 5.5346 / CNY 44.2768。仅为隔离合同测试，非生产激活。
 - A4 当前为可测试候选接口，不是全范围费率验收；B3 正式费用集成仍待 A4 审核及合并后交付。A5 未开始；未发布 ERP1/ERP2。
+
+### 2026-11-27 A3–A4 第二轮收口
+- 四份原件隔离校验：452 费用组件、2775 重量档、35276 邮编/分区证据。国内十个价格工作表与九个邮编证据区块；大表按需提取，实测约 5.34 秒、PHP 分配峰值 86 MB。其余无法准确映射的邮编区块仍保留原件，不冒充可用规则。
+- 美东源报价 US-NJ 对应 ERP US-NY；Speeda 美西独立 SPEEDA-US-LA，禁止套用 MorePlus。德国国际 32 目的国原始价归档，I3/J7/J9 公式冲突待供应商确认。美国仓操作费边界、附加费、特殊分区，国内区域及税费等仍待核验。
+- 德国本地审核限定具体草稿、源文件 SHA256、三项明确确认及证据、有效期和管理员权限。批准仅改变对应已核实组件；本次实际业务报价批准数为零。草稿运费参考不可排名、不可冒充正式费用；正式报价仍须批准、核实、完整。
+- 修正 MySQL JSON 比较顺序及运输/操作费输出顺序；费用规则随新源表变化，未识别规则继续待核验。前轮本地 67 tests/1001 assertions PASS；新增专项 5 tests/102 assertions PASS。最终提交另行回归及 CI，未发布 ERP1，未改 ERP2。B3 正式成本排名仍须 A4 正式验收及接口合并。
