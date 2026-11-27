@@ -68,7 +68,7 @@ final class ProductLogisticsProjection
                 'packaging_method'=>$standard['packaging_method_label'] ?? $standard['packaging_method_key'] ?? null,
                 'shipping_status'=>$ship && $shipWeight ? '已采纳' : '待测量',
                 'shipping_measured_at'=>isset($standard['measured_at']) ? \Illuminate\Support\Carbon::parse($standard['measured_at'])->timezone('Asia/Shanghai')->format('Y-m-d H:i:s') : null,
-                'volume_weight_kg'=>null, 'billable_weight_kg'=>null, 'billing_basis'=>'待接入统一计费引擎',
+                'volume_weight_kg'=>null, 'billable_weight_kg'=>null, 'billing_basis'=>'未选择计费渠道',
                 'reference_weight_kg'=>$this->positive($p->shipping_weight_kg),
                 'carton_dimensions'=>$this->display($outer), 'carton_cbm'=>$outer ? array_product($outer)/1e6 : null,
                 'carton_weight_kg'=>$this->positive($cartonMeasures['carton_gross_weight_kg'] ?? null),

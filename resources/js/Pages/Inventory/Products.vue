@@ -47,6 +47,8 @@ const props = defineProps<{
   warehouseGridEnabled?:boolean
   inventoryView?:InventoryView|null
   canViewLogistics?:boolean
+  canPreviewRates?:boolean
+  rateScopes?:{version_id:number;warehouse_code:string;carrier:string;service:string;destination_country:string;effective_from:string|null;effective_until:string|null}[]
   logisticsRows?:Record<string,unknown>[]|null
   sourceRows?:Record<string,unknown>[]|null
   matrixRows:{id:number;sku:string;material_name:string;warehouses:Record<string,{on_hand:number|null;transit:number;pending:number}>}[]
@@ -210,7 +212,7 @@ const breadcrumbs = [{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/
       </div>
       <InventoryMatrix v-if="view==='product'" :rows="matrixRows??[]" />
       <template v-else-if="view==='logistics'||view==='sources'">
-        <InventoryLogisticsGrid v-if="(view==='logistics'?logisticsRows:sourceRows)!=null" :key="view" :view="view" :rows="(view==='logistics'?logisticsRows:sourceRows)??[]" />
+        <InventoryLogisticsGrid v-if="(view==='logistics'?logisticsRows:sourceRows)!=null" :key="view" :view="view" :can-preview-rates="canPreviewRates" :rate-scopes="rateScopes??[]" :rows="(view==='logistics'?logisticsRows:sourceRows)??[]" />
         <p v-else class="text-xs text-slate-500">正在读取参数…</p>
       </template>
       <template v-else>

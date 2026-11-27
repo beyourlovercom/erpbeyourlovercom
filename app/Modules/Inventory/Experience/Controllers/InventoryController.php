@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Experience\Controllers;
 use App\Modules\Identity\Application\AuthorizationKeys;
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\InventoryMatrixService;
+use App\Modules\Inventory\Application\InventoryProductRatePreview;
 use App\Modules\Inventory\Application\InventoryAvailabilityProjection;
 use App\Modules\Inventory\Application\WarehouseLastReadStockService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
@@ -35,7 +36,7 @@ final class InventoryController
         return Inertia::render('Inventory/WarehouseList', ['warehouses' => $this->inventory->warehouses(), 'canManage' => auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false]);
     }
 
-    public function products(Request $request, InventoryMatrixService $matrix, ProductLogisticsProjection $logistics): Response|RedirectResponse
+    public function products(Request $request, InventoryMatrixService $matrix, ProductLogisticsProjection $logistics, InventoryProductRatePreview $rates): Response|RedirectResponse
     {
         $view = $request->query('view');
         $canViewLogistics = (bool) $request->user()?->can('products.view');
@@ -69,6 +70,8 @@ final class InventoryController
             'warehouses' => $this->inventory->warehouses(), 'filters' => ['search' => $request->input('search'), 'warehouse' => $canonicalWarehouse, 'stock_status' => $request->input('stock_status')],
             'matrixRows' => fn () => $matrix->rows(),
             'canViewLogistics' => $canViewLogistics,
+            'canPreviewRates' => $canViewLogistics && (bool)$request->user()?->can('logistics.view'),
+            'rateScopes' => $view === 'logistics' && $canViewLogistics && $request->user()?->can('logistics.view') ? fn () => $rates->scopes() : [],
             'logisticsRows' => $view === 'logistics' ? fn () => $logistics->rows(array_column($matrix->rows(), 'id')) : null,
             'sourceRows' => $view === 'sources' ? fn () => $logistics->sources(array_column($matrix->rows(), 'id')) : null,
             'inventoryView' => in_array($request->query('view'), ['product','warehouse','logistics','sources'], true) ? $request->query('view') : ($request->has('warehouse') || $request->has('global_grid') ? 'warehouse' : null),
@@ -77,6 +80,19 @@ final class InventoryController
             'globalGridPilotAvailable' => GlobalGridPilot::available(),
             'globalGridPilotEnabled' => GlobalGridPilot::enabled($request),
         ]);
+    }
+
+    public function previewProductRate(Request $request, int $product, InventoryMatrixService $matrix, InventoryProductRatePreview $rates): JsonResponse
+    {
+        abort_unless($request->user()?->can('products.view') && $request->user()?->can('logistics.view'), 403);
+        abort_unless(in_array($product, array_column($matrix->rows(),'id'), true), 404);
+        $input = $request->validate([
+            'measurement_record_id'=>'required|integer|min:1','version_id'=>'required|integer|min:1',
+            'warehouse_code'=>'required|string|max:32','carrier'=>'required|string|max:64','service'=>'required|string|max:96',
+            'country'=>'required|string|regex:/^[A-Z]{2}$/D','postal_code'=>'nullable|string|max:32','as_of'=>'required|date_format:Y-m-d',
+            'eligibility_confirmed'=>'required|boolean',
+        ]);
+        return response()->json($rates->preview($product, $input));
     }
 
     public function exportProductLogistics(Request $request, InventoryMatrixService $matrix, ProductLogisticsProjection $logistics): StreamedResponse

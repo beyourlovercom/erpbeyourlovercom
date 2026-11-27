@@ -103,6 +103,37 @@ final class ProductInventoryLogisticsTest extends TestCase
         $this->assertSame('彩盒毛重（历史）',$projection->sources([$p->id])[0]['kind']);
     }
 
+    public function test_versioned_rate_preview_uses_adopted_shipping_measurement_only_and_never_mutates_data(): void
+    {
+        $u=$this->userWith(['inventory.view','products.view','logistics.view']);
+        $p=Product::create(['sku'=>'SIZE-QUOTE','name'=>'Quote','is_active'=>true,'length_cm'=>90,'width_cm'=>80,'height_cm'=>70,'shipping_weight_kg'=>9]);
+        $base=['product_id'=>$p->id,'created_by'=>$u->id,'packaging_method_key'=>'carton','packaging_length_cm'=>30,'packaging_width_cm'=>20,'packaging_height_cm'=>10,'packaged_weight_kg'=>0.75,'measured_at'=>now()];
+        $record=PackagingMeasurementRecord::create($base+['status'=>'approved']);
+        $profile=ProductPackagingProfile::create(['product_id'=>$p->id,'current_measurement_record_id'=>$record->id,'is_active'=>true]);
+        $id=\Tests\Support\InventoryProductRateFixture::create($u->id);
+        $draft=\Tests\Support\InventoryProductRateFixture::create($u->id,'draft');
+        $url='/inventory/products/'.$p->id.'/rate-preview';
+        $input=['measurement_record_id'=>$record->id,'version_id'=>$id,'warehouse_code'=>'FACTORY','carrier'=>'SYNTHETIC','service'=>'max-dim','country'=>'US','postal_code'=>'10001','as_of'=>'2026-11-27','eligibility_confirmed'=>true];
+        $this->actingAs($this->userWith(['inventory.view','products.view']))->postJson($url,$input)->assertForbidden();
+        $this->actingAs($u)->get('/inventory/products?view=logistics')->assertOk()->assertInertia(fn(Assert $page)=>$page->where('canPreviewRates',true)->has('rateScopes',1)->where('rateScopes.0.version_id',$id));
+        $q=$this->postJson($url,$input+['weight_kg'=>99,'dimensions_cm'=>[99,99,99]])->assertOk()->assertJsonPath('status','ready')->assertJsonPath('measurement_record_id',$record->id)->json();
+        $this->assertEqualsWithDelta(0.75,$q['components'][0]['actual_weight'],0.000001);
+        $this->assertEqualsWithDelta(1.2,$q['volume_weight_kg'],0.000001);
+        $this->assertEqualsWithDelta(1.5,$q['billable_weight_kg'],0.000001);
+        $this->assertEqualsWithDelta(20,$q['total_cny'],0.000001);
+        $this->assertSame('实重/体积重取大',$q['billing_basis']);
+        $this->postJson($url,[...$input,'version_id'=>$draft])->assertOk()->assertJsonPath('reason','rate_version_not_approved')->assertJsonPath('total_cny',null);
+        $this->postJson($url,[...$input,'eligibility_confirmed'=>false])->assertOk()->assertJsonPath('reason','eligibility_unconfirmed');
+        $this->postJson($url,[...$input,'country'=>'DE'])->assertOk()->assertJsonPath('reason','rate_scope_missing');
+        $this->postJson($url,[...$input,'measurement_record_id'=>$record->id+100])->assertOk()->assertJsonPath('reason','measurement_missing_or_changed');
+        $record->update(['status'=>'submitted']);
+        $this->postJson($url,$input)->assertOk()->assertJsonPath('reason','measurement_missing_or_changed')->assertJsonPath('total_cny',null);
+        $this->assertDatabaseCount('orders',0);
+        $this->assertDatabaseCount('logistics_rate_versions',2);
+        $this->assertDatabaseHas('product_packaging_profiles',['id'=>$profile->id,'current_measurement_record_id'=>$record->id]);
+        $this->assertSame('9.0000',$p->fresh()->shipping_weight_kg);
+    }
+
     public function test_inventory_permissions_and_export_and_catalog_exclusion(): void
     {
         $p=Product::create(['sku'=>'SIZE-D','name'=>'D','is_active'=>true]);
