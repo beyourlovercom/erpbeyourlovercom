@@ -107,6 +107,21 @@ final class FactoryNativeImportTest extends TestCase
             $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$p->id,'quantity_on_hand'=>0,'factory_native_status'=>'verified']);
             $this->assertDatabaseHas('warehouse_inventory',['warehouse_id'=>$factory->id,'product_id'=>$q->id,'quantity_on_hand'=>80,'factory_native_status'=>null]);
             $this->assertDatabaseHas('product_material_versions',['code_key'=>'OTHER-VERSION','factory_stock_approved'=>false,'factory_physical_qty'=>900]);
+            $this->assertDatabaseHas('products',['id'=>$p->id,'material_full_name'=>'Exact Name(A)']);
+        } finally {@unlink($path);}
+    }
+
+    public function test_legacy_confirmation_date_prevents_older_snapshot_overwrite_when_source_date_missing(): void
+    {
+        $factory=Warehouse::query()->where('code','FACTORY')->firstOrFail();
+        $actor=$this->actor(['inventory.operate']);
+        DB::table('inventory_sync_batches')->insert(['warehouse_id'=>$factory->id,'source_type'=>'xlsx',
+            'sync_mode'=>'partial','status'=>'confirmed','confirmer_user_id'=>$actor->id,'confirmed_at'=>now(),
+            'created_at'=>now(),'updated_at'=>now()]);
+        $path=$this->fixture([['A','Name A',12,0]]);
+        try {
+            $this->actingAs($actor)->post('/inventory/sync/factory-native',['file'=>$this->upload($path),'stock_count_at'=>now()->subDay()->toDateString()],['Accept'=>'application/json'])->assertConflict();
+            $this->assertDatabaseCount('factory_material_snapshots',0);
         } finally {@unlink($path);}
     }
 

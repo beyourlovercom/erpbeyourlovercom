@@ -42,7 +42,7 @@ final class FactoryNativeImportService
             }
             abort_if($latest && $latest->stock_count_at > $date,409,'文件日期早于最近工厂库存快照');
             $priorDate = DB::table('inventory_sync_batches')->where('warehouse_id',$warehouse->id)
-                ->where('status','confirmed')->whereNotNull('stock_count_at')->max('stock_count_at');
+                ->where('status','confirmed')->selectRaw('MAX(COALESCE(stock_count_at, confirmed_at)) as latest_source_date')->first()?->latest_source_date;
             abort_if($priorDate && substr((string)$priorDate,0,10)>$date,409,'文件日期早于最近已确认工厂库存');
             // Bootstrap only from the last confirmed legacy factory batch. An exact,
             // unique complete material name and current verified physical SKU are
@@ -124,18 +124,26 @@ final class FactoryNativeImportService
                 }
                 $materials=ProductMaterialVersion::query()->where('product_id',$productId)->get();
                 $current=DB::table('factory_material_snapshot_rows')->where('snapshot_id',$id)->where('product_id',$productId)->get();
-                // Do not choose an arbitrary display name from competing material versions.
-                if ($materials->count()===1 && $current->count()===1) {
+                // Prefer the sole currently observed, approved material scope.
+                // Do not arbitrarily pick a name from several approved versions.
+                $approvedMaterials=$materials->filter(fn($m)=>$m->factory_stock_approved);
+                $approvedRows=$current->filter(fn($r)=>$r->stock_approved);
+                $displayMaterial=null;
+                if ($approvedMaterials->count()===1 && $approvedRows->count()===1
+                    && (int)$approvedMaterials->first()->id===(int)$approvedRows->first()->material_version_id) {
+                    $displayMaterial=$approvedMaterials->first();
+                } elseif ($materials->count()===1 && $current->count()===1) {
+                    $displayMaterial=$materials->first();
+                }
+                if ($displayMaterial) {
                     $before=$product->material_full_name;
-                    $product->forceFill(['material_full_name'=>$materials->first()->material_name])->save();
+                    $product->forceFill(['material_full_name'=>$displayMaterial->material_name])->save();
                     if($before!==$product->material_full_name) $this->audit->record(AuditActor::user($actor,AuditSource::Web),
                         'product.factory_material_name_synced',Product::class,$productId,
                         ['material_full_name'=>$before],['material_full_name'=>$product->material_full_name],'factory_native_import');
                 }
                 // Only complete, explicitly approved product scopes may replace stock.
                 // Missing coverage holds previously native-authoritative stock only; legacy stock remains unchanged.
-                $approvedMaterials=$materials->filter(fn($m)=>$m->factory_stock_approved);
-                $approvedRows=$current->filter(fn($r)=>$r->stock_approved);
                 if ($approvedMaterials->isEmpty() || $approvedMaterials->count()!==$approvedRows->count()
                     || $approvedMaterials->pluck('id')->diff($approvedRows->pluck('material_version_id'))->isNotEmpty()) {
                     $held++;
