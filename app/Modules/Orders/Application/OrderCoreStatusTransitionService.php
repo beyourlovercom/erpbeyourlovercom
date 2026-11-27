@@ -5,8 +5,8 @@ namespace App\Modules\Orders\Application;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
-use App\Modules\Logistics\Application\LogisticsReviewAccess;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
+use App\Modules\Logistics\Application\LogisticsReviewAccess;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderWorkflowStatusHistory;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -30,7 +30,7 @@ final class OrderCoreStatusTransitionService
         // Keep the pre-existing Kaven/Dede dropdown access limited to their
         // respective classification choices; physical warehouse actions have
         // separate review permissions and endpoints.
-        $canEdit = $actor->can('orders.edit')
+        $canEdit = OrderLogisticsAuthority::allows($actor)
             || ($actor->can('domestic.review') && in_array($command, ['sending', 'out_of_stock'], true))
             || (app(LogisticsReviewAccess::class)->allows($actor)
                 && $command === 'out_of_stock');
