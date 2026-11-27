@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Experience\Controllers;
 use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
 use App\Modules\Inventory\Application\InventoryService;
+use App\Modules\Inventory\Application\InventoryAvailabilityProjection;
 use App\Modules\Inventory\Application\FactoryDemandForecast;
 use App\Modules\Inventory\Application\WarehouseLastReadStockService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
@@ -48,6 +49,7 @@ final class WarehouseController
         private readonly WarehouseShipmentProjection $shipments,
         private readonly FactoryDemandForecast $factoryDemand,
         private readonly WarehouseLastReadStockService $lastReadStock,
+        private readonly InventoryAvailabilityProjection $availability,
     ) {}
     public function create(): Response { return Inertia::render('Inventory/WarehouseCreate'); }
     public function store(Request $request): RedirectResponse
@@ -485,6 +487,7 @@ final class WarehouseController
             }
         }
 
+        $available = $this->availability->forRows($w->inventories);
         $factoryMetrics = $code === 'FACTORY' ? $this->factoryDemand->forInventories($w->inventories) : [];
         $lastReadByProduct = $code === 'US-LA' ? $this->lastReadStock->forWarehouse($w) : [];
 
@@ -524,8 +527,8 @@ final class WarehouseController
             'last_provider_inventory_sync_summary'=>$lastProviderSync?->after,
             'inventories'=>$w->inventories->map(fn($i)=>[
                 'id'=>$i->id,'product'=>['id'=>$i->product->id,'sku'=>$i->product->sku,'provider_sku'=>$providerSkus[(int) $i->product_id] ?? null,'name'=>$i->product->name],
-                'quantity_on_hand'=>$i->quantity_on_hand,'quantity_reserved'=>$i->quantity_reserved,'quantity_available'=>$i->quantity_available,
-                'stock_status'=>InventoryStockStatus::classify((int)$i->quantity_available),'stock_status_label'=>InventoryStockStatus::label(InventoryStockStatus::classify((int)$i->quantity_available)),
+                'quantity_on_hand'=>$i->quantity_on_hand,'quantity_reserved'=>$i->quantity_reserved,'quantity_available'=>$available[$i->id],
+                'stock_status'=>InventoryStockStatus::classify($available[$i->id]),'stock_status_label'=>InventoryStockStatus::label(InventoryStockStatus::classify($available[$i->id])),
             'inbound_at'=>$i->inbound_at?->format('Y-m-d'),'stay_days'=>$i->stay_days,'location'=>$i->location,'standard_qoh'=>$i->standard_qoh,'expected_restock_qty'=>$i->expected_restock_qty,
                 'last_read'=>isset($lastReadByProduct[(int)$i->product_id])
                     ? [
@@ -539,7 +542,7 @@ final class WarehouseController
                         'review_count'=>(int)$lastReadByProduct[(int)$i->product_id]->review_count,
                     ] : null,
                 'updated_at'=>$i->updated_at?->toIso8601String(),'product_updated_at'=>$i->product->updated_at?->toIso8601String(),
-                'replenishment'=>$this->inventory->replenishmentMetrics($i),
+                'replenishment'=>$this->inventory->replenishmentMetrics($i, $available[$i->id]),
                 'factory_demand'=>$factoryMetrics[(int)$i->id] ?? null,
             ])->values()->all(),
         ];

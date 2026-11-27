@@ -38,6 +38,8 @@ return [
     'production_tracking_apply_enabled' => filter_var(env('SHIPOUT_PRODUCTION_TRACKING_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     // Inventory is a completely separate, default-OFF, Owner-authorized ERP-only write.
     'production_inventory_apply_enabled' => filter_var(env('SHIPOUT_PRODUCTION_INVENTORY_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    // ERP1 only: explicitly enable the scheduled ERP mirror in Production.
+    'production_inventory_schedule_enabled' => filter_var(env('SHIPOUT_PRODUCTION_INVENTORY_SCHEDULE_ENABLED', false), FILTER_VALIDATE_BOOL),
     // Separate Owner-gated protection for dated FIFO lot decreases; default OFF.
     'production_fifo_apply_enabled' => filter_var(env('SHIPOUT_PRODUCTION_FIFO_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_fifo_approved_skus' => array_values(array_filter(array_map('trim', explode(',', (string) env('SHIPOUT_PRODUCTION_FIFO_APPROVED_SKUS', ''))))),
