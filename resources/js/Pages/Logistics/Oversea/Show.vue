@@ -19,6 +19,7 @@ import { gridColumn, type GridListRow } from '../../../Components/DataGrid/useGl
 const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../../Composables/useAccountGridPreferences'
 import { publishGlobalFeedback } from '../../../lib/globalFeedback'
+import { downloadLogisticsExport } from '../../../lib/downloadLogisticsExport'
 import { resolveWarehousePortal } from '../../../lib/warehousePortal'
 
 type WarehouseOption = { key:string; id:number; code:string; label:string; carrier:string|null; url:string }
@@ -1577,11 +1578,11 @@ const compactPages = computed<(number|string)[]>(() => {
           <template v-if="warehouse && view === 'pending'">
           <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button" :disabled="refreshBusy" @click="refreshOmsStatuses">{{refreshBusy?'查询中…':'刷新仓库状态'}}</button>
           <a v-if="warehouseKey === 'us-3sm'" class="file-button file-link" href="https://oms.xlwms.com/warehouse/packet" target="_blank" rel="noopener noreferrer">查看仓库草稿箱</a>
-          <a v-if="gridEnabled && exportSelection.length" class="file-button file-link"
+          <a @click.prevent="downloadLogisticsExport" v-if="gridEnabled && exportSelection.length" class="file-button file-link"
             :href="`${basePath}/export?${selectedExportQuery}`" data-testid="download-oversea-selected">⇩ 下载已选 {{ exportSelection.length }} 单</a>
-          <a v-if="warehouseKey==='us-3sm' && canOperate" class="file-button file-link"
+          <a @click.prevent="downloadLogisticsExport" v-if="warehouseKey==='us-3sm' && canOperate" class="file-button file-link"
             :href="`${basePath}/export`">⇩ 批量下载订单文件</a>
-          <a v-else class="file-button file-link" :href="`${basePath}/export`">⇩ 下载仓库下单表</a>
+          <a @click.prevent="downloadLogisticsExport" v-else class="file-button file-link" :href="`${basePath}/export`">⇩ 下载仓库下单表</a>
           <input ref="trackingFileInput" class="hidden-file" type="file" accept=".xlsx,.csv,.txt" @change="previewTrackingFile" />
           <button v-if="canOperate && canUploadTrackingFile" type="button" class="file-button primary" @click="chooseTrackingFile">⇧ 上传物流回传表</button>
           </template>
