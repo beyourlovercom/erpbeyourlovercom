@@ -5,6 +5,12 @@ on:
     paths:
       - 'database/migrations/**logistics_rate_center**'
       - 'tests/Feature/Logistics/LogisticsRateCenter*Test.php'
+      - 'app/Modules/Logistics/Application/LogisticsRate*.php'
+      - 'app/Modules/Logistics/Application/VersionedRateQuoteService.php'
+      - 'app/Modules/Logistics/Application/FulfillmentPlanCostEstimator.php'
+      - 'app/Modules/Logistics/Experience/Controllers/LogisticsRateCenterController.php'
+      - 'app/Modules/Logistics/Experience/Routes/web.php'
+      - 'resources/js/Pages/Logistics/RateCenter/**'
       - '.github/workflows/erp-logistics-rate-center-v1.yml'
 permissions:
   contents: read
@@ -19,7 +25,7 @@ jobs:
           extensions: mbstring, pdo_sqlite, sqlite3
           coverage: none
       - run: composer install --no-interaction --prefer-dist --no-progress
-      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php
+      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php
         env:
           APP_ENV: testing
           DB_CONNECTION: sqlite
@@ -49,7 +55,7 @@ jobs:
           extensions: mbstring, pdo_mysql
           coverage: none
       - run: composer install --no-interaction --prefer-dist --no-progress
-      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php
+      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php
         env:
           APP_ENV: testing
           DB_CONNECTION: mysql
