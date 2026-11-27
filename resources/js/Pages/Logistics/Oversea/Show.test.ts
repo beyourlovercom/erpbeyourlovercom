@@ -1684,6 +1684,25 @@ describe('DE Tianyun reuses MorePlus selected-order Dev batch UX', () => {
     }
   })
 
+  it('stops polling a missing historic DE batch and allows a fresh selection', async () => {
+    const fetchMock=vi.fn().mockResolvedValue({ok:false,status:404,json:async()=>({})})
+    vi.stubGlobal('fetch',fetchMock)
+    let page:ReturnType<typeof mountPage>|undefined
+    try {
+      page=mountPage({warehouseKey:'de-tianyun',warehouse:deWarehouse,
+        warehouseOptions:[...warehouseOptions,deWarehouse],deTianyunBatchUi:true,
+        deTianyunLatestBatch:{id:'00000000-0000-4000-8000-000000000999',status:'running',dry_run:false,total:2},
+        rows:{...usSmPendingRows,data:[rowA]}})
+      await vi.waitFor(()=>expect(page!.text()).toContain('已停止自动查询'))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      document.dispatchEvent(new Event('visibilitychange'))
+      await new Promise(resolve=>setTimeout(resolve,0))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      await page.find('input[aria-label="选择当前页待发货订单"]').setValue(true)
+      expect(page.get('[data-testid="de-tianyun-selected-push"]').attributes('disabled')).toBeUndefined()
+    } finally {page?.unmount();vi.unstubAllGlobals()}
+  })
+
   it('never exposes a DE push button when the Dev-only prop is absent', () => {
     const page=mountPage({warehouseKey:'de-tianyun',warehouse:deWarehouse,
       rows:{...usSmPendingRows,data:[rowA]},deTianyunBatchUi:false})
