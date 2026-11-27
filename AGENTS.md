@@ -1,4 +1,17 @@
-# HIGHEST OWNER-FROZEN ERP2 ADVANCED PARITY STANDARD V2 (2026-11-26)
+# HIGHEST OWNER P0 — ERP1 ONLY / ERP2 DEVELOPMENT FREEZE (2026-11-27)
+
+**Rule ID: `ERP1_ONLY_DEVELOPMENT_P0_V2` · OWNER APPROVED · PERMANENT · MANDATORY.** ERP1 (`erp.beyourlover.com`) is the ONLY active BYL ERP development, bug-fix, upgrade, integration, test/UAT and release target. Concentrate all ERP engineering resources on ERP1. This is the highest project-scope and delivery-target rule, overriding ALL earlier ERP2 development, parity, forward migration, dual-site acceptance, compatibility-sync and dual-release instructions regardless of their former P0 status, including instructions in existing work packages, roadmaps, handoffs and subordinate documents. Security, business correctness, data integrity, CI, Owner UAT and production authorization gates remain mandatory.
+
+- **ERP2 is frozen:** no new development, feature upgrades, bug-fix work, forward migration, ERP2-only compatibility work, build/UAT or synchronized deployment to ERP2. Preserve historical code, candidates, artifacts and evidence; do not delete historical assets or shut down a runtime merely because development is frozen.
+- **ERP1 only:** all new and ongoing ERP work packages, plans, PR scopes, testing, acceptance, changelogs and release targets must be ERP1-only. Re-scope existing dual-target packages at their next execution step; do not wait for ERP2 or duplicate work for it. Do not resume any ERP2-targeted tasks unless the Owner explicitly issues a new superseding directive.
+- **ERP V4 native reverse UI migration is ERP1 work:** preserve ERP1's Laravel + Vue + Inertia business architecture and permissions. Read and reuse mature ERP2 visual/interaction assets as reference for ERP1 (navigation, header, tabs, Unified Grid V2, feedback island and compact UI) in the approved V4 work package only. ERP2 remains a historical reference, not an implementation or acceptance target. V3 migration assets are regression tools, not a forward business-rebuild program.
+- **Mandatory scope gate:** before starting or resuming a package, verify ERP1-only scope; before merging/releasing, verify no ERP2-specific implementation or deployment is included. Any ERP2-targeted work is out of scope and must stop. Historical references below are retained for provenance and must not be interpreted as current ERP2 authorization.
+
+Effective immediately as Owner direction; this documentation change does not deploy or modify either runtime.
+
+---
+
+# HISTORICAL / SUPERSEDED FOR ERP2 EXECUTION — ERP2 ADVANCED PARITY STANDARD V2 (2026-11-26)
 
 **Rule ID: `ERP2_ADVANCED_PARITY_P0_V2` · OWNER APPROVED · PERMANENT P0.** Mandatory for every existing, migrated and new ERP2 business page, feature, version sync and release acceptance. ERP1 is the minimum functional and UX baseline; ERP2 MUST inherit all valid functionality and equal or improve interaction and design. No simplified workbenches, missing actions, developer-form replacements or unjustified extra steps. Canonical Laravel business rules, role-based effective permissions, security and safety gates remain authoritative.
 
@@ -10,7 +23,7 @@ Canonical full standard and acceptance-record contract: [docs/ERP2_ADVANCED_PARI
 
 ---
 
-# HIGHEST OWNER-FROZEN ERP2 GLOBAL FRONTEND STANDARDS P0 (2026-11-26)
+# HISTORICAL / SUPERSEDED FOR ERP2 EXECUTION — ERP2 GLOBAL FRONTEND STANDARDS P0 (2026-11-26)
 
 **Rule ID: ERP2_GLOBAL_FRONTEND_STANDARDS_P0_V1 · OWNER APPROVED · MANDATORY.** Applies to every existing, migrated and new ERP2 business page. Incorporate into the existing PA4–PA6 full-page consistency work package; no independent implementation stream or separate production release.
 
@@ -24,13 +37,13 @@ Canonical full standard and acceptance-record contract: [docs/ERP2_ADVANCED_PARI
 
 # OWNER-FROZEN ERP RELEASE LOG AND RISK-BASED BACKUP (2026-11-26)
 
-**Mandatory for ERP1 and ERP2.** Each verified release must be recorded in the single canonical Markdown file `resources/content/changelog/erp-changelog.md`. Add a dated section (`## YYYY-MM-DD`, Beijing date; append to an existing same-date section), concise Chinese user-facing changes grouped by module, and actual ERP1/ERP2 release scope. Do not label merged-only, candidate-only or pending UAT work as released. Preserve prior entries; no database-backed changelog editor, no separate ERP2 copy of the content. Synchronize the committed Markdown to the affected runtime and verify the read-only `/settings/changelog` page; later content changes require no frontend rebuild.
+**Mandatory for ERP1 only for all new releases under ERP1_ONLY_DEVELOPMENT_P0_V2; preserve historical ERP2 release records.** Each verified release must be recorded in the single canonical Markdown file `resources/content/changelog/erp-changelog.md`. Add a dated section (`## YYYY-MM-DD`, Beijing date; append to an existing same-date section), concise Chinese user-facing changes grouped by module, and actual ERP1 release scope. Do not label merged-only, candidate-only or pending UAT work as released. Preserve prior entries; no database-backed changelog editor, no separate ERP2 copy of the content. Synchronize the committed Markdown to the affected runtime and verify the read-only `/settings/changelog` page; later content changes require no frontend rebuild.
 
 Routine low-risk and normal releases do not require a new database backup by default. Assess actual data impact, not the name of the feature. Schema changes, migrations, destructive or mass historical writes require a verified pre-change database backup. For other high-impact business changes assess risk explicitly. Use ERP's authorized two-stage backup entry when needed; confirm file integrity and timestamp, without requiring download. Preserve CI, authorization, rollback and readback gates; never bypass a blocked security action.
 
 ---
 
-# HIGHEST OWNER-FROZEN ERP1 ONLY RELEASE (2026-11-27)
+# EARLIER ERP1 ONLY RELEASE DIRECTIVE (2026-11-27) — strengthened by ERP1_ONLY_DEVELOPMENT_P0_V2
 
 Owner directive: stop independent ERP2 upgrades, feature development and synchronized releases. Preserve all historical ERP2 artifacts. ERP1 remains the sole business development and production release target; ERP V4 native reverse UI migration into ERP1 may continue. Do not redeploy ERP2 or resume the forward business migration without explicit new Owner authorization.
 
@@ -58,7 +71,7 @@ Before handing off an acceptance URL, explicitly verify the unified login; do no
 
 ---
 
-# HIGHEST OWNER-FROZEN ERP2 FRONTEND-ONLY ARCHITECTURE V1 (2026-11-23)
+# HISTORICAL / SUPERSEDED FOR ERP2 EXECUTION — ERP2 FRONTEND-ONLY ARCHITECTURE V1 (2026-11-23)
 
 **Rule ID: `ERP2_OWNER_FROZEN_FRONTEND_ONLY_V1` · Owner approved · ERP2 highest priority.** This is the canonical ERP2 upgrade architecture, superseding earlier ERP2 parallel-system / rebuilding roadmap assumptions. **ERP2 is a Vben/Vue/AG Grid FRONTEND replacement for ERP1, NOT a second ERP.** Reuse the existing ERP1 Laravel Controllers/Services, business rules, user authentication and permissions, products/SKUs, KOL, orders, inventory, warehouse mapping, shipment and accounting models unchanged. For Dev, restore a matching-schema copy of the existing ERP1 database into a **separate isolated ERP2 Dev database**; never write from Dev to ERP1 Production DB. Do not rebuild a second SKU, auth, warehouse, logistics or order service. JSON transport adapters are allowed; extra business engines are not.
 
