@@ -102,6 +102,10 @@ final class DeAuthoritativePhysicalStockSyncTest extends TestCase
         self::assertSame(2, $result['quarantined_sku_count']);
         self::assertSame([$product->id], $snapshot->fresh()->summary['de_physical_applied_product_ids']);
         self::assertSame([$product->id => 2], app(XlwmsInventoryCoverage::class)->providerAvailableByProductId($de->id));
+        $stock->update(['quantity_reserved' => 1]);
+        $projection = app(\App\Modules\Inventory\Application\InventoryAvailabilityProjection::class);
+        self::assertSame(1, $projection->forRows(collect([$stock->fresh()]))[$stock->id]);
+        self::assertSame(2, $stock->fresh()->quantity_on_hand);
         self::assertSame(1, DB::table('inventory_adjustments')->where('warehouse_id', $de->id)->count());
     }
 
