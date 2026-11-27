@@ -7,6 +7,7 @@ use App\Modules\Logistics\Experience\Controllers\DeTianyunOutboundBatchControlle
 use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
+use App\Modules\Logistics\Experience\Controllers\LogisticsRateCenterController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsTrackingPushController;
 use App\Modules\Logistics\Experience\Controllers\TingonFulfillmentController;
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
@@ -210,6 +211,12 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/review', [LogisticsController::class, 'review'])->middleware('can:logistics.view')->name('logistics.review');
     Route::get('/logistics/completed', [LogisticsController::class, 'completed'])->middleware('can:logistics.view')->name('logistics.completed');
     Route::get('/logistics/cancelled', [LogisticsController::class, 'cancelled'])->middleware('can:logistics.view')->name('logistics.cancelled');
+    Route::get('/logistics/rates', [LogisticsRateCenterController::class, 'index'])->middleware('can:logistics.view')->name('logistics.rates');
+    Route::get('/logistics/rates/{version}/original', [LogisticsRateCenterController::class, 'download'])->whereNumber('version')->middleware('can:logistics.view')->name('logistics.rates.original');
+    Route::post('/logistics/rates/preview', [LogisticsRateCenterController::class, 'preview'])->middleware(['can:logistics.view','can:logistics.operate','can:system.permissions.manage','throttle:100,1,erp-logistics:logistics.rates.preview:'])->name('logistics.rates.preview');
+    Route::post('/logistics/rates/draft', [LogisticsRateCenterController::class, 'draft'])->middleware(['can:logistics.view','can:logistics.operate','can:system.permissions.manage','throttle:100,1,erp-logistics:logistics.rates.draft:'])->name('logistics.rates.draft');
+    Route::post('/logistics/rates/{version}/approve-germany-domestic', [LogisticsRateCenterController::class, 'approveGermanyDomestic'])->whereNumber('version')->middleware(['can:logistics.view','can:logistics.operate','can:system.permissions.manage','throttle:100,1,erp-logistics:logistics.rates.approve:'])->name('logistics.rates.approve-germany-domestic');
+    Route::post('/logistics/rates/quote', [LogisticsRateCenterController::class, 'quote'])->middleware(['can:logistics.view','throttle:100,1,erp-logistics:logistics.rates.quote:'])->name('logistics.rates.quote');
     Route::get('/logistics/carriers', [CarrierController::class, 'index'])->middleware('can:logistics.view')->name('logistics.carriers');
     Route::post('/logistics/carriers', [CarrierController::class, 'store'])->middleware('can:logistics.operate')->name('logistics.carriers.store');
     Route::get('/logistics/carriers/{carrier}', [CarrierController::class, 'show'])->middleware('can:logistics.view')->name('logistics.carriers.show');
