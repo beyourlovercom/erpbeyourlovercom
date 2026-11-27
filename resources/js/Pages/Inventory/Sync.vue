@@ -83,16 +83,17 @@ interface RecentBatch {
 
 const props = defineProps<{
   warehouses: Warehouse[]
+  initialWarehouseId?: number | null
   apiAvailable: boolean
   apiStatusLabel: string
   recentBatches: RecentBatch[]
 }>()
 
 type Tab = 'paste' | 'file' | 'api'
-const activeTab = ref<Tab>('paste')
+const activeTab = ref<Tab>(props.initialWarehouseId ? 'file' : 'paste')
 
 // Form state
-const selectedWarehouseId = ref<number | null>(null)
+const selectedWarehouseId = ref<number | null>(props.warehouses.some(w => w.id === props.initialWarehouseId) ? props.initialWarehouseId! : null)
 const syncMode = ref<'partial' | 'full'>('partial')
 const stockCountAt = ref('')
 const pasteText = ref('')
