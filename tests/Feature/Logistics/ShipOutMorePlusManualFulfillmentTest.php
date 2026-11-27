@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Application\WarehouseLastReadStockService;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\ShipOut\ShipOutPeriodicTrackingStage;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\CarrierService;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
@@ -16,6 +17,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class ShipOutMorePlusManualFulfillmentTest extends TestCase
@@ -282,16 +284,16 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
 
     public static function periodicTrackingStatuses(): array
     {
-        return ['processing label'=>[2,'warehouse_awaiting'], 'final outbound'=>[4,'provider_shipped']];
+        return ['processing label' => [2, 'warehouse_awaiting'], 'final outbound' => [4, 'provider_shipped']];
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('periodicTrackingStatuses')]
+    #[DataProvider('periodicTrackingStatuses')]
     public function test_periodic_tracking_stage_preserves_pending_and_never_overwrites(int $status, string $state): void
     {
         [, $order] = $this->prepare();
         $this->setupVerifiedAutoShip($order);
-        DB::table('shipout_oms_readbacks')->where('order_id', $order->id)->update(['state'=>$state,'provider_status'=>$status]);
-        $order->shipment->warehouse()->update(['code'=>'us-la']);
+        DB::table('shipout_oms_readbacks')->where('order_id', $order->id)->update(['state' => $state, 'provider_status' => $status]);
+        $order->shipment->warehouse()->update(['code' => 'us-la']);
         $tracking = '9434650105794040132223';
         Http::preventStrayRequests();
         Http::fake(['https://open.shipout.com/api/*' => Http::response([
@@ -308,7 +310,7 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
         $old = $this->app['env'];
         $this->app->instance('env', 'production');
         try {
-            $stage = app(\App\Modules\Logistics\Application\ShipOut\ShipOutPeriodicTrackingStage::class);
+            $stage = app(ShipOutPeriodicTrackingStage::class);
             self::assertTrue($stage->stage($order->id));
             self::assertSame($tracking, $order->fresh()->shipment->tracking_number);
             self::assertSame('pending', $order->fresh()->shipment->shipment_status);
@@ -320,6 +322,43 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
             $before = count(Http::recorded());
             $this->artisan('shipout:reconcile-oms --apply')->assertExitCode(0);
             self::assertSame($before, count(Http::recorded()));
+            Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+        } finally {
+            $this->app->instance('env', $old);
+        }
+    }
+
+    public function test_periodic_final_status_without_tracking_stops_and_preserves_evidence(): void
+    {
+        [, $order] = $this->prepare();
+        $this->setupVerifiedAutoShip($order);
+        config()->set('shipout.oms_reconciliation_enabled', true);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'queryListV2')) {
+                return Http::response(['result' => 'OK', 'data' => ['total' => 1, 'records' => [[
+                    'orderNO' => 'C42141-007', 'orderId' => 'OMS-EXISTING-ONE-ONLY',
+                    'warehouseId' => '1265864414750314497', 'status' => 4,
+                ]]]]);
+            }
+
+            return Http::response(['result' => 'OK', 'data' => [
+                'orderNO' => 'C42141-007', 'orderId' => 'OMS-EXISTING-ONE-ONLY',
+                'warehouseId' => '1265864414750314497', 'status' => 4,
+                'orderShipments' => [['outboundStatus' => 4, 'trackingNumber' => null, 'packageList' => []]],
+            ]]);
+        });
+        $old = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            $this->artisan('shipout:reconcile-oms --apply')->assertExitCode(0);
+            self::assertNull($order->fresh()->shipment->tracking_number);
+            self::assertSame('pending', $order->fresh()->shipment->shipment_status);
+            $this->assertDatabaseHas('shipout_oms_readbacks', ['order_id' => $order->id, 'state' => 'provider_shipped', 'reason_code' => 'TERMINAL_TRACKING_REVIEW']);
+            $this->assertDatabaseCount('shipout_oms_readbacks', 3);
+            Http::assertSentCount(2);
+            $this->artisan('shipout:reconcile-oms --apply')->assertExitCode(0);
+            Http::assertSentCount(2);
             Http::assertNotSent(fn ($r) => $r->method() === 'POST');
         } finally {
             $this->app->instance('env', $old);
