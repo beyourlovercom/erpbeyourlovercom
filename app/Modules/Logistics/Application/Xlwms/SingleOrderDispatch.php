@@ -218,6 +218,11 @@ final class SingleOrderDispatch
                 $identityMatches = $remote['third_order_no'] === $attempt->third_order_no
                     && $remote['refer_order_no'] === (string) $order->erp_order_id;
             }
+            if ($connection->oms_warehouse_code === 'US01' && $attempt->state === 'oms_create_confirmed') {
+                $identityMatches = $remote['third_order_no'] === $attempt->third_order_no
+                    && $remote['refer_order_no'] === substr((string) ($order->erp_order_id ?: $order->id), 0, 100)
+                    && $remote['platform_order_no'] === substr((string) ($order->external_order_number ?: $order->erp_order_id ?: $order->id), 0, 50);
+            }
             if (! $identityMatches) {
                 throw new \RuntimeException('OMS_STATUS_IDENTITY_MISMATCH');
             }

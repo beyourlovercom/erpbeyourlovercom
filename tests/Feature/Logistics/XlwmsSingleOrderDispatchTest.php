@@ -136,7 +136,13 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_us_ny_canary_exact_order_creates_once_and_preserves_pending_status(): void
+    public static function nyCanaryActors(): array
+    {
+        return ['authenticated logistics operator'=>[false], 'owner-authorized system CLI'=>[true]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('nyCanaryActors')]
+    public function test_us_ny_canary_exact_order_creates_once_and_preserves_pending_status(bool $system): void
     {
         $o = $this->orderFixture();
         $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
@@ -159,17 +165,21 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         config()->set('xlwms.us_ny_canary_enabled',true);
         config()->set('xlwms.us_ny_canary_order_id',$o->id);
         config()->set('xlwms.us_ny_canary_actor_id',$actor->id);
+        config()->set('xlwms.us_ny_canary_system_enabled',$system);
+        $executor = $system ? null : $actor->id;
         $p = app(\App\Modules\Logistics\Application\Xlwms\SingleOrderPreview::class)->forOrder($o->fresh(),false,false,'US-NY');
         self::assertSame([], $p['blockers']);
         $payload = $p['payload'];
         $created = false;
+        $remoteTracking = '9400111206213000000000';
+        $remotePlatform = $payload['platformOrderNo'];
         Http::preventStrayRequests();
-        Http::fake(function ($req) use (&$created,$payload) {
+        Http::fake(function ($req) use (&$created,$payload,&$remoteTracking,&$remotePlatform) {
             $url=$req->url();
             if (str_contains($url,'outboundOrder/detail')) return Http::response(['code'=>200,'data'=>[]]);
             if (str_contains($url,'outboundOrder/pageList')) {
-                $rows=$created ? [['outboundOrderNo'=>'NY-OMS-001','whCode'=>'US01','status'=>2,'logisticsTrackNo'=>'NYTRACK001',
-                    'thirdOrderNo'=>$payload['thirdOrderNo'],'referOrderNo'=>$payload['referOrderNo'],'platformOrderNo'=>$payload['platformOrderNo']]] : [];
+                $rows=$created ? [['outboundOrderNo'=>'NY-OMS-001','whCode'=>'US01','status'=>2,'logisticsTrackNo'=>$remoteTracking,
+                    'thirdOrderNo'=>$payload['thirdOrderNo'],'referOrderNo'=>$payload['referOrderNo'],'platformOrderNo'=>$remotePlatform]] : [];
                 return Http::response(['code'=>200,'data'=>['records'=>$rows,'total'=>count($rows),'page'=>1,'pageSize'=>10,'pages'=>count($rows)]]);
             }
             if (str_contains($url,'logistics/channel/list')) return Http::response(['code'=>200,'data'=>[['channelCode'=>'USPS-NJ','whCodes'=>[]]]]);
@@ -185,16 +195,47 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             throw new \RuntimeException('unexpected fake');
         });
         $svc=app(\App\Modules\Logistics\Application\Xlwms\UsNyCanaryDispatch::class);
-        $r=$svc->create($o->id,$actor->id,$p['payload_hash']);
+        if ($system) {
+            config()->set('xlwms.us_ny_canary_system_enabled',false);
+            $old=$this->app['env'];$this->app->instance('env','production');
+            try {
+                $this->artisan('xlwms:us-ny-canary',['order'=>$o->erp_order_id,'--execute'=>true,'--confirmation'=>'WRONG'])->assertExitCode(1);
+                Http::assertNothingSent();
+                $this->artisan('xlwms:us-ny-canary',['order'=>$o->erp_order_id,'--execute'=>true,
+                    '--confirmation'=>'OWNER_APPROVED_US_NY_'.$o->erp_order_id])->assertExitCode(0);
+                self::assertFalse(config('xlwms.us_ny_canary_system_enabled'));
+            } finally {$this->app->instance('env',$old);}
+            config()->set('xlwms.us_ny_canary_system_enabled',true);
+            $attempt=XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail();
+            $r=['state'=>$attempt->state,'oms_order_no'=>$attempt->oms_order_no,'tracking_present'=>filled($attempt->oms_tracking_no)];
+        } else {
+            $r=$svc->create($o->id,$executor,$p['payload_hash']);
+            self::assertNull($o->fresh()->shipment->tracking_number);
+        }
         self::assertSame('oms_create_confirmed',$r['state']);
         self::assertSame('NY-OMS-001',$r['oms_order_no']);
         self::assertTrue($r['tracking_present']);
         self::assertSame('pending',$o->fresh()->shipment->shipment_status);
-        self::assertNull($o->fresh()->shipment->tracking_number);
         self::assertCount(1,Http::recorded(fn($req)=>str_contains($req->url(),'outboundOrder/create')));
-        try {$svc->create($o->id,$actor->id,$p['payload_hash']);self::fail('duplicate must block');}
-        catch (\RuntimeException $e) {self::assertSame('US_NY_ATTEMPT_EXISTS',$e->getMessage());}
+        try {$svc->create($o->id,$executor,$p['payload_hash']);self::fail('duplicate must block');}
+        catch (\RuntimeException $e) {self::assertSame($system ? 'US_NY_PREFLIGHT_BLOCKED_OR_STALE' : 'US_NY_ATTEMPT_EXISTS',$e->getMessage());}
         self::assertCount(1,Http::recorded(fn($req)=>str_contains($req->url(),'outboundOrder/create')));
+        $stage=app(\App\Modules\Logistics\Application\Xlwms\UsNyTrackingStage::class);
+        $r=$stage->refreshAndStage($o->id);
+        self::assertTrue($system ? $r['already_matches'] : $r['staged']);
+        self::assertSame('9400111206213000000000',$o->fresh()->shipment->tracking_number);
+        self::assertSame('pending',$o->fresh()->shipment->shipment_status);
+        self::assertSame('pending_shipment',$o->fresh()->order_status->value);
+        self::assertTrue($stage->refreshAndStage($o->id)['already_matches']);
+        $remoteTracking='9400111206213000000001';
+        self::assertFalse($stage->refreshAndStage($o->id)['staged']);
+        self::assertSame('9400111206213000000000',$o->fresh()->shipment->tracking_number);
+        $remotePlatform='WRONG-PLATFORM';
+        self::assertFalse($stage->refreshAndStage($o->id)['fresh']);
+        self::assertSame('9400111206213000000000',$o->fresh()->shipment->tracking_number);
+
+        self::assertCount(1,Http::recorded(fn($req)=>str_contains($req->url(),'outboundOrder/create')));
+        self::assertSame($executor, XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail()->requested_by === null ? null : (int)XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail()->requested_by);
     }
 
     public function test_owner_selected_no_shipping_service_creates_draft_without_label_fields(): void

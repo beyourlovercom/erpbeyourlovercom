@@ -34,3 +34,10 @@ Candidate:
 - Production release still d646cdd7; encrypted NY credential binding missing. Review actor identity is not assumed to be the remote executor.
 - Single-order canary service added: independent default-off exact order/authorized actor configuration, durable attempt claim, complete duplicate scan, live channel/catalog and stock preflight, final payload fingerprint recheck, one create, exact identity readback, uncertainty terminal state. HTTP fake test demonstrates one create despite unrelated unmapped SKU and no duplicate on retry, while shipment/Woo remains pending. Production unchanged.
 - 143 targeted tests / 844 assertions pass locally. No actual CREATE issued. Before live canary: deploy accepted candidate through ERP1-only release gate, bind US01 encrypted credentials via existing trusted interactive terminal, explicitly authenticate the actual logistics operator and run exact canary. Do not bypass via ad hoc provider POST or impersonate reviewer. Batch UI/automatic tracking apply and actual production inventory sync remain open.
+
+## Owner authorizes merge/release and one live order
+- CLI exact order and confirmation gate added; system operator is audited as system, reviewer remains actual user 19. Default-off, process-local system authorization and exact order ID; no web route for CLI.
+- Signed identity readback checks all three references and warehouse. Tracking staging accepts numeric domestic USPS 20–34 digits only, preserves existing conflicting number, requires pending shipment and approved review, does not mark shipped or sync Woo.
+- Tested full CLI path with HTTP fake, wrong confirmation no network, duplicate retry blocked, identity mismatch and tracking overwrite blocked. 144 focused tests / 878 assertions PASS.
+- Automatic local-file credential import action blocked by platform security check; not implemented or retried. Use existing trusted interactive credential provisioning command after accepted ERP1 release. No production credential binding, real CREATE or tracking writes in this run.
+- Prior PR head 1dad9184 all four CI checks PASS; latest head requires fresh exact-head CI before merge.

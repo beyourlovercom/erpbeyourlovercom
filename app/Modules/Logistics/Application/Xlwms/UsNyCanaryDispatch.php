@@ -19,8 +19,14 @@ final class UsNyCanaryDispatch
         private readonly XlwmsOrderGateway $oms, private readonly XlwmsInventoryGateway $stock,
         private readonly XlwmsInventoryPageParser $parser) {}
 
-    private static function authorized(int $orderId, int $actorId): bool
+    private static function authorized(int $orderId, ?int $actorId): bool
     {
+        if ($actorId === null) {
+            return app()->runningInConsole() && app()->environment('production', 'testing')
+                && config('xlwms.us_ny_canary_enabled', false)
+                && config('xlwms.us_ny_canary_system_enabled', false)
+                && $orderId > 0 && $orderId === (int) config('xlwms.us_ny_canary_order_id');
+        }
         $actor = User::query()->find($actorId);
         return app()->environment('production', 'testing')
             && config('xlwms.us_ny_canary_enabled', false)
@@ -33,7 +39,7 @@ final class UsNyCanaryDispatch
     {
         $attempt = XlwmsDispatchAttempt::query()->where('order_id', $orderId)
             ->where('warehouse_id', $connection->warehouse_id)->where('state', 'request_in_flight')->first();
-        return $attempt && self::authorized($orderId, (int) $attempt->requested_by)
+        return $attempt && self::authorized($orderId, $attempt->requested_by === null ? null : (int) $attempt->requested_by)
             && hash_equals((string) $attempt->request_fingerprint, self::hash($payload))
             && $attempt->third_order_no === 'BYL-ERP-'.$orderId;
     }
@@ -104,7 +110,7 @@ final class UsNyCanaryDispatch
         }
     }
 
-    public function create(int $id, int $actorId, string $hash): array
+    public function create(int $id, ?int $actorId, string $hash): array
     {
         if (! self::authorized($id, $actorId)) throw new RuntimeException('US_NY_CANARY_NOT_AUTHORIZED');
         [$order, $connection, $payload] = $this->ready($id, $hash);
@@ -116,6 +122,13 @@ final class UsNyCanaryDispatch
                 'state'=>'checking_existing']);
         });
         try {
+            if ($actorId === null) {
+                app(\App\Modules\Audit\Application\Contracts\AuditRecorder::class)->record(
+                    \App\Modules\Audit\Application\AuditActor::system(\App\Modules\Audit\Application\AuditSource::InternalSystem),
+                    'logistics.us_ny_owner_canary_started', XlwmsDispatchAttempt::class, $attempt->id,
+                    after: ['order_id'=>$id, 'warehouse_id'=>$attempt->warehouse_id, 'reviewed_by'=>$order->shipment->overseaReview->reviewed_by],
+                    reason: 'owner_authorized_exact_one_order_cli_canary');
+            }
             $matches = $this->oms->findExisting($connection, $payload['thirdOrderNo'], $payload['platformOrderNo'],
                 [$payload['referOrderNo'], (string) $order->external_order_number]);
             if ($matches !== []) throw new RuntimeException('OMS_DUPLICATE_ORDER');

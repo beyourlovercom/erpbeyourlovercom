@@ -45,6 +45,7 @@ final class LogisticsServiceProvider extends ServiceProvider
                 RepairProductionUatFulfillmentCommand::class,
                 SyncDeliveryEvidenceCommand::class,
                 VerifyXlwmsOutboundReadOnlyCommand::class,
+                \App\Modules\Logistics\Experience\Console\Commands\UsNyCanaryCommand::class,
             ]);
         }
     }
