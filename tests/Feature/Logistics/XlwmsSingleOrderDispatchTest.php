@@ -136,6 +136,67 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_us_ny_canary_exact_order_creates_once_and_preserves_pending_status(): void
+    {
+        $o = $this->orderFixture();
+        $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        $item = $o->items()->firstOrFail();
+        $o->shipment()->update(['warehouse_id'=>$ny->id,'carrier'=>'USPS','service'=>'USPS Priority Mail','carrier_service_id'=>null]);
+        $o->forceFill(['routing_warehouse_code'=>'US-NY','workflow_status'=>'sending'])->save();
+        $o->fresh()->shipment->overseaReview()->update(['reviewed_warehouse_id'=>$ny->id]);
+        WarehouseOpenApiConnection::query()->create(['warehouse_id'=>$ny->id,'provider'=>'xlwms','oms_warehouse_code'=>'US01',
+            'app_key_encrypted'=>'FAKE_NY_KEY','app_secret_encrypted'=>'FAKE_NY_SECRET']);
+        ProductWarehouseSku::query()->create(['warehouse_id'=>$ny->id,'product_id'=>$item->product_id,'sku'=>'NY-PHYSICAL',
+            'is_active'=>true,'verified_at'=>now()]);
+        WarehouseInventory::query()->create(['warehouse_id'=>$ny->id,'product_id'=>$item->product_id,
+            'quantity_on_hand'=>10,'quantity_reserved'=>0]);
+        $role = \App\Modules\Identity\Infrastructure\Models\Role::query()->create(['key'=>'ny-test','label'=>'NY test']);
+        $perm = \App\Modules\Identity\Infrastructure\Models\Permission::query()->firstOrCreate(['key'=>'logistics.operate'],['label'=>'Logistics operate']);
+        $role->permissions()->attach($perm);
+        $actor = \App\Modules\Identity\Infrastructure\Models\User::factory()->create(['is_active'=>true]);
+        $actor->roles()->attach($role);
+        config()->set('xlwms.us_sm_outbound_entry_mode','oms_manual_draft');
+        config()->set('xlwms.us_ny_canary_enabled',true);
+        config()->set('xlwms.us_ny_canary_order_id',$o->id);
+        config()->set('xlwms.us_ny_canary_actor_id',$actor->id);
+        $p = app(\App\Modules\Logistics\Application\Xlwms\SingleOrderPreview::class)->forOrder($o->fresh(),false,false,'US-NY');
+        self::assertSame([], $p['blockers']);
+        $payload = $p['payload'];
+        $created = false;
+        Http::preventStrayRequests();
+        Http::fake(function ($req) use (&$created,$payload) {
+            $url=$req->url();
+            if (str_contains($url,'outboundOrder/detail')) return Http::response(['code'=>200,'data'=>[]]);
+            if (str_contains($url,'outboundOrder/pageList')) {
+                $rows=$created ? [['outboundOrderNo'=>'NY-OMS-001','whCode'=>'US01','status'=>2,'logisticsTrackNo'=>'NYTRACK001',
+                    'thirdOrderNo'=>$payload['thirdOrderNo'],'referOrderNo'=>$payload['referOrderNo'],'platformOrderNo'=>$payload['platformOrderNo']]] : [];
+                return Http::response(['code'=>200,'data'=>['records'=>$rows,'total'=>count($rows),'page'=>1,'pageSize'=>10,'pages'=>count($rows)]]);
+            }
+            if (str_contains($url,'logistics/channel/list')) return Http::response(['code'=>200,'data'=>[['channelCode'=>'USPS-NJ','whCodes'=>[]]]]);
+            if (str_contains($url,'product/pagelist')) return Http::response(['code'=>200,'data'=>['records'=>[['sku'=>'NY-PHYSICAL','approveStatus'=>2]]]]);
+            if (str_contains($url,'integratedInventory/pageOpen')) return Http::response(['code'=>200,'data'=>[
+                'records'=>[['sku'=>'NY-PHYSICAL','whCode'=>'US01','stockType'=>0,'productTotalAmount'=>10,'productStockDtl'=>['availableAmount'=>9,'lockAmount'=>1]],
+                    ['sku'=>'UNMAPPED-OTHER','whCode'=>'US01','stockType'=>0,'productTotalAmount'=>2,'productStockDtl'=>['availableAmount'=>2,'lockAmount'=>0]]],
+                'total'=>2,'page'=>1,'pageSize'=>10,'pages'=>1]]);
+            if (str_contains($url,'outboundOrder/create')) {
+                $created=true;
+                return Http::response(['code'=>200,'data'=>[['thirdOrderNo'=>$payload['thirdOrderNo'],'success'=>true,'orderNo'=>'NY-OMS-001']]]);
+            }
+            throw new \RuntimeException('unexpected fake');
+        });
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\UsNyCanaryDispatch::class);
+        $r=$svc->create($o->id,$actor->id,$p['payload_hash']);
+        self::assertSame('oms_create_confirmed',$r['state']);
+        self::assertSame('NY-OMS-001',$r['oms_order_no']);
+        self::assertTrue($r['tracking_present']);
+        self::assertSame('pending',$o->fresh()->shipment->shipment_status);
+        self::assertNull($o->fresh()->shipment->tracking_number);
+        self::assertCount(1,Http::recorded(fn($req)=>str_contains($req->url(),'outboundOrder/create')));
+        try {$svc->create($o->id,$actor->id,$p['payload_hash']);self::fail('duplicate must block');}
+        catch (\RuntimeException $e) {self::assertSame('US_NY_ATTEMPT_EXISTS',$e->getMessage());}
+        self::assertCount(1,Http::recorded(fn($req)=>str_contains($req->url(),'outboundOrder/create')));
+    }
+
     public function test_owner_selected_no_shipping_service_creates_draft_without_label_fields(): void
     {
         $o=$this->orderFixture();
