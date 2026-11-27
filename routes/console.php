@@ -31,16 +31,19 @@ Artisan::command('shipout:sync-inventory', function (MorePlusInventorySyncServic
     if (! app()->environment('production') || ! config('shipout.production_inventory_schedule_enabled', false)
         || ! config('shipout.production_read_enabled', false)) {
         $this->error('MOREPLUS_SCHEDULE_DISABLED');
+
         return Command::FAILURE;
     }
     try {
         $warehouse = Warehouse::query()->whereRaw('UPPER(code) = ?', ['US-LA'])->where('is_active', true)->sole();
         $result = $sync->syncProvider($warehouse, null);
         $this->line(json_encode(array_intersect_key($result, array_flip(['updated', 'created', 'unchanged', 'blocked', 'absent_zeroed'])), JSON_THROW_ON_ERROR));
+
         return Command::SUCCESS;
     } catch (Throwable $error) {
         report($error);
         $this->error('MOREPLUS_INVENTORY_SYNC_FAILED');
+
         return Command::FAILURE;
     }
 });
