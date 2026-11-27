@@ -62,7 +62,7 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
         return $this->post('/affiliates/check', ['email' => $email], null);
     }
 
-    public function provisionAffiliate(array $payload, string $idempotencyKey): ConnectorResponse
+    public function provisionAffiliate(#[\SensitiveParameter] array $payload, string $idempotencyKey): ConnectorResponse
     {
         return $this->post('/affiliates/provision', $payload, $idempotencyKey);
     }
@@ -86,7 +86,7 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
         return $this->post('/coupons/check', ['code' => $code], null);
     }
 
-    public function provisionCoupon(array $payload, string $idempotencyKey): ConnectorResponse
+    public function provisionCoupon(#[\SensitiveParameter] array $payload, string $idempotencyKey): ConnectorResponse
     {
         return $this->post('/coupons/provision', $payload, $idempotencyKey);
     }
@@ -126,7 +126,7 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
         });
     }
 
-    private function post(string $path, array $payload, ?string $idempotencyKey): ConnectorResponse
+    private function post(string $path, #[\SensitiveParameter] array $payload, ?string $idempotencyKey): ConnectorResponse
     {
         $this->guardConfigured();
         $this->guardMutationIdempotencyKey($path, $idempotencyKey);
