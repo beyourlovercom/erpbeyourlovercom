@@ -827,7 +827,7 @@ final class OrderController
         $data = $request->validate([
             'workflow_status' => ['required', 'string', Rule::in([
                 ...array_keys(array_filter(OrderWorkflowStatus::registry(), fn (array $definition): bool => $definition['mutable'])),
-                'pending_allocation', 'resolve_exception', 'resolve_manual_hold', 'resolve_stockout',
+                'pending_allocation', 'resolve_exception', 'resolve_manual_hold', 'resolve_stockout', \App\Modules\Orders\Application\DomesticShippingHold::RESUME,
             ])],
             'expected_workflow_revision' => ['required', 'integer', 'min:0'],
             'reason' => ['nullable', 'string', 'max:2000'],
@@ -840,6 +840,10 @@ final class OrderController
             abort_unless(($factory && $request->user()->can('domestic.review'))
                 || ($overseas && app(LogisticsReviewAccess::class)->allows($request->user())
                     && in_array($data['workflow_status'], ['out_of_stock', 'resolve_stockout'], true)), 403);
+        }
+        if ($reactivating && (\App\Modules\Orders\Application\DomesticShippingHold::isHeld($data['workflow_status'])
+            || $data['workflow_status'] === \App\Modules\Orders\Application\DomesticShippingHold::RESUME)) {
+            abort(409, '归档订单不能通过冻结发货操作恢复。');
         }
         $updated = $reactivating
             ? $this->progressTransitions->reactivateAndTransition($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user(), $data['reason'] ?? null)

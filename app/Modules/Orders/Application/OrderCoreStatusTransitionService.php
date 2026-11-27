@@ -52,6 +52,19 @@ final class OrderCoreStatusTransitionService
             }
 
             $shipment = $locked->shipment;
+            $wasDomesticHold = DomesticShippingHold::isHeld($locked->workflow_status);
+            $isDomesticCommand = DomesticShippingHold::isHeld($command) || $command === DomesticShippingHold::RESUME;
+            if ($wasDomesticHold && ! $isDomesticCommand) {
+                throw new HttpException(409, '请先通过恢复待发货解除冻结，不可直接更改为其他状态。');
+            }
+            if ($isDomesticCommand) {
+                abort_unless(OrderLogisticsAuthority::allows($actor), 403, '没有冻结或恢复发货权限。');
+                $locked->setRelation('shipment', $locked->shipment()->lockForUpdate()->first());
+                $shipment = $locked->shipment;
+                if ($blocker = DomesticShippingHold::blocker($locked, $command)) {
+                    throw new HttpException(409, $blocker);
+                }
+            }
             $before = OrderManualHoldStatus::selected($locked)
                 ?? $this->progress->resolve($locked) ?? 'sending';
             $activeException = in_array(OrderManualHoldStatus::selected($locked), OrderManualHoldStatus::CODES, true);
@@ -60,6 +73,16 @@ final class OrderCoreStatusTransitionService
                 && ($shipment === null || ($shipment->shipment_status === 'pending'
                     && blank($shipment->tracking_number) && $shipment->shipped_at === null));
             switch ($command) {
+                case DomesticShippingHold::MISSING_INFO:
+                case DomesticShippingHold::TRACKING_STOCKOUT:
+                case DomesticShippingHold::RESUME:
+                    $target = $command === DomesticShippingHold::RESUME ? 'sending' : $command;
+                    if ($locked->workflow_status === $target) {
+                        return $locked;
+                    }
+                    // An annotation only; no shipment, review, allocation, SKU, stock or website write.
+                    $locked->workflow_status = $target;
+                    break;
                 case 'pending_allocation':
                     if ($locked->originalFulfillmentChildren->isNotEmpty()) {
                         throw new HttpException(409, '拆单订单已有独立物流记录，请先在履约发货中逐段复核后再重新分仓。');

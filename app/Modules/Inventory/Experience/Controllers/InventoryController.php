@@ -4,6 +4,7 @@ namespace App\Modules\Inventory\Experience\Controllers;
 
 use App\Modules\Identity\Application\AuthorizationKeys;
 use App\Modules\Inventory\Application\InventoryService;
+use App\Modules\Inventory\Application\InventoryMatrixService;
 use App\Modules\Inventory\Application\InventoryAvailabilityProjection;
 use App\Modules\Inventory\Application\WarehouseLastReadStockService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
@@ -29,7 +30,7 @@ final class InventoryController
         return Inertia::render('Inventory/WarehouseList', ['warehouses' => $this->inventory->warehouses(), 'canManage' => auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false]);
     }
 
-    public function products(Request $request): Response|RedirectResponse
+    public function products(Request $request, InventoryMatrixService $matrix): Response|RedirectResponse
     {
         $pageSize = in_array((string) $request->query('per_page', '100'), ['20', '50', '100'], true)
             ? (int) $request->query('per_page', 100) : 100;
@@ -37,7 +38,7 @@ final class InventoryController
         $warehouseFilter = trim((string) $request->input('warehouse', ''));
         $canonicalWarehouse = $warehouseFilter === '' ? '' : ($this->inventory->canonicalWarehouseSlug($warehouseFilter) ?? $warehouseFilter);
         if ($warehouseFilter !== '' && $canonicalWarehouse !== $warehouseFilter) {
-            $query = array_filter(['search' => $request->input('search'), 'warehouse' => $canonicalWarehouse], fn ($value): bool => $value !== null && $value !== '');
+            $query = array_filter([...$request->query(), 'warehouse' => $canonicalWarehouse], fn ($value): bool => $value !== null && $value !== '');
 
             return redirect()->route('inventory.products', $query);
         }
@@ -58,6 +59,10 @@ final class InventoryController
                 'replenishment' => $this->inventory->replenishmentMetrics($i, $available[$i->id]),
             ])->toArray(),
             'warehouses' => $this->inventory->warehouses(), 'filters' => ['search' => $request->input('search'), 'warehouse' => $canonicalWarehouse, 'stock_status' => $request->input('stock_status')],
+            'matrixRows' => fn () => $matrix->rows(),
+            'inventoryView' => in_array($request->query('view'), ['product','warehouse'], true) ? $request->query('view') : ($request->has('warehouse') || $request->has('global_grid') ? 'warehouse' : null),
+            // This approved page is a separate grid rollout; do not change other pilots.
+            'warehouseGridEnabled' => ! (GlobalGridPilot::available() && $request->query('global_grid') === '0'),
             'globalGridPilotAvailable' => GlobalGridPilot::available(),
             'globalGridPilotEnabled' => GlobalGridPilot::enabled($request),
         ]);

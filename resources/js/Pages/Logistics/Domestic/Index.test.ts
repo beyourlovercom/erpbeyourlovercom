@@ -19,7 +19,7 @@ const baseProps = {
     carrier:'4PX',service:'SD经济挂号-带电',carrier_selection_source:'manual',carrier_ready:true,tracking_number:null,shipment_status:'pending',shipped_at:null,
     review_status:'approved' as const,export_blockers:[],items:[{sku:'M2',quantity:1}],
   }],current_page:1,last_page:1,total:1 },
-  viewCounts:{review:0,pending:1,'today-4px':0,'today-weship':0,exceptions:0,today:0,all:1},
+  viewCounts:{review:0,pending:1,frozen:0,'today-4px':0,'today-weship':0,exceptions:0,today:0,all:1},
   canOperate:true,
   canReview:true,
   carrierOptions:[
@@ -113,13 +113,13 @@ describe('Domestic logistics production workbench', () => {
     expect(state.bulkOptions.map((option:{label:string})=>option.label)).not.toContain('批量到待分仓')
   })
 
-  it('uses one compact toolbar and bottom help for all nine domestic views', () => {
-    const views=['review','stockout','outsource','pending','today','today-4px','today-weship','exceptions','all']
+  it('uses one compact toolbar and bottom help for all ten domestic views', () => {
+    const views=['review','stockout','outsource','pending','frozen','today','today-4px','today-weship','exceptions','all']
     for (const view of views) {
       const wrapper=mount(Index,{props:{...baseProps,view,trackingImportPreview:null,trackingImportProvider:null}})
       expect(wrapper.find('.domestic-compact-workspace').exists(),view).toBe(true)
       expect(wrapper.find('header.compact-workspace-toolbar').exists(),view).toBe(true)
-      expect(wrapper.findAll('nav.tabs button'),view).toHaveLength(9)
+      expect(wrapper.findAll('nav.tabs button'),view).toHaveLength(10)
       expect(wrapper.find('.domestic-head-actions a[href="/logistics/wait-stock"]').exists(),view).toBe(true)
       expect(wrapper.find('.eyebrow').exists(),view).toBe(false)
       expect(wrapper.find('.continuity').exists(),view).toBe(false)
@@ -352,12 +352,13 @@ describe('Domestic logistics production workbench', () => {
     }
   })
 
-  it('places 今日订单 immediately after 待发货 and renders three concise one-line modules with no commas', () => {
+  it('places 冻结发货 after 待发货 and before 今日订单 and renders three concise one-line modules with no commas', () => {
     const today=mount(Index,{props:{...baseProps,view:'today',trackingImportPreview:null,trackingImportProvider:null}})
     const nav=today.findAll('nav.tabs button').map(b=>b.text())
     expect(nav[2]).toContain('外采单')
     expect(nav[3]).toContain('待发货')
-    expect(nav[4]).toContain('今日订单')
+    expect(nav[4]).toContain('冻结发货')
+    expect(nav[5]).toContain('今日订单')
     const cards=today.findAll('.today-shortcut')
     expect(cards).toHaveLength(3)
     expect(cards[0].text()).toBe('⬇️这批订单')

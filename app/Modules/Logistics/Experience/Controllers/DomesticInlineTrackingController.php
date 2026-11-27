@@ -100,6 +100,9 @@ final class DomesticInlineTrackingController
         if ($order->order_status?->value !== 'pending_shipment' || $shipment->shipment_status !== 'pending') {
             throw ValidationException::withMessages(['tracking_number' => '只有尚未发货的订单可以在列表录入发货单号。']);
         }
+        if (\App\Modules\Orders\Application\DomesticShippingHold::isHeld($order->workflow_status)) {
+            throw ValidationException::withMessages(['tracking_number' => '冻结发货订单请先恢复待发货。']);
+        }
         if ($order->operationalMarkers->contains('marker', 'domestic_stockout')
             || $order->workflow_status === 'out_of_stock') {
             throw ValidationException::withMessages(['tracking_number' => '缺货订单不能录入或确认发货，请先解除缺货状态。']);

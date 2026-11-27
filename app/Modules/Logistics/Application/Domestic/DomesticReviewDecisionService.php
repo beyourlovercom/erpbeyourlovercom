@@ -39,6 +39,7 @@ final class DomesticReviewDecisionService
             $locked = Order::query()->with([
                 'shipment', 'operationalMarkers', 'externalReferences', 'fulfillmentParent',
             ])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            abort_if(\App\Modules\Orders\Application\DomesticShippingHold::isHeld($locked->workflow_status), 409, '冻结发货订单请先恢复待发货。');
             abort_if($locked->procurementOrder()->where('origin', 'external')->whereNull('released_at')->exists(),
                 409, '外采订单未由 Vita 验收到货放行，不能通过普通国内审核');
             $factory = Warehouse::query()->whereRaw('UPPER(code) = ?', ['FACTORY'])->firstOrFail();

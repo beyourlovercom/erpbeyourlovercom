@@ -24,8 +24,10 @@ const props = withDefaults(defineProps<{
   selectedOrderIds?: number[]
   clientCsvExport?: boolean
   defaultPinnedRight?: number
+  defaultPinnedLeft?: number
+  rememberClientFilters?: boolean
 }>(), {
-  page: null, rowIdentityKey: 'id', showSearch: true, enableSelection: false, cellTextSelection: false, clientCsvExport: false, defaultPinnedRight: 1,
+  page: null, rowIdentityKey: 'id', showSearch: true, enableSelection: false, cellTextSelection: false, clientCsvExport: false, defaultPinnedRight: 1, defaultPinnedLeft: 1, rememberClientFilters: false,
   filterColumns: () => [], filterValues: () => ({}),
 })
 const emit = defineEmits<{
@@ -63,7 +65,8 @@ const emit = defineEmits<{
       :allow-all-rows="false"
       :show-client-csv-export="clientCsvExport"
       preference-scope="account"
-      :default-pinned-left="1"
+      :default-pinned-left="defaultPinnedLeft"
+      :remember-client-filters="rememberClientFilters"
       :default-pinned-right="defaultPinnedRight"
       @selection-change="emit('selection-change', $event)"
       @page-change="emit('page-change', $event)"

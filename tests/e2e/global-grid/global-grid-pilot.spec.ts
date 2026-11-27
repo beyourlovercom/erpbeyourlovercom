@@ -5,7 +5,7 @@ import { installBrowserGuards } from '../support/browser-guards'
 const pages = [
   {label:'product',legacy:'/products/list',pilot:'/products/list?global_grid=1',
     row:'E2E-SKU-0001',oldSelector:'.product-data-table'},
-  {label:'inventory',legacy:'/inventory/products',pilot:'/inventory/products?global_grid=1',
+  {label:'inventory',legacy:'/inventory/products?view=warehouse&global_grid=0',pilot:'/inventory/products?view=warehouse&global_grid=1',
     row:'E2E-BIN-007',oldSelector:'.table-wrap table'},
   {label:'procurement',legacy:'/purchase',pilot:'/purchase?global_grid=1',
     row:'PO-E2E-GG-0001',oldSelector:'.purchase-table-wrap table'},
@@ -1339,4 +1339,63 @@ test('only domestic and overseas pending Global Grids allow native double-click 
     console.log('PENDING_GRID_TEXT_SELECTION_BROWSER_PASS', label, selected)
   }
   expect(mutations).toEqual([])
+})
+
+test('Inventory Matrix V1 real browser dual-view and warehouse filters',async ({page})=>{
+  await page.setViewportSize({width:1640,height:960})
+  await loginThroughUi(page,syntheticUsers().authorized)
+  await page.goto('/inventory/products?view=product',{waitUntil:'domcontentloaded'})
+  const grid=page.getByTestId('erp-global-grid-v1')
+  await expect(grid).toBeVisible()
+  await expect(grid.getByRole('grid')).toBeVisible()
+  await expect(grid.getByText('E2E-SKU-0001',{exact:true}).first()).toBeVisible()
+  await expect(grid.locator('.ag-cell[col-id="US-LA"]').filter({hasText:/^18$/}).first()).toBeVisible()
+  const filter=grid.getByLabel('美西 MorePlus库存筛选')
+  await filter.selectOption('zero')
+  await expect(grid.getByText('E2E-SKU-0001',{exact:true})).toHaveCount(0)
+  await filter.selectOption('low')
+  await expect(grid.getByText('E2E-SKU-0001',{exact:true}).first()).toBeVisible()
+  await page.getByTestId('inventory-view-warehouse').click()
+  await expect(page).toHaveURL(/view=warehouse/)
+  await expect(grid.getByText('E2E-BIN-007',{exact:true}).first()).toBeVisible()
+  await page.getByTestId('inventory-view-product').click()
+  await expect(page).toHaveURL(/view=product/)
+  await expect(filter).toHaveValue('low')
+  await filter.selectOption('')
+  if ((process.env.BYL_E2E_GREP??'').includes('Inventory Matrix V1 real browser')) {
+    const ny=grid.locator('.ag-cell[col-id="US-NY"]').filter({hasText:'51'})
+    await expect(ny.locator('.inventory-matrix-incoming')).toHaveText('(+30)')
+    await expect(ny.locator('.inventory-matrix-incoming')).toHaveCSS('color','rgb(22, 131, 75)')
+    const incoming=grid.getByLabel('美东库存筛选')
+    await incoming.selectOption('incoming')
+    await expect(grid.getByText('E2E-SKU-0001',{exact:true}).first()).toBeVisible()
+    await expect(grid.getByText('MATRIX-E2E-LOW',{exact:true})).toHaveCount(0)
+    await filter.selectOption('zero')
+    await expect(grid.getByText('E2E-SKU-0001',{exact:true})).toHaveCount(0)
+    await filter.selectOption('')
+    await incoming.selectOption('')
+    await expect(grid.getByText('E2E-SKU-0001',{exact:true}).first()).toBeVisible()
+    await expect(grid.getByText('MATRIX-E2E-LOW',{exact:true}).first()).toBeVisible()
+    const header=grid.locator('.ag-header-cell[col-id="US-LA"] .ag-header-cell-label')
+    const stockAt=(index:number)=>grid.locator('[row-index="'+index+'"] .ag-cell[col-id="US-LA"]')
+    await header.click()
+    await expect(stockAt(0)).toHaveText('2')
+    await expect(stockAt(1)).toHaveText('18')
+    await header.click()
+    await expect(stockAt(0)).toHaveText('18')
+    await expect(stockAt(1)).toHaveText('2')
+    const search=grid.getByRole('textbox',{name:'表格内搜索全部记录'})
+    await search.fill('matrix-e2e-low')
+    await search.press('Enter')
+    await expect(grid.getByText('MATRIX-E2E-LOW',{exact:true}).first()).toBeVisible()
+    await expect(grid.getByText('E2E-SKU-0001',{exact:true})).toHaveCount(0)
+    await grid.getByRole('button',{name:'清空表格搜索'}).click()
+    await expect(grid.getByText('E2E-SKU-0001',{exact:true}).first()).toBeVisible()
+    console.log('INVENTORY_MATRIX_TRANSIT_SORT_AND_COMBINED_FILTER_PASS')
+  }
+  await grid.getByRole('button',{name:'最大化列表'}).click()
+  await expect(grid.locator('.oms-grid')).toHaveClass(/is-maximized/)
+  await page.keyboard.press('Escape')
+  await expect(grid.locator('.oms-grid')).not.toHaveClass(/is-maximized/)
+  console.log('INVENTORY_MATRIX_BROWSER_PASS')
 })

@@ -44,7 +44,7 @@ final class DomesticLogisticsController
 {
     private const REVIEW_MARKER = 'domestic_reviewed';
 
-    private const VIEWS = ['review', 'stockout', 'outsource', 'pending', 'today-4px', 'today-weship', 'exceptions', 'today', 'all'];
+    private const VIEWS = ['review', 'stockout', 'outsource', 'pending', 'frozen', 'today-4px', 'today-weship', 'exceptions', 'today', 'all'];
 
     private const ALL_FILTERS = [
         'carrier', 'status', 'warehouse_route', 'review', 'shipment_status', 'service', 'tracking', 'recipient', 'sku', 'destination',
@@ -513,7 +513,14 @@ final class DomesticLogisticsController
                 ->orWhere('routing_warehouse_code', '!=', 'OUTSOURCE'))
                 ->whereDoesntHave('procurementOrder', fn ($q) => $q->where('origin', 'external')->whereNull('released_at'));
         }
+        if (! in_array($view, ['frozen', 'all'], true)) {
+            $query->where(fn (Builder $q) => $q->whereNull('workflow_status')
+                ->orWhereNotIn('workflow_status', \App\Modules\Orders\Application\DomesticShippingHold::CODES));
+        }
         match ($view) {
+            'frozen' => $query->whereIn('workflow_status', \App\Modules\Orders\Application\DomesticShippingHold::CODES)
+                ->where('order_status', 'pending_shipment')
+                ->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending')->whereNull('shipped_at')),
             'outsource' => $query->where('order_status', 'pending_shipment')
                 ->where(function (Builder $q): void {
                     $q->where('routing_warehouse_code', 'OUTSOURCE')
@@ -549,7 +556,7 @@ final class DomesticLogisticsController
             $query->whereHas('shipment', fn ($shipment) => $shipment->whereRaw('LOWER(carrier) = ?', [mb_strtolower($filters['carrier'])]));
         }
         if ($filters['status'] !== '') {
-            $allowed = ['pending_review', 'sending', 'out_of_stock', 'sent', 'shipping', 'completed', 'progress_conflict', 'partially_shipped'];
+            $allowed = ['pending_review', 'sending', 'out_of_stock', 'sent', 'shipping', 'completed', 'progress_conflict', 'partially_shipped', ...\App\Modules\Orders\Application\DomesticShippingHold::CODES];
             in_array($filters['status'], $allowed, true)
                 ? $this->progressQueries->applyPhase($query, $filters['status'])
                 : $query->whereRaw('1=0');
@@ -692,13 +699,15 @@ final class DomesticLogisticsController
                     'received_quantity' => (int) $line->received_quantity,
                 ])->values()->all(),
             ] : null,
-            'export_blockers' => $shipment?->shipment_status !== 'pending'
+            'export_blockers' => \App\Modules\Orders\Application\DomesticShippingHold::isHeld($order->workflow_status)
+                ? ['冻结发货订单禁止导出']
+                : ($shipment?->shipment_status !== 'pending'
                 ? ['该单已离开待发货队列，禁止重复导出']
                 : ($stockout ? ['缺货，禁止导出'] : (! $this->carrierDefaults->ready($order)
                         ? ['请检查物流商和服务类型']
                         : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
                         ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
-                        : ['未选定速达或纬狮物流商']))),
+                        : ['未选定速达或纬狮物流商'])))),
             'items' => $items->all(),
         ];
     }

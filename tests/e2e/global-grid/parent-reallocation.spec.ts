@@ -7,7 +7,9 @@ test.skip(process.env.BYL_E2E_PARENT_REALLOCATION !== '1', 'Requires the dedicat
 
 test('R5 real browser: cancel reset, confirm archive, reopen fresh allocation, submit new split', async ({page,context}) => {
   const guard = await installBrowserGuards(context,page)
-  await page.setViewportSize({width:1586,height:928})
+  // Keep the workflow regression independent of platform-specific overlay scrollbars
+  // on the one-row allocation grid. All clicks still use real pointer actionability.
+  await page.setViewportSize({width:2880,height:928})
   await loginThroughUi(page,syntheticUsers().logisticsOperator)
   await page.goto('/logistics/wait-stock?global_grid=1&search=C9900001-007')
   const screenshot = async (name:string) => page.screenshot({path:path.join(process.env.BYL_E2E_VISUAL_EVIDENCE_DIR!,name),animations:'disabled'})
