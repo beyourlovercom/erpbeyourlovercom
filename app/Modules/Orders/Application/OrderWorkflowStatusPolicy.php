@@ -81,7 +81,7 @@ final class OrderWorkflowStatusPolicy
         $current = app(OrderWorkflowStatusProjection::class)->for($order)['code'];
         $resolve = match (true) {
             $current === 'exception' => ['resolve_exception', 'Resolve Exception', '解除异常 / 恢复实际进度'],
-            in_array($current, ['missing_info', 'renew', 'claims', 'returned_follow_up', 'freight_product_cost_follow_up'], true) => ['resolve_manual_hold', 'Resume', '解除当前状态 / 恢复实际进度'],
+            in_array($current, ['renew', 'claims', 'returned_follow_up', 'freight_product_cost_follow_up'], true) => ['resolve_manual_hold', 'Resume', '解除当前状态 / 恢复实际进度'],
             $current === 'out_of_stock' => ['resolve_stockout', 'Restock', '解除缺货'],
             default => null,
         };

@@ -34,8 +34,7 @@ final class OrderWorkflowStatus
             'archived' => ['en' => 'Archived', 'zh' => '已归档', 'color' => 'neutral', 'mutable' => false],
             'progress_conflict' => ['en' => 'Reconciliation Required', 'zh' => '状态待对账', 'color' => 'red', 'mutable' => false],
             'sending' => ['en' => 'Sending', 'zh' => '待发', 'color' => 'neutral', 'mutable' => true],
-            DomesticShippingHold::MISSING_INFO => ['en' => 'Shipping hold - missing info', 'zh' => '待发-缺失信息', 'color' => 'amber', 'mutable' => true],
-            DomesticShippingHold::TRACKING_STOCKOUT => ['en' => 'Shipping hold - stockout with tracking', 'zh' => '有单号-缺货', 'color' => 'red', 'mutable' => true],
+            DomesticShippingHold::TRACKING_STOCKOUT => ['en' => 'Shipping hold - stockout with tracking', 'zh' => '有单号/缺货', 'color' => 'red', 'mutable' => true],
             'allocated' => ['en' => 'Allocated', 'zh' => '已分仓', 'color' => 'blue', 'mutable' => false],
             'sent' => ['en' => 'Sent', 'zh' => '已发等单号', 'color' => 'blue', 'mutable' => false],
             'resent' => ['en' => 'Resent', 'zh' => '补发订单', 'color' => 'blue', 'mutable' => true],
@@ -64,7 +63,7 @@ final class OrderWorkflowStatus
         $sequence = [
             'pending_allocation' => '0.0', 'pending_review' => '0.1', 'allocated' => '0.2',
             'sending' => '1.1', 'sent' => '1.2', 'resent' => '1.3', 'partially_shipped' => '1.4',
-            'missing_info' => '1.5', 'returned' => '1.6', 'shipped' => '1.7',
+            'returned' => '1.6', 'shipped' => '1.7',
             'shipping' => '2.1', 'shared' => '2.2', 'arrived' => '2.3', 'creating' => '2.4',
             'published' => '2.5', 'paying' => '2.6', 'paid' => '2.7', 'cancelled' => '2.8',
             'refunded' => '2.9', 'cancel' => '2.10', 'finished' => '3.0',
@@ -72,7 +71,7 @@ final class OrderWorkflowStatus
             'freight_product_cost_follow_up' => '3.3', 'out_of_stock' => '3.4',
             'renew' => '3.5', 'exception' => '3.6', 'completed' => '3.7',
             'archived' => '4.0', 'progress_conflict' => '4.1',
-            DomesticShippingHold::MISSING_INFO => '1.8', DomesticShippingHold::TRACKING_STOCKOUT => '1.9',
+            DomesticShippingHold::TRACKING_STOCKOUT => '1.1.1', 'missing_info' => '1.1.2',
         ];
         foreach ($registry as $code => &$definition) {
             $definition['sequence'] = $sequence[$code];

@@ -10,11 +10,11 @@ use App\Modules\Orders\Infrastructure\Models\Order;
  */
 final class OrderManualHoldStatus
 {
-    public const EXCEPTION_CODES = ['exception', 'missing_info', 'renew', 'claims', 'freight_product_cost_follow_up'];
+    public const EXCEPTION_CODES = ['exception', 'renew', 'claims', 'freight_product_cost_follow_up'];
 
     public const RETURN_CODES = ['returned_follow_up'];
 
-    public const CODES = [...self::EXCEPTION_CODES, ...self::RETURN_CODES, ...DomesticShippingHold::CODES];
+    public const CODES = [...self::EXCEPTION_CODES, ...self::RETURN_CODES, ...DomesticShippingHold::STORED_CODES];
 
     /** Explicit staff classification takes precedence over warehouse/OMS facts.
      * It never claims that a physical dispatch has actually occurred. */
@@ -38,7 +38,7 @@ final class OrderManualHoldStatus
     public static function bucket(string $code): ?string
     {
         if (DomesticShippingHold::isHeld($code)) {
-            return $code;
+            return DomesticShippingHold::canonical($code);
         }
         if (in_array($code, self::EXCEPTION_CODES, true)) {
             return 'exception';
@@ -61,7 +61,7 @@ final class OrderManualHoldStatus
     public static function selected(Order $order): ?string
     {
         if (in_array((string) $order->workflow_status, self::PRIMARY_CODES, true)) {
-            return (string) $order->workflow_status;
+            return DomesticShippingHold::canonical($order->workflow_status);
         }
         // Any explicitly selected canonical code supersedes stale historical
         // follow-up markers; only legacy rows with no staff selection fall back.
@@ -73,7 +73,7 @@ final class OrderManualHoldStatus
             ->filter(fn ($marker) => in_array((string) $marker->marker, self::EXCEPTION_MARKERS, true))
             ->sortByDesc('id')->first();
         if ($legacy) {
-            return $legacy->marker === 'exception'
+            return in_array($legacy->marker, ['exception', 'workflow_aux_missing_info'], true)
                 ? 'exception'
                 : substr($legacy->marker, strlen('workflow_aux_'));
         }

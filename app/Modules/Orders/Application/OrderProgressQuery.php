@@ -136,7 +136,10 @@ final class OrderProgressQuery
     public function applyPhase(Builder $orders, string $phase): Builder
     {
         if (DomesticShippingHold::isHeld($phase)) {
-            return $orders->where('workflow_status', $phase)->where('order_status', 'pending_shipment');
+            $codes = DomesticShippingHold::canonical($phase) === DomesticShippingHold::MISSING_INFO
+                ? [DomesticShippingHold::MISSING_INFO, DomesticShippingHold::LEGACY_MISSING_INFO] : [$phase];
+
+            return $orders->whereIn('workflow_status', $codes)->where('order_status', 'pending_shipment');
         }
         if (! in_array($phase, ['exception', 'cancelled', 'returned_follow_up',
             'pending_allocation', 'sending', 'out_of_stock'], true)) {

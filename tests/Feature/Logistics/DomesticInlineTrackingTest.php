@@ -382,6 +382,18 @@ final class DomesticInlineTrackingTest extends TestCase
         self::assertNull($second->fresh()->shipment->tracking_number);
     }
 
+    public function test_missing_info_is_only_selectable_on_approved_domestic_pending_orders(): void
+    {
+        $actor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate']);
+        $order = $this->factoryOrder(false);
+        $url = '/orders/'.$order->id.'/workflow-status';
+        $this->actingAs($actor)->patchJson($url, ['workflow_status' => 'missing_info', 'expected_workflow_revision' => 0])->assertStatus(409);
+        $this->assertNull($order->fresh()->workflow_status);
+        $policy = app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order->fresh(), $actor);
+        self::assertFalse(collect($policy['options'])->firstWhere('code', 'missing_info')['mutable']);
+        self::assertNull(collect($policy['options'])->firstWhere('code', 'domestic_hold_missing_info'));
+    }
+
     public function test_domestic_shipping_hold_and_resume_preserve_physical_state(): void
     {
         $actor = $this->userWith(['orders.view', 'logistics.view', 'logistics.operate']);
@@ -391,9 +403,9 @@ final class DomesticInlineTrackingTest extends TestCase
             'workflow_status' => 'domestic_hold_tracking_stockout', 'expected_workflow_revision' => 0,
         ])->assertStatus(409);
         $this->actingAs($actor)->patchJson($url, [
-            'workflow_status' => 'domestic_hold_missing_info', 'expected_workflow_revision' => 0,
+            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
         ])->assertOk();
-        self::assertSame('domestic_hold_missing_info', $order->fresh()->workflow_status);
+        self::assertSame('missing_info', $order->fresh()->workflow_status);
         self::assertFalse(app(\App\Modules\Logistics\Application\Domestic\DomesticDispatchEligibility::class)->allows($order->fresh()));
         $this->get('/logistics/china?view=today')->assertInertia(fn ($page) => $page->where('rows.total', 0));
         $this->get('/logistics/china?view=exceptions')->assertInertia(fn ($page) => $page->where('rows.total', 0));
@@ -405,6 +417,18 @@ final class DomesticInlineTrackingTest extends TestCase
             fn ($page) => $page->where('rows.total', 1)->where('rows.data.0.order_id', $order->id)
         );
         $this->get('/logistics/china?view=pending')->assertInertia(fn ($page) => $page->where('rows.total', 0));
+        $order->fresh()->forceFill(['workflow_status' => 'domestic_hold_missing_info'])->save();
+        $this->get('/logistics/china?view=frozen&status=missing_info')->assertOk()->assertInertia(
+            fn ($page) => $page->where('rows.total', 1)->where('rows.data.0.workflow_status_projection.code', 'missing_info')
+        );
+        $this->patchJson($url, ['workflow_status' => 'domestic_hold_missing_info', 'expected_workflow_revision' => 1])->assertStatus(422);
+        $service = app(\App\Modules\Orders\Application\OrderService::class);
+        self::assertSame(1, $service->list(['workflow_status' => 'missing_info', 'order_kind' => 'customer'])->total());
+        self::assertSame(1, $service->list(['oms_grid_columns' => ['grid_status' => '信息缺失'], 'order_kind' => 'customer'])->total());
+        $editor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate']);
+        $this->actingAs($editor)->deleteJson('/orders/'.$order->id.'/auxiliary-status/missing_info', ['expected_workflow_revision' => 1])->assertStatus(422);
+        self::assertSame('domestic_hold_missing_info', $order->fresh()->workflow_status);
+        $this->actingAs($actor);
         $this->post('/logistics/china/orders/'.$order->id.'/quick-ship', [
             'tracking_number' => '4PX-FROZEN-TEST',
         ])->assertSessionHasErrors('tracking_number');
@@ -430,7 +454,7 @@ final class DomesticInlineTrackingTest extends TestCase
         $this->post('/logistics/china/orders/'.$order->id.'/quick-ship', [
             'tracking_number' => '4PX-HELD-DRAFT',
         ])->assertRedirect();
-        $this->patchJson($url, ['workflow_status' => 'domestic_hold_missing_info', 'expected_workflow_revision' => 4])->assertStatus(409);
+        $this->patchJson($url, ['workflow_status' => 'missing_info', 'expected_workflow_revision' => 4])->assertStatus(409);
         self::assertSame('shipped', $order->fresh()->shipment->shipment_status);
     }
 
