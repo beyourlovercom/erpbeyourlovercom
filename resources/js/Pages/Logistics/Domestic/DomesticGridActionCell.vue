@@ -8,6 +8,9 @@ type Params = {
   canReview: boolean
   canOperate: boolean
   busy: boolean
+  canResumeHold?:(id:number)=>boolean
+  resumeHold?:(id:number)=>void
+  holdBusy?:()=>boolean
   canTrackingSync?:boolean
   syncEligible?:(id:number)=>boolean
   syncBusy?:()=>boolean
@@ -97,7 +100,11 @@ onBeforeUnmount(removeListeners)
 <template>
   <div class="domestic-grid-cell-actions">
     <div class="domestic-grid-cell-main">
-      <template v-if="review">
+      <template v-if="params.view==='frozen'">
+        <button v-if="params.canResumeHold?.(row.id)" type="button" :disabled="params.holdBusy?.()" @click.stop="params.resumeHold?.(row.id)">恢复待发货</button>
+        <span v-else>—</span>
+      </template>
+      <template v-else-if="review">
         <button type="button" class="approve" :disabled="params.busy" @click.stop="params.approve(row)">通过</button>
         <button v-if="row.review_status!=='缺货'" type="button" class="stockout"
           :disabled="params.busy" @click.stop="params.stockout(row)">缺货</button>

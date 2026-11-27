@@ -44,7 +44,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/china/orders/{order}/quick-ship', [DomesticInlineTrackingController::class, 'ship'])
         ->middleware($execution)->whereNumber('order')->name('logistics.china.quick-ship');
     Route::post('/logistics/tracking-outbound/selected', [LogisticsTrackingPushController::class, 'selected'])
-        ->middleware(['can:logistics.view', 'throttle:10,1'])->name('logistics.tracking-outbound.selected');
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.tracking-outbound.selected:'])->name('logistics.tracking-outbound.selected');
     Route::get('/logistics/china/today/export', [DomesticLogisticsController::class, 'exportTodayOrders'])->middleware('can:logistics.view')->name('logistics.china.today.export');
     Route::get('/logistics/china/export/{provider}', [DomesticLogisticsController::class, 'export'])->middleware('can:logistics.view')->whereIn('provider', ['4px', 'weship'])->name('logistics.china.export');
     Route::get('/logistics/china/pending-batch/export', [DomesticLogisticsController::class, 'exportPendingBatch'])->middleware('can:logistics.view')->name('logistics.china.pending-batch.export');
@@ -55,9 +55,9 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/china/{provider}/tracking-import/preview', [DomesticLogisticsController::class, 'previewTrackingReturn'])->middleware($execution)->whereIn('provider', ['4px', 'weship'])->name('logistics.china.tracking-import.preview');
     Route::post('/logistics/china/{provider}/tracking-import/apply', [DomesticLogisticsController::class, 'applyTrackingReturn'])->middleware($execution)->whereIn('provider', ['4px', 'weship'])->name('logistics.china.tracking-import.apply');
     Route::post('/logistics/china/batch-review', [DomesticLogisticsController::class, 'batchReview'])
-        ->middleware(['can:domestic.review', 'throttle:15,1'])->name('logistics.china.batch-review');
+        ->middleware(['can:domestic.review', 'throttle:100,1,erp-logistics:logistics.china.batch-review:'])->name('logistics.china.batch-review');
     Route::post('/logistics/china/batch-return-allocation', [WarehouseBatchReturnAllocationController::class, 'domestic'])
-        ->middleware(['can:domestic.review', 'throttle:15,1'])->name('logistics.china.batch-return-allocation');
+        ->middleware(['can:domestic.review', 'throttle:100,1,erp-logistics:logistics.china.batch-return-allocation:'])->name('logistics.china.batch-return-allocation');
     Route::post('/logistics/china/orders/{order}/approve', [DomesticLogisticsController::class, 'approve'])->middleware('can:domestic.review')->name('logistics.china.approve');
     Route::post('/logistics/china/orders/{order}/stockout', [DomesticLogisticsController::class, 'stockout'])->middleware('can:domestic.review')->name('logistics.china.stockout');
     Route::post('/logistics/china/orders/{order}/return-allocation', [DomesticLogisticsController::class, 'returnAllocation'])->middleware('can:domestic.review')->name('logistics.china.return-allocation');
@@ -65,9 +65,9 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/china/orders/{order}/reject', [DomesticLogisticsController::class, 'reject'])->middleware('can:domestic.review')->name('logistics.china.reject');
     Route::post('/logistics/china/orders/{order}/reopen-review', [DomesticLogisticsController::class, 'reopenReview'])->middleware('can:domestic.review')->name('logistics.china.reopen-review');
     Route::post('/logistics/oversea/batch-review', [OverseaWarehouseController::class, 'batchReview'])
-        ->middleware([...$review, 'throttle:15,1'])->name('logistics.oversea.batch-review');
+        ->middleware([...$review, 'throttle:100,1,erp-logistics:logistics.oversea.batch-review:'])->name('logistics.oversea.batch-review');
     Route::post('/logistics/oversea/batch-return-allocation', [WarehouseBatchReturnAllocationController::class, 'oversea'])
-        ->middleware([...$review, 'throttle:15,1'])->name('logistics.oversea.batch-return-allocation');
+        ->middleware([...$review, 'throttle:100,1,erp-logistics:logistics.oversea.batch-return-allocation:'])->name('logistics.oversea.batch-return-allocation');
     Route::post('/logistics/oversea/orders/{order}/stockout', [OverseaWarehouseController::class, 'stockout'])
         ->middleware($review)->whereNumber('order')->name('logistics.oversea.stockout');
     Route::post('/logistics/oversea/orders/{order}/restock', [OverseaWarehouseController::class, 'restock'])
@@ -75,127 +75,127 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/oversea/{warehouse?}', [OverseaWarehouseController::class, 'index'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea');
     Route::get('/logistics/oversea/us-3sm/orders/{order}/manual-export',
         [OverseaWarehouseController::class, 'exportManualUsSmOrder'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:30,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.xlwms.manual.export:'])
         ->whereNumber('order')->name('logistics.xlwms.manual.export');
     Route::post('/logistics/oversea/us-3sm/xlwms/sync', [XlwmsWarehouseBatchController::class, 'sync'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, RejectXlwmsAutomaticCreate::class, 'throttle:2,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, RejectXlwmsAutomaticCreate::class, 'throttle:100,1,erp-logistics:logistics.xlwms.warehouse.sync:'])
         ->name('logistics.xlwms.warehouse.sync');
     Route::post('/logistics/oversea/us-3sm/xlwms/refresh-statuses', [XlwmsWarehouseBatchController::class, 'refresh'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:1,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.xlwms.warehouse.refresh-statuses:'])
         ->name('logistics.xlwms.warehouse.refresh-statuses');
     Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/preflight',
         [XlwmsSingleOrderController::class, 'inlinePreflight'])
-        ->middleware(['can:logistics.view', 'throttle:10,1'])
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.xlwms.order.inline-preflight:'])
         ->whereNumber('order')->name('logistics.xlwms.order.inline-preflight');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/send',
         [XlwmsSingleOrderController::class, 'send'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, RejectXlwmsAutomaticCreate::class, 'throttle:2,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, RejectXlwmsAutomaticCreate::class, 'throttle:100,1,erp-logistics:logistics.xlwms.order.send:'])
         ->whereNumber('order')->name('logistics.xlwms.order.send');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/web-draft',
         [XlwmsSingleOrderController::class, 'webDraft'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, RejectXlwmsAutomaticCreate::class, 'throttle:2,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, RejectXlwmsAutomaticCreate::class, 'throttle:100,1,erp-logistics:logistics.xlwms.order.web-draft:'])
         ->whereNumber('order')->name('logistics.xlwms.order.web-draft');
     Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-preflight',
         [XlwmsReshipmentController::class, 'preflight'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:8,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.xlwms.order.reship-preflight:'])
         ->whereNumber('order')->name('logistics.xlwms.order.reship-preflight');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-intent',
         [XlwmsReshipmentController::class, 'requestIntent'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.xlwms.order.reship-intent:'])
         ->whereNumber('order')->name('logistics.xlwms.order.reship-intent');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-approve',
         [XlwmsReshipmentController::class, 'approveIntent'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.xlwms.order.reship-approve:'])
         ->whereNumber('order')->name('logistics.xlwms.order.reship-approve');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-manual-bind/{requestId}',
         [XlwmsReshipmentController::class, 'bindManualDraft'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:5,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.xlwms.order.reship-manual-bind:'])
         ->whereNumber('order')->whereUuid('requestId')->name('logistics.xlwms.order.reship-manual-bind');
     Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-manual-draft/{requestId}',
         [XlwmsReshipmentController::class, 'manualDraftExport'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:6,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.xlwms.order.reship-manual-draft:'])
         ->whereNumber('order')->whereUuid('requestId')->name('logistics.xlwms.order.reship-manual-draft');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-create',
         [XlwmsReshipmentController::class, 'createDraft'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, RejectXlwmsAutomaticCreate::class, 'throttle:1,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, RejectXlwmsAutomaticCreate::class, 'throttle:100,1,erp-logistics:logistics.xlwms.order.reship-create:'])
         ->whereNumber('order')->name('logistics.xlwms.order.reship-create');
     Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-status/{requestId}',
         [XlwmsReshipmentController::class, 'status'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:5,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.xlwms.order.reship-status:'])
         ->whereNumber('order')->whereUuid('requestId')->name('logistics.xlwms.order.reship-status');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/status',
         [XlwmsSingleOrderController::class, 'status'])
-        ->middleware(['can:logistics.view', 'throttle:5,1'])
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.xlwms.order.status:'])
         ->whereNumber('order')->name('logistics.xlwms.order.status');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/reconcile',
         [XlwmsSingleOrderController::class, 'reconcile'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:5,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.xlwms.order.reconcile:'])
         ->whereNumber('order')->name('logistics.xlwms.order.reconcile');
     // DE/Hannover reuses the MorePlus selected-order preview/queue UX.
     // These isolated-Dev endpoints do not contain any OMS CREATE path.
     Route::get('/logistics/oversea/de-tianyun/xlwms/batch/preview',
         [DeTianyunOutboundBatchController::class, 'preview'])
-        ->middleware(['can:logistics.view', 'throttle:10,1'])->name('logistics.xlwms.de.batch.preview');
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.xlwms.de.batch.preview:'])->name('logistics.xlwms.de.batch.preview');
     Route::post('/logistics/oversea/de-tianyun/xlwms/batch/start',
         [DeTianyunOutboundBatchController::class, 'start'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:3,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.xlwms.de.batch.start:'])
         ->name('logistics.xlwms.de.batch.start');
     Route::get('/logistics/oversea/de-tianyun/xlwms/batch/{batchId}/status',
         [DeTianyunOutboundBatchController::class, 'status'])
-        ->middleware(['can:logistics.view', 'throttle:20,1'])
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.xlwms.de.batch.status:'])
         ->whereUuid('batchId')->name('logistics.xlwms.de.batch.status');
     // MorePlus / ShipOut: sandbox-only preview/dispatch/readback, strictly
     // scoped to the existing US-LA overseas workbench and ERP order identity.
     Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/label-stage',
         [ShipOutMorePlusController::class, 'stageLabel'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:3,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.shipout.label-stage:'])
         ->whereNumber('order')->name('logistics.shipout.label-stage');
     // Mode 6 label tokens only travel in POST bodies, never GET URLs/logs.
     Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/preflight',
         [ShipOutMorePlusController::class, 'preflight'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:8,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.shipout.preflight.label:'])
         ->whereNumber('order')->name('logistics.shipout.preflight.label');
     Route::get('/logistics/oversea/us-moreplus/orders/{order}/shipout/preflight',
         [ShipOutMorePlusController::class, 'preflight'])
-        ->middleware(['can:logistics.view', 'throttle:10,1'])
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.shipout.preflight:'])
         ->whereNumber('order')->name('logistics.shipout.preflight');
     Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/send',
         [ShipOutMorePlusController::class, 'send'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.shipout.send:'])
         ->whereNumber('order')->name('logistics.shipout.send');
     Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/status',
         [ShipOutMorePlusController::class, 'status'])
-        ->middleware(['can:logistics.view', 'throttle:5,1'])
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.shipout.status:'])
         ->whereNumber('order')->name('logistics.shipout.status');
     Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/apply',
         [ShipOutMorePlusController::class, 'apply'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:100,1,erp-logistics:logistics.shipout.apply:'])
         ->whereNumber('order')->name('logistics.shipout.apply');
     // Production V1 uses existing, signed R10 transport and one-shot ledger.
     // Independent default-OFF flags; no sandbox endpoint or bulk/automatic retries.
     Route::get('/logistics/oversea/us-moreplus/orders/{order}/shipout/production/preflight',
         [ShipOutProductionV1Controller::class, 'preflight'])
-        ->middleware(['can:logistics.view', 'throttle:8,1,shipout-prod-preflight:'])
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.shipout.production.preflight:'])
         ->whereNumber('order')->name('logistics.shipout.production.preflight');
     Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/production/send',
         [ShipOutProductionV1Controller::class, 'send'])
-        ->middleware(['can:logistics.view', RequireShipOutProductionV1Operator::class, 'throttle:2,1,shipout-prod-send:'])
+        ->middleware(['can:logistics.view', RequireShipOutProductionV1Operator::class, 'throttle:100,1,erp-logistics:logistics.shipout.production.send:'])
         ->whereNumber('order')->name('logistics.shipout.production.send');
     Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/production/status',
         [ShipOutProductionV1Controller::class, 'status'])
-        ->middleware(['can:logistics.view', 'throttle:5,1,shipout-prod-status:'])
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.shipout.production.status:'])
         ->whereNumber('order')->name('logistics.shipout.production.status');
     Route::get('/logistics/oversea/us-moreplus/shipout/batch/preview',
         [ShipOutProductionBatchController::class, 'preview'])
-        ->middleware(['can:logistics.view', 'throttle:8,1,shipout-batch-preview:'])
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.shipout.production.batch.preview:'])
         ->name('logistics.shipout.production.batch.preview');
     Route::post('/logistics/oversea/us-moreplus/shipout/batch/start',
         [ShipOutProductionBatchController::class, 'start'])
-        ->middleware(['can:logistics.view', 'throttle:2,1,shipout-batch-start:'])
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.shipout.production.batch.start:'])
         ->name('logistics.shipout.production.batch.start');
     Route::get('/logistics/oversea/us-moreplus/shipout/batch/{batchId}/status',
         [ShipOutProductionBatchController::class, 'status'])
-        ->middleware(['can:logistics.view', 'throttle:30,1,shipout-batch-status:'])
+        ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.shipout.production.batch.status:'])
         ->whereUuid('batchId')->name('logistics.shipout.production.batch.status');
     Route::get('/logistics/oversea/{warehouse}/export', [OverseaWarehouseController::class, 'export'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.export');
     Route::post('/logistics/oversea/{warehouse}/tracking-import/preview', [OverseaWarehouseController::class, 'previewTrackingReturn'])->middleware($execution)->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.tracking-import.preview');
@@ -223,7 +223,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/orders/{order}/draft', [LogisticsController::class, 'saveDraft'])->middleware($execution)->name('logistics.draft');
     Route::post('/logistics/orders/{order}/adopt-recommendation', [LogisticsController::class, 'adoptRecommendation'])->middleware($execution)->name('logistics.adopt-recommendation');
     Route::post('/logistics/wait-stock/batch-allocation', [LogisticsController::class, 'batchAllocate'])
-        ->middleware([...$allocation, 'throttle:6,1'])->name('logistics.fulfillment-allocation.batch');
+        ->middleware([...$allocation, 'throttle:100,1,erp-logistics:logistics.fulfillment-allocation.batch:'])->name('logistics.fulfillment-allocation.batch');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/recommended', [LogisticsController::class, 'submitRecommendedAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.recommended');
     Route::get('/logistics/wait-stock/allocation-products', [LogisticsController::class, 'allocationProducts'])->middleware($allocation)->name('logistics.allocation-products');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/preflight', [LogisticsController::class, 'preflightManualAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.preflight');

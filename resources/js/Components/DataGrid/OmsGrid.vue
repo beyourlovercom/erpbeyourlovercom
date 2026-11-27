@@ -53,6 +53,7 @@ const props = withDefaults(defineProps<{
   cellTextSelection?: boolean
   allowAllRows?: boolean
   showClientCsvExport?: boolean
+  rememberClientFilters?: boolean
 }>(), {
   title: 'OMS Grid', preferenceScope: 'account', defaultPinnedLeft: 1,
   defaultPinnedRight: 1, requiredColumnIds: () => [], legacyPreferenceNamespaces: () => [],
@@ -141,12 +142,28 @@ const resolvedPageSize = () => pageSize.value === 'all'
   ? Math.max(1, api.value?.getDisplayedRowCount() ?? props.rows.length)
   : pageSize.value
 // "全部" applies to the loaded and filtered rows only; R3+ must preserve server-side paging contracts.
+const clientFilterKey = () => props.rememberClientFilters && !props.serverPagination && storageKey.value ? storageKey.value + ':filters' : null
+const saveClientFilters = () => {
+  const key = clientFilterKey()
+  if (!key || !api.value || restoring || !layoutReady.value) return
+  try { window.localStorage.setItem(key, JSON.stringify({model:api.value.getFilterModel(),query:query.value})) } catch { /* optional cache */ }
+}
+const restoreClientFilters = () => {
+  const key = clientFilterKey()
+  if (!key || !api.value) return
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(key) ?? 'null')
+    if (saved && typeof saved.model === 'object' && saved.model !== null) api.value.setFilterModel(saved.model)
+    if (typeof saved?.query === 'string') { query.value = saved.query; api.value.setGridOption('quickFilterText', query.value.trim()) }
+  } catch { /* ignore invalid cache */ }
+}
 const onFiltered = () => {
   if (!props.serverPagination && pageSize.value === 'all' && api.value) {
     const count = resolvedPageSize()
     if (api.value.paginationGetPageSize() !== count) api.value.setGridOption('paginationPageSize', count)
   }
   refresh()
+  saveClientFilters()
 }
 let restoring = false
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -156,10 +173,10 @@ const submitSearch = () => {
   const value = query.value.trim()
   if (props.serverPagination) {
     if (value !== (props.serverSearch ?? '').trim()) emit('search-change', value)
-  } else api.value?.setGridOption('quickFilterText', value)
+  } else { api.value?.setGridOption('quickFilterText', value); saveClientFilters() }
 }
 const searchInput = () => {
-  if (!props.serverPagination) return
+  if (!props.serverPagination && !props.rememberClientFilters) return
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(submitSearch, 450)
 }
@@ -364,6 +381,7 @@ const onReady = (event: GridReadyEvent<GridRow>) => {
   refresh()
   restoreSelections()
   void load().finally(() => {
+    restoreClientFilters()
     restoring = false
     // A failed preference request still reveals a usable stable default.
     layoutReady.value = true
@@ -437,6 +455,7 @@ const resetGrid = () => {
   // Previously every reset emitted page-size-change(50), including when
   // already 50, immediately reloading an obsolete server-saved layout.
   scheduleSave()
+  saveClientFilters()
   if (props.serverPagination && (props.serverPagination.page_size_mode ?? props.serverPagination.per_page) !== 50) {
     emit('page-size-change', 50)
   }

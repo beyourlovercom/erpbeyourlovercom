@@ -729,10 +729,27 @@ final class ShipOutProductionBatchTest extends TestCase
     {
         $routes = app('router')->getRoutes();
         $get = fn (string $name) => implode('|', $routes->getByName($name)->gatherMiddleware());
-        $this->assertStringContainsString('shipout-prod-preflight:', $get('logistics.shipout.production.preflight'));
-        $this->assertStringContainsString('shipout-prod-send:', $get('logistics.shipout.production.send'));
-        $this->assertStringContainsString('shipout-prod-status:', $get('logistics.shipout.production.status'));
-        $this->assertStringContainsString('shipout-batch-start:', $get('logistics.shipout.production.batch.start'));
+        foreach ([
+            'logistics.shipout.production.preflight',
+            'logistics.shipout.production.send',
+            'logistics.shipout.production.status',
+            'logistics.shipout.production.batch.preview',
+            'logistics.shipout.production.batch.start',
+            'logistics.shipout.production.batch.status',
+            'logistics.xlwms.de.batch.preview',
+            'logistics.xlwms.de.batch.start',
+            'logistics.xlwms.de.batch.status',
+            'logistics.oversea.bulk-ship.preview',
+            'logistics.oversea.bulk-ship.apply',
+            'logistics.oversea.manual-non-oms',
+            'logistics.oversea.us-moreplus.manual-ship',
+            'sync.warehouses.de.start',
+            'sync.warehouses.de.resume',
+            'sync.warehouses.de.status',
+            'sync.warehouses.de.details',
+        ] as $name) {
+            $this->assertStringContainsString('throttle:100,1,erp-logistics:'.$name.':', $get($name));
+        }
     }
 
     public function test_global_submission_pace_fails_before_second_post(): void

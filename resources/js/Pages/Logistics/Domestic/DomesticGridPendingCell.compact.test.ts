@@ -144,3 +144,12 @@ describe('G-P1 compact cumulative Speeda history actions', () => {
     view.unmount()
   })
 })
+
+describe('Domestic Shipping Hold V1 history isolation',()=>{
+  it('cannot expose carrier, shipping or review mutation on a held history row',()=>{
+    const p={...params(),view:'all',isHeld:()=>true}
+    const wrapper=mount(Cell,{props:{params:p}})
+    expect(wrapper.find('button').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})

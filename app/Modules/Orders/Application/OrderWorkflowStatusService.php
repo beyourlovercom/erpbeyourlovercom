@@ -27,6 +27,7 @@ final class OrderWorkflowStatusService
             if ($locked->trashed() || $locked->archived_at !== null || $locked->isOperationallyArchived()) {
                 throw new HttpException(422, '归档订单不能变更通知状态，请先恢复订单。');
             }
+            abort_if(DomesticShippingHold::isHeld($locked->workflow_status), 409, '冻结发货订单不得更改为官网已通知。');
             if ($locked->workflow_status === 'shared') {
                 return $locked;
             }
@@ -65,6 +66,7 @@ final class OrderWorkflowStatusService
                 throw new HttpException(422, 'Archived or deleted orders cannot change workflow status.');
             }
             $current = $locked->workflow_status;
+            abort_if(DomesticShippingHold::isHeld($current) || DomesticShippingHold::isHeld($next), 409, '冻结发货状态须走专用履约状态操作。');
             if ((int) $locked->workflow_revision !== $expectedRevision) {
                 throw new HttpException(409, 'Workflow status is stale; refresh and retry.');
             }

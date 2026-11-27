@@ -19,13 +19,13 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/sync/orders', [ManualSyncController::class, 'index'])->middleware('can:sync.view')->name('sync.orders');
     Route::get('/sync/warehouses', [SyncWorkspaceController::class, 'warehouses'])->middleware('can:sync.view')->name('sync.warehouses');
     Route::post('/sync/warehouses/{warehouse}/sync', [DeTianyunWarehouseSyncController::class, 'start'])
-        ->middleware(['can:sync.operate', 'throttle:3,1'])->whereNumber('warehouse')->name('sync.warehouses.de.start');
+        ->middleware(['can:sync.operate', 'throttle:100,1,erp-logistics:sync.warehouses.de.start:'])->whereNumber('warehouse')->name('sync.warehouses.de.start');
     Route::post('/sync/warehouses/{warehouse}/sync/resume', [DeTianyunWarehouseSyncController::class, 'resume'])
-        ->middleware(['can:sync.operate', 'throttle:3,1'])->whereNumber('warehouse')->name('sync.warehouses.de.resume');
+        ->middleware(['can:sync.operate', 'throttle:100,1,erp-logistics:sync.warehouses.de.resume:'])->whereNumber('warehouse')->name('sync.warehouses.de.resume');
     Route::get('/sync/warehouses/{warehouse}/sync/{runId}', [DeTianyunWarehouseSyncController::class, 'status'])
-        ->middleware(['can:sync.view', 'throttle:30,1'])->whereNumber('warehouse')->whereNumber('runId')->name('sync.warehouses.de.status');
+        ->middleware(['can:sync.view', 'throttle:100,1,erp-logistics:sync.warehouses.de.status:'])->whereNumber('warehouse')->whereNumber('runId')->name('sync.warehouses.de.status');
     Route::get('/sync/warehouses/{warehouse}/sync-details', [DeTianyunWarehouseSyncController::class, 'details'])
-        ->middleware(['can:sync.view', 'throttle:60,1'])->whereNumber('warehouse')->name('sync.warehouses.de.details');
+        ->middleware(['can:sync.view', 'throttle:100,1,erp-logistics:sync.warehouses.de.details:'])->whereNumber('warehouse')->name('sync.warehouses.de.details');
     Route::get('/sync/kol', [SyncWorkspaceController::class, 'kol'])->middleware('can:sync.view')->name('sync.kol');
     Route::get('/sync/exports', [SyncWorkspaceController::class, 'exports'])->middleware('can:sync.view')->name('sync.exports');
     Route::get('/sync/orders/{order}/payload', [ManualSyncController::class, 'payload'])->middleware('can:sync.view')->name('sync.payload');

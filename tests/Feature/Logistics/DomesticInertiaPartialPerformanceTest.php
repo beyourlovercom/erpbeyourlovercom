@@ -21,18 +21,19 @@ final class DomesticInertiaPartialPerformanceTest extends TestCase
         config()->set('inertia.testing.ensure_pages_exist', false);
     }
 
-    public function test_full_domestic_page_keeps_all_nine_view_counts_and_carrier_options(): void
+    public function test_full_domestic_page_keeps_all_ten_view_counts_and_carrier_options(): void
     {
         $user = $this->logisticsViewer();
 
         $this->actingAs($user)->get('/logistics/china?view=review')->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Logistics/Domestic/Index')
-                ->has('viewCounts', 9)
+                ->has('viewCounts', 10)
+                ->where('viewCounts.frozen', 0)
                 ->has('carrierOptions'));
     }
 
-    public function test_rows_only_inertia_reload_skips_nine_unrequested_count_queries(): void
+    public function test_rows_only_inertia_reload_skips_ten_unrequested_count_queries(): void
     {
         $user = $this->logisticsViewer();
 
@@ -58,11 +59,11 @@ final class DomesticInertiaPartialPerformanceTest extends TestCase
             ->assertJsonMissingPath('props.carrierOptions')
             ->assertJsonMissingPath('props.notificationCenter');
 
-        $this->assertGreaterThanOrEqual(9, $fullCountQueries);
+        $this->assertGreaterThanOrEqual(10, $fullCountQueries);
         $this->assertLessThanOrEqual(
-            $fullCountQueries - 9,
+            $fullCountQueries - 10,
             $rowCountQueries,
-            'Rows-only partial requests should skip all nine domestic view-count queries.',
+            'Rows-only partial requests should skip all ten domestic view-count queries.',
         );
     }
 
