@@ -467,6 +467,7 @@ final class ProductController
                 'has_battery' => (bool) $product->has_battery,
                 'has_liquid' => (bool) $product->has_liquid,
                 'material_full_name' => $product->material_full_name,
+                'material_versions' => $product->materialVersions()->orderBy('material_code')->get(['id','material_code','material_name','factory_stock_approved'])->toArray(),
                 'barcode_69' => $product->barcode_69,
                 'source_type' => $product->source_type,
                 'status' => $product->is_active ? 'active' : 'inactive',
@@ -732,7 +733,7 @@ final class ProductController
             'sku' => ['required', 'string', 'max:128', 'unique:products,sku'],
             'label_sku' => ['nullable', 'string', 'max:128', 'unique:products,label_sku'],
             'label_description' => ['nullable', 'string', 'max:512'],
-            'name' => ['required', 'string', 'max:512'],
+            'name' => ['nullable', 'string', 'max:512'],
             'product_type' => ['sometimes', 'string', 'max:64'],
             'gtin' => ['nullable', 'string', 'max:128'],
             'barcode_69' => ['nullable', 'regex:/^[0-9]{8,14}$/'],
@@ -765,7 +766,7 @@ final class ProductController
 
         try {
             $product = DB::transaction(function () use ($data, $request) {
-                $product = $this->products->createManual($data);
+                $product = $this->products->createManual([...$data, 'name' => $data['name'] ?? '']);
                 $this->persistManualMedia((int) $product->id, $request->file('images', []), (int) $request->input('primary_index', 0));
 
                 return $product;
@@ -838,6 +839,7 @@ final class ProductController
                 'has_battery' => (bool) $product->has_battery,
                 'has_liquid' => (bool) $product->has_liquid,
                 'material_full_name' => $product->material_full_name,
+                'material_versions' => $product->materialVersions()->orderBy('material_code')->get(['id','material_code','material_name','factory_stock_approved'])->toArray(),
                 'name' => $product->name,
                 'unit' => $product->unit,
                 'is_active' => $product->is_active,
@@ -886,7 +888,7 @@ final class ProductController
             'sku' => ['nullable', 'string', 'max:128', 'unique:products,sku,'.$id],
             'label_sku' => ['nullable', 'string', 'max:128', Rule::unique('products', 'label_sku')->ignore($id)],
             'label_description' => ['nullable', 'string', 'max:512'],
-            'name' => ['required', 'string', 'max:512'],
+            'name' => ['nullable', 'string', 'max:512'],
             'product_type' => ['sometimes', 'string', 'max:64'],
             'gtin' => ['nullable', 'string', 'max:128'],
             'barcode_69' => ['nullable', 'regex:/^[0-9]{8,14}$/'],
@@ -915,6 +917,7 @@ final class ProductController
         ]);
 
         try {
+            if (array_key_exists('name', $data)) $data['name'] = $data['name'] ?? '';
             $this->products->updateProduct($product, $data);
         } catch (\RuntimeException $e) {
             $field = str_contains($e->getMessage(), '蓝标') ? 'label_sku' : 'sku';

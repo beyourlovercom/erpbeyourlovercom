@@ -82,7 +82,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
             ->whereIn('product_id', $ids->all())
             ->whereIn('warehouse_id', $warehouses->pluck('id')->all())
             ->get(['product_id', 'warehouse_id', 'quantity_on_hand', 'quantity_reserved', 'expected_restock_qty',
-                'provider_stock_synced_at', 'provider_available_quantity'])
+                'provider_stock_synced_at', 'provider_available_quantity', 'factory_native_status'])
             ->keyBy(fn (WarehouseInventory $row): string => $row->product_id.':'.$row->warehouse_id);
         $usSm = $warehouses->firstWhere('code', 'US-SM');
         $providerAvailable = $usSm !== null
@@ -168,6 +168,11 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     $stockGateReason = $providerAvailable !== null
                         && (int) ($providerAvailable[(int) $productId] ?? 0) === 0
                         ? 'oms_no_available_stock' : 'stock_age_or_reservation_gate';
+                }
+
+                if (strtoupper((string)$warehouse['code']) === 'FACTORY' && $row?->factory_native_status === 'held') {
+                    $available=0;
+                    $stockGateReason='factory_material_scope_unverified';
                 }
 
                 return [

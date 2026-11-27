@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { Head } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import axios from 'axios'
+import { publishGlobalFeedback } from '../../lib/globalFeedback'
 
 interface Warehouse {
   id: number
@@ -96,6 +97,8 @@ const activeTab = ref<Tab>(props.initialWarehouseId ? 'file' : 'paste')
 const selectedWarehouseId = ref<number | null>(props.warehouses.some(w => w.id === props.initialWarehouseId) ? props.initialWarehouseId! : null)
 const syncMode = ref<'partial' | 'full'>('partial')
 const stockCountAt = ref('')
+const nativeFactory = computed(() => props.warehouses.find(w=>w.id===selectedWarehouseId.value)?.slug === 'factory' && activeTab.value==='file')
+const nativeResult = ref<{material_count:number;linked:number;unmapped:number;conflicts:number;applied_products:number;held_products:number;duplicate:boolean}|null>(null)
 const pasteText = ref('')
 const selectedFile = ref<File | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -137,6 +140,24 @@ function resetForm() {
   pasteText.value = ''
   selectedFile.value = null
   if (fileInputRef.value) fileInputRef.value.value = ''
+}
+
+async function importFactoryNative() {
+  if (!nativeFactory.value || !selectedFile.value || !stockCountAt.value || loading.value) return
+  loading.value=true
+  nativeResult.value=null
+  try {
+    const fd=new FormData()
+    fd.append('file',selectedFile.value)
+    fd.append('stock_count_at',stockCountAt.value)
+    const {data}=await axios.post('/inventory/sync/factory-native',fd,{headers:{'Content-Type':'multipart/form-data'}})
+    nativeResult.value=data
+    publishGlobalFeedback({state:data.held_products||data.unmapped||data.conflicts?'BLOCKED':'SUCCESS',
+      title:data.duplicate?'该库存快照已导入':'工厂库存文件处理完成',
+      message:'原始物料 '+data.material_count+' 条；关联 '+data.linked+' 条；已覆盖商品 '+data.applied_products+' 个；待核实 '+data.unmapped+' 条，保留原库存商品 '+data.held_products+' 个。'})
+  } catch(e:any) {
+    publishGlobalFeedback({state:'ERROR',title:'工厂库存导入失败',message:e?.response?.data?.message??'请检查文件及库存日期。'})
+  } finally {loading.value=false}
 }
 
 async function doPreview() {
@@ -239,10 +260,11 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">同步模式</label>
-            <select v-model="syncMode" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" @change="batch = null">
+            <select v-if="!nativeFactory" v-model="syncMode" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" @change="batch = null">
               <option value="partial">部分同步（只更新来源 SKU）</option>
               <option value="full">全量同步（不在来源中的 SKU 归零）</option>
             </select>
+            <div v-else class="text-sm py-2">已核实物料范围 · 最新库存覆盖</div>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">库存统计日期</label>
@@ -283,7 +305,7 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
 
           <!-- File -->
           <template v-else-if="activeTab === 'file'">
-            <p class="text-sm text-gray-500 mb-2">上传 XLSX 或 CSV 文件（最大 10 MB）。首行为表头，必须包含 SKU 和 Qty/数量 列。</p>
+            <p class="text-sm text-gray-500 mb-2">{{ nativeFactory ? '上传工厂原始 XLSX（谦禾库存明细），系统自动读取物料代码、名称、成品库存汇总。' : '上传 XLSX 或 CSV 文件（最大 10 MB）。首行为表头，必须包含 SKU 和 Qty/数量 列。' }}</p>
             <input ref="fileInputRef" type="file" accept=".xlsx,.csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" @change="onFileChange" />
             <p v-if="selectedFile" class="mt-2 text-sm text-gray-600">已选择：{{ selectedFile.name }} ({{ Math.round(selectedFile.size / 1024) }} KB)</p>
           </template>
@@ -297,7 +319,11 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
             </div>
           </template>
 
-          <div v-if="activeTab !== 'api'" class="mt-4 flex flex-wrap gap-3 items-center">
+          <div v-if="nativeFactory" class="mt-4 flex flex-wrap gap-3 items-center">
+            <button :disabled="!selectedFile || !stockCountAt || loading" class="px-4 py-2 bg-green-700 text-white rounded-md disabled:opacity-50" @click="importFactoryNative">{{loading?'导入中…':'导入并更新工厂库存'}}</button>
+            <span v-if="!stockCountAt" class="text-sm text-gray-500">请选择原表实际库存统计日期</span>
+          </div>
+          <div v-else-if="activeTab !== 'api'" class="mt-4 flex flex-wrap gap-3 items-center">
             <button
               :disabled="!canPreview || loading"
               class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -320,6 +346,10 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
         </div>
       </div>
 
+      <div v-if="nativeFactory && nativeResult" class="bg-white rounded-lg p-4 text-sm">
+        原表 {{nativeResult.material_count}} 条 · 已关联 {{nativeResult.linked}} 条 · 未绑定 {{nativeResult.unmapped}} 条 · 已覆盖 {{nativeResult.applied_products}} 个商品 · 保留原库存 {{nativeResult.held_products}} 个商品。
+        <a class="text-blue-700" href="/products/skus">查看 SKU 映射中心</a>
+      </div>
       <!-- Error -->
       <div v-if="error" class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{{ error }}</div>
 

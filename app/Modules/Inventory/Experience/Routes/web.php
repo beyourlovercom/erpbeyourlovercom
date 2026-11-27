@@ -83,6 +83,7 @@ Route::middleware(['web','auth','can:inventory.operate'])->group(function (): vo
     Route::patch('/inventory/{warehouse}/clearance/{clearance}',[WarehouseController::class,'updateClearance'])->whereNumber('clearance')->name('inventory.clearance.update');
     Route::delete('/inventory/{warehouse}/clearance/{clearance}',[WarehouseController::class,'removeClearance'])->whereNumber('clearance')->name('inventory.clearance.destroy');
     Route::get('/inventory/sync',[InventorySyncController::class,'index'])->name('inventory.sync');
+    Route::post('/inventory/sync/factory-native',[InventorySyncController::class,'importFactory'])->name('inventory.sync.factory-native');
     Route::post('/inventory/sync/preview',[InventorySyncController::class,'preview'])->name('inventory.sync.preview');
     Route::post('/inventory/sync/{batch}/confirm',[InventorySyncController::class,'confirm'])->whereNumber('batch')->name('inventory.sync.confirm');
     Route::get('/inventory/sync/history',[InventorySyncController::class,'history'])->name('inventory.sync.history');

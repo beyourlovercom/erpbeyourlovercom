@@ -337,12 +337,15 @@ const selectRelative = async (tab: Tab, delta: number) => {
           <p class="product360-meta-note">直接编辑 ERP 主档；带“审核”的参数保存后进入待审核队列，不会覆盖现有已确认数据。</p>
           <h4>ERP 主档 · 保存后生效</h4>
           <div class="product360-inline-fields">
-            <div class="product360-inline-field"><span>产品名称</span><strong>{{ display(product.name) }}</strong></div>
+            <div class="product360-inline-field"><span>产品标题（网站同步）</span><strong>{{ display(product.name) }}</strong></div>
             <div class="product360-inline-field"><span>品牌 <small>来自 WordPress brand</small></span><strong>{{ display(product.brand) }}</strong></div>
             <div class="product360-inline-field"><span>型号（SKU）</span><strong>{{ display(product.sku) }}</strong></div>
             <label class="product360-inline-field" style="grid-column:1/-1">
-              <span>物料全称 <small>仓库采购核对使用；保留完整 SKU、中英文与规格，不同步至 Woo</small></span>
-              <textarea v-model="parametersForm.material_full_name" rows="2" maxlength="10000" placeholder="待填写物料全称" :aria-invalid="!!parameterErrors.material_full_name" />
+              <span>代码（库存表代码）</span>
+              <div v-for="code in (product.material_versions ?? [])" :key="code.id">{{ code.material_code }}</div>
+              <a href="/products/skus" class="mvp-link">维护物料版本</a>
+              <span>名称（库存表名称）</span>
+              <textarea v-model="parametersForm.material_full_name" rows="2" maxlength="10000" placeholder="待填写库存表名称" :aria-invalid="!!parameterErrors.material_full_name" />
               <small v-if="parameterErrors.material_full_name" class="product360-inline-error">{{ parameterErrors.material_full_name }}</small>
             </label>
             <fieldset class="product360-inline-field" style="border:0;padding:0;margin:0">
@@ -385,7 +388,7 @@ const selectRelative = async (tab: Tab, delta: number) => {
         </div>
         <div v-else class="product360-detail-grid product360-parameters-grid">
           <p>产品名称：{{ display(product.name) }}</p><p>品牌：{{ display(product.brand) }}</p>
-          <p>型号（SKU）：{{ display(product.sku) }}</p><p style="overflow-wrap:anywhere">物料全称：{{ display(product.material_full_name) }}</p>
+          <p>型号（SKU）：{{ display(product.sku) }}</p><p style="overflow-wrap:anywhere">库存表名称：{{ display(product.material_full_name) }}</p>
           <p>是否带电：{{ product.has_battery ? '带电' : '不带电' }}</p><p>是否带液体：{{ product.has_liquid ? '带液体' : '不带液体' }}</p>
           <p>产品类型：{{ display(product.product_type) }}</p><p>产品材质：{{ approvedMeasure('material') }}</p>
           <p>重量组成说明：{{ approvedMeasure('weight_composition') }}</p>

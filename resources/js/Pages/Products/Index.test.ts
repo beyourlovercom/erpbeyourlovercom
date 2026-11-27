@@ -27,7 +27,7 @@ describe('Products/Index', () => {
   it('shows Chinese column headers', () => {
     const wrapper = mount(Index, { props: { products: emptyPage, filters: {}, canOperate: false } })
     expect(wrapper.text()).toContain('SKU')
-    expect(wrapper.text()).toContain('产品名称')
+    expect(wrapper.text()).toContain('库存表名称')
     expect(wrapper.text()).toContain('来源')
     expect(wrapper.text()).toContain('单位')
     expect(wrapper.text()).toContain('运重')

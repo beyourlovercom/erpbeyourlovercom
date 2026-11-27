@@ -53,7 +53,8 @@ final class InventoryBatchSyncXlsxTest extends TestCase
         $a = array_fill(0,24,'');
         $a[0]='1VA617A04C040'; $a[1]='VA617A绿色成品'; $a[2]=390; $a[3]=999; $a[23]=209;
         $b = $a; $b[0]='1VA617A05C040'; $b[1]='VA617A绿色新包装'; $b[2]=0; $b[23]=0;
-        $zip->addFromString('xl/worksheets/sheet2.xml', $this->worksheetXml([['谦禾库存'],['Total'], $headers,$a,$b]));
+        $totals = array_fill(0,24,''); $totals[0]='Total'; $totals[2]=390; $totals[23]=209;
+        $zip->addFromString('xl/worksheets/sheet2.xml', $this->worksheetXml([['谦禾库存'],$totals, $headers,$a,$b]));
         $zip->close();
         try {
             $rows=(new XlsxAdapter())->parseFactoryWorkbook(new UploadedFile($path,'factory.xlsx',null,null,true));

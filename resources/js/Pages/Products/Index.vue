@@ -57,7 +57,7 @@ const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'cnf', label: 'CNF（待接入）', defaultVisible: false },
   { key: 'material_name', label: '物料全称', defaultVisible: false },
   { key: 'has_liquid', label: '是否带液体', defaultVisible: false },
-  { key: 'name', label: '产品名称' },
+  { key: 'name', label: '库存表名称' },
   { key: 'image_url', label: '图片' },
   { key: 'woo_url', label: '官网链接' },
   { key: 'units_per_carton', label: '标准装箱数' },
@@ -226,6 +226,7 @@ const cellValue = (p: Product, key: ColumnKey) => key === 'source' && p.source =
 type GridRow = Record<string, unknown>
 const globalProductRows = computed<GridRow[]>(() => props.products.data.map(product => ({
   ...product,
+  name: product.material_name || product.sku || '—',
   display_status: product.is_active ? '启用' : '停用',
   display_source: cellValue(product, 'source'),
   display_liquid: cellValue(product, 'has_liquid'),
@@ -434,7 +435,7 @@ const doDelete = () => {
               <td v-for="col in visibleColumns" :key="col.key" :class="{ 'col-name': col.key === 'name', 'col-picture': col.key === 'image_url' }">
                 <template v-if="col.key === 'status'"><span class="product-status" :class="{ inactive: !p.is_active }">{{ p.is_active ? '启用' : '停用' }}</span></template>
                 <template v-else-if="col.key === 'sku'"><a :href="'/products/' + p.id" class="product-grid-link">{{ fmt(p.sku) }}</a><small v-if="p.matched_alias" class="product-grid-alias-hit">匹配别名：{{ p.matched_alias }}</small></template>
-                <template v-else-if="col.key === 'name'"><a :href="'/products/' + p.id" class="product-grid-link">{{ p.name }}</a></template>
+                <template v-else-if="col.key === 'name'"><a :href="'/products/' + p.id" class="product-grid-link">{{ p.material_name || p.sku || '—' }}</a></template>
                 <template v-else-if="col.key === 'has_liquid'"><span :class="{'product-status':true,'inactive':!p.has_liquid}">{{ p.has_liquid ? '带液体' : '不带液体' }}</span></template>
                 <template v-else-if="col.key === 'image_url'"><img v-if="p.image_url && !failedImageIds.includes(p.id)" :src="p.image_url" :alt="p.name" class="product-thumbnail" loading="lazy" referrerpolicy="no-referrer" @error="markImageFailed(p.id)"><span v-else class="product-image-empty">—</span></template>
                 <template v-else-if="col.key === 'woo_url'"><a v-if="p.woo_url" :href="p.woo_url" target="_blank" rel="noopener noreferrer" class="product-grid-link external-url">{{ p.woo_url }}</a><span v-else>—</span></template>

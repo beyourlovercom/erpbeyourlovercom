@@ -148,6 +148,12 @@ final class XlsxAdapter
                 'factory_qty' => (int)$qty, 'warehouse_007_qty' => (int)$qty007];
         }
 
+        $totals = $rows[$header - 1] ?? [];
+        abort_unless(strcasecmp(trim((string) ($totals[0] ?? '')), 'Total') === 0
+            && is_numeric($totals[2] ?? null) && is_numeric($totals[23] ?? null)
+            && (float) $totals[2] === (float) array_sum(array_column($result, 'factory_qty'))
+            && (float) $totals[23] === (float) array_sum(array_column($result, 'warehouse_007_qty')),
+            422, '工厂库存明细合计与原表汇总不一致，禁止导入');
         return $result;
     }
 

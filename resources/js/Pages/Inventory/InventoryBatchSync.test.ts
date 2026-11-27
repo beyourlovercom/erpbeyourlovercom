@@ -67,6 +67,23 @@ describe('Inventory Batch Sync workspace', () => {
     vi.clearAllMocks()
   })
 
+  it('uses a single native factory import action and sends explicit source date', async () => {
+    const wrapper=mount(Sync,{props:{...defaultProps,warehouses:[...warehouses,{id:5,slug:'factory',name:'中国工厂',country_code:'CN'}],initialWarehouseId:5}})
+    expect(wrapper.text()).not.toContain('1. 预览数据')
+    const fileInput=wrapper.find('input[type=file]')
+    const file=new File(['native'],'factory.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
+    Object.defineProperty(fileInput.element,'files',{value:[file]})
+    await fileInput.trigger('change')
+    await wrapper.find('input[type=date]').setValue('2026-11-16')
+    mockAxios.post.mockResolvedValueOnce({data:{material_count:3,linked:2,unmapped:1,conflicts:0,applied_products:1,held_products:0,duplicate:false}})
+    await wrapper.findAll('button').find(b=>b.text()==='导入并更新工厂库存')!.trigger('click')
+    await flushPromises()
+    expect(mockAxios.post).toHaveBeenCalledWith('/inventory/sync/factory-native',expect.any(FormData),expect.anything())
+    const fd=mockAxios.post.mock.calls[0][1] as FormData
+    expect(fd.get('stock_count_at')).toBe('2026-11-16')
+    expect(wrapper.text()).toContain('已覆盖 1 个商品')
+  })
+
   it('preserves originating warehouse and opens file upload', () => {
     const wrapper = mount(Sync, { props: { ...defaultProps, initialWarehouseId: 1 } })
     expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('1')

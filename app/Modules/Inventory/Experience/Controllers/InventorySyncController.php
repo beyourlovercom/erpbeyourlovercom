@@ -45,6 +45,15 @@ final class InventorySyncController extends Controller
         ]);
     }
 
+    public function importFactory(Request $request, \App\Modules\Inventory\Application\FactoryNativeImportService $factory): \Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate([
+            'file' => 'required|file|mimes:xlsx|max:10240',
+            'stock_count_at' => 'required|date_format:Y-m-d|before_or_equal:today',
+        ]);
+        return response()->json($factory->import($data['file'], $data['stock_count_at'], $request->user()));
+    }
+
     public function preview(Request $request): \Illuminate\Http\JsonResponse
     {
         $request->validate([

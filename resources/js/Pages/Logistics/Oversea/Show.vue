@@ -76,7 +76,7 @@ const columnDefinitions: GridColumnDefinition<ColumnKey>[] = [
   { key:'recipient', label:'收件人', defaultVisible:true },
   { key:'country', label:'国家', defaultVisible:true },
   { key:'items', label:'SKU / 数量', defaultVisible:true },
-  { key:'material_full_name', label:'物料全称', defaultVisible:false },
+  { key:'material_full_name', label:'库存表名称', defaultVisible:true },
 ]
 type TrackingImportRow = { row:number; order_id:number|null; order_number:string; tracking_number:string; carrier:string|null; shipped_at:string; shipped_time_source:'provider'|'apply'; provider_order_reference:string|null; provider_service:string|null; provider_status:string|null; status:'apply'|'noop'|'blocked'; message:string }
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
@@ -1476,7 +1476,7 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'recipient',field:'recipient_name',headerName:'收件人',width:140}),
   gridColumn({colId:'country',field:'country',headerName:'国家',width:106}),
   gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:210,tooltipField:'sku'}),
-  gridColumn({colId:'material_full_name',field:'material_full_name',headerName:'物料全称',width:300,hide:true,tooltipField:'material_full_name'}),
+  gridColumn({colId:'material_full_name',field:'material_full_name',headerName:'库存表名称',width:300,hide:false,tooltipField:'material_full_name'}),
   gridColumn({colId:'quantity',field:'quantity',headerName:'数量',width:95}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:126}),
   gridColumn({colId:'shipped_at',field:'shipped_at',headerName:'发货时间',width:188,sortable:true}),

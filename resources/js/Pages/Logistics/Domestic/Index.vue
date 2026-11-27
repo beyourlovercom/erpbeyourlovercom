@@ -44,7 +44,7 @@ type CarrierOption = {value:string;label:string;default_service_value?:string|nu
 
 const externalMaterialColumns = useAccountGridPreferences<'material_full_name'>({
   namespace: 'grid.procurement.external.material.v1',
-  definitions: [{key: 'material_full_name', label: '物料全称', defaultVisible: false}],
+  definitions: [{key: 'material_full_name', label: '库存表名称', defaultVisible: true}],
 })
 const showExternalMaterial = computed(() => externalMaterialColumns.visibleColumns.value
   .some(column => column.key === 'material_full_name'))
@@ -260,8 +260,8 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
       },
     }:{}),
   }),
-  gridColumn({colId:'material_full_name',field:'material_full_name',headerName:'物料全称',width:310,
-    hide:true,tooltipField:'material_full_name'}),
+  gridColumn({colId:'material_full_name',field:'material_full_name',headerName:'库存表名称',width:310,
+    hide:false,tooltipField:'material_full_name'}),
   gridColumn({colId:'quantity',field:'quantity',headerName:'数量',width:100}),
   gridColumn({colId:'amount',field:'amount',headerName:'金额',width:134}),
   gridColumn({colId:'export',field:'export_status',headerName:'导出状态',width:175}),

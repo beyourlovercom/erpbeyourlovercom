@@ -49,6 +49,12 @@ jobs:
             tests/Feature/Logistics/ShipOutProductionCanaryDispatchServiceTest.php \
             tests/Feature/Logistics/ShipOutProductionDuplicateRiskGuardTest.php \
             tests/Feature/Logistics/WarehouseFinalSkuContractTest.php \
+            tests/Feature/Inventory/FactoryNativeImportTest.php \
+            tests/Feature/InventoryBatchSyncXlsxTest.php \
+            tests/Feature/InventoryBatchSyncM1Test.php \
+            tests/Feature/Products/ProductManagementTest.php \
+            tests/Feature/Products/SkuAliasTest.php \
+            tests/Feature/Products/WooCommerceProductInboundTest.php \
             tests/Feature/Logistics/WarehousePhysicalSkuMaterializationTest.php \
             tests/Feature/Logistics/ExternalProcurementWorkflowTest.php \
             tests/Feature/Logistics/FulfillmentAllocationV1Test.php \
@@ -57,3 +63,5 @@ jobs:
             tests/Feature/Logistics/DomesticTodayOrdersExportTest.php \
             tests/Feature/Logistics/DomesticLogisticsProductionClosureTest.php \
             --no-ansi
+      - name: Factory and product UI contract
+        run: npm run test -- resources/js/Pages/Inventory/InventoryBatchSync.test.ts resources/js/lib/downloadLogisticsExport.test.ts

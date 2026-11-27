@@ -191,13 +191,14 @@ final class ProductManagementTest extends TestCase
         $response->assertSessionHasErrors(['sku']);
     }
 
-    public function test_create_requires_name(): void
+    public function test_create_allows_optional_website_title(): void
     {
         $user = $this->userWith(['products.view', 'products.operate']);
         $response = $this->actingAs($user)->post('/products', [
             'sku' => 'NO-NAME-SKU',
         ]);
-        $response->assertSessionHasErrors(['name']);
+        $response->assertRedirect();
+        $this->assertDatabaseHas('products',['sku'=>'NO-NAME-SKU','name'=>'']);
     }
 
     public function test_create_sku_must_be_unique(): void

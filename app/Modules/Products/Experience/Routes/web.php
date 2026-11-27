@@ -31,6 +31,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
 });
 
 Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): void {
+    Route::put('/products/{productId}/material-versions', [\App\Modules\Products\Experience\Controllers\ProductMaterialVersionController::class, 'upsert'])
+        ->whereNumber('productId')->name('products.material-versions.upsert');
     Route::put('/products/{productId}/warehouse-skus/{warehouseId}', [ProductWarehouseSkuController::class, 'upsert'])
         ->whereNumber('productId')->whereNumber('warehouseId')->name('products.warehouse-skus.upsert');
     Route::patch('/products/{productId}/warehouse-skus/{warehouseId}/deactivate', [ProductWarehouseSkuController::class, 'deactivate'])
