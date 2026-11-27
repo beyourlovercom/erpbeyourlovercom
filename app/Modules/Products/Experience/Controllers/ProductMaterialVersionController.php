@@ -26,6 +26,12 @@ final class ProductMaterialVersionController
             'binding_evidence'=>['required','string','min:20','max:1000'],
             'factory_stock_approved'=>['required','boolean'],
         ]);
+        return $this->applyVerified($request, $productId, $data);
+    }
+
+    /** Same validated mutation contract for single and batch maintenance. */
+    public function applyVerified(Request $request, int $productId, array $data): JsonResponse
+    {
         if ($data['factory_stock_approved']) {
             abort_unless($request->user()->can('inventory.operate'),403,'没有工厂库存范围核实权限');
         }

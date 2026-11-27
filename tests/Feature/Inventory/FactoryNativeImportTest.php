@@ -89,6 +89,66 @@ final class FactoryNativeImportTest extends TestCase
         } finally {@unlink($path);}
     }
 
+    public function test_sku_matrix_export_contains_exact_twelve_headers_and_literal_skus(): void
+    {
+        $p=Product::create(['sku'=>'EXPORT-001','name'=>'Website title','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
+        ProductMaterialVersion::create(['material_code'=>'001CODE','code_key'=>'001CODE','material_name'=>'=literal inventory name',
+            'product_id'=>$p->id,'binding_source'=>'manual_verified','factory_stock_approved'=>false]);
+        $this->actingAs($this->actor(['inventory.view']))->get('/products/skus/export')->assertForbidden();
+        $response=$this->actingAs($this->actor(['products.view']))->get('/products/skus/export?search=001CODE')->assertOk();
+        $path=tempnam(sys_get_temp_dir(),'sku-matrix-');
+        try {
+            file_put_contents($path,$response->streamedContent());
+            $book=(new \PhpOffice\PhpSpreadsheet\Reader\Xlsx())->load($path);
+            $matrix=$book->getSheetByName('SKU映射中心');
+            self::assertSame(['产品图片','ERP SKU','库存表代码','库存表名称','网站 SKU','中国工厂','德国仓','加拿大仓','美西 MorePlus','美东','美世迈仓','别名数量'],$matrix->rangeToArray('A1:L1')[0]);
+            self::assertSame('EXPORT-001',$matrix->getCell('B2')->getValue());
+            self::assertSame('001CODE',$matrix->getCell('C2')->getValue());
+            self::assertSame('=literal inventory name',$matrix->getCell('D2')->getValue());
+            self::assertSame('s',$matrix->getCell('D2')->getDataType());
+            self::assertNotNull($book->getSheetByName('批量维护'));
+            $book->disconnectWorksheets();
+        } finally {@unlink($path);}
+    }
+
+    public function test_batch_mapping_is_atomic_and_respects_both_permission_boundaries(): void
+    {
+        $p=Product::create(['sku'=>'BATCH-A','name'=>'A','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
+        $q=Product::create(['sku'=>'BATCH-B','name'=>'B','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
+        $evidence='Confirmed unique physical product identity from source inventory record.';
+        $valid=['物料','BATCH-A','0001CODE','Original full name','','',$evidence,'是','否'];
+        $conflicting=['物料','BATCH-B','0001code','Wrong owner','','',$evidence,'是','否'];
+        $path=$this->mappingFixture([$valid,$conflicting]);
+        try {
+            $this->actingAs($this->actor(['products.view']))->post('/products/skus/batch',['file'=>$this->upload($path)],['Accept'=>'application/json'])->assertForbidden();
+            $this->actingAs($this->actor(['products.operate']))->post('/products/skus/batch',['file'=>$this->upload($path)],['Accept'=>'application/json'])->assertUnprocessable();
+            $this->assertDatabaseCount('product_material_versions',0);
+        } finally {@unlink($path);}
+        $path=$this->mappingFixture([$valid,['仓库','BATCH-A','','','DE','REAL-A',$evidence,'是','']]);
+        try {
+            $this->post('/products/skus/batch',['file'=>$this->upload($path)],['Accept'=>'application/json'])->assertOk()->assertJsonPath('updated',2);
+            $this->assertDatabaseHas('product_material_versions',['product_id'=>$p->id,'code_key'=>'0001CODE','factory_stock_approved'=>false]);
+            $this->assertDatabaseHas('product_warehouse_skus',['product_id'=>$p->id,'sku'=>'REAL-A']);
+        } finally {@unlink($path);}
+        $valid[8]='是';$path=$this->mappingFixture([$valid]);
+        try {
+            $this->post('/products/skus/batch',['file'=>$this->upload($path)],['Accept'=>'application/json'])->assertForbidden();
+            $this->assertDatabaseHas('product_material_versions',['product_id'=>$p->id,'code_key'=>'0001CODE','factory_stock_approved'=>false]);
+        } finally {@unlink($path);}
+    }
+
+    private function mappingFixture(array $rows): string
+    {
+        $book=new Spreadsheet();
+        $sheet=$book->getActiveSheet();$sheet->setTitle('批量维护');
+        $sheet->fromArray(['类型','ERP SKU','库存表代码','库存表名称','仓库代码','仓库 SKU','核实依据','确认同一商品','工厂库存范围已核实']);
+        foreach($rows as $i=>$row) foreach($row as $j=>$v)
+            $sheet->setCellValueExplicit([$j+1,$i+2],$v,\PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        $path=tempnam(sys_get_temp_dir(),'sku-batch-');
+        (new Xlsx($book))->save($path);$book->disconnectWorksheets();
+        return $path;
+    }
+
     private function fixture(array $rows, ?int $factoryTotal=null): string
     {
         $book=new Spreadsheet();

@@ -9,14 +9,30 @@ type Material = {id:number;material_code:string;material_name:string;factory_sto
 type Mapping = {warehouse_id:number|null;sku:string|null;status:string}
 type ProductSku = {id:number;sku:string|null;is_active:boolean;material_name:string|null;image_url:string|null;material_versions:Material[];website_skus:string[];mappings:Record<string,Mapping>;alias_count:number}
 type Paginated<T> = {data:T[];current_page:number;last_page:number;total:number;links:{url:string|null;label:string;active:boolean}[]}
-const props = defineProps<{products:Paginated<ProductSku>;filters:{search?:string};unmappedMaterialCount:number;unmappedMaterials:Material[];productOptions:{id:number;sku:string}[];canOperate:boolean;canApproveStock:boolean}>()
+const props = defineProps<{products:Paginated<ProductSku>;filters:{search?:string;missing?:string};unmappedMaterialCount:number;unmappedMaterials:Material[];productOptions:{id:number;sku:string}[];canOperate:boolean;canApproveStock:boolean}>()
 const search = ref(props.filters.search ?? '')
+const missing=ref(props.filters.missing??'')
+const batchFile=ref<File|null>(null)
+const batchOpen=ref(false)
+const exportUrl=()=>'/products/skus/export?'+new URLSearchParams({search:search.value,missing:missing.value}).toString()
 const warehouses = [{key:'FACTORY',label:'中国工厂'},{key:'DE',label:'德国仓'},{key:'CA',label:'加拿大仓'},{key:'US-LA',label:'美西 MorePlus'},{key:'US-NY',label:'美东'},{key:'US-SM',label:'美世迈仓'}]
-const applySearch = () => router.get('/products/skus',search.value?{search:search.value}:{},{preserveState:true,replace:true})
+const applySearch = () => router.get('/products/skus',{search:search.value,missing:missing.value},{preserveState:true,replace:true})
 const materialEdit = ref<{productId:number|null;material_code:string;material_name:string;binding_evidence:string;factory_stock_approved:boolean;same_physical_product_confirmed:boolean}|null>(null)
 const warehouseEdit=ref<{productId:number;warehouseId:number;label:string;sku:string;verification_evidence:string;same_physical_product_confirmed:boolean}|null>(null)
 const busy=ref(false)
 const imagePreview=ref<string|null>(null)
+async function saveBatch() {
+  if (!batchFile.value || busy.value) return
+  busy.value=true
+  try {
+    const fd=new FormData();fd.append('file',batchFile.value)
+    const {data}=await axios.post('/products/skus/batch',fd)
+    publishGlobalFeedback({state:'SUCCESS',title:'批量映射已保存',message:'已维护 '+data.updated+' 条'})
+    batchOpen.value=false;batchFile.value=null;router.reload()
+  } catch(e:any) {
+    publishGlobalFeedback({state:'BLOCKED',title:'批量维护未保存',message:e?.response?.data?.message??'请检查模板及核实证据。'})
+  } finally {busy.value=false}
+}
 function editMaterial(productId:number|null,material?:Material) {
   materialEdit.value={productId,material_code:material?.material_code??'',material_name:material?.material_name??'',binding_evidence:'',factory_stock_approved:!!material?.factory_stock_approved,same_physical_product_confirmed:false}
 }
@@ -57,7 +73,9 @@ function saveWarehouse() {
       <div class="mvp-page-heading">
         <div class="flex items-center gap-3 flex-wrap"><h2>SKU 映射中心</h2><span class="text-sm">商品 {{ products.total }} · 未绑定物料 {{ unmappedMaterialCount }}</span></div>
         <div class="mvp-page-actions page-header-actions">
-          <form class="flex gap-2" @submit.prevent="applySearch"><input v-model="search" type="search" placeholder="搜索 SKU、库存代码、名称" class="mvp-search-input"/><button class="mvp-button">搜索</button></form>
+          <form class="flex gap-2" @submit.prevent="applySearch"><input v-model="search" type="search" placeholder="搜索 SKU、库存代码、名称" class="mvp-search-input"/><select v-model="missing" class="erp-select"><option value="">全部映射</option><option value="material">缺少库存代码</option><option v-for="w in warehouses" :key="w.key" :value="w.key">{{w.label}}未核实</option></select><button class="mvp-button">搜索</button></form>
+          <a :href="exportUrl()" class="mvp-button mvp-button-secondary">Excel 导出 / 模板</a>
+          <button v-if="canOperate" class="mvp-button mvp-button-secondary" @click="batchOpen=true">Excel 批量维护</button>
           <a href="/products/sku-aliases" class="mvp-button mvp-button-secondary">别名与待解析</a>
           <a href="/inventory/sync" class="mvp-button mvp-button-secondary">库存导入</a>
         </div>
@@ -98,6 +116,15 @@ function saveWarehouse() {
       </section>
       <p class="text-xs text-gray-500 mt-3">工厂物理库存不等于可发货库存；网站 SKU 只显示实际同步证据。一个商品可关联多个物料版本。</p>
     </section>
+    <div v-if="batchOpen" role="dialog" aria-modal="true" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+      <form class="bg-white rounded-lg p-5 w-full max-w-lg space-y-3" @submit.prevent="saveBatch">
+        <h3 class="font-semibold">Excel 批量维护</h3>
+        <p class="text-sm">下载最新模板，在「批量维护」工作表逐行填写物料或仓库映射及真实核实依据。确认同一商品填「是」；物料库存范围填「是」或「否」。空白行不覆盖。任一行错误则整批回滚。</p>
+        <a :href="exportUrl()" class="mvp-link">下载模板</a>
+        <input type="file" accept=".xlsx" @change="batchFile=($event.target as HTMLInputElement).files?.[0]??null"/>
+        <div class="flex justify-end gap-2"><button type="button" class="mvp-button mvp-button-secondary" :disabled="busy" @click="batchOpen=false;batchFile=null">取消</button><button class="mvp-button" :disabled="busy||!batchFile">核实并批量保存</button></div>
+      </form>
+    </div>
     <div v-if="materialEdit" role="dialog" aria-modal="true" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" @click.self="!busy&&(materialEdit=null)">
       <form class="bg-white rounded-lg p-5 w-full max-w-lg space-y-3 text-gray-900" @submit.prevent="saveMaterial">
         <h3 class="font-semibold">物料版本核实</h3>
