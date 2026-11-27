@@ -233,6 +233,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         ->middleware([...$allocation, 'throttle:100,1,erp-logistics:logistics.fulfillment-allocation.batch:'])->name('logistics.fulfillment-allocation.batch');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/recommended', [LogisticsController::class, 'submitRecommendedAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.recommended');
     Route::get('/logistics/wait-stock/allocation-products', [LogisticsController::class, 'allocationProducts'])->middleware($allocation)->name('logistics.allocation-products');
+    Route::get('/logistics/orders/{order}/fulfillment-allocation/rate-preview', [LogisticsController::class, 'allocationRatePreview'])->middleware(['can:logistics.view','throttle:100,1,erp-logistics:logistics.allocation.rate-preview:'])->whereNumber('order')->name('logistics.fulfillment-allocation.rate-preview');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/preflight', [LogisticsController::class, 'preflightManualAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.preflight');
     Route::get('/logistics/orders/{order}/fulfillment-allocation/status', [LogisticsController::class, 'allocationSubmissionStatus'])->middleware($allocation)->name('logistics.fulfillment-allocation.status');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/reset', [LogisticsController::class, 'resetParentAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.reset');

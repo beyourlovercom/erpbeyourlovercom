@@ -10,6 +10,8 @@ vi.mock('@inertiajs/vue3', () => ({
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { template: '<main><slot /></main>' },
 }))
+// The read-only price panel has its own focused tests; isolate existing submission fetch contracts.
+vi.mock('../../Components/Logistics/AllocationRatePreview.vue', () => ({default:{template:'<div data-testid="allocation-rate-preview" />'}}))
 vi.mock('../../Components/DataGrid/GlobalGrid.vue', () => ({
   __esModule: true,
   default: {
