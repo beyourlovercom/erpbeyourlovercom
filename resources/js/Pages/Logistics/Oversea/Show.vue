@@ -246,6 +246,14 @@ const shipoutBatchStatus = ref<ShipOutBatchStatus|null>(null)
 const shipoutBatchBusy = ref(false)
 const shipoutBatchError = ref('')
 let shipoutBatchTimer:ReturnType<typeof setInterval>|null=null
+let shipoutBatchPollInFlight=false
+class ShipoutBatchHttpError extends Error {
+  constructor(message:string, public readonly status:number) {super(message)}
+}
+function stopShipoutBatchPolling() {
+  if(shipoutBatchTimer)clearInterval(shipoutBatchTimer)
+  shipoutBatchTimer=null
+}
 // Polls below are GET-only status checks. Skip them while this Chrome tab is
 // hidden; on becoming visible, read the latest status immediately.
 const pollShipoutBatchIfVisible=()=>{if(document.visibilityState!=='hidden')void shipoutBatchPoll()}
@@ -254,7 +262,7 @@ const onShipoutBatchVisible=()=>{
   if(['completed','completed_partial','paused'].includes(shipoutBatchStatus.value.status))return
   void shipoutBatchPoll()
 }
-onUnmounted(()=>{ if(shipoutBatchTimer)clearInterval(shipoutBatchTimer);document.removeEventListener('visibilitychange',onShipoutBatchVisible) })
+onUnmounted(()=>{ stopShipoutBatchPolling();document.removeEventListener('visibilitychange',onShipoutBatchVisible) })
 onMounted(()=>{
   document.addEventListener('visibilitychange',onShipoutBatchVisible)
   const last=isDeTianyunBatch.value ? props.deTianyunLatestBatch : props.shipoutProductionLatestBatch
@@ -273,7 +281,7 @@ async function shipoutBatchApi(url:string, data?:Record<string,string>) {
     headers:{Accept:'application/json',...(data?{'Content-Type':'application/json','X-CSRF-TOKEN':csrf||''}:{})},
     ...(data?{body:JSON.stringify(data)}:{})})
   const result=await response.json().catch(()=>({}))
-  if(!response.ok)throw Error(response.status===429?'请求频繁，请稍后重新预览；本次没有提交海外仓':
+  if(!response.ok)throw new ShipoutBatchHttpError(response.status===429?(url.endsWith('/status')?'查询频繁，稍后自动刷新批次状态':'请求频繁，请稍后重新预览；本次没有提交海外仓'):
     ({SHIPOUT_BATCH_STALE:'订单列表已变化，请重新预览',SHIPOUT_BATCH_ALREADY_RUNNING:'已有批次执行中，请勿重复提交',
       SHIPOUT_BATCH_LOCKED:'正在创建批次，请勿重复点击',SHIPOUT_BATCH_SELECTION_INVALID:'勾选的订单列表无效，请重新选择',
       SHIPOUT_BATCH_QUEUE_UNAVAILABLE:'任务队列不可用，已暂停，不会自动重试',
@@ -284,7 +292,7 @@ async function shipoutBatchApi(url:string, data?:Record<string,string>) {
       DE_BATCH_LOCKED:'另一位操作员正在建立德国仓批次',
       DE_BATCH_CONFIRMATION_REQUIRED:'请重新确认所选德国仓订单',
       DE_BATCH_QUEUE_UNAVAILABLE:'德国仓模拟任务队列不可用，已安全暂停'} as Record<string,string>)[result.error_code]
-    || '批量操作未完成：'+(result.error_code||response.status))
+    || '批量操作未完成：'+(result.error_code||response.status),response.status)
   return result
 }
 async function shipoutBatchCheck(forcedIds:number[]|null=null) {
@@ -300,17 +308,33 @@ async function shipoutBatchCheck(forcedIds:number[]|null=null) {
   try {
     const query=ids.length ? '?scope=selected&order_ids='+ids.join(',') : '?scope=all'
     shipoutBatchPreview.value=await shipoutBatchApi(shipoutBatchApiBase.value+'/preview'+query) as ShipOutBatchPreview
-  }catch(e){shipoutBatchError.value=e instanceof Error?e.message:'批次预览失败'}
+  }catch(e){
+    shipoutBatchError.value=e instanceof Error?e.message:'批次预览失败'
+    publishGlobalFeedback({state:'BLOCKED',title:'批次预检未完成',message:shipoutBatchError.value})
+  }
   finally{shipoutBatchBusy.value=false}
 }
 async function shipoutBatchPoll() {
-  if(!shipoutBatchStatus.value)return
+  if(!shipoutBatchStatus.value||shipoutBatchPollInFlight)return
+  const id=shipoutBatchStatus.value.batch_id
+  const base=shipoutBatchApiBase.value
+  shipoutBatchPollInFlight=true
   try {
-    shipoutBatchStatus.value=await shipoutBatchApi(shipoutBatchApiBase.value+'/'+shipoutBatchStatus.value.batch_id+'/status') as ShipOutBatchStatus
-    if(['completed','completed_partial','paused'].includes(shipoutBatchStatus.value.status)&&shipoutBatchTimer) {
-      clearInterval(shipoutBatchTimer);shipoutBatchTimer=null
+    const result=await shipoutBatchApi(base+'/'+id+'/status') as ShipOutBatchStatus
+    if(base!==shipoutBatchApiBase.value||id!==shipoutBatchStatus.value?.batch_id)return
+    shipoutBatchStatus.value=result
+    if(['completed','completed_partial','paused'].includes(result.status))stopShipoutBatchPolling()
+  }catch(e){
+    if(base!==shipoutBatchApiBase.value||id!==shipoutBatchStatus.value?.batch_id)return
+    if(e instanceof ShipoutBatchHttpError && [403,404].includes(e.status)){
+      stopShipoutBatchPolling()
+      shipoutBatchStatus.value=null
+      shipoutBatchError.value='历史批次已失效或不可访问，已停止自动查询；请刷新页面核对订单状态。'
+      publishGlobalFeedback({state:'BLOCKED',title:'批次状态无法读取',message:shipoutBatchError.value})
+      return
     }
-  }catch(e){shipoutBatchError.value=e instanceof Error?e.message:'查询批次状态失败'}
+    shipoutBatchError.value=e instanceof Error?e.message:'查询批次状态失败'
+  }finally{shipoutBatchPollInFlight=false}
 }
 async function shipoutBatchStart() {
   const preview=shipoutBatchPreview.value
@@ -339,7 +363,10 @@ async function shipoutBatchStart() {
     await shipoutBatchPoll()
     if(!shipoutBatchTimer && shipoutBatchStatus.value && !['completed','completed_partial','paused'].includes(shipoutBatchStatus.value.status))
       shipoutBatchTimer=setInterval(pollShipoutBatchIfVisible,5000)
-  }catch(e){shipoutBatchError.value=e instanceof Error?e.message:'批次创建失败'}
+  }catch(e){
+    shipoutBatchError.value=e instanceof Error?e.message:'批次创建失败'
+    publishGlobalFeedback({state:'BLOCKED',title:'批次推送未确认',message:shipoutBatchError.value})
+  }
   finally{shipoutBatchBusy.value=false}
 }
 const shipoutBatchLabel=(status:string)=>({
