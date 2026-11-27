@@ -1,0 +1,15 @@
+# ERP2 Canonical URL V1 — candidate archive (007windows)
+
+2026-11-25 Beijing time. C1/C2 candidate and C3 automated regression passed; C4 real employee UAT HOLD. C5 archive only, DO NOT merge or deploy Production. Initial Dev switch was rejected by the Windows default Restricted script policy. C4.1 was subsequently completed at 14:37:47 Beijing time using a verified local script in a dedicated RemoteSigned process, without persistent policy change. Live ERP2 now serves 80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37.
+
+- Original public ERP1 customer URL verified: /customers/orders. /orders/customers returned 404.
+- Scope: History router, canonical menu/ACL mapping, legacy hash/dynamic inventory aliases, /login document vs Laravel CSRF request, original Inertia paths, detail and overseas routes, initial URL filter hydration. Existing U1.1 menu login seed preserved.
+- C3: final Vue TypeScript exit 0; Vite build exit 0, 259 files; Vitest 13/13; loopback HTTP + independent Edge anonymous and synthetic authority fixtures 27/27. Fixtures are not staff UAT. No real employee credentials or business mutations used.
+- Candidate index SHA256: 80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37.
+- Local patch SHA256: aa8843eff2d85afc8db49382a7cdbffe70d57d7774fd7a8f9181bb551681ff9e. The patch is against verified 007windows app/runtime source, not directly applicable to GitHub main. Existing unmerged candidate PRs #766, #846, #848 must be reconciled before a reproducible integration branch. This PR archives the actual minimal source diff, not entire accumulated overlays.
+- Backend, DB, tunnel and real warehouse flags were not modified. /api/health confirmed production_connected=false and business writes disabled. Controlled Dev switch completed with source/hash preflight, backup, gateway-only task restart and local/ingress probes. All 12 source files and their backups plus gateway and build hashes matched. See c4-dev-deployment-evidence.json. Public route retests confirmed five exact index responses and correct login redirects; direct /login later rendered after an initial timeout and observed extra inline script. Employee UAT remains HOLD.
+- C4: real Vita/Liang/Dede sessions, menus, direct details, refresh, forward/back, share/filter behavior, role revocation and no cross-account cache. C5 final closure requires these and Owner acceptance. No Production publish or domain switch authorized.
+
+## C5 — Owner acceptance (2026-11-25 14:51 Beijing)
+
+Owner explicitly confirmed “效果pass / 验收通过”. Actual Dev source, gateway, build and rollback backup hashes were rechecked and all matched. See C5-owner-acceptance.json. Canonical route implementation and Owner acceptance are complete; no further feature work here. Individual Vita/Liang/Dede evidence remains pending in the employee UAT main track. PR #858 stays draft; #766/#846/#848 integration dependencies are still open, and neither main merge nor Production deployment is authorized.

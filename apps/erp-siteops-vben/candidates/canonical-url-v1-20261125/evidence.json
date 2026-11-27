@@ -1,0 +1,221 @@
+{
+  "timestampZone": "Asia/Shanghai",
+  "gitMainAtArchive": "ce2ad70c7033a6b317edfae664ee6e77d7ca5948",
+  "sourceManifest": {
+    "changedOutside": [],
+    "changes": [
+      {
+        "path": "src/router/erp-canonical-paths.ts",
+        "base": null,
+        "candidate": "87564d49b940553c0ed11a971f34a330a5c9519e2f8afc3062d54f52a0159621"
+      },
+      {
+        "path": "src/router/index.ts",
+        "base": "bdfa5d61adc059aad63ea724003e3f7968ba4fcc5bef2931e430dd02402e457a",
+        "candidate": "9f2c8a5d2ec4aaa08c6b31a2acbebe5a4976f0d4d84b31264836f4a3e9306484"
+      },
+      {
+        "path": "src/preferences.ts",
+        "base": "af7a06bbc4163db1af639f5dd9826d8c1363e17c5ac657d3a2db58004b6572a5",
+        "candidate": "89b2828fb1e0d1a458aacdffe5309e3fafbd27e0754dbb417e20d2d4f8a71fe1"
+      },
+      {
+        "path": "src/router/erp-live-navigation.ts",
+        "base": "bad561c38c60a51021b1640f855aa13d2166b87e3fe8216f164fa5f322b5b9ac",
+        "candidate": "459e47972ddc557ded9283be70e519fc0029d10b9f6f8cbf8253d4d30aff0480"
+      },
+      {
+        "path": "src/router/guard.ts",
+        "base": "c1a4d990619a31e8a84180c4e8beee9e0d203939cc56e4bbe4edb289d0bdd79b",
+        "candidate": "1da243b4758a9065aed2b5d1aa61e9dda18172c57a1747373fbb4c98c02b6736"
+      },
+      {
+        "path": "src/router/routes/core.ts",
+        "base": "96695fba392ee1400ac8ac0990315d6ebbd4f976c2fee5671016bc9e0fe5b9e3",
+        "candidate": "7428c62730c1cadff09ff0d42ca234c8069536d3306e61c6c6c5fc2814b195bf"
+      },
+      {
+        "path": "src/views/_core/authentication/login.vue",
+        "base": "ed375de01d827eb79d161bc28bc6b97e74eeaba02dd4ee152e44702a7e35f0a3",
+        "candidate": "fd1c2a23e302e4fd53242f6514a44f8146991241787356e427e45cf6eb21b98d"
+      },
+      {
+        "path": "src/views/erp/workspace.vue",
+        "base": "41de582daebae0f0ca8dc2196144150c5c0b47079238b90bbe16480e13ae8df9",
+        "candidate": "021b9298cb09c180b01bb5ea9effff06dc5a5b6c5c643b390d813fc3075e1d74"
+      },
+      {
+        "path": "src/views/erp/logistics-projection.vue",
+        "base": "377b25e93aa18141b962452f442bf7a0aa166dcf544649d60e7b87e44c1ceee9",
+        "candidate": "031aa105c372be18b6b38da732a4dd53e5cdb5548fd341a7428b5f36e2892a4c"
+      },
+      {
+        "path": "src/router/erp-live-navigation.test.ts",
+        "base": "4d7393048d38d50d686facad891b9137d14a8d52f5cfb4914a7af6714f213641",
+        "candidate": "3689c77e88a03665ea767c6275787c44a2d4e2066c58681db7d5dbb2df9ad8de"
+      },
+      {
+        "path": ".env",
+        "base": "b776d0e1021eccc05e045d48b607122978c2d59bd7d8f53726cfc0aaeec92310",
+        "candidate": "2530cd6de6c5ac976c6a83027e448cde9de519907feb1ff6b42659e09891cab0"
+      },
+      {
+        "path": ".env.production",
+        "base": "ff85cf5424be60a3469197f4bd00369b34ac4c0e60e98450e137a3abb9633345",
+        "candidate": "578ad72e92a526f8a17ec9af07c2d1a467244566e5021d9a267456d4c01186f8"
+      }
+    ],
+    "liveDistSha256": "d291a12ffd00194048ce02ca7b8af313c1cf10a67dc5834bab5b6f8b26ec7f8d",
+    "candidateDistSha256": "80f5e42d8aa1ece418d3427aee012aba371807aab62c9c6429c0ebe460408d37",
+    "baselineGateway": "b023e6c61f90deb81ee6ebe0f69516339d915447de68319fbe82273fd759a698",
+    "candidateGateway": "394df57c5568275f2c088b39d5e0db17f91372b2a803f539f82e8dbafcb6b943"
+  },
+  "vitest": {
+    "passed": 13,
+    "total": 13,
+    "exit": 0
+  },
+  "vueTypecheckExit": 0,
+  "viteBuild": {
+    "exit": 0,
+    "fileCount": 259
+  },
+  "finalJointRegression": [
+    {
+      "name": "document /",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "document /login",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "document /auth/login",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "document /customers/orders",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "document /orders/42",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "document /kol/orders/42",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "document /logistics/oversea/us-3sm",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "document /erp/inventory/inventory-warehouse-4",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "CSRF HTML",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "anonymous identity",
+      "pass": true,
+      "detail": 401
+    },
+    {
+      "name": "anonymous Inertia",
+      "pass": true,
+      "detail": 401
+    },
+    {
+      "name": "unknown page",
+      "pass": true,
+      "detail": 404
+    },
+    {
+      "name": "deny order POST",
+      "pass": true,
+      "detail": 405
+    },
+    {
+      "name": "deny domestic Apply",
+      "pass": true,
+      "detail": 405
+    },
+    {
+      "name": "deny overseas start",
+      "pass": true,
+      "detail": 405
+    },
+    {
+      "name": "anonymous /customers/orders?page=2",
+      "pass": true,
+      "detail": "login + target preserved"
+    },
+    {
+      "name": "anonymous /#/erp/orders/orders-customers?page=2",
+      "pass": true,
+      "detail": "login + target preserved"
+    },
+    {
+      "name": "anonymous /customers/orders/42",
+      "pass": true,
+      "detail": "login + target preserved"
+    },
+    {
+      "name": "anonymous /#/erp/inventory/inventory-warehouse-4?page=2",
+      "pass": true,
+      "detail": "login + target preserved"
+    },
+    {
+      "name": "anonymous /#/auth/login?redirect=%2Forders",
+      "pass": true,
+      "detail": "login + target preserved"
+    },
+    {
+      "name": "anonymous runtime exceptions",
+      "pass": true
+    },
+    {
+      "name": "fixture orders direct and sidebar",
+      "pass": true,
+      "detail": "/customers/orders"
+    },
+    {
+      "name": "fixture orders unrelated denied",
+      "pass": true,
+      "detail": 403
+    },
+    {
+      "name": "fixture logistics direct and sidebar",
+      "pass": true,
+      "detail": "/logistics/oversea/us-3sm"
+    },
+    {
+      "name": "fixture logistics unrelated denied",
+      "pass": true,
+      "detail": 403
+    },
+    {
+      "name": "fixture inventory direct and sidebar",
+      "pass": true,
+      "detail": "/inventory/dev-fixture"
+    },
+    {
+      "name": "fixture inventory unrelated denied",
+      "pass": true,
+      "detail": 403
+    }
+  ],
+  "devDeployment": "HOLD_WINDOWS_SCRIPT_POLICY",
+  "employeeUat": "HOLD"
+}
