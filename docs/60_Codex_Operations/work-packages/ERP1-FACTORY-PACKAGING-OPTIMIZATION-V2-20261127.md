@@ -46,6 +46,12 @@ Pure read-only input projection of adopted packaged measurement, shipping refere
 - Live role-permission readback: administrator and uat_owner_admin roles have submit+review; uat_factory_packaging_operator role has submit only. Actual employee assignments/effective permissions and authenticated browser UAT not established. Existing review/submit tests remain green. No role changes.
 - ERP V4 public Unified Grid V2 contract/Owner sample PASS not evidenced in current main; existing GlobalGrid files alone do not establish that gate. Owner visual proposal not explicitly accepted by the continuation request. No UI files changed.
 - Actual effective hours remain unknown (no accepted ledger); no merge or release readiness claim.
+## B0–B2 third continuation
+- Previous exact candidate fec26efb: all four GitHub CI checks SUCCESS. Current main f4f3a253 merged into same isolated candidate branch without conflict; no packaging/shared reader file overlap observed. ERP1-only and pre-development visual gate reaffirmed in current AGENTS.
+- A4 PR #906 head 8415d1fe is Draft/Open, mysql8-rate-foundation FAILURE, body explicitly states partial rate coverage, full source validation and Owner UAT open; no quote-contract acceptance. No A code copied or modified.
+- Added internal PackagingOptimizationCoverageReader for supplied product ID batches. Reuses Product::businessCatalog(), excludes inactive and 00W catalogue entries, returns material name, canonical adopted evidence, independent measurement workflow counts and missing-data indicators. Approved-but-not-adopted records do not imply complete standard; submitted records do not alter standard. No routes, permissions, tables, fee/ranking engine or UI introduced. Future caller must enforce authorization; workflow counts are not an authorization bypass or employee endpoint.
+- Focused isolated SQLite regression on the new base: 54 tests / 290 assertions PASS, including A0–A1 rate foundation and existing packaging/weight reader tests. PHP lint PASS. No real data writes. No browser/UAT claim. Prior CI results are for fec26efb only; new head CI must rerun.
+- B0–B2 backend data and geometry scope prepared. B3 still held by A4; visual implementation still held by explicit Owner rendered design PASS and V4 shared-grid contract. B4 formal amount ranking not started. No Production or ERP2 deployment.
 ## PROJECT POSITION
 PROGRAM_ROADMAP: see exact canonical sequence below (document 13; historical status superseded by current V3 overlay).
 ## Program Roadmap
@@ -79,13 +85,13 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 
 The Program Roadmap is the top-level delivery sequence. It must not be replaced by the current Architecture track or a single Work Package map.
 CURRENT_TRACK_PHASE_MAP: B0 audit → B1 data contract → B2 geometry → B3 A4 comparison → B4 ranking → B5 workflow → B6 UAT → B7 release
-COMPLETED_PHASES: handoff read; source/PR preflight; production aggregate read-only audit; B1/B2 backend candidate, four-preset comparison, isolated focused tests
+COMPLETED_PHASES: handoff read; source/PR preflight; production aggregate read-only audit; B1/B2 backend candidate, four-preset comparison, coverage projection, isolated focused tests
 CURRENT_PHASE: B0–B2 candidate; UI and actual employee browser evidence open
 CURRENT_WORK_PACKAGE: ERP1-FACTORY-PACKAGING-OPTIMIZATION-V2-20261127
 PACKAGE_STATUS: OPEN / BACKEND_CANDIDATE_TESTED / DESIGN_PENDING_OWNER_PASS
 WAITING_PHASES: authenticated employee browser evidence; UI visual PASS; V4 shared grid; B3–B7; A4 contract
 BASELINE: 6c9347ffc029e53565dd80640dde6568f9886ac7
-GITHUB_STATE: main f698a49c merged into candidate branch; Draft PR #902 open; no merge to main
+GITHUB_STATE: main f4f3a253 merged into candidate branch; Draft PR #902 open; no merge to main
 SOURCE_CONFLICTS: earlier ERP2 parity language superseded by ERP1-only directive; stale AI/CURRENT_CONTEXT roadmap superseded by current Owner handoff and document 13 V3 overlay; production release directory identifies 6c9347ff; independent exact SHA attestation unavailable.
 GLOBAL_GATE: no release; preserve Owner visual and UAT approval; no real DB writes
 PRODUCTION_DEPLOYMENT_STATUS: NO for this package; active production release directory and read-only MySQL aggregate verified
