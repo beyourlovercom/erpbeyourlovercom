@@ -1,3 +1,27 @@
+# HIGHEST OWNER-FROZEN ERP2 ADVANCED PARITY STANDARD V2 (2026-11-26)
+
+**Rule ID: `ERP2_ADVANCED_PARITY_P0_V2` · OWNER APPROVED · PERMANENT P0.** Mandatory for every existing, migrated and new ERP2 business page, feature, version sync and release acceptance. ERP1 is the minimum functional and UX baseline; ERP2 MUST inherit all valid functionality and equal or improve interaction and design. No simplified workbenches, missing actions, developer-form replacements or unjustified extra steps. Canonical Laravel business rules, role-based effective permissions, security and safety gates remain authoritative.
+
+**Only L5 Advanced Parity is PASS:** L1 route + L2 data + L3 complete function + L4 interaction + L5 approved shared components, compact design and real dual-site workflow evidence. Eight mandatory gates: S01 functional completeness, S02 data, S03 permissions, S04 interaction, S05 layout/design, S06 Unified Grid V2/shared components, S07 compact UI/feedback, S08 same-record/equivalent-snapshot and same-role real browser UAT. CI/build/HTTP 200/mock/actingAs alone cannot establish parity or employee UAT. Missing evidence = OPEN/FAIL; no parity-complete release or closure. Preserve Owner visual/UAT, CI, production authorization and all mutation/rollback gates; no production write tests.
+
+**PA4–PA6 upgrade in place:** PA4 rebaseline and reopen previously partial or simplified pages (P0 order detail/edit/create, logistics/allocation/fulfillment, KOL); PA5 verify full actual workflows and visual/permission/data equivalence, reuse U5–U6 evidence; PA6 require route-level L5 evidence and Owner acceptance. No duplicate implementation stream. Retain compliant work and historical evidence. Do not silently omit mature ERP1 functions or regress ERP2 approved improvements.
+
+Canonical full standard and acceptance-record contract: [docs/ERP2_ADVANCED_PARITY_V2.md](docs/ERP2_ADVANCED_PARITY_V2.md). Read it before every applicable task. Documentation adoption does not certify existing pages or authorize Production deployment.
+
+---
+
+# HIGHEST OWNER-FROZEN ERP2 GLOBAL FRONTEND STANDARDS P0 (2026-11-26)
+
+**Rule ID: ERP2_GLOBAL_FRONTEND_STANDARDS_P0_V1 · OWNER APPROVED · MANDATORY.** Applies to every existing, migrated and new ERP2 business page. Incorporate into the existing PA4–PA6 full-page consistency work package; no independent implementation stream or separate production release.
+
+1. **Unified Grid V2:** All ERP2 business lists MUST reuse the approved shared Unified Grid V2 component and its account-level column preferences, search, filters, sorting and pagination contracts. No page-specific duplicate grid or column-settings implementation. Preserve canonical data and permissions.
+2. **Global Feedback Island V1:** Route dynamic operation success, failure, exceptions and HTTP 403/404/409 feedback through the shared feedback island with understandable messages. Do not replace the business workspace with raw error screens for recoverable errors. Keep required field validation, blocking safety alerts and destructive confirmations visible in context; never weaken authentication, authorization or error semantics.
+3. **Global Compact UI Standard V1:** Maximize visible business data and minimize top-of-page space. Put status counters, view switches and relevant buttons beside the page title wherever feasible; keep page-level actions in the canonical header action zone. Consolidate search/filter controls in the shared grid toolbar. Remove redundant titles, unnecessary whitespace, decorative cards and nonessential notices. Necessary static explanatory text belongs in the footer after business content. Dev/security-gate informational banners must not occupy business-page space; actual security gates remain enforced. Allow responsive wrapping and preserve accessibility and usability. Every avoidable row must be removed.
+
+**PA4:** Apply all three standards while fixing each page. **PA5:** Verify actual pages and workflow states, including layout density and feedback. **PA6:** Require route-by-route evidence of shared grid reuse, feedback handling and compact layout; any noncompliant business page blocks final acceptance. Preserve existing Owner visual/UAT, CI, frontend-only architecture, security and production release gates. Documentation adoption is not evidence of implementation or authorization to deploy. These ERP2-specific presentation requirements supplement existing compact workspace, grid and action-placement rules.
+
+---
+
 # OWNER-FROZEN ERP RELEASE LOG AND RISK-BASED BACKUP (2026-11-26)
 
 **Mandatory for ERP1 and ERP2.** Each verified release must be recorded in the single canonical Markdown file `resources/content/changelog/erp-changelog.md`. Add a dated section (`## YYYY-MM-DD`, Beijing date; append to an existing same-date section), concise Chinese user-facing changes grouped by module, and actual ERP1/ERP2 release scope. Do not label merged-only, candidate-only or pending UAT work as released. Preserve prior entries; no database-backed changelog editor, no separate ERP2 copy of the content. Synchronize the committed Markdown to the affected runtime and verify the read-only `/settings/changelog` page; later content changes require no frontend rebuild.
