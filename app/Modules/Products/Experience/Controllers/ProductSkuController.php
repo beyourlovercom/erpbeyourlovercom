@@ -94,6 +94,11 @@ final class ProductSkuController
         ]);
     }
 
+    public function autoMatch(Request $request, \App\Modules\Products\Application\MaterialNameSkuMatcher $matcher): \Illuminate\Http\JsonResponse
+    {
+        return response()->json($matcher->reconcile($request->user()));
+    }
+
     public function export(Request $request): StreamedResponse
     {
         $warehouses=Warehouse::query()->where('is_active',true)->get()->keyBy(fn($w)=>strtoupper($w->code));

@@ -31,6 +31,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
 });
 
 Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): void {
+    Route::post('/products/skus/auto-match', [ProductSkuController::class, 'autoMatch'])->name('products.skus.auto-match');
     Route::post('/products/skus/batch', [ProductSkuController::class, 'batch'])->name('products.skus.batch');
     Route::put('/products/{productId}/material-versions', [\App\Modules\Products\Experience\Controllers\ProductMaterialVersionController::class, 'upsert'])
         ->whereNumber('productId')->name('products.material-versions.upsert');

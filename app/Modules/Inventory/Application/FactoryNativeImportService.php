@@ -12,6 +12,7 @@ use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductWarehouseSku;
 use App\Modules\Products\Application\SkuIdentityResolver;
+use App\Modules\Products\Application\MaterialNameSkuMatcher;
 use App\Modules\Products\Infrastructure\Models\ProductCostSource;
 use App\Modules\Products\Infrastructure\Models\ProductMaterialVersion;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -22,7 +23,7 @@ final class FactoryNativeImportService
 {
     public function __construct(private readonly XlsxAdapter $parser,
         private readonly InventoryBatchSyncService $stock, private readonly AuditRecorder $audit,
-        private readonly SkuIdentityResolver $identities) {}
+        private readonly SkuIdentityResolver $identities, private readonly MaterialNameSkuMatcher $nameMatcher) {}
 
     public function import(UploadedFile $file, string $date, Authenticatable $actor): array
     {
@@ -65,7 +66,8 @@ final class FactoryNativeImportService
                 $costOwners[$key][(int)$cost->product_id]=true;
             }
             $versions = ProductMaterialVersion::query()->lockForUpdate()->get()->keyBy('code_key');
-            $touched=[];$linked=0;$unmapped=0;$conflicts=0;$legacyApproved=0;
+            $nameIndex=$this->nameMatcher->index();
+            $touched=[];$linked=0;$unmapped=0;$conflicts=0;$legacyApproved=0;$nameMatched=0;
             foreach($rows as $row) {
                 $key=ProductMaterialVersion::keyFor($row['material_code']);
                 abort_if(mb_strlen($key)>128 || mb_strlen($row['material_name'])>10000,422,'物料字段超出长度限制');
@@ -83,6 +85,15 @@ final class FactoryNativeImportService
                         $version->binding_source=$scope?'confirmed_factory_history':'confirmed_cost_code';
                         $version->binding_evidence=$scope?$scope['evidence']:'exact confirmed inventory_cost_book source_key';
                         $version->verified_at=now();
+                    }
+                }
+                // Name-prefix matching is an identity fallback, not stock-scope approval.
+                if (!$conflict && !$version->product_id && $owners===[]) {
+                    $match=$this->nameMatcher->resolve($row['material_name'],$nameIndex);
+                    if ($match) {
+                        $version->fill(['product_id'=>$match['product_id'],'binding_source'=>'material_name_sku_exact',
+                            'binding_evidence'=>$this->nameMatcher->evidence($match),'verified_by'=>$actor->getAuthIdentifier(),'verified_at'=>now()]);
+                        $nameMatched++;
                     }
                 }
                 if (!$conflict && $scope && (int)$version->product_id===$scope['product_id']
@@ -172,7 +183,7 @@ final class FactoryNativeImportService
                 'warehouse_007_qty'=>array_sum(array_column($rows,'warehouse_007_qty')),
                 'stock_batch_id'=>$batchId,'duplicate'=>false,
                 'legacy_preserved_products'=>count($legacyIds),'availability_held_products'=>count($heldIds),
-                'legacy_scope_approved_materials'=>$legacyApproved];
+                'legacy_scope_approved_materials'=>$legacyApproved,'name_auto_linked'=>$nameMatched];
             DB::table('factory_material_snapshots')->where('id',$id)->update(['result'=>json_encode($result,JSON_THROW_ON_ERROR),'updated_at'=>now()]);
             $this->audit->record(AuditActor::user($actor,AuditSource::Web),'inventory.factory_native_imported',
                 'factory_material_snapshot',$id,null,$result,'factory_native_import');

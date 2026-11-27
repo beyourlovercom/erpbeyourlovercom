@@ -151,6 +151,28 @@ final class FactoryNativeImportTest extends TestCase
         } finally {@unlink($path);}
     }
 
+    public function test_material_name_prefix_auto_matching_preserves_full_suffix_and_stock_scope(): void
+    {
+        $p=Product::create(['sku'=>'SG02','name'=>'SG02','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
+        $q=Product::create(['sku'=>'VA617A-PINK','name'=>'Pink','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
+        $inactive=Product::create(['sku'=>'OLD99','name'=>'Old','source_type'=>'manual','product_type'=>'simple','is_active'=>false]);
+        $actor=$this->actor(['products.operate','inventory.operate']);
+        $path=$this->fixture([['SG-CODE','SG02可可新版美国',25,0],['PINK','va617a-pink 粉色',9,0],['SUFFIX','SG02B不同版本',8,0],['OLD','OLD99历史商品',3,0],['COMBO','SG02+VA617A组合',4,0]]);
+        try {
+            $this->actingAs($actor)->post('/inventory/sync/factory-native',['file'=>$this->upload($path),'stock_count_at'=>now()->toDateString()],['Accept'=>'application/json'])
+                ->assertOk()->assertJsonPath('name_auto_linked',2)->assertJsonPath('linked',2)->assertJsonPath('applied_products',0);
+            $this->assertDatabaseHas('product_material_versions',['code_key'=>'SG-CODE','product_id'=>$p->id,'binding_source'=>'material_name_sku_exact','factory_stock_approved'=>false]);
+            $this->assertDatabaseHas('product_material_versions',['code_key'=>'PINK','product_id'=>$q->id]);
+            foreach(['SUFFIX','OLD','COMBO'] as $key) $this->assertDatabaseHas('product_material_versions',['code_key'=>$key,'product_id'=>null]);
+            ProductMaterialVersion::create(['code_key'=>'NEW-SG','material_code'=>'NEW-SG','material_name'=>'sg02 新包装','factory_physical_qty'=>500]);
+            $this->actingAs($this->actor(['products.view']))->postJson('/products/skus/auto-match')->assertForbidden();
+            $this->actingAs($actor)->postJson('/products/skus/auto-match')->assertOk()->assertJsonPath('matched',1)->assertJsonPath('remaining',3);
+            $this->assertDatabaseHas('product_material_versions',['code_key'=>'NEW-SG','product_id'=>$p->id,'factory_stock_approved'=>false]);
+            $this->postJson('/products/skus/auto-match')->assertOk()->assertJsonPath('matched',0);
+            $this->assertDatabaseCount('warehouse_inventory',0);
+        } finally {@unlink($path);}
+    }
+
     public function test_sku_matrix_shared_grid_server_page_size_and_sort_are_bounded(): void
     {
         foreach (range(1, 25) as $n) Product::create(['sku'=>sprintf('GRID-%03d',$n),'name'=>'UAT title','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);

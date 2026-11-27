@@ -34,6 +34,17 @@ const materialEdit = ref<{productId:number|null;material_code:string;material_na
 const warehouseEdit=ref<{productId:number;warehouseId:number;label:string;sku:string;verification_evidence:string;same_physical_product_confirmed:boolean}|null>(null)
 const busy=ref(false)
 const imagePreview=ref<string|null>(null)
+async function autoMatch() {
+  if (busy.value) return
+  busy.value=true
+  try {
+    const {data}=await axios.post('/products/skus/auto-match')
+    publishGlobalFeedback({state:'SUCCESS',title:'物料自动匹配完成',message:'新增关联 '+data.matched+' 条；剩余 '+data.remaining+' 条；冲突 '+data.conflicts+' 条。库存数量未改变。'})
+    router.reload()
+  } catch(e:any) {
+    publishGlobalFeedback({state:'BLOCKED',title:'自动匹配失败',message:e?.response?.data?.message??'请检查权限。'})
+  } finally {busy.value=false}
+}
 async function saveBatch() {
   if (!batchFile.value || busy.value) return
   busy.value=true
@@ -128,6 +139,7 @@ const unboundColumns:ColDef<GridRow>[]=[
         </div>
         <div class="mvp-page-actions page-header-actions">
           <a :href="exportUrl()" class="mvp-button mvp-button-secondary">Excel 导出 / 模板</a>
+          <button v-if="canOperate && unmappedMaterialCount" class="mvp-button" :disabled="busy" @click="autoMatch">自动匹配全部待绑定物料</button>
           <button v-if="canOperate" class="mvp-button mvp-button-secondary" @click="batchOpen=true">Excel 批量维护</button>
           <a href="/products/sku-aliases" class="mvp-button mvp-button-secondary">别名与待解析</a>
           <a href="/inventory/sync" class="mvp-button mvp-button-secondary">库存导入</a>
