@@ -30,6 +30,10 @@ Routine low-risk and normal releases do not require a new database backup by def
 
 ---
 
+# OWNER-FROZEN ERP1 PRODUCT CATALOG EXCLUSION (2026-11-27)
+
+All SKUs starting with 00W (case-insensitive, trimmed, including bundles starting with 00W) are excluded from ERP1 business product catalog and WooCommerce product synchronization (full, incremental, single, CSV bootstrap). Never recreate them from website product sync. Preserve historical and pending order identities; retire referenced products rather than deleting their business references. ERP1 only; do not modify WWW or ERP2.
+
 # HIGHEST OWNER-FROZEN ERP1 ONLY RELEASE (2026-11-27)
 
 Owner directive: stop independent ERP2 upgrades, feature development and synchronized releases. Preserve all historical ERP2 artifacts. ERP1 remains the sole business development and production release target; ERP V4 native reverse UI migration into ERP1 may continue. Do not redeploy ERP2 or resume the forward business migration without explicit new Owner authorization.

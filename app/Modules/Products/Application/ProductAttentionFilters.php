@@ -72,7 +72,7 @@ final class ProductAttentionFilters
     {
         $result = [];
         foreach (self::KINDS as $kind) {
-            $result[$kind] = self::apply(Product::query(), $kind, $connectionKey)->count();
+            $result[$kind] = self::apply(Product::query()->businessCatalog(), $kind, $connectionKey)->count();
         }
 
         return $result;

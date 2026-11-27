@@ -27,7 +27,7 @@ final class ProductSkuController
     {
         $filters=$request->only(['search']);
         $search=trim((string)($filters['search']??''));
-        $query=Product::query()->with(['materialVersions','warehouseSkus','media','providerSnapshots'])
+        $query=Product::query()->businessCatalog()->with(['materialVersions','warehouseSkus','media','providerSnapshots'])
             ->withCount('skuAliases');
         if ($search!=='') {
             $pattern='%'.$search.'%';
@@ -89,7 +89,7 @@ final class ProductSkuController
             'unmappedMaterials'=>ProductMaterialVersion::query()->whereNull('product_id')
                 ->when($search!=='',fn($q)=>$q->where(fn($q)=>$q->where('material_code','like','%'.$search.'%')->orWhere('material_name','like','%'.$search.'%')))
                 ->orderBy('material_code')->limit(50)->get(['id','material_code','material_name','factory_physical_qty']),
-            'productOptions'=>$request->user()?->can('products.operate')?Product::query()->where('is_active',true)->whereNotNull('sku')->orderBy('sku')->get(['id','sku']):[],
+            'productOptions'=>$request->user()?->can('products.operate')?Product::query()->businessCatalog()->where('is_active',true)->whereNotNull('sku')->orderBy('sku')->get(['id','sku']):[],
 
         ]);
     }
