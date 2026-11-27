@@ -134,7 +134,7 @@ final class XlwmsOrderGateway
 
         // Historical/manual warehouse orders are only discoverable by
         // referOrderNo in the paginated outbound order list.
-        if ($connection->oms_warehouse_code === 'Hannover') {
+        if (in_array($connection->oms_warehouse_code, ['Hannover', 'US01'], true)) {
             return $this->findExistingDeComplete($connection, $refs);
         }
         $pageSize = 10;

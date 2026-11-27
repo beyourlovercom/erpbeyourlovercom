@@ -90,7 +90,7 @@ final class ConfigureXlwmsInventoryApiTest extends TestCase
             'warehouse_id' => $ny->id, 'provider' => 'xlwms',
             'app_key_encrypted' => 'FAKE_NY_TEST_KEY',
             'app_secret_encrypted' => 'FAKE_NY_TEST_SECRET',
-            'oms_warehouse_code' => 'SIMULATED_NY',
+            'oms_warehouse_code' => 'US01',
         ]);
 
         $this->artisan('xlwms:configure-inventory-api --warehouse=US-NY --check')

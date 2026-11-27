@@ -52,6 +52,7 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
             $configured = $existing !== null
                 && filled($existing->oms_warehouse_code)
                 && ($warehouseCode !== 'DE' || $existing->oms_warehouse_code === 'Hannover')
+                && ($warehouseCode !== 'US-NY' || $existing->oms_warehouse_code === 'US01')
                 && filled($existing->app_key_encrypted)
                 && filled($existing->app_secret_encrypted);
             $this->line($configured ? 'XLWMS '.$warehouseCode.' credential configuration: PRESENT'
@@ -75,7 +76,8 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
 
         if (strlen($omsWarehouse) < 1 || strlen($omsWarehouse) > 128
             || strlen($appKey) < 6 || strlen($appSecret) < 6
-            || ($warehouseCode === 'DE' && $omsWarehouse !== 'Hannover')) {
+            || ($warehouseCode === 'DE' && $omsWarehouse !== 'Hannover')
+            || ($warehouseCode === 'US-NY' && $omsWarehouse !== 'US01')) {
             $this->error('One or more required configuration values were missing or invalid.');
             return self::INVALID;
         }
@@ -106,7 +108,7 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
 
         $this->info('XLWMS '.$warehouseCode.': encrypted credential configuration saved (API not yet verified).');
         if ($warehouseCode === 'US-NY') {
-            $this->line('US-NY credential setup only; inventory and outbound operations remain disabled pending validation.');
+            $this->line('Next: php artisan xlwms:sync-inventory --warehouse=US-NY --dry-run');
         } else {
             $this->line('Next: php artisan xlwms:sync-inventory --warehouse='.$warehouseCode.' --dry-run');
         }
