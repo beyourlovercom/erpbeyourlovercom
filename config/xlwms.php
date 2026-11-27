@@ -66,6 +66,9 @@ return [
     // the separate CLI-only apply gate is explicitly enabled.
     'de_production_read_enabled' => filter_var(env('XLWMS_DE_PRODUCTION_READ_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_inventory_production_apply_enabled' => filter_var(env('XLWMS_DE_PRODUCTION_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    // NY first apply is isolated Dev only; production remains fail-closed.
+    'us_ny_inventory_dev_apply_enabled' => filter_var(env('XLWMS_US_NY_INVENTORY_DEV_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'us_ny_inventory_first_apply_approved_checksum' => (string) env('XLWMS_US_NY_INVENTORY_FIRST_APPLY_APPROVED_CHECKSUM', ''),
     'de_inventory_dev_apply_enabled' => filter_var(env('XLWMS_DE_INVENTORY_DEV_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     'de_inventory_first_apply_approved_checksum' => (string) env('XLWMS_DE_INVENTORY_FIRST_APPLY_APPROVED_CHECKSUM', ''),
     'de_authoritative_auto_apply_enabled' => filter_var(env('XLWMS_DE_AUTHORITATIVE_AUTO_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),

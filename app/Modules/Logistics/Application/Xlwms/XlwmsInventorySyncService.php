@@ -30,7 +30,15 @@ final class XlwmsInventorySyncService
     public function sync(bool $apply = false, string $warehouseCode = 'US-SM', array $resumeVerifiedSkus = []): array
     {
         if (! in_array($warehouseCode, ['US-SM', 'DE', 'US-NY'], true)) throw new RuntimeException('XLWMS_WAREHOUSE_UNSUPPORTED');
-        if ($warehouseCode === 'US-NY' && $apply) throw new RuntimeException('XLWMS_US_NY_APPLY_NOT_AUTHORIZED');
+        if ($warehouseCode === 'US-NY' && $apply) {
+            if (! app()->environment('local', 'testing')
+                || ! (bool) config('xlwms.us_ny_inventory_dev_apply_enabled', false)) {
+                throw new RuntimeException('XLWMS_US_NY_APPLY_NOT_AUTHORIZED');
+            }
+            if (! $this->v2Enabled() || ! $this->skuIsolationEnabled()) {
+                throw new RuntimeException('XLWMS_US_NY_REQUIRES_V2_SKU_ISOLATION');
+            }
+        }
         if ($warehouseCode !== 'DE' && $resumeVerifiedSkus !== []) throw new RuntimeException('XLWMS_RESUME_ONLY_SUPPORTED_FOR_DE');
         // R4 permits DE inventory writes ONLY in isolated Local/Testing, with a
         // separate DE gate. V2 + per-SKU quarantine and first-checksum approval
@@ -425,9 +433,11 @@ final class XlwmsInventorySyncService
         if ($last === null || ! (bool) ($last->summary['v2'] ?? false)) {
             // DE approval is warehouse-specific: its Owner-reviewed checksum can
             // never replace or accidentally inherit the US-SM first-apply gate.
-            $approvedConfigKey = $warehouse->code === 'DE'
-                ? 'xlwms.de_inventory_first_apply_approved_checksum'
-                : 'xlwms.inventory_first_apply_approved_checksum';
+            $approvedConfigKey = match ($warehouse->code) {
+                'DE' => 'xlwms.de_inventory_first_apply_approved_checksum',
+                'US-NY' => 'xlwms.us_ny_inventory_first_apply_approved_checksum',
+                default => 'xlwms.inventory_first_apply_approved_checksum',
+            };
             $approved = trim((string) config($approvedConfigKey, ''));
             if (strlen($approved) !== 64 || ! ctype_xdigit($approved)
                 || ! hash_equals(strtolower($approved), strtolower($checksum))) {

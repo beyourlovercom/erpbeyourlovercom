@@ -89,6 +89,33 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         return $o->fresh();
     }
 
+    public function test_us_ny_preview_requires_own_mapping_and_verified_usps_channel_without_create(): void
+    {
+        $o = $this->orderFixture();
+        $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        $item = $o->items()->firstOrFail();
+        $o->shipment()->update(['warehouse_id' => $ny->id, 'carrier' => 'USPS', 'service' => 'Priority',
+            'carrier_service_id' => null]);
+        $o->fresh()->shipment->overseaReview()->update(['reviewed_warehouse_id' => $ny->id]);
+        WarehouseOpenApiConnection::query()->create(['warehouse_id' => $ny->id, 'provider' => 'xlwms',
+            'oms_warehouse_code' => 'US01', 'app_key_encrypted' => 'NY_TEST_KEY', 'app_secret_encrypted' => 'NY_TEST_SECRET']);
+        WarehouseInventory::query()->create(['warehouse_id' => $ny->id, 'product_id' => $item->product_id,
+            'quantity_on_hand' => 10, 'quantity_reserved' => 0]);
+        Http::fake();
+        $preview = app(\App\Modules\Logistics\Application\Xlwms\SingleOrderPreview::class);
+        self::assertContains('final_sku_not_verified', $preview->forOrder($o->fresh(), false, false, 'US-NY')['blockers']);
+        ProductWarehouseSku::query()->create(['warehouse_id' => $ny->id, 'product_id' => $item->product_id,
+            'sku' => 'NY-PHYSICAL', 'is_active' => true, 'verified_at' => now()]);
+        $p = $preview->forOrder($o->fresh(), false, false, 'US-NY');
+        self::assertSame([], $p['blockers']);
+        self::assertSame('US01', $p['payload']['whCode']);
+        self::assertSame('USPS-NJ', $p['payload']['logisticsChannel']);
+        self::assertSame('NY-PHYSICAL', $p['payload']['productList'][0]['sku']);
+        $o->shipment()->update(['carrier' => 'UPS', 'service' => 'UPS-NJ']);
+        self::assertContains('US_NY_OMS_CHANNEL_NOT_VERIFIED', $preview->forOrder($o->fresh(), false, false, 'US-NY')['blockers']);
+        Http::assertNothingSent();
+    }
+
     public function test_owner_selected_no_shipping_service_creates_draft_without_label_fields(): void
     {
         $o=$this->orderFixture();

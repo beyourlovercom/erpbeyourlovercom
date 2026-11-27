@@ -35,6 +35,7 @@ final class SingleOrderPreview
         $add(! $webDraft && (! $connection || ! filled($connection->app_key_encrypted) || ! filled($connection->app_secret_encrypted)), 'api_credentials_missing');
         $add(! $connection || ! filled($connection->oms_warehouse_code), 'oms_warehouse_not_bound');
         $add($warehouseCode === 'DE' && $connection?->oms_warehouse_code !== 'Hannover', 'DE_OMS_WAREHOUSE_MISMATCH');
+        $add($warehouseCode === 'US-NY' && $connection?->oms_warehouse_code !== 'US01', 'US_NY_OMS_WAREHOUSE_MISMATCH');
         $add(! $address || ! filled($address->recipient_name), 'recipient_missing');
         $add(! $address || ! filled($address->address_line_1), 'address_missing');
         $add(! $address || ! filled($address->city), 'city_missing');
@@ -61,6 +62,15 @@ final class SingleOrderPreview
                 default => $channel,
             };
         }
+        if ($warehouseCode === 'US-NY') {
+            // Only the observed historical US01 USPS channel is currently proven.
+            // Other listed carrier channels require independent verification.
+            $carrier = strtoupper(trim((string) $shipment?->carrier));
+            if ($carrier === 'USPS' && in_array(strtoupper($channel), ['PRIORITY', 'USPS-NJ'], true)) {
+                $channel = 'USPS-NJ';
+            }
+            $add($carrier !== 'USPS' || $channel !== 'USPS-NJ', 'US_NY_OMS_CHANNEL_NOT_VERIFIED');
+        }
         $add($channel === '', 'native_logistics_channel_missing');
         // R3 DE catalog channels are provider IDs, not the ERP carrier label.
         // Never fall back to US-SM's special service or an unverified DHL alias.
@@ -78,6 +88,13 @@ final class SingleOrderPreview
         foreach ($order->items as $item) {
             try {
                 $sku = $shipment ? $this->finalSkus->forShipment($shipment, $item) : '';
+                if ($warehouseCode === 'US-NY') {
+                    $sku = $this->finalSkus->mapped((int) $item->product_id, (int) $shipment?->warehouse_id) ?? '';
+                    if ($sku === '') {
+                        $blocking[] = 'final_sku_not_verified';
+                        continue;
+                    }
+                }
             } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
                 $blocking[] = 'final_sku_not_verified';
                 continue;
