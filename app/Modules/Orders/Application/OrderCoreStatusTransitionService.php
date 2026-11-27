@@ -6,6 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Logistics\Application\LogisticsReviewAccess;
+use App\Modules\Logistics\Application\PendingFinalSkuMaterializer;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderWorkflowStatusHistory;
@@ -23,6 +24,7 @@ final class OrderCoreStatusTransitionService
         private readonly AuditRecorder $audit,
         private readonly OrderProgressResolver $progress,
         private readonly InventoryReservationRepository $reservations,
+        private readonly PendingFinalSkuMaterializer $finalSkuMaterializer,
     ) {}
 
     public function transition(Order $order, string $command, int $expectedRevision, Authenticatable $actor, ?string $reason = null): Order
@@ -203,6 +205,9 @@ final class OrderCoreStatusTransitionService
 
             $locked->workflow_revision = (int) $locked->workflow_revision + 1;
             $locked->save();
+            if (in_array($command, ['sending', 'pending_review', 'resolve_exception', 'resolve_manual_hold'], true)) {
+                $this->finalSkuMaterializer->heal($locked, $actor);
+            }
             $updated = $locked->fresh(['shipment.warehouse', 'operationalMarkers', 'originalFulfillmentChildren']);
             $after = OrderManualHoldStatus::selected($updated)
                 ?? $this->progress->resolve($updated) ?? 'sending';

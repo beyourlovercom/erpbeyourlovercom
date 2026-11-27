@@ -56,7 +56,9 @@ final class DomesticTodayOrdersExporter
                 $values = [
                     1 => (string) $order->erp_order_id,
                     2 => $item ? ($shipment
-                        ? $this->finalSkus->forShipment($shipment, $item)
+                        ? ($shipment->shipment_status === 'shipped' || $shipment->shipped_at !== null
+                            ? WarehouseSkuPresentation::sku($item)
+                            : $this->finalSkus->forShipment($shipment, $item))
                         : WarehouseSkuPresentation::sku($item)) : '',
                     5 => $carrierLabel,
                     6 => (string) $providerReference,
