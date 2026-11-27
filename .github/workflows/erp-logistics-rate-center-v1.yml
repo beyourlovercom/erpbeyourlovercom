@@ -5,6 +5,10 @@ on:
     paths:
       - 'database/migrations/**logistics_rate_center**'
       - 'tests/Feature/Logistics/LogisticsRateCenter*Test.php'
+      - 'tests/Feature/Logistics/AllocationRatePreviewTest.php'
+      - 'app/Modules/Logistics/Application/AllocationRatePreviewService.php'
+      - 'resources/js/Components/Logistics/AllocationRatePreview*'
+      - 'resources/js/Pages/Logistics/FulfillmentAllocation.vue'
       - 'app/Modules/Logistics/Application/LogisticsRate*.php'
       - 'app/Modules/Logistics/Application/VersionedRateQuoteService.php'
       - 'app/Modules/Logistics/Application/FulfillmentPlanCostEstimator.php'
@@ -25,7 +29,7 @@ jobs:
           extensions: mbstring, pdo_sqlite, sqlite3
           coverage: none
       - run: composer install --no-interaction --prefer-dist --no-progress
-      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php
+      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php tests/Feature/Logistics/AllocationRatePreviewTest.php
         env:
           APP_ENV: testing
           DB_CONNECTION: sqlite
@@ -55,7 +59,7 @@ jobs:
           extensions: mbstring, pdo_mysql
           coverage: none
       - run: composer install --no-interaction --prefer-dist --no-progress
-      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php
+      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php tests/Feature/Logistics/AllocationRatePreviewTest.php
         env:
           APP_ENV: testing
           DB_CONNECTION: mysql
@@ -66,3 +70,15 @@ jobs:
           DB_PASSWORD: root
           DB_URL: ''
           ERP_LOCAL_ADMIN_BYPASS: 'false'
+  allocation-rate-ui:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run resources/js/Components/Logistics/AllocationRatePreview.test.ts
+      - run: npm run typecheck
+      - run: npm run build
