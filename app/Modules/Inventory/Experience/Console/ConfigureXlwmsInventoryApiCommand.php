@@ -23,7 +23,7 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
     protected $signature = 'xlwms:configure-inventory-api
         {--check : Check connection presence without exposing secret material (default)}
         {--configure : Securely bind warehouse credentials through hidden local terminal prompts}
-        {--warehouse=US-SM : ERP warehouse code (US-SM or DE)}';
+        {--warehouse=US-SM : ERP warehouse code (US-SM, DE or US-NY)}';
 
     protected $description = 'Check or configure encrypted warehouse-scoped XLWMS credentials (local TTY only)';
 
@@ -35,8 +35,8 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
         }
 
         $warehouseCode = strtoupper(trim((string) $this->option('warehouse')));
-        if (! in_array($warehouseCode, ['US-SM', 'DE'], true)) {
-            $this->error('Unsupported XLWMS warehouse. Allowed: US-SM, DE.');
+        if (! in_array($warehouseCode, ['US-SM', 'DE', 'US-NY'], true)) {
+            $this->error('Unsupported XLWMS warehouse. Allowed: US-SM, DE, US-NY.');
             return self::INVALID;
         }
         $warehouse = Warehouse::query()->where('code', $warehouseCode)->first();
@@ -105,7 +105,11 @@ final class ConfigureXlwmsInventoryApiCommand extends Command
         }
 
         $this->info('XLWMS '.$warehouseCode.': encrypted credential configuration saved (API not yet verified).');
-        $this->line('Next: php artisan xlwms:sync-inventory --warehouse='.$warehouseCode.' --dry-run');
+        if ($warehouseCode === 'US-NY') {
+            $this->line('US-NY credential setup only; inventory and outbound operations remain disabled pending validation.');
+        } else {
+            $this->line('Next: php artisan xlwms:sync-inventory --warehouse='.$warehouseCode.' --dry-run');
+        }
         return self::SUCCESS;
     }
 }

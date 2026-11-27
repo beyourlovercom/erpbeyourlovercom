@@ -79,10 +79,37 @@ final class ConfigureXlwmsInventoryApiTest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_us_ny_credentials_are_warehouse_scoped_and_encrypted(): void
+    {
+        $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        $this->artisan('xlwms:configure-inventory-api --warehouse=US-NY --check')
+            ->expectsOutput('XLWMS US-NY credential configuration: MISSING')
+            ->assertExitCode(1);
+
+        WarehouseOpenApiConnection::query()->create([
+            'warehouse_id' => $ny->id, 'provider' => 'xlwms',
+            'app_key_encrypted' => 'FAKE_NY_TEST_KEY',
+            'app_secret_encrypted' => 'FAKE_NY_TEST_SECRET',
+            'oms_warehouse_code' => 'SIMULATED_NY',
+        ]);
+
+        $this->artisan('xlwms:configure-inventory-api --warehouse=US-NY --check')
+            ->expectsOutput('XLWMS US-NY credential configuration: PRESENT')
+            ->assertExitCode(0);
+        $this->artisan('xlwms:configure-inventory-api --warehouse=DE --check')
+            ->expectsOutput('XLWMS DE credential configuration: MISSING')
+            ->assertExitCode(1);
+        $this->artisan('xlwms:configure-inventory-api --warehouse=US-SM --check')
+            ->expectsOutput('XLWMS US-SM credential configuration: MISSING')
+            ->assertExitCode(1);
+        self::assertNotSame('FAKE_NY_TEST_SECRET', (string) \DB::table('warehouse_openapi_connections')
+            ->where('warehouse_id', $ny->id)->value('app_secret_encrypted'));
+    }
+
     public function test_unsupported_warehouse_is_rejected_before_any_credential_lookup(): void
     {
         $this->artisan('xlwms:configure-inventory-api --warehouse=US-LA --check')
-            ->expectsOutput('Unsupported XLWMS warehouse. Allowed: US-SM, DE.')
+            ->expectsOutput('Unsupported XLWMS warehouse. Allowed: US-SM, DE, US-NY.')
             ->assertExitCode(2);
     }
 
