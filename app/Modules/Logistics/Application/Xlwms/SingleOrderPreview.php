@@ -66,7 +66,7 @@ final class SingleOrderPreview
             // Only the observed historical US01 USPS channel is currently proven.
             // Other listed carrier channels require independent verification.
             $carrier = strtoupper(trim((string) $shipment?->carrier));
-            if ($carrier === 'USPS' && in_array(strtoupper($channel), ['PRIORITY', 'USPS-NJ'], true)) {
+            if ($carrier === 'USPS' && in_array(strtoupper($channel), ['PRIORITY', 'USPS PRIORITY MAIL', 'USPS-NJ'], true)) {
                 $channel = 'USPS-NJ';
             }
             $add($carrier !== 'USPS' || $channel !== 'USPS-NJ', 'US_NY_OMS_CHANNEL_NOT_VERIFIED');

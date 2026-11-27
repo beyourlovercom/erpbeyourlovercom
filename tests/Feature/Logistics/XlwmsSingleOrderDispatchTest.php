@@ -94,7 +94,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $o = $this->orderFixture();
         $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
         $item = $o->items()->firstOrFail();
-        $o->shipment()->update(['warehouse_id' => $ny->id, 'carrier' => 'USPS', 'service' => 'Priority',
+        $o->shipment()->update(['warehouse_id' => $ny->id, 'carrier' => 'USPS', 'service' => 'USPS Priority Mail',
             'carrier_service_id' => null]);
         $o->fresh()->shipment->overseaReview()->update(['reviewed_warehouse_id' => $ny->id]);
         WarehouseOpenApiConnection::query()->create(['warehouse_id' => $ny->id, 'provider' => 'xlwms',
@@ -113,6 +113,26 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         self::assertSame('NY-PHYSICAL', $p['payload']['productList'][0]['sku']);
         $o->shipment()->update(['carrier' => 'UPS', 'service' => 'UPS-NJ']);
         self::assertContains('US_NY_OMS_CHANNEL_NOT_VERIFIED', $preview->forOrder($o->fresh(), false, false, 'US-NY')['blockers']);
+        Http::assertNothingSent();
+    }
+
+    public function test_us_ny_batch_preview_blocks_pending_review_and_wrong_warehouse(): void
+    {
+        $o = $this->orderFixture();
+        $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        $o->shipment()->update(['warehouse_id' => $ny->id, 'carrier' => 'USPS',
+            'service' => 'USPS Priority Mail', 'carrier_service_id' => null]);
+        $o->forceFill(['routing_warehouse_code' => 'US-NY', 'workflow_status' => 'pending_review'])->save();
+        $o->fresh()->shipment->overseaReview()->delete();
+        $other = $this->orderFixture();
+        Http::fake();
+        $p = app(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatchPreview::class)
+            ->preview([$o->id, $other->id]);
+        self::assertSame(0, $p['count']);
+        self::assertContains('US_NY_ORDER_NOT_REVIEWED_FOR_DISPATCH', $p['items'][0]['blockers']);
+        self::assertContains('warehouse_review_not_approved', $p['items'][0]['blockers']);
+        self::assertContains('US_NY_ORDER_WRONG_WAREHOUSE', $p['items'][1]['blockers']);
+        self::assertDatabaseCount('xlwms_dispatch_attempts', 0);
         Http::assertNothingSent();
     }
 

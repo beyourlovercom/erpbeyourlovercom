@@ -18,3 +18,13 @@ Candidate:
 - Production NY apply and OMS create remain fail-closed. No new UI batch execution / tracking-apply implementation yet; no actual ERP1 page UAT.
 - Automated verification: 141 tests / 829 assertions PASS on disposable SQLite, with fake provider for write path tests.
 - Required next: actual ERP1 read-only mapping comparison, safe credential provisioning in trusted terminal, real Dev page, NY independent durable batch execution and tracking staging; then separately approved live-order canary and ERP1-only release.
+
+## Production read-only audit / Owner one-order canary authorization
+- OMS login: https://oms.xlwms.com/. Account email supplied by Owner; no login/password or email access used.
+- ERP1 active release: erp-product-master-v3-pr889-d646cdd7-20261127. Warehouse US-NY ID 2. No encrypted production XLWMS credential binding exists.
+- Production DB inspected in READ ONLY transaction. 25 OMS stock rows: 14 existing verified warehouse mappings, 11 unresolved; nine unresolved have exact active canonical identities and zero OMS stock; two require separate physical identity evidence (6971796990292, TL278B-Black). Barcode 6971796990292 (499 units) has no exact ERP barcode_69 or GTIN match; existing alias unverified. No mapping or inventory write.
+- Major differences: BY489A ERP 615 / OMS 102; MF414A 64 / 0; VA617A 254 / 210 (207 available); MW35 3 / 0; TL278A 7 / 0.
+- Eight pending_shipment rows in US-NY, two with tracking already present; six without tracking. Four VA617A quantity-one orders are eligible for operations and address-complete but ALL workflow pending_review, without approved overseas warehouse review.
+- Candidate selected: CY30767-007 (8403), USPS Priority Mail, VA617A x1. Full 82-page account scan of 811 OMS outbound records complete, no exact third/platform/reference match for any of four candidates. This is timestamped read-only evidence, not a permanent duplicate clearance; recheck immediately before create.
+- Candidate and other three pending-review orders must not be submitted until normal operator approval. Other two tracking-free orders lack actual OMS stock. Owner's one-order live test authorization acknowledged; no actual OMS create, no production writes or production release. Production credential binding, first inventory apply, separate safe dispatch execution/UI and tracking apply remain pending.
+- Candidate patch: exact production service name USPS Priority Mail mapped to USPS-NJ, selected-order batch preflight rejects wrong warehouse, pending review, existing attempts and stale/unapplied inventory; no provider writes. ERP2 untouched.
