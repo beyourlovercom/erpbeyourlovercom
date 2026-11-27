@@ -1,0 +1,23 @@
+name: ERP2 Migration Engine V3 self-tests
+on:
+  pull_request:
+    paths:
+      - 'ops/migration-engine-v3/**'
+      - 'docs/ERP2_MIGRATION_ENGINE_V3.md'
+      - '.github/workflows/erp2-migration-engine-v3.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  engine-self-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node --test ops/migration-engine-v3/engine.test.cjs
+      - run: node --check ops/migration-engine-v3/preflight.cjs && node --check ops/migration-engine-v3/guarded-release.cjs && node --check ops/migration-engine-v3/init-manifest.cjs
