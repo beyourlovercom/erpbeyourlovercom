@@ -24,6 +24,26 @@ final class DomesticPendingBatchExporter
         private readonly WarehouseFinalSkuResolver $finalSkus,
     ) {}
 
+    /** @return array{ready: Collection, blocked: list<string>} */
+    public function partition(Collection $orders): array
+    {
+        $ready = collect();
+        $blocked = [];
+        foreach ($orders as $order) {
+            $reasons = $this->eligibility->blockers($order);
+            if ($reasons === []) {
+                $reasons = $this->finalSkus->blockers($order);
+            }
+            if ($reasons === []) {
+                $ready->push($order);
+            } else {
+                $blocked[] = ($order->erp_order_id ?: '#'.$order->getKey()).'：'.implode('、', $reasons);
+            }
+        }
+
+        return ['ready' => $ready, 'blocked' => $blocked];
+    }
+
     /** @param Collection<int,Order> $orders */
     public function export(Collection $orders, bool $requireAll = false): string
     {
@@ -43,16 +63,10 @@ final class DomesticPendingBatchExporter
             throw new DomainException('当前没有可导出的国内待发货订单。');
         }
 
-        $eligible = $orders->filter(function (Order $order): bool {
-            $order->loadMissing(['address', 'items', 'shipment', 'externalReferences', 'fulfillmentParent.financials', 'shipment.warehouse']);
-
-            return $this->eligibility->allows($order);
-        })->values();
-        if ($requireAll && $eligible->count() !== $orders->count()) {
-            throw new DomainException('所选订单中包含不可导出的待发货订单，请检查“导出状态”后重新选择。');
-        }
-        if ($eligible->isEmpty()) {
-            throw new DomainException('当前没有可导出的国内待发货订单。');
+        $partition = $this->partition($orders);
+        $eligible = $partition['ready'];
+        if (($requireAll && $partition['blocked'] !== []) || $eligible->isEmpty()) {
+            throw new DomainException('存在不可导出的国内待发货订单。'.implode('；', array_slice($partition['blocked'], 0, 10)));
         }
 
         $maxItems = max(1, (int) $eligible->max(fn (Order $order) => $order->items->count()));

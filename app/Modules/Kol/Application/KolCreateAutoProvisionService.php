@@ -36,7 +36,7 @@ final class KolCreateAutoProvisionService
         array $data,
         array $socialAccounts,
         array $salesPerformanceEntries,
-        string $password,
+        #[\SensitiveParameter] string $password,
         string $couponCode,
         string $username,
         Authenticatable $actor,
@@ -82,10 +82,10 @@ final class KolCreateAutoProvisionService
 
         $affiliate = null;
         $coupon = null;
+        $nativeWelcome = (bool) config('kol.create_auto_provision.native_welcome', false);
         try {
             $affiliate = $this->affiliates->provisionForCreate($connectionKey, (int) $kol->getKey(), $actor, $password, $username, $profile['name'], $profile['slug']);
-            unset($password);
-
+            if (! $nativeWelcome) unset($password);
             if ($affiliate->provisioning_status !== 'active') {
                 return $this->needsAttention(
                     $kol,
@@ -102,7 +102,8 @@ final class KolCreateAutoProvisionService
                 'discount_type' => $couponPolicy['discount_type'],
                 'amount' => $couponPolicy['amount'],
                 'expiry' => KolCouponExpiry::resolve($kol->joined_at?->format('Y-m-d'), $couponExpiryDate),
-            ], $actor);
+            ], $actor, $nativeWelcome ? $password : null);
+            unset($password);
 
             if ($coupon->provisioning_status !== 'active') {
                 return $this->needsAttention(
@@ -112,6 +113,9 @@ final class KolCreateAutoProvisionService
                     'active',
                     $coupon->provisioning_status,
                 );
+            }
+            if ($coupon->last_error_code === 'WELCOME_MAIL_NEEDS_REVIEW') {
+                return $this->needsAttention($kol, $actor, 'welcome_mail_needs_review', 'active', 'active');
             }
         } catch (DomainException|RuntimeException $exception) {
             unset($password);
@@ -199,6 +203,10 @@ final class KolCreateAutoProvisionService
             throw ValidationException::withMessages(['affiliate_coupon_code' => 'KOL 自动 Coupon 百分比配置无效。']);
         }
 
+        if (config('kol.create_auto_provision.native_welcome', false) && ($type !== 'percent' || (float) $amount !== 20.0)) {
+            throw ValidationException::withMessages(['affiliate_coupon_code' => '欢迎邮件标注粉丝折扣 20%，请先核对 Coupon 策略。']);
+        }
+
         return [
             'discount_type' => $type,
             'amount' => $amount,
@@ -218,7 +226,7 @@ final class KolCreateAutoProvisionService
 
         $affiliate = KolAffiliateAccount::query()->where('kol_id', $kol->getKey())->latest('id')->first();
         $coupon = KolAffiliateCoupon::query()->where('kol_id', $kol->getKey())->latest('id')->first();
-        $stage = $affiliateStatus !== 'active' ? 'AffiliateWP 账号未确认 Active' : 'WooCommerce Coupon 未确认创建成功';
+        $stage = $reasonCode === 'welcome_mail_needs_review' ? '账号及优惠码已创建，欢迎邮件未确认发送' : ($affiliateStatus !== 'active' ? 'AffiliateWP 账号未确认 Active' : 'WooCommerce Coupon 未确认创建成功');
         $errorCode = (string) ($affiliateStatus !== 'active' ? $affiliate?->last_error_code : $coupon?->last_error_code);
         $errorCode = $errorCode !== '' ? $errorCode : $reasonCode;
         // The notification never contains a password, connector token or raw provider response.

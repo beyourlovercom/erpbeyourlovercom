@@ -50,7 +50,20 @@ final class XlwmsOrderGateway
                 && (int) ($row['isSubmit'] ?? -1) === 1
                 && in_array($channel, (array) config('xlwms.de_verified_channel_codes', []), true)
                 && $itemsValid;
-            if (! $legacyTest && ! $productionDe) {
+            $productionNy = app()->environment('production', 'testing')
+                && (bool) config('xlwms.us_ny_canary_enabled', false)
+                && $exactOrderId > 0
+                && $exactOrderId === (int) config('xlwms.us_ny_canary_order_id')
+                && $connection->oms_warehouse_code === 'US01'
+                && ($row['whCode'] ?? null) === 'US01'
+                && ($row['isSubmit'] ?? null) === 1
+                && $channel === 'USPS-NJ'
+                && is_array($items) && array_is_list($items) && $items !== []
+                && collect($items)->every(static fn ($item): bool => is_array($item)
+                    && is_string($item['sku'] ?? null) && trim($item['sku']) !== ''
+                    && is_int($item['quantity'] ?? null) && $item['quantity'] > 0)
+                && \App\Modules\Logistics\Application\Xlwms\UsNyCanaryDispatch::permitsCreate($connection, $row, $exactOrderId);
+            if (! $legacyTest && ! $productionDe && ! $productionNy) {
                 throw new RuntimeException('XLWMS_OPENAPI_CREATE_BLOCKED_USE_OMS_DRAFT_IMPORT');
             }
         }
@@ -134,7 +147,7 @@ final class XlwmsOrderGateway
 
         // Historical/manual warehouse orders are only discoverable by
         // referOrderNo in the paginated outbound order list.
-        if ($connection->oms_warehouse_code === 'Hannover') {
+        if (in_array($connection->oms_warehouse_code, ['Hannover', 'US01'], true)) {
             return $this->findExistingDeComplete($connection, $refs);
         }
         $pageSize = 10;

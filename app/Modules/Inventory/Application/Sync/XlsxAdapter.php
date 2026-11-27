@@ -102,8 +102,63 @@ final class XlsxAdapter
         return $result;
     }
 
+    /**
+     * Native factory workbook is intentionally separate from generic SKU imports.
+     * The raw material code is NOT an ERP SKU. A later material-identity gate
+     * must bind these rows before any inventory replacement is permitted.
+     *
+     * @return list<array{source_row:int,material_code:string,material_name:string,factory_qty:int,warehouse_007_qty:int}>
+     */
+    public function parseFactoryWorkbook(UploadedFile $file): array
+    {
+        $rows = $this->readFirstWorksheet($file->getRealPath(), '谦禾库存明细');
+        if ($rows === []) return [];
+
+        $header = null;
+        foreach (array_slice($rows, 0, 10, true) as $i => $row) {
+            $a = trim((string) ($row[0] ?? ''));
+            $b = trim((string) ($row[1] ?? ''));
+            $c = trim((string) ($row[2] ?? ''));
+            if (str_starts_with($a, '物料代码') && $b === '物料名称' && $c === '成品库存汇总') {
+                $header = $i;
+                break;
+            }
+        }
+        abort_if($header === null, 422, '谦禾库存明细缺少物料代码、物料名称或成品库存汇总表头');
+        abort_unless(trim((string) ($rows[$header][23] ?? '')) === 'B站-007成品仓', 422,
+            '工厂原表007库存列位置发生变化，禁止误读');
+
+        $result = [];
+        $seen = [];
+        foreach (array_slice($rows, $header + 1, null, true) as $i => $row) {
+            $code = trim((string) ($row[0] ?? ''));
+            $name = trim((string) ($row[1] ?? ''));
+            if ($code === '' && $name === '') continue;
+            abort_if($code === '' || $name === '', 422, '工厂库存表第'.($i+1).'行缺少物料代码或名称');
+            $key = mb_strtoupper($code);
+            abort_if(isset($seen[$key]), 422, '工厂库存表存在重复物料代码：'.$code);
+            $seen[$key] = true;
+            $qty = $row[2] ?? null;
+            $qty007 = $row[23] ?? null;
+            foreach ([$qty, $qty007] as $value) {
+                abort_unless(is_numeric($value) && (float)$value >= 0 && floor((float)$value) === (float)$value
+                    && (float)$value <= 2147483647, 422, '工厂库存表第'.($i+1).'行库存数量无效');
+            }
+            $result[] = ['source_row' => $i+1, 'material_code' => $code, 'material_name' => $name,
+                'factory_qty' => (int)$qty, 'warehouse_007_qty' => (int)$qty007];
+        }
+
+        $totals = $rows[$header - 1] ?? [];
+        abort_unless(strcasecmp(trim((string) ($totals[0] ?? '')), 'Total') === 0
+            && is_numeric($totals[2] ?? null) && is_numeric($totals[23] ?? null)
+            && (float) $totals[2] === (float) array_sum(array_column($result, 'factory_qty'))
+            && (float) $totals[23] === (float) array_sum(array_column($result, 'warehouse_007_qty')),
+            422, '工厂库存明细合计与原表汇总不一致，禁止导入');
+        return $result;
+    }
+
     /** @return array<int, array<int, string|int|float|null>> */
-    private function readFirstWorksheet(string $path): array
+    private function readFirstWorksheet(string $path, ?string $name = null): array
     {
         $zip = new ZipArchive();
         if ($zip->open($path) !== true) return [];
@@ -117,7 +172,7 @@ final class XlsxAdapter
                 if ($total > self::MAX_UNCOMPRESSED_BYTES) return [];
             }
 
-            $sheetPath = $this->firstWorksheetPath($zip);
+            $sheetPath = $this->firstWorksheetPath($zip, $name);
             if ($sheetPath === null) return [];
 
             $sharedStrings = $this->sharedStrings($zip);
@@ -130,7 +185,7 @@ final class XlsxAdapter
         }
     }
 
-    private function firstWorksheetPath(ZipArchive $zip): ?string
+    private function firstWorksheetPath(ZipArchive $zip, ?string $name = null): ?string
     {
         $workbookXml = $zip->getFromName('xl/workbook.xml');
         $relsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
@@ -144,6 +199,15 @@ final class XlsxAdapter
         $xp->registerNamespace('m', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
         $xp->registerNamespace('r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships');
         $sheet = $xp->query('//m:sheets/m:sheet[1]')->item(0);
+        if ($name !== null) {
+            $sheet = null;
+            foreach ($xp->query('//m:sheets/m:sheet') as $candidate) {
+                if ($candidate->getAttribute('name') === $name) {
+                    $sheet = $candidate;
+                    break;
+                }
+            }
+        }
         if ($sheet === null) return null;
         $relId = $sheet->getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
         if ($relId === '') return null;

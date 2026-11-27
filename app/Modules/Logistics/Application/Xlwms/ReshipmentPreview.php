@@ -1,6 +1,7 @@
 <?php
 namespace App\Modules\Logistics\Application\Xlwms;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
@@ -129,7 +130,12 @@ final class ReshipmentPreview {
             || $snapshot->updated_at->diffInSeconds(now()) > 120) return false;
         $qtyBySku=[];
         foreach ($order->items as $item) {
-            $sku=trim((string)($item->final_sku ?: $item->resolved_fulfillment_sku ?: $item->sku));
+            try {
+                $sku=app(WarehouseFinalSkuResolver::class)->forShipment($ship,$item);
+            } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
+                if ($exception->getStatusCode() !== 422) throw $exception;
+                return false;
+            }
             $product=(int)$item->product_id;
             $qty=(int)$item->quantity;
             if ($sku==='' || $product<1 || $qty<1) return false;

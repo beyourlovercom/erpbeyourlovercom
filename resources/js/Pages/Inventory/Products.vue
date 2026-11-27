@@ -16,6 +16,8 @@ type Row = {
   quantity_on_hand:number
   quantity_reserved:number
   quantity_available:number
+  provider_stock_synced_at?:string|null
+  provider_sync_status?:string|null
   stock_status:'out_of_stock'|'low_stock'|'in_stock'
   stock_status_label:string
   standard_qoh:number|null
@@ -75,6 +77,14 @@ const gridPageSize = (size:number|'all') => {
     ...currentFilters(),global_grid:'1',per_page:String(size),page:1,
   },{preserveState:true,replace:true})
 }
+const syncIssueLabel = (status?:string|null):string => {
+  if (status === 'read_failed_last_known') return 'API读取失败 · 历史值'
+  if (status === 'read_success_apply_failed') return 'ERP同步失败 · 历史值'
+  if (status === 'read_success') return 'API已读取 · 待同步'
+  if (status === 'sku_unverified') return 'SKU待核验'
+  if (status === 'not_read') return '尚无API核验记录'
+  return ''
+}
 type GridRow = Record<string,unknown>
 const globalRows = computed<GridRow[]>(() => props.rows.data.map(r => ({
   id:r.id,
@@ -90,7 +100,8 @@ const globalRows = computed<GridRow[]>(() => props.rows.data.map(r => ({
   quantity_on_hand:r.quantity_on_hand,
   quantity_reserved:r.quantity_reserved,
   quantity_available:r.quantity_available,
-  stock_status_label:r.stock_status_label,
+  provider_stock_synced_at:r.provider_stock_synced_at ? new Date(r.provider_stock_synced_at).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:false}) : "—",
+  stock_status_label:[r.stock_status_label,syncIssueLabel(r.provider_sync_status)].filter(Boolean).join(" · "),
   shipped_90d_qty:r.replenishment.shipped_90d_qty,
   velocity:'月 '+r.replenishment.monthly_average+' / 日 '+r.replenishment.daily_average,
   days_of_cover:r.replenishment.days_of_cover===null?'—':r.replenishment.days_of_cover+' 天',
@@ -111,10 +122,11 @@ const inventoryColumns:ColDef<GridRow>[] = [
   {colId:'inbound_at',field:'inbound_at',headerName:'上架时间',width:134},
   {colId:'stay_days',field:'stay_days',headerName:'停留时间',width:110},
   {colId:'location',field:'location',headerName:'Location',width:130},
-  {colId:'quantity_on_hand',field:'quantity_on_hand',headerName:'当前库存',width:106},
+  {colId:'quantity_on_hand',field:'quantity_on_hand',headerName:'实物库存',width:106},
   {colId:'quantity_reserved',field:'quantity_reserved',headerName:'预留',width:90},
   {colId:'quantity_available',field:'quantity_available',headerName:'可用库存',width:104},
-  {colId:'stock_status',field:'stock_status_label',headerName:'状态',width:115,
+  {colId:'provider_stock_synced_at',field:'provider_stock_synced_at',headerName:'API核验时间（北京时间）',width:190,hide:true},
+  {colId:'stock_status',field:'stock_status_label',headerName:'状态',width:210,tooltipField:'stock_status_label',
     cellRenderer:GlobalGridCell,cellRendererParams:{mode:'badge'}},
   {colId:'shipped_90d_qty',field:'shipped_90d_qty',headerName:'90天发货',width:104},
   {colId:'velocity',field:'velocity',headerName:'月均 / 日均',width:165,hide:true},
@@ -166,24 +178,25 @@ const breadcrumbs = [{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/
         @page-change="gridPage" @page-size-change="gridPageSize" @search-change="globalGridSearch" />
       <div v-else class="mvp-card table-wrap">
         <table>
-          <thead><tr><th>所属仓库</th><th>SKU</th><th>产品</th><th>上架时间</th><th>停留时间</th><th>Location</th><th>当前库存</th><th>预留</th><th>可用库存</th><th>状态</th><th>90天发货</th><th>月均 / 日均</th><th>可覆盖</th><th>安全库存</th><th>补货点</th><th>建议补货</th><th>Standard QoH</th><th>预计到货</th></tr></thead>
+          <thead><tr><th>所属仓库</th><th>SKU</th><th>产品</th><th>上架时间</th><th>停留时间</th><th>Location</th><th>实物库存</th><th>预留</th><th>可用库存</th><th>状态</th><th>90天发货</th><th>月均 / 日均</th><th>可覆盖</th><th>安全库存</th><th>补货点</th><th>建议补货</th><th>Standard QoH</th><th>预计到货</th><th>API核验时间（北京时间）</th></tr></thead>
           <tbody>
             <tr v-for="r in rows.data" :key="r.id">
               <td><Link :href="`/inventory/${r.warehouse.public_slug||r.warehouse.slug}`">{{r.warehouse.name}}</Link></td>
               <td><strong>{{r.product.sku||'—'}}</strong></td><td>{{r.product.name}}</td><td>{{r.inbound_at||'—'}}</td>
               <td>{{r.stay_days===null?'—':`${r.stay_days} 天`}}</td><td>{{r.location||'—'}}</td>
               <td>{{r.quantity_on_hand}}</td><td>{{r.quantity_reserved}}</td><td><strong>{{r.quantity_available}}</strong></td>
-              <td><span class="stock-badge" :class="`stock-${r.stock_status}`">{{r.stock_status_label}}</span></td>
+              <td><span class="stock-badge" :class="`stock-${r.stock_status}`">{{r.stock_status_label}}</span><small v-if="syncIssueLabel(r.provider_sync_status)" class="block text-amber-700">{{syncIssueLabel(r.provider_sync_status)}}</small></td>
               <td>{{r.replenishment.shipped_90d_qty}}</td><td>月 {{r.replenishment.monthly_average}} / 日 {{r.replenishment.daily_average}}</td>
               <td>{{r.replenishment.days_of_cover===null?'—':`${r.replenishment.days_of_cover} 天`}}</td><td>{{r.replenishment.safety_stock_qty??'—'}}</td>
               <td>{{r.replenishment.reorder_point_qty??'—'}}</td>
               <td><span class="replenishment-badge" :class="`replenishment-${r.replenishment.policy_status}`">{{r.replenishment.recommended_restock_qty===null?r.replenishment.policy_label:`${r.replenishment.policy_label} · ${r.replenishment.recommended_restock_qty}`}}</span></td>
-              <td>{{r.standard_qoh??'—'}}</td><td>{{r.expected_restock_qty}}</td>
+              <td>{{r.standard_qoh??'—'}}</td><td>{{r.expected_restock_qty}}</td><td>{{r.provider_stock_synced_at ? new Date(r.provider_stock_synced_at).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}) : '—'}}</td>
             </tr>
-            <tr v-if="!rows.data.length"><td colspan="18">暂无库存数据</td></tr>
+            <tr v-if="!rows.data.length"><td colspan="19">暂无库存数据</td></tr>
           </tbody>
         </table>
       </div>
+      <p class="text-xs text-slate-500">实物库存包含仓库锁定货品；可用库存与分仓口径一致。API 核验时间可通过列设置查看。</p>
     </section>
   </AuthenticatedLayout>
 </template>

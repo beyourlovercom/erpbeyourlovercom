@@ -74,7 +74,7 @@ final class ProductController
         $connection = (string) config('services.woocommerce.connection_key', 'beyourlover.com');
         $attentionCounts = ProductAttentionFilters::counts($connection);
 
-        $recent = Product::query()
+        $recent = Product::query()->businessCatalog()
             ->orderByDesc('updated_at')->orderByDesc('id')->limit(8)
             ->get(['id', 'sku', 'name', 'updated_at'])
             ->map(fn (Product $p): array => [
@@ -87,8 +87,8 @@ final class ProductController
         return Inertia::render('Products/Dashboard', [
             'totalProducts' => $this->products->totalCount(),
             'metrics' => [
-                'erpActive' => Product::query()->where('is_active', true)->count(),
-                'wooPublishedSnapshot' => Product::query()->whereHas('providerSnapshots',
+                'erpActive' => Product::query()->businessCatalog()->where('is_active', true)->count(),
+                'wooPublishedSnapshot' => Product::query()->businessCatalog()->whereHas('providerSnapshots',
                     fn ($q) => $q->where('provider', 'woocommerce')
                         ->where('connection_key', $connection)
                         ->where('provider_status', 'publish'))->count(),
@@ -382,11 +382,11 @@ final class ProductController
     private function parameterCoverageCounts(): array
     {
         $accepted = fn ($q) => $q->whereIn('status', ['submitted', 'approved']);
-        $unfilled = Product::query()->whereDoesntHave('parameterSubmissions', $accepted);
+        $unfilled = Product::query()->businessCatalog()->whereDoesntHave('parameterSubmissions', $accepted);
 
         return [
-            '全部' => Product::query()->count(),
-            '已填' => Product::query()->whereHas('parameterSubmissions', $accepted)->count(),
+            '全部' => Product::query()->businessCatalog()->count(),
+            '已填' => Product::query()->businessCatalog()->whereHas('parameterSubmissions', $accepted)->count(),
             '必填' => (clone $unfilled)->whereHas('parameterTask', fn ($q) => $q->where('enabled', true)->where('is_required', true))->count(),
             '待填' => (clone $unfilled)->whereHas('parameterTask', fn ($q) => $q->where('enabled', true)->where('is_required', false))->count(),
             '其他' => (clone $unfilled)->whereDoesntHave('parameterTask', fn ($q) => $q->where('enabled', true))->count(),
@@ -467,6 +467,7 @@ final class ProductController
                 'has_battery' => (bool) $product->has_battery,
                 'has_liquid' => (bool) $product->has_liquid,
                 'material_full_name' => $product->material_full_name,
+                'material_versions' => $product->materialVersions()->orderBy('material_code')->get(['id','material_code','material_name','factory_stock_approved'])->toArray(),
                 'barcode_69' => $product->barcode_69,
                 'source_type' => $product->source_type,
                 'status' => $product->is_active ? 'active' : 'inactive',
@@ -732,7 +733,7 @@ final class ProductController
             'sku' => ['required', 'string', 'max:128', 'unique:products,sku'],
             'label_sku' => ['nullable', 'string', 'max:128', 'unique:products,label_sku'],
             'label_description' => ['nullable', 'string', 'max:512'],
-            'name' => ['required', 'string', 'max:512'],
+            'name' => ['nullable', 'string', 'max:512'],
             'product_type' => ['sometimes', 'string', 'max:64'],
             'gtin' => ['nullable', 'string', 'max:128'],
             'barcode_69' => ['nullable', 'regex:/^[0-9]{8,14}$/'],
@@ -765,7 +766,7 @@ final class ProductController
 
         try {
             $product = DB::transaction(function () use ($data, $request) {
-                $product = $this->products->createManual($data);
+                $product = $this->products->createManual([...$data, 'name' => $data['name'] ?? '']);
                 $this->persistManualMedia((int) $product->id, $request->file('images', []), (int) $request->input('primary_index', 0));
 
                 return $product;
@@ -838,6 +839,7 @@ final class ProductController
                 'has_battery' => (bool) $product->has_battery,
                 'has_liquid' => (bool) $product->has_liquid,
                 'material_full_name' => $product->material_full_name,
+                'material_versions' => $product->materialVersions()->orderBy('material_code')->get(['id','material_code','material_name','factory_stock_approved'])->toArray(),
                 'name' => $product->name,
                 'unit' => $product->unit,
                 'is_active' => $product->is_active,
@@ -886,7 +888,7 @@ final class ProductController
             'sku' => ['nullable', 'string', 'max:128', 'unique:products,sku,'.$id],
             'label_sku' => ['nullable', 'string', 'max:128', Rule::unique('products', 'label_sku')->ignore($id)],
             'label_description' => ['nullable', 'string', 'max:512'],
-            'name' => ['required', 'string', 'max:512'],
+            'name' => ['nullable', 'string', 'max:512'],
             'product_type' => ['sometimes', 'string', 'max:64'],
             'gtin' => ['nullable', 'string', 'max:128'],
             'barcode_69' => ['nullable', 'regex:/^[0-9]{8,14}$/'],
@@ -915,6 +917,7 @@ final class ProductController
         ]);
 
         try {
+            if (array_key_exists('name', $data)) $data['name'] = $data['name'] ?? '';
             $this->products->updateProduct($product, $data);
         } catch (\RuntimeException $e) {
             $field = str_contains($e->getMessage(), '蓝标') ? 'label_sku' : 'sku';

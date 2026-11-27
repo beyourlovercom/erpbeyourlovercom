@@ -243,6 +243,9 @@ final class MorePlusInventorySyncService
                     throw new RuntimeException('MOREPLUS_INVENTORY_LOCAL_CHANGED_PREVIEW_AGAIN');
                 }
                 if ($row['status'] === 'unchanged') {
+                    // Verification time is distinct from the last quantity change.
+                    $local->timestamps = false;
+                    $local->update(['provider_stock_synced_at' => now()]);
                     continue;
                 }
                 // Keep lot, FIFO consumption and P9 historical records unchanged.

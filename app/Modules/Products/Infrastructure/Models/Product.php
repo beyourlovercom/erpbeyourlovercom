@@ -52,6 +52,13 @@ class Product extends Model
         'notes',
     ];
 
+    /** Retired catalogue SKUs remain directly addressable for historical orders. */
+    public function scopeBusinessCatalog(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->where(fn ($q) => $q->whereNull('products.sku')
+            ->orWhereRaw('UPPER(TRIM(products.sku)) NOT LIKE ?', ['00W%']));
+    }
+
     public function skuAliases(): HasMany
     {
         return $this->hasMany(ProductSkuAlias::class);
@@ -60,6 +67,11 @@ class Product extends Model
     public function warehouseSkus(): HasMany
     {
         return $this->hasMany(ProductWarehouseSku::class);
+    }
+
+    public function materialVersions(): HasMany
+    {
+        return $this->hasMany(ProductMaterialVersion::class);
     }
 
     public function costSources(): HasMany

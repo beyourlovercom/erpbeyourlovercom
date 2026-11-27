@@ -135,6 +135,7 @@ final class InventoryBatchSyncService
                 abort(422, '全量同步存在错误行，无法确认；请改用部分同步或修正数据');
             }
             $warehouse = $batch->warehouse;
+            \App\Modules\Inventory\Infrastructure\Models\Warehouse::query()->whereKey($warehouse->getKey())->lockForUpdate()->firstOrFail();
             abort_if(strtoupper((string) $warehouse->code) === 'US-LA', 422,
                 'MorePlus 库存不允许通过导入批次覆盖，请读取真实海外仓库存。');
 

@@ -21,7 +21,9 @@ final class ChinaSmallPacketBarcode69Reader
         $order->loadMissing(['items.product', 'shipment']);
         $rows = [];
         foreach ($order->items as $item) {
-            $sku = trim((string) ($item->final_sku ?: $item->resolved_fulfillment_sku ?: $item->sku));
+            $sku = $order->shipment && (bool) config('warehouse_final_sku.require_verified_mapping')
+                ? $this->finalSkus->forShipment($order->shipment, $item)
+                : trim((string) ($item->final_sku ?: $item->resolved_fulfillment_sku ?: $item->sku));
             $product = $item->product;
             // Legacy order lines sometimes have no product_id. Resolve only a unique,
             // exact SKU; never guess from a partial SKU or override a mismatched link.
@@ -33,11 +35,11 @@ final class ChinaSmallPacketBarcode69Reader
             // manufacturer barcode remains tied to the linked product record.
             $verifiedPhysicalSku = $product !== null
                 && $item->product_id !== null
-                && filled($item->final_sku)
+                && ((bool) config('warehouse_final_sku.require_verified_mapping') || filled($item->final_sku))
                 && (int) $order->shipment?->warehouse_id > 0
                 && strcasecmp((string) ($this->finalSkus->mapped((int) $product->id, (int) $order->shipment->warehouse_id) ?? ''), $sku) === 0;
             if (! $product || ! $product->barcode_69
-                || (trim((string) $product->sku) !== $sku && ! $verifiedPhysicalSku)) {
+                || (strcasecmp(trim((string) $product->sku), $sku) !== 0 && ! $verifiedPhysicalSku)) {
                 throw ValidationException::withMessages([
                     'barcode_69' => "订单 {$order->erp_order_id} 商品 {$sku} 缺少经过SKU核实的69条形码。",
                 ]);

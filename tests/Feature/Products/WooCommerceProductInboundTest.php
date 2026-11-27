@@ -72,6 +72,24 @@ final class WooCommerceProductInboundTest extends TestCase
         Http::fake($routes);
     }
 
+    public function test_00w_prefix_is_skipped_before_create_or_update(): void
+    {
+        $old = Product::create(['sku'=>'00W01','name'=>'Retired','source_type'=>'woocommerce','is_active'=>false]);
+        foreach ([901=>'00W01',902=>' 00wNEW ',903=>'00W62 & 609A'] as $id=>$sku) {
+            $this->fakeSingle($this->payload($id,$sku));
+            $run=app(WooCommerceProductInboundService::class)->sync(null,false,$id);
+            $this->assertSame('excluded_catalog_sku', DB::table('sync_run_items')->where('sync_run_id',$run['run']->id)->value('result_code'));
+        }
+        $this->assertFalse((bool)$old->fresh()->is_active);
+        $this->assertSame('Retired',$old->fresh()->name);
+        $this->assertDatabaseCount('products',1);
+        $this->assertDatabaseCount('product_provider_snapshots',0);
+        $this->fakeSingle($this->payload(904,'M1 & 00W64'));
+        app(WooCommerceProductInboundService::class)->sync(null,false,904);
+        $this->assertDatabaseHas('products',['sku'=>'M1 & 00W64']);
+        $this->assertSame(['M1 & 00W64'],Product::query()->businessCatalog()->pluck('sku')->all());
+    }
+
     public function test_existing_product_sync_updates_allowlist_preserves_weight_and_is_idempotent(): void
     {
         $product = Product::create([

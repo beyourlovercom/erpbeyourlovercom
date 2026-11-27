@@ -10,6 +10,7 @@ use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\PendingFinalSkuMaterializer;
 use App\Modules\NotificationCenter\Application\NotificationPublisher;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -24,6 +25,7 @@ final class DomesticReviewDecisionService
         private readonly InventoryReservationRepository $reservations,
         private readonly DomesticCarrierDefaults $carrierDefaults,
         private readonly NotificationPublisher $notifications,
+        private readonly PendingFinalSkuMaterializer $finalSkuMaterializer,
     ) {}
 
     public function decide(Order $order, string $decision, ?string $reason, Authenticatable $actor): void
@@ -69,6 +71,7 @@ final class DomesticReviewDecisionService
                 // Approved factory orders receive a persisted, country-aware
                 // route. Existing staff overrides are never overwritten.
                 $this->carrierDefaults->fill($locked);
+                $this->finalSkuMaterializer->heal($locked, $actor);
                 $locked->operationalMarkers()->where('marker', 'domestic_stockout')->delete();
                 if (in_array($locked->workflow_status, ['out_of_stock', 'pending_review'], true)) {
                     $this->workflow->set($locked, 'sending', (int) $locked->workflow_revision, $actor);

@@ -25,6 +25,12 @@ final class ProductWarehouseSkuController
             'verification_evidence' => ['required', 'string', 'min:20', 'max:500'],
             'same_physical_product_confirmed' => ['accepted'],
         ]);
+        return $this->applyVerified($request,$productId,$warehouseId,$data);
+    }
+
+    /** Reused by the verified batch mapping workbook. */
+    public function applyVerified(Request $request, int $productId, int $warehouseId, array $data): RedirectResponse
+    {
         $product = Product::query()->findOrFail($productId);
         $warehouse = Warehouse::query()->whereKey($warehouseId)->where('is_active', true)->firstOrFail();
         abort_unless(in_array(strtoupper((string) $warehouse->code), (array) config('warehouse_master.fulfillment_codes', []), true),
@@ -33,10 +39,11 @@ final class ProductWarehouseSkuController
         abort_if($sku === '' || strcasecmp($sku, 'gift') === 0, 422, '仓库 SKU 不能是空值或 gift 占位符');
 
         DB::transaction(function () use ($request, $product, $warehouse, $sku, $data): void {
+            Warehouse::query()->whereKey($warehouse->id)->lockForUpdate()->firstOrFail();
             $mapping = ProductWarehouseSku::query()->where('product_id', $product->id)
                 ->where('warehouse_id', $warehouse->id)->lockForUpdate()->first();
             if (ProductWarehouseSku::query()->where('warehouse_id', $warehouse->id)
-                ->where('sku', $sku)->where('product_id', '!=', $product->id)->exists()) {
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [mb_strtoupper($sku)])->where('product_id', '!=', $product->id)->exists()) {
                 throw ValidationException::withMessages(['sku' => '该仓库的实际 SKU 已映射到另一个产品']);
             }
             $before = $mapping?->only(['sku', 'is_active', 'verified_at', 'verification_note']);

@@ -31,6 +31,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
 });
 
 Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): void {
+    Route::post('/products/skus/auto-match', [ProductSkuController::class, 'autoMatch'])->name('products.skus.auto-match');
+    Route::post('/products/skus/batch', [ProductSkuController::class, 'batch'])->name('products.skus.batch');
+    Route::put('/products/{productId}/material-versions', [\App\Modules\Products\Experience\Controllers\ProductMaterialVersionController::class, 'upsert'])
+        ->whereNumber('productId')->name('products.material-versions.upsert');
     Route::put('/products/{productId}/warehouse-skus/{warehouseId}', [ProductWarehouseSkuController::class, 'upsert'])
         ->whereNumber('productId')->whereNumber('warehouseId')->name('products.warehouse-skus.upsert');
     Route::patch('/products/{productId}/warehouse-skus/{warehouseId}/deactivate', [ProductWarehouseSkuController::class, 'deactivate'])
@@ -44,6 +48,7 @@ Route::middleware(['web', 'auth', 'can:products.view'])->group(function (): void
     Route::get('/products', [ProductController::class, 'dashboard'])->name('products.dashboard');
     Route::get('/products/list', [ProductController::class, 'index'])->name('products.list');
     Route::get('/products/list/export', [ProductController::class, 'export'])->name('products.list.export');
+    Route::get('/products/skus/export', [ProductSkuController::class, 'export'])->name('products.skus.export');
     Route::get('/products/skus', [ProductSkuController::class, 'index'])->name('products.skus');
     Route::get('/products/sku-aliases', [ProductSkuAliasController::class, 'index'])->name('products.sku-aliases');
     Route::get('/products/weight-evidence', [ProductWeightEvidenceController::class, 'index'])->name('products.weight-evidence.index');

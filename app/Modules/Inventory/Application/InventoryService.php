@@ -37,11 +37,11 @@ final class InventoryService
         return $warehouse ? $this->warehousePublicSlug($warehouse) : null;
     }
 
-    public function replenishmentMetrics(Model $inventory): array
+    public function replenishmentMetrics(Model $inventory, ?int $allocationAvailable = null): array
     {
         $shipped90d = max(0, (int) ($inventory->shipped_90d_qty ?? 0));
         $dailyRaw = $shipped90d / 90;
-        $available = max(0, (int) $inventory->quantity_available);
+        $available = max(0, $allocationAvailable ?? (int) $inventory->quantity_available);
         $expectedRestock = max(0, (int) ($inventory->expected_restock_qty ?? 0));
         $warehouse = $inventory->warehouse;
         $lead = $warehouse?->replenishment_lead_time_days;

@@ -67,7 +67,7 @@ final class EloquentProductRepository implements ProductRepository
     public function searchSkus(string $query, int $limit = 20): array
     {
         $query = trim($query);
-        $builder = Product::query()->whereNotNull('sku')->where('sku', '!=', '');
+        $builder = Product::query()->businessCatalog()->whereNotNull('sku')->where('sku', '!=', '');
         if ($query === '') {
             $builder->orderBy('sku')->orderBy('name')->orderBy('id');
         } else {
@@ -95,7 +95,7 @@ final class EloquentProductRepository implements ProductRepository
 
     public function list(array $filters = [], int $perPage = 50): LengthAwarePaginator
     {
-        return Product::query()
+        return Product::query()->businessCatalog()
             ->when(in_array($filters['attention'] ?? '', ProductAttentionFilters::KINDS, true),
                 fn ($q) => ProductAttentionFilters::apply(
                     $q, (string) $filters['attention'],
@@ -146,17 +146,17 @@ final class EloquentProductRepository implements ProductRepository
 
     public function totalCount(): int
     {
-        return Product::count();
+        return Product::query()->businessCatalog()->count();
     }
 
     public function coverageCounts(): array
     {
-        $total = Product::count();
+        $total = Product::query()->businessCatalog()->count();
 
         return [
             'total' => $total,
-            'weight_filled' => Product::whereNotNull('weight_kg')->count(),
-            'shipping_filled' => Product::whereNotNull('shipping_weight_kg')->count(),
+            'weight_filled' => Product::query()->businessCatalog()->whereNotNull('weight_kg')->count(),
+            'shipping_filled' => Product::query()->businessCatalog()->whereNotNull('shipping_weight_kg')->count(),
         ];
     }
 }

@@ -99,6 +99,60 @@ final class MorePlusInventorySyncTest extends TestCase
         return $product;
     }
 
+    public function test_scheduled_sync_is_explicitly_gated_and_updates_verified_sku_without_unrelated_blocks(): void
+    {
+        $p = $this->product('MP-SCHEDULED', 1);
+        $this->provider = ['MP-SCHEDULED' => [0, 0], 'UNKNOWN-ZERO' => [0, 0], 'UNKNOWN-POSITIVE' => [2, 2]];
+        config()->set('shipout.production_inventory_schedule_enabled', false);
+        $this->artisan('shipout:sync-inventory')->assertExitCode(1);
+        Http::assertNothingSent();
+        config()->set('shipout.production_inventory_schedule_enabled', true);
+        $this->artisan('shipout:sync-inventory')->assertExitCode(0);
+        $row = WarehouseInventory::query()->where('product_id', $p->id)->firstOrFail();
+        self::assertSame(0, $row->quantity_on_hand);
+        self::assertSame(0, $row->provider_available_quantity);
+        self::assertNotNull($row->provider_stock_synced_at);
+        self::assertSame(1, WarehouseInventory::query()->where('warehouse_id', $this->warehouse->id)->count());
+        Http::assertNotSent(fn ($request) => $request->method() !== 'GET');
+        $first = $row->provider_stock_synced_at;
+        $this->travel(10)->minutes();
+        $this->artisan('shipout:sync-inventory')->assertExitCode(0);
+        self::assertTrue($row->fresh()->provider_stock_synced_at->gt($first));
+        $this->travelBack();
+        $this->provider = [];
+        $this->artisan('shipout:sync-inventory')->assertExitCode(1);
+        self::assertSame(0, $row->fresh()->quantity_on_hand);
+        self::assertSame('read_failed_last_known', DB::table('warehouse_stock_read_references')->where('product_id', $p->id)->value('last_read_stock_status'));
+        $operator = $this->userWith(['inventory.view']);
+        $this->actingAs($operator)->get('/inventory/products?search=MP-SCHEDULED')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('rows.data.0.provider_sync_status', 'read_failed_last_known')->etc());
+    }
+
+    public function test_inventory_pages_and_filter_use_allocation_availability_not_raw_provider_quantity(): void
+    {
+        config()->set('inventory_sku_gate.enabled', true);
+        $p = $this->product('MP-ALLOCATION-UI', 12, 3);
+        $this->provider = ['MP-ALLOCATION-UI' => [12, 11]];
+        app(MorePlusInventorySyncService::class)->syncProvider($this->warehouse, null);
+        $allocation = app(\App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader::class)->forProductIds([$p->id]);
+        $available = collect($allocation[$p->id])->firstWhere('warehouse_id', $this->warehouse->id)['quantity_available'];
+        self::assertSame(8, $available);
+        $operator = $this->userWith(['inventory.view']);
+        $this->actingAs($operator)->get('/inventory/products?search=MP-ALLOCATION-UI&stock_status=low_stock')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->component('Inventory/Products')->has('rows.data', 1)
+                ->where('rows.data.0.quantity_on_hand', 12)
+                ->where('rows.data.0.quantity_available', $available)
+                ->etc());
+        $this->actingAs($operator)->get('/inventory/products?search=MP-ALLOCATION-UI&stock_status=in_stock')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->has('rows.data', 0)->etc());
+        $this->actingAs($operator)->get('/inventory/us-la')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->component('Inventory/WarehouseShow')
+                ->where('warehouse.inventories.0.quantity_on_hand', 12)
+                ->where('warehouse.inventories.0.quantity_available', $available)->etc());
+    }
+
     public function test_readonly_preview_does_not_modify_stock_and_write_flag_is_off(): void
     {
         $p = $this->product('MP-SKU-A', 2);
