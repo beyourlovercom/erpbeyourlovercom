@@ -13,13 +13,15 @@ use Throwable;
 /** Owner-authorized production CLI only; no arbitrary order, secret or user impersonation. */
 final class UsNyCanaryCommand extends Command
 {
-    protected $signature = 'xlwms:us-ny-canary {order : Exact ERP order number} {--execute} {--refresh} {--confirmation=}';
+    protected $signature = 'xlwms:us-ny-canary {order : Exact ERP order number} {--execute} {--refresh} {--recover-attempt=} {--confirmation=}';
     protected $description = 'One owner-authorized US-NY canary or exact signed tracking refresh';
 
     public function handle(SingleOrderPreview $preview, UsNyCanaryDispatch $dispatch, UsNyTrackingStage $tracking): int
     {
         try {
             $orderNo = (string)$this->argument('order');
+            $recovery = $this->option('recover-attempt');
+            if ($recovery !== null && (!$this->option('execute') || !preg_match('/^[1-9][0-9]*$/D',(string)$recovery))) return self::FAILURE;
             if (!app()->environment('production') || !preg_match('/^[A-Za-z0-9-]{3,80}$/D',$orderNo)
                 || ($this->option('execute') && $this->option('refresh'))) return self::FAILURE;
             $o = Order::query()->eligibleForOperations()->where('erp_order_id',$orderNo)
@@ -42,7 +44,7 @@ final class UsNyCanaryCommand extends Command
                 || (int)config('xlwms.us_ny_canary_order_id') !== (int)$o->id) return self::FAILURE;
             config()->set('xlwms.us_ny_canary_system_enabled',true);
             try {
-                $r=$dispatch->create((int)$o->id,null,$p['payload_hash']);
+                $r=$dispatch->create((int)$o->id,null,$p['payload_hash'],$recovery===null?null:(int)$recovery);
                 $this->line(json_encode($r,JSON_THROW_ON_ERROR));
                 if ($r['state']!=='oms_create_confirmed') return self::FAILURE;
                 $this->line(json_encode($tracking->refreshAndStage((int)$o->id),JSON_THROW_ON_ERROR));

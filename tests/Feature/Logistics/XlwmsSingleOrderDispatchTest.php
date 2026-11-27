@@ -138,11 +138,11 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
 
     public static function nyCanaryActors(): array
     {
-        return ['authenticated logistics operator'=>[false], 'owner-authorized system CLI'=>[true]];
+        return ['authenticated logistics operator'=>[false,false], 'owner-authorized system CLI'=>[true,false], 'system pre-CREATE recovery'=>[true,true]];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('nyCanaryActors')]
-    public function test_us_ny_canary_exact_order_creates_once_and_preserves_pending_status(bool $system): void
+    public function test_us_ny_canary_exact_order_creates_once_and_preserves_pending_status(bool $system, bool $recover): void
     {
         $o = $this->orderFixture();
         $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
@@ -171,12 +171,13 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         self::assertSame([], $p['blockers']);
         $payload = $p['payload'];
         $created = false;
+        $rejectPreflight = $recover;
         $remoteTracking = '9400111206213000000000';
         $remotePlatform = $payload['platformOrderNo'];
         Http::preventStrayRequests();
-        Http::fake(function ($req) use (&$created,$payload,&$remoteTracking,&$remotePlatform) {
+        Http::fake(function ($req) use (&$created,$payload,&$remoteTracking,&$remotePlatform,&$rejectPreflight) {
             $url=$req->url();
-            if (str_contains($url,'outboundOrder/detail')) return Http::response(['code'=>200,'data'=>[]]);
+            if (str_contains($url,'outboundOrder/detail')) return Http::response($rejectPreflight ? ['code'=>400,'data'=>[]] : ['code'=>200,'data'=>[]]);
             if (str_contains($url,'outboundOrder/pageList')) {
                 $rows=$created ? [['outboundOrderNo'=>'NY-OMS-001','whCode'=>'US01','status'=>2,'logisticsTrackNo'=>$remoteTracking,
                     'thirdOrderNo'=>$payload['thirdOrderNo'],'referOrderNo'=>$payload['referOrderNo'],'platformOrderNo'=>$remotePlatform]] : [];
@@ -201,8 +202,24 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             try {
                 $this->artisan('xlwms:us-ny-canary',['order'=>$o->erp_order_id,'--execute'=>true,'--confirmation'=>'WRONG'])->assertExitCode(1);
                 Http::assertNothingSent();
-                $this->artisan('xlwms:us-ny-canary',['order'=>$o->erp_order_id,'--execute'=>true,
-                    '--confirmation'=>'OWNER_APPROVED_US_NY_'.$o->erp_order_id])->assertExitCode(0);
+                $args=['order'=>$o->erp_order_id,'--execute'=>true,'--confirmation'=>'OWNER_APPROVED_US_NY_'.$o->erp_order_id];
+                if ($recover) {
+                    $this->artisan('xlwms:us-ny-canary',$args)->assertExitCode(1);
+                    $prior=XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail();
+                    self::assertSame('blocked_preflight_error',$prior->state);
+                    self::assertNull($prior->oms_order_no);
+                    Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+                    $rejectPreflight=false;
+                    $this->artisan('xlwms:us-ny-canary',$args+['--recover-attempt'=>$prior->id+1])->assertExitCode(1);
+                    Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+                    $prior->update(['state'=>'uncertain_manual_reconcile']);
+                    $this->artisan('xlwms:us-ny-canary',$args+['--recover-attempt'=>$prior->id])->assertExitCode(1);
+                    Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+                    $prior->update(['state'=>'blocked_preflight_error']);
+                    $args['--recover-attempt']=$prior->id;
+                }
+                $this->artisan('xlwms:us-ny-canary',$args)->assertExitCode(0);
+                if ($recover) self::assertSame($prior->id,XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail()->id);
                 self::assertFalse(config('xlwms.us_ny_canary_system_enabled'));
             } finally {$this->app->instance('env',$old);}
             config()->set('xlwms.us_ny_canary_system_enabled',true);

@@ -110,13 +110,34 @@ final class UsNyCanaryDispatch
         }
     }
 
-    public function create(int $id, ?int $actorId, string $hash): array
+    public function create(int $id, ?int $actorId, string $hash, ?int $recoveryId = null): array
     {
         if (! self::authorized($id, $actorId)) throw new RuntimeException('US_NY_CANARY_NOT_AUTHORIZED');
         [$order, $connection, $payload] = $this->ready($id, $hash);
-        $attempt = DB::transaction(function () use ($id, $actorId, $hash, $order, $payload) {
+        $attempt = DB::transaction(function () use ($id, $actorId, $hash, $order, $payload, $recoveryId) {
             Order::query()->whereKey($id)->lockForUpdate()->firstOrFail();
-            if (XlwmsDispatchAttempt::query()->where('order_id', $id)->exists()) throw new RuntimeException('US_NY_ATTEMPT_EXISTS');
+            $prior = XlwmsDispatchAttempt::query()->where('order_id', $id)->lockForUpdate()->first();
+            if ($recoveryId !== null) {
+                if ($actorId !== null || ! $prior || (int)$prior->id !== $recoveryId
+                    || $prior->requested_by !== null || $prior->state !== 'blocked_preflight_error'
+                    || $prior->failure_code !== 'US_NY_PREFLIGHT_OR_DUPLICATE_BLOCKED'
+                    || filled($prior->oms_order_no) || filled($prior->oms_status_code)
+                    || filled($prior->oms_tracking_no) || $prior->oms_status_checked_at !== null
+                    || (int)$prior->warehouse_id !== (int)$order->shipment->warehouse_id
+                    || $prior->third_order_no !== $payload['thirdOrderNo']
+                    || !hash_equals((string)$prior->request_fingerprint,$hash)) {
+                    throw new RuntimeException('US_NY_RECOVERY_NOT_SAFE');
+                }
+                app(\App\Modules\Audit\Application\Contracts\AuditRecorder::class)->record(
+                    \App\Modules\Audit\Application\AuditActor::system(\App\Modules\Audit\Application\AuditSource::InternalSystem),
+                    'logistics.us_ny_preflight_recovery', XlwmsDispatchAttempt::class, $prior->id,
+                    before: ['state'=>$prior->state,'failure_code'=>$prior->failure_code],
+                    after: ['state'=>'checking_existing','order_id'=>$id],
+                    reason: 'owner_authorized_pre_create_failure_recovery');
+                $prior->forceFill(['state'=>'checking_existing','failure_code'=>null,'last_checked_at'=>now()])->save();
+                return $prior;
+            }
+            if ($prior) throw new RuntimeException('US_NY_ATTEMPT_EXISTS');
             return XlwmsDispatchAttempt::query()->create(['order_id'=>$id, 'warehouse_id'=>$order->shipment->warehouse_id,
                 'third_order_no'=>$payload['thirdOrderNo'], 'request_fingerprint'=>$hash, 'requested_by'=>$actorId,
                 'state'=>'checking_existing']);
