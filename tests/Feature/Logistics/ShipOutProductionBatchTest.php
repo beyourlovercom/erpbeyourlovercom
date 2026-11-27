@@ -739,6 +739,14 @@ final class ShipOutProductionBatchTest extends TestCase
             'logistics.xlwms.de.batch.preview',
             'logistics.xlwms.de.batch.start',
             'logistics.xlwms.de.batch.status',
+            'logistics.oversea.bulk-ship.preview',
+            'logistics.oversea.bulk-ship.apply',
+            'logistics.oversea.manual-non-oms',
+            'logistics.oversea.us-moreplus.manual-ship',
+            'sync.warehouses.de.start',
+            'sync.warehouses.de.resume',
+            'sync.warehouses.de.status',
+            'sync.warehouses.de.details',
         ] as $name) {
             $this->assertStringContainsString('throttle:100,1,erp-logistics:'.$name.':', $get($name));
         }
