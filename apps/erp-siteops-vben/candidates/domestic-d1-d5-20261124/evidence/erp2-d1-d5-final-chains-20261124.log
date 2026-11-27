@@ -1,0 +1,12 @@
+PHPUnit 12.5.33 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.3.33
+Configuration: /private/tmp/erp2-p011-13-test.Xhx7vn/phpunit.xml
+
+...............................................................  63 / 151 ( 41%)
+............................................................... 126 / 151 ( 83%)
+.........................                                       151 / 151 (100%)
+
+Time: 00:07.377, Memory: 101.00 MB
+
+[30;42mOK (151 tests, 1890 assertions)[0m

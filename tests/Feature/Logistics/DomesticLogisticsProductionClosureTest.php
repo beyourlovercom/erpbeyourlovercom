@@ -806,6 +806,46 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         $this->assertDatabaseCount('sync_outbox', 1);
     }
 
+    public function test_erp2_p0_http_preview_apply_all_three_providers(): void
+    {
+        Queue::fake();
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        $actor = $this->logisticsViewer();
+        $actor->roles()->first()->permissions()->attach(Permission::query()->firstOrCreate(['key'=>'logistics.operate'], ['label'=>'logistics.operate']));
+        foreach (['4px','weship','generic'] as $i=>$provider) {
+            $n = 59001+$i;
+            $order = $this->domesticOrder('007-0923-c'.$n, $provider==='weship'?'Weship':'4PX', true, '111', 1);
+            if ($provider==='weship') $order->shipment()->update(['service'=>'Standard']);
+            $tracking='ERP2-HTTP-TEST-'.$n;
+            if ($provider==='4px') {
+                $file=$this->speedaReturnXls([['C'.$n.'-007',$tracking]]);
+            } else {
+                $book=new Spreadsheet;
+                $book->getActiveSheet()->fromArray($provider==='weship'
+                    ? [['客户单号','运单号'],['C'.$n.'-007',$tracking]]
+                    : [['ERP订单号','承运商','Tracking'],['007-0923-c'.$n,'4PX',$tracking]]);
+                $path=tempnam(sys_get_temp_dir(),'erp2-http-').'.xlsx';
+                (new Xlsx($book))->save($path);
+                $book->disconnectWorksheets();
+                $file=new UploadedFile($path,'fixture.xlsx',null,null,true);
+            }
+            $this->actingAs($actor)->post('/logistics/china/tracking-import/preview',['file'=>$file],['Accept'=>'application/json'])
+                ->assertOk()->assertJsonPath('provider',$provider);
+            $this->assertSame(1,session('domestic_tracking_preview_'.$provider.'.apply_count'),json_encode(session('domestic_tracking_preview_'.$provider.'.rows'),JSON_UNESCAPED_UNICODE));
+            $this->assertSame('pending',$order->fresh()->shipment->shipment_status);
+            $token=session('domestic_tracking_preview_'.$provider.'.token');
+            $this->assertIsString($token);
+            $this->assertSame(64,strlen($token));
+            $endpoint='/logistics/china/'.($provider==='generic'?'pending-batch':$provider).'/tracking-import/apply';
+            $this->postJson($endpoint,['token'=>$token])->assertOk()->assertJsonPath('applied_count',1)->assertJsonPath('failed_count',0);
+            $this->assertSame('shipped',$order->fresh()->shipment->shipment_status);
+            $this->assertSame($tracking,$order->fresh()->shipment->tracking_number);
+            $this->postJson($endpoint,['token'=>$token])->assertStatus(409);
+        }
+        Queue::assertNothingPushed();
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
     private function logisticsViewer(): User
     {
         $permission = Permission::query()->firstOrCreate(['key' => 'logistics.view'], ['label' => 'logistics.view']);
