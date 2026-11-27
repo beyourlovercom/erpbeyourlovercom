@@ -53,7 +53,7 @@ final class OrderCoreStatusTransitionService
 
             $shipment = $locked->shipment;
             $wasDomesticHold = DomesticShippingHold::isHeld($locked->workflow_status);
-            $isDomesticCommand = DomesticShippingHold::isHeld($command) || $command === DomesticShippingHold::RESUME;
+            $isDomesticCommand = in_array($command, DomesticShippingHold::CODES, true) || $command === DomesticShippingHold::RESUME;
             if ($wasDomesticHold && ! $isDomesticCommand) {
                 throw new HttpException(409, '请先通过恢复待发货解除冻结，不可直接更改为其他状态。');
             }
@@ -135,7 +135,6 @@ final class OrderCoreStatusTransitionService
                 case 'sending':
                 case 'out_of_stock':
                 case 'exception':
-                case 'missing_info':
                 case 'renew':
                 case 'claims':
                 case 'returned_follow_up':

@@ -130,9 +130,10 @@ final class OrderWorkflowStatusSettingsTest extends TestCase
         $registry = OrderWorkflowStatus::defaults();
         $this->assertSame('1.1.1', $registry['domestic_hold_tracking_stockout']['sequence']);
         $this->assertSame('有单号/缺货', $registry['domestic_hold_tracking_stockout']['zh']);
-        $this->assertSame('1.1.2', $registry['domestic_hold_missing_info']['sequence']);
-        $this->assertSame('信息缺失', $registry['domestic_hold_missing_info']['zh']);
-        $this->assertSame('1.5', $registry['missing_info']['sequence']);
+        $this->assertSame('1.1.2', $registry['missing_info']['sequence']);
+        $this->assertSame('信息缺失', $registry['missing_info']['zh']);
+        $this->assertArrayNotHasKey('domestic_hold_missing_info', $registry);
+        $this->assertNotContains('1.5', array_column($registry, 'sequence'));
         $this->assertGreaterThan(0, OrderWorkflowStatusDisplayCatalog::compareSequence('3.4', '1.10'));
     }
 

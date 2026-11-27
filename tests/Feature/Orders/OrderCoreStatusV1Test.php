@@ -277,17 +277,17 @@ final class OrderCoreStatusV1Test extends TestCase
         self::assertSame('pending', $child->fresh()->shipment->shipment_status);
     }
 
-    public function test_missing_customer_info_is_an_exception_queue_hold_until_staff_resolves_it(): void
+    public function test_generic_claim_is_an_exception_queue_hold_until_staff_resolves_it(): void
     {
         $order = $this->order();
         $actor = $this->user(['orders.view', 'orders.edit']);
         $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
+            'workflow_status' => 'claims', 'expected_workflow_revision' => 0,
         ])->assertOk()
-            ->assertJsonPath('workflow_status.code', 'missing_info')
+            ->assertJsonPath('workflow_status.code', 'claims')
             ->assertJsonPath('workflow_status.auxiliary', []);
         $this->assertDatabaseHas('orders', [
-            'id' => $order->id, 'workflow_status' => 'missing_info',
+            'id' => $order->id, 'workflow_status' => 'claims',
         ]);
         $this->assertDatabaseMissing('order_operational_markers', [
             'order_id' => $order->id, 'marker' => 'workflow_aux_missing_info',
@@ -305,7 +305,7 @@ final class OrderCoreStatusV1Test extends TestCase
         ]);
     }
 
-    public function test_missing_info_blocks_real_dispatch_and_keeps_split_child_out_of_ready_queue(): void
+    public function test_generic_claim_blocks_real_dispatch_and_keeps_split_child_out_of_ready_queue(): void
     {
         $root = $this->order();
         $child = $this->order();
@@ -320,14 +320,14 @@ final class OrderCoreStatusV1Test extends TestCase
         $child->operationalMarkers()->create(['marker' => 'domestic_reviewed', 'marked_at' => now()]);
         $actor = $this->user(['orders.view', 'orders.edit']);
         $this->actingAs($actor)->patchJson('/orders/'.$root->id.'/workflow-status', [
-            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info');
+            'workflow_status' => 'claims', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'claims');
         self::assertSame('exception', app(OrderWorkflowStatusProjection::class)->for($child->fresh())['code']);
         self::assertSame(1, $this->inQueue($child, 'exception'));
         self::assertSame(0, app(OrderProgressQuery::class)->readyForShipment(Order::query())->whereKey($child->id)->count());
         try {
             app(ShipmentService::class)->markShipped($child->fresh(), ['tracking_number' => 'NOT_DISPATCHED'], $actor);
-            self::fail('Missing customer info must prevent new dispatch for all child parcels');
+            self::fail('A generic claim must prevent new dispatch for all child parcels');
         } catch (HttpException $e) {
             self::assertSame(409, $e->getStatusCode());
         }
@@ -335,11 +335,11 @@ final class OrderCoreStatusV1Test extends TestCase
         self::assertNull($child->fresh()->shipment->tracking_number);
     }
 
-    public function test_legacy_missing_info_annotation_also_projects_to_exception(): void
+    public function test_legacy_missing_info_marker_also_projects_to_exception(): void
     {
         $order = $this->order();
-        $order->forceFill(['workflow_status' => 'missing_info'])->save();
-        self::assertSame('missing_info', app(OrderWorkflowStatusProjection::class)->for($order->fresh())['code']);
+        $order->operationalMarkers()->create(['marker' => 'workflow_aux_missing_info', 'marked_at' => now()]);
+        self::assertSame('exception', app(OrderWorkflowStatusProjection::class)->for($order->fresh())['code']);
         self::assertSame(1, $this->inQueue($order, 'exception'));
         self::assertSame(0, $this->inQueue($order, 'pending_allocation'));
     }
@@ -349,7 +349,7 @@ final class OrderCoreStatusV1Test extends TestCase
         $order = $this->order();
         $actor = $this->user(['orders.view', 'orders.edit']);
         foreach ([
-            ['missing_info', 'exception', 1],
+            ['exception', 'exception', 1],
             ['renew', 'exception', 2],
             ['returned_follow_up', 'returned_follow_up', 3],
             ['claims', 'exception', 4],
@@ -420,28 +420,28 @@ final class OrderCoreStatusV1Test extends TestCase
             'workflow_status' => 'out_of_stock', 'expected_workflow_revision' => 0,
         ])->assertOk()->assertJsonPath('workflow_status.code', 'out_of_stock');
         $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 1,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info');
+            'workflow_status' => 'renew', 'expected_workflow_revision' => 1,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'renew');
         self::assertSame(1, $this->inQueue($order, 'exception'));
         self::assertSame(0, $this->inQueue($order, 'out_of_stock'));
         $this->assertDatabaseHas('orders', [
-            'id' => $order->id, 'workflow_status' => 'missing_info',
+            'id' => $order->id, 'workflow_status' => 'renew',
         ]);
         $this->assertDatabaseHas('order_workflow_status_histories', [
             'order_id' => $order->id, 'from_status' => 'out_of_stock',
-            'to_status' => 'missing_info', 'revision' => 2,
+            'to_status' => 'renew', 'revision' => 2,
         ]);
         self::assertNull($order->fresh()->shipment);
     }
 
-    public function test_dropdown_can_return_unallocated_missing_info_to_pending_allocation(): void
+    public function test_dropdown_can_return_unallocated_renew_to_pending_allocation(): void
     {
         $order = $this->order();
         $actor = $this->user(['orders.view', 'orders.edit']);
 
         $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'missing_info');
+            'workflow_status' => 'renew', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'renew');
         self::assertSame(1, $this->inQueue($order, 'exception'));
 
         $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
@@ -454,7 +454,7 @@ final class OrderCoreStatusV1Test extends TestCase
             'order_status' => 'pending_shipment', 'workflow_revision' => 2,
         ]);
         $this->assertDatabaseHas('order_workflow_status_histories', [
-            'order_id' => $order->id, 'from_status' => 'missing_info',
+            'order_id' => $order->id, 'from_status' => 'renew',
             'to_status' => 'pending_allocation', 'revision' => 2,
         ]);
         self::assertNull($order->fresh()->shipment);
@@ -503,7 +503,7 @@ final class OrderCoreStatusV1Test extends TestCase
         $order = $this->order();
         $actor = $this->user(['orders.view', 'orders.edit']);
         $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
-            'workflow_status' => 'missing_info', 'expected_workflow_revision' => 0,
+            'workflow_status' => 'renew', 'expected_workflow_revision' => 0,
         ])->assertOk();
 
         $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [

@@ -10,7 +10,10 @@ use App\Modules\Orders\Infrastructure\Models\Order;
  */
 final class DomesticShippingHold
 {
-    public const MISSING_INFO = 'domestic_hold_missing_info';
+    public const MISSING_INFO = 'missing_info';
+
+    // Read compatibility only: previously frozen orders remain protected until resumed.
+    public const LEGACY_MISSING_INFO = 'domestic_hold_missing_info';
 
     public const TRACKING_STOCKOUT = 'domestic_hold_tracking_stockout';
 
@@ -18,9 +21,16 @@ final class DomesticShippingHold
 
     public const CODES = [self::MISSING_INFO, self::TRACKING_STOCKOUT];
 
+    public const STORED_CODES = [...self::CODES, self::LEGACY_MISSING_INFO];
+
+    public static function canonical(?string $status): ?string
+    {
+        return $status === self::LEGACY_MISSING_INFO ? self::MISSING_INFO : $status;
+    }
+
     public static function isHeld(?string $status): bool
     {
-        return in_array($status, self::CODES, true);
+        return in_array($status, self::STORED_CODES, true);
     }
 
     public static function blocker(Order $order, string $command): ?string
@@ -47,7 +57,7 @@ final class DomesticShippingHold
             if (! self::isHeld($order->workflow_status)) {
                 return '订单当前不在冻结发货队列。';
             }
-        } elseif (! self::isHeld($command)) {
+        } elseif (! in_array($command, self::CODES, true)) {
             return '不支持的冻结发货状态。';
         } elseif ($order->workflow_status !== 'sending' && ! self::isHeld($order->workflow_status)
             && ($order->workflow_status !== null || ! $order->operationalMarkers->contains('marker', 'domestic_reviewed'))) {

@@ -13,7 +13,7 @@ vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default:{ template:'<d
 const statuses = [
   { code:'pending_allocation', sequence:'0.0', name_zh:'待分仓', name_en:'Pending Allocation', mutable:true, feature:'人工状态', pages:'订单总表' },
   { code:'sending', sequence:'1.1', name_zh:'待发', name_en:'Sending', mutable:true, feature:'待发状态', pages:'订单列表、详情' },
-  { code:'missing_info', sequence:'1.5', name_zh:'信息缺失', name_en:'Missing Info', mutable:true, feature:'待补资料', pages:'订单详情' },
+  { code:'missing_info', sequence:'1.1.2', name_zh:'信息缺失', name_en:'Missing Info', mutable:true, feature:'待补资料', pages:'订单详情' },
   { code:'out_of_stock', sequence:'3.4', name_zh:'缺货', name_en:'Out of stock', mutable:true, feature:'缺货状态', pages:'物流工作台' },
 ]
 const defaults = statuses.map(({code, sequence, name_zh, name_en})=>({code, sequence, name_zh, name_en}))
@@ -49,7 +49,7 @@ describe('Settings status editor', () => {
 
   it('blocks duplicate sequences before save', async () => {
     const wrapper = mount(Statuses, { props:{ statuses, defaults, version:'c'.repeat(64) } })
-    await wrapper.find('input[id="sequence-out_of_stock"]').setValue('1.5')
+    await wrapper.find('input[id="sequence-out_of_stock"]').setValue('1.1.2')
     expect(wrapper.text()).toContain('数字序号不能重复')
     expect(wrapper.findAll('button').find(button=>button.text().includes('保存状态设置'))!.attributes('disabled')).toBeDefined()
     expect(put).not.toHaveBeenCalled()

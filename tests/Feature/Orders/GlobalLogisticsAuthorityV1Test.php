@@ -58,15 +58,17 @@ final class GlobalLogisticsAuthorityV1Test extends TestCase
             $this->assertEquals($warehouses[$code]->id, $o->fresh()->shipment->warehouse_id);
             $policy = app(OrderWorkflowStatusPolicy::class)->for($o->fresh(), $actor);
             $this->assertTrue($policy['can_edit']);
-            foreach (['pending_allocation', 'pending_review', 'sending', 'out_of_stock', 'exception', 'missing_info', 'finished', 'completed', 'cancelled'] as $status) {
+            foreach (['pending_allocation', 'pending_review', 'sending', 'out_of_stock', 'exception', 'renew', 'finished', 'completed', 'cancelled'] as $status) {
                 $this->assertTrue(collect($policy['options'])->firstWhere('code', $status)['mutable'], $status);
             }
             $this->assertFalse(collect($policy['options'])->firstWhere('code', 'paid')['mutable']);
+            $this->assertFalse(collect($policy['options'])->firstWhere('code', 'missing_info')['mutable']);
         }
         $this->actingAs($b)->patchJson($path.'/workflow-status', ['workflow_status' => 'pending_review', 'expected_workflow_revision' => 0])->assertOk();
         $this->actingAs($a)->patchJson($path.'/workflow-status', ['workflow_status' => 'exception', 'expected_workflow_revision' => 1])->assertOk();
         $this->actingAs($b)->patchJson($path.'/workflow-status', ['workflow_status' => 'resolve_exception', 'expected_workflow_revision' => 2])->assertOk();
-        $this->actingAs($a)->patchJson($path.'/workflow-status', ['workflow_status' => 'missing_info', 'expected_workflow_revision' => 3])->assertOk();
+        $this->actingAs($a)->patchJson($path.'/workflow-status', ['workflow_status' => 'missing_info', 'expected_workflow_revision' => 3])->assertStatus(409);
+        $this->actingAs($a)->patchJson($path.'/workflow-status', ['workflow_status' => 'renew', 'expected_workflow_revision' => 3])->assertOk();
         $this->actingAs($b)->patchJson($path.'/workflow-status', ['workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 4])->assertOk();
         $this->assertSame('UNASSIGNED', $o->fresh()->routing_warehouse_code);
         $this->assertNull($o->fresh()->shipment->warehouse_id);
