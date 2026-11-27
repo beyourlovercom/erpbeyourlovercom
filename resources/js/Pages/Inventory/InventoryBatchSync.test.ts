@@ -67,6 +67,12 @@ describe('Inventory Batch Sync workspace', () => {
     vi.clearAllMocks()
   })
 
+  it('preserves originating warehouse and opens file upload', () => {
+    const wrapper = mount(Sync, { props: { ...defaultProps, initialWarehouseId: 1 } })
+    expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('1')
+    expect(wrapper.find('input[type=file]').exists()).toBe(true)
+  })
+
   it('renders source selection tabs', () => {
     const wrapper = mount(Sync, { props: defaultProps })
     expect(wrapper.text()).toContain('复制粘贴')
@@ -96,7 +102,7 @@ describe('Inventory Batch Sync workspace', () => {
     expect(preview?.attributes('disabled')).toBeDefined()
     expect(confirm).toBeDefined()
     expect(confirm?.attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('请先预览数据，确认无错误后再导入。')
+    expect(wrapper.text()).toContain('请先预览数据；部分同步自动跳过错误行，全量同步保持严格校验。')
   })
 
   it('shows preview stats after successful preview call', async () => {
@@ -134,7 +140,7 @@ describe('Inventory Batch Sync workspace', () => {
     await previewBtn!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('有错误')
+    expect(wrapper.text()).toContain('当前没有可导入的有效 SKU')
     const confirmBtn = wrapper.findAll('button').find(b => b.text() === '2. 确认导入库存')
     expect(confirmBtn?.attributes('disabled')).toBeDefined()
   })

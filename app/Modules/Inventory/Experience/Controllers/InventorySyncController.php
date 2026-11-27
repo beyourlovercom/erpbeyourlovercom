@@ -27,6 +27,7 @@ final class InventorySyncController extends Controller
 
         return Inertia::render('Inventory/Sync', [
             'warehouses'         => $warehouses,
+            'initialWarehouseId' => $warehouses->firstWhere('id', $request->integer('warehouse_id'))?->id,
             'apiAvailable'       => $api->isAvailable(),
             'apiStatusLabel'     => $api->statusLabel(),
             'recentBatches'      => InventorySyncBatch::with('warehouse')
