@@ -14,7 +14,7 @@ final class OrderManualHoldStatus
 
     public const RETURN_CODES = ['returned_follow_up'];
 
-    public const CODES = [...self::EXCEPTION_CODES, ...self::RETURN_CODES];
+    public const CODES = [...self::EXCEPTION_CODES, ...self::RETURN_CODES, ...DomesticShippingHold::CODES];
 
     /** Explicit staff classification takes precedence over warehouse/OMS facts.
      * It never claims that a physical dispatch has actually occurred. */
@@ -37,6 +37,9 @@ final class OrderManualHoldStatus
 
     public static function bucket(string $code): ?string
     {
+        if (DomesticShippingHold::isHeld($code)) {
+            return $code;
+        }
         if (in_array($code, self::EXCEPTION_CODES, true)) {
             return 'exception';
         }

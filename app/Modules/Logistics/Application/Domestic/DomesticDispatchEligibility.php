@@ -35,6 +35,9 @@ final class DomesticDispatchEligibility
             || $order->operationalMarkers->contains(fn ($m) => in_array($m->marker, ['domestic_stockout', 'stockout'], true))) {
             return ['缺货订单禁止导出'];
         }
+        if (\App\Modules\Orders\Application\DomesticShippingHold::isHeld($order->workflow_status)) {
+            return ['冻结发货订单禁止导出，请先恢复待发货'];
+        }
         if (in_array($order->workflow_status, OrderManualHoldStatus::CODES, true)
             || $order->operationalMarkers->contains(fn ($m) => in_array($m->marker, OrderManualHoldStatus::HOLD_MARKERS, true))) {
             return ['订单处于异常或人工跟进状态，禁止导出'];

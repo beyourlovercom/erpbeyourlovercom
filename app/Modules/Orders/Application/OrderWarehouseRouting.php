@@ -92,6 +92,7 @@ final class OrderWarehouseRouting
             ?? ($order->workflow_status ?: 'sending');
 
         $view = match ($phase) {
+            DomesticShippingHold::MISSING_INFO, DomesticShippingHold::TRACKING_STOCKOUT => 'frozen',
             'pending_allocation', 'allocated' => 'pending_allocation',
             'out_of_stock' => 'stockout',
             'exception', 'missing_info', 'progress_conflict',
@@ -137,7 +138,7 @@ final class OrderWarehouseRouting
                 return '/orders?view=shipped&warehouse_route_code=FACTORY';
             }
             $queue = match ($view) {
-                'stockout', 'exceptions', 'review' => $view,
+                'stockout', 'exceptions', 'review', 'frozen' => $view,
                 default => 'pending',
             };
 
@@ -180,6 +181,7 @@ final class OrderWarehouseRouting
             if ($locked->trashed() || $locked->archived_at !== null || $locked->isOperationallyArchived()) {
                 throw new HttpException(409, '归档或删除订单不可修改所属分仓。');
             }
+            abort_if(DomesticShippingHold::isHeld($locked->workflow_status), 409, '冻结发货订单请先恢复待发货再修改所属分仓。');
             if ((int) $locked->routing_revision !== $revision) {
                 throw new HttpException(409, '所属分仓已被其他人修改，请刷新后重试。');
             }

@@ -10,6 +10,7 @@ type Params={
   getCarrierOptions?:()=>Carrier[]
   openCarrierCreate?:(onCreated:(carrier:Carrier)=>void)=>void
   compactActions?:boolean
+  isHeld?:(id:number)=>boolean
   view?:string
   source:(id:number)=>Source|undefined
   carrierBusy:(id:number)=>boolean
@@ -30,9 +31,9 @@ type Params={
 const props=defineProps<{params:Params}>()
 const id=computed(()=>Number(props.params.data.id))
 const source=computed(()=>props.params.source(id.value))
-const canShip=computed(()=>!!props.params.canOperate && ['approved','pending'].includes(source.value?.review_status??'') && source.value?.shipment_status==='pending')
-const canReopen=computed(()=>!!props.params.canReview && source.value?.review_status==='approved' && source.value.shipment_status==='pending')
-const canReject=computed(()=>props.params.view==='pending' && !!props.params.canReview && ['pending','approved'].includes(source.value?.review_status??'') && source.value?.shipment_status==='pending')
+const canShip=computed(()=>!props.params.isHeld?.(id.value) && !!props.params.canOperate && ['approved','pending'].includes(source.value?.review_status??'') && source.value?.shipment_status==='pending')
+const canReopen=computed(()=>!props.params.isHeld?.(id.value) && !!props.params.canReview && source.value?.review_status==='approved' && source.value.shipment_status==='pending')
+const canReject=computed(()=>!props.params.isHeld?.(id.value) && props.params.view==='pending' && !!props.params.canReview && ['pending','approved'].includes(source.value?.review_status??'') && source.value?.shipment_status==='pending')
 const carrierConfirmed=computed(()=>source.value?.carrier_ready===true)
 const busy=computed(()=>props.params.carrierBusy(id.value)||props.params.trackingBusy(id.value)||!!props.params.reviewBusy?.())
 const compactOpen=ref(false)

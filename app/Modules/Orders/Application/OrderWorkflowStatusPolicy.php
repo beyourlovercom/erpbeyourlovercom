@@ -59,6 +59,12 @@ final class OrderWorkflowStatusPolicy
                 $allowed = (bool) $definition['mutable']
                     && ! in_array($code, ['cancelled', 'pending_allocation'], true);
             }
+            // Hold commands are available only on the eligible domestic order, not KOL or overseas rows.
+            if (DomesticShippingHold::isHeld($code)) {
+                $allowed = ! $blocked && $customer && $operator && DomesticShippingHold::blocker($order, $code) === null;
+            } elseif (DomesticShippingHold::isHeld($order->workflow_status)) {
+                $allowed = false;
+            }
             $disabledReason = null;
             if (! $allowed) {
                 $disabledReason = match (true) {
@@ -79,6 +85,14 @@ final class OrderWorkflowStatusPolicy
             $current === 'out_of_stock' => ['resolve_stockout', 'Restock', '解除缺货'],
             default => null,
         };
+        if (DomesticShippingHold::isHeld($order->workflow_status)) {
+            $canResume = ! $blocked && $customer && $operator
+                && DomesticShippingHold::blocker($order, DomesticShippingHold::RESUME) === null;
+            $options[] = ['code' => DomesticShippingHold::RESUME, 'en' => 'Resume pending shipment', 'zh' => '恢复待发货',
+                'color' => 'green', 'mutable' => $canResume,
+                'disabled_reason' => $canResume ? null : '请先确认冻结原因已解决，且订单仍符合国内待发货条件'];
+            $resolve = null;
+        }
         if ($customer && $resolve !== null) {
             $mayResolve = $operator && ! $blocked;
             if ($resolve[0] === 'resolve_stockout') {

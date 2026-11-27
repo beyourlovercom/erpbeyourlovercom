@@ -15,6 +15,9 @@ final class ShipmentWebsiteSyncHandoff
     /** @return array{status:string} */
     public function afterShipmentSaved(Order $order): array
     {
+        if (\App\Modules\Orders\Application\DomesticShippingHold::isHeld($order->fresh()?->workflow_status)) {
+            return ['status' => 'not_required'];
+        }
         $root = $order->fulfillment_parent_id ? $order->fulfillmentParent : $order;
         $source = $root?->source_type instanceof \BackedEnum
             ? $root->source_type->value : (string) ($root?->source_type ?? '');

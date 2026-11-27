@@ -63,6 +63,23 @@ const props = withDefaults(defineProps<{
   canEditWarehouseRoute?:boolean
 }>(),{canLogisticsView:true})
 
+const isHeld = (row:Row) => ['domestic_hold_missing_info','domestic_hold_tracking_stockout'].includes(row.workflow_status_projection?.code??'')
+const canResumeHold = (row:Row) => isHeld(row) && !!row.workflow_status_options?.some(o=>o.code==='resume_domestic_hold'&&o.mutable)
+const resumeHoldBusy = ref<number|null>(null)
+const resumeHold = async (row:Row) => {
+  if (!canResumeHold(row) || resumeHoldBusy.value!==null) return
+  resumeHoldBusy.value=row.order_id
+  try {
+    await axios.patch('/orders/'+row.order_id+'/workflow-status',{
+      workflow_status:'resume_domestic_hold',expected_workflow_revision:row.workflow_revision??0,
+    },{headers:currentCsrfHeaders()})
+    publishGlobalFeedback({state:'SUCCESS',title:'恢复待发货',message:'订单已移回待发货队列。'})
+    router.reload({only:['rows','viewCounts']})
+  } catch(error) {
+    const message=axios.isAxiosError(error)?String(error.response?.data?.message??'恢复失败，请刷新后重试。'):'恢复失败，请刷新后重试。'
+    publishGlobalFeedback({state:'ERROR',title:'恢复待发货失败',message})
+  } finally {resumeHoldBusy.value=null}
+}
 type BulkChoice = {value:string; label:string; reasonRequired?:boolean}
 const selectedBulkOrderIds = ref<number[]>([])
 const selectedExportQuery = computed(() => new URLSearchParams(
@@ -88,7 +105,7 @@ const bulkOptions = computed<BulkChoice[]>(()=>{
     selectedBulkOrderIds.value.includes(row.order_id) && eligibleForBatchTracking(row))) {
     result.push({value:'sync-tracking',label:'批量同步官网物流'})
   }
-  if (props.canArchive && props.view!=='stockout') result.push({value:'archive',label:'批量归档'})
+  if (props.canArchive && !['stockout','frozen'].includes(props.view)) result.push({value:'archive',label:'批量归档'})
   return result
 })
 const onBulkSelectionChanged = (rows:GridListRow[])=>{
@@ -188,7 +205,7 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
   workflow_status:row.workflow_status_projection?.zh ?? '—',
   routing_warehouse:row.routing_warehouse,
   routing_warehouse_name:row.routing_warehouse?.name??'未分仓',
-  can_edit_warehouse_route:Boolean(props.canEditWarehouseRoute),
+  can_edit_warehouse_route:Boolean(props.canEditWarehouseRoute)&&!isHeld(row),
   workflow_status_projection:row.workflow_status_projection,
   workflow_revision:row.workflow_revision??0,
   can_edit_workflow_status:Boolean(row.can_edit_workflow_status),
@@ -228,7 +245,7 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
     cellRendererParams:props.view==='pending'?{showLiquid:true}:{mode:'link',hrefFor:(r:GridListRow)=>r.order_url}}),
   gridColumn({colId:'contact',field:'contact_user_name',headerName:'订单联络人',width:145}),
   gridColumn({colId:'status',field:'workflow_status',headerName:'订单状态',width:182,
-    ...selectFilter(['pending_review','sending','out_of_stock','sent','shipping','completed','progress_conflict','partially_shipped']
+    ...selectFilter(['pending_review','sending','domestic_hold_missing_info','domestic_hold_tracking_stockout','out_of_stock','sent','shipping','completed','progress_conflict','partially_shipped']
       .map(code=>({value:code,label:props.workflowStatusOptions?.find(item=>item.code===code)?.zh??code})),'全部状态'),
     cellRenderer:OrderWorkflowGridCell,
     cellRendererParams:{workflowStatusOptions:props.workflowStatusOptions??[],canEditWorkflowStatus:props.canEditWorkflowStatus??false}}),
@@ -313,6 +330,10 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
       actionsFor:(row:GridListRow)=>[{label:'查看订单',href:String(row.order_url??'')}],
     }:{
       compactActions:isAllDomesticView(props.view),
+      isHeld:(id:number)=>{const row=props.rows.data.find(item=>item.order_id===id);return !!row&&isHeld(row)},
+      canResumeHold:(id:number)=>{const row=props.rows.data.find(item=>item.order_id===id);return !!row&&canResumeHold(row)},
+      resumeHold:(id:number)=>{const row=props.rows.data.find(item=>item.order_id===id);if(row)void resumeHold(row)},
+      holdBusy:()=>resumeHoldBusy.value!==null,
       carrierOptions:props.carrierOptions,
       getCarrierOptions:()=>carrierCatalog.value,
       openCarrierCreate:openInlineCarrier,
@@ -387,8 +408,8 @@ const domesticPager = computed(()=>({
 const trackingSelection = ref<number[]>([])
 const trackingBusy = ref(false)
 const trackingFeedback = ref('')
-const eligibleForTracking = (row:Row) => !!row.tracking_number?.trim() && !['completed','conflict'].includes(row.tracking_sync_status ?? '')
-const eligibleForBatchTracking = (row:Row) => row.source_type === 'woocommerce'
+const eligibleForTracking = (row:Row) => !isHeld(row) && !!row.tracking_number?.trim() && !['completed','conflict'].includes(row.tracking_sync_status ?? '')
+const eligibleForBatchTracking = (row:Row) => !isHeld(row) && row.source_type === 'woocommerce'
   && row.shipment_status === 'shipped' && !!row.tracking_number && !!row.carrier && !!row.shipped_at
   && !['completed','conflict'].includes(row.tracking_sync_status ?? '')
 const chooseTracking = (id:number, checked:boolean) => {
@@ -427,7 +448,7 @@ const inlineBusy = ref<Record<number,boolean>>({})
 const inlineErrors = ref<Record<number,string>>({})
 const inlineSaved = ref<Record<number,string>>({})
 const trackingDraft = (row:Row):string => inlineTracking.value[row.order_id] ??= row.tracking_number ?? ''
-const canQuickShip = (row:Row):boolean => props.canOperate && ['approved','pending'].includes(row.review_status)
+const canQuickShip = (row:Row):boolean => !isHeld(row) && props.canOperate && ['approved','pending'].includes(row.review_status)
   && row.shipment_status === 'pending'
 type CarrierDraft = {carrier:string;service:string}
 const carrierDrafts = ref<Record<number,CarrierDraft>>({})
@@ -510,7 +531,7 @@ const uploadInput = ref<HTMLInputElement|null>(null)
 const uploadBusy = ref(false)
 const applyBusy = ref(false)
 const tabs = [
-  ['review','待审核'], ['stockout','缺货单'], ['outsource','外采单'], ['pending','待发货'], ['today','今日订单'],
+  ['review','待审核'], ['stockout','缺货单'], ['outsource','外采单'], ['pending','待发货'], ['frozen','冻结发货'], ['today','今日订单'],
   ['today-4px','今日速达'], ['today-weship','今日纬狮'], ['exceptions','异常订单'],
   ['all','全部国内订单'],
 ] as const
@@ -592,7 +613,7 @@ const switchView = (view:string) => {
   // just because they switched from the approved review view.
   const mode = view === props.view
     ? (props.globalGridPilotEnabled ? '1' : '0')
-    : (['review','stockout','pending','today','today-4px','today-weship','exceptions','all'].includes(view) ? '1' : '0')
+    : (['review','stockout','pending','frozen','today','today-4px','today-weship','exceptions','all'].includes(view) ? '1' : '0')
   router.visit('/logistics/china?view=' + encodeURIComponent(view)
     + '&global_grid=' + mode
     + (view === props.view && mode === '1' && domesticGridSearch.value
@@ -925,7 +946,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order','status','warehouse_route']"
           :default-pinned-right="isAllDomesticView(view) ? 0 : 1"
           :cell-text-selection="view==='pending'"
-          :enable-selection="true" :selected-order-ids="selectedBulkOrderIds"
+          :enable-selection="view!=='frozen'" :selected-order-ids="selectedBulkOrderIds"
           :page="domesticPager" :search="gridSearch??''"
           :filter-columns="isAllDomesticView(view)?allGridFilterColumns:['contact']"
           :filter-values="allGridFilterValues"
@@ -967,6 +988,10 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                   <button class="approve" type="button" :disabled="reviewBusy" @click="decide(row,'approve')">通过</button>
                   <button v-if="row.review_status!=='stockout'" class="stockout-btn" type="button" :disabled="reviewBusy" @click="decide(row,'stockout')">缺货</button>
                   <button class="reject-btn" type="button" :disabled="reviewBusy" @click="openReject(row)">驳回</button>
+                </div>
+                <div v-else-if="isHeld(row)" class="review-actions">
+                  <button v-if="canResumeHold(row)" type="button" :disabled="resumeHoldBusy!==null" @click="resumeHold(row)">恢复待发货</button>
+                  <span v-else>冻结发货</span>
                 </div>
                 <div v-else-if="row.review_status==='approved'" class="approved">已通过 <button v-if="canReview && row.shipment_status==='pending'" type="button" @click="reopen(row)">重新审核</button></div>
                 <span v-else :class="row.review_status==='conflict' ? 'danger' : ''">{{ row.review_status==='conflict' ? '状态待对账' : row.review_status==='stockout' ? '缺货' : '待审核' }}</span>
