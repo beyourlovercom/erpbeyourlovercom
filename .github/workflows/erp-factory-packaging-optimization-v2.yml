@@ -69,3 +69,35 @@ jobs:
           DB_PASSWORD: root
           DB_URL: ''
           ERP_LOCAL_ADMIN_BYPASS: 'false'
+      - name: MySQL isolated packaging migration rollback and reapply
+        if: matrix.database == 'mysql'
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: mysql
+          DB_DATABASE: erp_packaging_test
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          DB_URL: ''
+          ERP_LOCAL_ADMIN_BYPASS: 'false'
+        run: |
+          set -euo pipefail
+          test "$DB_DATABASE" = erp_packaging_test
+          test "$DB_HOST" = 127.0.0.1
+          php artisan migrate:fresh --force --quiet
+          migration=database/migrations/2026_11_27_230000_add_packaging_measurement_resubmission_link.php
+          check_schema() {
+            EXPECT_COLUMN="$1" php -r '
+              $pdo = new PDO("mysql:host=127.0.0.1;port=3306;dbname=erp_packaging_test", getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
+              $column = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=\x27packaging_measurement_records\x27 AND COLUMN_NAME=\x27resubmission_of_id\x27")->fetchColumn();
+              $ledger = (int) $pdo->query("SELECT COUNT(*) FROM migrations WHERE migration=\x272026_11_27_230000_add_packaging_measurement_resubmission_link\x27")->fetchColumn();
+              if ($column !== (int)getenv("EXPECT_COLUMN") || $ledger !== $column) exit(1);
+              echo "PACKAGING_MYSQL_SCHEMA_LEDGER_PASS\n";
+            '
+          }
+          check_schema 1
+          php artisan migrate:rollback --step=1 --path="$migration" --force
+          check_schema 0
+          php artisan migrate --path="$migration" --force
+          check_schema 1
