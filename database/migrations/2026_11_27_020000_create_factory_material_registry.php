@@ -38,7 +38,7 @@ return new class extends Migration
             $table->unsignedInteger('warehouse_007_qty')->nullable();
             $table->foreignId('last_snapshot_id')->nullable()->constrained('factory_material_snapshots')->restrictOnDelete();
             $table->timestamps();
-            $table->index(['product_id', 'factory_stock_approved']);
+            $table->index(['product_id', 'factory_stock_approved'], 'pmv_product_stock_approved_idx');
         });
         Schema::table('warehouse_inventory', function (Blueprint $table): void {
             $table->string('factory_native_status', 24)->nullable();
@@ -55,7 +55,7 @@ return new class extends Migration
             $table->unsignedInteger('warehouse_007_qty');
             $table->foreignId('product_id')->nullable()->constrained('products')->restrictOnDelete();
             $table->boolean('stock_approved');
-            $table->unique(['snapshot_id', 'material_version_id']);
+            $table->unique(['snapshot_id', 'material_version_id'], 'fmsr_snapshot_material_unique');
         });
     }
 

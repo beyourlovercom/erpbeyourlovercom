@@ -2,9 +2,8 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
-use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
-use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\AllocationRejectionReadModel;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
@@ -14,10 +13,12 @@ use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
+use App\Modules\Logistics\Application\FulfillmentOriginalIdentity;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\GiftSkuResolutionService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\LogisticsStatusSummary;
+use App\Modules\Logistics\Application\ParentFulfillmentReallocationService;
 use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
 use App\Modules\Logistics\Application\ReplacementFulfillmentService;
@@ -33,12 +34,14 @@ use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use App\Modules\Orders\Application\OrderContactProjection;
 use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderLogisticsAuthority;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowGridOptions;
 use App\Modules\Orders\Application\OrderWorkflowStatusPolicy;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Shell\Application\GlobalGridPilot;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
@@ -161,9 +164,9 @@ final class LogisticsController
             'rejectionFilter' => $rejectionFilter,
             'canOperate' => $this->allocationAccess->allows($request->user()),
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
-            'canEditWorkflowStatus' => (bool) $request->user()?->can('orders.edit'),
+            'canEditWorkflowStatus' => OrderLogisticsAuthority::allows($request->user()),
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
-            'canEditWarehouseRoute' => (bool) $request->user()?->can('orders.edit'),
+            'canEditWarehouseRoute' => OrderLogisticsAuthority::allows($request->user()),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             // Approved V3 menu button only, preserving GET and mutation gates.
             'canViewHistoricalImportTool' => (bool) ($request->user()?->can('system.permissions.manage') && $request->user()?->can('logistics.view')),
@@ -262,9 +265,10 @@ final class LogisticsController
         ]);
     }
 
-    public function resetParentAllocation(Request $request, Order $order, \App\Modules\Logistics\Application\ParentFulfillmentReallocationService $reallocation): JsonResponse
+    public function resetParentAllocation(Request $request, Order $order, ParentFulfillmentReallocationService $reallocation): JsonResponse
     {
         $data = $request->validate(['confirmed' => ['required', 'accepted'], 'token' => ['required', 'string', 'size:64']]);
+
         return response()->json(['status' => 'reset', ...$reallocation->reset($order, $data['token'], $request->user())]);
     }
 
@@ -290,6 +294,7 @@ final class LogisticsController
         $query = Product::query()->where('is_active', true)->whereNotNull('sku')->where('sku', '!=', '')->whereRaw('LOWER(TRIM(sku)) != ?', ['gift']);
         if (! empty($data['product_id'])) {
             $product = $query->findOrFail($data['product_id']);
+
             return response()->json(['availability' => $availability->forProductIds([(int) $product->id])[$product->id] ?? []]);
         }
 
@@ -1022,7 +1027,7 @@ final class LogisticsController
             'workflow_revision' => (int) $order->workflow_revision,
             'reallocation_generation' => $order->fulfillment_parent_id === null ? $this->reallocationGenerationForPreview($order) : null,
             'reallocation_token' => $order->fulfillment_parent_id === null && $order->originalFulfillmentChildren->isNotEmpty()
-                ? \App\Modules\Logistics\Application\ParentFulfillmentReallocationService::token($order, $allocation) : null,
+                ? ParentFulfillmentReallocationService::token($order, $allocation) : null,
             'can_edit_workflow_status' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
             'workflow_status_options' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             'external_order_number' => $order->external_order_number,
@@ -1106,7 +1111,7 @@ final class LogisticsController
     private function reallocationGenerationForPreview(Order $order): ?int
     {
         try {
-            return \App\Modules\Logistics\Application\FulfillmentOriginalIdentity::forAllocation(
+            return FulfillmentOriginalIdentity::forAllocation(
                 $order->originalFulfillmentChildren->pluck('fulfillment_suffix')->filter()->all(),
                 $order->fulfillmentChildren->pluck('fulfillment_suffix')->filter()->all(), 1,
             );
