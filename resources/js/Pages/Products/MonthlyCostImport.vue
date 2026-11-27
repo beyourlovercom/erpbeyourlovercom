@@ -25,7 +25,7 @@ type Summary = { groups:number; ready:number; blocked:number; price_conflicts:nu
 type Fx = { available:boolean; usd_to_cny?:string; source?:string; reference_date?:string|null; stale?:boolean; reason?:string; disclosure?:string }
 type Decision = { product_id?:number; source_variant_key?:string; manual_cost_cny?:string; reason?:string }
 
-const props = defineProps<{ applyEnabled:boolean }>()
+const props = defineProps<{ applyEnabled:boolean; applyMode:'dev'|'production' }>()
 const file = ref<File|null>(null)
 const year = ref(new Date().getFullYear())
 const csvMonth = ref(10)
@@ -35,6 +35,8 @@ const notice = ref('')
 const fingerprint = ref('')
 const planFingerprint = ref('')
 const canApply = ref(false)
+const approvalPhrase = ref('')
+const approvalReason = ref('')
 const groups = ref<Group[]>([])
 const excluded = ref<Source[]>([])
 const sourceSummary = ref<Record<string,number>>({})
@@ -60,6 +62,9 @@ const skuQuery = ref('')
 const skuSuggestions = ref<Product[]>([])
 const editor = reactive({ product_id:'', source_variant_key:'', manual:false, manual_cost:'', reason:'' })
 
+const expectedApprovalPhrase = computed(() => '确认导入'+(summary.value?.canonical_create ?? 0)+'条成本')
+const canConfirm = computed(() => props.applyEnabled && canApply.value && !!planFingerprint.value &&
+  approvalPhrase.value.trim()===expectedApprovalPhrase.value && approvalReason.value.trim().length>=8)
 const selected = computed(() => groups.value.find(g=>g.group_key===selectedKey.value) ?? null)
 const sourceOptions = computed(() => selected.value?.sources ?? [])
 const visible = computed(() => groups.value.filter(g => {
@@ -139,6 +144,7 @@ function onFile(e:Event) { file.value=(e.target as HTMLInputElement).files?.[0] 
 async function preview() {
   if (!file.value) return
   busy.value=true;error.value='';notice.value='';groups.value=[];fingerprint.value='';planFingerprint.value='';decisions.value={};canApply.value=false
+  approvalPhrase.value='';approvalReason.value=''
   try {
     const form=new FormData()
     form.append('file',file.value);form.append('year',String(year.value))
@@ -152,6 +158,7 @@ async function preview() {
 async function plan() {
   if (!fingerprint.value) return
   busy.value=true;error.value='';notice.value='';planFingerprint.value='';canApply.value=false
+  approvalPhrase.value='';approvalReason.value=''
   try {
     const {data}=await axios.post('/products/cost-import/plan',{fingerprint:fingerprint.value,decisions:decisions.value})
     groups.value=data.groups;summary.value=data.summary;fx.value=data.fx
@@ -190,14 +197,15 @@ function saveEditor() {
   void plan()
 }
 async function confirm() {
-  if(!props.applyEnabled||!canApply.value||!planFingerprint.value) return
-  if(!window.confirm('仅在隔离 Dev 写入已确认的人民币成本来源。此操作不会改写历史订单。确认继续？'))return
+  if(!canConfirm.value) return
+  if(!window.confirm('即将新增 '+(summary.value?.canonical_create??0)+' 条已确认的人民币成本记录；历史冲突已阻断。请核对批次与理由。确定入账？'))return
   busy.value=true;error.value=''
   try {
     const {data}=await axios.post('/products/cost-import/confirm',{
       fingerprint:fingerprint.value,plan_fingerprint:planFingerprint.value,decisions:decisions.value,
+      approval_phrase:approvalPhrase.value.trim(),approval_reason:approvalReason.value.trim(),
     })
-    notice.value='Dev 成本导入完成：新增 '+data.created+' 条；幂等跳过 '+data.noop+' 条。'
+    notice.value=(props.applyMode==='production'?'Production':'Dev')+' 成本导入完成：新增 '+data.created+' 条；幂等跳过 '+data.noop+' 条。'
     fingerprint.value='';planFingerprint.value='';canApply.value=false
     if(catalogOpen.value) await loadCatalog(1)
   }catch(e){error.value=errorMessage(e)}finally{busy.value=false}
@@ -267,9 +275,21 @@ async function confirm() {
           <div><strong>04 · 确认前检查</strong><p>预检新增 {{summary?.canonical_create??'—'}} 条；重复 {{summary?.canonical_noop??'—'}} 条；已有成本冲突 {{summary?.canonical_blocked??'—'}} 条。</p>
             <small>剔除或无法识别的原始行保留在本次上传证据中；不会自动发布为产品标准成本。</small></div>
           <div class="footer-actions"><button class="btn subtle" :disabled="busy" @click="plan">Dry-run 重新预检</button>
-            <button class="btn primary" :disabled="busy||!props.applyEnabled||!canApply" @click="confirm">确认导入已核实成本</button></div>
+            <button class="btn primary" :disabled="busy||!canConfirm" @click="confirm">确认导入已核实成本</button></div>
         </div>
-        <p v-if="!props.applyEnabled" class="locked-note">当前为隔离 Dev 预检模式：真实写入开关未开启；Owner 实际页面验收前不会应用成本。</p>
+        <div v-if="props.applyEnabled&&canApply" class="approval-gate">
+          <strong>{{props.applyMode==='production'?'Production 管理员批次确认':'隔离 Dev 批次确认'}}</strong>
+          <p>本次将新增 {{summary?.canonical_create??0}} 条记录；已确认的历史月份冲突不得覆盖。请填写审批理由，并输入下面的完整确认文字。</p>
+          <label>审批理由 / 凭证（至少 8 字）
+            <textarea v-model="approvalReason" rows="2" maxlength="500" placeholder="例如：已核对本月工厂结算原单、成本冲突与汇率证据"></textarea>
+          </label>
+          <label>请输入：<b>{{expectedApprovalPhrase}}</b>
+            <input v-model="approvalPhrase" :placeholder="expectedApprovalPhrase" autocomplete="off">
+          </label>
+        </div>
+        <p v-if="!props.applyEnabled" class="locked-note">{{props.applyMode==='production'
+          ?'Production 成本确认默认锁定：仅在独立启用入账开关后，具有管理员角色的账号才能逐批审批。'
+          :'当前为隔离 Dev 预检模式：真实写入开关未开启；Owner 实际页面验收前不会应用成本。'}}</p>
       </template>
 
       <section class="import-card catalog-card">
@@ -358,6 +378,10 @@ async function confirm() {
 .filter-row button.active{background:#176b4e;color:white}
 .import-footer{display:flex;justify-content:space-between;align-items:center;gap:20px}.import-footer p{margin:5px 0;font-size:12px;color:#496b5b}
 .locked-note{margin:0;font-size:12px;color:#986424;background:#fff9e8;padding:11px 13px;border-radius:7px}
+.approval-gate{display:grid;gap:10px;background:#f6fbf7;border:1px solid #b9dccc;padding:16px;border-radius:12px}
+.approval-gate strong{font-size:14px}.approval-gate p{margin:0;font-size:12px;color:#496b5b}
+.approval-gate label{display:grid;gap:6px;font-size:12px;color:#2f6650}
+.approval-gate input,.approval-gate textarea{border:1px solid #bbd4c5;border-radius:7px;padding:9px;background:#fff;color:#18382d;max-width:630px}
 .editor-overlay{position:fixed;inset:0;z-index:1000;background:rgba(18,40,31,.45);display:flex;justify-content:flex-end}
 .editor-panel{width:min(510px,100vw);height:100%;overflow:auto;background:#fff;padding:22px;box-shadow:-10px 0 30px rgba(0,0,0,.1);display:grid;gap:16px;align-content:start}
 .editor-panel header{display:flex;justify-content:space-between;align-items:start}.editor-panel header h3{font-size:22px;margin:4px 0}.editor-panel header small{font-size:12px;color:#789184}

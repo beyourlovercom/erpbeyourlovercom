@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Products;
 
+use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Products\Infrastructure\Models\Product;
@@ -28,6 +29,30 @@ final class MonthlyInventoryCostImportTest extends TestCase
         $user->roles()->attach($role);
 
         return $user;
+    }
+
+    private function administrator(): User
+    {
+        $user = $this->operator();
+        $role = Role::firstOrCreate(
+            ['key' => RolePreset::Administrator->roleKey()],
+            ['label' => 'UAT Administrator'],
+        );
+        $user->roles()->attach($role);
+
+        return $user;
+    }
+
+    private function inProduction(callable $callback): void
+    {
+        $priorEnv = $this->app['env'];
+        $this->app['env'] = 'production';
+        $this->withoutMiddleware(PreventRequestForgery::class);
+        try {
+            $callback();
+        } finally {
+            $this->app['env'] = $priorEnv;
+        }
     }
 
     private function workbook(): UploadedFile
@@ -155,6 +180,8 @@ XML, 200)]);
             'fingerprint' => $preview->json('fingerprint'),
             'plan_fingerprint' => $planned->json('plan_fingerprint'),
             'decisions' => $decisions,
+            'approval_phrase' => '确认导入1条成本',
+            'approval_reason' => '已核对工厂采购对账单和成本原始凭证',
         ])->assertOk()->assertJsonPath('created', 1)->assertJsonPath('noop', 0);
         $this->assertDatabaseCount('product_cost_sources', 1);
         $source = ProductCostSource::query()->firstOrFail();
@@ -165,6 +192,133 @@ XML, 200)]);
             'status' => 'confirmed', 'source_type' => 'inventory_cost_book',
         ]);
         $this->assertDatabaseHas('audit_records', ['action' => 'product.cost_import.user_confirmed']);
+        $this->assertDatabaseHas('audit_records', [
+            'action' => 'product.cost_import.batch_confirmed',
+            'entity_id' => $preview->json('fingerprint'),
+        ]);
+    }
+
+    /** @return array{preview:array,decisions:array,plan:array,product:Product} */
+    private function prepareResolvedBatch(): array
+    {
+        $this->fakeFx();
+        $product = Product::create(['source_type' => 'manual', 'product_type' => 'simple', 'sku' => 'VA617A', 'name' => 'ERP VA617A']);
+        $preview = $this->postJson('/products/cost-import/preview', [
+            'file' => $this->workbook(), 'year' => 2026,
+        ])->assertOk()->json();
+        $group = $preview['groups'][0];
+        $decisions = [$group['group_key'] => [
+            'source_variant_key' => $group['sources'][0]['source_variant_key'],
+            'manual_cost_cny' => '30.50', 'reason' => '财务已核对工厂采购成本',
+        ]];
+        $plan = $this->postJson('/products/cost-import/plan', [
+            'fingerprint' => $preview['fingerprint'], 'decisions' => $decisions,
+        ])->assertOk()->assertJsonPath('can_apply', true)->json();
+
+        return compact('preview', 'decisions', 'plan', 'product');
+    }
+
+    public function test_production_gate_requires_real_administrator_even_when_dev_flag_is_enabled(): void
+    {
+        config([
+            'erp_cost_import.dev_apply_enabled' => true,
+            'erp_cost_import.production_apply_enabled' => false,
+        ]);
+        $this->inProduction(function (): void {
+            $this->actingAs($this->administrator());
+            $this->get('/products/cost-import')->assertOk()
+                ->assertInertia(fn ($page) => $page->where('applyEnabled', false)->where('applyMode', 'production'));
+            $this->postJson('/products/cost-import/confirm', [])->assertForbidden();
+
+            config(['erp_cost_import.production_apply_enabled' => true]);
+            $this->get('/products/cost-import')->assertOk()
+                ->assertInertia(fn ($page) => $page->where('applyEnabled', true));
+            $this->actingAs($this->operator());
+            $this->get('/products/cost-import')->assertOk()
+                ->assertInertia(fn ($page) => $page->where('applyEnabled', false));
+            $this->postJson('/products/cost-import/confirm', [])->assertForbidden();
+            $this->assertDatabaseCount('product_cost_sources', 0);
+        });
+    }
+
+    public function test_production_administrator_must_approve_batch_count_and_reason_before_write(): void
+    {
+        config(['erp_cost_import.production_apply_enabled' => true]);
+        $this->inProduction(function (): void {
+            $this->actingAs($this->administrator());
+            $batch = $this->prepareResolvedBatch();
+            $payload = [
+                'fingerprint' => $batch['preview']['fingerprint'],
+                'plan_fingerprint' => $batch['plan']['plan_fingerprint'],
+                'decisions' => $batch['decisions'],
+            ];
+
+            $this->postJson('/products/cost-import/confirm', $payload)
+                ->assertUnprocessable()->assertJsonValidationErrors(['approval_phrase', 'approval_reason']);
+            $this->postJson('/products/cost-import/confirm', $payload + [
+                'approval_phrase' => '确认导入2条成本',
+                'approval_reason' => '已核对本批工厂成本和原始采购凭证',
+            ])->assertUnprocessable()->assertJsonValidationErrors('approval_phrase');
+            $this->assertDatabaseCount('product_cost_sources', 0);
+
+            $this->postJson('/products/cost-import/confirm', $payload + [
+                'approval_phrase' => '确认导入1条成本',
+                'approval_reason' => '已核对本批工厂成本和原始采购凭证',
+            ])->assertOk()->assertJsonPath('mode', 'production_apply')
+                ->assertJsonPath('created', 1)->assertJsonPath('noop', 0);
+            $this->assertDatabaseHas('product_cost_sources', [
+                'product_id' => $batch['product']->id,
+                'currency' => 'CNY', 'status' => 'confirmed',
+            ]);
+            $source = ProductCostSource::where('product_id', $batch['product']->id)->sole();
+            $this->assertSame('30.500000000000', (string) $source->unit_cost);
+            $this->assertSame('2026-10-01', $source->effective_from->format('Y-m-d'));
+            $this->assertDatabaseHas('audit_records', [
+                'action' => 'product.cost_import.batch_confirmed',
+                'entity_id' => $batch['preview']['fingerprint'],
+                'reason' => 'monthly_cost_import_admin_approved',
+            ]);
+            $this->postJson('/products/cost-import/confirm', $payload + [
+                'approval_phrase' => '确认导入1条成本',
+                'approval_reason' => '已核对本批工厂成本和原始采购凭证',
+            ])->assertUnprocessable()->assertJsonValidationErrors('fingerprint');
+            $this->assertDatabaseCount('product_cost_sources', 1);
+        });
+    }
+
+    public function test_production_concurrent_or_stale_plan_preserves_existing_historical_cost(): void
+    {
+        config(['erp_cost_import.production_apply_enabled' => true]);
+        $this->inProduction(function (): void {
+            $this->actingAs($this->administrator());
+            $batch = $this->prepareResolvedBatch();
+            $historical = ProductCostSource::create([
+                'product_id' => $batch['product']->id,
+                'source_key' => 'earlier-confirmed-october',
+                'unit_cost' => '27.00', 'currency' => 'CNY',
+                'status' => 'confirmed', 'source_type' => 'inventory_cost_book',
+                'source_reference' => 'previous-verified.xlsx',
+                'effective_from' => '2026-10-01',
+                'source_fingerprint' => hash('sha256', 'previous-verified-cost'),
+            ]);
+
+            $this->postJson('/products/cost-import/plan', [
+                'fingerprint' => $batch['preview']['fingerprint'],
+                'decisions' => $batch['decisions'],
+            ])->assertOk()->assertJsonPath('can_apply', false)
+                ->assertJsonPath('summary.canonical_blocked', 1);
+
+            $this->postJson('/products/cost-import/confirm', [
+                'fingerprint' => $batch['preview']['fingerprint'],
+                'plan_fingerprint' => $batch['plan']['plan_fingerprint'],
+                'decisions' => $batch['decisions'],
+                'approval_phrase' => '确认导入1条成本',
+                'approval_reason' => '已核对本批工厂成本和原始采购凭证',
+            ])->assertUnprocessable()->assertJsonValidationErrors('plan_fingerprint');
+            $this->assertSame('27.000000000000', (string) $historical->fresh()->unit_cost);
+            $this->assertDatabaseCount('product_cost_sources', 1);
+            $this->assertDatabaseMissing('audit_records', ['action' => 'product.cost_import.batch_confirmed']);
+        });
     }
 
     public function test_confirmed_usd_catalog_lists_all_months_with_fx_evidence_and_filters(): void
