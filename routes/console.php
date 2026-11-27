@@ -115,6 +115,18 @@ if (app()->environment('production') && config('xlwms.de_status_refresh_enabled'
         ->name('xlwms.de.outbound.refresh')->withoutOverlapping(5)->onOneServer()->runInBackground();
 }
 
+// US-NY tracking only: offset from the other half-hourly tasks.
+Artisan::command('xlwms:refresh-us-ny-tracking', function (): int {
+    if (app()->environment('production') && config('xlwms.us_ny_tracking_refresh_enabled', false)) {
+        $this->info(json_encode(app(\App\Modules\Logistics\Application\Xlwms\UsNyTrackingRefresh::class)->run()));
+    }
+    return Command::SUCCESS;
+});
+if (app()->environment('production') && config('xlwms.us_ny_tracking_refresh_enabled', false)) {
+    Schedule::command('xlwms:refresh-us-ny-tracking')->cron('12,42 * * * *')
+        ->name('xlwms.us-ny.tracking.refresh')->withoutOverlapping(25)->onOneServer()->runInBackground();
+}
+
 // Read-only Sync status index: the full Woo batch inspection must never
 // block a human /sync/orders filter request. No Woo writes are performed.
 Artisan::command('sync:refresh-progress-index', function (): int {

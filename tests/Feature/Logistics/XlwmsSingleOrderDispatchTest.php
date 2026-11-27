@@ -238,8 +238,28 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         catch (\RuntimeException $e) {self::assertSame($system ? 'US_NY_PREFLIGHT_BLOCKED_OR_STALE' : 'US_NY_ATTEMPT_EXISTS',$e->getMessage());}
         self::assertCount(1,Http::recorded(fn($req)=>str_contains($req->url(),'outboundOrder/create')));
         $stage=app(\App\Modules\Logistics\Application\Xlwms\UsNyTrackingStage::class);
+        $poller=app(\App\Modules\Logistics\Application\Xlwms\UsNyTrackingRefresh::class);
+        if (!$system) {
+            // A pending OMS order with no label remains eligible next cycle.
+            $remoteTracking='';
+            $pending=$poller->run();
+            self::assertSame(['checked'=>1,'refreshed'=>1,'failed'=>0,'tracking_staged'=>0],$pending);
+            self::assertNull($o->fresh()->shipment->tracking_number);
+            $attempt=XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail();
+            $oldStatus=$attempt->oms_status_code;
+            $attempt->update(['oms_status_code'=>'4']);
+            $before=count(Http::recorded());
+            self::assertSame(0,$poller->run()['checked']);
+            self::assertSame($before,count(Http::recorded()));
+            $attempt->update(['oms_status_code'=>$oldStatus]);
+            $remoteTracking='9400111206213000000000';
+            self::assertSame(['checked'=>1,'refreshed'=>1,'failed'=>0,'tracking_staged'=>1],$poller->run());
+        }
+        $before=count(Http::recorded());
+        self::assertSame(['checked'=>0,'refreshed'=>0,'failed'=>0,'tracking_staged'=>0],$poller->run());
+        self::assertSame($before,count(Http::recorded()));
         $r=$stage->refreshAndStage($o->id);
-        self::assertTrue($system ? $r['already_matches'] : $r['staged']);
+        self::assertTrue($r['already_matches']);
         self::assertSame('9400111206213000000000',$o->fresh()->shipment->tracking_number);
         self::assertSame('pending',$o->fresh()->shipment->shipment_status);
         self::assertSame('pending_shipment',$o->fresh()->order_status->value);
