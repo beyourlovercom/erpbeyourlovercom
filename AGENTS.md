@@ -1,3 +1,9 @@
+# OWNER-FROZEN ERP1 BUSINESS API CAPACITY STANDARD (2026-11-27)
+
+Normal authenticated employee workflows must not be artificially limited to a few requests per minute. Default internal business HTTP throttling, if needed, is at least 100 requests/minute per authenticated account per independent action; do not share one counter across preview, submit, polling or different workflows. A 100-order selected logistics batch is a normal business operation, not abuse. Keep the approved batch size and queue-based processing, order-level idempotency, OMS duplicate verification, permissions, warehouse-specific provider limits, expensive-job concurrency locks and security/authentication limits. Stop polling invalid/inaccessible batches; do not auto-retry an uncertain provider write. ERP1 only; no ERP2 deployment.
+
+---
+
 # HIGHEST OWNER-FROZEN ERP2 ADVANCED PARITY STANDARD V2 (2026-11-26)
 
 **Rule ID: `ERP2_ADVANCED_PARITY_P0_V2` · OWNER APPROVED · PERMANENT P0.** Mandatory for every existing, migrated and new ERP2 business page, feature, version sync and release acceptance. ERP1 is the minimum functional and UX baseline; ERP2 MUST inherit all valid functionality and equal or improve interaction and design. No simplified workbenches, missing actions, developer-form replacements or unjustified extra steps. Canonical Laravel business rules, role-based effective permissions, security and safety gates remain authoritative.

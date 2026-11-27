@@ -567,7 +567,8 @@ final class DeTianyunOutboundBatchTest extends TestCase
         self::assertSame('CF123456789DE',$order->fresh()->shipment->tracking_number);
         $repeat = app(\App\Modules\Logistics\Application\Xlwms\DeTianyunStatusRefresh::class)->run();
         self::assertSame(0,$repeat['tracking_staged']);
-        Http::assertSentCount(2);
+        self::assertSame(0,$repeat['checked']);
+        Http::assertSentCount(1);
     }
 
     private function operator(): User
@@ -694,6 +695,36 @@ final class DeTianyunOutboundBatchTest extends TestCase
             'status' => 'simulated',
         ]);
         $this->assertDatabaseCount('xlwms_de_dispatch_batch_items', 1);
+        Http::assertNothingSent();
+    }
+
+    public function test_one_hundred_status_requests_do_not_consume_preview_or_start_capacity(): void
+    {
+        $operator = $this->operator();
+        $ids = [];
+        for ($i = 1; $i <= 100; $i++) {
+            $ids[] = $this->order($operator, 'RATE-'.$i, 'DE', true, 'RATE-SKU-'.$i)->id;
+        }
+        $selection = implode(',', $ids);
+        $this->actingAs($operator);
+        Queue::fake();
+        $base = '/logistics/oversea/de-tianyun/xlwms/batch';
+        $missing = $base.'/00000000-0000-4000-8000-000000000999/status';
+        for ($i = 0; $i < 100; $i++) {
+            $this->getJson($missing)->assertNotFound();
+        }
+        $this->getJson($missing)->assertStatus(429);
+        $preview = $this->getJson($base.'/preview?scope=selected&order_ids='.$selection)
+            ->assertOk()->assertJsonPath('count', 100)->json();
+        $start = $this->postJson($base.'/start', [
+            'scope' => 'selected', 'order_ids' => $selection,
+            'fingerprint' => $preview['fingerprint'],
+            'confirmation' => 'CONFIRM_DE_TIANYUN_BATCH_100',
+        ])->assertStatus(202);
+        $this->assertDatabaseHas('xlwms_de_dispatch_batch_items', [
+            'batch_id' => $start->json('batch_id'), 'order_id' => $ids[0],
+        ]);
+        $this->assertDatabaseCount('xlwms_de_dispatch_batch_items', 100);
         Http::assertNothingSent();
     }
 
