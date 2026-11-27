@@ -7,7 +7,7 @@ BRANCH: feat/erp1-factory-packaging-optimization-v2
 WORKTREE: /Users/a/AI/007/_worktrees/erp1-factory-packaging-optimization-v2-20261127
 AGENT_SESSION: GPT Web via BYL formal OAuth DC, US Mac, local account a
 BASELINE: 6c9347ffc029e53565dd80640dde6568f9886ac7
-EXPECTED_FILE_SCOPE: new Inventory/Application/PackagingOptimization* classes, new isolated unit and reader integration tests, this work package. Existing controllers, product master, logistics, shared grid, ERP2 unchanged.
+EXPECTED_FILE_SCOPE: new Inventory/Application/PackagingOptimization* classes, new isolated unit, comparison and reader integration tests, this work package. Existing controllers, product master, logistics, shared grid, ERP2 unchanged.
 DEPENDENCIES: A4 approved same-baseline quote contract for B3 onward; V4 R5.1/R5.2 shared grid and rendered design Owner PASS for visual implementation.
 DEPENDENCY_TYPE: EXTERNAL (future stages)
 DEPENDENCY_STATUS: B0–B2 backend independent; A worktree verified at baseline; A4 evidence unavailable. No stacked dependency.
@@ -36,6 +36,16 @@ Pure read-only input projection of adopted packaged measurement, shipping refere
 - A worktree at 6c9347ff; no PR for its exact branch at the last read; no A4 contract delivery evidence. No changes in A's worktree.
 - Executed via BYL formal OAuth on US Mac, OS account a, GitHub actor beyourlovercom. No production or ERP2 mutation.
 - Actual effective hours: UNKNOWN WITH EVIDENCE; no accepted work-log ledger. No merge-readiness claim.
+## B0–B2 continuation evidence (2026-11-27, Beijing 17:30)
+- Previous exact candidate 0fb28497: GitHub four checks SUCCESS (SQLite, MySQL 8, workspace tabs, SKU isolation). Merged current main f698a49c (A0–A1 PR #903) into the same isolated delivery branch; no conflict. A4 remains unverified. A's foundation is not an A4 pricing API.
+- B2 added PackagingOptimizationComparison: four canonical preset keys read from PackagingPresetCatalog; independently supplied single-parcel candidate measurements compared against current baseline. Missing measurements remain null; negative weight differences are retained; unrecognized method keys reported; no price or safety/adoption approval. No new routes, UI, DB schema or shared rate engine. Custom historical records remain untouched.
+- Focused PHP test run (isolated SQLite, including A0–A1 foundation regression): 53 tests / 273 assertions PASS. Two new comparison tests include missing candidate weight, unknown rule, actual-only, missing baseline and negative comparison.
+- Production active symlink readback: releases/erp1-us-ny-xlwms-pr901-6c9347ff-20261127. This is a release-directory identifier, not independent exact commit attestation. Executed aggregate-only MySQL START TRANSACTION READ ONLY / ROLLBACK via canonical runtime on US Mac. No mutation or PII retrieved.
+- Actual data: 177 active products; 1 active product with complete adopted packaging standard; 2 approved measurement records (both document_bubble_mailer); 2 weight + 2 dimension photos; 47 active products with canonical adopted shipping reference (49 adopted shipping evidence rows); 2 adopted product_weight evidence rows (bare weight not confirmed).
+- B4 prep: 225 shipments marked shipped with shipped_at in trailing 90 days; 31 of those have at least one shipment-item packaging snapshot. Separately 139 snapshots captured in trailing 90 days, across 139 shipments, not the same cohort. Do not use snapshot creation time as shipment date or equate snapshots with distinct parcels. Existing shipment_item_packaging_snapshots unique shipment_id+order_item_id, no parcel quantity/group identity in that table. B4 route/sample and multi-parcel attribution remain pending; missing evidence excluded from price ranking.
+- Live role-permission readback: administrator and uat_owner_admin roles have submit+review; uat_factory_packaging_operator role has submit only. Actual employee assignments/effective permissions and authenticated browser UAT not established. Existing review/submit tests remain green. No role changes.
+- ERP V4 public Unified Grid V2 contract/Owner sample PASS not evidenced in current main; existing GlobalGrid files alone do not establish that gate. Owner visual proposal not explicitly accepted by the continuation request. No UI files changed.
+- Actual effective hours remain unknown (no accepted ledger); no merge or release readiness claim.
 ## PROJECT POSITION
 PROGRAM_ROADMAP: see exact canonical sequence below (document 13; historical status superseded by current V3 overlay).
 ## Program Roadmap
@@ -69,18 +79,18 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 
 The Program Roadmap is the top-level delivery sequence. It must not be replaced by the current Architecture track or a single Work Package map.
 CURRENT_TRACK_PHASE_MAP: B0 audit → B1 data contract → B2 geometry → B3 A4 comparison → B4 ranking → B5 workflow → B6 UAT → B7 release
-COMPLETED_PHASES: handoff read; source/PR preflight; B1/B2 backend candidate and isolated focused tests
-CURRENT_PHASE: B0–B2 candidate; UI/production evidence open
+COMPLETED_PHASES: handoff read; source/PR preflight; production aggregate read-only audit; B1/B2 backend candidate, four-preset comparison, isolated focused tests
+CURRENT_PHASE: B0–B2 candidate; UI and actual employee browser evidence open
 CURRENT_WORK_PACKAGE: ERP1-FACTORY-PACKAGING-OPTIMIZATION-V2-20261127
 PACKAGE_STATUS: OPEN / BACKEND_CANDIDATE_TESTED / DESIGN_PENDING_OWNER_PASS
-WAITING_PHASES: authenticated runtime/DB evidence; UI visual PASS; B3–B7; A4 contract
+WAITING_PHASES: authenticated employee browser evidence; UI visual PASS; V4 shared grid; B3–B7; A4 contract
 BASELINE: 6c9347ffc029e53565dd80640dde6568f9886ac7
-GITHUB_STATE: main verified; isolated delivery branch and draft delivery PR requested; no merge
-SOURCE_CONFLICTS: earlier ERP2 parity language superseded by ERP1-only directive; stale AI/CURRENT_CONTEXT roadmap superseded by current Owner handoff and document 13 V3 overlay; production SHA unknown.
+GITHUB_STATE: main f698a49c merged into candidate branch; Draft PR #902 open; no merge to main
+SOURCE_CONFLICTS: earlier ERP2 parity language superseded by ERP1-only directive; stale AI/CURRENT_CONTEXT roadmap superseded by current Owner handoff and document 13 V3 overlay; production release directory identifies 6c9347ff; independent exact SHA attestation unavailable.
 GLOBAL_GATE: no release; preserve Owner visual and UAT approval; no real DB writes
-PRODUCTION_DEPLOYMENT_STATUS: NO for this package; production route HTTP 302 only
+PRODUCTION_DEPLOYMENT_STATUS: NO for this package; active production release directory and read-only MySQL aggregate verified
 NEXT_DEPENDENCY: A4 contract + shared-grid / design approval
-EVIDENCE_AS_OF: 2026-11-27 17:26 Beijing time; OS account a; GitHub actor beyourlovercom
+EVIDENCE_AS_OF: 2026-11-27 17:30 Beijing time; OS account a; GitHub actor beyourlovercom
 ## ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: 4h planning / 2.5–6h backend-only scope (estimate, not elapsed or promise)
 KNOWN_CURRENT_TRACK_REMAINING: UNKNOWN WITH EVIDENCE; A4 not delivered, B3–B7 unestimated
