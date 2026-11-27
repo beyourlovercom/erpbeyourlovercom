@@ -161,6 +161,46 @@ class KolCreateAutoProvisionTest extends TestCase
         self::assertStringNotContainsString('Abcdefg', $persisted);
     }
 
+    public function test_native_welcome_waits_for_coupon_and_keeps_password_out_of_storage(): void
+    {
+        $specialist = $this->specialist();
+        $mock = $this->mockGateway();
+        config(['kol.create_auto_provision.native_welcome' => true, 'kol.create_auto_provision.coupon_amount' => '20']);
+        $mock->shouldReceive('checkAffiliateIdentity')->once()->andReturn($this->response(['available' => true], 'identity'));
+        $mock->shouldReceive('checkCoupon')->twice()->andReturn($this->response(['available' => true], 'check'));
+        $mock->shouldReceive('provisionAffiliate')->once()->ordered()->withArgs(function ($payload, $key) {
+            self::assertTrue($payload['defer_welcome']);
+            self::assertSame('Abcdefg', $payload['password']);
+            return true;
+        })->andReturn($this->response(['affiliate_id' => 91001, 'wp_user_id' => 71001, 'affiliate_status' => 'active', 'affiliate_url_slug' => 'creator-login', 'created_user' => true, 'created_affiliate' => true], 'affiliate'));
+        $mock->shouldReceive('provisionCoupon')->once()->ordered()->andReturnUsing(function ($payload) {
+            self::assertSame('Abcdefg', $payload['initial_password']);
+            self::assertSame('20', $payload['amount']);
+            return $this->response(['coupon_id' => 92001, 'code' => $payload['code'], 'normalized_code' => 'newkol15', 'affiliate_id' => 91001, 'discount_type' => 'percent', 'amount' => '20', 'date_expires' => $payload['expiry'], 'welcome_status' => 'mail_accepted'], 'coupon');
+        });
+        $this->actingAs($specialist)->post('/kol/library', $this->payload())->assertSessionHas('success');
+        self::assertSame('active', KolAffiliateCoupon::query()->sole()->provisioning_status);
+        foreach (['audit_records', 'notifications', 'kol_affiliate_accounts', 'kol_affiliate_coupons'] as $table) {
+            self::assertStringNotContainsString('Abcdefg', DB::table($table)->get()->toJson());
+        }
+    }
+
+    public function test_unconfirmed_native_welcome_preserves_created_account_and_coupon(): void
+    {
+        $specialist = $this->specialist();
+        $mock = $this->mockGateway();
+        config(['kol.create_auto_provision.native_welcome' => true, 'kol.create_auto_provision.coupon_amount' => '20']);
+        $mock->shouldReceive('checkAffiliateIdentity')->once()->andReturn($this->response(['available' => true], 'identity'));
+        $mock->shouldReceive('checkCoupon')->twice()->andReturn($this->response(['available' => true], 'check'));
+        $mock->shouldReceive('provisionAffiliate')->once()->andReturn($this->response(['affiliate_id' => 91001, 'wp_user_id' => 71001, 'affiliate_status' => 'active', 'affiliate_url_slug' => 'creator-login', 'created_user' => true, 'created_affiliate' => true], 'affiliate'));
+        $mock->shouldReceive('provisionCoupon')->once()->andReturnUsing(fn ($payload) => $this->response(['coupon_id' => 92001, 'code' => $payload['code'], 'normalized_code' => 'newkol15', 'affiliate_id' => 91001, 'discount_type' => 'percent', 'amount' => '20', 'date_expires' => $payload['expiry'], 'welcome_status' => 'needs_review'], 'coupon'));
+        $this->actingAs($specialist)->post('/kol/library', $this->payload())->assertRedirect();
+        self::assertSame('active', KolAffiliateAccount::query()->sole()->provisioning_status);
+        $coupon = KolAffiliateCoupon::query()->sole();
+        self::assertSame('active', $coupon->provisioning_status);
+        self::assertSame('WELCOME_MAIL_NEEDS_REVIEW', $coupon->last_error_code);
+    }
+
     private function historicalAccount(): KolAffiliateAccount
     {
         return KolAffiliateAccount::create([
