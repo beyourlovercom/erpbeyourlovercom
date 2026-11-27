@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import type { ColDef } from 'ag-grid-community'
 import OmsGrid from './OmsGrid.vue'
+import type { FieldGroups } from './gridFieldCatalog'
 
 type Row = Record<string, unknown>
 type Pager = { current_page: number; last_page: number; per_page: number; total: number }
 const props = withDefaults(defineProps<{
   namespace: string
+  columnSettingsVersion?: 1 | 2
+  fieldGroups?: FieldGroups
   legacyPreferenceNamespaces?: string[]
   title: string
   columns: ColDef<Row>[]
@@ -43,7 +46,7 @@ const emit = defineEmits<{
 <template>
   <div data-testid="erp-global-grid-v1" class="erp-global-grid-v1">
     <OmsGrid
-      :namespace="namespace"
+      :namespace="namespace" :column-settings-version="columnSettingsVersion" :field-groups="fieldGroups"
       :legacy-preference-namespaces="legacyPreferenceNamespaces"
       :title="title"
       :columns="columns"

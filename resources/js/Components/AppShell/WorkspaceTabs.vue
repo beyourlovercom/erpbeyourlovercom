@@ -304,7 +304,7 @@ onBeforeUnmount(() => {
 .erp-workspace-tabs {
   display: flex;
   align-items: center;
-  min-height: 38px;
+  min-height: 32px;
   min-width: 0;
   padding: 0 12px;
   gap: 8px;
@@ -319,7 +319,7 @@ onBeforeUnmount(() => {
   overflow-x: auto;
   scrollbar-width: thin;
   gap: 4px;
-  padding: 4px 0;
+  padding: 2px 0;
 }
 .erp-workspace-tab {
   display: inline-flex;
@@ -332,7 +332,7 @@ onBeforeUnmount(() => {
 }
 .erp-workspace-tab.is-active {
   background: var(--byl-surface, #fff);
-  border-color: #28847b;
+  border-color: var(--byl-accent, #28847b);
 }
 .erp-workspace-tab-open,
 .erp-workspace-tab-pin,.erp-workspace-tab-close {
@@ -341,7 +341,7 @@ onBeforeUnmount(() => {
   border: 0;
   font: inherit;
   cursor: pointer;
-  min-height: 27px;
+  min-height: 26px;
 }
 .erp-workspace-tab-open {
   max-width: 185px;
