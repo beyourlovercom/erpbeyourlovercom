@@ -45,7 +45,9 @@ final class ProductSkuController
             $warehouse=Warehouse::query()->where('code',$missing)->where('is_active',true)->first();
             if ($warehouse) $query->whereDoesntHave('warehouseSkus',fn($q)=>$q->where('warehouse_id',$warehouse->id)->where('is_active',true)->whereNotNull('verified_at'));
         }
-        return $query->orderBy('sku')->orderBy('id');
+        $sort=$request->query('sort')==='alias_count'?'sku_aliases_count':'sku';
+        $direction=$request->query('direction')==='desc'?'desc':'asc';
+        return $query->orderBy($sort,$direction)->orderBy('id');
     }
 
     private function project(Product $p, $warehouses): array
@@ -73,10 +75,11 @@ final class ProductSkuController
 
     public function index(Request $request): Response
     {
-        $filters=$request->only(['search','missing']);
+        $filters=$request->only(['search','missing','per_page','sort','direction']);
         $search=trim((string)($filters['search']??''));
         $warehouses=Warehouse::query()->where('is_active',true)->get()->keyBy(fn($w)=>strtoupper($w->code));
-        $products=$this->query($request)->paginate(50)->withQueryString();
+        $perPage=(int)$request->query('per_page',50);
+        $products=$this->query($request)->paginate(in_array($perPage,[20,50,100],true)?$perPage:50)->withQueryString();
         $products->through(fn(Product $p)=>$this->project($p,$warehouses));
         return Inertia::render('Products/Skus',[
             'products'=>$products->toArray(),'filters'=>$filters,

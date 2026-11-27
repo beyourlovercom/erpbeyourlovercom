@@ -151,6 +151,17 @@ final class FactoryNativeImportTest extends TestCase
         } finally {@unlink($path);}
     }
 
+    public function test_sku_matrix_shared_grid_server_page_size_and_sort_are_bounded(): void
+    {
+        foreach (range(1, 25) as $n) Product::create(['sku'=>sprintf('GRID-%03d',$n),'name'=>'UAT title','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
+        $this->withoutVite()->actingAs($this->actor(['products.view']));
+        $this->get('/products/skus?search=GRID-&per_page=20&sort=sku&direction=desc')->assertOk()->assertInertia(fn($page)=>$page
+            ->component('Products/Skus')->where('products.total',25)->where('products.per_page',20)
+            ->where('products.data.0.sku','GRID-025')->has('products.data',20));
+        $this->get('/products/skus?search=GRID-&per_page=1000&sort=invalid')->assertOk()->assertInertia(fn($page)=>$page
+            ->where('products.per_page',50)->where('products.data.0.sku','GRID-001'));
+    }
+
     public function test_sku_matrix_export_contains_exact_twelve_headers_and_literal_skus(): void
     {
         $p=Product::create(['sku'=>'EXPORT-001','name'=>'Website title','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);

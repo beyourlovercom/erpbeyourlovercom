@@ -64,4 +64,4 @@ jobs:
             tests/Feature/Logistics/DomesticLogisticsProductionClosureTest.php \
             --no-ansi
       - name: Factory and product UI contract
-        run: npm run test -- resources/js/Pages/Inventory/InventoryBatchSync.test.ts resources/js/lib/downloadLogisticsExport.test.ts
+        run: npm run test -- resources/js/Pages/Inventory/InventoryBatchSync.test.ts resources/js/lib/downloadLogisticsExport.test.ts resources/js/Pages/Products/Skus.test.ts resources/js/Components/DataGrid/GlobalGrid.test.ts

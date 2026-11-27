@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
+import type { ColDef } from 'ag-grid-community'
+import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
+import SkuMappingGridCell from './SkuMappingGridCell.vue'
+const GlobalGrid = defineAsyncComponent(() => import('../../Components/DataGrid/GlobalGrid.vue'))
 import axios from 'axios'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import { publishGlobalFeedback } from '../../lib/globalFeedback'
@@ -8,15 +12,24 @@ import { publishGlobalFeedback } from '../../lib/globalFeedback'
 type Material = {id:number;material_code:string;material_name:string;factory_stock_approved?:boolean;factory_physical_qty?:number|null}
 type Mapping = {warehouse_id:number|null;sku:string|null;status:string}
 type ProductSku = {id:number;sku:string|null;is_active:boolean;material_name:string|null;image_url:string|null;material_versions:Material[];website_skus:string[];mappings:Record<string,Mapping>;alias_count:number}
-type Paginated<T> = {data:T[];current_page:number;last_page:number;total:number;links:{url:string|null;label:string;active:boolean}[]}
-const props = defineProps<{products:Paginated<ProductSku>;filters:{search?:string;missing?:string};unmappedMaterialCount:number;unmappedMaterials:Material[];productOptions:{id:number;sku:string}[];canOperate:boolean;canApproveStock:boolean}>()
+type Paginated<T> = {data:T[];current_page:number;last_page:number;total:number;per_page:number;links:{url:string|null;label:string;active:boolean}[]}
+const props = defineProps<{products:Paginated<ProductSku>;filters:{search?:string;missing?:string;per_page?:number|string;sort?:string;direction?:string};unmappedMaterialCount:number;unmappedMaterials:Material[];productOptions:{id:number;sku:string}[];canOperate:boolean;canApproveStock:boolean}>()
 const search = ref(props.filters.search ?? '')
 const missing=ref(props.filters.missing??'')
 const batchFile=ref<File|null>(null)
 const batchOpen=ref(false)
-const exportUrl=()=>'/products/skus/export?'+new URLSearchParams({search:search.value,missing:missing.value}).toString()
+const exportUrl=()=>'/products/skus/export?'+new URLSearchParams({search:search.value,missing:missing.value,sort:props.filters.sort??'sku',direction:props.filters.direction??'asc'}).toString()
 const warehouses = [{key:'FACTORY',label:'中国工厂'},{key:'DE',label:'德国仓'},{key:'CA',label:'加拿大仓'},{key:'US-LA',label:'美西 MorePlus'},{key:'US-NY',label:'美东'},{key:'US-SM',label:'美世迈仓'}]
-const applySearch = () => router.get('/products/skus',{search:search.value,missing:missing.value},{preserveState:true,replace:true})
+const go=(extra:Record<string,string|number>={})=>router.get('/products/skus',{
+  search:search.value,missing:missing.value,per_page:props.products.per_page??50,sort:props.filters.sort??'sku',direction:props.filters.direction??'asc',...extra,
+},{preserveState:true,replace:true,preserveScroll:true})
+const applySearch=()=>go({page:1})
+const gridSearch=(value:string)=>{search.value=value;applySearch()}
+const gridSort=(sort:{colId:string;direction:'asc'|'desc'|null})=>go({sort:sort.direction?sort.colId:'sku',direction:sort.direction??'asc',page:1})
+const gridPager=computed(()=>({current_page:props.products.current_page,last_page:props.products.last_page,total:props.products.total,per_page:props.products.per_page??50}))
+const gridSortState=computed(()=>({colId:props.filters.sort==='alias_count'?'alias_count':'sku',direction:props.filters.direction==='desc'?'desc' as const:'asc' as const}))
+const activeView=ref<'matrix'|'unmapped'>('matrix')
+const materialDetail=ref<ProductSku|null>(null)
 const materialEdit = ref<{productId:number|null;material_code:string;material_name:string;binding_evidence:string;factory_stock_approved:boolean;same_physical_product_confirmed:boolean}|null>(null)
 const warehouseEdit=ref<{productId:number;warehouseId:number;label:string;sku:string;verification_evidence:string;same_physical_product_confirmed:boolean}|null>(null)
 const busy=ref(false)
@@ -64,6 +77,44 @@ function saveWarehouse() {
      onError:(errors)=>publishGlobalFeedback({state:'BLOCKED',title:'映射未保存',message:Object.values(errors).join('；')}),
      onFinish:()=>{busy.value=false}})
 }
+type GridRow=Record<string,unknown>
+const matrixRows=computed<GridRow[]>(()=>props.products.data.map(p=>({
+  ...p, product:p, material_code:p.material_versions.map(m=>m.material_code).join(' / ')||'未登记',
+  material_name:p.material_versions.map(m=>m.material_name).join(' / ')||p.material_name||'未登记',
+  website_sku:p.website_skus.join(' / ')||'待同步',
+  ...Object.fromEntries(warehouses.map(w=>[w.key,p.mappings[w.key]?.sku??'待核实'])),
+})))
+const showMaterial=(p:ProductSku)=>{
+  if(p.material_versions.length===1&&props.canOperate&&p.is_active)editMaterial(p.id,p.material_versions[0])
+  else materialDetail.value=p
+}
+const matrixColumns=computed<ColDef<GridRow>[]>(()=>[
+  {colId:'image_url',field:'image_url',headerName:'产品图片',width:86,minWidth:72,sortable:false,filter:false,
+    cellRenderer:SkuMappingGridCell,cellRendererParams:{mode:'image',activate:(r:GridRow)=>{imagePreview.value=(r.product as ProductSku).image_url}}},
+  {colId:'sku',field:'sku',headerName:'ERP SKU',width:148,sortable:true,filter:false,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridRow)=>'/products/'+r.id,labelFor:(r:GridRow)=>String(r.sku??'—')+(r.is_active?'':'（停用）')}},
+  {colId:'material_code',field:'material_code',headerName:'库存表代码',width:196,sortable:false,filter:false,tooltipField:'material_code',
+    cellRenderer:SkuMappingGridCell,cellRendererParams:{mode:'text',activate:(r:GridRow)=>showMaterial(r.product as ProductSku),
+      canAdd:(r:GridRow)=>props.canOperate&&!!r.is_active,add:(r:GridRow)=>editMaterial(Number(r.id))}},
+  {colId:'material_name',field:'material_name',headerName:'库存表名称',width:320,sortable:false,filter:false,tooltipField:'material_name',
+    cellRenderer:SkuMappingGridCell,cellRendererParams:{mode:'text',activate:(r:GridRow)=>showMaterial(r.product as ProductSku)}},
+  {colId:'website_sku',field:'website_sku',headerName:'网站 SKU',width:160,sortable:false,filter:false,tooltipField:'website_sku'},
+  ...warehouses.map(w=>({colId:w.key,field:w.key,headerName:w.label,width:145,sortable:false,filter:false,tooltipField:w.key,
+    cellRenderer:SkuMappingGridCell,cellRendererParams:{mode:'text',
+      label:(r:GridRow)=>{const p=r.product as ProductSku;const m=p.mappings[w.key];return (m?.sku??'待核实')+(m?.status==='factory_default'?'（默认）':'')},
+      canActivate:(r:GridRow)=>props.canOperate&&!!r.is_active&&!!(r.product as ProductSku).mappings[w.key]?.warehouse_id,
+      activate:(r:GridRow)=>editWarehouse(r.product as ProductSku,w)}})),
+  {colId:'alias_count',field:'alias_count',headerName:'别名数量',width:105,sortable:true,filter:false,
+    cellRenderer:GlobalGridCell,cellRendererParams:{mode:'link',hrefFor:(r:GridRow)=>'/products/sku-aliases?search='+encodeURIComponent(String(r.sku??''))}},
+])
+const unboundRows=computed<GridRow[]>(()=>props.unmappedMaterials.map(m=>({...m,material:m})))
+const unboundColumns:ColDef<GridRow>[]=[
+  {colId:'material_code',field:'material_code',headerName:'库存代码',width:210},
+  {colId:'material_name',field:'material_name',headerName:'库存名称',width:420,tooltipField:'material_name'},
+  {colId:'factory_physical_qty',field:'factory_physical_qty',headerName:'原表工厂数量',width:150},
+  {colId:'actions',headerName:'操作',width:110,sortable:false,filter:false,cellRenderer:GlobalGridCell,
+    cellRendererParams:{mode:'actions',actionsFor:(r:GridRow)=>props.canOperate?[{label:'核实关联',onClick:()=>editMaterial(null,r.material as Material)}]:[]}},
+]
 </script>
 
 <template>
@@ -71,51 +122,48 @@ function saveWarehouse() {
   <AuthenticatedLayout title="SKU 映射中心" :breadcrumbs="[{label:'产品',href:'/products'},'SKU 映射中心']">
     <section class="mvp-page">
       <div class="mvp-page-heading">
-        <div class="flex items-center gap-3 flex-wrap"><h2>SKU 映射中心</h2><span class="text-sm">商品 {{ products.total }} · 未绑定物料 {{ unmappedMaterialCount }}</span></div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" class="mvp-button" :class="{'mvp-button-secondary':activeView!=='matrix'}" @click="activeView='matrix'">SKU 映射中心 · {{products.total}}</button>
+          <button type="button" class="mvp-button" :class="{'mvp-button-secondary':activeView!=='unmapped'}" @click="activeView='unmapped'">待绑定物料 · {{unmappedMaterialCount}}</button>
+        </div>
         <div class="mvp-page-actions page-header-actions">
-          <form class="flex gap-2" @submit.prevent="applySearch"><input v-model="search" type="search" placeholder="搜索 SKU、库存代码、名称" class="mvp-search-input"/><select v-model="missing" class="erp-select"><option value="">全部映射</option><option value="material">缺少库存代码</option><option v-for="w in warehouses" :key="w.key" :value="w.key">{{w.label}}未核实</option></select><button class="mvp-button">搜索</button></form>
           <a :href="exportUrl()" class="mvp-button mvp-button-secondary">Excel 导出 / 模板</a>
           <button v-if="canOperate" class="mvp-button mvp-button-secondary" @click="batchOpen=true">Excel 批量维护</button>
           <a href="/products/sku-aliases" class="mvp-button mvp-button-secondary">别名与待解析</a>
           <a href="/inventory/sync" class="mvp-button mvp-button-secondary">库存导入</a>
         </div>
       </div>
-      <div class="mvp-table-wrapper overflow-x-auto">
-        <table class="mvp-table" style="min-width:1450px">
-          <thead><tr>
-            <th>产品图片</th><th>ERP SKU</th><th>库存表代码</th><th>库存表名称</th><th>网站 SKU</th>
-            <th v-for="w in warehouses" :key="w.key">{{w.label}}</th><th>别名数量</th>
-          </tr></thead>
-          <tbody>
-            <tr v-for="p in products.data" :key="p.id">
-              <td><button v-if="p.image_url" type="button" @click="imagePreview=p.image_url"><img :src="p.image_url" :alt="p.sku??''" loading="lazy" style="width:44px;height:44px;object-fit:contain" /></button><span v-else>—</span></td>
-              <td><a :href="'/products/'+p.id" class="mvp-link">{{p.sku??'—'}}</a><small v-if="!p.is_active" class="block text-gray-500">停用</small></td>
-              <td style="min-width:145px">
-                <div v-for="m in p.material_versions" :key="m.id"><button v-if="canOperate && p.is_active" class="mvp-link" @click="editMaterial(p.id,m)">{{m.material_code}}</button><span v-else>{{m.material_code}}</span></div>
-                <span v-if="!p.material_versions.length" class="text-gray-500">未登记</span>
-                <button v-if="canOperate && p.is_active" class="block text-xs mvp-link" @click="editMaterial(p.id)">+ 物料版本</button>
-              </td>
-              <td style="min-width:240px"><div v-for="m in p.material_versions" :key="m.id">{{m.material_name}}</div><span v-if="!p.material_versions.length">{{p.material_name??'未登记'}}</span></td>
-              <td>{{p.website_skus.join(' / ')||'待同步'}}</td>
-              <td v-for="w in warehouses" :key="w.key">
-                <button v-if="canOperate && p.is_active && p.mappings[w.key]?.warehouse_id" class="mvp-link" @click="editWarehouse(p,w)">{{p.mappings[w.key]?.sku??'待核实'}}</button>
-                <span v-else>{{p.mappings[w.key]?.sku??'—'}}</span>
-                <small v-if="p.mappings[w.key]?.status==='factory_default'" class="block text-gray-500">默认</small>
-              </td>
-              <td><a class="mvp-link" :href="'/products/sku-aliases?search='+encodeURIComponent(p.sku??'')">{{p.alias_count}}</a></td>
-            </tr>
-            <tr v-if="!products.data.length"><td colspan="12" class="mvp-empty">暂无产品</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <nav v-if="products.last_page>1" class="mvp-pagination"><template v-for="link in products.links" :key="link.label"><a v-if="link.url" :href="link.url" :class="{'mvp-page-active':link.active}" v-html="link.label"/><span v-else v-html="link.label"/></template></nav>
-      <section v-if="unmappedMaterials?.length" class="mt-4">
-        <h3 class="font-semibold">待绑定工厂物料（当前搜索前 50 条）</h3>
-        <div class="mvp-table-wrapper"><table class="mvp-table"><thead><tr><th>库存代码</th><th>库存名称</th><th>原表工厂数量</th><th>操作</th></tr></thead>
-          <tbody><tr v-for="m in unmappedMaterials" :key="m.id"><td>{{m.material_code}}</td><td>{{m.material_name}}</td><td>{{m.factory_physical_qty??'—'}}</td><td><button v-if="canOperate" class="mvp-link" @click="editMaterial(null,m)">核实关联</button></td></tr></tbody></table></div>
-      </section>
+      <GlobalGrid v-if="activeView==='matrix'" namespace="grid.products.sku-matrix.v1" title="SKU 映射"
+        :rows="matrixRows" :columns="matrixColumns" :required-column-ids="['sku']"
+        :page="gridPager" :sort="gridSortState" :search="filters.search??''" :default-pinned-right="0"
+        search-placeholder="搜索 SKU、库存代码、名称" cell-text-selection
+        @search-change="gridSearch" @page-change="page=>go({page})"
+        @page-size-change="size=>go({per_page:size==='all'?100:size,page:1})" @sort-change="gridSort">
+        <template #actions>
+          <select v-model="missing" class="erp-select" aria-label="映射筛选" @change="applySearch">
+            <option value="">全部映射</option><option value="material">缺少库存代码</option>
+            <option v-for="w in warehouses" :key="w.key" :value="w.key">{{w.label}}未核实</option>
+          </select>
+        </template>
+      </GlobalGrid>
+      <GlobalGrid v-else namespace="grid.products.sku-unbound.v1" title="待绑定工厂物料（当前搜索前 50 条）"
+        :rows="unboundRows" :columns="unboundColumns" :required-column-ids="['material_code']" :show-search="false" cell-text-selection>
+        <template #actions><form class="flex gap-2" @submit.prevent="applySearch"><input v-model="search" type="search" placeholder="搜索库存代码、名称" class="mvp-search-input"/><button class="mvp-button">搜索</button></form></template>
+      </GlobalGrid>
       <p class="text-xs text-gray-500 mt-3">工厂物理库存不等于可发货库存；网站 SKU 只显示实际同步证据。一个商品可关联多个物料版本。</p>
     </section>
+    <div v-if="materialDetail" role="dialog" aria-modal="true" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" @click.self="materialDetail=null">
+      <div class="bg-white rounded-lg p-5 w-full max-w-xl max-h-[80vh] overflow-y-auto space-y-3 text-gray-900">
+        <h3 class="font-semibold">{{materialDetail.sku}} · 物料版本</h3>
+        <div v-for="m in materialDetail.material_versions" :key="m.id" class="border-b pb-2">
+          <button v-if="canOperate && materialDetail.is_active" class="mvp-link" @click="editMaterial(materialDetail.id,m);materialDetail=null">{{m.material_code}}</button>
+          <span v-else>{{m.material_code}}</span><div>{{m.material_name}}</div>
+        </div>
+        <p v-if="!materialDetail.material_versions.length">尚未登记物料版本</p>
+        <div class="flex justify-end gap-2"><button type="button" class="mvp-button mvp-button-secondary" @click="materialDetail=null">关闭</button>
+          <button v-if="canOperate && materialDetail.is_active" class="mvp-button" @click="editMaterial(materialDetail.id);materialDetail=null">新增物料版本</button></div>
+      </div>
+    </div>
     <div v-if="batchOpen" role="dialog" aria-modal="true" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
       <form class="bg-white rounded-lg p-5 w-full max-w-lg space-y-3" @submit.prevent="saveBatch">
         <h3 class="font-semibold">Excel 批量维护</h3>
