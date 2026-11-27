@@ -14,6 +14,7 @@ import { gridColumn, useGlobalGridListAdapter, type GridListRow } from '../../..
 import { useAccountGridPreferences } from '../../../Composables/useAccountGridPreferences'
 const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
 import { publishGlobalFeedback } from '../../../lib/globalFeedback'
+import { downloadLogisticsExport } from '../../../lib/downloadLogisticsExport'
 import { currentCsrfHeaders } from '../../../lib/csrfHeaders'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowStatusPill.vue'
@@ -791,23 +792,23 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           <strong>待发货 · 批量登记</strong>
         </div>
         <div class="actions">
-          <a class="secondary" href="/logistics/china/pending-batch/export-sku-merged" data-testid="download-domestic-sku-merged">下载SKU合并版表</a>
-          <a v-if="selectedBulkOrderIds.length" class="secondary" :href="'/logistics/china/pending-batch/export?'+selectedExportQuery" data-testid="download-domestic-selected">下载已选 {{ selectedBulkOrderIds.length }} 单</a>
-          <a class="primary" href="/logistics/china/pending-batch/export">下载待发货批量表</a>
+          <a @click.prevent="downloadLogisticsExport" class="secondary" href="/logistics/china/pending-batch/export-sku-merged" data-testid="download-domestic-sku-merged">下载SKU合并版表</a>
+          <a @click.prevent="downloadLogisticsExport" v-if="selectedBulkOrderIds.length" class="secondary" :href="'/logistics/china/pending-batch/export?'+selectedExportQuery" data-testid="download-domestic-selected">下载已选 {{ selectedBulkOrderIds.length }} 单</a>
+          <a @click.prevent="downloadLogisticsExport" class="primary" href="/logistics/china/pending-batch/export">下载待发货批量表</a>
           <button v-if="canOperate" type="button" class="secondary" :disabled="uploadBusy || applyBusy" @click="chooseUpload">⏫上传物流单号</button>
         </div>
       </section>
 
       <section v-if="view==='today'" class="today-shortcuts" aria-label="今日订单操作">
         <article class="today-shortcut today-shortcut-order">
-          <a href="/logistics/china/today/export" data-testid="download-today-orders" title="下载这批订单 XLSX">⬇️这批订单</a>
+          <a @click.prevent="downloadLogisticsExport" href="/logistics/china/today/export" data-testid="download-today-orders" title="下载这批订单 XLSX">⬇️这批订单</a>
         </article>
         <article class="today-shortcut">
-          <a href="/logistics/china/export/4px" data-testid="download-today-4px">⏬今日速达</a>
+          <a @click.prevent="downloadLogisticsExport" href="/logistics/china/export/4px" data-testid="download-today-4px">⏬今日速达</a>
 
         </article>
         <article class="today-shortcut">
-          <a v-if="providerStatus.weship.export_ready" href="/logistics/china/export/weship" data-testid="download-today-weship">⏬今日纬狮</a>
+          <a @click.prevent="downloadLogisticsExport" v-if="providerStatus.weship.export_ready" href="/logistics/china/export/weship" data-testid="download-today-weship">⏬今日纬狮</a>
           <span v-else class="today-shortcut-disabled">⏬今日纬狮</span>
 
         </article>
@@ -817,14 +818,14 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         <article v-if="view!=='today-weship'" class="provider-card">
           <div><strong>速达</strong></div>
           <div class="actions">
-            <a class="primary" href="/logistics/china/export/4px">下载速达下单表</a>
+            <a @click.prevent="downloadLogisticsExport" class="primary" href="/logistics/china/export/4px">下载速达下单表</a>
 
           </div>
         </article>
         <article v-if="view!=='today-4px'" class="provider-card">
           <div><strong>纬狮</strong><small v-if="!providerStatus.weship.export_ready" role="alert">{{ providerStatus.weship.reason }}</small></div>
           <div class="actions">
-            <a v-if="providerStatus.weship.export_ready" class="primary" href="/logistics/china/export/weship">下载纬狮下单表</a>
+            <a @click.prevent="downloadLogisticsExport" v-if="providerStatus.weship.export_ready" class="primary" href="/logistics/china/export/weship">下载纬狮下单表</a>
 
           </div>
         </article>
