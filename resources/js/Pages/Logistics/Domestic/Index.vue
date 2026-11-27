@@ -3,6 +3,7 @@ import { Head, router } from '@inertiajs/vue3'
 import axios from 'axios'
 import { computed, defineAsyncComponent, nextTick, reactive, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
+import type { FieldGroups } from '../../../Components/DataGrid/gridFieldCatalog'
 import GlobalGridCell from '../../../Components/DataGrid/GlobalGridCell.vue'
 import DomesticGridActionCell from './DomesticGridActionCell.vue'
 import DomesticGridPendingCell from './DomesticGridPendingCell.vue'
@@ -238,6 +239,15 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
 })))
 const pendingHasSyncAction = computed(()=>props.view==='pending' && props.canTrackingSync
   && props.rows.data.some(row=>eligibleForTracking(row)))
+// R5.3 pending pilot: reuse the Owner-frozen public grid contract, never duplicate business columns.
+const domesticGridSettingsVersion = computed<1|2>(()=>props.view==='pending'?2:1)
+const domesticGridFieldGroups:FieldGroups={
+  '订单信息':['line','order','contact','status','warehouse_route','review','paid_date'],
+  '商品信息':['sku','material_full_name','quantity','amount'],
+  '物流信息':['export','carrier','service','shipment_status','tracking','sync'],
+  '收件信息':['recipient','phone','destination'],
+  '异常与操作':['exception_type','exception_reason','actions'],
+}
 const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'line',field:'line',headerName:'#',width:74}),
   gridColumn({colId:'order',field:'order_number',headerName:'ERP 订单',width:props.view==='pending'?252:186,
@@ -941,6 +951,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
       <div v-if="globalGridPilotEnabled && view!=='outsource'" class="domestic-grid-main">
         <GlobalGrid :key="'domestic-grid-'+view"
           :namespace="'grid.logistics.domestic.'+view+'.global.v1'"
+          :column-settings-version="domesticGridSettingsVersion" :field-groups="domesticGridFieldGroups"
           :legacy-preference-namespaces="['grid.logistics.domestic.global.v1']"
           :title="'国内发货 · '+(tabs.find(tab=>tab[0]===view)?.[1]??view)"
           :columns="domesticGridColumns" :rows="domesticGridRows" :required-column-ids="['order','status','warehouse_route']"

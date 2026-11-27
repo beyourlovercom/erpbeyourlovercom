@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import axios from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
+import { existingFieldCatalog } from '../../../Components/DataGrid/gridFieldCatalog'
 
 const { routerGet, routerPost, routerPatch, routerVisit, routerReload, feedbackSpy } = vi.hoisted(() => ({ routerGet:vi.fn(), routerPost: vi.fn(), routerPatch: vi.fn(), routerVisit: vi.fn(), routerReload: vi.fn(), feedbackSpy: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({
@@ -41,6 +42,21 @@ const baseProps = {
 }
 
 describe('Domestic logistics production workbench', () => {
+  it('opts only pending into the frozen Unified Grid V2 without losing any authorized columns or namespace', () => {
+    for(const view of ['pending','review','stockout','today','today-4px','today-weship','exceptions','all','frozen','outsource']){
+      const wrapper=mount(Index,{props:{...baseProps,view,globalGridPilotEnabled:true,trackingImportPreview:null,trackingImportProvider:null}})
+      const state=(wrapper.vm as unknown as {$:{setupState:Record<string,any>}}).$.setupState
+      expect(state.domesticGridSettingsVersion).toBe(view==='pending'?2:1)
+      const columns=state.domesticGridColumns
+      const catalog=existingFieldCatalog(columns,state.domesticGridFieldGroups,['order','status','warehouse_route'])
+      expect(catalog.map(c=>c.id)).toEqual(columns.map((c:{colId:string})=>c.colId))
+      expect(catalog.filter(c=>c.required).map(c=>c.id)).toEqual(['order','status','warehouse_route'])
+      expect(catalog.find(c=>c.id==='actions')?.category).toBe('异常与操作')
+      expect(catalog.every(c=>c.category!=='其他字段')).toBe(true)
+      expect(columns.find((c:{colId:string})=>c.colId==='actions').pinned).toBe('right')
+      wrapper.unmount()
+    }
+  })
   it('keeps ERP order as the sole displayed order identifier in every domestic grid and legacy list', () => {
     for (const view of ['review','stockout','outsource','pending','today','today-4px','today-weship','exceptions','all']) {
       for (const globalGridPilotEnabled of [true,false]) {

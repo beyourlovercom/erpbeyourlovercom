@@ -26,7 +26,7 @@ describe('V4 header account',()=>{
  it('reuses the existing account menu for the authenticated user',async()=>{
   const user={id:1,name:'Synthetic Tester',email:'synthetic@example.test'}
   const w=mount(TopBar,{props:{title:'订单总表',breadcrumbs:['订单'],mobileExpanded:false,user}})
-  expect(w.get('.shell-header-account .shell-account-trigger').exists()).toBe(true)
+  expect(w.find('.shell-header-account .shell-account-trigger').exists()).toBe(true)
   await w.get('.shell-header-account .shell-account-trigger').trigger('click')
   expect(w.get('.shell-header-account [role="menu"]').text()).toContain('个人信息')
   expect(w.get('.shell-header-account [role="menu"]').text()).toContain('修改密码')
