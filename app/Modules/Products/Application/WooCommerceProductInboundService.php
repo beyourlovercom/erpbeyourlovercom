@@ -78,6 +78,15 @@ final class WooCommerceProductInboundService
             if ($remoteId <= 0) {
                 throw new RuntimeException('WooCommerce Product has no valid ID.');
             }
+            $sku = trim((string) ($remote['sku'] ?? ''));
+            $bound = $this->externalRefs->findProduct('woocommerce', $connection, (string) $remoteId);
+            $canonical = $sku === '' ? null : $this->resolveSku($sku);
+            if (ProductCatalogExclusion::excludes($sku)
+                || ProductCatalogExclusion::excludes($bound?->sku)
+                || ProductCatalogExclusion::excludes($canonical?->sku)) {
+                $this->runs->finishItem($item, SyncRunItemStatus::Skipped, 'excluded_catalog_sku');
+                return;
+            }
             ['product' => $product, 'created' => $productCreated] = $this->resolveProduct($remote, $connection);
             $hashPayload = $remote;
             unset($hashPayload['related_ids']);

@@ -44,6 +44,22 @@ final class ProductImportTest extends TestCase
         fclose($handle);
     }
 
+    public function test_00w_prefix_is_excluded_from_csv_and_catalog_search(): void
+    {
+        Product::create(['sku'=>'00W01','name'=>'Retired','source_type'=>'woocommerce','is_active'=>false]);
+        $this->writeCsv([[101,'simple','00W01','','Retired','','','','1'],
+            [102,'simple','00w99','','Excluded','','','','1'],
+            [103,'simple','M1 & 00W64','','Allowed','','','','1']]);
+        $service=app(ProductService::class);
+        $preview=$service->preview($this->csvPath);
+        $this->assertCount(1,$preview['candidates']);
+        $service->confirm($preview['candidates']);
+        $this->assertDatabaseCount('products',2);
+        $this->assertSame(1,$service->totalCount());
+        $this->assertSame([], $service->searchSkus('00W01'));
+        $this->assertSame(1,$service->list()->total());
+    }
+
     public function test_utf8_bom_woo_export_header_is_supported(): void
     {
         $handle = fopen($this->csvPath, 'w');

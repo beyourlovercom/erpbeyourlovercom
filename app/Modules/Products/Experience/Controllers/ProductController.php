@@ -74,7 +74,7 @@ final class ProductController
         $connection = (string) config('services.woocommerce.connection_key', 'beyourlover.com');
         $attentionCounts = ProductAttentionFilters::counts($connection);
 
-        $recent = Product::query()
+        $recent = Product::query()->businessCatalog()
             ->orderByDesc('updated_at')->orderByDesc('id')->limit(8)
             ->get(['id', 'sku', 'name', 'updated_at'])
             ->map(fn (Product $p): array => [
@@ -87,8 +87,8 @@ final class ProductController
         return Inertia::render('Products/Dashboard', [
             'totalProducts' => $this->products->totalCount(),
             'metrics' => [
-                'erpActive' => Product::query()->where('is_active', true)->count(),
-                'wooPublishedSnapshot' => Product::query()->whereHas('providerSnapshots',
+                'erpActive' => Product::query()->businessCatalog()->where('is_active', true)->count(),
+                'wooPublishedSnapshot' => Product::query()->businessCatalog()->whereHas('providerSnapshots',
                     fn ($q) => $q->where('provider', 'woocommerce')
                         ->where('connection_key', $connection)
                         ->where('provider_status', 'publish'))->count(),
@@ -382,11 +382,11 @@ final class ProductController
     private function parameterCoverageCounts(): array
     {
         $accepted = fn ($q) => $q->whereIn('status', ['submitted', 'approved']);
-        $unfilled = Product::query()->whereDoesntHave('parameterSubmissions', $accepted);
+        $unfilled = Product::query()->businessCatalog()->whereDoesntHave('parameterSubmissions', $accepted);
 
         return [
-            '全部' => Product::query()->count(),
-            '已填' => Product::query()->whereHas('parameterSubmissions', $accepted)->count(),
+            '全部' => Product::query()->businessCatalog()->count(),
+            '已填' => Product::query()->businessCatalog()->whereHas('parameterSubmissions', $accepted)->count(),
             '必填' => (clone $unfilled)->whereHas('parameterTask', fn ($q) => $q->where('enabled', true)->where('is_required', true))->count(),
             '待填' => (clone $unfilled)->whereHas('parameterTask', fn ($q) => $q->where('enabled', true)->where('is_required', false))->count(),
             '其他' => (clone $unfilled)->whereDoesntHave('parameterTask', fn ($q) => $q->where('enabled', true))->count(),

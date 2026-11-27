@@ -173,6 +173,17 @@ final class FactoryNativeImportTest extends TestCase
         } finally {@unlink($path);}
     }
 
+    public function test_retired_00w_products_are_not_in_matrix_or_export_but_history_can_resolve_identity(): void
+    {
+        $retired=Product::create(['sku'=>'00W01','name'=>'Retired','source_type'=>'woocommerce','is_active'=>false]);
+        Product::create(['sku'=>'M1 & 00W64','name'=>'Allowed','source_type'=>'manual','is_active'=>true]);
+        $this->withoutVite()->actingAs($this->actor(['products.view']));
+        $this->get('/products/skus')->assertOk()->assertInertia(fn($page)=>$page
+            ->component('Products/Skus')->where('products.total',1)->where('products.data.0.sku','M1 & 00W64'));
+        $this->get('/products/skus?search=00W01')->assertOk()->assertInertia(fn($page)=>$page->where('products.total',0));
+        self::assertSame('00W01',Product::findOrFail($retired->id)->sku);
+    }
+
     public function test_sku_matrix_shared_grid_server_page_size_and_sort_are_bounded(): void
     {
         foreach (range(1, 25) as $n) Product::create(['sku'=>sprintf('GRID-%03d',$n),'name'=>'UAT title','source_type'=>'manual','product_type'=>'simple','is_active'=>true]);
