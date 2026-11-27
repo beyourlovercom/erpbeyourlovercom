@@ -25,21 +25,22 @@ final class UsNyTrackingRefresh
         $ids = XlwmsDispatchAttempt::query()->whereIn('warehouse_id', $warehouses)
             ->where('state', 'oms_create_confirmed')->whereNotNull('oms_order_no')
             ->where('oms_order_no', '!=', '')
-            ->where(fn ($q) => $q->whereNull('oms_status_code')->orWhere('oms_status_code', '!=', '4'))
+            ->where(fn ($q) => $q->whereNull('oms_status_code')->orWhereNotIn('oms_status_code', ['3', '4']))
             ->whereIn('order_id', $pending)
             ->orderBy('updated_at')->orderBy('id')->limit(20)->pluck('order_id');
         $result = ['checked' => $ids->count(), 'refreshed' => 0, 'failed' => 0, 'tracking_staged' => 0];
         foreach ($ids as $id) {
             try {
-                $r = $this->stage->refreshAndStage((int)$id);
-                $result['refreshed'] += (int)($r['fresh'] ?? false);
-                $result['failed'] += (int)!($r['fresh'] ?? false);
-                $result['tracking_staged'] += (int)($r['staged'] ?? false);
+                $r = $this->stage->refreshAndStage((int) $id);
+                $result['refreshed'] += (int) ($r['fresh'] ?? false);
+                $result['failed'] += (int) ! ($r['fresh'] ?? false);
+                $result['tracking_staged'] += (int) ($r['staged'] ?? false);
             } catch (\Throwable) {
                 // No payload/PII/credentials in logs. Continue with other orders.
                 $result['failed']++;
             }
         }
+
         return $result;
     }
 }

@@ -18,8 +18,15 @@ final class DeTianyunStatusRefresh
     {
         $ids = XlwmsDispatchAttempt::query()->whereIn('warehouse_id', DB::table('warehouses')->where('code', 'DE')->select('id'))
             ->where('state', 'oms_create_confirmed')->whereNotNull('oms_order_no')
-            ->whereIn('order_id', DB::table('shipments')->where('shipment_status', 'pending')->select('order_id'))
-            ->orderBy('oms_status_checked_at')->orderBy('id')->limit(20)->pluck('order_id');
+            ->where(fn ($q) => $q->whereNull('oms_status_code')->orWhereNotIn('oms_status_code', ['3', '4']))
+            ->whereIn('order_id', Order::query()->eligibleForOperations()->where('order_status', 'pending_shipment')
+                ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereNull('shipped_at')
+                    ->where(fn ($t) => $t->whereNull('tracking_number')->orWhere('tracking_number', ''))
+                    ->whereHas('warehouse', fn ($w) => $w->where('code', 'DE'))
+                    ->whereHas('overseaReview', fn ($r) => $r->where('status', 'approved')
+                        ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id')))
+                ->select('orders.id'))
+            ->orderBy('updated_at')->orderBy('id')->limit(20)->pluck('order_id');
         $ok = 0;
         $staged = 0;
         foreach ($ids as $id) {

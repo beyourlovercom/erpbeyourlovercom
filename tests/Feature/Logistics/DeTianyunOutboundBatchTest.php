@@ -567,7 +567,8 @@ final class DeTianyunOutboundBatchTest extends TestCase
         self::assertSame('CF123456789DE',$order->fresh()->shipment->tracking_number);
         $repeat = app(\App\Modules\Logistics\Application\Xlwms\DeTianyunStatusRefresh::class)->run();
         self::assertSame(0,$repeat['tracking_staged']);
-        Http::assertSentCount(2);
+        self::assertSame(0,$repeat['checked']);
+        Http::assertSentCount(1);
     }
 
     private function operator(): User

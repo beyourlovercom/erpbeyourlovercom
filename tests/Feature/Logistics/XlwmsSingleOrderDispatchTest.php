@@ -247,10 +247,12 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             self::assertNull($o->fresh()->shipment->tracking_number);
             $attempt=XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail();
             $oldStatus=$attempt->oms_status_code;
-            $attempt->update(['oms_status_code'=>'4']);
-            $before=count(Http::recorded());
-            self::assertSame(0,$poller->run()['checked']);
-            self::assertSame($before,count(Http::recorded()));
+            foreach (['3','4'] as $terminal) {
+                $attempt->update(['oms_status_code'=>$terminal]);
+                $before=count(Http::recorded());
+                self::assertSame(0,$poller->run()['checked']);
+                self::assertSame($before,count(Http::recorded()));
+            }
             $attempt->update(['oms_status_code'=>$oldStatus]);
             $remoteTracking='9400111206213000000000';
             self::assertSame(['checked'=>1,'refreshed'=>1,'failed'=>0,'tracking_staged'=>1],$poller->run());

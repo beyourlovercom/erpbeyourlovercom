@@ -280,6 +280,52 @@ final class ShipOutMorePlusManualFulfillmentTest extends TestCase
         config()->set('shipout.production_v1_batch_enabled', false);
     }
 
+    public static function periodicTrackingStatuses(): array
+    {
+        return ['processing label'=>[2,'warehouse_awaiting'], 'final outbound'=>[4,'provider_shipped']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('periodicTrackingStatuses')]
+    public function test_periodic_tracking_stage_preserves_pending_and_never_overwrites(int $status, string $state): void
+    {
+        [, $order] = $this->prepare();
+        $this->setupVerifiedAutoShip($order);
+        DB::table('shipout_oms_readbacks')->where('order_id', $order->id)->update(['state'=>$state,'provider_status'=>$status]);
+        $order->shipment->warehouse()->update(['code'=>'us-la']);
+        $tracking = '9434650105794040132223';
+        Http::preventStrayRequests();
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK', 'data' => [
+                'orderId' => 'OMS-EXISTING-ONE-ONLY', 'orderNO' => 'C42141-007',
+                'warehouseId' => '1265864414750314497', 'status' => $status,
+                'orderShipments' => [[
+                    'outboundNO' => 'OUTBOUND-123', 'outboundStatus' => $status === 4 ? 4 : 0,
+                    'trackingNumber' => $tracking, 'shippedTime' => now('UTC')->subHour()->format('Y-m-d H:i:s'),
+                    'packageList' => [['trackingNumber' => $tracking]],
+                ]],
+            ],
+        ], 200)]);
+        $old = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            $stage = app(\App\Modules\Logistics\Application\ShipOut\ShipOutPeriodicTrackingStage::class);
+            self::assertTrue($stage->stage($order->id));
+            self::assertSame($tracking, $order->fresh()->shipment->tracking_number);
+            self::assertSame('pending', $order->fresh()->shipment->shipment_status);
+            self::assertSame('pending_shipment', $order->fresh()->order_status->value);
+            $order->shipment()->update(['tracking_number' => '9434650105794040139999']);
+            self::assertFalse($stage->stage($order->id));
+            self::assertSame('9434650105794040139999', $order->fresh()->shipment->tracking_number);
+            config()->set('shipout.oms_reconciliation_enabled', true);
+            $before = count(Http::recorded());
+            $this->artisan('shipout:reconcile-oms --apply')->assertExitCode(0);
+            self::assertSame($before, count(Http::recorded()));
+            Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+        } finally {
+            $this->app->instance('env', $old);
+        }
+    }
+
     public function test_json_tracking_save_auto_completes_only_after_exact_signed_oms_shipped_proof(): void
     {
         [$user, $order] = $this->prepare();

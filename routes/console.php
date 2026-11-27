@@ -2,11 +2,13 @@
 
 use App\Modules\Inventory\Application\MorePlusInventorySyncService;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\ShipOut\ShipOutPeriodicTrackingStage;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutSandboxLabelStage;
 use App\Modules\Logistics\Application\Xlwms\DeAuthoritativePhysicalStockSyncService;
 use App\Modules\Logistics\Application\Xlwms\DeTianyunStatusRefresh;
+use App\Modules\Logistics\Application\Xlwms\UsNyTrackingRefresh;
 use App\Modules\Logistics\Experience\Jobs\ProcessDeTianyunOutboundBatch;
 use App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository;
 use App\Modules\Sync\Application\OrderSyncProgressSnapshot;
@@ -118,13 +120,14 @@ if (app()->environment('production') && config('xlwms.de_status_refresh_enabled'
 // US-NY tracking only: offset from the other half-hourly tasks.
 Artisan::command('xlwms:refresh-us-ny-tracking', function (): int {
     if (app()->environment('production') && config('xlwms.us_ny_tracking_refresh_enabled', false)) {
-        $this->info(json_encode(app(\App\Modules\Logistics\Application\Xlwms\UsNyTrackingRefresh::class)->run()));
+        $this->info(json_encode(app(UsNyTrackingRefresh::class)->run()));
     }
+
     return Command::SUCCESS;
 });
 if (app()->environment('production') && config('xlwms.us_ny_tracking_refresh_enabled', false)) {
-    Schedule::command('xlwms:refresh-us-ny-tracking')->cron('12,42 * * * *')
-        ->name('xlwms.us-ny.tracking.refresh')->withoutOverlapping(25)->onOneServer()->runInBackground();
+    Schedule::command('xlwms:refresh-us-ny-tracking')->cron('2-59/5 * * * *')
+        ->name('xlwms.us-ny.tracking.refresh')->withoutOverlapping(10)->onOneServer()->runInBackground();
 }
 
 // Read-only Sync status index: the full Woo batch inspection must never
@@ -302,8 +305,8 @@ if (! app()->environment('production')
         ->withoutOverlapping(25);
 }
 
-// R12: separately gated signed OMS GET-only observation loop. This command
-// never submits/retries an order, mutates fulfillment, or touches Woo.
+// R12: signed OMS GET-only observation plus guarded local tracking staging.
+// Never submits/retries an order, advances shipment status, or touches Woo.
 Artisan::command('shipout:reconcile-oms {--apply} {--limit=20}', function (): int {
     $limit = min(50, max(1, (int) $this->option('limit')));
     if (! app()->environment('production')
@@ -317,10 +320,20 @@ Artisan::command('shipout:reconcile-oms {--apply} {--limit=20}', function (): in
     $ids = DB::table('shipout_dispatch_attempts as a')
         ->join('shipments as s', 's.order_id', '=', 'a.order_id')
         ->where('a.provider_warehouse_id', ShipOutProductionDispatchState::MOREPLUS_PROVIDER_WAREHOUSE_ID)
-        ->where('s.shipment_status', 'pending')
+        ->join('warehouses as w', 'w.id', '=', 's.warehouse_id')
+        ->whereRaw('UPPER(w.code) = ?', ['US-LA'])
+        ->where('s.shipment_status', 'pending')->whereNull('s.shipped_at')
+        ->where(fn ($q) => $q->whereNull('s.tracking_number')->orWhere('s.tracking_number', ''))
+        ->whereNotExists(function ($q): void {
+            $q->selectRaw('1')->from('shipout_oms_readbacks as r')
+                ->whereColumn('r.order_id', 'a.order_id')
+                ->whereRaw('r.id = (SELECT MAX(r2.id) FROM shipout_oms_readbacks r2 WHERE r2.order_id = a.order_id)')
+                ->where(fn ($t) => $t->where('r.state', 'cancelled')
+                    ->orWhere(fn ($f) => $f->where('r.state', 'provider_shipped')->where('r.reason_code', 'TERMINAL_TRACKING_REVIEW')));
+        })
         // shipout_dispatch_attempts.order_id is UNIQUE: DISTINCT is not
         // needed and MySQL 8 rejects DISTINCT ordered by unselected a.id.
-        ->orderBy('a.id')->limit($limit)
+        ->orderByRaw('(SELECT MAX(r3.id) FROM shipout_oms_readbacks r3 WHERE r3.order_id = a.order_id) ASC')->orderBy('a.id')->limit($limit)
         ->pluck('a.order_id')->map(fn ($id) => (int) $id)->all();
 
     if (! $this->option('apply')) {
@@ -329,12 +342,34 @@ Artisan::command('shipout:reconcile-oms {--apply} {--limit=20}', function (): in
         return Command::SUCCESS;
     }
 
-    $result = ['mode' => 'signed_get_and_local_audit', 'checked' => 0, 'unverified' => 0];
+    $result = ['mode' => 'signed_get_and_local_audit', 'checked' => 0, 'unverified' => 0, 'tracking_staged' => 0, 'terminal_tracking_review' => 0];
     $observer = app(ShipOutProductionOmsReadbackService::class);
     foreach ($ids as $id) {
         try {
-            $observer->inspectAndRecord($id);
+            $read = $observer->inspectAndRecord($id);
             $result['checked']++;
+            if (in_array($read['oms_persisted_state'] ?? null, ['warehouse_awaiting', 'visible', 'confirmed', 'provider_shipped'], true)) {
+                $staged = false;
+                try {
+                    $staged = app(ShipOutPeriodicTrackingStage::class)->stage($id);
+                } catch (Throwable) {
+                    // Final status is verified, but tracking/outbound proof is not.
+                }
+                if ($staged) {
+                    $result['tracking_staged']++;
+                } elseif (($read['oms_persisted_state'] ?? null) === 'provider_shipped') {
+                    $last = DB::table('shipout_oms_readbacks')->where('order_id', $id)->latest('id')->first();
+                    if ($last && $last->state === 'provider_shipped') {
+                        DB::table('shipout_oms_readbacks')->insert([
+                            'order_id' => $id, 'provider_order_id' => $last->provider_order_id,
+                            'provider_status' => $last->provider_status, 'state' => 'provider_shipped',
+                            'reason_code' => 'TERMINAL_TRACKING_REVIEW',
+                            'checked_at' => $last->checked_at, 'created_at' => now(),
+                        ]);
+                    }
+                    $result['terminal_tracking_review']++;
+                }
+            }
         } catch (Throwable) {
             // Never log provider payload, recipient PII, credentials or exceptions.
             // The original one-shot ledger retains its permanent no-POST lock.
@@ -344,12 +379,12 @@ Artisan::command('shipout:reconcile-oms {--apply} {--limit=20}', function (): in
     $this->info(json_encode($result));
 
     return Command::SUCCESS;
-})->purpose('R12 signed GET-only MorePlus OMS snapshots; zero API POST.');
+})->purpose('Signed MorePlus OMS snapshots and verified tracking staging; zero provider writes.');
 
 if (app()->environment('production') && (bool) config('shipout.oms_reconciliation_enabled', false)) {
     Schedule::command('shipout:reconcile-oms --apply --no-interaction')
-        ->everyThirtyMinutes()
-        ->name('shipout.moreplus.oms-readback.half-hourly')
-        ->withoutOverlapping(25)
-        ->onOneServer();
+        ->cron('4-59/5 * * * *')
+        ->name('shipout.moreplus.oms-readback.five-minutes')
+        ->withoutOverlapping(15)
+        ->onOneServer()->runInBackground();
 }
