@@ -29,7 +29,7 @@ final class BackfillDomesticCarrierDefaultsCommand extends Command
         $query = Order::query()->eligibleForOperations()
             ->where('order_status', 'pending_shipment')
             ->whereNull('archived_at')
-            ->whereDoesntHave('fulfillmentChildren')
+            ->whereDoesntHave('activeFulfillmentChildren')
             ->whereDoesntHave('externalReferences', fn (Builder $q) => $q->where('provider', 'historical_logistics'))
             ->whereHas('operationalMarkers', fn (Builder $q) => $q->where('marker', 'domestic_reviewed'))
             ->whereDoesntHave('operationalMarkers', fn (Builder $q) => $q->where('marker', 'domestic_stockout'))

@@ -19,10 +19,12 @@ use App\Modules\Logistics\Application\SelectedExportOrderIds;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use App\Modules\Orders\Application\OrderBusinessDateResolver;
-use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderContactProjection;
+use App\Modules\Orders\Application\OrderLogisticsAuthority;
 use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Application\OrderWorkflowGridOptions;
+use App\Modules\Orders\Application\OrderWorkflowStatusPolicy;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Application\ProductOrderItemMetadata;
@@ -130,11 +132,11 @@ final class DomesticLogisticsController
             $this->applyAllFilters($query, $gridFilters);
         }
         $gridFilters['contact'] = mb_substr(trim((string) $request->query('filter_contact', '')), 0, 80);
-        app(\App\Modules\Orders\Application\OrderContactProjection::class)->applyNameFilter($query, $gridFilters['contact']);
+        app(OrderContactProjection::class)->applyNameFilter($query, $gridFilters['contact']);
         $requestedSize = (int) $request->query('per_page', 50);
         $pageSize = $gridPilot && in_array($requestedSize, [20, 50, 100], true) ? $requestedSize : 50;
         $rows = $query->orderBy('order_date')->orderBy('id')->paginate($pageSize)->withQueryString();
-        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($rows->getCollection());
+        app(OrderContactProjection::class)->prime($rows->getCollection());
         $itemMetadata = app(ProductOrderItemMetadata::class);
         $fallbackProducts = $itemMetadata->fallbackProductsForOrders($rows->getCollection());
         $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments($rows->getCollection()
@@ -172,9 +174,9 @@ final class DomesticLogisticsController
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canArchive' => (bool) $request->user()?->can('orders.archive'),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
-            'canEditWorkflowStatus' => (bool) $request->user()?->can('orders.edit'),
+            'canEditWorkflowStatus' => OrderLogisticsAuthority::allows($request->user()),
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
-            'canEditWarehouseRoute' => (bool) $request->user()?->can('orders.edit'),
+            'canEditWarehouseRoute' => OrderLogisticsAuthority::allows($request->user()),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'carrierOptions' => fn () => app(CarrierServiceCatalog::class)->options(),
             'trackingImportProvider' => $previewProvider,
@@ -309,6 +311,7 @@ final class DomesticLogisticsController
             'Cache-Control' => 'no-store, private',
             'X-BYL-Exported-Orders' => (string) $result['exported_count'],
             'X-BYL-Blocked-Orders' => (string) count($result['blocked']),
+            'X-BYL-Blocked-Details' => rawurlencode(collect($result['blocked'])->take(5)->map(fn (array $row): string => ($row['erp_order_id'] ?: '#'.$row['order_id']).'：'.implode('、', $row['reasons']))->implode('；')),
         ]);
     }
 
@@ -352,8 +355,14 @@ final class DomesticLogisticsController
             abort_unless($orders->count() === count($selectedIds), 422, '所选订单不属于当前国内待发货列表，请刷新后重选。');
         }
 
+        $partition = $this->pendingBatch->partition($orders);
+        $blocked = $partition['blocked'];
+        $orders = $partition['ready'];
+        abort_if(($selectedIds !== null && $blocked !== []) || $orders->isEmpty(), 422,
+            '存在不可导出的国内待发货订单。'.implode('；', array_slice($blocked, 0, 10)));
+
         try {
-            $bytes = $this->pendingBatch->export($orders, $selectedIds !== null);
+            $bytes = $this->pendingBatch->export($orders, true);
         } catch (\DomainException $e) {
             abort(422, $e->getMessage());
         }
@@ -363,6 +372,8 @@ final class DomesticLogisticsController
             'Content-Disposition' => 'attachment; filename="007-domestic-pending-'.now()->format('ymd').'.xlsx"',
             'Cache-Control' => 'no-store, private',
             'X-BYL-Exported-Orders' => (string) $orders->count(),
+            'X-BYL-Blocked-Orders' => (string) count($blocked),
+            'X-BYL-Blocked-Details' => rawurlencode(implode('；', array_slice($blocked, 0, 5))),
         ]);
     }
 
@@ -383,8 +394,14 @@ final class DomesticLogisticsController
             abort_unless($orders->count() === count($selectedIds), 422, '所选订单不属于当前国内待发货列表，请刷新后重选。');
         }
 
+        $partition = $this->pendingBatch->partition($orders);
+        $blocked = $partition['blocked'];
+        $orders = $partition['ready'];
+        abort_if(($selectedIds !== null && $blocked !== []) || $orders->isEmpty(), 422,
+            '存在不可导出的国内待发货订单。'.implode('；', array_slice($blocked, 0, 10)));
+
         try {
-            $bytes = $this->pendingBatch->exportSkuMerged($orders, $selectedIds !== null);
+            $bytes = $this->pendingBatch->exportSkuMerged($orders, true);
         } catch (\DomainException $e) {
             abort(422, $e->getMessage());
         }
@@ -394,6 +411,8 @@ final class DomesticLogisticsController
             'Content-Disposition' => 'attachment; filename="007-domestic-pending-sku-merged-'.now()->format('ymd').'.xlsx"',
             'Cache-Control' => 'no-store, private',
             'X-BYL-Exported-Orders' => (string) $orders->count(),
+            'X-BYL-Blocked-Orders' => (string) count($blocked),
+            'X-BYL-Blocked-Details' => rawurlencode(implode('；', array_slice($blocked, 0, 5))),
         ]);
     }
 
@@ -476,7 +495,7 @@ final class DomesticLogisticsController
     {
         return Order::query()->eligibleForOperations()
             ->where('order_status', '!=', 'cancelled')
-            ->whereDoesntHave('fulfillmentChildren')
+            ->whereDoesntHave('activeFulfillmentChildren')
             ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
             ->where(function (Builder $routes) use ($factoryId): void {
                 $routes->whereIn('routing_warehouse_code', ['FACTORY', 'OUTSOURCE'])
@@ -631,13 +650,13 @@ final class DomesticLogisticsController
             'tracking_sync_reason' => $trackingState['reason'],
             'tracking_sync_verified_at' => $trackingState['verified_at'] ?? null,
             'erp_order_id' => $order->erp_order_id,
-            ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
+            ...app(OrderContactProjection::class)->for($order),
             'workflow_status_projection' => $projection,
             'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
             'workflow_revision' => (int) $order->workflow_revision,
             'order_kind' => $order->order_kind?->value,
-            'can_edit_workflow_status' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
-            'workflow_status_options' => app(\App\Modules\Orders\Application\OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
+            'can_edit_workflow_status' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
+            'workflow_status_options' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             // Generic details route redirects by order kind (customer, KOL, derived).
             'order_url' => '/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,

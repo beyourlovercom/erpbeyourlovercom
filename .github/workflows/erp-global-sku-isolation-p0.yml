@@ -1,0 +1,67 @@
+name: ERP Global SKU Isolation P0
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  erp-global-sku-isolation-p0:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install exact dependencies
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          npm ci --no-audit --no-fund
+          ln -s Pages resources/js/pages
+      - name: Build frontend for warehouse HTTP contract tests
+        run: npm run build
+      - name: Prepare isolated test environment
+        run: |
+          printf 'APP_ENV=testing\nDB_CONNECTION=sqlite\nDB_DATABASE=:memory:\nCACHE_STORE=array\nQUEUE_CONNECTION=sync\nMAIL_MAILER=array\nSESSION_DRIVER=array\n' > .env
+      - name: Global SKU isolation, source integrity, reservation and real service entry points
+        run: |
+          php artisan test \
+            tests/Feature/Inventory/GlobalSkuStockIsolationTest.php \
+            tests/Feature/InventoryReservationFoundationTest.php \
+            tests/Feature/Inventory/MorePlusInventorySyncTest.php \
+            tests/Feature/Logistics/XlwmsInventorySyncServiceTest.php \
+            tests/Feature/Logistics/XlwmsSingleOrderDispatchTest.php \
+            tests/Feature/Logistics/DeAuthoritativePhysicalStockSyncTest.php \
+            tests/Feature/Logistics/DeTianyunOutboundBatchTest.php \
+            tests/Feature/Logistics/DeTianyunLiveOutboundGatewayTest.php \
+            tests/Feature/DeTianyunSkuSyncV2Test.php \
+            tests/Feature/Logistics/ShipOutProductionBatchTest.php \
+            tests/Feature/Logistics/ShipOutProductionCanaryDispatchServiceTest.php \
+            tests/Feature/Logistics/ShipOutProductionDuplicateRiskGuardTest.php \
+            tests/Feature/Logistics/WarehouseFinalSkuContractTest.php \
+            tests/Feature/Inventory/FactoryNativeImportTest.php \
+            tests/Feature/InventoryBatchSyncXlsxTest.php \
+            tests/Feature/InventoryBatchSyncM1Test.php \
+            tests/Feature/Products/ProductManagementTest.php \
+            tests/Feature/Products/SkuAliasTest.php \
+            tests/Feature/Products/WooCommerceProductInboundTest.php \
+            tests/Feature/Logistics/WarehousePhysicalSkuMaterializationTest.php \
+            tests/Feature/Logistics/ExternalProcurementWorkflowTest.php \
+            tests/Feature/Logistics/FulfillmentAllocationV1Test.php \
+            tests/Feature/Logistics/PendingFulfillmentReallocationTest.php \
+            tests/Feature/Orders/OrderItemAmendmentPreflightTest.php \
+            tests/Feature/Logistics/DomesticTodayOrdersExportTest.php \
+            tests/Feature/Logistics/DomesticLogisticsProductionClosureTest.php \
+            --no-ansi
+      - name: Factory and product UI contract
+        run: npm run test -- resources/js/Pages/Inventory/InventoryBatchSync.test.ts resources/js/lib/downloadLogisticsExport.test.ts resources/js/Pages/Products/Skus.test.ts resources/js/Components/DataGrid/GlobalGrid.test.ts

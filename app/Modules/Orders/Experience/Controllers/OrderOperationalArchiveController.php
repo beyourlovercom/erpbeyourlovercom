@@ -166,6 +166,7 @@ final class OrderOperationalArchiveController
             KolOrderAccessScope::authorize($request->user(), $locked);
             KolOrderAccessScope::authorize($request->user(), $locked->fulfillmentParent ?? $locked);
             abort_if($locked->archived_at !== null || $locked->trashed(), 409, '回收站订单不能恢复运营。');
+            abort_if($locked->fulfillment_role === Order::SUPERSEDED_FULFILLMENT_ROLE, 409, '重新分仓归档的历史履约不可恢复运营。');
             abort_if($locked->operational_archived_at === null, 409, '该订单没有独立归档记录，请恢复其主订单。');
             $before = ['operational_archived_at' => $locked->operational_archived_at?->toIso8601String(), 'operational_archived_by' => $locked->operational_archived_by];
             $locked->forceFill(['operational_archived_at' => null, 'operational_archived_by' => null])->save();

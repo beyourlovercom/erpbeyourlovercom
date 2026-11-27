@@ -78,6 +78,15 @@ final class WooCommerceProductInboundService
             if ($remoteId <= 0) {
                 throw new RuntimeException('WooCommerce Product has no valid ID.');
             }
+            $sku = trim((string) ($remote['sku'] ?? ''));
+            $bound = $this->externalRefs->findProduct('woocommerce', $connection, (string) $remoteId);
+            $canonical = $sku === '' ? null : $this->resolveSku($sku);
+            if (ProductCatalogExclusion::excludes($sku)
+                || ProductCatalogExclusion::excludes($bound?->sku)
+                || ProductCatalogExclusion::excludes($canonical?->sku)) {
+                $this->runs->finishItem($item, SyncRunItemStatus::Skipped, 'excluded_catalog_sku');
+                return;
+            }
             ['product' => $product, 'created' => $productCreated] = $this->resolveProduct($remote, $connection);
             $hashPayload = $remote;
             unset($hashPayload['related_ids']);
@@ -167,7 +176,7 @@ final class WooCommerceProductInboundService
         }
         DB::transaction(function () use ($product, $remote, $connection, $id, $hash, $attributes): void {
             $this->products->update($product, $attributes);
-            $this->store->upsertSnapshot((int) $product->id, 'woocommerce', $connection, $id, ['permalink' => $this->safePermalink($remote['permalink'] ?? null), 'provider_status' => (string) ($remote['status'] ?? ''), 'description_text' => $this->text($remote['description'] ?? ''), 'short_description_text' => $this->text($remote['short_description'] ?? ''), 'category_names' => collect($remote['categories'] ?? [])->filter(fn ($c): bool => is_array($c))->map(fn ($c) => trim((string) ($c['name'] ?? '')))->filter()->values()->all(), 'variation_count' => is_array($remote['variations'] ?? null) ? count($remote['variations']) : (int) ($remote['variation_count'] ?? 0), 'provider_created_at' => $this->date($remote['date_created'] ?? null), 'provider_modified_at' => $this->date($remote['date_modified'] ?? null), 'last_synced_at' => now(), 'payload_hash' => $hash]);
+            $this->store->upsertSnapshot((int) $product->id, 'woocommerce', $connection, $id, ['provider_sku' => mb_substr(trim((string) ($remote['sku'] ?? '')), 0, 128) ?: null, 'permalink' => $this->safePermalink($remote['permalink'] ?? null), 'provider_status' => (string) ($remote['status'] ?? ''), 'description_text' => $this->text($remote['description'] ?? ''), 'short_description_text' => $this->text($remote['short_description'] ?? ''), 'category_names' => collect($remote['categories'] ?? [])->filter(fn ($c): bool => is_array($c))->map(fn ($c) => trim((string) ($c['name'] ?? '')))->filter()->values()->all(), 'variation_count' => is_array($remote['variations'] ?? null) ? count($remote['variations']) : (int) ($remote['variation_count'] ?? 0), 'provider_created_at' => $this->date($remote['date_created'] ?? null), 'provider_modified_at' => $this->date($remote['date_modified'] ?? null), 'last_synced_at' => now(), 'payload_hash' => $hash]);
         });
 
         return ['created' => $previousHash === null, 'changed' => $changed];

@@ -71,7 +71,7 @@ final class KolProvisioningService
         return $this->provisionInternal($connectionKey, $kolId, $actor, null, true, null, null);
     }
 
-    public function provisionForCreate(string $connectionKey, int $kolId, Authenticatable $actor, string $password, ?string $username = null, ?string $affiliateName = null, ?string $affiliateUrlSlug = null): Model
+    public function provisionForCreate(string $connectionKey, int $kolId, Authenticatable $actor, #[\SensitiveParameter] string $password, ?string $username = null, ?string $affiliateName = null, ?string $affiliateUrlSlug = null): Model
     {
         if (! $actor->can('kol.operate')) {
             throw new AuthorizationException;
@@ -80,10 +80,10 @@ final class KolProvisioningService
             throw new DomainException('WordPress password does not satisfy the create-provision policy.');
         }
 
-        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, true, $username, $affiliateName, $affiliateUrlSlug);
+        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, true, $username, $affiliateName, $affiliateUrlSlug, (bool) config('kol.create_auto_provision.native_welcome', false));
     }
 
-    public function provisionForExisting(string $connectionKey, int $kolId, Authenticatable $actor, string $password, ?string $username = null, ?string $affiliateName = null, ?string $affiliateUrlSlug = null): Model
+    public function provisionForExisting(string $connectionKey, int $kolId, Authenticatable $actor, #[\SensitiveParameter] string $password, ?string $username = null, ?string $affiliateName = null, ?string $affiliateUrlSlug = null): Model
     {
         if (! $actor->can('kol.operate')) {
             throw new AuthorizationException;
@@ -95,7 +95,7 @@ final class KolProvisioningService
         return $this->provisionInternal($connectionKey, $kolId, $actor, $password, false, $username, $affiliateName, $affiliateUrlSlug);
     }
 
-    private function provisionInternal(string $connectionKey, int $kolId, Authenticatable $actor, ?string $password, bool $requireApproval, ?string $username, ?string $affiliateName, ?string $affiliateUrlSlug = null): Model
+    private function provisionInternal(string $connectionKey, int $kolId, Authenticatable $actor, #[\SensitiveParameter] ?string $password, bool $requireApproval, ?string $username, ?string $affiliateName, ?string $affiliateUrlSlug = null, bool $deferWelcome = false): Model
     {
         $kolClass = self::KOL;
         $query = $kolClass::query()->whereKey($kolId)->whereNull('archived_at');
@@ -206,6 +206,7 @@ final class KolProvisioningService
         if ($password !== null) {
             $payload['password'] = $password;
             $payload['existing_account_policy'] = 'reject';
+            if ($deferWelcome) $payload['defer_welcome'] = true;
         }
 
         try {

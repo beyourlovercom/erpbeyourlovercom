@@ -16,11 +16,13 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutMorePlusVerifiedTrackingCom
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Logistics\Application\WarehouseDispatchStatus;
+use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
 use App\Modules\Orders\Application\OrderContactProjection;
+use App\Modules\Orders\Application\OrderLogisticsAuthority;
 use App\Modules\Orders\Application\OrderManualHoldStatus;
 use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderWarehouseRouting;
@@ -202,7 +204,7 @@ final class OverseaWarehouseController
                     ? app(OrderWorkflowStatusPolicy::class)->for($shipment->order, $request->user())['options'] : [],
             ])->toArray(),
             'workflowStatusOptions' => OrderWorkflowGridOptions::customer(),
-            'canEditWarehouseRoute' => (bool) $request->user()?->can('orders.edit'),
+            'canEditWarehouseRoute' => OrderLogisticsAuthority::allows($request->user()),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
             'xlwmsAuthorizedOrderId' => $canRunXlwms ? (int) config('xlwms.live_order_id', 0) : 0,
             'xlwmsOmsWebEnabled' => $warehouseKey === 'us-3sm'
@@ -372,6 +374,23 @@ final class OverseaWarehouseController
         if ($selectedIds !== null) {
             abort_unless($exportShipments->count() === count($selectedIds), 422, '所选订单不属于该仓库待发货列表，请刷新后重选。');
         }
+        $blocked = [];
+        if ((bool) config('warehouse_final_sku.require_verified_mapping')) {
+            $resolver = app(WarehouseFinalSkuResolver::class);
+            $exportShipments = $exportShipments->filter(function (Shipment $shipment) use ($resolver, &$blocked): bool {
+                $order = $shipment->order;
+                $reasons = $order ? $resolver->blockers($order) : ['找不到订单'];
+                if ($reasons !== []) {
+                    $blocked[] = ($order?->erp_order_id ?: '#'.$shipment->order_id).'：'.implode('、', $reasons);
+
+                    return false;
+                }
+
+                return true;
+            })->values();
+            abort_if(($selectedIds !== null && $blocked !== []) || ($blocked !== [] && $exportShipments->isEmpty()), 422,
+                '存在不可导出的海外仓订单。'.implode('；', array_slice($blocked, 0, 10)));
+        }
         try {
             $file = $this->outboundFiles->export($warehouse, $exportShipments);
         } catch (DomainException|InvalidArgumentException $e) {
@@ -383,6 +402,9 @@ final class OverseaWarehouseController
             'Content-Disposition' => 'attachment; filename="'.$file['filename'].'"',
             'Cache-Control' => 'private, no-store',
             'X-Content-Type-Options' => 'nosniff',
+            'X-BYL-Exported-Orders' => (string) $exportShipments->count(),
+            'X-BYL-Blocked-Orders' => (string) count($blocked),
+            'X-BYL-Blocked-Details' => rawurlencode(implode('；', array_slice($blocked, 0, 5))),
         ]);
     }
 

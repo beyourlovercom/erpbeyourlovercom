@@ -35,17 +35,17 @@ final class CouponProvisioningService
     }
 
     /** @param array{kol_id:int,code:string,discount_type:string,amount:string,expiry:?string} $input */
-    public function provisionForCreate(string $connectionKey, array $input, Authenticatable $actor): Model
+    public function provisionForCreate(string $connectionKey, array $input, Authenticatable $actor, #[\SensitiveParameter] ?string $initialPassword = null): Model
     {
         if (! $actor->can('kol.operate')) {
             throw new AuthorizationException;
         }
 
-        return $this->provisionInternal($connectionKey, $input, $actor);
+        return $this->provisionInternal($connectionKey, $input, $actor, $initialPassword);
     }
 
     /** @param array{kol_id:int,code:string,discount_type:string,amount:string,expiry:?string} $input */
-    private function provisionInternal(string $connectionKey, array $input, Authenticatable $actor): Model
+    private function provisionInternal(string $connectionKey, array $input, Authenticatable $actor, #[\SensitiveParameter] ?string $initialPassword = null): Model
     {
         $kolClass = self::KOL;
         $kol = $kolClass::query()->whereKey($input['kol_id'])->whereNull('archived_at')->first();
@@ -121,22 +121,27 @@ final class CouponProvisioningService
             'amount' => $amount,
             'expiry' => $expiry,
         ];
-        // Keep the frozen Andy Core connector contract unchanged (six fields).
+        // Preserve the six-field Coupon identity. The opt-in initial password is request-local only.
         // The profile URL goes to WooCommerce's native coupon REST endpoint AFTER creation.
         try {
-            $response = $this->gateway->provisionCoupon($payload, $key);
+            $response = $this->gateway->provisionCoupon($initialPassword === null ? $payload : [...$payload, 'initial_password' => $initialPassword], $key);
         } catch (RuntimeException $exception) {
             $errorCode = property_exists($exception, 'errorCode') && is_string($exception->errorCode) ? $exception->errorCode : 'CONNECTOR_ERROR';
             $status = $errorCode === 'COUPON_CONFLICT' ? 'conflict' : 'error';
-            $row->update(['provisioning_status' => $status, 'last_error_code' => $errorCode, 'last_error_message' => mb_substr($exception->getMessage(), 0, 500)]);
+            $row->update(['provisioning_status' => $status, 'last_error_code' => $errorCode, 'last_error_message' => $initialPassword !== null ? 'Coupon request failed; verify account and Coupon before retry.' : mb_substr($exception->getMessage(), 0, 500)]);
             return $row->fresh();
         }
 
+        $welcomeExpected = $initialPassword !== null || (is_array($response->data) && array_key_exists('welcome_status', $response->data));
+        unset($initialPassword);
         $finalized = $this->finalize($row, $payload, $response->data);
-        if ($finalized->provisioning_status !== 'active' || ! $kol->kol_profile_url) {
-            return $finalized;
+        if ($finalized->provisioning_status === 'active' && $kol->kol_profile_url) {
+            $finalized = $this->syncCouponSettings($finalized, $kol, (string) $kol->kol_profile_url, substr((string) $expiry, 0, 10));
         }
-        return $this->syncCouponSettings($finalized, $kol, (string) $kol->kol_profile_url, substr((string) $expiry, 0, 10));
+        if ($finalized->provisioning_status === 'active' && $welcomeExpected && ($response->data['welcome_status'] ?? null) !== 'mail_accepted') {
+            $finalized->update(['last_error_code' => 'WELCOME_MAIL_NEEDS_REVIEW', 'last_error_message' => 'Account and Coupon exist; welcome email not confirmed. Do not recreate or automatically resend.']);
+        }
+        return $finalized;
     }
 
     private function finalize(Model $row, array $payload, mixed $data): Model

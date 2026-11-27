@@ -16,6 +16,27 @@ final class XlwmsInventoryCoverage
         return $limits === null ? null : array_keys($limits);
     }
 
+    /** Exact wire spelling of a proven DE stock row; never change SKU identity. */
+    public function deProviderSkuSpelling(int $warehouseId, int $productId, string $sku): string
+    {
+        if ($sku === '' || ! Schema::hasTable('xlwms_inventory_snapshots')) return $sku;
+        $snapshot = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouseId)
+            ->orderByDesc('fetched_at')->orderByDesc('id')->first();
+        if (! $snapshot || $snapshot->wh_code !== 'Hannover'
+            || ($snapshot->summary['de_authoritative_physical_v1'] ?? false) !== true
+            || $snapshot->errors || in_array($snapshot->status, ['failed', 'not_ready'], true)
+            || $snapshot->rows()->count() !== (int) $snapshot->provider_sku_count
+            || ! in_array($productId, array_map('intval', (array) ($snapshot->summary['de_physical_applied_product_ids'] ?? [])), true)) return $sku;
+        $rows = $snapshot->rows()->where('product_id', $productId)->whereNotNull('oms_total')->get();
+        if ($rows->count() !== 1) return $sku;
+        $row = $rows->first();
+        $native = (string) $row->provider_sku;
+        if (strcasecmp($sku, $native) !== 0 || ! in_array($row->resolution_status, ['matched', 'blocked'], true)
+            || in_array(mb_strtolower(trim($native), 'UTF-8'), array_map(static fn ($s) => mb_strtolower(trim((string) $s), 'UTF-8'), (array) config('xlwms.de_excluded_inventory_skus', [])), true)) return $sku;
+        $resolved = app(\App\Modules\Products\Application\VerifiedOmsProductIdentityResolver::class)->resolve($native);
+        return ($resolved['status'] ?? null) === 'resolved' && (int) $resolved['product_id'] === $productId ? $native : $sku;
+    }
+
     /**
      * Last authoritative V2 applied snapshot's provider *available* units,
      * excluding stock the OMS already locked for pending outbound shipment.
@@ -37,27 +58,38 @@ final class XlwmsInventoryCoverage
             $isDePhysical = $latest->wh_code === 'Hannover'
                 && ($latest->summary['de_authoritative_physical_v1'] ?? false) === true;
             if ($isDePhysical) {
+                // No legacy whole-warehouse proof or unverified SKU can authorize dispatch.
+                $ids = array_map('intval', (array) ($latest->summary['de_physical_applied_product_ids'] ?? []));
+                if ($ids === [] || count(array_unique($ids)) !== count($ids)
+                    || count($ids) !== (int) ($latest->summary['de_authoritative_physical_sku_count'] ?? -1)
+                    || $latest->rows()->count() !== (int) $latest->provider_sku_count
+                    || $latest->errors || in_array($latest->status, ['failed', 'not_ready'], true)) return [];
                 $all = $latest->rows()->whereNotNull('oms_total')->get();
                 $excluded = array_fill_keys(array_map(
                     static fn (string $sku): string => mb_strtolower(trim($sku), 'UTF-8'),
                     (array) config('xlwms.de_excluded_inventory_skus', [])
                 ), true);
+                $all = $all->reject(fn ($row) => isset($excluded[mb_strtolower(trim((string) $row->provider_sku), 'UTF-8')]));
                 $available = [];
+                $identity = app(\App\Modules\Products\Application\VerifiedOmsProductIdentityResolver::class);
                 foreach ($all as $row) {
-                    if (isset($excluded[mb_strtolower(trim((string) $row->provider_sku), 'UTF-8')])) continue;
-                    if (! in_array($row->resolution_status, ['matched','blocked'], true)
-                        || (int) $row->product_id <= 0 || $row->oms_total === null
-                        || $row->oms_available === null || $row->oms_locked === null
-                        || (int) $row->oms_total !== (int) $row->oms_available + (int) $row->oms_locked
-                        || isset($available[(int) $row->product_id])) return [];
+                    if ($row->oms_available === null || $row->oms_locked === null
+                        || (int) $row->oms_total < 0 || (int) $row->oms_available < 0 || (int) $row->oms_locked < 0
+                        || (int) $row->oms_total !== (int) $row->oms_available + (int) $row->oms_locked) return [];
+                    $id = (int) $row->product_id;
+                    if (! in_array($id, $ids, true)) continue;
+                    if (! in_array($row->resolution_status, ['matched', 'blocked'], true)
+                        || $all->where('product_id', $id)->count() !== 1) continue;
+                    $resolved = $identity->resolve((string) $row->provider_sku);
+                    if (($resolved['status'] ?? null) !== 'resolved' || (int) $resolved['product_id'] !== $id) continue;
                     $erp = \App\Modules\Inventory\Infrastructure\Models\WarehouseInventory::query()
-                        ->where('warehouse_id', $warehouseId)
-                        ->where('product_id', $row->product_id)->first();
-                    if (! $erp || (int) $erp->quantity_on_hand !== (int) $row->oms_total
-                        || (int) $erp->provider_available_quantity !== (int) $row->oms_available) return [];
-                    $available[(int) $row->product_id] = (int) $row->oms_available;
+                        ->where('warehouse_id', $warehouseId)->where('product_id', $id)->first();
+                    if (! $erp || $erp->provider_available_quantity === null
+                        || (int) $erp->quantity_on_hand !== (int) $row->oms_total
+                        || (int) $erp->provider_available_quantity !== (int) $row->oms_available) continue;
+                    $available[$id] = (int) $row->oms_available;
                 }
-                return count($available) === (int) $latest->mapped_sku_count ? $available : [];
+                return $available;
             }
             $isolated = (bool) config('inventory_sku_gate.enabled', false);
             if ($isolated) {

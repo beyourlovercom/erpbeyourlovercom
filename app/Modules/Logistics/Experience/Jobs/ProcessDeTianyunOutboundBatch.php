@@ -82,8 +82,12 @@ final class ProcessDeTianyunOutboundBatch implements ShouldQueue
                     if ($production) {
                         // No blind retries. The durable XlwmsDispatchAttempt
                         // ledger is written before each real OMS CREATE.
+                        $retry = null;
+                        if (preg_match('/^DE_RECOVER_PREFLIGHT:([1-9][0-9]*)$/D', (string) $item->result_code, $matches)) {
+                            $retry = (int) $matches[1];
+                        }
                         $created = ($live ?? app(DeTianyunLiveOrderCreateService::class))
-                            ->create((int) $item->order_id, (string) $item->payload_hash, (int) $actor->id);
+                            ->create((int) $item->order_id, (string) $item->payload_hash, (int) $actor->id, $retry);
                         $status = $created['status'];
                         $code = $created['code'];
                     } else {
@@ -97,10 +101,22 @@ final class ProcessDeTianyunOutboundBatch implements ShouldQueue
                             $code = 'DEV_SIMULATED_NO_PROVIDER_IO';
                         }
                     }
-                } catch (Throwable) {
+                } catch (Throwable $error) {
                     $status = 'skipped';
                     $code = $production ? 'DE_PRODUCTION_CREATE_GATE_OR_PREVIEW_BLOCKED'
                         : 'DE_PREFLIGHT_FAILED';
+                    // Persist only allowlisted machine codes; never raw API errors or customer data.
+                    $reason = explode(':', $error->getMessage(), 2)[0];
+                    if ($production && in_array($reason, [
+                        'DE_PHYSICAL_INCOMPLETE_PROVIDER_COVERAGE', 'DE_PHYSICAL_INVALID_SOURCE_STOCK',
+                        'DE_PHYSICAL_SNAPSHOT_NOT_FRESH_OR_WRONG_WAREHOUSE', 'DE_PHYSICAL_PROVIDER_NOT_READY',
+                        'DE_AUTHORITATIVE_PHYSICAL_APPLY_DISABLED', 'DE_PHYSICAL_SYNC_ALREADY_RUNNING',
+                        'DE_LIVE_ORDER_CREATE_NOT_AUTHORIZED', 'DE_LIVE_ORDER_PREFLIGHT_STALE_OR_BLOCKED',
+                        'DE_ORDER_WRONG_WAREHOUSE', 'DE_OMS_WAREHOUSE_MISMATCH',
+                        'DE_ORDER_ALREADY_HAS_PROVIDER_ATTEMPT', 'DE_PREFLIGHT_RECOVERY_NOT_SAFE', 'DE_PREFLIGHT_RECOVERY_NOT_AUTHORIZED',
+                    ], true)) {
+                        $code = $reason;
+                    }
                 }
                 DB::table('xlwms_de_dispatch_batch_items')->where('id', $item->id)
                     ->update(['status' => $status, 'result_code' => $code, 'updated_at' => now()]);

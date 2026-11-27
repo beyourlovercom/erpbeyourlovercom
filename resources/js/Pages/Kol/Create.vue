@@ -50,6 +50,7 @@ const form = useForm({
   notes: '',
   contact_email: '',
   wordpress_username: '',
+  reuse_existing_account: false,
   affiliate_name: '',
   affiliate_url_slug: '',
   wordpress_password: '',
@@ -103,7 +104,7 @@ const form = useForm({
 // Only publish the unsaved boolean; no KOL or payment details are stored.
 useWorkspaceDraftGuard(() => form.isDirty)
 
-type DuplicateResult = { exists: boolean; message?: string | null; existing_url?: string | null }
+type DuplicateResult = { exists: boolean; message?: string | null; existing_url?: string | null; historical_account?: { wordpress_user_id: number; affiliate_id: number } | null }
 const duplicate = ref<DuplicateResult>({ exists: false })
 const duplicateChecking = ref(false)
 const duplicateUnavailable = ref(false)
@@ -123,6 +124,8 @@ let lookupSequence=0
 const smartInputVersion=ref(0)
 const identityReady=computed(()=>lookupState.value==='clear' && !!verifiedUsername.value &&
   form.wordpress_username.trim().toLowerCase()===verifiedUsername.value.toLowerCase())
+const historicalAccount=computed(()=>lookupResult.value.historical_account ?? duplicate.value.historical_account ?? null)
+const reuseExisting=computed(()=>!!historicalAccount.value || form.reuse_existing_account)
 const visibleDuplicate=computed(()=>lookupResult.value.exists?lookupResult.value:duplicate.value)
 const resetLookup=()=>{
   lookupSequence++
@@ -310,6 +313,8 @@ const submit = async () => {
   if (await checkDuplicate()) return
   form.transform(data => ({
     ...data,
+    reuse_existing_account: reuseExisting.value,
+    ...(reuseExisting.value ? { wordpress_password: '', wordpress_password_confirmation: '', affiliate_coupon_code: '', affiliate_coupon_expiry: null } : {}),
     owner_id: data.owner_id ? Number(data.owner_id) : null,
     approval_manager_id: data.approval_manager_id ? Number(data.approval_manager_id) : null,
     finance_owner_id: data.finance_owner_id ? Number(data.finance_owner_id) : null,
@@ -366,7 +371,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
           <div class="kol-header-actions page-header-actions">
             <a href="/kol/library" class="erp-btn erp-btn-secondary">返回列表</a>
             <a href="/kol/library" class="erp-btn erp-btn-secondary">取消</a>
-            <button type="submit" form="kol-create-form" class="erp-btn erp-btn-primary" :disabled="!identityReady || form.processing || visibleDuplicate.exists || duplicateChecking || duplicateUnavailable">{{ form.processing ? '创建中…' : '保存 KOL' }}</button>
+            <button type="submit" form="kol-create-form" class="erp-btn erp-btn-primary" :disabled="!identityReady || form.processing || visibleDuplicate.exists || duplicateChecking || duplicateUnavailable">{{ form.processing ? '创建中…' : reuseExisting ? '创建并绑定已有账号' : '保存 KOL' }}</button>
           </div>
         </div>
 
@@ -390,7 +395,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             </div>
             <p v-if="lookupState==='checking'" role="status">正在查询已有网红档案…</p>
             <p v-if="lookupError" role="alert" class="erp-field-error">{{lookupError}}</p>
-            <p v-if="identityReady && !visibleDuplicate.exists && !duplicateChecking && !duplicateUnavailable" role="status" data-testid="kol-preflight-clear" class="kol-preflight-success">未发现重复网红，可以填写资料。</p>
+            <p v-if="identityReady && !visibleDuplicate.exists && !duplicateChecking && !duplicateUnavailable" role="status" data-testid="kol-preflight-clear" class="kol-preflight-success">{{ historicalAccount ? '检测到已有官网账号，填写原账号邮箱后即可建档绑定；不会重复开户或重置密码。' : '未发现重复网红，可以填写资料。' }}</p>
             <p v-else-if="lookupState==='idle'" class="erp-form-helper">先查询是否已有网红，再填写资料。</p>
           </section>
           <KolSmartInput :key="smartInputVersion" @apply="applySmartDraft" />
@@ -533,7 +538,14 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
           <!-- Card 3: WordPress / Affiliate 账号 -->
           <div class="erp-form-card kol-account-card">
             <h2 class="erp-form-card-title">WordPress / Affiliate 账号</h2>
-            <p class="erp-form-card-helper">请统一从 ERP 开户：成功须确认 WordPress、AffiliateWP Active 与 Coupon 全部完成；直接在 WordPress 手工创建可能进入 Pending，需人工审核。已有邮箱或 Code 只阻止，不覆盖。</p>
+            <p class="erp-form-card-helper">请统一从 ERP 开户：成功须确认 WordPress、AffiliateWP Active 与 Coupon 全部完成；直接在 WordPress 手工创建可能进入 Pending，需人工审核。已有官网账号身份一致时，复用历史账号及优惠码；身份冲突只阻止，不覆盖。</p>
+            <div v-if="!historicalAccount" data-testid="kol-unsynced-reuse" class="mb-3">
+              <div class="erp-segmented" role="group" aria-label="官网账号处理方式">
+                <button type="button" :aria-pressed="!form.reuse_existing_account" :class="{ active: !form.reuse_existing_account }" @click="form.reuse_existing_account = false">新建官网账号</button>
+                <button type="button" :aria-pressed="form.reuse_existing_account" :class="{ active: form.reuse_existing_account }" @click="form.reuse_existing_account = true">绑定已有官网账号</button>
+              </div>
+              <p v-if="form.reuse_existing_account" class="erp-form-helper">填写原账号邮箱，提交时实时核验并绑定；不新建官网账号。</p>
+            </div>
             <div class="kol-credential-rows">
               <div class="erp-form-field">
                 <label class="erp-form-label">Username <span class="erp-form-required">*</span></label>
@@ -543,17 +555,17 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
 
                 <p v-if="duplicateUnavailable" class="erp-field-error" role="alert">暂时无法检查网红是否重复，已停止创建，请稍后重试。</p>
               </div>
-              <div class="erp-form-field">
+              <div v-if="!reuseExisting" class="erp-form-field">
                 <label class="erp-form-label">Affiliate Name <span class="erp-form-required">*</span></label>
                 <input v-model="form.affiliate_name" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_name }" required placeholder="默认与 Username 相同" @input="affiliateNameManuallyEdited = true">
                 <p v-if="form.errors.affiliate_name" class="erp-field-error">{{ form.errors.affiliate_name }}</p>
               </div>
-              <div class="erp-form-field">
+              <div v-if="!reuseExisting" class="erp-form-field">
                 <label class="erp-form-label">Affiliate URL <span class="erp-form-required">*</span></label>
                 <input v-model="form.affiliate_url_slug" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_url_slug }" required placeholder="推广链接标识" @input="affiliateUrlManuallyEdited = true">
                 <p v-if="form.errors.affiliate_url_slug" class="erp-field-error">{{ form.errors.affiliate_url_slug }}</p>
               </div>
-              <div class="kol-password-pair">
+              <div v-if="!reuseExisting" class="kol-password-pair">
                 <div class="erp-form-field">
                   <label class="erp-form-label">Password <span class="erp-form-required">*</span></label>
                   <input v-model="form.wordpress_password" type="password" autocomplete="new-password" class="erp-input" :class="{ 'has-error': form.errors.wordpress_password }" minlength="7" pattern="[A-Za-z].{6,}" required>
@@ -571,12 +583,12 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                 <input v-model="form.contact_email" type="email" autocomplete="email" class="erp-input" :class="{ 'has-error': form.errors.contact_email }" maxlength="255" required placeholder="name@example.com">
                 <p v-if="form.errors.contact_email" class="erp-field-error">{{ form.errors.contact_email }}</p>
               </div>
-              <div class="erp-form-field kol-credential-newrow">
+              <div v-if="!reuseExisting" class="erp-form-field kol-credential-newrow">
                 <label class="erp-form-label">Code <span class="erp-form-required">*</span></label>
                 <input v-model="form.affiliate_coupon_code" type="text" autocomplete="off" class="erp-input" :class="{ 'has-error': form.errors.affiliate_coupon_code }" maxlength="255" required placeholder="例如 ANDY15">
                 <p v-if="form.errors.affiliate_coupon_code" class="erp-field-error">{{ form.errors.affiliate_coupon_code }}</p>
               </div>
-              <div class="erp-form-field kol-credential-metadata">
+              <div v-if="!reuseExisting" class="erp-form-field kol-credential-metadata">
                 <label class="erp-form-label">Code 有效期 <span class="erp-form-required">*</span></label>
                 <input v-model="form.affiliate_coupon_expiry" type="date" class="erp-input" :class="{ 'has-error': form.errors.affiliate_coupon_expiry }" required @input="couponExpiryManuallyEdited = true">
                 <p v-if="form.errors.affiliate_coupon_expiry" class="erp-field-error">{{ form.errors.affiliate_coupon_expiry }}</p>
@@ -589,6 +601,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
               </div>
             </div>
             <p class="erp-form-helper">前三项默认继承网红 Username，可单独覆盖；Affiliate URL 为推广链接标识，独立标识需 Custom Affiliate Slugs 支持。用户名开户后不可修改；密码不保存到 ERP。</p>
+            <p v-if="historicalAccount" class="erp-form-helper kol-historical-account-note" data-testid="kol-historical-account" role="status">已有 WordPress #{{ historicalAccount.wordpress_user_id }} / AffiliateWP #{{ historicalAccount.affiliate_id }}。历史推广链接及优惠码保持不变。</p>
           </div>
 
           <!-- Card 4: 社交账号 -->
@@ -884,6 +897,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
     grid-template-columns: 1fr;
   }
 }
+.kol-historical-account-note { display: block; width: 100%; margin-top: 8px; white-space: normal; overflow-wrap: anywhere; }
 .kol-credential-rows { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px 18px; align-items: start; }
 .kol-credential-rows > .erp-form-field { grid-column: span 4; min-width: 0; }
 .kol-credential-rows > .kol-credential-secondary { grid-column: span 6; }

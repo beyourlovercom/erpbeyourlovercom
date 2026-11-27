@@ -7,7 +7,7 @@ use Illuminate\Console\Command;
 
 final class SyncXlwmsInventoryCommand extends Command
 {
-    protected $signature = 'xlwms:sync-inventory {--dry-run : Fetch and persist a read-only snapshot (default)} {--apply : Apply only a fully verified, safe matched snapshot} {--warehouse=US-SM : ERP warehouse code (US-SM or DE)}';
+    protected $signature = 'xlwms:sync-inventory {--dry-run : Fetch and persist a read-only snapshot (default)} {--apply : Apply only a fully verified, safe matched snapshot} {--warehouse=US-SM : ERP warehouse code (US-SM, DE or US-NY)}';
     protected $description = 'Read XLWMS inventory per warehouse; DE apply requires isolated Dev and separate gates';
 
     public function handle(XlwmsInventorySyncService $service): int
@@ -15,8 +15,8 @@ final class SyncXlwmsInventoryCommand extends Command
         if ($this->option('dry-run') && $this->option('apply')) { $this->error('Choose --dry-run or --apply, not both.'); return self::INVALID;
         }
         $warehouseCode = strtoupper(trim((string) $this->option('warehouse')));
-        if (! in_array($warehouseCode, ['US-SM', 'DE'], true)) {
-            $this->error('Unsupported XLWMS warehouse. Allowed: US-SM, DE.');
+        if (! in_array($warehouseCode, ['US-SM', 'DE', 'US-NY'], true)) {
+            $this->error('Unsupported XLWMS warehouse. Allowed: US-SM, DE, US-NY.');
             return self::INVALID;
         }
         if ($warehouseCode === 'DE' && $this->option('apply') && app()->environment('production')) {

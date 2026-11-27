@@ -16,7 +16,10 @@ class DatabaseDumpAdapter implements DatabaseDumper
         }
 
         $binary = (string) config('backup.tooling.mysqldump', 'mysqldump');
-        $command = [$binary, '--single-transaction', '--quick', '--routines', '--triggers', '--host='.($settings['host'] ?? '127.0.0.1'), '--port='.($settings['port'] ?? 3306), '--user='.($settings['username'] ?? ''), (string) ($settings['database'] ?? '')];
+        $transport = ! empty($settings['unix_socket'])
+            ? ['--protocol=SOCKET', '--socket='.$settings['unix_socket']]
+            : ['--host='.($settings['host'] ?? '127.0.0.1'), '--port='.($settings['port'] ?? 3306)];
+        $command = [$binary, '--single-transaction', '--quick', '--no-tablespaces', '--set-gtid-purged=OFF', '--routines', '--triggers', ...$transport, '--user='.($settings['username'] ?? ''), (string) ($settings['database'] ?? '')];
         $this->run($command, $destination, (string) ($settings['password'] ?? ''));
         $this->gzip($destination);
     }
@@ -24,8 +27,17 @@ class DatabaseDumpAdapter implements DatabaseDumper
     /** @param list<string> $command */
     protected function run(array $command, string $destination, string $password): void
     {
-        $descriptor = [1 => ['file', $destination, 'w'], 2 => ['pipe', 'w']];
-        $process = proc_open($command, $descriptor, $pipes, base_path(), ['MYSQL_PWD' => $password]);
+        $descriptor = [1 => ['file', $destination, 'wb'], 2 => ['pipe', 'w']];
+        $environment = ['MYSQL_PWD' => $password];
+        if (PHP_OS_FAMILY === 'Windows') {
+            foreach (['SystemRoot', 'WINDIR', 'TEMP', 'TMP'] as $key) {
+                $value = getenv($key);
+                if ($value !== false && $value !== '') {
+                    $environment[$key] = $value;
+                }
+            }
+        }
+        $process = proc_open($command, $descriptor, $pipes, base_path(), $environment);
         if (! is_resource($process)) {
             throw new RuntimeException('Unable to start mysqldump.');
         }
@@ -40,9 +52,24 @@ class DatabaseDumpAdapter implements DatabaseDumper
     protected function gzip(string $destination): void
     {
         $input = fopen($destination, 'rb');
-        $output = gzopen($destination.'.gz', 'wb9');
-        if (! is_resource($input) || $output === false) throw new RuntimeException('Unable to gzip database dump.');
-        while (! feof($input)) gzwrite($output, (string) fread($input, 1024 * 1024));
-        fclose($input); gzclose($output); rename($destination.'.gz', $destination);
+        // Fast compression keeps interactive backups within the HTTP request budget.
+        $output = gzopen($destination.'.gz', 'wb1');
+        if (! is_resource($input) || $output === false) {
+            throw new RuntimeException('Unable to gzip database dump.');
+        }
+        try {
+            while (! feof($input)) {
+                $chunk = fread($input, 1024 * 1024);
+                if ($chunk === false || gzwrite($output, $chunk) !== strlen($chunk)) {
+                    throw new RuntimeException('Unable to compress database dump.');
+                }
+            }
+        } finally {
+            fclose($input);
+            gzclose($output);
+        }
+        if (! rename($destination.'.gz', $destination)) {
+            throw new RuntimeException('Unable to finalize compressed dump.');
+        }
     }
 }

@@ -1,0 +1,11 @@
+# ERP2 Offline Warehouse Map V2 — R5 candidate
+Owner visual UAT: PASS (R4). This is a **candidate archive**, not an ERP1 or ERP2 deployment.
+Frontend-only adapter; original Laravel business routes, ACL, physical SKU resolver, gift handling and fulfillment mutation contracts remain authoritative.
+- Copy overlays into the matching Vben source tree ONLY after validating the source baseline hashes and coordinating all concurrent work packages.
+- Candidate gateway adds an exact GET-only product catalog route under existing isolated Vita authorization; preserves the existing database-backup route. Review/rebase the gateway against the active runtime before any deployment.
+- Keep the existing build flags and gateway authorization. Do not enable writes, production integration or external calls to obtain a green test.
+- Offline map uses Natural Earth v5.1.2 public domain country boundaries (https://www.naturalearthdata.com/) and GeoNames cities15000 (https://www.geonames.org/, CC BY 4.0 https://creativecommons.org/licenses/by/4.0/). Data transformed into SVG paths, normalized aliases, and per-country lookup files; original public files are not required at runtime. Reproducible generation: use data/countries.geojson from Natural Earth ne_110m_admin_0_countries.geojson and data/cities15000.txt from GeoNames, then run prepare-data.mjs in a staging copy with output paths adjusted to overrides/apps/web-antd/src/lib.
+- City and country reference points are estimates, not routing or shipping costs. No external maps calls, customer information or API secrets in this archive.
+- Local evidence: 69 original regression tests, 9 replacement contract tests, 5 replacement browser tests (synthetic), 7 gateway checks (including synthetic authorized upstream), 16 map/SFC checks, 8 map browser checks. Full isolated Vben build succeeded. Real employee session product catalog/stock and synthetic authenticated write + DB readback remain release gates.
+- manifest.json binds exact archived files and pre-archive runtime source baselines; the standalone archive CI checks integrity, geography and compile/contract behavior. It is not a full Vben monorepo build or live employee UAT.
+- No ERP1 production changes. No credentials, env files, customer records, or database backups included.

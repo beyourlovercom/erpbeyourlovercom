@@ -1,0 +1,25 @@
+{
+  "route": "/logistics/china",
+  "view": "pending",
+  "source": {
+    "root": "backend/resources/js",
+    "entries": [
+      "Pages/Logistics/Domestic/Index.vue"
+    ],
+    "aliases": {
+      "@/": ""
+    },
+    "maxFiles": 400
+  },
+  "target": {
+    "root": "frontend/apps/web-antd/src",
+    "entries": [
+      "views/erp/logistics-domestic.vue",
+      "views/erp/logistics-projection.vue"
+    ],
+    "aliases": {
+      "#/": ""
+    },
+    "maxFiles": 400
+  }
+}

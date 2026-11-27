@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 final class ProductProviderSnapshot extends Model
 {
-    protected $fillable = ['product_id', 'provider', 'connection_key', 'remote_product_id', 'permalink', 'provider_status', 'description_text', 'short_description_text', 'category_names', 'variation_count', 'provider_created_at', 'provider_modified_at', 'last_synced_at', 'payload_hash'];
+    protected $fillable = ['product_id', 'provider', 'connection_key', 'remote_product_id', 'provider_sku', 'permalink', 'provider_status', 'description_text', 'short_description_text', 'category_names', 'variation_count', 'provider_created_at', 'provider_modified_at', 'last_synced_at', 'payload_hash'];
 
     protected function casts(): array
     {

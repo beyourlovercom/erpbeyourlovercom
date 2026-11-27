@@ -172,7 +172,7 @@ final class OverseaBulkShipmentController extends Controller
             || $order->order_status?->value !== 'pending_shipment'
             || $shipment->shipment_status !== 'pending' || $shipment->shipped_at !== null) {
             $message = '订单已发货、已归档或不在待发货状态';
-        } elseif ($order->fulfillmentChildren()->exists()
+        } elseif ($order->activeFulfillmentChildren()->exists()
             || $order->externalReferences->contains('provider', 'historical_logistics')) {
             $message = '拆分或历史物流订单须单独核对';
         } elseif ($review?->status !== 'approved'

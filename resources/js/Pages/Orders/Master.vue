@@ -124,7 +124,7 @@ const columns: ColDef<GridListRow>[] = [
   gridColumn({ colId: 'recipient', field: 'recipient', headerName: '收件人', width: 152 }),
   gridColumn({ colId: 'email', field: 'email', headerName: '客户邮箱', width: 210 }),
   gridColumn({ colId: 'sku', field: 'sku', headerName: 'SKU', width: 225 }),
-  gridColumn({ colId: 'material_full_name', field: 'material_full_name', headerName: '物料全称', width: 350, hide: true, tooltipField: 'material_full_name' }),
+  gridColumn({ colId: 'material_full_name', field: 'material_full_name', headerName: '库存表名称', width: 350, hide: false, tooltipField: 'material_full_name' }),
   gridColumn({ colId: 'owner', field: 'owner', headerName: '负责人', width: 120 }),
   gridColumn({ colId: 'actions', field: 'id', headerName: '操作', width: 116,
     cellRenderer: GlobalGridCell, cellRendererParams: { mode: 'actions',

@@ -6,6 +6,7 @@ use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolCreateAutoProvisionService;
 use App\Modules\Kol\Application\KolDuplicateIdentity;
+use App\Modules\Kol\Application\KolHistoricalAccountBinding;
 use App\Modules\Kol\Application\AffiliateWp\CouponProvisioningService;
 use App\Modules\Kol\Application\KolEditAccountService;
 use App\Modules\Kol\Application\KolScope;
@@ -38,6 +39,7 @@ final class KolController
         private readonly KolEditAccountService $editAccount,
         private readonly CouponProvisioningService $couponSettings,
         private readonly UserUiPreferenceService $uiPreferences,
+        private readonly KolHistoricalAccountBinding $historical,
     ) {}
 
     public function index(Request $request): Response
@@ -77,7 +79,7 @@ final class KolController
         ]);
     }
 
-    public function create(Request $request): Response
+    public function create(Request $request): Response|JsonResponse
     {
         $user = $request->user();
 
@@ -89,7 +91,7 @@ final class KolController
 
         $canManageViews = KolScope::canManageViews($user);
 
-        return Inertia::render('Kol/Create', [
+        $props = [
             'ownerOptions' => $ownerOptions,
             'approvalManagerOptions' => $canManageViews ? $this->usersWithPermission('kol.approvals.manage') : [],
             'financeOwnerOptions' => $canManageViews ? $this->usersWithPermission('kol.payouts.manage') : [],
@@ -97,7 +99,12 @@ final class KolController
             'canManageViews' => $canManageViews,
             'onboardingToken' => OnboardingDraft::read($request, $request->query('onboarding_token')) ? $request->query('onboarding_token') : null,
             'onboardingSmartDraft' => OnboardingDraft::read($request, $request->query('onboarding_token'))['smart'] ?? null,
-        ]);
+        ];
+        if ($request->expectsJson() && ! $request->header('X-Inertia')) {
+            return response()->json($props)->header('Cache-Control', 'no-store, private');
+        }
+
+        return Inertia::render('Kol/Create', $props);
     }
 
     public function duplicateCheck(Request $request): JsonResponse
@@ -116,15 +123,18 @@ final class KolController
             'exists' => $existing !== null,
             'message' => $existing ? '已经存在这个网红，是否重复创建账号？' : null,
             'existing_url' => $canOpen ? route('kol.library.show', $existing) : null,
+            'historical_account' => ! $existing && KolScope::canOperate($request->user()) ? $this->historical->preview($username) : null,
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
         $token = $request->input('onboarding_token');
         if ($token !== null) {
             abort_unless(is_string($token) && OnboardingDraft::read($request, $token), 422, '订单草稿已失效，请重新发起。');
         }
+        $candidateUsername = $request->input('wordpress_username') ?: $request->input('display_name', '');
+        $historical = $request->boolean('reuse_existing_account') || (is_string($candidateUsername) && $this->historical->preview($candidateUsername) !== null);
         $data = $request->validate([
             'display_name' => 'required|string|max:255',
             'legal_name' => 'nullable|string|max:255',
@@ -142,11 +152,12 @@ final class KolController
             'notes' => 'nullable|string|max:5000',
             'contact_email' => 'required|email|max:255',
             'wordpress_username' => ['nullable', 'string'],
+            'reuse_existing_account' => 'sometimes|boolean',
             'affiliate_name' => ['nullable', 'string'],
             'affiliate_url_slug' => ['nullable', 'string'],
-            'wordpress_password' => ['required', 'string', 'min:7', 'regex:/^[A-Za-z]/', 'confirmed'],
-            'wordpress_password_confirmation' => 'required|string',
-            'affiliate_coupon_code' => 'required|string|max:255',
+            'wordpress_password' => [$historical ? 'nullable' : 'required', 'string', 'min:7', 'regex:/^[A-Za-z]/', 'confirmed'],
+            'wordpress_password_confirmation' => $historical ? 'nullable|string' : 'required|string',
+            'affiliate_coupon_code' => $historical ? 'nullable|string|max:255' : 'required|string|max:255',
             'contact_phone' => 'nullable|string|max:64',
             'contact_whatsapp' => 'nullable|string|max:64',
             'other_contact' => 'nullable|string|max:255',
@@ -208,13 +219,14 @@ final class KolController
         $profile = \App\Modules\Kol\Application\AffiliateWp\KolProvisioningService::resolveAffiliateProfile(
             $data['affiliate_name'] ?? null, $data['affiliate_url_slug'] ?? null, $username
         );
-        $password = (string) $data['wordpress_password'];
-        $couponCode = (string) $data['affiliate_coupon_code'];
+        $password = (string) ($data['wordpress_password'] ?? '');
+        $couponCode = (string) ($data['affiliate_coupon_code'] ?? '');
         $couponExpiryDate = $data['affiliate_coupon_expiry'] ?? null;
         $socialAccounts = $data['social_accounts'] ?? [];
         $salesPerformanceEntries = $data['sales_performance_entries'] ?? [];
         unset(
             $data['wordpress_username'],
+            $data['reuse_existing_account'],
             $data['affiliate_name'],
             $data['affiliate_url_slug'],
             $data['wordpress_password'],
@@ -236,6 +248,7 @@ final class KolController
             $profile['name'],
             $profile['slug'],
             $couponExpiryDate,
+            $historical,
         );
         unset($password);
 
@@ -247,8 +260,21 @@ final class KolController
                 : redirect()->route('kol.library.show', ['kol'=>$result['kol']->getKey(), 'onboarding_token'=>$token]);
         }
 
+        if ($request->expectsJson() && ! $request->header('X-Inertia')) {
+            return response()->json([
+                'success' => (bool) $result['success'],
+                'kol_id' => (int) $result['kol']->getKey(),
+                'historical_binding' => (bool) ($result['historical_binding'] ?? false),
+                'next_url' => parse_url($redirect->getTargetUrl(), PHP_URL_PATH),
+                'onboarding_pending' => is_string($token),
+                'message' => $result['success']
+                    ? (($result['historical_binding'] ?? false) ? 'KOL 已创建并绑定已有账号。' : 'KOL 已创建，自动开户完成。')
+                    : '档案已保存但开户未确认成功，请核查该档案，勿重复创建。',
+            ], $result['success'] ? 201 : 409)->header('Cache-Control', 'no-store, private');
+        }
+
         return $result['success']
-            ? $redirect->with('success', 'KOL 已创建；WordPress / AffiliateWP / Coupon 自动开通完成。')
+            ? $redirect->with('success', ($result['historical_binding'] ?? false) ? 'KOL 已创建并绑定已有 WordPress / AffiliateWP 账号及历史优惠码（如有）。' : 'KOL 已创建；WordPress / AffiliateWP / Coupon 自动开通完成。')
             : $redirect->with('error', '自动开户失败（KOL #'.$result['kol']->getKey().'）：'
                 .($result['failure_summary'] ?? 'WordPress / AffiliateWP / Coupon 未全部验证成功')
                 .'。已通知相关人员；请在本页打开 WordPress 核查，禁止重复创建。');

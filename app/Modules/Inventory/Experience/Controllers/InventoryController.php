@@ -5,6 +5,8 @@ namespace App\Modules\Inventory\Experience\Controllers;
 use App\Modules\Identity\Application\AuthorizationKeys;
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\InventoryMatrixService;
+use App\Modules\Inventory\Application\InventoryAvailabilityProjection;
+use App\Modules\Inventory\Application\WarehouseLastReadStockService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseOverdueInventoryService;
 use App\Modules\Shell\Application\GlobalGridPilot;
@@ -16,7 +18,7 @@ use Inertia\Response;
 
 final class InventoryController
 {
-    public function __construct(private readonly InventoryService $inventory, private readonly WarehouseOverdueInventoryService $overdue) {}
+    public function __construct(private readonly InventoryService $inventory, private readonly WarehouseOverdueInventoryService $overdue, private readonly InventoryAvailabilityProjection $availability, private readonly WarehouseLastReadStockService $lastReadStock) {}
 
     public function dashboard(): Response
     {
@@ -41,15 +43,20 @@ final class InventoryController
             return redirect()->route('inventory.products', $query);
         }
 
+        $available = $this->availability->forRows($page->getCollection());
+        $morePlus = $page->getCollection()->first(fn ($i) => strtoupper((string) $i->warehouse->code) === 'US-LA')?->warehouse;
+        $references = $morePlus ? $this->lastReadStock->forWarehouse($morePlus) : [];
         return Inertia::render('Inventory/Products', [
             'rows' => $page->through(fn ($i) => [
                 'id' => $i->id, 'warehouse' => ['slug' => $i->warehouse->slug, 'public_slug' => $this->inventory->warehousePublicSlug($i->warehouse), 'name' => $i->warehouse->name],
                 'product' => ['id' => $i->product->id, 'sku' => $i->product->sku, 'name' => $i->product->name, 'material_full_name' => $i->product->material_full_name],
                 'inbound_at' => $i->inbound_at?->format('Y-m-d'), 'stay_days' => $i->stay_days, 'location' => $i->location,
-                'quantity_on_hand' => $i->quantity_on_hand, 'quantity_reserved' => $i->quantity_reserved, 'quantity_available' => $i->quantity_available,
-                'stock_status' => InventoryStockStatus::classify((int) $i->quantity_available), 'stock_status_label' => InventoryStockStatus::label(InventoryStockStatus::classify((int) $i->quantity_available)),
+                'quantity_on_hand' => $i->quantity_on_hand, 'quantity_reserved' => $i->quantity_reserved, 'quantity_available' => $available[$i->id], 'provider_stock_synced_at' => $i->provider_stock_synced_at?->toIso8601String(),
+                'provider_sync_status' => strtoupper((string) $i->warehouse->code) === 'US-LA'
+                    ? ($references[$i->product_id]->last_read_stock_status ?? 'not_read') : null,
+                'stock_status' => InventoryStockStatus::classify($available[$i->id]), 'stock_status_label' => InventoryStockStatus::label(InventoryStockStatus::classify($available[$i->id])),
                 'standard_qoh' => $i->standard_qoh, 'expected_restock_qty' => $i->expected_restock_qty,
-                'replenishment' => $this->inventory->replenishmentMetrics($i),
+                'replenishment' => $this->inventory->replenishmentMetrics($i, $available[$i->id]),
             ])->toArray(),
             'warehouses' => $this->inventory->warehouses(), 'filters' => ['search' => $request->input('search'), 'warehouse' => $canonicalWarehouse, 'stock_status' => $request->input('stock_status')],
             'matrixRows' => fn () => $matrix->rows(),

@@ -30,7 +30,7 @@ final class OverseaManualShipmentService
             && ! $order->isOperationallyArchived() && ! $order->trashed() && $order->archived_at === null
             && $shipment?->shipment_status === 'pending' && $shipment->shipped_at === null, 409,
             '订单不在允许确认发货的待发货状态。');
-        abort_if($order->fulfillmentChildren()->exists()
+        abort_if($order->activeFulfillmentChildren()->exists()
             || $order->externalReferences->contains('provider', 'historical_logistics'), 409,
             '已拆分或历史物流订单不能直接确认发货。');
         abort_unless($shipment->overseaReview?->status === 'approved'

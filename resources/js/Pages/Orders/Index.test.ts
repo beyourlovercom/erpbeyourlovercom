@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
 
@@ -9,6 +9,12 @@ vi.mock('@inertiajs/vue3', () => ({
   router: { get, post, delete: del },
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' } }))
+
+vi.mock('../../Components/DataGrid/GlobalGrid.vue', () => ({ __esModule: true, default: {
+  name: 'MockGlobalGrid', props: ['enableSelection', 'selectedOrderIds'],
+  emits: ['selection-change'],
+  template: '<div data-testid="mock-grid"><slot name="footer-left" /></div>',
+} }))
 
 const props = {
   orderKind: 'all',
@@ -121,6 +127,28 @@ describe('Orders Saved Views', () => {
     }), { preserveState: true, replace: true })
     expect(get.mock.calls.at(-1)?.[1]).not.toHaveProperty('oms_grid')
     modern.unmount()
+  })
+
+  it('downloads only the current-page selected collaboration orders and clears on pagination', async () => {
+    const row = (id: number) => ({ id, erp_order_id: 'CY'+id+'-007', external_order_number: 'EXT-'+id, internal_order_number: 'INT-'+id,
+      source_label: '合作订单', order_date: '2026-11-26', order_status_label: '待发货' })
+    const data = [row(11), row(12), row(13)]
+    const wrapper = mount(Index, { props: { ...props, orderScope: 'collaboration', customerGlobalGridEnabled: true, filters: { view: 'all', partner_id: '1' }, orders: { ...props.orders, data, total: 3 } } })
+    await flushPromises()
+    const grid = wrapper.findComponent({ name: 'MockGlobalGrid' })
+    expect(grid.props('enableSelection')).toBe(true)
+    expect(wrapper.find('[data-testid="download-collaboration-selected"]').exists()).toBe(false)
+    grid.vm.$emit('selection-change', [{ id: 11 }, { id: 13 }, { id: 13 }, { id: 999 }])
+    await flushPromises()
+    const selected = wrapper.get('[data-testid="download-collaboration-selected"]')
+    expect(selected.text()).toBe('下载已选 2 单')
+    const url = new URL(selected.attributes('href')!, 'https://erp.example')
+    expect(url.pathname).toBe('/orders/collaboration/export')
+    expect(url.searchParams.getAll('order_ids[]')).toEqual(['11','13'])
+    expect(url.searchParams.get('partner_id')).toBe('1')
+    await wrapper.setProps({ orders: { ...props.orders, data, current_page: 2, total: 3 } })
+    expect(wrapper.find('[data-testid="download-collaboration-selected"]').exists()).toBe(false)
+    wrapper.unmount()
   })
 
   it('shows just the latest order remark in red in the legacy list', () => {

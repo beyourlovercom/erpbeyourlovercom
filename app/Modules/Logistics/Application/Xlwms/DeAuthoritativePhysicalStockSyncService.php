@@ -61,8 +61,8 @@ final class DeAuthoritativePhysicalStockSyncService
                 ->where('warehouse_id', $warehouse->id)
                 ->orderByDesc('updated_at')->orderByDesc('id')->first();
             if (! $latest || (int) $latest->id !== $snapshotId
-                || ! $snapshot->updated_at || $snapshot->updated_at->isFuture()
-                || $snapshot->updated_at->diffInSeconds(now()) > 150
+                || ! $snapshot->fetched_at || $snapshot->fetched_at->isFuture()
+                || $snapshot->fetched_at->diffInSeconds(now()) > 150
                 || $snapshot->wh_code !== 'Hannover'
                 || ! preg_match('/^[0-9a-f]{64}$/D', (string) $snapshot->checksum)) {
                 throw new RuntimeException('DE_PHYSICAL_SNAPSHOT_NOT_FRESH_OR_WRONG_WAREHOUSE');
@@ -72,13 +72,27 @@ final class DeAuthoritativePhysicalStockSyncService
             }
 
             $rows = $snapshot->rows()->get();
+            if ($rows->count() !== (int) $snapshot->provider_sku_count
+                || ($snapshot->summary['v2'] ?? false) !== true
+                || $snapshot->errors) {
+                throw new RuntimeException('DE_PHYSICAL_INCOMPLETE_PROVIDER_COVERAGE');
+            }
             $excluded = array_fill_keys(array_map(
                 static fn (string $s): string => mb_strtolower(trim($s), 'UTF-8'),
                 (array) config('xlwms.de_excluded_inventory_skus', [])
             ), true);
             $provider = [];
             $skipped = [];
-            $productIds = [];
+            $quarantined = [];
+            $mappedRows = 0;
+            $productCounts = [];
+            foreach ($rows as $row) {
+                if ($row->oms_total !== null && (int) $row->product_id > 0
+                    && ! isset($excluded[mb_strtolower(trim((string) $row->provider_sku), 'UTF-8')])) {
+                    $id = (int) $row->product_id;
+                    $productCounts[$id] = ($productCounts[$id] ?? 0) + 1;
+                }
+            }
             $catalogOnly = 0;
             foreach ($rows as $row) {
                 $sku = trim((string) $row->provider_sku);
@@ -91,26 +105,30 @@ final class DeAuthoritativePhysicalStockSyncService
                     $catalogOnly++;
                     continue;
                 }
-                if (! in_array($row->resolution_status, ['matched', 'blocked'], true)
-                    || $row->oms_total === null || $row->oms_available === null
-                    || $row->oms_locked === null || (int) $row->oms_total < 0
-                    || (int) $row->oms_available < 0 || (int) $row->oms_locked < 0
-                    || (int) $row->oms_total !== (int) $row->oms_available + (int) $row->oms_locked
-                    || (int) $row->product_id <= 0) {
-                    throw new RuntimeException('DE_PHYSICAL_SKU_NOT_VERIFIED:'.$sku);
+                // Invalid quantities are source-integrity failures, not SKU identity issues.
+                if ($row->oms_total === null || $row->oms_available === null || $row->oms_locked === null
+                    || (int) $row->oms_total < 0 || (int) $row->oms_available < 0 || (int) $row->oms_locked < 0
+                    || (int) $row->oms_total !== (int) $row->oms_available + (int) $row->oms_locked) {
+                    throw new RuntimeException('DE_PHYSICAL_INVALID_SOURCE_STOCK:'.$sku);
+                }
+                if (in_array($row->resolution_status, ['matched', 'blocked'], true) && (int) $row->product_id > 0) {
+                    $mappedRows++;
                 }
                 $resolved = $this->identity->resolve($sku);
-                if (($resolved['status'] ?? null) !== 'resolved'
-                    || (int) $resolved['product_id'] !== (int) $row->product_id) {
-                    throw new RuntimeException('DE_PHYSICAL_SKU_IDENTITY_CHANGED:'.$sku);
+                $id = (int) $row->product_id;
+                $reason = match (true) {
+                    ! in_array($row->resolution_status, ['matched', 'blocked'], true) || $id <= 0 => 'OMS_SKU_NOT_VERIFIED_ERP_IDENTITY',
+                    ($resolved['status'] ?? null) !== 'resolved' || (int) $resolved['product_id'] !== $id => 'OMS_SKU_IDENTITY_CHANGED',
+                    ($productCounts[$id] ?? 0) !== 1 => 'OMS_MULTIPLE_SKUS_ONE_ERP_PRODUCT',
+                    default => null,
+                };
+                if ($reason !== null) {
+                    $quarantined[] = ['sku' => $sku, 'product_id' => $id ?: null, 'reason' => $reason];
+                    continue;
                 }
-                if (isset($productIds[$row->product_id])) {
-                    throw new RuntimeException('DE_PHYSICAL_DUPLICATE_ERP_PRODUCT');
-                }
-                $productIds[$row->product_id] = true;
                 $provider[] = $row;
             }
-            if ($provider === [] || count($provider) !== (int) $snapshot->mapped_sku_count) {
+            if ($mappedRows !== (int) $snapshot->mapped_sku_count) {
                 throw new RuntimeException('DE_PHYSICAL_INCOMPLETE_PROVIDER_COVERAGE');
             }
 
@@ -119,7 +137,8 @@ final class DeAuthoritativePhysicalStockSyncService
                 $existing = WarehouseInventory::withTrashed()->where('warehouse_id', $warehouse->id)
                     ->where('product_id', $row->product_id)->lockForUpdate()->first();
                 if ($existing?->trashed()) {
-                    throw new RuntimeException('DE_PHYSICAL_STOCK_SOFT_DELETED:'.$row->provider_sku);
+                    $quarantined[] = ['sku' => $row->provider_sku, 'product_id' => (int) $row->product_id, 'reason' => 'DE_PHYSICAL_STOCK_SOFT_DELETED'];
+                    continue;
                 }
                 $before = $existing?->quantity_on_hand;
                 $beforeAvailable = $existing?->provider_available_quantity;
@@ -141,10 +160,11 @@ final class DeAuthoritativePhysicalStockSyncService
             $result = [
                 'warehouse' => 'DE', 'mode' => $apply ? 'apply' : 'dry_run',
                 'snapshot_id' => $snapshotId, 'checksum' => $snapshot->checksum,
-                'verified_skus' => count($provider), 'excluded_skus' => $skipped,
+                'verified_skus' => count($plan), 'excluded_skus' => $skipped,
+                'quarantined_skus' => $quarantined, 'quarantined_sku_count' => count($quarantined),
                 'catalog_only_skus' => $catalogOnly, 'changed_skus' => $changes,
-                'unchanged_skus' => count($provider) - $changes,
-                'oms_total' => array_sum(array_map(static fn ($x): int => (int) $x->oms_total, $provider)),
+                'unchanged_skus' => count($plan) - $changes,
+                'oms_total' => array_sum(array_column($plan, 'oms_qoh')),
                 'historical_ledger_blockers' => (int) $snapshot->blocked_sku_count,
                 'stock_updated' => false,
             ];
@@ -203,10 +223,13 @@ final class DeAuthoritativePhysicalStockSyncService
             $summary = (array) ($snapshot->summary ?? []);
             $summary['de_authoritative_physical_v1'] = true;
             $summary['de_authoritative_physical_applied_at'] = now()->toIso8601String();
-            $summary['de_authoritative_physical_sku_count'] = count($provider);
+            $summary['de_authoritative_physical_sku_count'] = count($plan);
+            // Exact per-SKU write proof, distinct from FIFO/V2 apply evidence.
+            $summary['de_physical_applied_product_ids'] = array_column($plan, 'product_id');
+            $summary['de_physical_quarantined_skus'] = $quarantined;
             $summary['de_authoritative_physical_change_count'] = $changes;
             $snapshot->forceFill(['summary' => $summary])->save();
-            $result['stock_updated'] = true;
+            $result['stock_updated'] = $plan !== [];
             return $result;
         }, 3);
     }

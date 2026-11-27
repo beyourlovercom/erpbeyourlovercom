@@ -19,6 +19,7 @@ import { gridColumn, type GridListRow } from '../../../Components/DataGrid/useGl
 const GlobalGrid = defineAsyncComponent(() => import('../../../Components/DataGrid/GlobalGrid.vue'))
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../../Composables/useAccountGridPreferences'
 import { publishGlobalFeedback } from '../../../lib/globalFeedback'
+import { downloadLogisticsExport } from '../../../lib/downloadLogisticsExport'
 import { resolveWarehousePortal } from '../../../lib/warehousePortal'
 
 type WarehouseOption = { key:string; id:number; code:string; label:string; carrier:string|null; url:string }
@@ -75,7 +76,7 @@ const columnDefinitions: GridColumnDefinition<ColumnKey>[] = [
   { key:'recipient', label:'收件人', defaultVisible:true },
   { key:'country', label:'国家', defaultVisible:true },
   { key:'items', label:'SKU / 数量', defaultVisible:true },
-  { key:'material_full_name', label:'物料全称', defaultVisible:false },
+  { key:'material_full_name', label:'库存表名称', defaultVisible:true },
 ]
 type TrackingImportRow = { row:number; order_id:number|null; order_number:string; tracking_number:string; carrier:string|null; shipped_at:string; shipped_time_source:'provider'|'apply'; provider_order_reference:string|null; provider_service:string|null; provider_status:string|null; status:'apply'|'noop'|'blocked'; message:string }
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
@@ -1475,7 +1476,7 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
   gridColumn({colId:'recipient',field:'recipient_name',headerName:'收件人',width:140}),
   gridColumn({colId:'country',field:'country',headerName:'国家',width:106}),
   gridColumn({colId:'sku',field:'sku',headerName:'SKU',width:210,tooltipField:'sku'}),
-  gridColumn({colId:'material_full_name',field:'material_full_name',headerName:'物料全称',width:300,hide:true,tooltipField:'material_full_name'}),
+  gridColumn({colId:'material_full_name',field:'material_full_name',headerName:'库存表名称',width:300,hide:false,tooltipField:'material_full_name'}),
   gridColumn({colId:'quantity',field:'quantity',headerName:'数量',width:95}),
   gridColumn({colId:'sync',field:'tracking_sync_status',headerName:'官网同步',width:126}),
   gridColumn({colId:'shipped_at',field:'shipped_at',headerName:'发货时间',width:188,sortable:true}),
@@ -1577,11 +1578,11 @@ const compactPages = computed<(number|string)[]>(() => {
           <template v-if="warehouse && view === 'pending'">
           <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button" :disabled="refreshBusy" @click="refreshOmsStatuses">{{refreshBusy?'查询中…':'刷新仓库状态'}}</button>
           <a v-if="warehouseKey === 'us-3sm'" class="file-button file-link" href="https://oms.xlwms.com/warehouse/packet" target="_blank" rel="noopener noreferrer">查看仓库草稿箱</a>
-          <a v-if="gridEnabled && exportSelection.length" class="file-button file-link"
+          <a @click.prevent="downloadLogisticsExport" v-if="gridEnabled && exportSelection.length" class="file-button file-link"
             :href="`${basePath}/export?${selectedExportQuery}`" data-testid="download-oversea-selected">⇩ 下载已选 {{ exportSelection.length }} 单</a>
-          <a v-if="warehouseKey==='us-3sm' && canOperate" class="file-button file-link"
+          <a @click.prevent="downloadLogisticsExport" v-if="warehouseKey==='us-3sm' && canOperate" class="file-button file-link"
             :href="`${basePath}/export`">⇩ 批量下载订单文件</a>
-          <a v-else class="file-button file-link" :href="`${basePath}/export`">⇩ 下载仓库下单表</a>
+          <a @click.prevent="downloadLogisticsExport" v-else class="file-button file-link" :href="`${basePath}/export`">⇩ 下载仓库下单表</a>
           <input ref="trackingFileInput" class="hidden-file" type="file" accept=".xlsx,.csv,.txt" @change="previewTrackingFile" />
           <button v-if="canOperate && canUploadTrackingFile" type="button" class="file-button primary" @click="chooseTrackingFile">⇧ 上传物流回传表</button>
           </template>

@@ -17,6 +17,6 @@ final class WarehouseInventory extends Model
     protected $appends = ['quantity_available','stay_days'];
     public function warehouse(): BelongsTo { return $this->belongsTo(Warehouse::class); }
     public function product(): BelongsTo { return $this->belongsTo(\App\Modules\Products\Infrastructure\Models\Product::class); }
-    protected function quantityAvailable(): Attribute { return Attribute::get(fn () => $this->provider_available_quantity !== null ? max(0, (int) $this->provider_available_quantity) : max($this->quantity_on_hand - $this->quantity_reserved, 0)); }
+    protected function quantityAvailable(): Attribute { return Attribute::get(fn () => $this->factory_native_status === 'held' ? 0 : ($this->provider_available_quantity !== null ? max(0, (int) $this->provider_available_quantity) : max($this->quantity_on_hand - $this->quantity_reserved, 0))); }
     protected function stayDays(): Attribute { return Attribute::get(fn () => $this->inbound_at ? $this->inbound_at->startOfDay()->diffInDays(now()->startOfDay()) : null); }
 }

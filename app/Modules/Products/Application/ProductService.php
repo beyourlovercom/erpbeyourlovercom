@@ -86,7 +86,7 @@ final class ProductService
                 continue;
             }
             $bsku = $cell($row, $headerMap, 'SKU');
-            if ($bsku === null) {
+            if ($bsku === null || ProductCatalogExclusion::excludes($bsku)) {
                 continue;
             }
             $batchSkuToWooId[$bsku] = $bwooId;
@@ -111,6 +111,9 @@ final class ProductService
                 continue;
             }
 
+            if (ProductCatalogExclusion::excludes($sku)) {
+                continue;
+            }
             if ($sku === null) {
                 if ($type === 'variation') {
                     $variationRows[] = $entry;  // defer
@@ -217,6 +220,10 @@ final class ProductService
             $parentProduct = $this->resolveParent($parentRaw, $connectionKey);
             $inBatch = $parentProduct === null && $parentRaw !== null && $this->parentIsInBatch($parentRaw, $batchSkuToWooId, $batchWooIdToSku);
 
+            if (ProductCatalogExclusion::excludes($parentRaw) || ProductCatalogExclusion::excludes($parentProduct?->sku)) {
+                $skippedVariations++;
+                continue;
+            }
             if ($parentProduct !== null) {
                 // Parent already in DB — store product_id directly.
                 $candidateRows[] = [
@@ -326,6 +333,9 @@ final class ProductService
     /** @param list<array<string, mixed>> $candidates */
     public function confirm(array $candidates): ProductImportResult
     {
+        $candidates = array_values(array_filter($candidates, static fn (array $row): bool =>
+            ! ProductCatalogExclusion::excludes($row['sku'] ?? null)
+            && ! ProductCatalogExclusion::excludes($row['_parent_raw'] ?? null)));
         $inserted = $updated = $unchanged = 0;
         DB::transaction(function () use ($candidates, &$inserted, &$updated, &$unchanged): void {
             // Phase 1: create/update canonical Products and write their external references.
@@ -356,6 +366,9 @@ final class ProductService
                 }
 
                 $product = $byExtRef ?? $byWoo ?? $bySku;
+                if (ProductCatalogExclusion::excludes($product?->sku)) {
+                    throw new \RuntimeException('Confirm blocked: excluded catalogue SKU');
+                }
 
                 if ($product === null) {
                     $skuMatchKey = SkuMatchKey::compute($sku);
@@ -407,6 +420,9 @@ final class ProductService
                     $parentId = (int) $parent->getKey();
                 }
 
+                if (ProductCatalogExclusion::excludes($this->products->findById($parentId)?->sku)) {
+                    continue;
+                }
                 $this->externalRefs->upsert($parentId, 'woocommerce', $connectionKey, $variationWooId, 'variation');
             }
         });

@@ -71,6 +71,14 @@ final class InventoryMatrixTest extends TestCase
         $this->assertSame(['on_hand'=>51,'transit'=>30,'pending'=>0],$this->row($product)['warehouses']['US-LA']);
     }
 
+    public function test_excluded_catalog_sku_is_hidden_even_when_historical_stock_remains(): void
+    {
+        $warehouse = Warehouse::where('code','US-NY')->firstOrFail();
+        $product = Product::create(['sku'=>'00W-MATRIX','name'=>'Retired','is_active'=>false]);
+        WarehouseInventory::create(['warehouse_id'=>$warehouse->id,'product_id'=>$product->id,'quantity_on_hand'=>3,'quantity_reserved'=>0]);
+        $this->assertNull(collect(app(InventoryMatrixService::class)->rows())->firstWhere('id',$product->id));
+    }
+
     private function row(Product $product): array
     {
         return collect(app(InventoryMatrixService::class)->rows())->firstWhere('id',$product->id);

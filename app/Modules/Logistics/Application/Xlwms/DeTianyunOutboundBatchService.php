@@ -23,7 +23,7 @@ final class DeTianyunOutboundBatchService
     /** @param list<int> $orderIds
      * @return array<string,mixed>
      */
-    public function preview(array $orderIds): array
+    public function preview(array $orderIds, array $recovery = []): array
     {
         $this->validateSelection($orderIds);
         $orders = Order::query()->eligibleForOperations()
@@ -31,8 +31,7 @@ final class DeTianyunOutboundBatchService
                 'shipment.carrierService', 'shipment.overseaReview'])
             ->whereIn('id', $orderIds)->get()->keyBy('id');
         $previousAttempts = XlwmsDispatchAttempt::query()
-            ->whereIn('order_id', $orderIds)->pluck('order_id')->map(fn ($id) => (int) $id)->all();
-        $alreadyAttempted = array_fill_keys($previousAttempts, true);
+            ->whereIn('order_id', $orderIds)->get()->keyBy('order_id');
         sort($orderIds, SORT_NUMERIC);
         $items = [];
         $production = app()->environment('production');
@@ -54,7 +53,12 @@ final class DeTianyunOutboundBatchService
                     ['out_of_stock', 'pending_allocation', ...OrderManualHoldStatus::CODES], true)) {
                     $blockers[] = 'DE_ORDER_WORKFLOW_BLOCKED';
                 }
-                if (isset($alreadyAttempted[$id])) {
+                $prior = $previousAttempts->get($id);
+                if (isset($recovery[$id])) {
+                    if (! $prior || ! DeTianyunPreflightRecovery::eligible($prior, $order, (int) $recovery[$id])) {
+                        $blockers[] = 'DE_PREFLIGHT_RECOVERY_NOT_SAFE';
+                    }
+                } elseif ($prior) {
                     $blockers[] = 'DE_EXISTING_PROVIDER_ATTEMPT';
                 }
                 // A local simulation checks Product OS identity, approved review,
@@ -72,6 +76,7 @@ final class DeTianyunOutboundBatchService
                 'payload_hash' => $payloadHash,
                 'ready' => $blockers === [],
                 'blockers' => $blockers,
+                ...(isset($recovery[$id]) ? ['recovery_attempt_id' => (int) $recovery[$id]] : []),
             ];
         }
         $eligible = array_values(array_filter($items, static fn (array $item): bool => $item['ready']));
@@ -90,6 +95,28 @@ final class DeTianyunOutboundBatchService
     /** @param list<int> $orderIds */
     public function start(int $operatorId, string $expectedFingerprint, array $orderIds): string
     {
+        return $this->startScoped($operatorId, $expectedFingerprint, $orderIds, []);
+    }
+
+    /** Internal operator-authorized recovery; never used by ordinary batch endpoints. */
+    public function startRecovery(int $operatorId, int $orderId, int $attemptId, string $confirmation): string
+    {
+        $actor = \App\Models\User::query()->find($operatorId);
+        if (! app()->environment('production') || ! config('xlwms.de_operator_batch_enabled', false)
+            || ! $actor?->is_active
+            || ! app(\App\Modules\Logistics\Application\LogisticsExecutionAccess::class)->allows($actor)
+            || $confirmation !== 'RECOVER_DE_PREFLIGHT_'.$orderId.'_'.$attemptId) {
+            throw new RuntimeException('DE_PREFLIGHT_RECOVERY_NOT_AUTHORIZED');
+        }
+        $recovery = [$orderId => $attemptId];
+        $preview = $this->preview([$orderId], $recovery);
+        if ($preview['count'] !== 1) throw new RuntimeException('DE_PREFLIGHT_RECOVERY_NOT_SAFE');
+
+        return $this->startScoped($operatorId, $preview['fingerprint'], [$orderId], $recovery);
+    }
+
+    private function startScoped(int $operatorId, string $expectedFingerprint, array $orderIds, array $recovery): string
+    {
         $production = app()->environment('production');
         if (! app()->environment('local', 'testing')
             && ! ($production && (bool) config('xlwms.de_order_batch_live_enabled', false)
@@ -102,7 +129,7 @@ final class DeTianyunOutboundBatchService
             throw new RuntimeException('DE_BATCH_LOCKED');
         }
         try {
-            $preview = $this->preview($orderIds);
+            $preview = $this->preview($orderIds, $recovery);
             if ($preview['count'] < 1
                 || ! hash_equals($preview['fingerprint'], $expectedFingerprint)) {
                 throw new RuntimeException('DE_BATCH_STALE');
@@ -125,6 +152,7 @@ final class DeTianyunOutboundBatchService
                         'batch_id' => $id, 'order_id' => $item['order_id'],
                         'order_no' => $item['order_no'], 'payload_hash' => $item['payload_hash'],
                         'status' => 'queued', 'created_at' => now(), 'updated_at' => now(),
+                        'result_code' => isset($item['recovery_attempt_id']) ? DeTianyunPreflightRecovery::PREFIX.$item['recovery_attempt_id'] : null,
                     ]);
                 }
             });

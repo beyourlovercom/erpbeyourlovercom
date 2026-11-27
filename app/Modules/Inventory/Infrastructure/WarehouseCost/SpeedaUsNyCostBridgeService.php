@@ -129,7 +129,7 @@ final class SpeedaUsNyCostBridgeService
     {
         if ($ref==='') return ['decision'=>'review','reason_code'=>'source_order_reference_missing','shipment_id'=>null,'order_id'=>null];
         if (preg_match('/^(?:KOL|K\d)/i',$ref)===1) return ['decision'=>'excluded','reason_code'=>'source_marked_kol','shipment_id'=>null,'order_id'=>null];
-        if (preg_match('/^C(\d+)(?:-007([A-Z])?|([A-Z]))?$/D',$ref,$m)!==1) return ['decision'=>'review','reason_code'=>'source_order_unmapped','shipment_id'=>null,'order_id'=>null];
+        if (preg_match('/^C(\d+)(?:-007([A-Z](?:-(?:[2-9]|[1-9][0-9]))?)?|([A-Z](?:-(?:[2-9]|[1-9][0-9]))?))?$/D',$ref,$m)!==1) return ['decision'=>'review','reason_code'=>'source_order_unmapped','shipment_id'=>null,'order_id'=>null];
 
         $orders=$orderMap[$m[1]]??[];
         if (count($orders)===0) return ['decision'=>'review','reason_code'=>'source_order_not_found','shipment_id'=>null,'order_id'=>null];
@@ -152,7 +152,7 @@ final class SpeedaUsNyCostBridgeService
 
     private function referenceConflicts(string $ref,string $erpOrderId): bool
     {
-        if (preg_match('/^C(\d+)(?:-007[A-Z]?|[A-Z])?$/D',$ref,$r)!==1) return false;
+        if (preg_match('/^C(\d+)(?:-007(?:[A-Z](?:-(?:[2-9]|[1-9][0-9]))?)?|[A-Z](?:-(?:[2-9]|[1-9][0-9]))?)?$/D',$ref,$r)!==1) return false;
         return preg_match('/(?|^C(\d+)-007$|-c(\d+)$)/iD',$erpOrderId,$e)===1 && $r[1]!==$e[1];
     }
 

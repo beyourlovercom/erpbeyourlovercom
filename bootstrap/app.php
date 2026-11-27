@@ -71,6 +71,18 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             $status = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 500;
+
+            // Preserve HTTP status, but provide an explicit business-safe feedback contract.
+            // A normal Inertia location/redirect response is not an exception and never enters here.
+            if ($status === 409 && $request->header('X-Inertia') && ! $request->expectsJson()) {
+                $message = $exception->getMessage();
+                // Only user-facing Chinese business reasons; never expose a trace, SQL, or raw HTML.
+                $safe = preg_match('/\\p{Han}/u', $message)
+                    && ! preg_match('/[<>]|SQLSTATE|password|secret|token|stack trace|\\bselect\\b/i', $message)
+                    ? mb_substr($message, 0, 500)
+                    : '业务状态与提交条件不一致，操作未确认。';
+                return response()->json(['erp_feedback' => true, 'message' => $safe], 409);
+            }
             if ($request->expectsJson() || ! $request->header('X-Inertia') || config('app.debug') || $status < 500) {
                 return null;
             }
@@ -86,7 +98,21 @@ return Application::configure(basePath: dirname(__DIR__))
             return $response;
         });
         $exceptions->respond(function (\Symfony\Component\HttpFoundation\Response $response): \Symfony\Component\HttpFoundation\Response {
-            $requestId = request()->attributes->get('erp_request_id');
+            $request = request();
+            $status = $response->getStatusCode();
+            $requestId = $request->attributes->get('erp_request_id');
+            // A direct document visit has no existing shell to preserve.
+            // Use a standalone Inertia view with the same feedback island, never a fake success.
+            if (in_array($status, [403, 404, 409], true)
+                && $request->isMethod('GET') && ! $request->expectsJson()
+                && ! $request->is('api/*') && ! $request->header('X-Inertia')
+                && str_contains((string) $request->header('Accept'), 'text/html')) {
+                $response = \Inertia\Inertia::render('Errors/HttpFeedback', [
+                    'status' => $status, 'errorId' => (string) $requestId,
+                ])->toResponse($request);
+                $response->setStatusCode($status);
+                $response->headers->set('Cache-Control', 'no-store, private');
+            }
             if (is_string($requestId) && $requestId !== '') {
                 $response->headers->set((string) config('observability.request_id_header'), $requestId);
             }

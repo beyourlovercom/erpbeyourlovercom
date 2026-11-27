@@ -38,7 +38,7 @@ final class InventoryMatrixService
 
         $blank = array_fill_keys(self::WAREHOUSE_CODES, ['on_hand'=>null, 'transit'=>0, 'pending'=>0]);
 
-        return Product::query()->whereNotNull('sku')->where('sku', '<>', '')
+        return Product::query()->businessCatalog()->whereNotNull('sku')->where('sku', '<>', '')
             ->where(fn ($q) => $q->where('is_active', true)->orWhereIn('id', $totals->keys()->all()))
             ->orderBy('sku')->orderBy('id')->get(['id','sku','name','material_full_name'])
             ->map(function (Product $product) use ($totals, $warehouses, $blank): array {

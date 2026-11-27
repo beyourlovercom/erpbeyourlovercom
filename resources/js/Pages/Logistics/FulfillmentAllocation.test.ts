@@ -283,9 +283,30 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(document.body.textContent).toContain('中国工厂')
     expect(document.body.textContent).toContain('采用推荐并提交分仓')
     expect(document.body.textContent).toContain('估算成本：¥83.00')
-    expect(document.body.textContent).toContain('地图区域划分')
+    expect(document.body.textContent).toContain('仓库地理参考')
     expect(document.body.textContent).toContain('90001')
     expect(document.body.textContent).toContain('美西区')
+  })
+
+  it('shows the read-only offline world map for a non-US order without changing allocation actions', async () => {
+    const order = { ...manualOrder, country:'DE', city:'Berlin', province_state:'BE', postal_code:'10115', us_fulfillment_zone:null }
+    const wrapper = mountPage({ ...props, orders:{ ...props.orders, data:[order], total:1 } })
+    await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
+    await flushPromises()
+    const map = document.body.querySelector('[data-testid="offline-warehouse-map"]')
+    expect(map).toBeTruthy()
+    expect(map?.textContent).toContain('全球')
+    expect(map?.textContent).toContain('收件区域')
+    expect(map?.textContent).toContain('最近仓')
+    expect(map?.textContent).toContain('美东纽约')
+    expect(map?.textContent).toContain('德国天运')
+    expect(map?.textContent).toContain('直线距离估算')
+    expect(document.body.textContent).toContain('确认人工分配并提交')
+    const region = Array.from(map!.querySelectorAll('button')).find(b => b.textContent==='收件区域')!
+    region.click()
+    await flushPromises()
+    expect(region.getAttribute('aria-pressed')).toBe('true')
+    expect(map?.querySelector('svg')?.getAttribute('viewBox')).not.toBe('0 0 1000 500')
   })
 
   it('keeps warehouse and carrier controls at the top and previews A/B grouping', async () => {
@@ -793,6 +814,55 @@ describe('Actual fulfillment product selection', () => {
     for(const call of fetchMock.mock.calls.slice(2)){
       expect(JSON.parse(call[1].body).assignments[0]).toMatchObject({order_item_id:original.id,replacement_product_id:99,source_code:'US-LA'})
     }
+    wrapper.unmount()
+  })
+})
+
+
+describe('parent reallocation confirmation', () => {
+  it('requires a second confirmation and sends the exact reset route and token', async () => {
+    const order={...manualOrder,reallocation_token:'a'.repeat(64),workflow_revision:2}
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({status:'reset',archived_count:2})})
+    vi.stubGlobal('fetch',fetchMock)
+    const wrapper=mountPage({...props,orders:{...props.orders,data:[order],total:1}})
+    await wrapper.findAll('button').find(button=>button.text()==='查看方案')!.trigger('click')
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-open"]')!.click()
+    await flushPromises()
+    expect(document.body.querySelector('[data-testid="reallocation-confirm"]')?.textContent).toContain('警告：此操作将归档所有相关子订单！')
+    expect(fetchMock).not.toHaveBeenCalled()
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-confirm"] button')!.click()
+    await flushPromises()
+    expect(fetchMock).not.toHaveBeenCalled()
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-open"]')!.click()
+    await flushPromises()
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-confirm-submit"]')!.click()
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe('/logistics/orders/11/fulfillment-allocation/reset')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({confirmed:true,token:'a'.repeat(64)})
+    wrapper.unmount()
+  })
+  it('preserves the plan and displays a dispatch conflict without a retry', async () => {
+    const order={...manualOrder,reallocation_token:'b'.repeat(64),workflow_revision:2}
+    const fetchMock=vi.fn().mockResolvedValue({ok:false,status:409,headers:{get:()=>null},json:async()=>({message:'存在仓库接单风险，不能直接归档。'})})
+    vi.stubGlobal('fetch',fetchMock)
+    const wrapper=mountPage({...props,orders:{...props.orders,data:[order],total:1}})
+    await wrapper.findAll('button').find(button=>button.text()==='查看方案')!.trigger('click')
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-open"]')!.click()
+    await flushPromises()
+    document.body.querySelector<HTMLButtonElement>('[data-testid="reallocation-confirm-submit"]')!.click()
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(document.body.querySelector('.modal-actions .submit-error')?.textContent).toContain('存在仓库接单风险')
+    expect(document.body.querySelector('[data-testid="reallocation-open"]')).not.toBeNull()
+    wrapper.unmount()
+  })
+  it('does not expose reset to a read-only operator', async () => {
+    const order={...manualOrder,reallocation_token:'c'.repeat(64),workflow_revision:2}
+    const wrapper=mountPage({...props,canOperate:false,orders:{...props.orders,data:[order],total:1}})
+    await wrapper.findAll('button').find(button=>button.text()==='查看方案')!.trigger('click')
+    await flushPromises()
+    expect(document.body.querySelector('[data-testid="reallocation-open"]')).toBeNull()
     wrapper.unmount()
   })
 })

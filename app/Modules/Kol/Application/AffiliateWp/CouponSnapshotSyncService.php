@@ -160,7 +160,7 @@ final class CouponSnapshotSyncService
     }
 
     /** @return array<string,mixed> */
-    private function normalizeItem(mixed $item): array
+    public function normalizeItem(mixed $item): array
     {
         if (! is_array($item)) {
             throw new UnexpectedValueException('Coupon snapshot item must be an object.');

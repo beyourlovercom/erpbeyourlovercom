@@ -228,7 +228,7 @@ final class ShipmentService
 
         $moved = $previousWarehouseId > 0 && $previousWarehouseId !== $selectedWarehouseId;
         foreach ($order->items()->lockForUpdate()->get() as $item) {
-            $mapped = $this->finalSkus->mapped((int) $item->product_id, $selectedWarehouseId);
+            $mapped = $this->finalSkus->expected((int) $item->product_id, $selectedWarehouseId);
             if ($mapped === null) {
                 abort_if((bool) config('warehouse_final_sku.require_verified_mapping')
                     || ($moved && filled($item->final_sku)), 422,

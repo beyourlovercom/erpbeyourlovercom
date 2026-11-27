@@ -1,0 +1,43 @@
+import { expect, test } from '@playwright/test'
+import { loginThroughUi, syntheticUsers } from '../support/auth-helpers'
+import { installBrowserGuards } from '../support/browser-guards'
+import path from 'node:path'
+
+test.skip(process.env.BYL_E2E_NATIVE_MAP !== '1', 'Requires disposable warehouse-map fixture')
+
+test('ERP1 native offline map opens in the original allocation dialog and remains read-only', async ({page,context}) => {
+  const guard = await installBrowserGuards(context,page)
+  await page.setViewportSize({width:1586,height:928})
+  await loginThroughUi(page,syntheticUsers().logisticsOperator)
+  await page.goto('/logistics/wait-stock?global_grid=1&search=C9900001-007')
+  await expect(page.getByText('C9900001-007',{exact:true}).first()).toBeVisible()
+  let businessWrites=0
+  page.on('request',r=>{if (['POST','PUT','PATCH','DELETE'].includes(r.method()) && /\/logistics\//.test(r.url())) businessWrites++})
+  await page.getByRole('button',{name:'查看方案',exact:true}).click()
+  const map=page.getByTestId('offline-warehouse-map')
+  await expect(map).toBeVisible()
+  await expect(map).toContainText('仓库地理参考')
+  await expect(map.locator('svg')).toHaveAttribute('viewBox','0 0 1000 500')
+  await expect(map).toContainText('收件区域：')
+  await expect(map).toContainText('直线距离估算')
+  await expect(page.getByTestId('reallocation-open')).toBeVisible()
+  await map.getByRole('button',{name:'收件区域',exact:true}).click()
+  await expect(map.getByRole('button',{name:'收件区域',exact:true})).toHaveAttribute('aria-pressed','true')
+  await expect(map.locator('svg')).not.toHaveAttribute('viewBox','0 0 1000 500')
+  await map.getByRole('button',{name:'最近仓',exact:true}).click()
+  await expect(map.getByRole('button',{name:'最近仓',exact:true})).toHaveAttribute('aria-pressed','true')
+  await map.getByRole('button',{name:'重置地图'}).click()
+  await expect(map.locator('svg')).toHaveAttribute('viewBox','0 0 1000 500')
+  await map.getByRole('button',{name:'放大地图'}).click()
+  await expect(map.locator('svg')).not.toHaveAttribute('viewBox','0 0 1000 500')
+  await map.getByRole('button',{name:'重置地图'}).click()
+  if(process.env.BYL_E2E_VISUAL_EVIDENCE_DIR) await page.screenshot({path:path.join(process.env.BYL_E2E_VISUAL_EVIDENCE_DIR,'native-map-desktop.png')})
+  await page.setViewportSize({width:390,height:844})
+  await expect(map).toBeVisible()
+  const fits=await map.evaluate(el=>el.getBoundingClientRect().width<=window.innerWidth)
+  expect(fits).toBe(true)
+  if(process.env.BYL_E2E_VISUAL_EVIDENCE_DIR) await page.screenshot({path:path.join(process.env.BYL_E2E_VISUAL_EVIDENCE_DIR,'native-map-mobile.png')})
+  expect(businessWrites).toBe(0)
+  await guard.assertClean()
+  console.log('NATIVE_MAP_BROWSER_PASS: world, region, nearest, zoom, mobile, zero logistics mutations or external requests')
+})

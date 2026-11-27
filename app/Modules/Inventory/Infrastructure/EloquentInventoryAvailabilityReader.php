@@ -82,11 +82,15 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
             ->whereIn('product_id', $ids->all())
             ->whereIn('warehouse_id', $warehouses->pluck('id')->all())
             ->get(['product_id', 'warehouse_id', 'quantity_on_hand', 'quantity_reserved', 'expected_restock_qty',
-                'provider_stock_synced_at', 'provider_available_quantity'])
+                'provider_stock_synced_at', 'provider_available_quantity', 'factory_native_status'])
             ->keyBy(fn (WarehouseInventory $row): string => $row->product_id.':'.$row->warehouse_id);
         $usSm = $warehouses->firstWhere('code', 'US-SM');
         $providerAvailable = $usSm !== null
             ? app(XlwmsInventoryCoverage::class)->providerAvailableByProductId((int) $usSm['id']) : null;
+        $de = $warehouses->firstWhere('code', 'DE');
+        $deProviderAvailable = $de !== null && config('xlwms.de_authoritative_auto_apply_enabled', false)
+            ? (app(XlwmsInventoryCoverage::class)->providerAvailableByProductId((int) $de['id']) ?? [])
+            : null;
         // Read-only diagnostics. Never use a blocked OMS snapshot to authorize a shipment.
         $latestUsSmSnapshot = $usSm !== null && Schema::hasTable('xlwms_inventory_snapshots')
             ? XlwmsInventorySnapshot::query()->where('warehouse_id', $usSm['id'])->orderByDesc('id')->first()
@@ -103,7 +107,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
 
         $result = [];
         foreach ($ids as $productId) {
-            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId, $usSm, $unknown, $dated, $providerAvailable, $omsSnapshotUnapplied, $latestUsSmSnapshot): array {
+            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId, $usSm, $unknown, $dated, $providerAvailable, $omsSnapshotUnapplied, $latestUsSmSnapshot, $de, $deProviderAvailable): array {
                 /** @var WarehouseInventory|null $row */
                 $row = $rows->get($productId.':'.$warehouse['id']);
                 $state = (string) $warehouse['inventory_state'];
@@ -150,12 +154,25 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     if ($unverified > 0) $available = min($available, max($onHand - $unverified - $reserved, 0));
                 }
 
+                if ($deProviderAvailable !== null && (int) $warehouse['id'] === (int) $de['id']) {
+                    $confirmed = array_key_exists((int) $productId, $deProviderAvailable);
+                    $available = $confirmed && $available !== null
+                        ? min($available, max(0, (int) $deProviderAvailable[(int) $productId] - (int) $reserved))
+                        : 0;
+                    if (! $confirmed) $stockGateReason = 'oms_sku_not_confirmed';
+                }
+
                 if (($isUsSm || $isMorePlus) && $stockGateReason === null
                     && $erpAvailable !== null && $erpAvailable > 0
                     && $available !== null && $available === 0) {
                     $stockGateReason = $providerAvailable !== null
                         && (int) ($providerAvailable[(int) $productId] ?? 0) === 0
                         ? 'oms_no_available_stock' : 'stock_age_or_reservation_gate';
+                }
+
+                if (strtoupper((string)$warehouse['code']) === 'FACTORY' && $row?->factory_native_status === 'held') {
+                    $available=0;
+                    $stockGateReason='factory_material_scope_unverified';
                 }
 
                 return [
