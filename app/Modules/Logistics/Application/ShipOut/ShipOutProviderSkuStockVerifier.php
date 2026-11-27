@@ -68,7 +68,9 @@ final class ShipOutProviderSkuStockVerifier
         $used=[];
         foreach ($items as $index=>$item) {
             $pid=(int)$item->product_id;
-            $finalSku=trim((string)$item->final_sku);
+            $finalSku=(bool) config('warehouse_final_sku.require_verified_mapping')
+                ? $this->finalSkus->forShipment($order->shipment, $item)
+                : trim((string)$item->final_sku);
             if ($finalSku!=='') {
                 // A verified warehouse final SKU is frozen by the payload factory.
                 // The read-only provider stock check must never replace it with

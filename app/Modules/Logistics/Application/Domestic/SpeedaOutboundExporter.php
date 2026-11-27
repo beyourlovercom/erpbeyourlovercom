@@ -65,7 +65,9 @@ final class SpeedaOutboundExporter
         if ((int) $order->items->sum('quantity') <= 0) {
             $missing[] = '申报品数量1';
         }
-        if ($order->items->contains(fn ($item): bool => ! WarehouseSkuPresentation::verified($item))) {
+        if ((bool) config('warehouse_final_sku.require_verified_mapping')) {
+            array_push($missing, ...$this->finalSkus->blockers($order));
+        } elseif ($order->items->contains(fn ($item): bool => ! WarehouseSkuPresentation::verified($item))) {
             $missing[] = '实际发货 SKU 未登记或与分仓结果不一致';
         }
 
@@ -266,8 +268,8 @@ final class SpeedaOutboundExporter
             : null;
         if ($verifiedMapping !== null && strcasecmp($verifiedMapping, $sku) === 0
             && $items->every(fn ($item): bool => (int) $item->product_id === $productId
-                && filled($item->final_sku)
-                && strcasecmp(trim((string) $item->final_sku), $sku) === 0)) {
+                && ((bool) config('warehouse_final_sku.require_verified_mapping')
+                    || (filled($item->final_sku) && strcasecmp(trim((string) $item->final_sku), $sku) === 0)))) {
             $barcode = trim((string) $items->first()->product?->barcode_69);
 
             return [$sku, preg_match('/^[0-9]{8,14}$/D', $barcode) === 1 ? $barcode : ''];

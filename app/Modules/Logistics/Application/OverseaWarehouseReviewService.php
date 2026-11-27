@@ -55,6 +55,7 @@ final class OverseaWarehouseReviewService
         private readonly OrderWorkflowStatusService $workflow,
         private readonly NotificationPublisher $notifications,
         private readonly AuditRecorder $audit,
+        private readonly PendingFinalSkuMaterializer $finalSkuMaterializer,
     ) {}
 
     public function updateDraft(Order $order, array $data, Authenticatable $actor): Order
@@ -134,6 +135,7 @@ final class OverseaWarehouseReviewService
                     'carrier_selection_source' => 'automatic',
                 ], $actor);
             }
+            $this->finalSkuMaterializer->heal($locked, $actor);
             $before = ['status' => $review->status, 'reviewed_warehouse_id' => $review->reviewed_warehouse_id,
                 'reviewed_by' => $review->reviewed_by, 'reviewed_at' => $review->reviewed_at?->toDateTimeString()];
             $review->forceFill([

@@ -39,6 +39,34 @@ final class InventoryBatchSyncXlsxTest extends TestCase
         }
     }
 
+    public function test_native_factory_workbook_preserves_material_codes_and_separate_stock_scopes(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'factory-sync-');
+        $zip = new ZipArchive();
+        self::assertTrue($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true);
+        $zip->addFromString('xl/workbook.xml', '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="未生产订单" sheetId="1" r:id="rId1"/><sheet name="谦禾库存明细" sheetId="2" r:id="rId2"/></sheets></workbook>');
+        $zip->addFromString('xl/_rels/workbook.xml.rels', '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>');
+        $zip->addFromString('xl/worksheets/sheet1.xml', $this->worksheetXml([['SKU','Qty'],['WRONG',999]]));
+        $headers = array_fill(0,24,'');
+        $headers[0]='物料代码(旧系统）'; $headers[1]='物料名称'; $headers[2]='成品库存汇总';
+        $headers[3]='FBA库存'; $headers[23]='B站-007成品仓';
+        $a = array_fill(0,24,'');
+        $a[0]='1VA617A04C040'; $a[1]='VA617A绿色成品'; $a[2]=390; $a[3]=999; $a[23]=209;
+        $b = $a; $b[0]='1VA617A05C040'; $b[1]='VA617A绿色新包装'; $b[2]=0; $b[23]=0;
+        $totals = array_fill(0,24,''); $totals[0]='Total'; $totals[2]=390; $totals[23]=209;
+        $zip->addFromString('xl/worksheets/sheet2.xml', $this->worksheetXml([['谦禾库存'],$totals, $headers,$a,$b]));
+        $zip->close();
+        try {
+            $rows=(new XlsxAdapter())->parseFactoryWorkbook(new UploadedFile($path,'factory.xlsx',null,null,true));
+            self::assertCount(2,$rows);
+            self::assertSame('1VA617A04C040',$rows[0]['material_code']);
+            self::assertSame(390,$rows[0]['factory_qty']);
+            self::assertSame(209,$rows[0]['warehouse_007_qty']);
+            self::assertSame(0,$rows[1]['factory_qty']);
+            self::assertSame(4,$rows[0]['source_row']);
+        } finally { @unlink($path); }
+    }
+
     private function buildFixture(string $path): void
     {
         $zip = new ZipArchive();

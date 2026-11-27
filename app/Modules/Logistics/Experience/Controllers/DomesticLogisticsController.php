@@ -311,6 +311,7 @@ final class DomesticLogisticsController
             'Cache-Control' => 'no-store, private',
             'X-BYL-Exported-Orders' => (string) $result['exported_count'],
             'X-BYL-Blocked-Orders' => (string) count($result['blocked']),
+            'X-BYL-Blocked-Details' => rawurlencode(collect($result['blocked'])->take(5)->map(fn (array $row): string => ($row['erp_order_id'] ?: '#'.$row['order_id']).'：'.implode('、', $row['reasons']))->implode('；')),
         ]);
     }
 
@@ -354,8 +355,14 @@ final class DomesticLogisticsController
             abort_unless($orders->count() === count($selectedIds), 422, '所选订单不属于当前国内待发货列表，请刷新后重选。');
         }
 
+        $partition = $this->pendingBatch->partition($orders);
+        $blocked = $partition['blocked'];
+        $orders = $partition['ready'];
+        abort_if(($selectedIds !== null && $blocked !== []) || $orders->isEmpty(), 422,
+            '存在不可导出的国内待发货订单。'.implode('；', array_slice($blocked, 0, 10)));
+
         try {
-            $bytes = $this->pendingBatch->export($orders, $selectedIds !== null);
+            $bytes = $this->pendingBatch->export($orders, true);
         } catch (\DomainException $e) {
             abort(422, $e->getMessage());
         }
@@ -365,6 +372,8 @@ final class DomesticLogisticsController
             'Content-Disposition' => 'attachment; filename="007-domestic-pending-'.now()->format('ymd').'.xlsx"',
             'Cache-Control' => 'no-store, private',
             'X-BYL-Exported-Orders' => (string) $orders->count(),
+            'X-BYL-Blocked-Orders' => (string) count($blocked),
+            'X-BYL-Blocked-Details' => rawurlencode(implode('；', array_slice($blocked, 0, 5))),
         ]);
     }
 
@@ -385,8 +394,14 @@ final class DomesticLogisticsController
             abort_unless($orders->count() === count($selectedIds), 422, '所选订单不属于当前国内待发货列表，请刷新后重选。');
         }
 
+        $partition = $this->pendingBatch->partition($orders);
+        $blocked = $partition['blocked'];
+        $orders = $partition['ready'];
+        abort_if(($selectedIds !== null && $blocked !== []) || $orders->isEmpty(), 422,
+            '存在不可导出的国内待发货订单。'.implode('；', array_slice($blocked, 0, 10)));
+
         try {
-            $bytes = $this->pendingBatch->exportSkuMerged($orders, $selectedIds !== null);
+            $bytes = $this->pendingBatch->exportSkuMerged($orders, true);
         } catch (\DomainException $e) {
             abort(422, $e->getMessage());
         }
@@ -396,6 +411,8 @@ final class DomesticLogisticsController
             'Content-Disposition' => 'attachment; filename="007-domestic-pending-sku-merged-'.now()->format('ymd').'.xlsx"',
             'Cache-Control' => 'no-store, private',
             'X-BYL-Exported-Orders' => (string) $orders->count(),
+            'X-BYL-Blocked-Orders' => (string) count($blocked),
+            'X-BYL-Blocked-Details' => rawurlencode(implode('；', array_slice($blocked, 0, 5))),
         ]);
     }
 

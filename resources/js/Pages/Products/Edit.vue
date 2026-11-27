@@ -31,6 +31,7 @@ type Product = {
   has_battery?: boolean
   has_liquid?: boolean
   material_full_name?: string | null
+  material_versions?: {id:number;material_code:string;material_name:string;factory_stock_approved:boolean}[]
   name: string
   unit: string | null
   is_active: boolean
@@ -295,7 +296,7 @@ const doDelete = () => {
 
               <div class="erp-form-field">
                 <label class="erp-form-label" for="edit-name">
-                  产品名称 <span class="erp-form-required">*</span>
+                  产品标题（网站同步）
                 </label>
                 <input
                   id="edit-name"
@@ -303,7 +304,6 @@ const doDelete = () => {
                   type="text"
                   class="erp-input"
                   :class="{ 'has-error': errors.name }"
-                  required
                 >
                 <p v-if="errors.name" class="erp-field-error">{{ errors.name }}</p>
               </div>
@@ -349,7 +349,13 @@ const doDelete = () => {
               </div>
 
               <div class="erp-form-field" style="grid-column:1/-1">
-                <label class="erp-form-label" for="edit-material-full-name">物料全称（内部采购与物流使用）</label>
+                <label class="erp-form-label">代码（库存表代码）</label>
+                <div class="erp-input" style="height:auto;min-height:40px">
+                  <div v-for="material in product.material_versions ?? []" :key="material.id">{{ material.material_code }}</div>
+                  <span v-if="!product.material_versions?.length">未登记</span>
+                  <a href="/products/skus" class="mvp-link">维护物料版本</a>
+                </div>
+                <label class="erp-form-label" for="edit-material-full-name">名称（库存表名称）</label>
                 <textarea id="edit-material-full-name" v-model="form.material_full_name" class="erp-textarea" rows="2" maxlength="10000" placeholder="填写与库存表匹配的完整中英文物料名称" />
                 <p v-if="errors.material_full_name" class="erp-field-error">{{ errors.material_full_name }}</p>
               </div>

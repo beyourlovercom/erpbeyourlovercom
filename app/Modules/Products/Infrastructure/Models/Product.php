@@ -62,6 +62,11 @@ class Product extends Model
         return $this->hasMany(ProductWarehouseSku::class);
     }
 
+    public function materialVersions(): HasMany
+    {
+        return $this->hasMany(ProductMaterialVersion::class);
+    }
+
     public function costSources(): HasMany
     {
         return $this->hasMany(ProductCostSource::class);

@@ -67,6 +67,39 @@ describe('Inventory Batch Sync workspace', () => {
     vi.clearAllMocks()
   })
 
+  it('previews all native factory changes before confirming the same mode and token', async () => {
+    const wrapper=mount(Sync,{props:{...defaultProps,warehouses:[...warehouses,{id:5,slug:'factory',name:'中国工厂',country_code:'CN'}],initialWarehouseId:5},global:{stubs:{GlobalGrid:true}}})
+    const fileInput=wrapper.find('input[type=file]')
+    const file=new File(['native'],'factory.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
+    Object.defineProperty(fileInput.element,'files',{value:[file]})
+    await fileInput.trigger('change')
+    await wrapper.find('input[type=date]').setValue('2026-11-16')
+    await wrapper.findAll('select')[1].setValue('full')
+    const result={material_count:3,linked:2,unmapped:1,conflicts:0,applied_products:1,held_products:0,duplicate:false,sync_mode:'full',changes:[],summary:{modified:1},preview_token:'token'}
+    mockAxios.post.mockResolvedValueOnce({data:result})
+    const confirm=()=>wrapper.findAll('button').find(b=>b.text()==='2. 确认导入')!
+    expect(confirm().attributes('disabled')).toBeDefined()
+    await wrapper.findAll('button').find(b=>b.text()==='1. 预览导入差异')!.trigger('click')
+    await flushPromises()
+    expect(mockAxios.post).toHaveBeenCalledWith('/inventory/sync/factory-native/preview',expect.any(FormData),expect.anything())
+    expect(wrapper.text()).toContain('尚未写入库存')
+    expect(confirm().attributes('disabled')).toBeUndefined()
+    mockAxios.post.mockResolvedValueOnce({data:result})
+    await confirm().trigger('click');await flushPromises()
+    expect(mockAxios.post).toHaveBeenLastCalledWith('/inventory/sync/factory-native',expect.any(FormData),expect.anything())
+    const fd=mockAxios.post.mock.calls[1][1] as FormData
+    expect(fd.get('stock_count_at')).toBe('2026-11-16')
+    expect(fd.get('sync_mode')).toBe('full')
+    expect(fd.get('preview_token')).toBe('token')
+    expect(wrapper.text()).toContain('已覆盖 1 个商品')
+  })
+
+  it('preserves originating warehouse and opens file upload', () => {
+    const wrapper = mount(Sync, { props: { ...defaultProps, initialWarehouseId: 1 } })
+    expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('1')
+    expect(wrapper.find('input[type=file]').exists()).toBe(true)
+  })
+
   it('renders source selection tabs', () => {
     const wrapper = mount(Sync, { props: defaultProps })
     expect(wrapper.text()).toContain('复制粘贴')
@@ -96,7 +129,7 @@ describe('Inventory Batch Sync workspace', () => {
     expect(preview?.attributes('disabled')).toBeDefined()
     expect(confirm).toBeDefined()
     expect(confirm?.attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('请先预览数据，确认无错误后再导入。')
+    expect(wrapper.text()).toContain('请先预览数据；部分同步自动跳过错误行，全量同步保持严格校验。')
   })
 
   it('shows preview stats after successful preview call', async () => {
@@ -134,7 +167,7 @@ describe('Inventory Batch Sync workspace', () => {
     await previewBtn!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('有错误')
+    expect(wrapper.text()).toContain('当前没有可导入的有效 SKU')
     const confirmBtn = wrapper.findAll('button').find(b => b.text() === '2. 确认导入库存')
     expect(confirmBtn?.attributes('disabled')).toBeDefined()
   })

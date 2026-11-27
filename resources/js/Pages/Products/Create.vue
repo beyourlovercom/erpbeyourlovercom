@@ -149,7 +149,7 @@ const submit = () => {
 
               <div class="erp-form-field">
                 <label class="erp-form-label" for="create-name">
-                  产品名称 <span class="erp-form-required">*</span>
+                  产品标题（网站同步）
                 </label>
                 <input
                   id="create-name"
@@ -157,8 +157,7 @@ const submit = () => {
                   type="text"
                   class="erp-input"
                   :class="{ 'has-error': errors.name }"
-                  placeholder="输入产品名称"
-                  required
+                  placeholder="仅供网站标题参考"
                 >
                 <p v-if="errors.name" class="erp-field-error">{{ errors.name }}</p>
               </div>
@@ -203,7 +202,7 @@ const submit = () => {
               </div>
 
               <div class="erp-form-field" style="grid-column:1/-1">
-                <label class="erp-form-label" for="create-material-full-name">物料全称（内部采购与物流使用）</label>
+                <label class="erp-form-label" for="create-material-full-name">名称（库存表名称）</label>
                 <textarea id="create-material-full-name" v-model="form.material_full_name" class="erp-textarea" rows="2" maxlength="10000" placeholder="填写与库存表匹配的完整中英文物料名称" />
                 <p v-if="errors.material_full_name" class="erp-field-error">{{ errors.material_full_name }}</p>
               </div>
