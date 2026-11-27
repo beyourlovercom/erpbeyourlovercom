@@ -283,9 +283,30 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(document.body.textContent).toContain('中国工厂')
     expect(document.body.textContent).toContain('采用推荐并提交分仓')
     expect(document.body.textContent).toContain('估算成本：¥83.00')
-    expect(document.body.textContent).toContain('地图区域划分')
+    expect(document.body.textContent).toContain('仓库地理参考')
     expect(document.body.textContent).toContain('90001')
     expect(document.body.textContent).toContain('美西区')
+  })
+
+  it('shows the read-only offline world map for a non-US order without changing allocation actions', async () => {
+    const order = { ...manualOrder, country:'DE', city:'Berlin', province_state:'BE', postal_code:'10115', us_fulfillment_zone:null }
+    const wrapper = mountPage({ ...props, orders:{ ...props.orders, data:[order], total:1 } })
+    await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
+    await flushPromises()
+    const map = document.body.querySelector('[data-testid="offline-warehouse-map"]')
+    expect(map).toBeTruthy()
+    expect(map?.textContent).toContain('全球')
+    expect(map?.textContent).toContain('收件区域')
+    expect(map?.textContent).toContain('最近仓')
+    expect(map?.textContent).toContain('美东纽约')
+    expect(map?.textContent).toContain('德国天运')
+    expect(map?.textContent).toContain('直线距离估算')
+    expect(document.body.textContent).toContain('确认人工分配并提交')
+    const region = Array.from(map!.querySelectorAll('button')).find(b => b.textContent==='收件区域')!
+    region.click()
+    await flushPromises()
+    expect(region.getAttribute('aria-pressed')).toBe('true')
+    expect(map?.querySelector('svg')?.getAttribute('viewBox')).not.toBe('0 0 1000 500')
   })
 
   it('keeps warehouse and carrier controls at the top and previews A/B grouping', async () => {
