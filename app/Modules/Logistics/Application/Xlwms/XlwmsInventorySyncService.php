@@ -29,6 +29,17 @@ final class XlwmsInventorySyncService
     /** @return array<string,mixed> */
     public function sync(bool $apply = false, string $warehouseCode = 'US-SM', array $resumeVerifiedSkus = []): array
     {
+        if ($warehouseCode === 'US-NY') {
+            return \App\Modules\Inventory\Infrastructure\UsNyStockClock::utc(
+                fn () => $this->syncInternal($apply, $warehouseCode, $resumeVerifiedSkus)
+            );
+        }
+
+        return $this->syncInternal($apply, $warehouseCode, $resumeVerifiedSkus);
+    }
+
+    private function syncInternal(bool $apply, string $warehouseCode, array $resumeVerifiedSkus): array
+    {
         if (! in_array($warehouseCode, ['US-SM', 'DE', 'US-NY'], true)) throw new RuntimeException('XLWMS_WAREHOUSE_UNSUPPORTED');
         if ($warehouseCode === 'US-NY' && $apply) {
             if (! app()->environment('local', 'testing')

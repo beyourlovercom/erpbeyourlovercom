@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Application\Xlwms;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Inventory\Infrastructure\UsNyStockClock;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -22,9 +23,11 @@ final class UsNyPhysicalStockSyncService
             throw new RuntimeException('US_NY_SYNC_ALREADY_RUNNING');
         }
         try {
-            $fresh = $this->source->sync(false, 'US-NY');
+            return UsNyStockClock::utc(function () use ($apply): array {
+                $fresh = $this->source->sync(false, 'US-NY');
 
-            return $this->reconcileSnapshot((int) ($fresh['snapshot_id'] ?? 0), $apply);
+                return $this->reconcileSnapshot((int) ($fresh['snapshot_id'] ?? 0), $apply);
+            });
         } catch (\Throwable $e) {
             // Invalid/incomplete source cannot authorize new allocations; preserve actual counts and reservations.
             if ($apply) {
@@ -41,10 +44,10 @@ final class UsNyPhysicalStockSyncService
     {
         $this->assertApply($apply);
 
-        return DB::transaction(function () use ($id, $apply): array {
+        return UsNyStockClock::utc(fn () => DB::transaction(function () use ($id, $apply): array {
             $warehouse = Warehouse::query()->where('code', 'US-NY')->where('is_active', true)->lockForUpdate()->firstOrFail();
             $snapshot = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouse->id)->whereKey($id)->lockForUpdate()->firstOrFail();
-            $latest = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouse->id)->orderByDesc('fetched_at')->orderByDesc('id')->first();
+            $latest = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouse->id)->where('fetched_at', '<=', now())->orderByDesc('fetched_at')->orderByDesc('id')->first();
             if ((int) $latest?->id !== $id || $snapshot->wh_code !== 'US01' || ! $snapshot->fetched_at
                 || $snapshot->fetched_at->isFuture() || $snapshot->fetched_at->diffInSeconds(now()) > 150
                 || $snapshot->errors || in_array($snapshot->status, ['failed', 'not_ready'], true)
@@ -118,7 +121,7 @@ final class UsNyPhysicalStockSyncService
             return ['warehouse' => 'US-NY', 'snapshot_id' => $id, 'mode' => $apply ? 'apply' : 'dry_run',
                 'verified_skus' => count($plan), 'changed_skus' => $changes, 'quarantined' => $quarantine,
                 'oms_verified_total' => array_sum(array_map(fn ($x) => (int) $x[0]->oms_total, $plan))];
-        }, 3);
+        }, 3));
     }
 
     private function assertApply(bool $apply): void
