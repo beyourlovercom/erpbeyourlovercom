@@ -86,6 +86,7 @@ final class OrderItemAmendmentPreflight
                 || DB::table('xlwms_web_draft_attempts')->where('order_id', $order->id)
                     ->whereNotNull('oms_order_no')->exists();
             if ($order->order_status !== OrderStatus::PendingShipment || $committed || $dispatched
+                || \App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded((int)$order->id)
                 || ($shipment && ($shipment->shipment_status !== 'pending' || $shipment->shipped_at !== null))) {
                 $issues[] = '已执行的发货或仓库订单不能直接覆盖历史商品。';
             }
