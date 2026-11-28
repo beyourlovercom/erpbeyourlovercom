@@ -123,6 +123,9 @@ final class OverseaWarehouseQueueQuery
             })->orWhere(function ($xlwms): void {
                 $xlwms->whereHas('warehouse', fn ($w) => $w->whereIn(DB::raw('UPPER(code)'), ['DE', 'US-NY']))
                     ->whereExists(fn ($q) => $this->scopeDeIssued($q));
+            })->orWhere(function ($ca): void {
+                $ca->whereHas('warehouse', fn ($w) => $w->where('code', 'CA'))
+                    ->whereExists(fn ($q) => $this->scopeCa($q, ['confirmed', 'tracking_staged']));
             })->orWhere(function ($moreplus): void {
                 $moreplus->whereHas('warehouse', fn ($w) => $w->whereRaw('UPPER(code) = ?', ['US-LA']))
                     ->whereExists(fn ($q) => ShipOutProductionDispatchState::scopeCreated($q))
@@ -141,6 +144,9 @@ final class OverseaWarehouseQueueQuery
                 $xlwms->whereHas('warehouse', fn ($w) => $w->whereIn(DB::raw('UPPER(code)'), ['DE', 'US-NY']))
                     ->whereExists(fn ($q) => $this->scopeDeAttempt($q))
                     ->whereNotExists(fn ($q) => $this->scopeDeIssued($q));
+            })->orWhere(function ($ca): void {
+                $ca->whereHas('warehouse', fn ($w) => $w->where('code', 'CA'))
+                    ->whereExists(fn ($q) => $this->scopeCa($q, ['queued', 'in_flight', 'accepted', 'uncertain', 'exception', 'blocked']));
             })->orWhere(function ($ny): void {
                 $ny->whereHas('warehouse', fn ($w) => $w->where('code','US-NY'))
                     ->whereNotExists(fn ($q) => $this->scopeDeIssued($q))
@@ -164,6 +170,14 @@ final class OverseaWarehouseQueueQuery
                     });
             });
         });
+    }
+
+    private function scopeCa(Builder $query, array $statuses): void
+    {
+        $query->selectRaw('1')->from('wlwy_ca_batch_items as ca_attempt')
+            ->whereColumn('ca_attempt.order_id', 'shipments.order_id')
+            ->whereColumn('ca_attempt.shipment_id', 'shipments.id')
+            ->where('ca_attempt.dry_run', false)->whereIn('ca_attempt.status', $statuses);
     }
 
     private function scopeDeAttempt(Builder $query): void

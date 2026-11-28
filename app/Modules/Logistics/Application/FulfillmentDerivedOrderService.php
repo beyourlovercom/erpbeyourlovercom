@@ -53,6 +53,9 @@ final class FulfillmentDerivedOrderService
         if (config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
             app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($parent, 0, $actor);
         }
+        if (config('wlwy.ca_inventory_apply_enabled')) {
+            app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($parent, 0, $actor, 'CA');
+        }
         $parent->shipment?->delete();
 
         $children = collect();
@@ -356,6 +359,7 @@ final class FulfillmentDerivedOrderService
 
     private function assertParentShipmentMayBeReplaced(Order $parent): void
     {
+        abort_if(\App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch::guarded((int) $parent->id), 409, '加拿大仓已有推送或待核实记录，禁止重新分仓。');
         abort_if(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded((int)$parent->id),409,'美东仓订单正在推送或待核实，禁止重新分仓。');
         $shipment = $parent->shipment;
         if (! $shipment) return;
@@ -364,6 +368,7 @@ final class FulfillmentDerivedOrderService
 
     private function assertChildMayBeRebuilt(Order $child): void
     {
+        abort_if(\App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch::guarded((int) $child->id), 409, '加拿大仓已有推送或待核实记录，禁止重新分仓。');
         abort_if(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded((int)$child->id),409,'美东仓订单正在推送或待核实，禁止重新分仓。');
         $shipment = $child->shipment;
         if (! $shipment) return;
@@ -380,6 +385,9 @@ final class FulfillmentDerivedOrderService
         $this->assertChildMayBeRebuilt($child);
         if (config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
             app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($child, 0, null);
+        }
+        if (config('wlwy.ca_inventory_apply_enabled')) {
+            app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($child, 0, null, 'CA');
         }
         $child->delete();
     }

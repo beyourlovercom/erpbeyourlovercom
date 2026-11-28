@@ -6,6 +6,9 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutPeriodicTrackingStage;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutSandboxLabelStage;
+use App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch;
+use App\Modules\Logistics\Application\Wlwy\CanadaPhysicalStockSync;
+use App\Modules\Logistics\Application\Wlwy\CanadaTrackingRefresh;
 use App\Modules\Logistics\Application\Xlwms\DeAuthoritativePhysicalStockSyncService;
 use App\Modules\Logistics\Application\Xlwms\DeTianyunStatusRefresh;
 use App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch;
@@ -410,6 +413,46 @@ if (app()->environment('production') && (bool) config('shipout.oms_reconciliatio
         ->name('shipout.moreplus.oms-readback.five-minutes')
         ->withoutOverlapping(15)
         ->onOneServer()->runInBackground();
+}
+
+// CA02 stock mirror: disabled until exact mapping and production release approval.
+Artisan::command('wlwy:sync-ca-physical {--apply} {--dry-run}', function (): int {
+    if ($this->option('apply') && $this->option('dry-run')) {
+        return Command::INVALID;
+    }
+    try {
+        $this->line(json_encode(app(CanadaPhysicalStockSync::class)->run((bool) $this->option('apply')), JSON_THROW_ON_ERROR));
+
+        return Command::SUCCESS;
+    } catch (Throwable $error) {
+        $this->error('CA_PHYSICAL_SYNC_FAILED');
+
+        return Command::FAILURE;
+    }
+});
+if (app()->environment('production') && config('wlwy.ca_inventory_hourly_enabled')) {
+    $caMode = config('wlwy.ca_inventory_apply_enabled') ? '--apply' : '--dry-run';
+    Schedule::command('wlwy:sync-ca-physical '.$caMode)
+        ->hourlyAt(23)->name('wlwy.ca.inventory.sync')->withoutOverlapping(15)->onOneServer()->runInBackground();
+}
+
+Artisan::command('wlwy:drain-ca-batch', function (): int {
+    $this->line(json_encode(app(CanadaOutboundBatch::class)->drain(), JSON_THROW_ON_ERROR));
+
+    return Command::SUCCESS;
+});
+Artisan::command('wlwy:refresh-ca-tracking', function (): int {
+    if (app()->environment('production') && config('wlwy.ca_tracking_enabled')) {
+        $this->line(json_encode(app(CanadaTrackingRefresh::class)->run(), JSON_THROW_ON_ERROR));
+    }
+
+    return Command::SUCCESS;
+});
+if (app()->environment('production') && config('wlwy.ca_dispatch_enabled') && config('wlwy.ca_dispatch_owner_approved')) {
+    Schedule::command('wlwy:drain-ca-batch')->everyMinute()->name('wlwy.ca.batch.drain')->withoutOverlapping(10)->onOneServer()->runInBackground();
+}
+if (app()->environment('production') && config('wlwy.ca_tracking_enabled')) {
+    Schedule::command('wlwy:refresh-ca-tracking')->cron('3-59/5 * * * *')->name('wlwy.ca.tracking.refresh')->withoutOverlapping(10)->onOneServer()->runInBackground();
 }
 
 Artisan::command('xlwms:drain-us-ny-batch', function (): int {

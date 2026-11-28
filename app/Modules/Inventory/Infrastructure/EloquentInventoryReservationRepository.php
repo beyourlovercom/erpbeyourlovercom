@@ -86,7 +86,8 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
         $nyAuthoritative = $warehouse->code === 'US-NY' && config('xlwms.us_ny_inventory_physical_apply_enabled', false);
         $deAuthoritative = $warehouse->code === 'DE' && config('xlwms.de_authoritative_auto_apply_enabled', false);
         // MorePlus signed-stock mirror, not an old CSV full import, owns US-LA quantity.
-        $authoritative = $providerAuthoritative || $deAuthoritative || $nyAuthoritative || InventorySyncBatch::query()
+        $caAuthoritative = $warehouse->code === 'CA' && config('wlwy.ca_inventory_apply_enabled');
+        $authoritative = $providerAuthoritative || $deAuthoritative || $nyAuthoritative || $caAuthoritative || InventorySyncBatch::query()
             ->where('warehouse_id', $warehouseId)
             ->where('status', 'confirmed')
             ->where('sync_mode', 'full')
@@ -131,9 +132,9 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
                 throw new DomainException("Inventory row is missing for product {$productId}.");
             }
             $effectiveAvailable = (int) $inventory->quantity_available;
-            if ($nyAuthoritative) {
+            if ($nyAuthoritative || $caAuthoritative) {
                 if (! UsNyStockClock::fresh($inventory)) {
-                    throw new DomainException('美东仓该商品库存尚未完成有效 API 校对，请同步后重试。');
+                    throw new DomainException($caAuthoritative ? '加拿大仓该商品库存尚未完成有效 API 校对，请同步后重试。' : '美东仓该商品库存尚未完成有效 API 校对，请同步后重试。');
                 }
                 $effectiveAvailable = min(max(0, (int) $inventory->quantity_on_hand - (int) $inventory->quantity_reserved),
                     max(0, (int) $inventory->provider_available_quantity - (int) $inventory->quantity_reserved));
@@ -158,7 +159,7 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
                 $effectiveAvailable = min($effectiveAvailable, max($dated - (int) $inventory->quantity_reserved, 0), max((int) $inventory->quantity_on_hand - $unknown - (int) $inventory->quantity_reserved, 0));
             }
             if ($effectiveAvailable < $quantity) {
-                throw new DomainException($nyAuthoritative ? "美东仓商品库存不足（商品 ID：{$productId}），请重新选择仓库。" : "Insufficient available inventory for product {$productId}.");
+                throw new DomainException($caAuthoritative ? "加拿大仓商品库存不足（商品 ID：{$productId}）。" : ($nyAuthoritative ? "美东仓商品库存不足（商品 ID：{$productId}），请重新选择仓库。" : "Insufficient available inventory for product {$productId}."));
             }
         }
 
@@ -222,6 +223,7 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
         $code = strtoupper((string) Warehouse::query()
             ->whereKey($reservation->warehouse_id)->value('code'));
         $nyAuthoritative = $code === 'US-NY' && config('xlwms.us_ny_inventory_physical_apply_enabled', false);
+        $caAuthoritative = $code === 'CA' && config('wlwy.ca_inventory_apply_enabled');
         $providerAuthoritative = $code === 'US-LA'
             || (config('inventory_sku_gate.enabled', false) && $code === 'US-SM')
             || ($code === 'DE' && config('xlwms.de_authoritative_auto_apply_enabled', false));
@@ -231,14 +233,14 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
             $quantity = (int) $item->quantity;
             $qoh = (int) $inventory->quantity_on_hand;
             $reserved = (int) $inventory->quantity_reserved;
-            if ($reserved < $quantity || (!$nyAuthoritative && $qoh < $quantity)) {
+            if ($reserved < $quantity || (!$nyAuthoritative && !$caAuthoritative && $qoh < $quantity)) {
                 throw new DomainException('Inventory drift blocks reservation commit.');
             }
             $afterQoh = $providerAuthoritative ? $qoh : max(0, $qoh - $quantity);
             // Shipping evidence is not a warehouse physical-count update.
             // For provider-authoritative warehouses, only release the ERP reservation ledger.
             $values = ['quantity_on_hand' => $afterQoh, 'quantity_reserved' => $reserved - $quantity];
-            if ($nyAuthoritative && $inventory->provider_available_quantity !== null) {
+            if (($nyAuthoritative || $caAuthoritative) && $inventory->provider_available_quantity !== null) {
                 $values['provider_available_quantity'] = max(0, (int) $inventory->provider_available_quantity - $quantity);
             }
             $inventory->forceFill($values)->save();

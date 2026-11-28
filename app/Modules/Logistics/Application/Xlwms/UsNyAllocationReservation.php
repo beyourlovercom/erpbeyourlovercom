@@ -19,9 +19,9 @@ final class UsNyAllocationReservation
 {
     public function __construct(private readonly InventoryReservationRepository $reservations, private readonly AuditRecorder $audit) {}
 
-    public function sync(Model $order, int $warehouseId, ?Authenticatable $actor): void
+    public function sync(Model $order, int $warehouseId, ?Authenticatable $actor, string $warehouseCode = 'US-NY'): void
     {
-        $ny = (int) Warehouse::query()->where('code', 'US-NY')->value('id');
+        $ny = (int) Warehouse::query()->where('code', $warehouseCode)->value('id');
         if (! $ny) {
             return;
         }
@@ -38,23 +38,23 @@ final class UsNyAllocationReservation
             if ($targetNy && (int) $active['warehouse_id'] === $ny && $actual === $prior) {
                 return;
             }
-            $result = $this->reservations->release((int) $active['id'], $actorId, 'us_ny_allocation_changed');
-            $this->record($actor, 'inventory.reservation.released', $result);
+            $result = $this->reservations->release((int) $active['id'], $actorId, ($warehouseCode === 'CA' ? 'ca_allocation_changed' : 'us_ny_allocation_changed'));
+            $this->record($actor, 'inventory.reservation.released', $result, $warehouseCode);
         }
         if (! $targetNy) {
             return;
         }
         try {
-            $result = $this->reservations->reserve((int) $order->id, $ny, 'ny-alloc-'.$order->id.'-'.Str::uuid(), null, $actorId);
-            $this->record($actor, 'inventory.reservation.reserved', $result);
+            $result = $this->reservations->reserve((int) $order->id, $ny, ($warehouseCode === 'CA' ? 'ca-alloc-' : 'ny-alloc-').$order->id.'-'.Str::uuid(), null, $actorId);
+            $this->record($actor, 'inventory.reservation.reserved', $result, $warehouseCode);
         } catch (DomainException $error) {
             abort(409, $error->getMessage());
         }
     }
 
-    public function commit(Model $order, int $warehouseId, ?Authenticatable $actor): void
+    public function commit(Model $order, int $warehouseId, ?Authenticatable $actor, string $warehouseCode = 'US-NY'): void
     {
-        $ny = (int) Warehouse::query()->where('code', 'US-NY')->value('id');
+        $ny = (int) Warehouse::query()->where('code', $warehouseCode)->value('id');
         if (! $ny || $warehouseId !== $ny) {
             return;
         }
@@ -63,13 +63,13 @@ final class UsNyAllocationReservation
             return;
         } // pre-cutover legacy shipments
         $result = $this->reservations->commit((int) $active['id'], $actor ? (int) $actor->getAuthIdentifier() : null);
-        $this->record($actor, 'inventory.reservation.committed', $result);
+        $this->record($actor, 'inventory.reservation.committed', $result, $warehouseCode);
     }
 
     /** The order may consume its own hold, never another order's reserved stock. */
-    public function dispatchBlockers(Model $order): array
+    public function dispatchBlockers(Model $order, string $warehouseCode = 'US-NY'): array
     {
-        $ny = (int) Warehouse::query()->where('code', 'US-NY')->value('id');
+        $ny = (int) Warehouse::query()->where('code', $warehouseCode)->value('id');
         $active = $this->reservations->activeForOrder((int) $order->id);
         $own = $active && (int) $active['warehouse_id'] === $ny
             ? collect($active['items'])->pluck('quantity', 'product_id') : collect();
@@ -80,25 +80,25 @@ final class UsNyAllocationReservation
             $stock = UsNyStockClock::withEpoch(WarehouseInventory::query())
                 ->where('warehouse_id', $ny)->where('product_id', $pid)->first();
             if (! UsNyStockClock::fresh($stock)) {
-                $blockers[] = 'US_NY_OMS_SKU_NOT_FRESH';
+                $blockers[] = ($warehouseCode === 'CA' ? 'CA_OMS_SKU_NOT_FRESH' : 'US_NY_OMS_SKU_NOT_FRESH');
 
                 continue;
             }
             $other = max(0, (int) $stock->quantity_reserved - (int) $own->get($pid, 0));
             if ($qty < 1 || min((int) $stock->quantity_on_hand, (int) $stock->provider_available_quantity) - $other < $qty) {
-                $blockers[] = 'US_NY_STOCK_RESERVED_OR_INSUFFICIENT';
+                $blockers[] = ($warehouseCode === 'CA' ? 'CA_STOCK_RESERVED_OR_INSUFFICIENT' : 'US_NY_STOCK_RESERVED_OR_INSUFFICIENT');
             }
         }
 
         return array_values(array_unique($blockers));
     }
 
-    private function record(?Authenticatable $actor, string $action, array $result): void
+    private function record(?Authenticatable $actor, string $action, array $result, string $warehouseCode): void
     {
         if ($result['idempotent'] ?? false) {
             return;
         }
         $this->audit->record($actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),
-            $action, 'inventory_reservation', $result['id'], after: $result, reason: 'us_ny_allocation_reservation');
+            $action, 'inventory_reservation', $result['id'], after: $result, reason: $warehouseCode === 'CA' ? 'ca_allocation_reservation' : 'us_ny_allocation_reservation');
     }
 }
