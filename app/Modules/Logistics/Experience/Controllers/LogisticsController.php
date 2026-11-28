@@ -6,6 +6,7 @@ use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\AllocationRejectionReadModel;
+use App\Modules\Logistics\Application\AllocationRatePreviewService;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
@@ -299,6 +300,14 @@ final class LogisticsController
         }
 
         return response()->json(['products' => $query->orderBy('sku')->get(['id', 'sku', 'name', 'material_full_name'])]);
+    }
+
+    /** No changes to order, inventory or accounting state. */
+    public function allocationRatePreview(Request $request, Order $order, AllocationRatePreviewService $service): JsonResponse
+    {
+        abort_unless($this->statusSummary->pendingAllocationQuery()->whereKey($order->id)->exists(),404);
+        $data=$request->validate(['confirmed_scope'=>'nullable|string|max:192']);
+        return response()->json($service->preview($order,$data['confirmed_scope']??null));
     }
 
     /** Read-only validation; submission revalidates under its transaction. */
