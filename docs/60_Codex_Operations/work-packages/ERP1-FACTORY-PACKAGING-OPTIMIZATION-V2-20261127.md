@@ -82,6 +82,11 @@ Pure read-only input projection of adopted packaged measurement, shipping refere
 - Reviewer-only actual before/after A4 route preview and adoption snapshot, explicitly selected applicable route/country/postal/handling; no fabricated savings, no ranking from draft or unverified history. Missing rates do not prevent adoption of complete reviewed physical measurements. Theoretical plan fixed-base reference divisor defaults 6000 or explicitly chosen 5000/8000; actual quote rules remain A4-owned. Adoption requires distinct explicit action after approval; recorded quote is optional estimate, not historical actual billed cost.
 - Previous head 1eca6dc4 seven CI success. Current local full 72 tests/694 assertions PASS, no skips; typecheck/build/30-tab PASS. SQLite migration/rollback/reapply four fields and ledger PASS; MySQL rollback CI expanded, latest head pending. Actual Chrome headless and headed synthetic end-to-end: factory selected existing SKU and method, linked draft actual height/weight blank, entered 13.2cm/2.180kg without photos, reviewer A4 draft 30->20 CNY, approved then adopted, reloaded snapshot and checked standards list. Original 18.7cm/2.232kg retained, theory 13.4cm, no real quote. New headed UAT at loopback port 54597 five tabs, authenticated standard test admin, active upgraded record /inventory/packaging/4. Only previous own test harness retired; regular Chrome not restarted. Owner live UAT pending, unified grid dependency #918 still unmerged, historical verified savings ranking and production A4 rate activation remain open.
 
+## Owner R6 live UAT PASS (2026-11-28 Beijing 14:48)
+- Owner explicitly returned PASS after the R6 actual-page handoff, accepting the packaging upgrade workflow and version comparison on the isolated US Mac mini. Exact implementation head f32bf325fef49e8b041665d719f9bc030f1b1552: all seven GitHub CI checks SUCCESS (including MySQL packaging contracts and rollback); PR #902 mergeable, still draft.
+- Acceptance covers the delivered physical measurement/adoption workflow and existing-table UAT. It does not certify real monthly savings, supplier-rate applicability, or V4 shared-grid integration. PR #918 remains draft with order-trash and orders-kol-regression failures. Do not copy its candidate grid; joint release gates remain open.
+- B7 Production authorization is separate; no Production release or ERP2 change. No additional scope or repeated Owner UAT requested at this point.
+
 ## PROJECT POSITION
 PROGRAM_ROADMAP: see exact canonical sequence below (document 13; historical status superseded by current V3 overlay).
 ## Program Roadmap
@@ -115,18 +120,18 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 
 The Program Roadmap is the top-level delivery sequence. It must not be replaced by the current Architecture track or a single Work Package map.
 CURRENT_TRACK_PHASE_MAP: B0 audit → B1 data contract → B2 geometry → B3 A4 comparison → B4 ranking → B5 workflow → B6 UAT → B7 release
-COMPLETED_PHASES: handoff read; source/PR preflight; production aggregate read-only audit; B1/B2 backend candidate; B3 A4 quote and bounded target; B4 verified single-item cohort and projection; B5 backend evidence workflow; B6 isolated focused tests and legacy browser regression
-CURRENT_PHASE: B3–B5 backend candidate; B6 regression partial; UI DESIGN_PENDING_OWNER_PASS
+COMPLETED_PHASES: B0–B3 backend and workspace; B4 historical projection algorithm; B5 optional-photo workflow; B6/R6 implementation, isolated Chrome workflow, Owner live UAT PASS; exact implementation head seven CI SUCCESS
+CURRENT_PHASE: B6 / R6 Owner UAT PASS; B7 release dependency gate
 CURRENT_WORK_PACKAGE: ERP1-FACTORY-PACKAGING-OPTIMIZATION-V2-20261127
-PACKAGE_STATUS: OPEN / BACKEND_CANDIDATE_TESTED / DESIGN_PENDING_OWNER_PASS
-WAITING_PHASES: visual PASS; public V4 grid or existing table fallback; real verified rates/parcel identity; B3–B5 UI integration and complete B6 Owner UAT; B7
+PACKAGE_STATUS: OPEN / OWNER_UAT_PASS / RELEASE_DEPENDENCIES_PENDING
+WAITING_PHASES: verified A4 production rates and parcel evidence for real ranking; V4 shared-grid integration or explicit release exception; B7 separate release authorization
 BASELINE: 6c9347ffc029e53565dd80640dde6568f9886ac7
-GITHUB_STATE: main 77b9bdb9 (A5–A6 #917) merged into candidate branch; Draft PR #902 open; no merge to main
+GITHUB_STATE: main 77b9bdb9; PR #902 implementation f32bf325 seven CI SUCCESS, mergeable; draft; no merge or release
 SOURCE_CONFLICTS: earlier ERP2 parity language superseded by ERP1-only directive; stale AI/CURRENT_CONTEXT roadmap superseded by current Owner handoff and document 13 V3 overlay; production release directory identifies 6c9347ff; independent exact SHA attestation unavailable.
 GLOBAL_GATE: no release; preserve Owner visual and UAT approval; no real DB writes
 PRODUCTION_DEPLOYMENT_STATUS: NO for this package; active production release directory and read-only MySQL aggregate verified
-NEXT_DEPENDENCY: explicit visual PASS; verified A4 production applicability and parcel evidence for actual ranking; shared grid or existing table fallback
-EVIDENCE_AS_OF: 2026-11-27 23:39 Beijing time; OS account a; GitHub actor beyourlovercom
+NEXT_DEPENDENCY: joint A/B/V4 release readiness and explicit Production authorization; do not repeat accepted R6 UAT
+EVIDENCE_AS_OF: 2026-11-28 14:48 Beijing time; OS account a; GitHub actor beyourlovercom
 ## ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: 4h planning / 2.5–6h backend-only scope (estimate, not elapsed or promise)
 KNOWN_CURRENT_TRACK_REMAINING: UNKNOWN WITH EVIDENCE; backend candidate delivered, UI/production verification remaining; no accepted elapsed-hour ledger
