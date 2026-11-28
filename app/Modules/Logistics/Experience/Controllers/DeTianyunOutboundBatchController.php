@@ -24,7 +24,7 @@ final class DeTianyunOutboundBatchController
             if ($all && ($ids === [] || count($ids) > DeTianyunOutboundBatchService::MAX_ORDERS)) {
                 return response()->json(['scope' => 'all', 'count' => 0, 'scan_count' => count($ids), 'excluded_count' => count($ids), 'overflow' => $ids !== [], 'dry_run' => ! app()->environment('production'), 'items' => [], 'fingerprint' => ''])->header('Cache-Control', 'no-store, private');
             }
-            $preview = $batches->preview($ids);
+            $preview = $batches->preview($ids, $all ? [] : $batches->selectedRecovery($ids));
             if ($all) {
                 $preview['scope'] = 'all';
             }
@@ -48,11 +48,12 @@ final class DeTianyunOutboundBatchController
             if ($selected === [] || count($selected) > DeTianyunOutboundBatchService::MAX_ORDERS) {
                 return $this->error('DE_BATCH_SELECTION_INVALID', 422);
             }
-            $preview = $batches->preview($selected);
+            $explicitSelected = $request->input('scope') === 'selected';
+            $preview = $batches->preview($selected, $explicitSelected ? $batches->selectedRecovery($selected) : []);
             if (! hash_equals('CONFIRM_DE_TIANYUN_BATCH_'.$preview['count'], $input['confirmation'])) {
                 return $this->error('DE_BATCH_CONFIRMATION_REQUIRED', 422);
             }
-            $id = $batches->start((int) $request->user()->id, $input['fingerprint'], $selected);
+            $id = $batches->start((int) $request->user()->id, $input['fingerprint'], $selected, $explicitSelected);
             try {
                 // Production operator batches are drained by the durable DE-only
                 // scheduler. No 55-second default queue timeout or shared worker.

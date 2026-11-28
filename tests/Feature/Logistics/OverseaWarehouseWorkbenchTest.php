@@ -730,6 +730,72 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_operator_can_restore_manual_exception_across_all_overseas_warehouses(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate', 'orders.view', 'orders.edit']);
+        $w = $this->warehouses();
+        $this->actingAs($actor);
+        Http::preventStrayRequests();
+        foreach (['DE', 'US-NY', 'US-SM', 'US-LA', 'CA'] as $code) {
+            $o = $this->orderAt($w[$code], 'RESOLVE-'.$code);
+            $this->post('/logistics/oversea/orders/'.$o->id.'/approve')->assertRedirect();
+            $o->fresh()->forceFill(['workflow_status' => 'exception'])->save();
+            self::assertSame('exceptions', app(OverseaWarehouseQueueQuery::class)->destination($o->id));
+            $this->postJson('/logistics/orders/'.$o->id.'/resolve-workbench-exception', [
+                'expected_workflow_revision' => $o->fresh()->workflow_revision,
+            ])->assertOk()->assertJsonPath('destination', 'pending');
+            self::assertSame('pending', app(OverseaWarehouseQueueQuery::class)->destination($o->id));
+            self::assertSame('pending', $o->fresh()->shipment->shipment_status);
+            self::assertNull($o->fresh()->shipment->tracking_number);
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_resolve_exception_requires_operator_and_refuses_uncertain_create(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate', 'orders.view']);
+        $viewer = $this->userWith(['logistics.view', 'orders.view']);
+        $w = $this->warehouses();
+        $o = $this->orderAt($w['DE'], 'RESOLVE-UNSAFE');
+        $this->actingAs($actor)->post('/logistics/oversea/orders/'.$o->id.'/approve')->assertRedirect();
+        XlwmsDispatchAttempt::query()->create([
+            'order_id' => $o->id, 'warehouse_id' => $w['DE']->id,
+            'third_order_no' => 'BYL-ERP-'.$o->id, 'state' => 'uncertain_manual_reconcile',
+            'request_fingerprint' => str_repeat('f', 64), 'failure_code' => 'DE_OMS_CREATE_UNCERTAIN',
+        ]);
+        $url = '/logistics/orders/'.$o->id.'/resolve-workbench-exception';
+        $body = ['expected_workflow_revision' => $o->fresh()->workflow_revision];
+        Http::fake();
+        $this->actingAs($viewer)->postJson($url, $body)->assertForbidden();
+        $this->actingAs($actor)->postJson($url, $body)->assertConflict();
+        self::assertSame('exceptions', app(OverseaWarehouseQueueQuery::class)->destination($o->id));
+        $this->assertDatabaseMissing('order_operational_markers', ['order_id' => $o->id, 'marker' => 'warehouse_retry_released']);
+        Http::assertNothingSent();
+    }
+
+    public function test_ny_auto_submit_draft_waits_in_issued_then_times_out_or_surfaces_label_error(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate', 'orders.view', 'orders.edit']);
+        $w = $this->warehouses();
+        $this->actingAs($actor);
+        $o = $this->orderAt($w['US-NY'], 'NY-LABEL-WAIT');
+        $this->post('/logistics/oversea/orders/'.$o->id.'/approve')->assertRedirect();
+        $a = XlwmsDispatchAttempt::query()->create([
+            'order_id' => $o->id, 'warehouse_id' => $w['US-NY']->id,
+            'third_order_no' => 'BYL-ERP-'.$o->id, 'state' => 'oms_create_confirmed',
+            'request_fingerprint' => str_repeat('f', 64), 'oms_order_no' => 'NY-LABEL-001', 'oms_status_code' => '0',
+        ]);
+        $q = app(OverseaWarehouseQueueQuery::class);
+        self::assertSame('issued', $q->destination($o->id));
+        $a->forceFill(['created_at' => now()->subMinutes(31)])->save();
+        self::assertSame('exceptions', $q->destination($o->id));
+        $a->forceFill(['created_at' => now(), 'oms_status_code' => '7'])->save();
+        self::assertSame('exceptions', $q->destination($o->id));
+        $a->forceFill(['oms_status_code' => '2'])->save();
+        self::assertSame('issued', $q->destination($o->id));
+        self::assertNull($o->fresh()->shipment->tracking_number);
+    }
+
     public function test_provider_failure_cannot_disappear_behind_warehouse_stockout(): void
     {
         $actor = $this->userWith(['logistics.view', 'logistics.operate', 'orders.view', 'orders.edit']);

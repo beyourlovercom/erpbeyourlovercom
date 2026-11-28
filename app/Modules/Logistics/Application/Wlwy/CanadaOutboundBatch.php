@@ -3,6 +3,9 @@
 namespace App\Modules\Logistics\Application\Wlwy;
 
 use App\Models\User;
+use App\Modules\Audit\Application\AuditActor;
+use App\Modules\Audit\Application\AuditSource;
+use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Logistics\Application\FulfillmentPaymentGate;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
@@ -52,12 +55,45 @@ final class CanadaOutboundBatch
             ->whereIn('status', ['queued', 'in_flight', 'uncertain', 'accepted', 'confirmed', 'existing', 'tracking_staged', 'exception'])->exists();
     }
 
+    /** Called with the current order/Shipment locked by the exception resolver. */
+    public static function releasePreCreateFailure(Order $order, int $actorId): bool
+    {
+        if (! self::liveAllowed((int) $order->id)) {
+            return false;
+        }
+        $items = DB::table('wlwy_ca_batch_items')->where('order_id', $order->id)->where('dry_run', false)
+            ->lockForUpdate()->get();
+        $failed = $items->where('status', 'blocked');
+        if ($failed->isEmpty() || $items->contains(fn ($i) => ! in_array($i->status, ['blocked', 'retry_released'], true)
+            || filled($i->provider_order_id) || (int) $i->shipment_id !== (int) $order->shipment?->id)) {
+            return false;
+        }
+        foreach ($failed as $item) {
+            if ($item->result_code !== 'CA_PRECHECK_FAILED'
+                || ! DB::table('wlwy_ca_batches')->where('id', $item->batch_id)->where('status', 'completed_partial')->exists()) {
+                return false;
+            }
+        }
+        foreach ($failed as $item) {
+            DB::table('wlwy_ca_batch_items')->where('id', $item->id)->where('status', 'blocked')
+                ->update(['status' => 'retry_released', 'updated_at' => now()]);
+            app(AuditRecorder::class)->record(
+                AuditActor::user(User::findOrFail($actorId), AuditSource::Web),
+                'logistics.ca_precreate_failure_released', 'wlwy_ca_batch_item', $item->id,
+                ['status' => 'blocked', 'result_code' => $item->result_code], ['status' => 'retry_released'],
+                'operator_confirmed_pre_create_failure');
+        }
+
+        return true;
+    }
+
     public static function projection(object $item, string $shipmentStatus): array
     {
         [$status, $label] = match (true) {
             $shipmentStatus === 'shipped' => ['shipped', '已发货'],
             $item->status === 'tracking_staged' => ['warehouse_outbound_pending_sync', '单号已回填 · 待确认发货'],
             $item->status === 'confirmed' => ['oms_processing', '仓库已接单 · 等待物流单号'],
+            $item->status === 'retry_released' => ['pending', '异常已解除 · 待人工再次推送'],
             $item->status === 'queued' => ['exception', '批次排队中'],
             $item->status === 'in_flight' => ['exception', '推送处理中 · 禁止重复提交'],
             $item->status === 'accepted' => ['oms_unverified', 'API 已受理 · 等待仓库回读'],
@@ -80,7 +116,9 @@ final class CanadaOutboundBatch
         $q = Shipment::query()->whereHas('warehouse', fn ($w) => $w->where('code', 'CA'))
             ->whereHas('order', fn ($o) => $o->eligibleForOperations())
             ->where(fn ($s) => $s->whereNull('tracking_number')->orWhere('tracking_number', ''))
-            ->whereNotIn('order_id', DB::table('wlwy_ca_batch_items')->where('dry_run', false)->select('order_id'));
+            ->whereNotIn('order_id', DB::table('wlwy_ca_batch_items')->where('dry_run', false)
+                ->when($ids !== null, fn ($prior) => $prior->where('status', '!=', 'retry_released'))
+                ->select('order_id'));
         app(OverseaWarehouseQueueQuery::class)->applyView($q, 'pending');
         if ($ids !== null) {
             $q->whereIn('order_id', $ids);
@@ -202,7 +240,9 @@ final class CanadaOutboundBatch
                 DB::table('wlwy_ca_batches')->insert(['id' => $id, 'operator_user_id' => $actor, 'status' => 'queued', 'dry_run' => $dry, 'created_at' => now(), 'updated_at' => now()]);
                 foreach ($claims as $row) {
                     if (! $dry && DB::table('wlwy_ca_batch_items')->where('dry_run', false)
-                        ->where(fn ($q) => $q->where('order_id', $row['order_id'])->orWhere('reference', $row['reference']))->exists()) {
+                        ->where(fn ($q) => $q->where('order_id', $row['order_id'])->orWhere('reference', $row['reference']))
+                        ->where(fn ($q) => $q->where('status', '!=', 'retry_released')
+                            ->orWhere('order_id', '!=', $row['order_id'])->orWhere('reference', '!=', $row['reference']))->exists()) {
                         throw new RuntimeException('CA_REFERENCE_ALREADY_CLAIMED');
                     }
 

@@ -101,3 +101,17 @@ describe('Domestic Shipping Hold V1 frozen queue',()=>{
     viewer.unmount();busy.unmount()
   })
 })
+
+it('offers a dedicated resolve-exception action to the authorized operator only',async()=>{
+  const resolveException=vi.fn()
+  const p={...base,view:'exceptions',canResolveException:true,canOperate:true,resolveException}
+  const wrapper=mount(Cell,{props:{params:p}})
+  expect(wrapper.findAll('button').map(b=>b.text())).toEqual(['解除异常','原操作'])
+  await wrapper.findAll('button')[0].trigger('click')
+  expect(resolveException).toHaveBeenCalledWith(base.data)
+  expect(p.native).not.toHaveBeenCalled()
+  wrapper.unmount()
+  const denied=mount(Cell,{props:{params:{...p,canResolveException:false,canOperate:false}}})
+  expect(denied.find('button').exists()).toBe(false)
+  denied.unmount()
+})

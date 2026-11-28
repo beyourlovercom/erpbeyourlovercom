@@ -572,6 +572,15 @@ final class ShipOutProductionBatchTest extends TestCase
                 'created_at' => now(), 'updated_at' => now(),
             ]);
             $this->assertSame([$good->id], app(ShipOutProductionBatchService::class)->candidateIds());
+            $this->assertSame([], app(ShipOutProductionBatchService::class)->candidateIds([$bad->id]));
+            DB::table('shipout_production_batch_items')->where('order_id', $bad->id)->update([
+                'status' => 'skipped', 'result_code' => 'SHIPOUT_R9_HISTORY_UNAVAILABLE',
+            ]);
+            $this->assertSame([$bad->id], app(ShipOutProductionBatchService::class)->candidateIds([$bad->id]));
+            $this->assertSame([$good->id], app(ShipOutProductionBatchService::class)->candidateIds());
+            DB::table('shipout_production_batch_items')->where('order_id', $bad->id)->update([
+                'status' => 'provider_cancelled', 'result_code' => 'PROVIDER_DUPLICATE_ORDER',
+            ]);
             $this->assertSame([$good->id], ShipOutProductionBatchService::productionApprovedOrderIds() === []
                 ? [] : app(ShipOutProductionBatchService::class)->candidateIds());
 

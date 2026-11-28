@@ -197,6 +197,50 @@ final class CanadaOutboundBatchTest extends TestCase
         $gateway->exactStatus($connection, 'C99941');
     }
 
+    public function test_operator_releases_only_precreate_failure_for_selected_second_push(): void
+    {
+        $actor = $this->operator();
+        $o = $this->order($actor, '31');
+        $this->productionFixture();
+        $fails = true;
+        $creates = 0;
+        Http::fake(['https://api.wlwytech.com/router/api/service*' => function (Request $req) use (&$fails, &$creates) {
+            parse_str((string) parse_url($req->url(), PHP_URL_QUERY), $q);
+            if ($q['method'] === 'fu.wms.outbound.getorderstatus') {
+                if ($fails) {
+                    throw new ConnectionException('synthetic preflight failure');
+                }
+
+                return Http::response(['result' => '1', 'data' => ['consignmentlist' => []], 'errors' => null]);
+            }
+            if ($q['method'] === 'fu.wms.sku.getlist') {
+                return Http::response(['result' => '1', 'data' => ['skulist' => array_map(fn ($sku) => ['sku_code' => $sku, 'sku_id' => 'SKU-ID', 'customer_code' => 'CA-FIXTURE', 'include_batch' => 'N', 'expired_date' => 'N'], $req->data()['lstsku'])], 'errors' => null]);
+            }
+            if ($q['method'] === 'fu.wms.outbound.create') {
+                $creates++;
+
+                return Http::response(['result' => '1', 'data' => ['consignment_no' => 'OMS-31'], 'errors' => null]);
+            }
+            throw new RuntimeException('Unexpected synthetic request');
+        }]);
+        $this->start($actor, [$o]);
+        app(CanadaOutboundBatch::class)->drain();
+        self::assertSame(0, $creates);
+        $prior = DB::table('wlwy_ca_batch_items')->where('order_id', $o->id)->first();
+        self::assertSame('blocked', $prior->status);
+        $this->postJson('/logistics/orders/'.$o->id.'/resolve-workbench-exception', [
+            'expected_workflow_revision' => $o->fresh()->workflow_revision,
+        ])->assertOk()->assertJsonPath('destination', 'pending');
+        $this->assertDatabaseHas('wlwy_ca_batch_items', ['id' => $prior->id, 'status' => 'retry_released', 'result_code' => 'CA_PRECHECK_FAILED']);
+        self::assertSame(0, app(CanadaOutboundBatch::class)->preview(null)['count']);
+        $fails = false;
+        $this->start($actor, [$o]);
+        app(CanadaOutboundBatch::class)->drain();
+        self::assertSame(1, $creates);
+        self::assertSame(2, DB::table('wlwy_ca_batch_items')->where('order_id', $o->id)->count());
+        self::assertSame(0, app(CanadaOutboundBatch::class)->preview([$o->id])['count']);
+    }
+
     public function test_fake_live_create_timeout_stays_uncertain_and_never_retries(): void
     {
         $actor = $this->operator();
@@ -224,5 +268,9 @@ final class CanadaOutboundBatchTest extends TestCase
         $this->assertNull($o->fresh()->shipment->tracking_number);
         $this->assertSame('exceptions', app(OverseaWarehouseQueueQuery::class)->destination($o->id));
         $this->assertSame(0, app(CanadaOutboundBatch::class)->preview([$o->id])['count']);
+        $this->postJson('/logistics/orders/'.$o->id.'/resolve-workbench-exception', [
+            'expected_workflow_revision' => $o->fresh()->workflow_revision,
+        ])->assertConflict();
+        self::assertSame(1, $creates);
     }
 }

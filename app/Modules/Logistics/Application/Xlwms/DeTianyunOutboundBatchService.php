@@ -2,6 +2,9 @@
 
 namespace App\Modules\Logistics\Application\Xlwms;
 
+use App\Models\User;
+use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Orders\Application\OrderManualHoldStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -92,25 +95,48 @@ final class DeTianyunOutboundBatchService
         ];
     }
 
-    /** @param list<int> $orderIds */
-    public function start(int $operatorId, string $expectedFingerprint, array $orderIds): string
+    /** A completed operator batch proves the first submission. Only an
+     * explicit selected push may reopen a proven pre-CREATE failure.
+     */
+    public function selectedRecovery(array $orderIds): array
     {
-        return $this->startScoped($operatorId, $expectedFingerprint, $orderIds, []);
+        if (! app()->environment('production') || ! config('xlwms.de_operator_batch_enabled', false)) {
+            return [];
+        }
+        $recovery = [];
+        foreach (XlwmsDispatchAttempt::query()->whereIn('order_id', $orderIds)
+            ->where('state', 'blocked_preflight_error')->get() as $attempt) {
+            $order = Order::query()->eligibleForOperations()->with('shipment.warehouse')->find($attempt->order_id);
+            if ($order && DeTianyunPreflightRecovery::eligible($attempt, $order, (int) $attempt->id)) {
+                $recovery[(int) $order->id] = (int) $attempt->id;
+            }
+        }
+
+        return $recovery;
+    }
+
+    /** @param list<int> $orderIds */
+    public function start(int $operatorId, string $expectedFingerprint, array $orderIds, bool $explicitSelected = false): string
+    {
+        return $this->startScoped($operatorId, $expectedFingerprint, $orderIds,
+            $explicitSelected ? $this->selectedRecovery($orderIds) : []);
     }
 
     /** Internal operator-authorized recovery; never used by ordinary batch endpoints. */
     public function startRecovery(int $operatorId, int $orderId, int $attemptId, string $confirmation): string
     {
-        $actor = \App\Models\User::query()->find($operatorId);
+        $actor = User::query()->find($operatorId);
         if (! app()->environment('production') || ! config('xlwms.de_operator_batch_enabled', false)
             || ! $actor?->is_active
-            || ! app(\App\Modules\Logistics\Application\LogisticsExecutionAccess::class)->allows($actor)
+            || ! app(LogisticsExecutionAccess::class)->allows($actor)
             || $confirmation !== 'RECOVER_DE_PREFLIGHT_'.$orderId.'_'.$attemptId) {
             throw new RuntimeException('DE_PREFLIGHT_RECOVERY_NOT_AUTHORIZED');
         }
         $recovery = [$orderId => $attemptId];
         $preview = $this->preview([$orderId], $recovery);
-        if ($preview['count'] !== 1) throw new RuntimeException('DE_PREFLIGHT_RECOVERY_NOT_SAFE');
+        if ($preview['count'] !== 1) {
+            throw new RuntimeException('DE_PREFLIGHT_RECOVERY_NOT_SAFE');
+        }
 
         return $this->startScoped($operatorId, $preview['fingerprint'], [$orderId], $recovery);
     }
@@ -148,6 +174,8 @@ final class DeTianyunOutboundBatchService
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
                 foreach ($eligible as $item) {
+                    DB::table('order_operational_markers')->where('order_id', $item['order_id'])
+                        ->where('marker', WarehouseExceptionResolution::RETRY_RELEASED)->delete();
                     DB::table('xlwms_de_dispatch_batch_items')->insert([
                         'batch_id' => $id, 'order_id' => $item['order_id'],
                         'order_no' => $item['order_no'], 'payload_hash' => $item['payload_hash'],

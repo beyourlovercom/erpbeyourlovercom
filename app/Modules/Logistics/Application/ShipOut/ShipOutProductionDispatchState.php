@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Application\ShipOut;
 
+use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use Illuminate\Database\Query\Builder;
 
 /**
@@ -28,7 +29,22 @@ final class ShipOutProductionDispatchState
             ->whereColumn('q.order_id', 'shipments.order_id')
             ->whereIn('q.status', [
                 'skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review',
-            ])->whereNot(function ($recoverable): void {
+            ])->whereNot(function ($released): void {
+                $released->where('q.status', 'skipped')->whereNull('q.provider_order_id')
+                    ->whereNotExists(fn ($a) => self::scopeAttempt($a))
+                    ->whereExists(fn ($m) => $m->selectRaw('1')->from('order_operational_markers as released')
+                        ->whereColumn('released.order_id', 'q.order_id')
+                        ->where('released.marker', WarehouseExceptionResolution::RETRY_RELEASED)
+                        ->whereColumn('released.marked_at', '>=', 'q.updated_at'));
+            })->whereNot(function ($preflightOnly): void {
+                // A later, independently confirmed OMS creation supersedes an
+                // old pre-CREATE skip; never clear actual provider conflicts.
+                $preflightOnly->where('q.status', 'skipped')->whereNull('q.provider_order_id')
+                    ->whereExists(fn ($verified) => self::scopeCreated($verified))
+                    ->whereExists(fn ($later) => $later->selectRaw('1')->from('shipout_production_batch_items as new_item')
+                        ->whereColumn('new_item.order_id', 'q.order_id')->whereColumn('new_item.id', '>', 'q.id')
+                        ->where('new_item.status', 'oms_visible')->whereNotNull('new_item.provider_order_id'));
+            })->whereNot(function ($recoverable): void {
                 $recoverable->where('q.status', 'needs_review')
                     ->whereNotNull('q.result_code')->where('q.result_code', self::TEMPORARY_READBACK_ERROR)
                     ->whereNotNull('q.provider_order_id')

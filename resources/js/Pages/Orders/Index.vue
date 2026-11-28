@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { orderCountryLabel } from '../../lib/countryStandard'
 import { Head, Link, router } from '@inertiajs/vue3'
+import axios from 'axios'
+import { publishGlobalFeedback } from '../../lib/globalFeedback'
+import { currentCsrfHeaders } from '../../lib/csrfHeaders'
 import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
@@ -39,6 +42,7 @@ const props = defineProps<{
   canExportOmsOrders?: boolean
   canPreviewKolLinks?: boolean
   canManageTrash?: boolean
+  canResolveException?: boolean
   canEditWorkflowStatus?: boolean
   workflowStatusOptions?: { code: string; en: string; zh: string; color: string; mutable: boolean }[]
   warehouseRouteOptions?: {code:string;name:string}[]
@@ -190,6 +194,18 @@ const exportUrl = () => `${basePath.value}/export?${new globalThis.URLSearchPara
 const omsExportUrl = () => `/orders/oms/export?${new globalThis.URLSearchParams(Object.entries({ ...filters, ...gridParams() }).filter(([, value]) => value !== undefined).map(([key, value]): [string, string] => [key, String(value)])).toString()}`
 const goToPage = (page: number) => nav({ ...filters, page })
 const orderPath = (order: Order) => order.order_kind === 'kol_fulfillment' ? `/kol/orders/${order.id}` : `/customers/orders/${order.id}`
+const exceptionBusy = ref<number|null>(null)
+const canResolveRow = (order:Order) => Boolean(props.canResolveException && (filters.view==='exception' || ['failed','conflict','retry_wait'].includes(order.tracking_sync_status??'')))
+async function resolveException(order:Order) {
+  if(!canResolveRow(order)||exceptionBusy.value!==null)return
+  exceptionBusy.value=order.id
+  try {
+    const r=await axios.post('/logistics/orders/'+order.id+'/resolve-workbench-exception',{expected_workflow_revision:order.workflow_revision??0},{headers:currentCsrfHeaders()})
+    publishGlobalFeedback({state:'SUCCESS',title:'解除异常',message:r.data.message})
+  } catch(error) {
+    publishGlobalFeedback({state:'BLOCKED',title:'异常尚未解除',message:axios.isAxiosError(error)?String(error.response?.data?.message??'请核对实际订单状态。'):'请核对实际订单状态。'})
+  } finally {exceptionBusy.value=null;router.reload({only:['orders']})}
+}
 const customerRows = computed<GridListRow[]>(() => props.orders.data.map(order => ({
   id: order.id,
   order_url: orderPath(order),
@@ -247,9 +263,9 @@ const customerColumns: ColDef<GridListRow>[] = [
   gridColumn({ colId:'owner', field:'owner', headerName:'负责人', width:140 }),
   gridColumn({ colId:'website_sync', field:'website_sync', headerName:'官网同步', width:125,
     cellRenderer:GlobalGridCell, cellRendererParams:{ mode:'badge' } }),
-  gridColumn({ colId:'actions', field:'id', headerName:'操作', width:110,
+  gridColumn({ colId:'actions', field:'id', headerName:'操作', width:185,
     cellRenderer:GlobalGridCell, cellRendererParams:{ mode:'actions',
-      actionsFor:(row:GridListRow)=>[{label:'查看',href:String(row.order_url)}] } }),
+      actionsFor:(row:GridListRow)=>{const o=props.orders.data.find(item=>item.id===Number(row.id));return [...(o&&canResolveRow(o)?[{label:'解除异常',onClick:()=>void resolveException(o)}]:[]),{label:'查看',href:String(row.order_url)}]} } }),
 ]
 const customerPager = computed(() => ({
   current_page:props.orders.current_page, last_page:props.orders.last_page,
@@ -321,7 +337,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         <button class="mvp-button" type="submit">筛选</button>
       </form>
 
-      <div v-if="!modernGridEnabled" class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>官网同步</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number','warehouse_route']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.source_label === 'WooCommerce' && order.external_order_number" class="order-source-reference">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'contact'">{{ order.contact_user_name ?? '未分配' }}</template><template v-else-if="column.key === 'note'"><span class="orders-latest-note" :title="order.latest_order_note || ''">{{ order.latest_order_note || '—' }}</span></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'partner'">{{ order.collaboration_partner?.name ?? '待确认' }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ orderCountryLabel(order.address?.country) }}</template><template v-else-if="column.key === 'warehouse_route'"><OrderWarehouseRouteSelect v-if="order.routing_warehouse" :order-id="order.id" :projection="order.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute)" :options="warehouseRouteOptions??[]" /><span v-else>—</span></template><template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="Boolean(order.can_edit_workflow_status)" :options="order.workflow_status_options ?? workflowStatusOptions" /><span v-else>—</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><span v-if="order.tracking_sync_status !== null && order.tracking_sync_status !== undefined" class="orders-sync-pill" :class="order.tracking_sync_status ?? 'pending'" :title="[order.tracking_sync_reason, order.tracking_sync_verified_at ? '最近官网验证：' + new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '尚无官网验证记录'].filter(Boolean).join('；')">{{ order.tracking_sync_label ?? '待同步' }}</span><span v-else>—</span></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 3" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
+      <div v-if="!modernGridEnabled" class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>官网同步</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number','warehouse_route']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.source_label === 'WooCommerce' && order.external_order_number" class="order-source-reference">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'contact'">{{ order.contact_user_name ?? '未分配' }}</template><template v-else-if="column.key === 'note'"><span class="orders-latest-note" :title="order.latest_order_note || ''">{{ order.latest_order_note || '—' }}</span></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'partner'">{{ order.collaboration_partner?.name ?? '待确认' }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ orderCountryLabel(order.address?.country) }}</template><template v-else-if="column.key === 'warehouse_route'"><OrderWarehouseRouteSelect v-if="order.routing_warehouse" :order-id="order.id" :projection="order.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute)" :options="warehouseRouteOptions??[]" /><span v-else>—</span></template><template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="Boolean(order.can_edit_workflow_status)" :options="order.workflow_status_options ?? workflowStatusOptions" /><span v-else>—</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><span v-if="order.tracking_sync_status !== null && order.tracking_sync_status !== undefined" class="orders-sync-pill" :class="order.tracking_sync_status ?? 'pending'" :title="[order.tracking_sync_reason, order.tracking_sync_verified_at ? '最近官网验证：' + new Date(order.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12: false }) : '尚无官网验证记录'].filter(Boolean).join('；')">{{ order.tracking_sync_label ?? '待同步' }}</span><span v-else>—</span></td><td><button v-if="canResolveRow(order)" type="button" class="mvp-button" :disabled="exceptionBusy!==null" @click="resolveException(order)">解除异常</button> <Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 3" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
       <Suspense v-if="modernCustomerGrid">
         <GlobalGrid
         :namespace="orderScope === 'collaboration' ? 'grid.orders.collaboration.global.v1' : 'grid.orders.customer.global.v1'"
@@ -355,6 +371,8 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         :title="heading"
         :orders="orders"
         :filters="props.filters"
+        :can-resolve-exception="canResolveException"
+        :resolve-exception="(id:number)=>{const o=orders.data.find(item=>item.id===id);if(o)void resolveException(o)}"
         :can-edit-workflow-status="canEditWorkflowStatus"
         :workflow-status-options="workflowStatusOptions"
         :can-edit-warehouse-route="Boolean(canEditWarehouseRoute)"

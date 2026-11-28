@@ -81,6 +81,20 @@ const resumeHold = async (row:Row) => {
     publishGlobalFeedback({state:'ERROR',title:'恢复待发货失败',message})
   } finally {resumeHoldBusy.value=null}
 }
+const exceptionBusy=ref<number|null>(null)
+async function resolveWarehouseException(row:Row) {
+  if(!props.canOperate||exceptionBusy.value!==null)return
+  exceptionBusy.value=row.order_id
+  try {
+    const response=await axios.post('/logistics/orders/'+row.order_id+'/resolve-workbench-exception',{
+      expected_workflow_revision:row.workflow_revision??0,
+    },{headers:currentCsrfHeaders()})
+    publishGlobalFeedback({state:'SUCCESS',title:'解除异常',message:response.data.message})
+    router.reload({only:['rows','viewCounts']})
+  } catch(error) {
+    publishGlobalFeedback({state:'BLOCKED',title:'异常尚未解除',message:axios.isAxiosError(error)?String(error.response?.data?.message??'请核对订单状态。'):'请核对订单状态。'})
+  } finally {exceptionBusy.value=null}
+}
 type BulkChoice = {value:string; label:string; reasonRequired?:boolean}
 const selectedBulkOrderIds = ref<number[]>([])
 const selectedExportQuery = computed(() => new URLSearchParams(
@@ -328,7 +342,7 @@ const domesticGridColumns = computed<ColDef<GridListRow>[]>(()=>[
     cellRenderer:props.view==='exceptions'?GlobalGridCell:(props.view==='pending'||isAllDomesticView(props.view))?DomesticGridPendingCell:DomesticGridActionCell,
     cellRendererParams:props.view==='exceptions'?{
       mode:'actions',
-      actionsFor:(row:GridListRow)=>[{label:'查看订单',href:String(row.order_url??'')}],
+      actionsFor:(row:GridListRow)=>[...(props.canOperate?[{label:'解除异常',onClick:()=>{const source=props.rows.data.find(item=>item.order_id===Number(row.id));if(source)void resolveWarehouseException(source)}}]:[]),{label:'查看订单',href:String(row.order_url??'')}],
     }:{
       compactActions:isAllDomesticView(props.view),
       isHeld:(id:number)=>{const row=props.rows.data.find(item=>item.order_id===id);return !!row&&isHeld(row)},
@@ -973,7 +987,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
       </div>
       <div v-if="view!=='outsource' && (!globalGridPilotEnabled || (view!=='review' && view!=='stockout' && !isProviderWorkView(view) && (activeOperationId!==null || showBatchLegacyOperations)))" class="table-wrap orders">
         <table>
-          <thead><tr><th v-if="canTrackingSync && view!=='stockout'">选择</th><th>#</th><th>{{ view==='stockout' ? '操作' : '审核' }}</th><th>ERP 订单</th><th>订单联络人</th><th>订单状态</th><th>所属分仓</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>物流商</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view==='pending'">SKU</th><th v-if="view==='pending'">数量</th><th v-if="view==='pending'">金额</th><th v-if="view!=='review' && view!=='pending'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync && view!=='stockout'">操作</th></tr></thead>
+          <thead><tr><th v-if="canTrackingSync && view!=='stockout'">选择</th><th>#</th><th>{{ view==='stockout' ? '操作' : '审核' }}</th><th>ERP 订单</th><th>订单联络人</th><th>订单状态</th><th>所属分仓</th><th v-if="view==='review'">成交日期</th><th v-if="view==='review'">SKU</th><th v-if="view==='review'">数量</th><th v-if="view==='review'">金额</th><th>导出状态</th><th>物流商</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th v-if="view==='pending'">SKU</th><th v-if="view==='pending'">数量</th><th v-if="view==='pending'">金额</th><th v-if="view!=='review' && view!=='pending'">SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync && view!=='stockout'">操作</th><th v-if="view==='exceptions' && canOperate">操作</th></tr></thead>
           <tbody>
             <tr v-for="row in nativeOperationRows" :key="row.order_id">
               <td v-if="canTrackingSync && view!=='stockout'"><input v-if="eligibleForBatchTracking(row)" type="checkbox"
@@ -1052,8 +1066,9 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               <td><span v-if="row.source_type==='woocommerce'" class="sync-status" :title="[row.tracking_sync_reason, row.tracking_sync_verified_at ? '最近官网验证：' + new Date(row.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12:false }) : '尚无官网验证记录'].filter(Boolean).join('；')" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="sync-failure">{{ row.tracking_sync_reason }}</small></td>
               <td v-if="canTrackingSync && view!=='stockout'"><button v-if="eligibleForTracking(row)" type="button" class="secondary"
                 :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">{{ (['failed','retry_wait'].includes(row.tracking_sync_status ?? '') || !!row.tracking_sync_reason) ? '重新同步' : '同步官网物流' }}</button><span v-else>—</span></td>
+              <td v-if="view==='exceptions' && canOperate"><button type="button" class="secondary" :disabled="exceptionBusy!==null" @click="resolveWarehouseException(row)">解除异常</button></td>
             </tr>
-            <tr v-if="!rows.data.length"><td :colspan="(view==='review'?17:view==='pending'?16:14)+(canTrackingSync && view!=='stockout'?2:0)" class="empty">当前视图暂无订单</td></tr>
+            <tr v-if="!rows.data.length"><td :colspan="(view==='review'?17:view==='pending'?16:14)+(canTrackingSync && view!=='stockout'?2:0)+(view==='exceptions' && canOperate?1:0)" class="empty">当前视图暂无订单</td></tr>
           </tbody>
         </table>
       </div>

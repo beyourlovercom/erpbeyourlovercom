@@ -22,7 +22,7 @@ vi.mock('../../Components/Orders/OrderOmsTransfer.vue', () => ({ default: {
 
 const props = {
   orders: { data: [], current_page: 1, last_page: 1, per_page: 50, total: 0 },
-  counts: { all: 8104, normal: 7978, operational: 126, trash: 0, pending: 450 },
+  counts: { all: 8104, normal: 7978, operational: 126, trash: 0, pending: 450, exception: 1 },
   filters: { search: '', view: 'all', kind: 'all', source: 'all', sort: 'date', direction: 'desc', per_page: '50' },
   canSeeTrash: true,
   canImportOmsOrders: true,
@@ -35,7 +35,7 @@ describe('Orders read-only master workspace', () => {
   it('shows one compact filter workspace without duplicate all/archive navigation tabs', () => {
     const wrapper = mount(Master, { props })
     expect(wrapper.find('.master-toolbar').exists()).toBe(true)
-    expect(wrapper.findAll('.quick-filters .quick-chip')).toHaveLength(5)
+    expect(wrapper.findAll('.quick-filters .quick-chip')).toHaveLength(6)
     expect(wrapper.find('.master-heading').text()).toContain('8,104')
     expect(wrapper.find('.order-views-bar').exists()).toBe(false)
     expect(wrapper.find('a[href="/orders/archive"]').exists()).toBe(true)
@@ -64,7 +64,7 @@ describe('Orders read-only master workspace', () => {
 
   it('does not show the trash filter to a non-admin reader', () => {
     const wrapper = mount(Master, { props: { ...props, canSeeTrash: false } })
-    expect(wrapper.findAll('.quick-chip')).toHaveLength(4)
+    expect(wrapper.findAll('.quick-chip')).toHaveLength(5)
     wrapper.unmount()
   })
 })

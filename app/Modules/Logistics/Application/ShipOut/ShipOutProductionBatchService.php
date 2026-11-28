@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Application\ShipOut;
 
+use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Application\OrderManualHoldStatus;
 use Illuminate\Support\Facades\DB;
@@ -96,13 +97,18 @@ final class ShipOutProductionBatchService
                     ->where('provider', 'historical_logistics'))
                 ->whereHas('address', fn ($address) => $address->where('country', 'US')))
             ->whereNotIn('order_id', DB::table('shipout_dispatch_attempts')->select('order_id'))
-            // Batch-level quarantine also covers preflight failures without a POST.
-            // Operators must resolve errors deliberately; a new batch never silently retries.
-            ->whereNotIn('order_id', DB::table('shipout_production_batch_items')
-                ->whereIn('status', [
+            // No broad automatic retry. An explicit selected push can reopen
+            // only a completed real preflight skip with no provider evidence.
+            ->whereNotIn('order_id', DB::table('shipout_production_batch_items as retry_item')
+                ->join('shipout_production_batches as retry_batch', 'retry_batch.id', '=', 'retry_item.batch_id')
+                ->whereIn('retry_item.status', [
                     'queued', 'processing', 'pending_oms', 'oms_visible_provisional',
                     'oms_visible', 'skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review',
-                ])->select('order_id'))
+                ])->when($selectedOrderIds !== null && app()->environment('production'), fn ($q) => $q
+                ->whereNot(fn ($safe) => $safe->where('retry_item.status', 'skipped')
+                    ->whereNull('retry_item.provider_order_id')->where('retry_batch.dry_run', false)
+                    ->whereIn('retry_batch.status', ['completed', 'completed_partial'])))
+                ->select('retry_item.order_id'))
             ->where('order_id', '>=', $cutover);
         if (app()->environment('production') && $approvedIds !== []) {
             $query->whereIn('order_id', $approvedIds);
@@ -232,6 +238,8 @@ final class ShipOutProductionBatchService
                 ]);
                 $rows = [];
                 foreach ($ids as $orderId) {
+                    DB::table('order_operational_markers')->where('order_id', $orderId)
+                        ->where('marker', WarehouseExceptionResolution::RETRY_RELEASED)->delete();
                     $order = DB::table('orders')->where('id', $orderId)->first(['erp_order_id']);
                     $rows[] = [
                         'batch_id' => $id, 'order_id' => $orderId,

@@ -21,7 +21,6 @@ final class ShipOutProductionCanaryDispatchService
         private readonly ShipOutProductionCanaryGate $gate,
         private readonly ShipOutProductionV1Gate $v1Gate,
         private readonly ShipOutProductionCanaryOutboundTransport $transport,
-        private readonly ShipOutProductionDuplicateRiskGuard $duplicateRisk,
     ) {}
 
     /** @return array<string,mixed> */
@@ -34,12 +33,13 @@ final class ShipOutProductionCanaryDispatchService
     public function previewApproved(int $erpOrderId, string $shipDate): array
     {
         $prepared = $this->preflight->buildApproved($erpOrderId, $shipDate);
-        $history = $this->duplicateRisk->inspect($prepared['payload']);
 
+        // buildApproved already verifies the exact provider orderNo is absent.
+        // Owner standard: never scan unrelated recipient or SKU history.
         return [
             ...$prepared['summary'],
-            'history_risk' => $history,
-            'ready' => $history['status'] === 'clear',
+            'history_risk' => ['status' => 'clear', 'code' => 'SHIPOUT_EXACT_REFERENCE_CLEAR', 'checked_orders' => 0, 'window_days' => 0],
+            'ready' => true,
         ];
     }
 
@@ -92,10 +92,8 @@ final class ShipOutProductionCanaryDispatchService
             $this->gate->assertExecutionAuthorized(...$args);
         }
 
-        // Mandatory R9 signed, complete warehouse history check before the
-        // first and only POST. Never treat missing API history as all-clear.
-        $this->duplicateRisk->assertNoContentRisk($payload);
-
+        // Fresh build/buildApproved already performed signed exact orderNo lookup.
+        // The durable unique attempt still prevents an ambiguous POST retry.
         // A once-per-order and once-per-warehouse-reference durable lock.
         // Never hold a DB transaction open across network I/O.
         try {

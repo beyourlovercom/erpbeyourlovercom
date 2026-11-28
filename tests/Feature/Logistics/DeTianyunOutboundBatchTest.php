@@ -404,6 +404,13 @@ final class DeTianyunOutboundBatchTest extends TestCase
             ]);
             self::assertSame(0, $service->preview([$order->id])['count']);
             self::assertSame(1, $service->preview([$order->id], [$order->id => $attemptId])['count']);
+            $order->shipment->overseaReview()->update(['status' => 'pending', 'reviewed_warehouse_id' => null]);
+            $order->forceFill(['workflow_status' => 'pending_review'])->save();
+            self::assertSame('review', app(\App\Modules\Logistics\Application\OverseaWarehouseQueueQuery::class)->destination($order->id));
+            self::assertSame(0, $service->preview([$order->id], [$order->id => $attemptId])['count']);
+            $order->shipment->overseaReview()->update(['status' => 'approved', 'reviewed_warehouse_id' => $warehouseId]);
+            $order->forceFill(['workflow_status' => 'sending'])->save();
+            self::assertSame('exceptions', app(\App\Modules\Logistics\Application\OverseaWarehouseQueueQuery::class)->destination($order->id));
             foreach (['request_in_flight', 'uncertain_manual_reconcile', 'oms_create_confirmed', 'blocked_existing_oms_order'] as $unsafe) {
                 DB::table('xlwms_dispatch_attempts')->where('id', $attemptId)->update(['state' => $unsafe]);
                 self::assertSame(0, $service->preview([$order->id], [$order->id => $attemptId])['count']);
@@ -419,8 +426,18 @@ final class DeTianyunOutboundBatchTest extends TestCase
             } catch (\RuntimeException $e) {
                 self::assertSame('DE_PREFLIGHT_RECOVERY_NOT_AUTHORIZED', $e->getMessage());
             }
-            $batch = $service->startRecovery($operator->id, $order->id, $attemptId,
-                'RECOVER_DE_PREFLIGHT_'.$order->id.'_'.$attemptId);
+            $this->postJson('/logistics/orders/'.$order->id.'/resolve-workbench-exception', [
+                'expected_workflow_revision' => $order->fresh()->workflow_revision,
+            ])->assertOk()->assertJsonPath('destination', 'pending');
+            self::assertSame('pending', app(\App\Modules\Logistics\Application\OverseaWarehouseQueueQuery::class)->destination($order->id));
+            self::assertSame('blocked_preflight_error', DB::table('xlwms_dispatch_attempts')->where('id', $attemptId)->value('state'));
+            $this->assertDatabaseHas('order_operational_markers', ['order_id' => $order->id, 'marker' => 'warehouse_retry_released']);
+            $manual = $this->getJson('/logistics/oversea/de-tianyun/xlwms/batch/preview?scope=selected&order_ids='.$order->id)
+                ->assertOk()->assertJsonPath('count', 1)->assertJsonPath('items.0.recovery_attempt_id', $attemptId);
+            $batch = $this->postJson('/logistics/oversea/de-tianyun/xlwms/batch/start', [
+                'scope' => 'selected', 'order_ids' => (string) $order->id,
+                'fingerprint' => $manual->json('fingerprint'), 'confirmation' => 'CONFIRM_DE_TIANYUN_BATCH_1',
+            ])->assertAccepted()->json('batch_id');
             Queue::assertNothingPushed();
             $job = new ProcessDeTianyunOutboundBatch($batch);
             $job->handle(app(DeTianyunOutboundBatchService::class),

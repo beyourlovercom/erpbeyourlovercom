@@ -138,7 +138,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
 
     public static function nyCanaryActors(): array
     {
-        return ['authenticated logistics operator'=>[false,false], 'owner-authorized system CLI'=>[true,false], 'system pre-CREATE recovery'=>[true,true], 'operator batch'=>[false,false,true]];
+        return ['authenticated logistics operator'=>[false,false], 'owner-authorized system CLI'=>[true,false], 'system pre-CREATE recovery'=>[true,true], 'operator batch'=>[false,false,true], 'operator batch recovery'=>[false,true,true]];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('nyCanaryActors')]
@@ -246,6 +246,18 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
                 $start=$this->postJson('/logistics/oversea/us-ny/xlwms/batch/start',['scope'=>'selected','order_ids'=>(string)$o->id,'fingerprint'=>$preview['fingerprint'],'confirmation'=>'CONFIRM_US_NY_BATCH_1'])->assertStatus(202)->json();
                 self::assertTrue(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded($o->id));
                 self::assertSame(1,$b->drain()['processed']);
+                if ($recover) {
+                    $this->getJson('/logistics/oversea/us-ny/xlwms/batch/'.$start['batch_id'].'/status')->assertOk()->assertJsonPath('status','completed_partial');
+                    $prior = XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail();
+                    self::assertSame('blocked_preflight_error',$prior->state);
+                    Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+                    $this->getJson('/logistics/oversea/us-ny/xlwms/batch/preview?scope=all')->assertOk()->assertJsonPath('count',0);
+                    $rejectPreflight = false;
+                    $preview=$this->getJson('/logistics/oversea/us-ny/xlwms/batch/preview?scope=selected&order_ids='.$o->id)->assertOk()->assertJsonPath('items.0.recovery_attempt_id',$prior->id)->json();
+                    $start=$this->postJson('/logistics/oversea/us-ny/xlwms/batch/start',['scope'=>'selected','order_ids'=>(string)$o->id,'fingerprint'=>$preview['fingerprint'],'confirmation'=>'CONFIRM_US_NY_BATCH_1'])->assertStatus(202)->json();
+                    self::assertSame(1,$b->drain()['processed']);
+                    self::assertSame($prior->id,XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail()->id);
+                }
                 $this->getJson('/logistics/oversea/us-ny/xlwms/batch/'.$start['batch_id'].'/status')->assertOk()->assertJsonPath('status','completed');
                 self::assertSame(0,$b->drain()['processed']);
                 self::assertSame(0,$b->preview([$o->id])['count']);

@@ -17,6 +17,7 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutMorePlusVerifiedTrackingCom
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Logistics\Application\WarehouseDispatchStatus;
+use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch;
@@ -326,6 +327,7 @@ final class OverseaWarehouseController
             // Inertia partial row/filter reloads must not run seven expensive
             // count subqueries for counts the browser did not request.
             'viewCounts' => fn () => $this->viewCounts($warehouseMap, $selectedWarehouse),
+            'canResolveException' => $this->executionAccess->allows($request->user()),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canArchive' => (bool) ($request->user()?->can('orders.view') && $request->user()?->can('orders.archive')),
             'canOperate' => ($warehouseKey !== 'all' || $view === 'pending')
@@ -712,13 +714,14 @@ final class OverseaWarehouseController
                     : ($review?->status === 'stockout'
                         && (int) $review->reviewed_warehouse_id === (int) $shipment->warehouse_id ? 'stockout' : 'pending')),
             'shipment_status' => $shipment->shipment_status,
+            'retry_released' => $order?->operationalMarkers->contains('marker', WarehouseExceptionResolution::RETRY_RELEASED) ?? false,
             'workflow_status_projection' => $order ? $this->workflowStatusProjection->for($order) : null,
             'routing_warehouse' => $order ? app(OrderWarehouseRouting::class)->project($order) : null,
             'workflow_revision' => (int) ($order?->workflow_revision ?? 0),
             'order_kind' => $order?->order_kind?->value,
             'warehouse_dispatch' => strtoupper((string) $shipment->warehouse?->code) === 'US-LA'
                 ? ShipOutProductionDispatchState::warehouseDispatch($shipOutAttempt, (string) $shipment->shipment_status, $shipOutBatchItem, $shipOutReadback)
-                : WarehouseDispatchStatus::from((string) $shipment->shipment_status, $xlwms),
+                : WarehouseDispatchStatus::from((string) $shipment->shipment_status, $xlwms, $shipment->warehouse?->code),
             'shipout_production' => strtoupper((string) $shipment->warehouse?->code) === 'US-LA'
                 ? ShipOutProductionDispatchState::from($shipOutAttempt, $shipOutBatchItem, $shipOutReadback) : null,
             'source_type' => ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type) instanceof \BackedEnum

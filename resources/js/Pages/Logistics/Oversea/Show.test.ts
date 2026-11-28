@@ -1684,6 +1684,25 @@ describe('DE Tianyun reuses MorePlus selected-order Dev batch UX', () => {
     }
   })
 
+  it('only retries explicitly selected reviewed DE exceptions, never all pending', async () => {
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({
+      scope:'selected',count:1,scan_count:1,excluded_count:0,overflow:false,dry_run:false,
+      fingerprint:'c'.repeat(64),items:[{order_id:101,order_no:'K-RETRY',ready:true,blockers:[],recovery_attempt_id:7}]
+    })})
+    vi.stubGlobal('fetch',fetchMock)
+    const page=mountPage({view:'exceptions',warehouseKey:'de-tianyun',warehouse:deWarehouse,
+      deTianyunBatchUi:true,deTianyunBatchSimulation:false,deTianyunBatchLiveEnabled:true,
+      rows:{...usSmPendingRows,data:[rowA]}})
+    try {
+      await page.get('[data-testid="de-tianyun-selected-push"]').trigger('click')
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(page.text()).toContain('请先勾选需要再次推送的已审核订单')
+      await page.findAll('button').find(b=>b.text()==='再次推送')!.trigger('click')
+      await vi.waitFor(()=>expect(fetchMock).toHaveBeenCalledTimes(1))
+      expect(fetchMock.mock.calls[0][0]).toBe('/logistics/oversea/de-tianyun/xlwms/batch/preview?scope=selected&order_ids=101')
+    } finally {page.unmount();vi.unstubAllGlobals()}
+  })
+
   it('stops polling a missing historic DE batch and allows a fresh selection', async () => {
     const fetchMock=vi.fn().mockResolvedValue({ok:false,status:404,json:async()=>({})})
     vi.stubGlobal('fetch',fetchMock)
@@ -1781,4 +1800,18 @@ describe('NY MorePlus batch parity', () => {
       page.unmount()
     } finally {vi.unstubAllGlobals()}
   })
+})
+
+it('resolves only the selected exception and refreshes actual queues',async()=>{
+  document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="EXCEPTION-TEST">')
+  const fetchMock=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({destination:'pending',message:'异常已解除'})})
+  vi.stubGlobal('fetch',fetchMock)
+  const page=mountPage({view:'exceptions',globalGridEnabled:false,rows:usSmPendingRows,canOperate:true,canResolveException:true})
+  try {
+    await page.findAll('button').find(b=>b.text()==='解除异常')!.trigger('click')
+    await flushPromises()
+    expect(fetchMock.mock.calls[0][0]).toBe('/logistics/orders/99/resolve-workbench-exception')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({expected_workflow_revision:'0'})
+    expect(routerReload).toHaveBeenCalledWith({only:['rows','viewCounts']})
+  } finally {page.unmount();vi.unstubAllGlobals();document.head.querySelector('meta[name="csrf-token"]')?.remove()}
 })

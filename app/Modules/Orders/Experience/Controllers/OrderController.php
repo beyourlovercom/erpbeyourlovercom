@@ -26,6 +26,7 @@ use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
+use App\Modules\Orders\Application\DomesticShippingHold;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\ManualOrderItemAmendment;
 use App\Modules\Orders\Application\OrderAuxiliaryStatusService;
@@ -169,6 +170,7 @@ final class OrderController
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
             'collaborationPartners' => $scope === 'collaboration' ? OrderCollaborationPartner::query()->orderBy('name')->get(['id', 'code', 'name']) : [],
             'canExport' => $canExport,
+            'canResolveException' => app(LogisticsExecutionAccess::class)->allows($request->user()),
             'canEditWorkflowStatus' => OrderLogisticsAuthority::allows($request->user()),
             'canEditWarehouseRoute' => OrderLogisticsAuthority::allows($request->user()),
             'warehouseRouteOptions' => app(OrderWarehouseRouting::class)->options(),
@@ -827,7 +829,7 @@ final class OrderController
         $data = $request->validate([
             'workflow_status' => ['required', 'string', Rule::in([
                 ...array_keys(array_filter(OrderWorkflowStatus::registry(), fn (array $definition): bool => $definition['mutable'])),
-                'pending_allocation', 'resolve_exception', 'resolve_manual_hold', 'resolve_stockout', \App\Modules\Orders\Application\DomesticShippingHold::RESUME,
+                'pending_allocation', 'resolve_exception', 'resolve_manual_hold', 'resolve_stockout', DomesticShippingHold::RESUME,
             ])],
             'expected_workflow_revision' => ['required', 'integer', 'min:0'],
             'reason' => ['nullable', 'string', 'max:2000'],
@@ -841,8 +843,8 @@ final class OrderController
                 || ($overseas && app(LogisticsReviewAccess::class)->allows($request->user())
                     && in_array($data['workflow_status'], ['out_of_stock', 'resolve_stockout'], true)), 403);
         }
-        if ($reactivating && (\App\Modules\Orders\Application\DomesticShippingHold::isHeld($data['workflow_status'])
-            || $data['workflow_status'] === \App\Modules\Orders\Application\DomesticShippingHold::RESUME)) {
+        if ($reactivating && (DomesticShippingHold::isHeld($data['workflow_status'])
+            || $data['workflow_status'] === DomesticShippingHold::RESUME)) {
             abort(409, '归档订单不能通过冻结发货操作恢复。');
         }
         $updated = $reactivating

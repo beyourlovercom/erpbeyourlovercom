@@ -6,6 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Finance\Application\Contracts\ConfirmedLossReader;
+use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use App\Modules\Orders\Application\Inbound\NormalizedInboundOrder;
 use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
 use App\Modules\Products\Application\Contracts\ProductRepository;
@@ -52,10 +53,8 @@ final class OrderService
                 'external_order_number' => trim((string) $attributes['external_order_number']),
                 'internal_order_number' => $this->nextOrderNumber($attributes['order_kind']),
                 'erp_order_id' => match (true) {
-                    ($attributes['source_type'] ?? null) === OrderSourceType::Collaboration->value =>
-                        $this->orderIdentities->generateCollaboration($attributes['collaboration_partner_id'] ?? null, (string) $attributes['external_order_number']),
-                    $attributes['order_kind'] === OrderKind::Customer->value =>
-                        $this->orderIdentities->allocateCustomer((string) $attributes['order_date']),
+                    ($attributes['source_type'] ?? null) === OrderSourceType::Collaboration->value => $this->orderIdentities->generateCollaboration($attributes['collaboration_partner_id'] ?? null, (string) $attributes['external_order_number']),
+                    $attributes['order_kind'] === OrderKind::Customer->value => $this->orderIdentities->allocateCustomer((string) $attributes['order_date']),
                     default => $isManualKol ? $this->orderIdentities->allocateKol() : ($orderAttributes['erp_order_id'] ?? null),
                 },
                 'order_status' => OrderStatus::PendingShipment,
@@ -694,7 +693,7 @@ final class OrderService
                 $active->whereDoesntHave('originalFulfillmentChildren')
                     ->orWhereDoesntHave('fulfillmentAllocation', fn (Builder $allocation) => $allocation->where('status', 'submitted'));
             }),
-            'exception' => $this->progressQueries->applyPhase($query, 'exception'),
+            'exception' => WarehouseExceptionResolution::applyOrderExceptionView($query),
             'in_transit' => $this->applyMarkerView($query, 'in_transit'),
             'shipped' => $query->where('order_status', OrderStatus::Shipped->value),
             'return' => $query->where(function (Builder $returns): void {

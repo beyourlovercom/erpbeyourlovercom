@@ -20,6 +20,17 @@ final class OrderMasterTest extends TestCase
         $this->withoutVite();
     }
 
+    public function test_master_exception_view_and_recovery_share_current_operational_state(): void
+    {
+        $actor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate']);
+        $order = $this->makeOrder($actor, 'exception');
+        $order->forceFill(['workflow_status' => 'exception'])->save();
+        $this->actingAs($actor)->get('/orders?view=exception')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('counts.exception', 1)->where('orders.data.0.id', $order->id)->where('canResolveException', true));
+        $this->postJson('/logistics/orders/'.$order->id.'/resolve-workbench-exception', ['expected_workflow_revision' => (int) $order->workflow_revision])->assertOk();
+        $this->get('/orders?view=exception')->assertOk()->assertInertia(fn ($page) => $page->where('counts.exception', 0)->where('orders.total', 0));
+    }
+
     public function test_master_includes_all_kinds_direct_and_inherited_archives_and_admin_trash(): void
     {
         $admin = $this->userWith(['orders.view', 'system.permissions.manage']);

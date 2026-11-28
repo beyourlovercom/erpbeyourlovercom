@@ -56,7 +56,7 @@ type ShipOutStatus = {
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; contact_user_name?:string|null; order_url:string|null; order_date?:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_code?:string|null; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
-  progress:string; note:string|null; reviewer_name?:string|null; reviewed_at?:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'|'stockout'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; order_kind?:string; routing_warehouse?:{code:string;name:string;source:string;revision:number}; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
+  progress:string; note:string|null; reviewer_name?:string|null; reviewed_at?:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; retry_released?:boolean; review_status:'approved'|'pending'|'stockout'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; order_kind?:string; routing_warehouse?:{code:string;name:string;source:string;revision:number}; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; tracking_sync_verified_at?:string|null; shipped_at?:string|null; items:Item[]
   web_draft?:WebDraft|null
   shipout_production?:ShipOutDispatchState|null
 }
@@ -94,7 +94,7 @@ const props = defineProps<{
   workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[];
   warehouseRouteOptions?:{code:string;name:string}[];
   canEditWarehouseRoute?:boolean;
-  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canArchive?:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean; xlwmsOmsWebEnabled?:boolean
+  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canArchive?:boolean; canOperate:boolean; canResolveException?:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean; xlwmsOmsWebEnabled?:boolean
 
 }>()
 
@@ -222,14 +222,14 @@ const isCaBatch = computed(() => props.warehouseKey==='ca' && props.caBatchUi===
 const isNyBatch = computed(() => props.warehouseKey==='us-ny' && props.nyBatchUi===true)
 const isDeTianyunBatch = computed(() => props.warehouseKey==='de-tianyun' && props.deTianyunBatchUi===true)
 const deTianyunIsSimulation = computed(() => props.deTianyunBatchSimulation!==false)
-const showShipoutSelection = computed(() => props.view==='pending'
+const showShipoutSelection = computed(() => (props.view==='pending' || (props.view==='exceptions' && (isDeTianyunBatch.value || isNyBatch.value || (!!props.shipoutProductionBatchUi && props.warehouseKey==='us-moreplus'))))
   && ((!!props.shipoutProductionBatchUi && props.warehouseKey==='us-moreplus') || isDeTianyunBatch.value || isNyBatch.value || isCaBatch.value))
 const shipoutBatchApiBase = computed(() => isCaBatch.value ? '/logistics/oversea/ca/wlwy/batch' : isNyBatch.value ? '/logistics/oversea/us-ny/xlwms/batch' : isDeTianyunBatch.value
   ? '/logistics/oversea/de-tianyun/xlwms/batch'
   : '/logistics/oversea/us-moreplus/shipout/batch')
 const shipoutPageSelectable = computed(() => visibleRows.value
   .filter(row => row.shipment_status==='pending'
-    && ((isDeTianyunBatch.value || isNyBatch.value || isCaBatch.value) ? row.review_status==='approved' : !row.shipout_production?.attempted))
+    && ((isDeTianyunBatch.value || isNyBatch.value || isCaBatch.value) ? row.review_status==='approved' : (props.view==='exceptions' ? row.review_status==='approved' : (!row.shipout_production?.attempted || row.retry_released))))
   .map(row=>row.order_id))
 const shipoutPageAllSelected = computed(() => shipoutPageSelectable.value.length>0
   && shipoutPageSelectable.value.every(id=>shipoutBatchSelection.value.includes(id)))
@@ -297,13 +297,14 @@ async function shipoutBatchApi(url:string, data?:Record<string,string>) {
       DE_BATCH_LOCKED:'另一位操作员正在建立德国仓批次',
       DE_BATCH_CONFIRMATION_REQUIRED:'请重新确认所选德国仓订单',
       DE_BATCH_QUEUE_UNAVAILABLE:'德国仓模拟任务队列不可用，已安全暂停'} as Record<string,string>)[result.error_code]
-    || '批量操作未完成：'+(result.error_code||response.status),response.status)
+    || result.message || '批量操作未完成：'+(result.error_code||response.status),response.status)
   return result
 }
 async function shipoutBatchCheck(forcedIds:number[]|null=null) {
   if(shipoutBatchBusy.value)return
   // Single-order and selected-batch buttons share one exact selection path.
-  const ids=(props.view==='pending' ? (forcedIds??[...shipoutBatchSelection.value]) : []).sort((a,b)=>a-b)
+  const ids=(props.view==='pending' || (props.view==='exceptions' && (isDeTianyunBatch.value || isNyBatch.value || (!!props.shipoutProductionBatchUi && props.warehouseKey==='us-moreplus'))) ? (forcedIds??[...shipoutBatchSelection.value]) : []).sort((a,b)=>a-b)
+  if(props.view==='exceptions' && !ids.length){shipoutBatchError.value='请先勾选需要再次推送的已审核订单';return}
   if(!ids.length
     && !window.confirm(isCaBatch.value?'未勾选订单。是否预检加拿大仓全部待发货订单？':isDeTianyunBatch.value?'未勾选订单。是否预检德国天运仓全部待发货订单？已下发、未审核或缺货订单不会重复提交。':isNyBatch.value?'未勾选订单。是否预检美东纽约仓全部待发货订单？已有单号、未审核、缺货或已推送的订单不会重复提交。':'未勾选订单。是否选择美西 MorePlus 仓全部待发货订单（包含缺货订单）进入预检？缺货、未审核、已提交及有重复风险的订单会逐单隔离，绝不强制发货。'))return
   if(ids.length>200){shipoutBatchError.value='单批最多选择 200 单，请分批处理';return}
@@ -354,6 +355,7 @@ async function shipoutBatchStart() {
     :preview.dry_run?'Dev 模拟批次（不会访问海外仓）':'真实向 MorePlus 仓库逐单推送')
     +'：扫描 '+(preview.scan_count??preview.count)+' 单，进入逐单校验 '+preview.count
     +' 单，排除 '+(preview.excluded_count??0)+' 单；再次确认仅提交安全门禁通过的订单？'
+    +(props.view==='exceptions'?' 历史下单前失败可重新核验推送，已有 OMS 订单不会重建。':'')
   if(!window.confirm(message))return
   shipoutBatchBusy.value=true;shipoutBatchError.value=''
   try {
@@ -802,7 +804,9 @@ const omsLabel = (row:Row) => {
   const record=omsRow(row)
   if(row.shipment_status==='shipped')return '已发货'
   if(!record?.oms_order_no)return row.warehouse_dispatch?.label ?? '待下发'
-  if(record.oms_status_code==='0')return 'OMS 草稿 · 未提交仓库'
+  if(record.oms_status_code==='0')return row.warehouse_code==='US-NY'?(row.warehouse_dispatch?.label??'OMS 已建单 · 待自动获取面单及提交'):'OMS 草稿 · 未提交仓库'
+  if(record.oms_status_code==='2')return '已下发 · 仓库处理中'
+  if(record.oms_status_code==='7')return 'OMS 获取面单异常'
   if(record.oms_status_code==='5')return 'OMS 异常 · 待处理'
   if(record.oms_status_code==='3')return '已出库 · 待回写'
   if(record.oms_status_code==='4')return '上次仓库单已取消'
@@ -811,7 +815,7 @@ const omsLabel = (row:Row) => {
 }
 const omsDetail=(row:Row)=> {
   const record=omsRow(row)
-  if(record?.oms_order_no && record.oms_status_code==='0')return '无需面单；仓库接单状态仍需核对'
+  if(record?.oms_order_no && record.oms_status_code==='0')return row.warehouse_code==='US-NY'?(row.warehouse_dispatch?.detail??'已请求自动获取面单并提交；禁止重复创建'):'无需面单；仓库接单状态仍需核对'
   if(record?.oms_order_no && record.oms_status_code==='5')return 'OMS 异常 · 需处理后重新提交'
   if(record?.oms_order_no && record.oms_status_code && !['3','4'].includes(record.oms_status_code))return `OMS 状态 ${record.oms_status_code} · 待核实`
   return row.warehouse_dispatch?.detail ?? ''
@@ -1316,6 +1320,21 @@ const confirmArchive = async () => {
       message:(error instanceof Error?error.message:'未知请求错误')+'；请先核对运营归档清单，切勿直接重复提交。'})
   }finally{bulkBusy.value=false}
 }
+const exceptionBusy=ref<number|null>(null)
+async function resolveWarehouseException(row:Row) {
+  if(!(props.canResolveException??props.canOperate)||exceptionBusy.value!==null)return
+  exceptionBusy.value=row.order_id
+  try {
+    const response=await shipoutBatchApi('/logistics/orders/'+row.order_id+'/resolve-workbench-exception',{
+      expected_workflow_revision:String(row.workflow_revision??0),
+    })
+    publishGlobalFeedback({state:'SUCCESS',title:'解除异常',message:String(response.message??'已按实际进度恢复')})
+    router.reload({only:['rows','viewCounts']})
+  } catch(error) {
+    publishGlobalFeedback({state:'BLOCKED',title:'异常尚未解除',message:error instanceof Error?error.message:'请核对实际订单状态。'})
+    router.reload({only:['rows','viewCounts']})
+  } finally {exceptionBusy.value=null}
+}
 const reopenReview = (row:Row) => router.post(`/logistics/oversea/orders/${row.order_id}/reopen-review`, {}, { preserveScroll:true })
 const reject = (row:Row) => {
   const note = draft(row).note.trim()
@@ -1540,6 +1559,9 @@ const overseaGridColumns = computed<ColDef<GridListRow>[]>(()=>[
           if(row&&props.canTrackingSync&&eligibleForBatchTracking(row))pushTracking([id],true)},
       }:{}),
       view:props.view,canReview:props.canReview,canOperate:props.canOperate,
+      canResolveException:props.canResolveException??props.canOperate,
+      exceptionBusy:()=>exceptionBusy.value!==null,
+      resolveException:(r:GridListRow)=>{const row=visibleRows.value.find(item=>item.order_id===Number(r.id));if(row)void resolveWarehouseException(row)},
       get busy(){return reviewBusy.value},
       native:(r:GridListRow)=>openGridOperation(Number(r.id)),
       approve:(r:GridListRow)=>{const source=visibleRows.value.find(row=>row.order_id===Number(r.id));if(source)reviewAction(source,'approve')},
@@ -1571,7 +1593,7 @@ const onGridSelection = (rows:GridListRow[]) => {
       return
     }
     shipoutBatchSelection.value=visibleRows.value.filter(row=>ids.has(row.order_id)
-      && row.shipment_status==='pending' && !row.shipout_production?.attempted).map(row=>row.order_id)
+      && row.shipment_status==='pending' && (props.view==='exceptions'?row.review_status==='approved':(!row.shipout_production?.attempted || row.retry_released))).map(row=>row.order_id)
   }else if(props.canTrackingSync){
     trackingSelection.value=visibleRows.value.filter(row=>ids.has(row.order_id)
       && eligibleForBatchTracking(row)).map(row=>row.order_id)
@@ -1610,13 +1632,13 @@ const compactPages = computed<(number|string)[]>(() => {
         <div><h1>{{ pageTitle }}</h1><p v-if="!gridEnabled && warehouseKey === 'us-3sm'">审核通过后，下载订单文件，在世迈 OMS 人工导入。重复导入前先检查当前草稿箱，避免重复下单。</p><p v-else-if="!gridEnabled">审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="!gridEnabled && warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终物流商，不能假定 USPS Priority。</p></div>
         <div class="oversea-file-actions">
           <button type="button" class="file-button" data-testid="oversea-global-grid-toggle" @click="toggleGrid">{{gridEnabled?'返回原表':'切换新版表'}}</button>
-          <button v-if="(shipoutProductionBatchUi && warehouseKey==='us-moreplus') || ((isCaBatch || isNyBatch) && view==='pending')" type="button"
+          <button v-if="(shipoutProductionBatchUi && warehouseKey==='us-moreplus') || (isNyBatch && ['pending','exceptions'].includes(view)) || (isCaBatch && view==='pending')" type="button"
             class="file-button primary" :disabled="shipoutBatchBusy || Boolean(shipoutBatchStatus && ['queued','running','awaiting_oms','paused'].includes(shipoutBatchStatus.status))"
-            @click="shipoutBatchCheck()">一键推送仓库</button>
-          <button v-if="isDeTianyunBatch && view==='pending'" type="button"
+            @click="shipoutBatchCheck()">{{view==='exceptions'?'再次推送仓库':'一键推送仓库'}}</button>
+          <button v-if="isDeTianyunBatch && ['pending','exceptions'].includes(view)" type="button"
             class="file-button primary" data-testid="de-tianyun-selected-push"
             :disabled="shipoutBatchBusy || Boolean(shipoutBatchStatus && ['queued','running','paused'].includes(shipoutBatchStatus.status))"
-            @click="shipoutBatchCheck()">一键推送仓库{{shipoutBatchSelection.length?' '+shipoutBatchSelection.length+' 单':''}}</button>
+            @click="shipoutBatchCheck()">{{view==='exceptions'?'再次推送仓库':'一键推送仓库'}}{{shipoutBatchSelection.length?' '+shipoutBatchSelection.length+' 单':''}}</button>
           <a v-if="warehousePortal" class="file-button file-link warehouse-portal-link"
             :href="warehousePortal.href" target="_blank" rel="noopener noreferrer">
             {{ warehousePortal.label }} <span aria-hidden="true">↗</span>
@@ -1734,7 +1756,7 @@ const compactPages = computed<(number|string)[]>(() => {
           :filter-columns="[]" :filter-values="gridFilters??{}"
           :cell-text-selection="view==='pending'"
           :enable-selection="Boolean(view==='pending' || (canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || bulkShipPreviewScope || canTrackingSync || showShipoutSelection)"
-          :selected-order-ids="(isCaBatch || isNyBatch || isDeTianyunBatch) && showShipoutSelection ? shipoutBatchSelection : (canReview && ['review','stockout','pending'].includes(view))?returnAllocationSelection:view==='pending'?exportSelection:(canArchive && view!=='stockout')?archiveSelection:bulkShipPreviewScope?bulkShipSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
+          :selected-order-ids="showShipoutSelection && (isCaBatch || isNyBatch || isDeTianyunBatch || view==='exceptions') ? shipoutBatchSelection : (canReview && ['review','stockout','pending'].includes(view))?returnAllocationSelection:view==='pending'?exportSelection:(canArchive && view!=='stockout')?archiveSelection:bulkShipPreviewScope?bulkShipSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
           search-placeholder="搜索全部订单号 / Tracking / 收件人 / SKU..."
           @search-change="searchGrid" @sort-change="sortGrid"
           @selection-change="onGridSelection" @page-change="gridNavigate({page:$event})"
@@ -1842,7 +1864,7 @@ const compactPages = computed<(number|string)[]>(() => {
             <th v-if="warehouseKey === 'de-tianyun' && isDeTianyunBatch" class="xlwms-header">德国天运 · Dev 推送</th>
             <th v-if="warehouseKey === 'us-moreplus'" class="xlwms-header">MorePlus ShipOut · API / 物流</th>
             <th v-for="column in grid.visibleColumns" :key="column.key" :class="{ 'line-col':column.key === 'line' }">{{ column.label }}</th>
-            <th>官网同步</th><th v-if="canTrackingSync">操作</th>
+            <th>官网同步</th><th v-if="canTrackingSync">操作</th><th v-if="view==='exceptions' && (canResolveException??canOperate)">操作</th>
             <ColumnSettingsHeader :columns="grid.columns" :sync-state="grid.syncState" @toggle="grid.toggle" @start-drag="grid.startDrag" @drop="grid.drop" @reset="grid.reset" />
           </tr></thead>
           <tbody>
@@ -1890,11 +1912,11 @@ const compactPages = computed<(number|string)[]>(() => {
               </td>
               <td v-if="warehouseKey === 'de-tianyun' && isDeTianyunBatch" class="xlwms-cell">
                 <div class="xlwms-inline" :data-de-order-id="row.order_id">
-                  <strong class="xlwms-state">仅 Dev 模拟</strong>
-                  <button v-if="view==='pending' && row.review_status==='approved'" type="button"
+                  <strong class="xlwms-state">{{deTianyunIsSimulation?'仅 Dev 模拟':'德国仓推送'}}</strong>
+                  <button v-if="['pending','exceptions'].includes(view) && row.review_status==='approved'" type="button"
                     class="xlwms-action primary" :disabled="shipoutBatchBusy || Boolean(shipoutBatchStatus && ['queued','running','paused'].includes(shipoutBatchStatus.status))"
-                    @click="shipoutBatchCheck([row.order_id])">单笔推送</button>
-                  <small class="xlwms-note">会先预检，不向 OMS 发单。</small>
+                    @click="shipoutBatchCheck([row.order_id])">{{view==='exceptions'?'再次推送':'单笔推送'}}</button>
+                  <small class="xlwms-note">{{deTianyunIsSimulation?'仅模拟预检':'人工再次确认后精确查重，已有 OMS 订单不重建。'}}</small>
                 </div>
               </td>
               <td v-if="warehouseKey === 'us-moreplus'" class="xlwms-cell">
@@ -2030,9 +2052,10 @@ const compactPages = computed<(number|string)[]>(() => {
               <td><span v-if="row.source_type==='woocommerce'" class="tracking-sync-status" :title="[row.tracking_sync_reason, row.tracking_sync_verified_at ? '最近官网验证：' + new Date(row.tracking_sync_verified_at).toLocaleString('zh-CN', { hour12:false }) : '尚无官网验证记录'].filter(Boolean).join('；')" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="tracking-sync-failure">{{ row.tracking_sync_reason }}</small></td>
               <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row)" class="file-button"
                 type="button" :disabled="trackingBusy" @click="pushTracking([row.order_id], true)">{{ (['failed','retry_wait'].includes(row.tracking_sync_status ?? '') || !!row.tracking_sync_reason) ? '重新同步' : '同步官网物流' }}</button><span v-else>—</span></td>
+              <td v-if="view==='exceptions' && (canResolveException??canOperate)"><button type="button" class="xlwms-action primary" :disabled="exceptionBusy!==null" @click="resolveWarehouseException(row)">解除异常</button></td>
               <td class="settings-spacer" aria-hidden="true"></td>
             </tr>
-            <tr v-if="!nativeOperationRows.length"><td :colspan="grid.visibleColumns.length + (['us-3sm','us-moreplus'].includes(warehouseKey) ? 3 : 2) + 1 + (canTrackingSync?2:0)" class="empty-cell">当前视图暂无订单</td></tr>
+            <tr v-if="!nativeOperationRows.length"><td :colspan="grid.visibleColumns.length + (['us-3sm','us-moreplus'].includes(warehouseKey) ? 3 : 2) + 1 + (canTrackingSync?2:0) + (view==='exceptions' && (canResolveException??canOperate)?1:0)" class="empty-cell">当前视图暂无订单</td></tr>
 
           </tbody>
         </table>

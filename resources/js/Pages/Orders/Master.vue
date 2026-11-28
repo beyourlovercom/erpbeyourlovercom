@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
+import axios from 'axios'
+import { publishGlobalFeedback } from '../../lib/globalFeedback'
+import { currentCsrfHeaders } from '../../lib/csrfHeaders'
 import type { ColDef } from 'ag-grid-community'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import GlobalGridCell from '../../Components/DataGrid/GlobalGridCell.vue'
@@ -25,6 +28,7 @@ const props = defineProps<{
   counts: Record<string, number>
   filters: MasterFilters
   canSeeTrash: boolean
+  canResolveException?: boolean
   canImportOmsOrders: boolean
   canConfirmOmsOrders: boolean
 }>()
@@ -39,6 +43,7 @@ const viewOptions = [
   { key: 'operational', label: '运营归档' },
   { key: 'trash', label: '回收站' },
   { key: 'pending', label: '待发货' },
+  { key: 'exception', label: '异常订单' },
 ]
 const kinds = [
   { key: 'all', label: '全部订单类型' },
@@ -81,6 +86,17 @@ const archiveZh: Record<string, string> = { normal: '正常', operational: '运�
 const statusZh: Record<string, string> = {
   pending_shipment: '待发货', shipped: '已发货', completed: '已完结',
   completed_delivered: '已送达', cancelled: '已取消',
+}
+const exceptionBusy = ref<number|null>(null)
+async function resolveException(order:MasterOrder) {
+  if (!props.canResolveException || view.value!=='exception' || order.archive_state!=='normal' || exceptionBusy.value!==null) return
+  exceptionBusy.value=order.id
+  try {
+    const result=await axios.post('/logistics/orders/'+order.id+'/resolve-workbench-exception',{expected_workflow_revision:order.workflow_revision??0},{headers:currentCsrfHeaders()})
+    publishGlobalFeedback({state:'SUCCESS',title:'解除异常',message:result.data.message})
+  } catch (error) {
+    publishGlobalFeedback({state:'BLOCKED',title:'异常尚未解除',message:axios.isAxiosError(error)?String(error.response?.data?.message??'请核对实际订单状态。'):'请核对实际订单状态。'})
+  } finally { exceptionBusy.value=null; router.reload({only:['orders','counts']}) }
 }
 const rows = computed<GridListRow[]>(() => props.orders.data.map(order => ({
   id: order.id,
@@ -126,9 +142,9 @@ const columns: ColDef<GridListRow>[] = [
   gridColumn({ colId: 'sku', field: 'sku', headerName: 'SKU', width: 225 }),
   gridColumn({ colId: 'material_full_name', field: 'material_full_name', headerName: '库存表名称', width: 350, hide: false, tooltipField: 'material_full_name' }),
   gridColumn({ colId: 'owner', field: 'owner', headerName: '负责人', width: 120 }),
-  gridColumn({ colId: 'actions', field: 'id', headerName: '操作', width: 116,
+  gridColumn({ colId: 'actions', field: 'id', headerName: '操作', width: 185, pinned: 'right',
     cellRenderer: GlobalGridCell, cellRendererParams: { mode: 'actions',
-      actionsFor: (row: GridListRow) => [{ label: row.archive_state === '回收站' ? '回收站' : '查看', href: String(row.order_url) }] } }),
+      actionsFor: (row: GridListRow) => {const order=props.orders.data.find(o=>o.id===Number(row.id));return [...(order&&props.canResolveException&&view.value==='exception'&&order.archive_state==='normal'?[{label:'解除异常',onClick:()=>void resolveException(order)}]:[]),{ label: row.archive_state === '回收站' ? '回收站' : '查看', href: String(row.order_url) }]}  } }),
 ]
 const filterColumns = ['order_number', 'contact', 'external_number', 'recipient', 'sku', 'warehouse', 'status', 'date', 'source']
 const filterValues = computed(() => Object.fromEntries(filterColumns.map(key => [key, props.filters['grid_' + key] ?? ''])))
@@ -158,7 +174,7 @@ const changeSort = ({ colId, direction }: { colId: string; direction: 'asc' | 'd
         <span class="quick-label">快捷筛选</span>
         <button v-for="item in viewOptions.filter(item => item.key !== 'trash' || canSeeTrash)" :key="item.key"
           type="button" class="quick-chip" :class="{ active: view === item.key }"
-          @click="go({ view: item.key, page: 1 })">{{ item.label }} <span class="chip-count">{{ props.counts[item.key].toLocaleString('en-US') }}</span></button>
+          @click="go({ view: item.key, page: 1 })">{{ item.label }} <span class="chip-count">{{ (props.counts[item.key]??0).toLocaleString('en-US') }}</span></button>
       </div>
       <Suspense>
         <GlobalGrid

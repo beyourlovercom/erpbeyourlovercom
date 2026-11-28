@@ -37,7 +37,22 @@ final class OverseaWarehouseQueueQuery
         if ($view === 'review') {
             $this->progressQueries->overseasReview($query);
             $query->whereNot(fn ($q) => $this->providerIssued($q))
-                ->whereNot(fn ($q) => $this->providerException($q));
+                ->where(function ($reviewable): void {
+                    $reviewable->whereNot(fn ($q) => $this->providerException($q))
+                        // A proven pre-CREATE failure must not hide a reopened
+                        // warehouse review. Approving still cannot submit OMS.
+                        ->orWhere(function ($preCreate): void {
+                            $preCreate->whereHas('warehouse', fn ($w) => $w->whereIn('code', ['DE', 'US-NY']))
+                                ->whereExists(function ($attempt): void {
+                                    $this->scopeDeAttempt($attempt);
+                                    $attempt->where('de_attempt.state', 'blocked_preflight_error')
+                                        ->whereIn('de_attempt.failure_code', ['DE_OMS_PREFLIGHT_OR_DUPLICATE_LOOKUP_FAILED', 'US_NY_PREFLIGHT_OR_DUPLICATE_BLOCKED'])
+                                        ->whereNull('de_attempt.oms_order_no')->whereNull('de_attempt.oms_status_code')
+                                        ->whereNull('de_attempt.oms_tracking_no')->whereNull('de_attempt.oms_status_checked_at')
+                                        ->whereNull('de_attempt.duplicate_match_field')->whereNull('de_attempt.oms_status_failure_code');
+                                });
+                        });
+                });
 
             return;
         }
@@ -68,7 +83,8 @@ final class OverseaWarehouseQueueQuery
         }
         if ($view === 'shipped') {
             $query->whereHas('order', fn ($o) => $this->withoutOtherManualQueue($o))
-                ->where('shipment_status', 'shipped');
+                ->where('shipment_status', 'shipped')
+                ->whereNot(fn ($sync) => WebsiteSyncException::forShipment($sync));
 
             return;
         }
@@ -77,6 +93,7 @@ final class OverseaWarehouseQueueQuery
                 // Provider failures are factual, including when staff chose
                 // Sending or a stockout hold. Never hide a failed OMS attempt.
                 $exceptions->where(fn ($q) => $this->providerException($q))
+                    ->orWhere(fn ($q) => WebsiteSyncException::forShipment($q))
                     ->orWhere(function ($conflict): void {
                         $conflict->where('shipment_status', 'pending');
                         $this->providerIssued($conflict);
@@ -142,19 +159,32 @@ final class OverseaWarehouseQueueQuery
                     ->whereExists(fn ($q) => $this->scope3smException($q));
             })->orWhere(function ($xlwms): void {
                 $xlwms->whereHas('warehouse', fn ($w) => $w->whereIn(DB::raw('UPPER(code)'), ['DE', 'US-NY']))
-                    ->whereExists(fn ($q) => $this->scopeDeAttempt($q))
+                    ->whereExists(function ($q): void {
+                        $this->scopeDeAttempt($q);
+                        $q->whereNot(function ($released): void {
+                            $released->where('de_attempt.state', 'blocked_preflight_error')
+                                ->whereIn('de_attempt.failure_code', ['DE_OMS_PREFLIGHT_OR_DUPLICATE_LOOKUP_FAILED', 'US_NY_PREFLIGHT_OR_DUPLICATE_BLOCKED'])
+                                ->whereNull('de_attempt.oms_order_no')->whereNull('de_attempt.oms_status_code')
+                                ->whereNull('de_attempt.oms_tracking_no')->whereNull('de_attempt.oms_status_checked_at')
+                                ->whereNull('de_attempt.duplicate_match_field')->whereNull('de_attempt.oms_status_failure_code')
+                                ->whereExists(fn ($m) => $m->selectRaw('1')->from('order_operational_markers as released')
+                                    ->whereColumn('released.order_id', 'de_attempt.order_id')
+                                    ->where('released.marker', WarehouseExceptionResolution::RETRY_RELEASED)
+                                    ->whereColumn('released.marked_at', '>=', 'de_attempt.updated_at'));
+                        });
+                    })
                     ->whereNotExists(fn ($q) => $this->scopeDeIssued($q));
             })->orWhere(function ($ca): void {
                 $ca->whereHas('warehouse', fn ($w) => $w->where('code', 'CA'))
                     ->whereExists(fn ($q) => $this->scopeCa($q, ['queued', 'in_flight', 'accepted', 'uncertain', 'exception', 'blocked']));
             })->orWhere(function ($ny): void {
-                $ny->whereHas('warehouse', fn ($w) => $w->where('code','US-NY'))
+                $ny->whereHas('warehouse', fn ($w) => $w->where('code', 'US-NY'))
                     ->whereNotExists(fn ($q) => $this->scopeDeIssued($q))
-                    ->whereExists(function ($q):void {
+                    ->whereExists(function ($q): void {
                         $q->selectRaw('1')->from('xlwms_ny_dispatch_batch_items as ni')
-                            ->join('xlwms_ny_dispatch_batches as nb','nb.id','=','ni.batch_id')
-                            ->whereColumn('ni.order_id','shipments.order_id')->where('nb.dry_run',false)
-                            ->whereIn('ni.status',['queued','processing','uncertain']);
+                            ->join('xlwms_ny_dispatch_batches as nb', 'nb.id', '=', 'ni.batch_id')
+                            ->whereColumn('ni.order_id', 'shipments.order_id')->where('nb.dry_run', false)
+                            ->whereIn('ni.status', ['queued', 'processing', 'uncertain']);
                     });
             })->orWhere(function ($moreplus): void {
                 $moreplus->whereHas('warehouse', fn ($w) => $w->whereRaw('UPPER(code) = ?', ['US-LA']))
@@ -192,7 +222,18 @@ final class OverseaWarehouseQueueQuery
         $this->scopeDeAttempt($query);
         $query->where('de_attempt.state', 'oms_create_confirmed')
             ->whereNotNull('de_attempt.oms_order_no')->where('de_attempt.oms_order_no', '!=', '')
-            ->whereIn('de_attempt.oms_status_code', ['2', '3']);
+            ->where(function ($status): void {
+                $status->whereIn('de_attempt.oms_status_code', ['2', '3'])
+                    // NY automatic label acquisition is asynchronous. A freshly
+                    // created draft is not a failed CREATE or a warehouse receipt.
+                    ->orWhere(function ($label): void {
+                        $label->where('de_attempt.oms_status_code', '0')
+                            ->whereNull('de_attempt.oms_status_failure_code')
+                            ->where('de_attempt.created_at', '>=', now()->subMinutes(30))
+                            ->whereExists(fn ($w) => $w->selectRaw('1')->from('warehouses as ny_label_warehouse')
+                                ->whereColumn('ny_label_warehouse.id', 'de_attempt.warehouse_id')->where('ny_label_warehouse.code', 'US-NY'));
+                    });
+            });
     }
 
     /** 3SM: an OMS draft (status 0) is not a warehouse-dispatched order. */

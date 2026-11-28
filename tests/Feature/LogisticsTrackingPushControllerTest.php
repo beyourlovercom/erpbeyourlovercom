@@ -5,10 +5,13 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Audit\Infrastructure\Models\AuditRecord;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\LogisticsTrackingImmediateDispatch;
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
+use App\Modules\Logistics\Application\OverseaWarehouseQueueQuery;
 use App\Modules\Logistics\Application\ShipmentService;
+use App\Modules\Logistics\Application\WebsiteSyncException;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository;
 use App\Modules\Sync\Application\Contracts\WooCommerceCustomerNoteGateway;
@@ -129,7 +132,7 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         );
 
         self::assertSame('conflict', $projected['status']);
-        self::assertStringContainsString('承运商不一致', $projected['reason']);
+        self::assertStringContainsString('物流商不一致', $projected['reason']);
         self::assertSame(0, $this->gateway->calls);
         self::assertSame(0, $this->gateway->statusCalls);
     }
@@ -605,6 +608,70 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         ]);
     }
 
+    public function test_resolve_exception_retries_exact_failed_woo_tracking_and_restores_shipped_queue(): void
+    {
+        $operator = $this->userWith('role_preset_logistics', ['logistics.view', 'logistics.operate', 'sync.view', 'sync.operate']);
+        $viewer = $this->userWith('no_woo_sync_operator', ['logistics.view', 'logistics.operate']);
+        $warehouse = Warehouse::query()->updateOrCreate(['code' => 'DE'], [
+            'slug' => 'de', 'name' => 'Germany', 'type' => 'warehouse', 'is_active' => true, 'priority' => 10,
+        ]);
+        $order = $this->order(1291);
+        $order->shipment->update(['warehouse_id' => $warehouse->id]);
+        $order->forceFill(['routing_warehouse_code' => 'DE'])->save();
+        $this->gateway->fail = true;
+        app(SyncOrchestrationService::class)->trackingSelected([$order->id], $operator);
+        $attempt = DB::table('sync_outbox')->where('aggregate_id', (string) $order->shipment->id)->where('operation', 'woocommerce.tracking_outbound')->first();
+        self::assertNotNull($attempt);
+        DB::table('sync_outbox')->where('id', $attempt->id)->update(['status' => 'failed', 'attempts' => $attempt->max_attempts, 'failed_at' => now()]);
+        $queues = app(OverseaWarehouseQueueQuery::class);
+        self::assertSame('exceptions', $queues->destination($order->id));
+        $url = '/logistics/orders/'.$order->id.'/resolve-workbench-exception';
+        $body = ['expected_workflow_revision' => $order->fresh()->workflow_revision];
+        $calls = $this->gateway->calls;
+        $this->actingAs($viewer)->postJson($url, $body)->assertForbidden();
+        self::assertSame($calls, $this->gateway->calls);
+        $this->gateway->fail = false;
+        $this->actingAs($operator)->postJson($url, $body)->assertOk()->assertJsonPath('destination', 'shipped');
+        self::assertSame('shipped', $queues->destination($order->id));
+        self::assertSame('shipped', $order->fresh()->shipment->shipment_status);
+        self::assertSame('TRACK-1291', $order->fresh()->shipment->tracking_number);
+        $this->assertDatabaseHas('sync_outbox', ['id' => $attempt->id, 'status' => 'completed']);
+        $this->assertDatabaseHas('audit_records', ['action' => 'sync.outbox.operator_reopened', 'entity_id' => (string) $attempt->id]);
+        self::assertSame(1, $this->gateway->writes);
+        $this->actingAs($operator)->postJson($url, $body)->assertConflict();
+        self::assertSame(1, $this->gateway->writes);
+    }
+
+    public function test_resolve_exception_retries_woo_status_but_never_overwrites_conflicting_tracking(): void
+    {
+        $operator = $this->userWith('role_preset_logistics', ['logistics.view', 'logistics.operate', 'sync.view']);
+        $warehouse = Warehouse::query()->updateOrCreate(['code' => 'FACTORY'], [
+            'slug' => 'factory', 'name' => 'Factory', 'type' => 'warehouse', 'is_active' => true, 'priority' => 10,
+        ]);
+        $order = $this->order(1292);
+        $order->shipment->update(['warehouse_id' => $warehouse->id]);
+        $this->gateway->failStatus = true;
+        app(SyncOrchestrationService::class)->trackingSelected([$order->id], $operator);
+        self::assertTrue(WebsiteSyncException::exists($order->id));
+        $this->gateway->failStatus = false;
+        $this->actingAs($operator)->postJson('/logistics/orders/'.$order->id.'/resolve-workbench-exception', [
+            'expected_workflow_revision' => $order->fresh()->workflow_revision,
+        ])->assertOk();
+        self::assertFalse(WebsiteSyncException::exists($order->id));
+        self::assertSame(1, $this->gateway->writes);
+        $other = $this->order(1293);
+        $other->shipment->update(['warehouse_id' => $warehouse->id]);
+        $this->gateway->conflict = true;
+        app(SyncOrchestrationService::class)->trackingSelected([$other->id], $operator);
+        self::assertTrue(WebsiteSyncException::exists($other->id));
+        $this->actingAs($operator)->postJson('/logistics/orders/'.$other->id.'/resolve-workbench-exception', [
+            'expected_workflow_revision' => $other->fresh()->workflow_revision,
+        ])->assertConflict();
+        self::assertTrue(WebsiteSyncException::exists($other->id));
+        self::assertSame('shipped', $other->fresh()->shipment->shipment_status);
+        self::assertSame(1, $this->gateway->writes);
+    }
+
     public function test_repeated_explicit_sync_is_idempotent_and_does_not_duplicate_woo_tracking(): void
     {
         $user = $this->userWith('role_preset_logistics', ['logistics.view', 'logistics.operate', 'sync.view', 'sync.operate']);
@@ -1003,8 +1070,7 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingBatchInspector
             'checked_at' => now()->toIso8601String(),
         ];
         $items = &$this->batchSnapshots[$providerOrderId]['tracking_items'];
-        if (! collect($items)->contains(fn ($item): bool =>
-            ($item['tracking_number'] ?? '') === $trackingNumber)) {
+        if (! collect($items)->contains(fn ($item): bool => ($item['tracking_number'] ?? '') === $trackingNumber)) {
             $items[] = ['tracking_number' => $trackingNumber, 'provider' => $providerSlug,
                 'ship_date' => $shipDate];
         }
