@@ -256,4 +256,33 @@ final class AllocationRatePreviewTest extends TestCase
         $this->actingAs($u)->postJson('/logistics/wait-stock/batch-allocation', [...$body, 'cost_tokens' => [$b->id => $quote['confirmation_token']]])->assertOk()->assertJsonPath('succeeded', 1);
         $this->assertSame('confirmed', $b->fresh()->fulfillmentAllocation->plan_snapshot['cost_confirmation']['confirmation_status']);
     }
+
+    public function test_warehouse_display_returns_one_lowest_comparable_cargo_reference_without_changing_full_rate_rows(): void
+    {
+        $u = $this->actor(['logistics.view']);
+        $o = $this->order($u, 'DE');
+        $v = $this->version($u, 'synthetic-display');
+        $this->rateComponent($v, 'FACTORY', 'DE', 'SPEEDA', 'sd_standard_battery', 'transport', 169);
+        $this->rateComponent($v, 'FACTORY', 'DE', 'SPEEDA', 'sd_economy_battery', 'transport', 132);
+        $this->rateComponent($v, 'FACTORY', 'DE', 'SPEEDA', 'sd_economy_general', 'transport', 107);
+        $this->rateComponent($v, 'DE', 'DE', 'DHL', 'domestic', 'transport', 5);
+        $this->rateComponent($v, 'DE', 'DE', 'DHL', 'international', 'transport', 6);
+        app(FxReferenceSettingsService::class)->save(['EUR' => 8], ['EUR' => false], null);
+        $url = '/logistics/orders/'.$o->id.'/fulfillment-allocation/rate-preview';
+        $r = $this->actingAs($u)->getJson($url)->assertOk()->assertJsonCount(5, 'rows')->assertJsonCount(2, 'warehouse_rows')->json();
+        $rows = collect($r['warehouse_rows'])->keyBy('warehouse_code');
+        $this->assertSame('sd_economy_battery', $rows['FACTORY']['service']);
+        $this->assertEquals(132, $rows['FACTORY']['amount_cny']);
+        $this->assertSame('domestic', $rows['DE']['service']);
+        Product::whereIn('id', $o->items()->pluck('product_id'))->update(['has_battery' => false]);
+        $r = $this->actingAs($u)->getJson($url)->assertOk()->json();
+        $this->assertSame('sd_economy_general', collect($r['warehouse_rows'])->firstWhere('warehouse_code', 'FACTORY')['service']);
+        $this->assertEquals(132, $r['factory_default_reference']['amount_cny']);
+        Product::whereKey($o->items()->first()->product_id)->update(['has_liquid' => true]);
+        $r = $this->actingAs($u)->getJson($url)->assertOk()->json();
+        $factory = collect($r['warehouse_rows'])->firstWhere('warehouse_code', 'FACTORY');
+        $this->assertNull($factory['amount_cny']);
+        $this->assertSame('cargo_or_route_unverified',$factory['reason']);
+        $this->assertDatabaseCount('fulfillment_allocations',0);
+    }
 }

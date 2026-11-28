@@ -26,6 +26,8 @@ test('real ERP allocation dialog shows source-based estimate and missing data wi
   await expect(de).toContainText('DE-DHL （本地）')
   await expect(de).toContainText('B5:C5')
   await expect(panel).toContainText('不参与自动分仓排名')
+  await expect(panel.locator('[data-warehouse="FACTORY"]')).toHaveCount(1)
+  await expect(panel.locator('.rate-row')).toHaveCount(2)
   const factory=panel.locator('[data-warehouse="FACTORY"]').filter({hasText:'SD经济挂号-带电'})
   await expect(factory).toContainText('未审核')
   await expect(factory).toContainText('CNY')

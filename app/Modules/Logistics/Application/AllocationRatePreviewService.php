@@ -51,7 +51,7 @@ final class AllocationRatePreviewService
         }
         $standards = $this->packaging->forProductIds(array_keys($items));
         $shipping = $this->shipping->forProductIds(array_keys($items));
-        $products = Product::query()->whereIn('id', array_keys($items))->get(['id', 'weight_kg', 'length_cm', 'width_cm', 'height_cm'])->keyBy('id');
+        $products = Product::query()->whereIn('id', array_keys($items))->get(['id', 'weight_kg', 'length_cm', 'width_cm', 'height_cm', 'has_battery', 'has_liquid'])->keyBy('id');
         $weight = 0.0;
         $length = $width = $height = 0.0;
         $missing = $missingDimensions = $estimated = [];
@@ -182,6 +182,54 @@ final class AllocationRatePreviewService
             $factoryRef = collect($rows)->first(fn ($row) => $row['warehouse_code'] === 'FACTORY' && $row['carrier'] === 'SPEEDA' && $row['service'] === 'sd_economy_battery');
         }
 
-        return [...$base, 'status' => 'reference', 'reason' => null, 'rows' => $rows, 'factory_default_reference' => $factoryRef];
+        $warehouseRows = $this->lowestWarehouseReferences($rows, $products, $factoryRoute);
+
+        return [...$base, 'status' => 'reference', 'reason' => null, 'rows' => $rows, 'warehouse_rows' => $warehouseRows, 'factory_default_reference' => $factoryRef];
+    }
+
+    /**
+     * Display-only comparison. Do not change selected-plan routing or the full
+     * rate contract. Unknown cargo classes and incomplete fees are not ranked
+     * as confirmed shipping options.
+     */
+    private function lowestWarehouseReferences(array $rows, $products, array $factoryRoute): array
+    {
+        $battery = $products->contains(fn ($product) => $product->has_battery !== false);
+        $liquid = $products->contains(fn ($product) => $product->has_liquid !== false);
+        $result = [];
+        foreach (collect($rows)->groupBy('warehouse_code') as $warehouse => $group) {
+            $eligible = $group;
+            if ($warehouse === 'FACTORY') {
+                // Preserve frozen country-specific carrier overrides. Only
+                // ordinary registered parcel channels have a known cargo class.
+                $services = $liquid ? [] : ($battery
+                    ? ['sd_standard_battery', 'sd_economy_battery']
+                    : ['sd_standard_general', 'sd_economy_general', 'sd_standard_battery', 'sd_economy_battery']);
+                $eligible = ($factoryRoute['carrier'] ?? null) === '4PX'
+                    ? $group->filter(fn ($row) => $row['carrier'] === 'SPEEDA' && in_array($row['service'], $services, true))
+                    : collect();
+            }
+            $priced = $eligible->filter(fn ($row) => is_numeric($row['amount_cny'] ?? null) && is_finite((float) $row['amount_cny'])
+                && (float) $row['amount_cny'] >= 0 && in_array($row['status'], ['approved_reference', 'draft_reference', 'weight_only_reference'], true));
+            // Compare like-for-like: complete reviewed costs first; otherwise
+            // transport-only or weight-only references, never mix fee scopes.
+            $tier = fn ($row) => match ($row['status']) {
+                'approved_reference' => 0,
+                'draft_reference' => 1,
+                default => ($row['version_status'] ?? null) === 'approved' ? 2 : 3,
+            };
+            $best = $priced->sort(function ($a, $b) use ($tier) {
+                return [$tier($a), (float) $a['amount_cny'], (string) $a['carrier'], (string) $a['service']]
+                    <=> [$tier($b), (float) $b['amount_cny'], (string) $b['carrier'], (string) $b['service']];
+            })->first();
+            if ($best === null) {
+                $best = $eligible->first(fn ($row) => ($row['reason'] ?? null) === 'eligibility_unconfirmed')
+                    ?? $eligible->first()
+                    ?? ['warehouse_code' => $warehouse, 'carrier' => null, 'service' => null, 'status' => 'unavailable', 'reason' => 'cargo_or_route_unverified', 'amount_cny' => null, 'native_totals' => null, 'extra_item_usd' => null];
+            }
+            $result[] = $best;
+        }
+
+        return $result;
     }
 }
