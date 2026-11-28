@@ -109,7 +109,7 @@ final class VerifyShipOutProductionBatchItem implements ShouldQueue
         if (! $outstanding) {
             $exceptions = DB::table('shipout_production_batch_items')
                 ->where('batch_id', $this->batchId)
-                ->whereIn('status', ['skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review'])
+                ->whereIn('status', ['skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review', 'local_stockout'])
                 ->exists();
             DB::table('shipout_production_batches')
                 ->where('id', $this->batchId)

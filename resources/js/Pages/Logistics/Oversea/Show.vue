@@ -376,6 +376,7 @@ const shipoutBatchLabel=(status:string)=>({
   oms_visible:'OMS 订单可见 · 待实际出库（非发货成功）',
   provider_cancelled:'OMS 已取消／中止 · 禁止重发',
   needs_review:'OMS 核实未完成 · 人工处理',
+  local_stockout:'缺货 · 未下单，需确认到货',
   skipped:'跳过（未下单）',uncertain:'结果不确定 · 禁止重发',
   failed:'提交失败（禁止自动重试）',
   simulated:'Dev 模拟通过',processing:'处理中',queued:'待处理',
@@ -386,6 +387,9 @@ const shipoutBatchReason=(code:string|null)=>({
   PROVIDER_CANCELLED_OTHER:'仓库异步取消，请人工查看 OMS 原因',
   OMS_VISIBLE_PENDING_REAL_FULFILLMENT:'OMS 有单，但不代表已经出库',
   OMS_VISIBLE_PROVISIONAL_RECHECK:'订单可见，等待二次 OMS 复核',
+  SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE:'仓库实际 SKU 无可用库存，请查看缺货明细',
+  SHIPOUT_R10_INSUFFICIENT_AVAILABLE_STOCK:'仓库可用库存不足，请查看缺货明细',
+  OMS_READBACK_UNAVAILABLE_MANUAL_CHECK:'仓库查询暂时不可用，继续只读核实，禁止重发',
   ASYNC_ACCEPTED_QUERY_REQUIRED:'接口 ACK 已受理，并非最终业务成功',
 } as Record<string,string>)[code||'']|| (code?'需核对：'+code:'')
 const shipoutBatchState=(status:string)=>({
@@ -548,6 +552,9 @@ const shipoutLabel:Record<string,string> = {
   SHIPOUT_TRACKING_CONFIRMATION_MISMATCH:'Tracking 与仓库最新记录不一致',
   SHIPOUT_NOT_CONFIRMED_SHIPPED:'仓库尚未完成实际出库',
   SHIPOUT_SYNTHETIC_TRACKING_NOT_PUBLISHABLE:'这是沙盒 mock / VOID Tracking，不能同步到真实 ERP 或 WooCommerce',
+  SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE:'仓库实际 SKU 无可用库存，请查看缺货明细',
+  SHIPOUT_R10_INSUFFICIENT_AVAILABLE_STOCK:'仓库可用库存不足，请查看缺货明细',
+  OMS_READBACK_UNAVAILABLE_MANUAL_CHECK:'仓库查询暂时不可用，继续只读核实，禁止重发',
   ASYNC_ACCEPTED_QUERY_REQUIRED:'提交已受理，仍需查询仓库状态',
   SHIPOUT_DUPLICATE_ATTEMPT_BLOCKED:'已有 API 发货记录，禁止重复提交，请查询仓库状态',
   SHIPOUT_PROVIDER_ORDER_ALREADY_EXISTS:'仓库已存在订单，禁止重复提交',
