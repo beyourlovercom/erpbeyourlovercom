@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Experience\Controllers;
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\MorePlusFifoReconciliationService;
 use App\Modules\Inventory\Application\MorePlusInventorySyncService;
+use App\Modules\Logistics\Application\Wlwy\CanadaPhysicalStockSync;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -24,6 +25,16 @@ final class MorePlusInventorySyncController
     public function sync(Request $request, string $warehouse): RedirectResponse
     {
         $w = $this->inventory->warehouse($warehouse);
+        if ($w->code === 'CA') {
+            abort_unless(app()->environment('production') && config('wlwy.ca_inventory_apply_enabled'), 403);
+            try {
+                $r = app(CanadaPhysicalStockSync::class)->run(true);
+
+                return back()->with('success', sprintf('加拿大仓库存同步完成：%d 个已确认 SKU，%d 个待核验。', count($r['verified']), count($r['quarantine'])));
+            } catch (\Throwable) {
+                return back()->withErrors(['moreplus_stock' => '加拿大仓库存同步失败，已保留库存和预占记录，请核对接口。']);
+            }
+        }
         abort_unless(strtoupper((string) $w->code) === 'US-LA', 404);
         try {
             $result = $this->sync->syncProvider($w, $request->user());
