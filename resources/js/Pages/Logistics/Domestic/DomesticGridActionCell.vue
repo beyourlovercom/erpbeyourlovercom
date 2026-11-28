@@ -15,6 +15,9 @@ type Params = {
   syncEligible?:(id:number)=>boolean
   syncBusy?:()=>boolean
   syncTracking?:(id:number)=>void
+  resolveException?:(row:Row)=>void
+  canResolveException?:boolean
+  exceptionBusy?:()=>boolean
   native: (row:Row) => void
   approve: (row:Row) => void
   stockout: (row:Row) => void
@@ -100,7 +103,11 @@ onBeforeUnmount(removeListeners)
 <template>
   <div class="domestic-grid-cell-actions">
     <div class="domestic-grid-cell-main">
-      <template v-if="params.view==='frozen'">
+      <template v-if="params.view==='exceptions' && params.canResolveException && params.resolveException">
+        <button type="button" class="approve" :disabled="params.exceptionBusy?.()" @click.stop="params.resolveException(row)">解除异常</button>
+        <button v-if="params.canOperate" type="button" class="native" @click.stop="params.native(row)">原操作</button>
+      </template>
+      <template v-else-if="params.view==='frozen'">
         <button v-if="params.canResumeHold?.(row.id)" type="button" :disabled="params.holdBusy?.()" @click.stop="params.resumeHold?.(row.id)">恢复待发货</button>
         <span v-else>—</span>
       </template>

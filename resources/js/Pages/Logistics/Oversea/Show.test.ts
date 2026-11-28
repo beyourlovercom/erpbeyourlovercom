@@ -1777,3 +1777,17 @@ describe('NY MorePlus batch parity', () => {
     } finally {vi.unstubAllGlobals()}
   })
 })
+
+it('resolves only the selected exception and refreshes actual queues',async()=>{
+  document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="EXCEPTION-TEST">')
+  const fetchMock=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({destination:'pending',message:'异常已解除'})})
+  vi.stubGlobal('fetch',fetchMock)
+  const page=mountPage({view:'exceptions',globalGridEnabled:false,rows:usSmPendingRows,canOperate:true,canResolveException:true})
+  try {
+    await page.findAll('button').find(b=>b.text()==='解除异常')!.trigger('click')
+    await flushPromises()
+    expect(fetchMock.mock.calls[0][0]).toBe('/logistics/orders/99/resolve-workbench-exception')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({expected_workflow_revision:'0'})
+    expect(routerReload).toHaveBeenCalledWith({only:['rows','viewCounts']})
+  } finally {page.unmount();vi.unstubAllGlobals();document.head.querySelector('meta[name="csrf-token"]')?.remove()}
+})

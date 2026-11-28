@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Application\Xlwms;
 
 use App\Models\User;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Orders\Application\OrderManualHoldStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -173,6 +174,8 @@ final class DeTianyunOutboundBatchService
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
                 foreach ($eligible as $item) {
+                    DB::table('order_operational_markers')->where('order_id', $item['order_id'])
+                        ->where('marker', WarehouseExceptionResolution::RETRY_RELEASED)->delete();
                     DB::table('xlwms_de_dispatch_batch_items')->insert([
                         'batch_id' => $id, 'order_id' => $item['order_id'],
                         'order_no' => $item['order_no'], 'payload_hash' => $item['payload_hash'],

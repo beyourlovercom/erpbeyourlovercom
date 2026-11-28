@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Application\ShipOut;
 
+use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use Illuminate\Database\Query\Builder;
 
 /**
@@ -28,7 +29,14 @@ final class ShipOutProductionDispatchState
             ->whereColumn('q.order_id', 'shipments.order_id')
             ->whereIn('q.status', [
                 'skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review',
-            ])->whereNot(function ($preflightOnly): void {
+            ])->whereNot(function ($released): void {
+                $released->where('q.status', 'skipped')->whereNull('q.provider_order_id')
+                    ->whereNotExists(fn ($a) => self::scopeAttempt($a))
+                    ->whereExists(fn ($m) => $m->selectRaw('1')->from('order_operational_markers as released')
+                        ->whereColumn('released.order_id', 'q.order_id')
+                        ->where('released.marker', WarehouseExceptionResolution::RETRY_RELEASED)
+                        ->whereColumn('released.marked_at', '>=', 'q.updated_at'));
+            })->whereNot(function ($preflightOnly): void {
                 // A later, independently confirmed OMS creation supersedes an
                 // old pre-CREATE skip; never clear actual provider conflicts.
                 $preflightOnly->where('q.status', 'skipped')->whereNull('q.provider_order_id')

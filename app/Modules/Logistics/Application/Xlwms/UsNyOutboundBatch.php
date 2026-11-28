@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Application\Xlwms;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\OverseaWarehouseQueueQuery;
+use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -131,6 +132,8 @@ final class UsNyOutboundBatch
                 DB::table('xlwms_ny_dispatch_batches')->insert(['id' => $id, 'operator_user_id' => $actor, 'status' => 'queued', 'dry_run' => $dry, 'total' => $p['count'], 'created_at' => now(), 'updated_at' => now()]);
                 foreach ($p['items'] as $item) {
                     if ($item['ready']) {
+                        DB::table('order_operational_markers')->where('order_id', $item['order_id'])
+                            ->where('marker', WarehouseExceptionResolution::RETRY_RELEASED)->delete();
                         DB::table('xlwms_ny_dispatch_batch_items')->insert(['batch_id' => $id, 'order_id' => $item['order_id'], 'order_no' => $item['order_no'], 'payload_hash' => $item['payload_hash'], 'status' => 'queued', 'result_code' => isset($item['recovery_attempt_id']) ? 'US_NY_RECOVER_PREFLIGHT:'.$item['recovery_attempt_id'] : null, 'created_at' => now(), 'updated_at' => now()]);
                     }
                 }

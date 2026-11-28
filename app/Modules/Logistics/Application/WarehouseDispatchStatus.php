@@ -24,7 +24,7 @@ final class WarehouseDispatchStatus
     }
 
     /** @return array{status:string,label:string,detail:string,oms_order_no:?string,last_checked_at:?string,failure_code:?string,can_retry_local_block:bool} */
-    public static function from(string $shipmentStatus, ?XlwmsDispatchAttempt $attempt): array
+    public static function from(string $shipmentStatus, ?XlwmsDispatchAttempt $attempt, ?string $warehouseCode = null): array
     {
         $omsNo = trim((string) ($attempt?->oms_order_no ?? ''));
         $code = trim((string) ($attempt?->oms_status_code ?? ''));
@@ -52,10 +52,23 @@ final class WarehouseDispatchStatus
             $status = 'oms_draft';
             $label = 'OMS 草稿 · 未提交仓库';
             $detail = '无需面单；仓库接单状态仍需核对';
+            if ($warehouseCode === 'US-NY' && $attempt?->state === 'oms_create_confirmed') {
+                $label = 'OMS 已建单 · 待自动获取面单及提交';
+                $detail = '已请求自动提交；每5分钟核实原单，禁止重复创建';
+                if ($attempt->created_at?->lt(now()->subMinutes(30))) {
+                    $status = 'exception';
+                    $label = 'OMS 自动获取面单/提交超时';
+                    $detail = '原单仍在草稿，请核实仓库，禁止重复创建';
+                }
+            }
         } elseif ($accepted && $code === '2') {
             $status = 'oms_processing';
             $label = '已下发 · OMS 仓库处理中（未出库）';
             $detail = '禁止重复下发；等待真实出库单和 Tracking';
+        } elseif ($accepted && $code === '7') {
+            $status = 'exception';
+            $label = 'OMS 获取面单异常';
+            $detail = '请核实原 OMS 单据的面单错误，禁止重新创建订单';
         } elseif ($accepted && $code === '5') {
             // Verified by OMS's own 异常 workbench for OBS0272610290RS.
             $status = 'exception';

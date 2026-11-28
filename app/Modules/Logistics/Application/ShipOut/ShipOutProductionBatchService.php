@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Application\ShipOut;
 
+use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Application\OrderManualHoldStatus;
 use Illuminate\Support\Facades\DB;
@@ -237,6 +238,8 @@ final class ShipOutProductionBatchService
                 ]);
                 $rows = [];
                 foreach ($ids as $orderId) {
+                    DB::table('order_operational_markers')->where('order_id', $orderId)
+                        ->where('marker', WarehouseExceptionResolution::RETRY_RELEASED)->delete();
                     $order = DB::table('orders')->where('id', $orderId)->first(['erp_order_id']);
                     $rows[] = [
                         'batch_id' => $id, 'order_id' => $orderId,
