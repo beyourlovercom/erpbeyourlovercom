@@ -49,7 +49,8 @@ final class WarehouseRecommendationService
 
         $context ??= $this->prepare($requirements->keys()->all());
         $warehouses = collect($context['warehouses'])
-            ->filter(fn (array $warehouse): bool => (bool) ($warehouse['can_auto_allocate'] ?? false));
+            ->filter(fn (array $warehouse): bool => (bool) ($warehouse['can_auto_allocate'] ?? false))
+            ->filter(fn (array $warehouse): bool => $this->routing->destinationAllowed($countryCode, (string) ($warehouse['code'] ?? '')));
         if ($warehouses->isEmpty()) {
             return $this->blocked('no_inventory_authority', '当前没有具备 Full Snapshot 权威库存的仓库。');
         }

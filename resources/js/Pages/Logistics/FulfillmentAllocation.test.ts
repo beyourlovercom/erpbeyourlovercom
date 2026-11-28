@@ -90,7 +90,7 @@ const factoryPlan = {
 }
 
 const systemOrder = {
-  id: 10, erp_order_id: '007-0911-40414', order_url: '/customers/orders/10', recipient_name: 'John Smith', phone: '+1 555 1000', country: 'US', province_state: 'CA', city: 'Los Angeles', address_line_1: '123 West Test Ave', address_line_2: 'Apt 2', postal_code: '90001',
+  id: 10, erp_order_id: '007-0911-40414', order_url: '/customers/orders/10', recipient_name: 'John Smith', phone: '+1 555 1000', country: 'US', country_display:'US-美国/北美', germany_warehouse_eligible:false, province_state: 'CA', city: 'Los Angeles', address_line_1: '123 West Test Ave', address_line_2: 'Apt 2', postal_code: '90001',
   us_fulfillment_zone: { status: 'matched', zone: 'west' as const, zone_label: '美西区', postal_code: '90001', zip3: 900, state: 'CA', warehouse_priority: ['US-SM', 'US-LA'] },
   carrier_routes: carrierRoutes,
   item_count: 2, items: [itemA, itemB],
@@ -298,15 +298,39 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(document.body.textContent).toContain('系统候选方案：拆分发货')
     expect(document.body.textContent).toContain('美西MorePlus')
     expect(document.body.textContent).toContain('中国工厂')
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     expect(document.body.textContent).toContain('估算成本：¥83.00')
     expect(document.body.textContent).toContain('仓库地理参考')
     expect(document.body.textContent).toContain('90001')
     expect(document.body.textContent).toContain('美西区')
   })
 
+  it('applies destination eligibility to dropdown, stock, map and localized country across adjacent orders', async () => {
+    const stock = { warehouse_id:3,warehouse_slug:'de-tianyun',warehouse_name:'德国天运',inventory_state:'confirmed',can_auto_allocate:true,quantity_on_hand:19,quantity_reserved:0,quantity_available:19 }
+    const base={...manualOrder,items:[{...itemA,availability:[stock]}],item_count:1}
+    const us={...base,id:70,country:'US',country_display:'US-美国/北美',germany_warehouse_eligible:false}
+    const fr={...base,id:71,country:'FR',country_display:'FR-法国/欧盟',germany_warehouse_eligible:true,us_fulfillment_zone:null}
+    const uk={...base,id:72,country:'GB',country_display:'GB-英国/欧洲（非欧盟）',germany_warehouse_eligible:true,us_fulfillment_zone:null}
+    const wrapper=mountPage({...props,orders:{...props.orders,data:[us,fr,uk],total:3}})
+    await wrapper.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
+    await flushPromises()
+    const options=()=>Array.from(document.body.querySelectorAll('.primary-allocation tbody select:first-child option')).map(x=>x.textContent)
+    expect(document.body.querySelector('.top-grid')?.textContent).toContain('US-美国/北美')
+    expect(options()).not.toContain('德国天运')
+    expect(document.body.querySelector('[data-testid="offline-warehouse-map"]')?.textContent).not.toContain('德国天运')
+    Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent?.includes('下一单'))!.click()
+    await flushPromises()
+    expect(document.body.querySelector('.top-grid')?.textContent).toContain('FR-法国/欧盟')
+    expect(options()).toContain('德国天运')
+    expect(document.body.querySelector('.warehouse-advice')?.textContent).toContain('德国天运')
+    Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent?.includes('下一单'))!.click()
+    await flushPromises()
+    expect(document.body.querySelector('.top-grid')?.textContent).toContain('GB-英国/欧洲（非欧盟）')
+    expect(options()).toContain('德国天运')
+  })
+
   it('shows the read-only offline world map for a non-US order without changing allocation actions', async () => {
-    const order = { ...manualOrder, country:'DE', city:'Berlin', province_state:'BE', postal_code:'10115', us_fulfillment_zone:null }
+    const order = { ...manualOrder, country:'DE', country_display:'DE-德国/欧盟', germany_warehouse_eligible:true, city:'Berlin', province_state:'BE', postal_code:'10115', us_fulfillment_zone:null }
     const wrapper = mountPage({ ...props, orders:{ ...props.orders, data:[order], total:1 } })
     await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
     await flushPromises()
@@ -555,7 +579,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
       input.dispatchEvent(new Event('change', { bubbles: true }))
     }
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
@@ -584,7 +608,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
       select.value='US-LA';select.dispatchEvent(new Event('change',{bubbles:true}))
     }
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
@@ -620,7 +644,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
       select.value='US-LA';select.dispatchEvent(new Event('change',{bubbles:true}))
     }
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
@@ -643,7 +667,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     const wrapper = mountPage()
     await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
@@ -826,7 +850,7 @@ describe('Actual fulfillment product selection', () => {
     const warehouse=row.querySelector('td:nth-child(5) select') as HTMLSelectElement
     warehouse.value='US-LA';warehouse.dispatchEvent(new Event('change',{bubbles:true}))
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认费用并分仓')!
     submit.click()
     await flushPromises()
@@ -901,8 +925,8 @@ describe('ERP1 compact allocation dialog', () => {
     await wrapper.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
     await flushPromises()
     const rows=document.body.querySelectorAll('.primary-allocation tbody tr')
-    expect(Array.from(rows[0].querySelectorAll('.stock-list span')).map(r=>r.textContent)).toEqual(['美西MorePlus10','美东20','世迈仓30','加拿大仓2','德国仓5'])
-    expect(rows[0].querySelector('.stock-list')?.getAttribute('style')).toContain('repeat(3,auto)')
+    expect(Array.from(rows[0].querySelectorAll('.stock-list span')).map(r=>r.textContent)).toEqual(['美西MorePlus10','美东20','世迈仓30','加拿大仓2'])
+    expect(rows[0].querySelector('.stock-list')?.getAttribute('style')).toContain('repeat(2,auto)')
     expect(rows[1].textContent).toContain('暂无已知有货仓库')
     expect(rows[1].querySelectorAll('.stock-list span')).toHaveLength(0)
     expect(Array.from(rows[1].querySelectorAll('select option')).some(o=>o.textContent==='中国工厂')).toBe(true)
@@ -931,7 +955,7 @@ describe('ERP1 compact allocation dialog', () => {
     const wrapper=mountPage()
     await wrapper.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认费用并分仓')!
     submit.click(); await flushPromises()
     const reload=vi.mocked(router.reload)

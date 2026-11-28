@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { orderCountryLabel } from '../../lib/countryStandard'
 import { computed, ref } from 'vue'
 import axios from 'axios'
 import { router } from '@inertiajs/vue3'
@@ -206,7 +207,7 @@ async function confirm() {
             <div v-else class="oms-preview-table-wrap">
               <table class="oms-preview-table">
                 <thead><tr><th>Excel 行</th><th>来源订单号</th><th>收件人</th><th>国家</th><th>SKU×数量</th><th>件数</th></tr></thead>
-                <tbody><tr v-for="row in preview.preview.slice(0, 100)" :key="row.row"><td>{{ row.row }}</td><td>{{ row.order_number }}</td><td>{{ row.customer }}</td><td>{{ row.country }}</td><td>{{ row.sku_detail }}</td><td>{{ row.total_quantity }}</td></tr></tbody>
+                <tbody><tr v-for="row in preview.preview.slice(0, 100)" :key="row.row"><td>{{ row.row }}</td><td>{{ row.order_number }}</td><td>{{ row.customer }}</td><td>{{ orderCountryLabel(row.country) }}</td><td>{{ row.sku_detail }}</td><td>{{ row.total_quantity }}</td></tr></tbody>
               </table>
               <small v-if="preview.row_count > 100">页面仅预览前 100 个商品行；服务器已校验全部 {{ preview.row_count }} 行。</small>
             </div>

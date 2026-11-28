@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { orderCountryLabel } from '../../lib/countryStandard'
 import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { defineAsyncComponent } from 'vue'
@@ -36,7 +37,7 @@ type DerivedOrderRecord = { order_id:number; erp_order_id:string|null; contact_u
 type ExistingAllocation = { status:string; decision_source:'system_recommendation'|'manual'; selected_plan_key:string|null; decision_note:string|null; plan_snapshot:(Plan & { derived_orders?:DerivedOrderRecord[];cost_confirmation?:AllocationCost })|null; submitted_at:string|null }
 type CarrierRoute = { carrier:string|null; carrier_label:string|null; service:string|null; automatic:boolean }
 type AllocationRejection = { source:string; reason:string; by:string|null; at:string|null }
-type Order = { can_edit_items?:boolean; items_revision?:string; currency?:string; reallocation_token?:string|null; reallocation_generation?:number|null; order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; contact_user_name?:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
+type Order = { read_only_parent?:boolean; country_display?:string; germany_warehouse_eligible?:boolean; can_edit_items?:boolean; items_revision?:string; currency?:string; reallocation_token?:string|null; reallocation_generation?:number|null; order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; contact_user_name?:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
 type Warehouse = { id:number; slug:string; code:string; name:string; country_code:string|null; can_auto_allocate:boolean }
 type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
@@ -247,7 +248,7 @@ const allocationGridRows = computed<GridListRow[]>(() => filteredOrders.value.ma
   workflow_status_projection: order.workflow_status_projection,
   workflow_revision: order.workflow_revision ?? 0,
   routing_warehouse:order.routing_warehouse,
-  can_edit_warehouse_route:Boolean(props.canEditWarehouseRoute),
+  can_edit_warehouse_route:Boolean(props.canEditWarehouseRoute&&!order.read_only_parent),
   warehouse_route_name:order.routing_warehouse?.name??'未分仓',
   can_edit_workflow_status: Boolean(order.can_edit_workflow_status),
   workflow_status_options: order.workflow_status_options,
@@ -366,11 +367,11 @@ const selectedStockWarnings = computed(() => {
 // An overseas rejection revokes the *effective* completion state even when
 // historical fulfillment_allocations.status still says submitted. Keep a
 // successful local reallocation processed until the refreshed server page lands.
-const processed = (order:Order) => Boolean(localSubmitted[order.id]
+const processed = (order:Order) => Boolean(order.read_only_parent || localSubmitted[order.id]
   || (order.fulfillment_allocation?.status === 'submitted' && !order.allocation_rejection))
 const hasGift = (order:Order) => order.items.some(item => item.is_gift)
 const guidanceById = computed(() => new Map(props.orders.data.map(order =>
-  [order.id, allocationGuidance(order, props.warehouses, processed(order))] as const)))
+  [order.id, allocationGuidance(order, props.warehouses.filter(w=>warehouseAllowed(order,w.code)), processed(order))] as const)))
 const guidanceFor = (order:Order) => guidanceById.value.get(order.id)!
 const newlyProcessed = computed(() => props.orders.data.filter(order => localSubmitted[order.id] && !(order.fulfillment_allocation?.status === 'submitted' && !order.allocation_rejection)).length)
 const counts = computed(() => ({
@@ -421,11 +422,12 @@ watch(()=>props.orders.data,()=>{
 })
 const selectedBulkOrders = computed(()=>props.orders.data.filter(order=>selectedBulkOrderIds.value.includes(order.id)))
 function eligibleForBatch(order:Order,action:string):boolean {
+  if(order.read_only_parent)return false
   if (action==='archive') return props.canArchive===true
   if (processed(order) || !order.items.length || hasGift(order)) return false
   if (action==='recommend') return !!order.allocation_decision.can_use_recommendation
     && !!order.allocation_decision.recommended_plan_key
-  return action.startsWith('warehouse:') && warehouseOptions.value.some(
+  return action.startsWith('warehouse:') && warehouseOptionsFor(order).some(
     warehouse=>action==='warehouse:'+warehouse.code)
 }
 async function prepareGridBatch(payload:{action:string;reason:string}){
@@ -521,9 +523,13 @@ const warehouseOptions = computed(() => [
   ...props.warehouses.filter(w => ['FACTORY','US-NY','US-LA','US-SM','US-AMZ','DE','CA','TINGON'].includes(w.code.toUpperCase())),
   { id:-1, slug:'outsource', code:'OUTSOURCE', name:'外采 → 中国工厂发货', country_code:'CN', can_auto_allocate:false },
 ])
-const canonicalWarehouseCode = (code:string) => { const upper = code.trim().toUpperCase(); return upper === 'US-SJ' ? 'US-SM' : upper }
-// Read-only geographical reference. No routing, stock or mutation policy changes.
-const mapWarehouses = computed(() => props.warehouses.map(w => ({ id:w.id, code:canonicalWarehouseCode(w.code), name:w.name })))
+const canonicalWarehouseCode = (code:string) => { const upper = code.trim().toUpperCase(); return upper === 'US-SJ' ? 'US-SM' : upper === 'DE-TIANYUN' ? 'DE' : upper }
+function countryDisplay(order:Order){return order.country_display ?? orderCountryLabel(order.country)}
+function warehouseAllowed(order:Order,code:string){return canonicalWarehouseCode(code)!=='DE'||order.germany_warehouse_eligible===true}
+function warehouseOptionsFor(order:Order){return warehouseOptions.value.filter(w=>warehouseAllowed(order,w.code))}
+const selectedWarehouseOptions=computed(()=>selectedOrder.value?warehouseOptionsFor(selectedOrder.value):[])
+// Show only destination-eligible geographical warehouse references.
+const mapWarehouses = computed(() => props.warehouses.filter(w=>!!selectedOrder.value&&warehouseAllowed(selectedOrder.value,w.code)).map(w => ({ id:w.id, code:canonicalWarehouseCode(w.code), name:w.name })))
 const mapAddress = computed(() => {
   const o = selectedOrder.value
   return o ? { country:o.country??undefined, city:o.city??undefined, province_state:o.province_state??undefined, postal_code:o.postal_code??undefined } : null
@@ -553,6 +559,7 @@ function ensureManual(order:Order){
   for(const item of order.items){
     if(!(item.id in manualAssignments[order.id])) manualAssignments[order.id][item.id]=canonicalWarehouseCode(recommendedSegment(order,item)?.source_code ?? '')
     if(!(item.id in manualGiftMappings[order.id])) manualGiftMappings[order.id][item.id]=''
+    if(!warehouseAllowed(order,manualAssignments[order.id][item.id])){manualAssignments[order.id][item.id]='';manualGiftMappings[order.id][item.id]=''}
     const source=manualAssignments[order.id][item.id]
     if(source && !(source in manualCarriers[order.id])) manualCarriers[order.id][source]=recommendedSegment(order,item)?.carrier ?? defaultCarrier(order,source)
   }
@@ -594,7 +601,7 @@ function warehouseAdvice(order:Order,item:Item):WarehouseAdvice {
     ? recommendedSegment(order,item) : null
   if(segment){
     if(segment.source_type==='factory')return {kind:'recommended',label:segment.warehouse_name||sourceLabel(segment.source_code),detail:'已形成系统履约方案；仍需 Vita 确认'}
-    const w=warehouseOptions.value.find(row=>canonicalWarehouseCode(row.code)===canonicalWarehouseCode(segment.source_code))
+    const w=warehouseOptionsFor(order).find(row=>canonicalWarehouseCode(row.code)===canonicalWarehouseCode(segment.source_code))
     const stock=w?availabilityFor(item,w):null
     if(w && stock?.can_auto_allocate && stock.quantity_available!=null && stock.quantity_available>=item.quantity)
       return {kind:'recommended',label:segment.warehouse_name||w.name,detail:'库存覆盖需求且符合自动分仓资格'}
@@ -602,8 +609,8 @@ function warehouseAdvice(order:Order,item:Item):WarehouseAdvice {
   if(item.is_gift)return {kind:'none',label:'需人工确认礼品',detail:'先选择实际赠品 SKU 与发货仓'}
   const priority=order.us_fulfillment_zone?.status==='matched' ? order.us_fulfillment_zone.warehouse_priority.map(canonicalWarehouseCode) : []
   const fallback=['US-SM','US-LA','US-NY']
-  const candidates=warehouseOptions.value
-    .filter(w=>w.code!=='FACTORY' && w.code!=='US-AMZ' && w.code!=='TINGON' && w.country_code===order.country)
+  const candidates=warehouseOptionsFor(order)
+    .filter(w=>w.code!=='FACTORY' && w.code!=='US-AMZ' && w.code!=='TINGON' && (w.country_code===order.country || canonicalWarehouseCode(w.code)==='DE'))
     .map(w=>({w,stock:availabilityFor(item,w)}))
     .filter((c):c is {w:Warehouse;stock:Availability}=>c.stock!=null && c.stock.quantity_available!=null && c.stock.quantity_available>=item.quantity)
     .sort((a,b)=>{
@@ -657,7 +664,7 @@ const compactStockNames:Record<string,string> = {'US-LA':'美西MorePlus','US-NY
 function positiveStockRows(order:Order,item:Item){
   const actual=effectiveItem(order,item)
   const displayOrder=['US-LA','US-NY','US-SM','CA','DE','FACTORY','US-AMZ','TINGON','OUTSOURCE']
-  return [...warehouseOptions.value].sort((a,b)=>displayOrder.indexOf(canonicalWarehouseCode(a.code))-displayOrder.indexOf(canonicalWarehouseCode(b.code))).flatMap(w=>{
+  return [...warehouseOptionsFor(order)].sort((a,b)=>displayOrder.indexOf(canonicalWarehouseCode(a.code))-displayOrder.indexOf(canonicalWarehouseCode(b.code))).flatMap(w=>{
     const gift=item.is_gift ? availableGiftOptions(item,w.code).find(o=>Number(o.quantity_available)>0) : undefined
     const quantity=item.is_gift ? gift?.quantity_available : availabilityFor(actual,w)?.quantity_available
     if(quantity==null || quantity<=0)return []
@@ -695,6 +702,7 @@ function splitConstraintError(order:Order){
   const values=Object.values(manualAssignments[order.id]??{}).filter(Boolean)
   if(values.length!==order.items.length)return '请为每个 SKU 选择发货仓库'
   const sources=[...new Set(values)]
+  if(sources.some(code=>!warehouseAllowed(order,code)))return '德国仓不支持该收件国家/地区，请重新选择发货仓。'
   const maxSources=order.allocation_decision.policy.max_sources || 26
   if(sources.length>maxSources)return `最多允许 ${maxSources} 个履约来源`
   // Carrier may be selected during shipment; manual allocation only needs the warehouse.
@@ -988,11 +996,11 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order||repl
             :can-edit="Boolean(order.can_edit_workflow_status)"
             :options="order.workflow_status_options ?? workflowStatusOptions ?? []" /><span v-else>—</span></td>
           <td><OrderWarehouseRouteSelect v-if="order.routing_warehouse" :order-id="order.id"
-            :projection="order.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute)"
+            :projection="order.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute&&!order.read_only_parent)"
             :options="warehouseRouteOptions??[]" /><span v-else>—</span></td>
           <td class="sku-list"><div v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? item.product_summary ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-if="item.is_gift" :class="item.resolved_fulfillment_sku?'gift-done':'gift-pending'">{{ item.resolved_fulfillment_sku ? `→ ${item.resolved_fulfillment_sku}` : '待解析' }}</span></div></td>
           <td class="address-summary"><strong>{{ order.recipient_name ?? '—' }}</strong><span>{{ addressLine(order) || '—' }}</span><small v-if="order.phone">{{ order.phone }}</small></td>
-          <td><template v-if="order.country==='US'"><span :class="['zone-chip',order.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(order) }}</span><div class="zone-priority">{{ zonePriorityLabel(order.us_fulfillment_zone) }}</div></template><span v-else>{{ order.country ?? '—' }}</span></td>
+          <td><template v-if="order.country==='US'"><div>{{ countryDisplay(order) }}</div><span :class="['zone-chip',order.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(order) }}</span><div class="zone-priority">{{ zonePriorityLabel(order.us_fulfillment_zone) }}</div></template><span v-else>{{ countryDisplay(order) }}</span></td>
           <td class="advice-cell"><span :class="['advice-heading',guidanceFor(order).kind]">{{ guidanceFor(order).title }}</span></td>
           <td><span :class="['status-chip',guidanceFor(order).kind]">{{ guidanceFor(order).status }}</span></td>
           <td class="sticky-action"><button class="primary compact" @click="openPlan(order)">{{ processed(order)?'查看记录':'查看方案' }}</button></td>
@@ -1068,7 +1076,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order||repl
             <td>{{ item.quantity }}</td>
             <td><div v-if="positiveStockRows(selectedOrder,item).length" class="stock-list" :style="{gridTemplateRows:'repeat('+Math.ceil(positiveStockRows(selectedOrder,item).length/2)+',auto)'}"><span v-for="stock in positiveStockRows(selectedOrder,item)" :key="stock.code" :class="stock.status" :title="stock.detail"><b>{{ stock.name }}</b><strong>{{ stock.quantity }}</strong></span></div><small v-else class="product-name">暂无已知有货仓库</small></td>
             <td><div v-if="replacementSelections[selectedOrder.id]?.[item.id]||item.previous_replacement_product_id" class="warehouse-advice manual"><strong>已选择替换商品</strong><small>按替换商品库存人工分仓</small></div><div v-else class="warehouse-advice" :class="warehouseAdvice(selectedOrder,item).kind"><strong>{{ warehouseAdvice(selectedOrder,item).label }}</strong><small>{{ warehouseAdvice(selectedOrder,item).detail }}</small></div></td>
-            <td><select v-model="manualAssignments[selectedOrder.id][item.id]" @change="onWarehouseChanged(selectedOrder,item)"><option value="">请选择</option><option v-for="warehouse in warehouseOptions" :key="warehouse.code" :value="canonicalWarehouseCode(warehouse.code)">{{ warehouse.name }}</option></select><small v-if="canonicalWarehouseCode(manualAssignments[selectedOrder.id][item.id])==='US-LA'" class="mapping-missing">提交前核验 MorePlus 实际 SKU；ERP 库存仅供参考</small></td>
+            <td><select v-model="manualAssignments[selectedOrder.id][item.id]" @change="onWarehouseChanged(selectedOrder,item)"><option value="">请选择</option><option v-for="warehouse in selectedWarehouseOptions" :key="warehouse.code" :value="canonicalWarehouseCode(warehouse.code)">{{ warehouse.name }}</option></select><small v-if="canonicalWarehouseCode(manualAssignments[selectedOrder.id][item.id])==='US-LA'" class="mapping-missing">提交前核验 MorePlus 实际 SKU；ERP 库存仅供参考</small></td>
             <td><div class="carrier-cell"><span v-if="['FACTORY','OUTSOURCE'].includes(manualAssignments[selectedOrder.id][item.id])" class="manual-route">{{ manualAssignments[selectedOrder.id][item.id]==='OUTSOURCE' ? '待采购到货 · Vita 放行后选物流商' : '待发货阶段人工确认' }}</span><select v-else :value="carrierForItem(selectedOrder,item)" :disabled="!manualAssignments[selectedOrder.id][item.id]" @change="onCarrierChanged(selectedOrder,item,$event)"><option value="">请选择物流商</option><option v-for="carrier in props.carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="manualAssignments[selectedOrder.id][item.id] && carrierForItem(selectedOrder,item)" :class="carrierIsDefault(selectedOrder,item)?'auto-route':'manual-route'">{{ carrierIsDefault(selectedOrder,item)?'系统默认':'人工覆盖' }}</small></div></td>
             <td><template v-if="item.is_gift"><select v-model="manualGiftMappings[selectedOrder.id][item.id]" :disabled="!manualAssignments[selectedOrder.id][item.id]"><option value="">请选择实际礼品</option><option v-for="option in giftOptions(item,manualAssignments[selectedOrder.id][item.id])" :key="option.mapping_id" :value="String(option.mapping_id)">{{ option.fulfillment_sku }} · {{ option.fulfillment_name }} · {{option.can_fulfill ? '可出库 '+option.quantity_available : '人工可选 · '+giftBlockReason(option)}}</option></select><small v-if="chosenGift(item,selectedOrder)" class="resolved-note">{{ chosenGift(item,selectedOrder)?.fulfillment_sku }} · {{ sourceLabel(manualAssignments[selectedOrder.id][item.id]) }}</small><small v-if="chosenGift(item,selectedOrder) && !chosenGift(item,selectedOrder)?.can_fulfill" class="mapping-missing">人工库存例外：{{giftBlockReason(chosenGift(item,selectedOrder)!)}}；仅确认分仓，不代表已发货</small><small v-else-if="manualAssignments[selectedOrder.id][item.id]&&giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])" class="mapping-missing">{{giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])}}</small></template><div v-else class="replacement-picker" @focusout="(event)=>{if(!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node))closeReplacement()}">
               <div class="replacement-control"><input role="combobox" aria-label="搜索或选择实际发货商品" aria-autocomplete="list" :aria-expanded="replacementOpen===item.id" :value="replacementOpen===item.id?(replacementSearch[item.id]??''):replacementLabel(selectedOrder,item)" placeholder="搜索 SKU / 中英文名" :disabled="!props.canOperate||submitting" @focus="openReplacement(item)" @click="openReplacement(item)" @input="replacementSearch[item.id]=($event.target as HTMLInputElement).value; replacementOpen=item.id" @keydown.esc.prevent="closeReplacement()" /><button type="button" class="replacement-arrow" aria-label="展开商品列表" :disabled="!props.canOperate||submitting" @click="replacementOpen===item.id?closeReplacement():openReplacement(item)">⌄</button></div>
@@ -1086,11 +1094,11 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order||repl
       <section v-if="!processed(selectedOrder)" class="allocation-cost-card" data-testid="allocation-cost-card">
         <header class="allocation-cost-header"><strong>运费估算与确认</strong><button type="button" class="cost-refresh" :disabled="selectedCostLoading||itemSaving||!!itemEdit" @click="selectedCostRefresh++">重新计算</button></header>
         <SelectedAllocationCost v-if="!processed(selectedOrder)&&props.canOperate" :quote="selectedCost" :loading="selectedCostLoading" :error="selectedCostError" embedded />
-        <AllocationRatePreview v-if="!processed(selectedOrder)" :key="selectedOrder.id" embedded :refresh-key="selectedCostRefresh" :order-id="selectedOrder.id" :revision="String(selectedOrder.workflow_revision??'')+'|'+String(selectedOrder.items_revision??'')+'|'+selectedOrder.items.map(i=>i.id+':'+i.product_id+':'+i.quantity).join(',')" :warehouses="warehouseOptions" :disabled="selectedOrder.items.some(i=>i.is_gift||!!i.previous_replacement_product_id||!!replacementSelections[selectedOrder!.id]?.[i.id])" />
+        <AllocationRatePreview v-if="!processed(selectedOrder)" :key="selectedOrder.id" embedded :refresh-key="selectedCostRefresh" :order-id="selectedOrder.id" :revision="String(selectedOrder.country??'')+'|'+String(selectedOrder.germany_warehouse_eligible??false)+'|'+String(selectedOrder.workflow_revision??'')+'|'+String(selectedOrder.items_revision??'')+'|'+selectedOrder.items.map(i=>i.id+':'+i.product_id+':'+i.quantity).join(',')" :warehouses="selectedWarehouseOptions" :disabled="selectedOrder.items.some(i=>i.is_gift||!!i.previous_replacement_product_id||!!replacementSelections[selectedOrder!.id]?.[i.id])" />
       </section>
       <div class="top-grid">
         <section class="info-card"><header><strong>订单信息</strong><span :class="selectedOrder.allocation_decision.status==='manual_review'?'mini-warn':'mini-good'">{{ selectedOrder.allocation_decision.status_label }}</span></header><dl><dt>订单号</dt><dd>{{ selectedOrder.erp_order_id }}</dd><dt>收件人</dt><dd>{{ selectedOrder.recipient_name ?? '—' }}</dd><dt>联系电话</dt><dd>{{ selectedOrder.phone ?? '—' }}</dd><dt>订单商品</dt><dd><span class="order-item-chip" v-for="item in selectedOrder.items" :key="item.id">{{ item.sku??item.product_summary }} × {{ item.quantity }}</span></dd><dt>收货地址</dt><dd>{{ addressLine(selectedOrder) || '—' }}</dd><dt>订单联络人</dt><dd>{{ selectedOrder.contact_user_name || '未分配' }}</dd></dl></section>
-        <section class="info-card"><header><strong title="国家 + ZIP Code；州用于一致性校验">地址区域判定</strong></header><dl><dt>国家/地区</dt><dd>{{ selectedOrder.country ?? '—' }}</dd><dt>州 / 邮编</dt><dd>{{ selectedOrder.province_state ?? '—' }} · {{ selectedOrder.postal_code ?? '—' }}</dd><dt>所属区域</dt><dd><span :class="['zone-chip',selectedOrder.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(selectedOrder) }}</span></dd><dt>区域优先仓（不代表有货）</dt><dd>{{ zonePriorityLabel(selectedOrder.us_fulfillment_zone) }}</dd></dl></section>
+        <section class="info-card"><header><strong title="国家 + ZIP Code；州用于一致性校验">地址区域判定</strong></header><dl><dt>国家/地区</dt><dd>{{ countryDisplay(selectedOrder) }}</dd><dt>州 / 邮编</dt><dd>{{ selectedOrder.province_state ?? '—' }} · {{ selectedOrder.postal_code ?? '—' }}</dd><dt>所属区域</dt><dd><span :class="['zone-chip',selectedOrder.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(selectedOrder) }}</span></dd><dt>区域优先仓（不代表有货）</dt><dd>{{ zonePriorityLabel(selectedOrder.us_fulfillment_zone) }}</dd></dl></section>
         <OfflineWarehouseMap :key="selectedOrder.id" :address="mapAddress" :warehouses="mapWarehouses" :items="mapItems" />
       </div>
 

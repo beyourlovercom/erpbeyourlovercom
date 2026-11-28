@@ -16,7 +16,7 @@ final class AllocationRatePreviewService
     public function preview(Order $order, ?string $confirmedScope): array
     {
         $order->loadMissing(['address', 'items']);
-        $country = strtoupper(trim((string) $order->address?->country));
+        $country = \App\Support\Countries\CountryStandard::resolve($order->address?->country) ?? strtoupper(trim((string) $order->address?->country));
         $postal = trim((string) $order->address?->postal_code);
         $date = now('Asia/Shanghai')->toDateString();
         $base = ['country' => $country, 'as_of' => $date, 'estimate_only' => true, 'eligible_for_ranking' => false, 'measurement' => null, 'rows' => []];
@@ -39,7 +39,7 @@ final class AllocationRatePreviewService
     public function previewProducts(Order $order, array $items, ?string $confirmedScope = null, ?string $onlyWarehouse = null, bool $selectedPlan = false): array
     {
         $order->loadMissing('address');
-        $country = strtoupper(trim((string) $order->address?->country));
+        $country = \App\Support\Countries\CountryStandard::resolve($order->address?->country) ?? strtoupper(trim((string) $order->address?->country));
         $postal = trim((string) $order->address?->postal_code);
         $date = now('Asia/Shanghai')->toDateString();
         $base = ['country' => $country, 'as_of' => $date, 'estimate_only' => true, 'eligible_for_ranking' => false, 'measurement' => null, 'rows' => []];
@@ -117,7 +117,8 @@ final class AllocationRatePreviewService
         if ($onlyWarehouse !== null) {
             $warehouses = [$onlyWarehouse];
         }
-        // DE international offers may apply even outside Germany; never infer eligibility.
+        $warehouses = array_values(array_filter($warehouses, fn (string $warehouse): bool => app(WarehouseRoutingPolicy::class)->destinationAllowed($country, $warehouse)));
+        // Destination whitelist grants geographic eligibility only; individual quote restrictions still apply.
         // Pick current book versions BEFORE filtering by route, so deleted draft routes
         // cannot fall back to a superseded quote. Overlapping approved versions fail closed.
         $effective = DB::table('logistics_rate_versions')->whereIn('status', ['approved', 'draft'])

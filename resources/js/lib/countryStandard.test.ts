@@ -12,3 +12,16 @@ describe('ERP country standard', () => {
     expect(searchCountries('nor').some(c => c.code === 'NO')).toBe(true)
   })
 })
+
+import { orderCountryLabel } from './countryStandard'
+
+it('formats order country labels consistently without conflating Germany coverage and EU membership', () => {
+  expect(orderCountryLabel('US')).toBe('US-美国/北美')
+  expect(orderCountryLabel('DE')).toBe('DE-德国/欧盟')
+  expect(orderCountryLabel(' uk ')).toBe('GB-英国/欧洲（非欧盟）')
+  expect(orderCountryLabel('NO')).toBe('NO-挪威/欧洲（非欧盟）')
+  expect(orderCountryLabel('CH')).toBe('CH-瑞士/欧洲（非欧盟）')
+  expect(orderCountryLabel('BR')).toBe('BR-巴西/南美')
+  expect(orderCountryLabel(null)).toBe('—')
+  expect(orderCountryLabel('ZZ')).toBe('ZZ/区域待确认')
+})

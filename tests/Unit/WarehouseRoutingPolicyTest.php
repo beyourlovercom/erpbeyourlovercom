@@ -11,6 +11,26 @@ final class WarehouseRoutingPolicyTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_germany_destination_allowlist_and_country_regions_are_independent(): void
+    {
+        $policy = app(WarehouseRoutingPolicy::class);
+        $allowed = explode(' ', 'DE AT BE CZ DK EE ES FI FR GR HU IT LT LU NL PL SE SI SK PT LV BG MT RO HR IE CY GB LI MC SM NO');
+        $this->assertCount(32, $allowed);
+        foreach (\App\Support\Countries\CountryStandard::dictionary() as $country) {
+            $code = $country['code'];
+            $this->assertSame(in_array($code, $allowed, true), $policy->destinationAllowed($code, 'DE'), $code);
+            $this->assertTrue($policy->destinationAllowed($code, 'FACTORY'));
+            $this->assertStringNotContainsString('区域待确认', $policy->countryDisplay($code), $code);
+        }
+        $this->assertTrue($policy->destinationAllowed(' uk ', 'de-tianyun'));
+        $this->assertFalse($policy->destinationAllowed(null, 'DE'));
+        $this->assertSame('US-美国/北美', $policy->countryDisplay('US'));
+        $this->assertSame('DE-德国/欧盟', $policy->countryDisplay('DE'));
+        $this->assertSame('GB-英国/欧洲（非欧盟）', $policy->countryDisplay('UK'));
+        $this->assertSame('NO-挪威/欧洲（非欧盟）', $policy->countryDisplay('NO'));
+        $this->assertSame(['DE'], $policy->automaticCountries());
+    }
+
     public function test_default_policy_keeps_de_automatic_and_us_assisted_only(): void
     {
         $policy = app(WarehouseRoutingPolicy::class);

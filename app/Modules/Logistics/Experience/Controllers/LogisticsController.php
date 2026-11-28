@@ -96,14 +96,35 @@ final class LogisticsController
         $requestedView = $request->query('allocation_view');
         $allocationView = $rejectionFilter ? 'rejected' : (in_array($requestedView, ['all', 'processed'], true) ? $requestedView : 'pending');
         $base = $this->statusSummary->pendingAllocationQuery();
-        $allTotal = (clone $base)->count();
-        $processedTotal = $this->rejectionReadModel->onlyProcessed(clone $base)->count();
-        $pendingTotal = $allTotal - $processedTotal;
+        $ordinaryTotal = (clone $base)->count();
+        $ordinaryProcessedTotal = $this->rejectionReadModel->onlyProcessed(clone $base)->count();
+        // Split parents are never executable allocation rows. Preserve the existing
+        // guarded family-reset entry as a read-only history record, not as pending.
+        $parentHistory = Order::query()->eligibleForOperations()
+            ->whereNull('fulfillment_parent_id')
+            ->where('order_status', 'pending_shipment')
+            ->whereHas('originalFulfillmentChildren')
+            ->whereHas('fulfillmentAllocation', fn ($q) => $q->where('status', 'submitted'))
+            ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'));
+        $parentHistoryTotal = (clone $parentHistory)->count();
+        $allTotal = $ordinaryTotal + $parentHistoryTotal;
+        $processedTotal = $ordinaryProcessedTotal + $parentHistoryTotal;
+        $pendingTotal = $ordinaryTotal - $ordinaryProcessedTotal;
         $rejectionSnapshot = $this->rejectionReadModel->snapshot(
             $this->statusSummary->pendingAllocationQuery()
         );
         $rejectionCount = $rejectionSnapshot['count'];
-        $query = (clone $base)
+        $listBase = clone $base;
+        if (in_array($allocationView, ['all', 'processed'], true)) {
+            if ($allocationView === 'processed') {
+                $this->rejectionReadModel->onlyProcessed($listBase);
+            }
+            $normalIds = $listBase->select('orders.id');
+            $historyIds = (clone $parentHistory)->select('orders.id');
+            $listBase = Order::query()->where(fn ($q) => $q->whereIn('orders.id', $normalIds)
+                ->orWhereIn('orders.id', $historyIds));
+        }
+        $query = $listBase
             ->with(['address', 'items.product', 'items.sourceProduct', 'owner', 'financials', 'shipment.warehouse',
                 'shipment.overseaReview', 'operationalMarkers', 'fulfillmentParent.operationalMarkers',
                 'originalFulfillmentChildren.operationalMarkers',
@@ -115,8 +136,6 @@ final class LogisticsController
         if ($rejectionFilter) {
             $this->rejectionReadModel->onlyRejected($query);
             $this->rejectionReadModel->onlyPending($query);
-        } elseif ($allocationView === 'processed') {
-            $this->rejectionReadModel->onlyProcessed($query);
         } elseif ($allocationView === 'pending') {
             $this->rejectionReadModel->onlyPending($query);
         }
@@ -383,6 +402,7 @@ final class LogisticsController
             'assignments.*.replacement_product_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
+        $order->loadMissing('address');
         $items = $order->items->keyBy('id');
         $issues = [];
         $seen = [];
@@ -399,6 +419,11 @@ final class LogisticsController
                 $issues[] = ['order_item_id' => $itemId, 'sku' => $sku, 'warehouse' => $warehouse,
                     'reason' => '商品或仓库无效，请刷新订单重新选择。'];
 
+                continue;
+            }
+            if (! $this->warehouseRouting->destinationAllowed($order->address?->country, $warehouse)) {
+                $issues[] = ['order_item_id' => $itemId, 'sku' => $sku, 'warehouse' => $warehouse,
+                    'reason' => '德国仓不支持该收件国家/地区，请选择其他仓库。'];
                 continue;
             }
             if ($warehouse === 'OUTSOURCE' && empty($row['replacement_product_id'])) {
@@ -514,6 +539,9 @@ final class LogisticsController
             $warehouse = $warehouses->get((int) $assignment['warehouse_id']);
             if (! $warehouse || ! in_array(strtoupper((string) $warehouse->code), $allowedCodes, true)) {
                 throw ValidationException::withMessages(['assignments' => '所选仓库不属于待分仓履约仓库。']);
+            }
+            if (! $this->warehouseRouting->destinationAllowed($order->address?->country, (string) $warehouse->code)) {
+                throw ValidationException::withMessages(['assignments' => '德国仓不支持该收件国家/地区，请选择其他仓库。']);
             }
             $route = strtoupper(trim((string) $warehouse->code)) === 'FACTORY'
                 ? [] : $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
@@ -1060,6 +1088,11 @@ final class LogisticsController
         array $paymentDecisionsByOrderId = [],
         ?array $entryEligible = null,
     ): array {
+        $readOnlyParent = $order->fulfillment_parent_id === null && $order->originalFulfillmentChildren->isNotEmpty();
+        $germanyEligible = $this->warehouseRouting->destinationAllowed($order->address?->country, 'DE');
+        $germanyWarehouseIds = collect($context['warehouses'] ?? [])->filter(fn (array $w): bool => $this->warehouseRouting->canonicalWarehouseCode((string) ($w['code'] ?? '')) === 'DE')->pluck('id')->map(fn ($id): int => (int) $id)->all();
+        $eligibleAvailability = static fn (array $rows): array => $germanyEligible ? $rows : array_values(array_filter($rows, static fn (array $row): bool => ! in_array((int) ($row['warehouse_id'] ?? 0), $germanyWarehouseIds, true)));
+        $eligibleGiftOptions = fn (array $rows): array => $germanyEligible ? $rows : array_filter($rows, fn ($key): bool => $this->warehouseRouting->canonicalWarehouseCode((string) $key) !== 'DE', ARRAY_FILTER_USE_KEY);
         $destinationContext = [
             'province_state' => $order->address?->province_state,
             'city' => $order->address?->city,
@@ -1105,10 +1138,11 @@ final class LogisticsController
             'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
             'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
             'workflow_revision' => (int) $order->workflow_revision,
+            'read_only_parent' => $readOnlyParent,
             'reallocation_generation' => $order->fulfillment_parent_id === null ? $this->reallocationGenerationForPreview($order) : null,
             'reallocation_token' => $order->fulfillment_parent_id === null && $order->originalFulfillmentChildren->isNotEmpty()
                 ? ParentFulfillmentReallocationService::token($order, $allocation) : null,
-            'can_edit_workflow_status' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
+            'can_edit_workflow_status' => ! $readOnlyParent && app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
             'workflow_status_options' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             'external_order_number' => $order->external_order_number,
             'order_date' => $order->order_date?->toDateString(),
@@ -1133,6 +1167,8 @@ final class LogisticsController
             'recipient_name' => $order->address?->recipient_name,
             'phone' => $order->address?->phone,
             'country' => $order->address?->country,
+            'country_display' => $this->warehouseRouting->countryDisplay($order->address?->country),
+            'germany_warehouse_eligible' => $germanyEligible,
             'province_state' => $order->address?->province_state,
             'city' => $order->address?->city,
             'address_line_1' => $order->address?->address_line_1,
@@ -1159,15 +1195,15 @@ final class LogisticsController
                 'product_name' => $item->sourceProduct?->name ?? ($item->fulfillmentSourceProductId() ? $item->product?->name : $item->source_product_summary),
                 'material_full_name' => $item->sourceProduct?->material_full_name ?? ($item->fulfillmentSourceProductId() ? $item->product?->material_full_name : null),
                 'source_product_id' => $item->fulfillmentSourceProductId(),
-                'source_availability' => $context['availability'][$item->fulfillmentSourceProductId()] ?? [],
+                'source_availability' => $eligibleAvailability($context['availability'][$item->fulfillmentSourceProductId()] ?? []),
                 'previous_replacement_product_id' => collect($allocation?->manual_assignments ?? [])->firstWhere('order_item_id', $item->id)['replacement_product_id'] ?? null,
                 'product_summary' => $item->product_summary,
                 'quantity' => $item->quantity,
                 'unit_price' => (string) $item->unit_price,
-                'availability' => $context['availability'][$item->product_id] ?? [],
+                'availability' => $eligibleAvailability($context['availability'][$item->product_id] ?? []),
                 'is_gift' => $this->giftSkuResolutions->isGiftSku($item->source_sku ?: $item->sku),
                 'gift_options_by_warehouse' => array_key_exists('gift_resolution', $context)
-                    ? $this->giftSkuResolutions->options((string) ($item->source_sku ?: $item->sku), (int) $item->quantity, $context['gift_resolution'])
+                    ? $eligibleGiftOptions($this->giftSkuResolutions->options((string) ($item->source_sku ?: $item->sku), (int) $item->quantity, $context['gift_resolution']))
                     : [],
             ])->values()->all(),
             'warehouse_recommendation' => $recommendation,
