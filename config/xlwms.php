@@ -73,6 +73,8 @@ return [
     'us_ny_canary_order_id' => (int) env('XLWMS_US_NY_CANARY_ORDER_ID', 0),
     'us_ny_canary_system_enabled' => false, // process-local trusted CLI only; never env-enabled
     'us_ny_canary_actor_id' => (int) env('XLWMS_US_NY_CANARY_ACTOR_ID', 0),
+    'us_ny_inventory_hourly_enabled' => filter_var(env('XLWMS_US_NY_INVENTORY_HOURLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'us_ny_inventory_physical_apply_enabled' => filter_var(env('XLWMS_US_NY_INVENTORY_PHYSICAL_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     'us_ny_inventory_dev_apply_enabled' => filter_var(env('XLWMS_US_NY_INVENTORY_DEV_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
     'us_ny_inventory_first_apply_approved_checksum' => (string) env('XLWMS_US_NY_INVENTORY_FIRST_APPLY_APPROVED_CHECKSUM', ''),
     'de_inventory_dev_apply_enabled' => filter_var(env('XLWMS_DE_INVENTORY_DEV_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),

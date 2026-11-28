@@ -127,11 +127,19 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     && $isMorePlus && $available !== null) {
                     $available = min($available, max(0, (int) $row->provider_available_quantity - (int) $reserved));
                 }
+                if (strtoupper((string) $warehouse['code']) === 'US-NY'
+                    && config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
+                    $confirmed = $row && $row->provider_stock_synced_at && $row->provider_available_quantity !== null
+                        && !$row->provider_stock_synced_at->isFuture()
+                        && $row->provider_stock_synced_at->diffInMinutes(now()) <= 120;
+                    $available = $confirmed ? min(max(0, $onHand - $reserved), max(0, (int) $row->provider_available_quantity - $reserved)) : 0;
+                    if (!$confirmed) $stockGateReason = 'oms_sku_not_confirmed';
+                }
                 $isUsSm = $usSm !== null && (int) $warehouse['id'] === (int) $usSm['id'];
-                $stockGateReason = config('inventory_sku_gate.enabled', false)
+                $stockGateReason = ($stockGateReason ?? null) ?: (config('inventory_sku_gate.enabled', false)
                     && $isMorePlus
                     && ($row?->provider_stock_synced_at === null || $row?->provider_available_quantity === null)
-                    ? 'provider_sku_not_synced' : null;
+                    ? 'provider_sku_not_synced' : null);
                 if ($isUsSm && $erpAvailable !== null && $erpAvailable > 0 && $providerAvailable !== null) {
                     if ($omsSnapshotUnapplied) {
                         $stockGateReason = $latestUsSmSnapshot->status === 'blocked'

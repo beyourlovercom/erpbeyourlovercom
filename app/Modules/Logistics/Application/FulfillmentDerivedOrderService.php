@@ -50,6 +50,9 @@ final class FulfillmentDerivedOrderService
         $this->assertParentShipmentMayBeReplaced($parent);
         $this->restoreSourceItems($parent);
         $parent->load('items');
+        if (config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
+            app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($parent, 0, $actor);
+        }
         $parent->shipment?->delete();
 
         $children = collect();
@@ -373,6 +376,9 @@ final class FulfillmentDerivedOrderService
     private function deletePendingChild(Order $child): void
     {
         $this->assertChildMayBeRebuilt($child);
+        if (config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
+            app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($child, 0, null);
+        }
         $child->delete();
     }
 

@@ -89,6 +89,10 @@ final class ShipmentService
             $changed = $shipment->isDirty();
             $shipment->save();
             $this->syncFinalSkusForWarehouse($lockedOrder, $originalWarehouseId, (int) $shipment->warehouse_id);
+            if ($warehouseProvided && config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
+                app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
+                    ->sync($lockedOrder, (int) $shipment->warehouse_id, $actor);
+            }
             $this->syncPackagingSnapshots($lockedOrder, $shipment);
 
             if ($changed) {
@@ -198,6 +202,10 @@ final class ShipmentService
             if (! $alreadyShipped) {
                 $this->syncFinalSkusForWarehouse($lockedOrder, $originalWarehouseId, (int) $shipment->warehouse_id);
                 $this->syncPackagingSnapshots($lockedOrder, $shipment);
+            }
+            if (!$alreadyShipped && config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
+                app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
+                    ->commit($lockedOrder, (int) $shipment->warehouse_id, $actor);
             }
             if ($lockedOrder->order_status?->value !== 'shipped') {
                 $lockedOrder->forceFill(['order_status' => 'shipped'])->save();
