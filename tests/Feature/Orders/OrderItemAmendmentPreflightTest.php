@@ -42,6 +42,33 @@ final class OrderItemAmendmentPreflightTest extends TestCase
         $this->assertSame(77701, $order->items()->where('id', $untouched->id)->value('woocommerce_line_item_id'));
     }
 
+    public function test_logistics_preset_can_preview_and_save_items_but_shipped_items_stay_locked(): void
+    {
+        [$order, $combo, $a1, $mf, $untouched] = $this->fixture();
+        $actor = User::factory()->create(['is_active' => true, 'permission_mode' => 'role']);
+        $role = Role::firstOrCreate(['key' => 'role_preset_logistics'], ['label' => 'Logistics']);
+        foreach (['orders.view', 'logistics.operate'] as $key) {
+            $role->permissions()->syncWithoutDetaching([\App\Models\Permission::firstOrCreate(['key' => $key], ['label' => $key])->id]);
+        }
+        $actor->roles()->attach($role);
+        $items = [
+            ['id' => $untouched->id, 'product_id' => $untouched->product_id, 'quantity' => 1, 'unit_price' => '39.60'],
+            ['product_id' => $a1->id, 'quantity' => 1, 'unit_price' => '90.00'],
+            ['product_id' => $mf->id, 'quantity' => 1, 'unit_price' => '9.20'],
+        ];
+        $preview = $this->actingAs($actor)->postJson("/customers/orders/{$order->id}/items/preview", ['items' => $items])
+            ->assertOk()->assertJsonPath('can_save_direct', true)->json();
+        $this->actingAs($actor)->patch("/customers/orders/{$order->id}", [
+            'items' => $items, 'expected_revision' => $preview['expected_revision'],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(['A1', 'MF414A', 'VG515A'], $order->items()->orderBy('sku')->pluck('sku')->all());
+        $order->shipment()->create(['shipment_status' => 'shipped', 'shipped_at' => now()]);
+        $this->actingAs($actor)->patch("/customers/orders/{$order->id}", ['items' => [
+            ['product_id' => $a1->id, 'quantity' => 1, 'unit_price' => '138.80'],
+        ]])->assertSessionHasErrors('items');
+        $this->assertSame(['A1', 'MF414A', 'VG515A'], $order->items()->orderBy('sku')->pluck('sku')->all());
+    }
+
     public function test_woo_split_with_changed_total_is_blocked_and_does_not_touch_rows(): void
     {
         [$order, $combo, $a1, $mf] = $this->fixture();

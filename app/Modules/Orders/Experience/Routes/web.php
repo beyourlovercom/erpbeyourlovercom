@@ -61,9 +61,9 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/orders/collaboration/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.collaboration')->defaults('order_kind', 'all')->defaults('order_scope', 'collaboration');
     Route::get('/orders/procurement', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
     Route::patch('/orders/{order}/address', [OrderAddressController::class, 'updateDerived'])
-        ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.derived.address.update');
+        ->middleware(['can:orders.view', 'can:orders.content.update'])->whereNumber('order')->name('orders.derived.address.update');
     Route::post('/orders/{order}/address/sync-children', [OrderAddressController::class, 'syncOriginalChildren'])
-        ->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.address.sync-children');
+        ->middleware(['can:orders.view', 'can:orders.content.update'])->whereNumber('order')->name('orders.address.sync-children');
     Route::get('/orders/{order}', [OrderController::class, 'showAny'])->middleware('can:orders.view')->whereNumber('order')->name('orders.show');
     Route::get('/orders/procurement/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
     Route::get('/customers/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('customers.orders')->defaults('order_kind', 'customer');
@@ -72,8 +72,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/customers/orders/export', [OrderController::class, 'export'])->middleware(['can:customers.export', 'can:system.permissions.manage'])->name('orders.export')->defaults('order_kind', 'customer');
     Route::get('/customers/orders/{order}', [OrderController::class, 'show'])->middleware('can:orders.view')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|[0-9]+')->name('customers.orders.show')->defaults('order_kind', 'customer');
     Route::post('/customers/orders/{order}/notes', [OrderNoteController::class, 'store'])->middleware(['can:orders.view', 'throttle:30,1'])->whereNumber('order')->name('customers.orders.notes.store')->defaults('order_kind', 'customer');
-    Route::post('/customers/orders/{order}/items/preview', [OrderController::class, 'previewItemAmendment'])->middleware('can:orders.edit')->whereNumber('order')->name('customers.orders.items.preview')->defaults('order_kind', 'customer');
-    Route::patch('/customers/orders/{order}', [OrderController::class, 'update'])->middleware('can:orders.edit')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|[0-9]+')->name('orders.update.customers')->defaults('order_kind', 'customer');
+    Route::post('/customers/orders/{order}/items/preview', [OrderController::class, 'previewItemAmendment'])->middleware('can:orders.content.update')->whereNumber('order')->name('customers.orders.items.preview')->defaults('order_kind', 'customer');
+    Route::patch('/customers/orders/{order}', [OrderController::class, 'update'])->middleware('can:orders.content.update')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|[0-9]+')->name('orders.update.customers')->defaults('order_kind', 'customer');
 
     Route::get('/kol/logistics', [KolLogisticsController::class, 'index'])->middleware('can:kol.view')->name('kol.logistics');
     Route::get('/kol/orders/link-preview', KolOrderLinkPreviewController::class)->middleware(['can:orders.view', 'can:kol.views.manage'])->name('kol.orders.link-preview');
@@ -84,6 +84,6 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/kol/orders', [OrderController::class, 'store'])->middleware('can:orders.create')->name('orders.store')->defaults('order_kind', 'kol_fulfillment');
     Route::get('/kol/orders/{order}', [OrderController::class, 'show'])->middleware('can:orders.view')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|KOL[0-9]{8}-[0-9]{3}|[0-9]+')->name('kol.orders.show')->defaults('order_kind', 'kol_fulfillment');
     Route::post('/kol/orders/{order}/notes', [OrderNoteController::class, 'store'])->middleware(['can:orders.view', 'throttle:30,1'])->whereNumber('order')->name('kol.orders.notes.store')->defaults('order_kind', 'kol_fulfillment');
-    Route::post('/kol/orders/{order}/items/preview', [OrderController::class, 'previewItemAmendment'])->middleware('can:orders.edit')->whereNumber('order')->name('kol.orders.items.preview')->defaults('order_kind', 'kol_fulfillment');
-    Route::patch('/kol/orders/{order}', [OrderController::class, 'update'])->middleware('can:orders.edit')->name('orders.update')->defaults('order_kind', 'kol_fulfillment');
+    Route::post('/kol/orders/{order}/items/preview', [OrderController::class, 'previewItemAmendment'])->middleware('can:orders.content.update')->whereNumber('order')->name('kol.orders.items.preview')->defaults('order_kind', 'kol_fulfillment');
+    Route::patch('/kol/orders/{order}', [OrderController::class, 'update'])->middleware('can:orders.content.update')->name('orders.update')->defaults('order_kind', 'kol_fulfillment');
 });
