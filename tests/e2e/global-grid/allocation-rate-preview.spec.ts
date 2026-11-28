@@ -15,6 +15,8 @@ test('real ERP allocation dialog shows source-based estimate and missing data wi
   await page.getByRole('button',{name:'查看方案',exact:true}).click()
   const panel=page.getByTestId('allocation-rate-preview')
   await expect(panel).toContainText('2件 · 1 kg · 20 × 15 × 10 cm')
+  await expect(page.locator('.top-grid')).toContainText('DE-德国/欧盟')
+  await expect(page.locator('.manual-table-wrap tbody select option[value="DE"]').first()).toHaveCount(1)
   const card=page.getByTestId('allocation-cost-card')
   await expect(card).toHaveCount(1)
   await expect(card.getByTestId('selected-allocation-cost')).toBeVisible()

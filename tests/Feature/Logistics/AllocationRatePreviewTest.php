@@ -87,6 +87,8 @@ final class AllocationRatePreviewTest extends TestCase
             ->assertJsonPath('measurement.item_count', 3)->assertJsonPath('measurement.weight_kg', 1.75)->json();
         $this->assertEquals([30, 15, 16], $r['measurement']['dimensions_cm']);
         $rows = collect($r['rows'])->keyBy('warehouse_code');
+        $this->assertFalse($rows->has('DE'));
+        $this->assertFalse(collect($r['warehouse_rows'])->contains('warehouse_code','DE'));
         $this->assertSame('draft_reference', $rows['US-NY']['status']);
         $this->assertEquals(37.5, $rows['US-NY']['amount_cny']);
         $this->assertSame(2, $rows['US-NY']['extra_item_usd']);

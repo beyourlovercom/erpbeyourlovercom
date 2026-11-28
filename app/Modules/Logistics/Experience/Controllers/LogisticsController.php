@@ -383,6 +383,7 @@ final class LogisticsController
             'assignments.*.replacement_product_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
+        $order->loadMissing('address');
         $items = $order->items->keyBy('id');
         $issues = [];
         $seen = [];
@@ -399,6 +400,11 @@ final class LogisticsController
                 $issues[] = ['order_item_id' => $itemId, 'sku' => $sku, 'warehouse' => $warehouse,
                     'reason' => '商品或仓库无效，请刷新订单重新选择。'];
 
+                continue;
+            }
+            if (! $this->warehouseRouting->destinationAllowed($order->address?->country, $warehouse)) {
+                $issues[] = ['order_item_id' => $itemId, 'sku' => $sku, 'warehouse' => $warehouse,
+                    'reason' => '德国仓不支持该收件国家/地区，请选择其他仓库。'];
                 continue;
             }
             if ($warehouse === 'OUTSOURCE' && empty($row['replacement_product_id'])) {
@@ -514,6 +520,9 @@ final class LogisticsController
             $warehouse = $warehouses->get((int) $assignment['warehouse_id']);
             if (! $warehouse || ! in_array(strtoupper((string) $warehouse->code), $allowedCodes, true)) {
                 throw ValidationException::withMessages(['assignments' => '所选仓库不属于待分仓履约仓库。']);
+            }
+            if (! $this->warehouseRouting->destinationAllowed($order->address?->country, (string) $warehouse->code)) {
+                throw ValidationException::withMessages(['assignments' => '德国仓不支持该收件国家/地区，请选择其他仓库。']);
             }
             $route = strtoupper(trim((string) $warehouse->code)) === 'FACTORY'
                 ? [] : $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
@@ -1060,6 +1069,10 @@ final class LogisticsController
         array $paymentDecisionsByOrderId = [],
         ?array $entryEligible = null,
     ): array {
+        $germanyEligible = $this->warehouseRouting->destinationAllowed($order->address?->country, 'DE');
+        $germanyWarehouseIds = collect($context['warehouses'] ?? [])->filter(fn (array $w): bool => $this->warehouseRouting->canonicalWarehouseCode((string) ($w['code'] ?? '')) === 'DE')->pluck('id')->map(fn ($id): int => (int) $id)->all();
+        $eligibleAvailability = static fn (array $rows): array => $germanyEligible ? $rows : array_values(array_filter($rows, static fn (array $row): bool => ! in_array((int) ($row['warehouse_id'] ?? 0), $germanyWarehouseIds, true)));
+        $eligibleGiftOptions = fn (array $rows): array => $germanyEligible ? $rows : array_filter($rows, fn ($key): bool => $this->warehouseRouting->canonicalWarehouseCode((string) $key) !== 'DE', ARRAY_FILTER_USE_KEY);
         $destinationContext = [
             'province_state' => $order->address?->province_state,
             'city' => $order->address?->city,
@@ -1133,6 +1146,8 @@ final class LogisticsController
             'recipient_name' => $order->address?->recipient_name,
             'phone' => $order->address?->phone,
             'country' => $order->address?->country,
+            'country_display' => $this->warehouseRouting->countryDisplay($order->address?->country),
+            'germany_warehouse_eligible' => $germanyEligible,
             'province_state' => $order->address?->province_state,
             'city' => $order->address?->city,
             'address_line_1' => $order->address?->address_line_1,
@@ -1159,15 +1174,15 @@ final class LogisticsController
                 'product_name' => $item->sourceProduct?->name ?? ($item->fulfillmentSourceProductId() ? $item->product?->name : $item->source_product_summary),
                 'material_full_name' => $item->sourceProduct?->material_full_name ?? ($item->fulfillmentSourceProductId() ? $item->product?->material_full_name : null),
                 'source_product_id' => $item->fulfillmentSourceProductId(),
-                'source_availability' => $context['availability'][$item->fulfillmentSourceProductId()] ?? [],
+                'source_availability' => $eligibleAvailability($context['availability'][$item->fulfillmentSourceProductId()] ?? []),
                 'previous_replacement_product_id' => collect($allocation?->manual_assignments ?? [])->firstWhere('order_item_id', $item->id)['replacement_product_id'] ?? null,
                 'product_summary' => $item->product_summary,
                 'quantity' => $item->quantity,
                 'unit_price' => (string) $item->unit_price,
-                'availability' => $context['availability'][$item->product_id] ?? [],
+                'availability' => $eligibleAvailability($context['availability'][$item->product_id] ?? []),
                 'is_gift' => $this->giftSkuResolutions->isGiftSku($item->source_sku ?: $item->sku),
                 'gift_options_by_warehouse' => array_key_exists('gift_resolution', $context)
-                    ? $this->giftSkuResolutions->options((string) ($item->source_sku ?: $item->sku), (int) $item->quantity, $context['gift_resolution'])
+                    ? $eligibleGiftOptions($this->giftSkuResolutions->options((string) ($item->source_sku ?: $item->sku), (int) $item->quantity, $context['gift_resolution']))
                     : [],
             ])->values()->all(),
             'warehouse_recommendation' => $recommendation,

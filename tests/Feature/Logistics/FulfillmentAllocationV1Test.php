@@ -32,6 +32,31 @@ final class FulfillmentAllocationV1Test extends TestCase
         config()->set('inertia.testing.ensure_pages_exist', false);
     }
 
+    public function test_destination_allowlist_blocks_new_us_germany_allocation_and_preserves_eligible_manual_routes(): void
+    {
+        [$user, $order] = $this->scenario(1);
+        $item = $order->items->first();
+        $de = Warehouse::where('code', 'DE')->firstOrFail();
+        $assignments = [['order_item_id' => $item->id, 'source_code' => 'DE']];
+        $base = '/logistics/orders/'.$order->id.'/fulfillment-allocation';
+        $this->actingAs($user)->get('/logistics/wait-stock')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('orders.data.0.germany_warehouse_eligible', false)
+            ->where('orders.data.0.country_display', 'US-美国/北美')
+            ->where('orders.data.0.items.0.availability', fn ($rows) => ! collect($rows)->contains('warehouse_id', $de->id)));
+        $this->postJson($base.'/preflight', ['assignments' => $assignments])->assertOk()->assertJsonPath('can_submit', false);
+        $this->postJson($base.'/cost-preview', ['mode'=>'manual','assignments'=>$assignments])->assertStatus(422);
+        $this->postJson($base.'/manual', ['assignments'=>$assignments,'stock_exception_acknowledged'=>true])->assertStatus(422);
+        $this->postJson($base.'/quick', ['assignments'=>[['order_item_id'=>$item->id,'warehouse_id'=>$de->id]],'stock_exception_acknowledged'=>true])->assertStatus(422);
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id'=>$order->id]);
+        $this->assertDatabaseMissing('shipments', ['order_id'=>$order->id]);
+        $order->address()->update(['country'=>'GB']);
+        $this->get('/logistics/wait-stock')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('orders.data.0.germany_warehouse_eligible', true)
+            ->where('orders.data.0.country_display', 'GB-英国/欧洲（非欧盟）'));
+        $this->postJson($base.'/manual', ['assignments'=>$assignments,'stock_exception_acknowledged'=>true])->assertOk();
+        $this->assertDatabaseHas('shipments', ['order_id'=>$order->id,'warehouse_id'=>$de->id]);
+    }
+
     public function test_wait_stock_page_is_vita_assisted_allocation_surface_and_excludes_007(): void
     {
         [$user, $order] = $this->scenario(1);

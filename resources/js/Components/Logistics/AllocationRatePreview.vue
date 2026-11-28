@@ -7,7 +7,7 @@ type Result = {status:string;reason:string|null;country:string;as_of:string;meas
 const props=defineProps<{orderId:number;revision:string;disabled?:boolean;embedded?:boolean;refreshKey?:number;warehouses:{code:string;name:string}[]}>()
 const data=ref<Result|null>(null)
 const loading=ref(false)
-const orderedRows=computed(()=>[...(data.value?.warehouse_rows??[])].sort((a,b)=>Number(b.warehouse_code==='FACTORY')-Number(a.warehouse_code==='FACTORY')))
+const orderedRows=computed(()=>[...(data.value?.warehouse_rows??[])].filter(row=>row.warehouse_code!=='DE'||props.warehouses.some(w=>w.code==='DE')).sort((a,b)=>Number(b.warehouse_code==='FACTORY')-Number(a.warehouse_code==='FACTORY')))
 const error=ref(false)
 let controller:AbortController|null=null
 let sequence=0

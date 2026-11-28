@@ -125,7 +125,13 @@ foreach ($deBlockedCountries as $country) {
 }
 
 return [
-    'version' => '2026-09-14-v6',
+    'version' => '2026-11-28-v7',
+
+    // Owner confirmed the exact 32 destinations including Germany. This is a
+    // physical destination eligibility gate, not an automatic-dispatch grant.
+    'destination_allowlists' => [
+        'DE' => ['DE','AT','BE','CZ','DK','EE','ES','FI','FR','GR','HU','IT','LT','LU','NL','PL','SE','SI','SK','PT','LV','BG','MT','RO','HR','IE','CY','GB','LI','MC','SM','NO'],
+    ],
 
     'global' => [
         'require_active_warehouse' => true,
@@ -147,7 +153,7 @@ return [
         'US-SM' => ['US-SM', 'US-SJ', 'SMGJ', '美国3世迈仓', '美西加州3仓', '世纪仓', '世迈仓', '世迈国际仓', 'SMGJ 世迈国际仓'],
         'US-AMZ' => ['US-AMZ', 'us-amz', '亚马逊仓·美', 'Amazon US Warehouse'],
         'CA' => ['CA', 'CA02', '加拿大仓库', '加拿大仓'],
-        'DE' => ['DE', '德国仓', '天运德国', '天运仓', '德国仓/天运仓'],
+        'DE' => ['DE', 'DE-TIANYUN', 'de-tianyun', '德国仓', '天运德国', '天运仓', '德国仓/天运仓'],
     ],
 
     'regional_policies' => [
