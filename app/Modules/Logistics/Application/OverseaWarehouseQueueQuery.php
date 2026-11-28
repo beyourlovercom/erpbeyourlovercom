@@ -83,7 +83,8 @@ final class OverseaWarehouseQueueQuery
         }
         if ($view === 'shipped') {
             $query->whereHas('order', fn ($o) => $this->withoutOtherManualQueue($o))
-                ->where('shipment_status', 'shipped');
+                ->where('shipment_status', 'shipped')
+                ->whereNot(fn ($sync) => WebsiteSyncException::forShipment($sync));
 
             return;
         }
@@ -92,6 +93,7 @@ final class OverseaWarehouseQueueQuery
                 // Provider failures are factual, including when staff chose
                 // Sending or a stockout hold. Never hide a failed OMS attempt.
                 $exceptions->where(fn ($q) => $this->providerException($q))
+                    ->orWhere(fn ($q) => WebsiteSyncException::forShipment($q))
                     ->orWhere(function ($conflict): void {
                         $conflict->where('shipment_status', 'pending');
                         $this->providerIssued($conflict);

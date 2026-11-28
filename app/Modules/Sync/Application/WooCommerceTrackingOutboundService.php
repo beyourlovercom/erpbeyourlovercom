@@ -35,10 +35,13 @@ final class WooCommerceTrackingOutboundService
     }
 
     /** @return array<string,mixed> */
-    public function pushOne(Model $order, ?Authenticatable $actor, bool $verifyRemote = false, bool $syncOrderStatus = true, bool $allowLegacyTrackingContract = false): array
+    public function pushOne(Model $order, ?Authenticatable $actor, bool $verifyRemote = false, bool $syncOrderStatus = true, bool $allowLegacyTrackingContract = false, bool $recoverFailure = false): array
     {
         $prepared = $this->prepare($order);
-        if ($allowLegacyTrackingContract) {
+        if ($recoverFailure && (! $actor || ! $verifyRemote)) {
+            throw new DomainException('异常恢复需要人工授权和官网回读。');
+        }
+        if ($allowLegacyTrackingContract || $recoverFailure) {
             // Manual operator action: verify remote status before any Woo write.
             // The scheduler never opts into this legacy reconciliation.
             if (! $verifyRemote) {
@@ -50,6 +53,9 @@ final class WooCommerceTrackingOutboundService
             }
         }
         $record = $this->outbox->enqueue($prepared['intent'], $allowLegacyTrackingContract);
+        if ($recoverFailure) {
+            $record = $this->outbox->reopenWooFailure($record, $actor);
+        }
 
         if ($record->status === SyncOutboxStatus::Completed) {
             if ($verifyRemote) {
@@ -78,7 +84,7 @@ final class WooCommerceTrackingOutboundService
                 }
 
                 $statusSync = $syncOrderStatus
-                    ? $this->orderStatusOutbound->pushOne($order, verifyRemote: true)
+                    ? $this->orderStatusOutbound->pushOne($order, verifyRemote: true, recoveryActor: $recoverFailure ? $actor : null)
                     : ['status' => 'skipped'];
                 if ($syncOrderStatus && ($statusSync['status'] ?? '') !== 'completed') {
                     return ['status' => ($statusSync['status'] ?? '') === 'conflict' ? 'conflict' : 'failed', 'outbox' => $record];
@@ -192,7 +198,7 @@ final class WooCommerceTrackingOutboundService
         $completed = $this->outbox->complete($claimed->id, $lockToken);
         $this->manualSync->completeFromAutomaticTracking($order, $actor, 'WooCommerce tracking outbound verified.');
         $statusSync = $syncOrderStatus
-            ? $this->orderStatusOutbound->pushOne($order, verifyRemote: $verifyRemote)
+            ? $this->orderStatusOutbound->pushOne($order, verifyRemote: $verifyRemote, recoveryActor: $recoverFailure ? $actor : null)
             : ['status' => 'skipped'];
         if ($syncOrderStatus && $verifyRemote && ($statusSync['status'] ?? '') !== 'completed') {
             return [

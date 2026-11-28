@@ -5,6 +5,7 @@ namespace App\Modules\Sync\Application;
 use App\Modules\Logistics\Application\ShipmentAggregateStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Throwable;
 
 final class WooCommerceOrderStatusOutboundService
@@ -17,7 +18,7 @@ final class WooCommerceOrderStatusOutboundService
     ) {}
 
     /** @return array<string,mixed> */
-    public function pushOne(Order $order, bool $verifyRemote = false): array
+    public function pushOne(Order $order, bool $verifyRemote = false, ?Authenticatable $recoveryActor = null): array
     {
         $aggregate = $this->aggregateStatus->reconcile($order);
         /** @var Order $root */
@@ -94,6 +95,10 @@ final class WooCommerceOrderStatusOutboundService
             ],
             'max_attempts' => 3,
         ]);
+
+        if ($recoveryActor !== null && $verifyRemote) {
+            $record = $this->outbox->reopenWooFailure($record, $recoveryActor);
+        }
 
         if ($record->status === SyncOutboxStatus::Completed) {
             if (! $verifyRemote) {

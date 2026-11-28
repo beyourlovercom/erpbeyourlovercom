@@ -17,6 +17,7 @@ use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\SelectedExportOrderIds;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
+use App\Modules\Logistics\Application\WebsiteSyncException;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
 use App\Modules\Orders\Application\DomesticShippingHold;
 use App\Modules\Orders\Application\OrderBusinessDateResolver;
@@ -542,7 +543,8 @@ final class DomesticLogisticsController
             'exceptions' => $query->where(function (Builder $issues): void {
                 $issues->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'exception'))
                     ->orWhere(fn (Builder $manual) => $this->progressQueries->applyPhase($manual, 'exception'))
-                    ->orWhere(fn (Builder $conflicts) => $this->progressQueries->applyPhase($conflicts, 'progress_conflict'));
+                    ->orWhere(fn (Builder $conflicts) => $this->progressQueries->applyPhase($conflicts, 'progress_conflict'))
+                    ->orWhereHas('shipment', fn ($s) => WebsiteSyncException::forShipment($s));
             }),
             'today' => $this->progressQueries->domesticToday($query),
             // All domestic carriers and historical fulfillment states share
@@ -639,7 +641,7 @@ final class DomesticLogisticsController
             ->pluck('sku')->filter()->unique()->values()->all();
 
         $exception = $includeException
-            ? $this->exceptionSummary($order, $conflict, $stockout)
+            ? (in_array($trackingState['status'], ['failed', 'conflict', 'retry_wait'], true) ? ['exception_type' => '官网同步异常', 'exception_reason' => $trackingState['reason'] ?? '官网同步失败，请重新核对'] : $this->exceptionSummary($order, $conflict, $stockout))
             : [];
 
         return [

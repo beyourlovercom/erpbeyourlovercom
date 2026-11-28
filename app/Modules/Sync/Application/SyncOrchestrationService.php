@@ -26,16 +26,19 @@ final class SyncOrchestrationService
     ) {}
 
     /** @param array<int,mixed> $orderIds */
-    public function trackingSelected(array $orderIds, ?Authenticatable $actor, bool $manualOverride = false): Model
+    public function trackingSelected(array $orderIds, ?Authenticatable $actor, bool $manualOverride = false, bool $recoverFailure = false): Model
     {
         $ids = $this->normalizeIds($orderIds);
+        if ($recoverFailure && ($actor === null || $manualOverride || count($ids) !== 1)) {
+            throw new DomainException('异常同步恢复只能由人工逐单执行，不允许强制完成。');
+        }
         if ($ids === []) {
             throw new DomainException('至少选择一张订单。');
         }
 
         $connection = $this->connection();
         $run = $this->runs->start(
-            $manualOverride ? 'tracking_manual_force_completed' : 'tracking_selected',
+            $manualOverride ? 'tracking_manual_force_completed' : ($recoverFailure ? 'tracking_exception_recovery' : 'tracking_selected'),
             count($ids),
             $actor,
             'woocommerce',
@@ -58,7 +61,7 @@ final class SyncOrchestrationService
             if ($manualOverride) {
                 $this->executeManualOverride($run, $order, $actor, $connection);
             } else {
-                $this->executeTrackingOrder($run, $order, $actor, $connection, verifyRemote: true);
+                $this->executeTrackingOrder($run, $order, $actor, $connection, verifyRemote: true, recoverFailure: $recoverFailure);
             }
         }
 
@@ -224,6 +227,7 @@ final class SyncOrchestrationService
         ?Authenticatable $actor,
         string $connection,
         bool $verifyRemote = false,
+        bool $recoverFailure = false,
     ): void {
         $item = $this->runs->addItem($run, [
             'operation' => self::TrackingOperation,
@@ -234,7 +238,7 @@ final class SyncOrchestrationService
         $this->runs->markProcessing($item);
 
         try {
-            $result = $this->tracking->pushOne($order, $actor, verifyRemote: $verifyRemote);
+            $result = $this->tracking->pushOne($order, $actor, verifyRemote: $verifyRemote, allowLegacyTrackingContract: $recoverFailure, recoverFailure: $recoverFailure);
             $this->finishFromTrackingResult($item, $result);
         } catch (DomainException $exception) {
             $this->runs->finishItem(
@@ -332,7 +336,7 @@ final class SyncOrchestrationService
             }
 
             $legacyModelTime = $shipment->shipped_at
-                ? \Carbon\CarbonImmutable::parse($shipment->shipped_at)->utc()->toIso8601String()
+                ? CarbonImmutable::parse($shipment->shipped_at)->utc()->toIso8601String()
                 : null;
             if (ShipmentUtcTimestamp::holdLegacyTimezoneIntent(
                 (array) $record->payload,

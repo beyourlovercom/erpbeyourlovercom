@@ -10,6 +10,7 @@ use App\Modules\Runtime\Application\QueueJobConvention;
 use App\Modules\Sync\Application\Contracts\SyncOutboxRepository;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -84,6 +85,31 @@ final class SyncOutboxService
             );
 
             return $record;
+        });
+    }
+
+    /** Explicit operator recovery of the exact current Woo intent, not a bulk reset. */
+    public function reopenWooFailure(Model $intent, Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($intent, $actor): Model {
+            $record = $this->lockedRecord((int) $intent->id);
+            if (! in_array($record->operation, ['woocommerce.tracking_outbound', 'woocommerce.order_status_outbound'], true)
+                || ! in_array($record->status, [SyncOutboxStatus::Failed, SyncOutboxStatus::Pending], true)
+                || blank($record->last_error_code) || $record->locked_at !== null || filled($record->lock_token)) {
+                return $record;
+            }
+            $before = $this->auditMetadata($record);
+            $now = CarbonImmutable::now()->startOfSecond();
+            $affected = DB::table('sync_outbox')->where('id', $record->id)
+                ->where('status', $record->status->value)->whereNull('locked_at')->whereNull('lock_token')
+                ->update(['status' => SyncOutboxStatus::Pending->value, 'attempts' => 0,
+                    'available_at' => $now, 'failed_at' => null, 'updated_at' => $now]);
+            $this->assertSingleMutation($affected);
+            $updated = $this->readRecord($record->id);
+            $this->audit->record(AuditActor::user($actor, AuditSource::Web), 'sync.outbox.operator_reopened',
+                SyncOutbox::class, $record->id, $before, $this->auditMetadata($updated), 'explicit_current_woo_intent_retry');
+
+            return $updated;
         });
     }
 

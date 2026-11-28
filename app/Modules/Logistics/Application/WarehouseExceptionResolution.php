@@ -45,9 +45,29 @@ final class WarehouseExceptionResolution
             : Order::query()->whereKey($id)->where(function ($q) {
                 $q->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'exception'))
                     ->orWhere(fn ($m) => app(OrderProgressQuery::class)->applyPhase($m, 'exception'))
-                    ->orWhere(fn ($m) => app(OrderProgressQuery::class)->applyPhase($m, 'progress_conflict'));
+                    ->orWhere(fn ($m) => app(OrderProgressQuery::class)->applyPhase($m, 'progress_conflict'))
+                    ->orWhereHas('shipment', fn ($s) => WebsiteSyncException::forShipment($s));
             })->exists();
-        abort_unless($isException(), 409, '订单已不在异常队列，请刷新页面。');
+        $syncFailed = WebsiteSyncException::exists($id);
+        abort_unless($isException() || $syncFailed, 409, '订单已不在异常队列，请刷新页面。');
+
+        // Sync-only exceptions are distinct from physical delivery. Reuse the
+        // exact verified outbox path, never the manual force-completed action.
+        if ($syncFailed) {
+            app(WebsiteSyncException::class)->recover($order, $actor);
+            $order->refresh();
+            abort_if(WebsiteSyncException::exists($id), 409, '官网同步已尝试，但仍有未解决的同步异常。');
+            if (! $isException()) {
+                $destination = $oversea ? $this->queues->destination($id) : 'domestic';
+                $this->audit->record(AuditActor::user($actor, AuditSource::Web), 'logistics.warehouse_exception_resolved',
+                    Order::class, $id, ['website_sync_failed' => true], ['destination' => $destination, 'website_sync_verified' => true],
+                    'operator_verified_current_website_sync_recovery');
+
+                return ['destination' => $destination, 'message' => '官网同步已重新执行并验证，异常已解除。'];
+            }
+            // A separate warehouse/manual hold still needs ordinary recovery.
+            $revision = (int) $order->workflow_revision;
+        }
 
         // An already created OMS order is only reconciled, not re-created.
         $attempt = XlwmsDispatchAttempt::where('order_id', $id)->first();
