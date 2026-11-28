@@ -20,6 +20,7 @@ use App\Modules\Orders\Application\OrderProgressResolver;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderWorkflowStatusHistory;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 /** Operator acknowledgement of a local failure, or reconciliation of the same OMS order. Never creates an OMS order. */
@@ -32,6 +33,21 @@ final class WarehouseExceptionResolution
         private readonly OverseaWarehouseQueueQuery $queues,
         private readonly AuditRecorder $audit,
     ) {}
+
+    public static function applyOrderExceptionView(Builder $query): void
+    {
+        $query->where(function ($issues): void {
+            app(OrderProgressQuery::class)->applyPhase($issues, 'exception')
+                ->orWhere(function ($provider): void {
+                    $provider->where('order_status', '!=', 'cancelled')
+                        ->whereHas('shipment', function ($shipment): void {
+                            $shipment->whereHas('warehouse', fn ($w) => $w->whereIn('code', ['DE', 'US-NY', 'US-LA', 'US-SM', 'CA']));
+                            app(OverseaWarehouseQueueQuery::class)->applyView($shipment, 'exceptions');
+                        });
+                })->orWhere(fn ($sync) => $sync->where('order_status', '!=', 'cancelled')
+                ->whereHas('shipment', fn ($s) => WebsiteSyncException::forShipment($s)));
+        });
+    }
 
     public function resolve(Order $order, Authenticatable $actor, int $revision): array
     {

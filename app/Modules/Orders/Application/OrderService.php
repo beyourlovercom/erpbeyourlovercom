@@ -6,8 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Finance\Application\Contracts\ConfirmedLossReader;
-use App\Modules\Logistics\Application\OverseaWarehouseQueueQuery;
-use App\Modules\Logistics\Application\WebsiteSyncException;
+use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use App\Modules\Orders\Application\Inbound\NormalizedInboundOrder;
 use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
 use App\Modules\Products\Application\Contracts\ProductRepository;
@@ -694,17 +693,7 @@ final class OrderService
                 $active->whereDoesntHave('originalFulfillmentChildren')
                     ->orWhereDoesntHave('fulfillmentAllocation', fn (Builder $allocation) => $allocation->where('status', 'submitted'));
             }),
-            'exception' => $query->where(function (Builder $issues): void {
-                $this->progressQueries->applyPhase($issues, 'exception')
-                    ->orWhere(function (Builder $provider): void {
-                        $provider->where('order_status', '!=', 'cancelled')
-                            ->whereHas('shipment', function ($shipment): void {
-                                $shipment->whereHas('warehouse', fn ($w) => $w->whereIn('code', ['DE', 'US-NY', 'US-LA', 'US-SM', 'CA']));
-                                app(OverseaWarehouseQueueQuery::class)->applyView($shipment, 'exceptions');
-                            });
-                    })->orWhere(fn (Builder $sync) => $sync->where('order_status', '!=', 'cancelled')
-                    ->whereHas('shipment', fn ($s) => WebsiteSyncException::forShipment($s)));
-            }),
+            'exception' => WarehouseExceptionResolution::applyOrderExceptionView($query),
             'in_transit' => $this->applyMarkerView($query, 'in_transit'),
             'shipped' => $query->where('order_status', OrderStatus::Shipped->value),
             'return' => $query->where(function (Builder $returns): void {

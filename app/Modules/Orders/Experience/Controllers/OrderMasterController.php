@@ -2,8 +2,11 @@
 
 namespace App\Modules\Orders\Experience\Controllers;
 
+use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\KolOrderAccessScope;
+use App\Modules\Orders\Application\OrderContactProjection;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderOmsAvailability;
 use App\Modules\Orders\Application\OrderSourceType;
@@ -29,7 +32,7 @@ final class OrderMasterController
         abort_unless($request->user()?->can('orders.view'), 403);
         $data = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
-            'view' => ['nullable', Rule::in(['all', 'normal', 'operational', 'trash', 'pending'])],
+            'view' => ['nullable', Rule::in(['all', 'normal', 'operational', 'trash', 'pending', 'exception'])],
             'kind' => ['nullable', Rule::in(['all', ...array_column(OrderKind::cases(), 'value')])],
             'source' => ['nullable', Rule::in(['all', ...array_column(OrderSourceType::cases(), 'value')])],
             'sort' => ['nullable', Rule::in(['date', 'order_number', 'source', 'status'])],
@@ -109,11 +112,11 @@ final class OrderMasterController
             }
         }
         $filters['grid_contact'] = trim((string) ($data['grid_contact'] ?? ''));
-        app(\App\Modules\Orders\Application\OrderContactProjection::class)->applyNameFilter($base, $filters['grid_contact']);
+        app(OrderContactProjection::class)->applyNameFilter($base, $filters['grid_contact']);
         $this->applyColumnFilters($base, $filters);
 
         $counts = [];
-        foreach (['all', 'normal', 'operational', 'trash', 'pending'] as $view) {
+        foreach (['all', 'normal', 'operational', 'trash', 'pending', 'exception'] as $view) {
             $countQuery = clone $base;
             $this->applyView($countQuery, $view);
             $counts[$view] = $countQuery->count();
@@ -134,7 +137,7 @@ final class OrderMasterController
             ->paginate((int) $filters['per_page'])->withQueryString();
 
         $fallback = $metadata->fallbackProductsForOrders($orders->getCollection());
-        app(\App\Modules\Orders\Application\OrderContactProjection::class)->prime($orders->getCollection());
+        app(OrderContactProjection::class)->prime($orders->getCollection());
 
         return Inertia::render('Orders/Master', [
             'orders' => $orders->through(function (Order $order) use ($metadata, $fallback): array {
@@ -168,13 +171,14 @@ final class OrderMasterController
                     })->filter()->unique()->implode('；'),
                     'date' => $order->order_date?->toDateString(),
                     'owner' => $order->owner?->name,
-                    ...app(\App\Modules\Orders\Application\OrderContactProjection::class)->for($order),
+                    ...app(OrderContactProjection::class)->for($order),
                     'detail_url' => $isTrash ? '/orders/trash' : '/orders/'.$order->id,
                 ];
             })->toArray(),
             'counts' => $counts,
             'filters' => $filters,
             'canSeeTrash' => $canSeeTrash,
+            'canResolveException' => app(LogisticsExecutionAccess::class)->allows($request->user()),
             'canImportOmsOrders' => $request->user()->can('orders.create')
                 && ! KolOrderAccessScope::isKolOnly($request->user())
                 && OrderOmsAvailability::importPreview($request->user()),
@@ -198,12 +202,16 @@ final class OrderMasterController
                 ->where(fn (Builder $archived) => $archived->whereNotNull('orders.operational_archived_at')
                     ->orWhereHas('fulfillmentParent', fn (Builder $parent) => $parent
                         ->withTrashed()->whereNotNull('operational_archived_at')));
-        } elseif ($view === 'normal' || $view === 'pending') {
+        } elseif (in_array($view, ['normal', 'pending', 'exception'], true)) {
             $query->whereNull('orders.deleted_at')->whereNull('orders.archived_at')
                 ->whereNull('orders.operational_archived_at')
                 ->whereDoesntHave('fulfillmentParent', fn (Builder $parent) => $parent->withTrashed()
                     ->where(fn (Builder $hidden) => $hidden->whereNotNull('operational_archived_at')
                         ->orWhereNotNull('archived_at')->orWhereNotNull('deleted_at')));
+            if ($view === 'exception') {
+                $query->where('orders.order_status', '!=', 'cancelled');
+                WarehouseExceptionResolution::applyOrderExceptionView($query);
+            }
             if ($view === 'pending') {
                 $query->where('orders.order_status', 'pending_shipment');
             }
