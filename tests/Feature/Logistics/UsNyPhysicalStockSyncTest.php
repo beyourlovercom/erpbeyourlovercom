@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Logistics;
 
+use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Application\InventoryAvailabilityProjection;
 use App\Modules\Inventory\Application\InventoryReservationService;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation;
 use App\Modules\Logistics\Application\Xlwms\UsNyPhysicalStockSyncService;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -43,7 +45,7 @@ final class UsNyPhysicalStockSyncTest extends TestCase
         app(InventoryReservationService::class)->reserveAsSystem($order->id, $ny->id, 'ny-test');
         self::assertSame(1, $stock->fresh()->quantity_reserved);
         self::assertSame(7, app(InventoryAvailabilityProjection::class)->forRows(collect([$stock->fresh()]))[$stock->id]);
-        $gate = app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class);
+        $gate = app(UsNyAllocationReservation::class);
         self::assertSame([], $gate->dispatchBlockers($order));
         $other = Order::create(['internal_order_number' => 'NY-TEST-2', 'source_type' => 'manual',
             'order_kind' => 'customer', 'order_date' => now()->toDateString(), 'order_status' => 'pending_shipment']);
@@ -53,7 +55,7 @@ final class UsNyPhysicalStockSyncTest extends TestCase
         $svc->reconcileSnapshot($snapshot->id, true);
         self::assertSame(1, $stock->fresh()->quantity_reserved);
         self::assertSame(7, app(InventoryAvailabilityProjection::class)->forRows(collect([$stock->fresh()]))[$stock->id]);
-        app(\App\Modules\Inventory\Application\Contracts\InventoryReservationRepository::class)
+        app(InventoryReservationRepository::class)
             ->commit($reservation['id'], null);
         self::assertSame(0, $stock->fresh()->quantity_reserved);
         self::assertSame(7, app(InventoryAvailabilityProjection::class)->forRows(collect([$stock->fresh()]))[$stock->id]);
@@ -82,6 +84,7 @@ final class UsNyPhysicalStockSyncTest extends TestCase
             $s->rows()->create(['provider_sku' => $sku, 'product_id' => $id, 'resolution_status' => $status,
                 'oms_total' => $total, 'oms_available' => $free, 'oms_locked' => $locked]);
         }
+
         return $s;
     }
 }
