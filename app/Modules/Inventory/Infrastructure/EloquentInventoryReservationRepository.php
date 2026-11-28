@@ -133,7 +133,7 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
             }
             $effectiveAvailable = (int) $inventory->quantity_available;
             if ($nyAuthoritative || $caAuthoritative) {
-                if (! UsNyStockClock::fresh($inventory)) {
+                if (! UsNyStockClock::fresh($inventory, $warehouse->code)) {
                     throw new DomainException($caAuthoritative ? '加拿大仓该商品库存尚未完成有效 API 校对，请同步后重试。' : '美东仓该商品库存尚未完成有效 API 校对，请同步后重试。');
                 }
                 $effectiveAvailable = min(max(0, (int) $inventory->quantity_on_hand - (int) $inventory->quantity_reserved),

@@ -79,7 +79,7 @@ final class UsNyAllocationReservation
         foreach ($required as $pid => $qty) {
             $stock = UsNyStockClock::withEpoch(WarehouseInventory::query())
                 ->where('warehouse_id', $ny)->where('product_id', $pid)->first();
-            if (! UsNyStockClock::fresh($stock)) {
+            if (! UsNyStockClock::fresh($stock, $warehouseCode)) {
                 $blockers[] = ($warehouseCode === 'CA' ? 'CA_OMS_SKU_NOT_FRESH' : 'US_NY_OMS_SKU_NOT_FRESH');
 
                 continue;

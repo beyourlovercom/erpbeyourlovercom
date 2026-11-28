@@ -5,6 +5,7 @@ namespace Tests\Feature\Logistics;
 use App\Modules\Inventory\Application\InventoryAvailabilityProjection;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Inventory\Infrastructure\UsNyStockClock;
 use App\Modules\Logistics\Application\Wlwy\CanadaPhysicalStockSync;
 use App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation;
 use App\Modules\Logistics\Infrastructure\Wlwy\CanadaReadGateway;
@@ -90,6 +91,29 @@ final class CanadaPhysicalStockSyncTest extends TestCase
         \DB::transaction(fn () => $gate->sync($order, 0, null, 'CA'));
         $this->assertSame(0, $stock->fresh()->quantity_reserved);
         $this->assertSame(13, $projection->forRows(collect([$stock->fresh()]))[$stock->id]);
+    }
+
+    public function test_daily_ca_proof_keeps_reservation_and_dispatch_valid_but_not_ny_or_expired_stock(): void
+    {
+        [$ca, $p] = $this->fixture();
+        $clock = UsNyStockClock::class;
+        Http::preventStrayRequests();
+        Http::fake(['https://api.wlwytech.com/router/api/service*' => Http::response($this->response([$this->row('CA-PHYSICAL', '1', 10, 10)]))]);
+        app(CanadaPhysicalStockSync::class)->run(true);
+        $order = Order::create(['internal_order_number' => 'CA-DAILY-TEST', 'source_type' => 'manual',
+            'order_kind' => 'customer', 'order_date' => now()->toDateString(), 'order_status' => 'pending_shipment']);
+        $order->items()->create(['product_id' => $p->id, 'sku' => 'CA-PHYSICAL', 'product_summary' => 'CA',
+            'quantity' => 1, 'unit_price' => '1.00', 'line_revenue' => '1.00']);
+        $gate = app(UsNyAllocationReservation::class);
+        $this->travel(24)->hours();
+        $stock = $clock::withEpoch(WarehouseInventory::query())->where('warehouse_id', $ca->id)->firstOrFail();
+        $this->assertTrue($clock::fresh($stock, 'CA'));
+        $this->assertFalse($clock::fresh($stock, 'US-NY'));
+        \DB::transaction(fn () => $gate->sync($order, $ca->id, null, 'CA'));
+        $this->assertSame([], $gate->dispatchBlockers($order, 'CA'));
+        $this->travel(61)->minutes();
+        $this->assertSame(['CA_OMS_SKU_NOT_FRESH'], $gate->dispatchBlockers($order, 'CA'));
+        $this->travelBack();
     }
 
     public function test_truncated_read_revokes_only_ca_proof_and_preserves_counts(): void
