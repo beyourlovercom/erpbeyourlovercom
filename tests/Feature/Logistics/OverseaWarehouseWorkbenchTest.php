@@ -362,6 +362,67 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->where('viewCounts.exceptions', 1));
     }
 
+    public function test_known_shortage_blocks_review_in_every_overseas_warehouse(): void
+    {
+        Http::preventStrayRequests();
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        foreach ($this->warehouses() as $code => $warehouse) {
+            $order = $this->orderAt($warehouse, 'STOCK-GATE-'.$code);
+            $product = $order->items()->first()->product_id;
+            WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
+                ->where('product_id', $product)->update(['quantity_on_hand' => 1]);
+            $this->actingAs($actor)->post("/logistics/oversea/orders/{$order->id}/approve")->assertStatus(409);
+            $this->assertDatabaseMissing('oversea_warehouse_reviews', ['order_id' => $order->id, 'status' => 'approved']);
+            WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
+                ->where('product_id', $product)->update(['quantity_on_hand' => 100]);
+            $this->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+            $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $order->id, 'status' => 'approved']);
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_review_can_use_own_reservation_but_not_another_orders_hold(): void
+    {
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouse = $this->warehouses()['US-NY'];
+        $own = $this->orderAt($warehouse, 'OWN-HOLD');
+        $other = $this->orderAt($warehouse, 'OTHER-HOLD');
+        $product = $own->items()->first()->product_id;
+        WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product)->update(['quantity_on_hand' => 2]);
+        app(\App\Modules\Inventory\Application\Contracts\InventoryReservationRepository::class)->reserve($own->id, $warehouse->id, 'test-own-hold', null, $actor->id);
+        $this->actingAs($actor)->post("/logistics/oversea/orders/{$other->id}/approve")->assertStatus(409);
+        $this->post("/logistics/oversea/orders/{$own->id}/approve")->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $own->id, 'status' => 'approved']);
+        $this->assertDatabaseHas('warehouse_inventory', ['warehouse_id' => $warehouse->id, 'product_id' => $product, 'quantity_reserved' => 2]);
+    }
+
+    public function test_local_preflight_stockout_can_be_reconciled_and_restocked_without_post(): void
+    {
+        Http::preventStrayRequests();
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouse = $this->warehouses()['US-LA'];
+        $order = $this->orderAt($warehouse, 'LOCAL-STOCKOUT');
+        $this->actingAs($actor)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $product = $order->items()->first()->product_id;
+        WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product)->update(['quantity_on_hand' => 0]);
+        DB::table('shipout_production_batch_items')->insert([
+            'batch_id' => '00000000-0000-4000-8000-000000000833', 'order_id' => $order->id,
+            'order_no' => 'LOCAL-STOCKOUT', 'status' => 'skipped',
+            'result_code' => 'SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->post("/logistics/oversea/orders/{$order->id}/stockout")->assertRedirect();
+        $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $order->id, 'status' => 'stockout']);
+        $this->assertDatabaseHas('shipout_production_batch_items', ['order_id' => $order->id, 'status' => 'local_stockout']);
+        $this->assertSame('stockout', app(OverseaWarehouseQueueQuery::class)->destination($order->id));
+        $this->post("/logistics/oversea/orders/{$order->id}/restock")->assertStatus(409);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $order->id, 'status' => 'stockout']);
+        WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product)->update(['quantity_on_hand' => 100]);
+        $this->post("/logistics/oversea/orders/{$order->id}/restock")->assertRedirect();
+        $this->assertSame('pending', app(OverseaWarehouseQueueQuery::class)->destination($order->id));
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNothingSent();
+    }
+
     public function test_overseas_review_stockout_holds_shipping_and_restock_reuses_approval_gate(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
@@ -1076,7 +1137,10 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
         $warehouses = $this->warehouses();
         $order = $this->orderAt($warehouses['US-LA'], '007erp-0920-c40761');
+        $second = Product::query()->create(['sku' => 'SECOND-SKU', 'name' => 'Second Product', 'product_type' => 'simple', 'is_active' => true]);
+        WarehouseInventory::query()->create(['warehouse_id' => $warehouses['US-LA']->id, 'product_id' => $second->id, 'quantity_on_hand' => 100, 'quantity_reserved' => 0]);
         $order->items()->create([
+            'product_id' => $second->id,
             'product_summary' => 'Second Product', 'sku' => 'SECOND-SKU', 'quantity' => 3,
             'unit_price' => '10.00', 'line_revenue' => '30.00',
         ]);
@@ -1264,6 +1328,42 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
             $this->actingAs($user)->get($url)->assertStatus(422);
         }
+    }
+
+    public function test_moreplus_historical_temporary_exception_uses_latest_matching_oms_and_queue(): void
+    {
+        Http::preventStrayRequests();
+        $actor = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouse = $this->warehouses()['US-LA'];
+        $order = $this->orderAt($warehouse, 'OMS-RECOVERED');
+        $this->actingAs($actor)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $this->storeSignedShipOutAttempt($order, 'acknowledged', 'OMS-RECOVERED-ID');
+        $batchId = '00000000-0000-4000-8000-000000000834';
+        DB::table('shipout_production_batches')->insert([
+            'id' => $batchId, 'operator_user_id' => $actor->id, 'status' => 'completed_partial', 'dry_run' => false,
+            'total' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('shipout_production_batch_items')->insert([
+            'batch_id' => $batchId, 'order_id' => $order->id, 'order_no' => 'OMS-RECOVERED', 'status' => 'needs_review',
+            'result_code' => ShipOutProductionDispatchState::TEMPORARY_READBACK_ERROR, 'provider_order_id' => 'OMS-RECOVERED-ID',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('shipout_oms_readbacks')->insert([
+            'order_id' => $order->id, 'provider_order_id' => 'OMS-RECOVERED-ID', 'provider_status' => 3,
+            'state' => 'confirmed', 'checked_at' => now(), 'created_at' => now(),
+        ]);
+        $order->shipment()->update(['tracking_number' => '9214490424544306802054']);
+        $this->assertSame('issued', app(OverseaWarehouseQueueQuery::class)->destination($order->id));
+        $this->get('/logistics/oversea/us-moreplus?view=issued')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)->where('rows.data.0.shipout_production.status', 'oms_confirmed')
+            ->where('rows.data.0.shipment_status', 'pending'));
+        $this->get('/logistics/oversea/us-moreplus?view=exceptions')->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $projection = app(\App\Modules\Logistics\Application\ShipOut\ShipOutProductionBatchService::class)->status($batchId);
+        $this->assertSame('completed', $projection['status']);
+        $this->assertSame('oms_visible', $projection['items']->first()->status);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        $this->assertDatabaseHas('shipout_production_batch_items', ['order_id' => $order->id, 'status' => 'needs_review']);
+        Http::assertNothingSent();
     }
 
     public function test_moreplus_cancelled_batch_is_exception_while_other_ack_remains_pending_not_issued(): void
@@ -1708,6 +1808,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ]);
         $child->items()->create([
             'woocommerce_line_item_id' => 990011,
+            'product_id' => Product::query()->where('sku', 'REVIEW-SKU')->value('id'),
             'product_summary' => 'Woo package B',
             'sku' => 'REVIEW-SKU',
             'quantity' => 1,
@@ -1791,6 +1892,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ]);
         $child->items()->create([
             'woocommerce_line_item_id' => 991011,
+            'product_id' => Product::query()->where('sku', 'REVIEW-SKU')->value('id'),
             'product_summary' => 'US-SM package B',
             'sku' => 'REVIEW-SKU',
             'quantity' => 1,
