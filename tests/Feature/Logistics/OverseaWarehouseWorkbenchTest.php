@@ -15,6 +15,7 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackServic
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Orders\Application\OrderProgressQuery;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
@@ -433,7 +434,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         self::assertFalse($query->readyForShipment(Order::query())->whereKey($root->id)->exists());
         self::assertFalse($query->readyForShipment(Order::query())->whereKey($c->id)->exists());
         self::assertTrue($query->readyForShipment(Order::query())->whereKey($b->id)->exists());
-        self::assertSame('partially_shipped', app(\App\Modules\Orders\Application\OrderWorkflowStatusProjection::class)->for($root->fresh())['code']);
+        self::assertSame('partially_shipped', app(OrderWorkflowStatusProjection::class)->for($root->fresh())['code']);
     }
 
     public function test_overseas_batch_review_applies_independently_and_never_bypasses_review_role(): void

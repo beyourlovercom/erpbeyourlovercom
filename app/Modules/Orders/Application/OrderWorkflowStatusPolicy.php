@@ -46,7 +46,9 @@ final class OrderWorkflowStatusPolicy
             && in_array($shipment->shipment_status, ['shipped', 'completed'], true)
             && $shipment->shipped_at !== null;
 
-        $splitParent = $order->originalFulfillmentChildren()->exists();
+        $splitParent = $order->relationLoaded('originalFulfillmentChildren')
+            ? $order->originalFulfillmentChildren->isNotEmpty()
+            : $order->originalFulfillmentChildren()->exists();
         $dispatchFacts = $hasDispatch || in_array($order->order_status, [OrderStatus::Shipped, OrderStatus::Completed, OrderStatus::CompletedDelivered], true)
             || in_array($shipment?->shipment_status, ['shipped', 'completed'], true) || $shipment?->shipped_at !== null;
         $options = [];
