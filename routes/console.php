@@ -410,3 +410,21 @@ if (app()->environment('production') && (bool) config('shipout.oms_reconciliatio
         ->withoutOverlapping(15)
         ->onOneServer()->runInBackground();
 }
+
+
+// CA02 stock mirror: disabled until exact mapping and production release approval.
+Artisan::command('wlwy:sync-ca-physical {--apply} {--dry-run}', function (): int {
+    if ($this->option('apply') && $this->option('dry-run')) return Command::INVALID;
+    try {
+        $this->line(json_encode(app(\App\Modules\Logistics\Application\Wlwy\CanadaPhysicalStockSync::class)->run((bool) $this->option('apply')), JSON_THROW_ON_ERROR));
+        return Command::SUCCESS;
+    } catch (Throwable $error) {
+        $this->error('CA_PHYSICAL_SYNC_FAILED');
+        return Command::FAILURE;
+    }
+});
+if (app()->environment('production') && config('wlwy.ca_inventory_hourly_enabled')) {
+    $caMode = config('wlwy.ca_inventory_apply_enabled') ? '--apply' : '--dry-run';
+    Schedule::command('wlwy:sync-ca-physical '.$caMode)
+        ->hourlyAt(23)->name('wlwy.ca.inventory.sync')->withoutOverlapping(15)->onOneServer()->runInBackground();
+}

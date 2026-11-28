@@ -93,6 +93,10 @@ final class ShipmentService
                 app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
                     ->sync($lockedOrder, (int) $shipment->warehouse_id, $actor);
             }
+            if ($warehouseProvided && config('wlwy.ca_inventory_apply_enabled')) {
+                app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
+                    ->sync($lockedOrder, (int) $shipment->warehouse_id, $actor, 'CA');
+            }
             $this->syncPackagingSnapshots($lockedOrder, $shipment);
 
             if ($changed) {
@@ -206,6 +210,10 @@ final class ShipmentService
             if (!$alreadyShipped && config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
                 app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
                     ->commit($lockedOrder, (int) $shipment->warehouse_id, $actor);
+            }
+            if (!$alreadyShipped && config('wlwy.ca_inventory_apply_enabled')) {
+                app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
+                    ->commit($lockedOrder, (int) $shipment->warehouse_id, $actor, 'CA');
             }
             if ($lockedOrder->order_status?->value !== 'shipped') {
                 $lockedOrder->forceFill(['order_status' => 'shipped'])->save();

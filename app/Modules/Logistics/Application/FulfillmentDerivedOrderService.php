@@ -53,6 +53,9 @@ final class FulfillmentDerivedOrderService
         if (config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
             app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($parent, 0, $actor);
         }
+        if (config('wlwy.ca_inventory_apply_enabled')) {
+            app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($parent, 0, $actor, 'CA');
+        }
         $parent->shipment?->delete();
 
         $children = collect();
@@ -378,6 +381,9 @@ final class FulfillmentDerivedOrderService
         $this->assertChildMayBeRebuilt($child);
         if (config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
             app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($child, 0, null);
+        }
+        if (config('wlwy.ca_inventory_apply_enabled')) {
+            app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($child, 0, null, 'CA');
         }
         $child->delete();
     }

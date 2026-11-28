@@ -1,0 +1,14 @@
+# ERP1 CA02 Wlwy API V1 — R2/R3 bounded implementation
+
+EXECUTION_PROVIDER: GPT_WEB
+BASE: 324efa91
+TARGET: ERP1 ONLY
+SCOPE: read-only provider gateway, complete inventory snapshot validation, per-SKU mapping and quarantine, allocation reservation integration, disabled-by-default hourly schedule, exact reference status reader. No new outbound create permission, no production deployment, no ERP2.
+
+Evidence: Owner-opened official OMS API/Access Guide and inventory inquiry, outbound status, outbound create, warehouse/channel query docs on 2026-11-28. Prior signed live reads succeeded for CA02 and CAPOST, 18 inventory rows; full detail follow-up was blocked by tool safety check. ERP has 20 inventory rows, 141 historical pieces, 3 verified mappings. Do not infer remaining mappings from matching SKU text or overwrite stock before actual read-only reconciliation.
+
+Public API contract: POST JSON body, millisecond timestamp, lower-case MD5 over exact ordered fields and exact JSON bytes. Inventory pages include customer/warehouse, SKU identity, batch, stock quality, good physical/available counts. Non-good and transit stock must not authorize allocation. Validate full stable page coverage, source identity and quantity; isolate unknown SKU/duplicate mapping; preserve local reservation ledger. Compare absolute epoch (shared NY hotfix clock), write UTC. Provider read errors fail closed only CA.
+
+Flags default off. Existing encrypted warehouse-scoped connection store reused; customer code config; no production credentials committed. Only warehouse CA02, Canadian destination, CAPOST (historical business routing restrictions retained). No exact status empty result is accepted as safe CREATE authorization in this package. R4/R5 actual dispatch receipt, uncertainty handling, exact duplicate checks of old Excel references, queue integration, polling and tracking apply remain separate incomplete implementation. No real OMS write until separate Owner authorization and explicit order UAT. Do not auto-enable CA automatic allocation.
+
+Acceptance: signed-request fake HTTP, complete/incomplete response, batch aggregate, positive/zero SKU quarantine, non-good exclusion, atomic reservation/idempotency/release, unrelated warehouse isolation, real manual allocation HTTP route, MySQL session -08 to UTC regression, existing NY regressions. Production read-only reconciliation, actual provider status/identity verification, complete frontend-to-backend outbound gate and UAT remain open.
