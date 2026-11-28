@@ -22,8 +22,18 @@ describe('warehouse portal links', () => {
     })
   })
 
+  it.each([
+    ['us-ny', 'https://oms.xlwms.com/login', '进入美东纽约仓库'],
+    ['de-tianyun', 'https://oms.xlwms.com/login', '进入德国天运仓库'],
+    ['ca', 'https://order.wlwytech.com/ioms/', '进入加拿大仓库'],
+  ])('shows the %s production OMS portal across views', (key, href, label) => {
+    for (const view of ['pending', 'review', 'shipped', 'exceptions', 'all', 'stockout']) {
+      expect(resolveWarehousePortal('/logistics/oversea/' + key + '?view=' + view)).toEqual({ href, label })
+    }
+  })
+
   it('does not show a portal on the all-warehouse or other logistics pages', () => {
-    for (const path of ['/logistics/oversea', '/logistics/oversea/us-ny', '/logistics/china', '/logistics/oversea/us-3sm-other']) {
+    for (const path of ['/logistics/oversea', '/logistics/oversea/unknown', '/logistics/china', '/logistics/oversea/us-3sm-other']) {
       expect(resolveWarehousePortal(path)).toBeNull()
     }
   })
