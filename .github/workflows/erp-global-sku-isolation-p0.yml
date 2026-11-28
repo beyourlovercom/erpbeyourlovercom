@@ -42,6 +42,7 @@ jobs:
             tests/Feature/Logistics/XlwmsInventorySyncServiceTest.php \
             tests/Feature/Logistics/XlwmsSingleOrderDispatchTest.php \
             tests/Feature/Logistics/DeAuthoritativePhysicalStockSyncTest.php \
+            tests/Feature/Logistics/UsNyPhysicalStockSyncTest.php \
             tests/Feature/Logistics/DeTianyunOutboundBatchTest.php \
             tests/Feature/Logistics/DeTianyunLiveOutboundGatewayTest.php \
             tests/Feature/DeTianyunSkuSyncV2Test.php \
