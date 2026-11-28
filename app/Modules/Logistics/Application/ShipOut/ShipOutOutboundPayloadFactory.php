@@ -30,7 +30,9 @@ final class ShipOutOutboundPayloadFactory
         $shipment = $order->shipment;
         $review = $shipment?->overseaReview;
 
-        if ($order->order_status?->value !== 'pending_shipment'
+        if ($order->originalFulfillmentChildren()->exists()
+            || $order->order_status?->value !== 'pending_shipment'
+            || $shipment?->shipment_status !== 'pending' || $shipment?->shipped_at !== null
             || strcasecmp(trim((string) ($shipment?->warehouse?->code ?? '')), 'US-LA') !== 0
             || $review?->status !== 'approved'
             || (int) $review->reviewed_warehouse_id !== (int) $shipment->warehouse_id

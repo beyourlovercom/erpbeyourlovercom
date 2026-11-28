@@ -309,6 +309,7 @@ final class OverseaWarehouseReviewService
 
     private function reviewForMutation(Order $order): OverseaWarehouseReview
     {
+        abort_if($order->originalFulfillmentChildren()->exists(), 409, '拆单母订单仅汇总，不能直接审核。');
         $review = OverseaWarehouseReview::query()->where('order_id', $order->getKey())->lockForUpdate()->first();
         if ($review) {
             return $review;

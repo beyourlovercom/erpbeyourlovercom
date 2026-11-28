@@ -40,6 +40,7 @@ final class DomesticReviewDecisionService
                 'shipment', 'operationalMarkers', 'externalReferences', 'fulfillmentParent',
             ])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             abort_if(\App\Modules\Orders\Application\DomesticShippingHold::isHeld($locked->workflow_status), 409, '冻结发货订单请先恢复待发货。');
+            abort_if($locked->originalFulfillmentChildren()->exists(), 409, '拆单母订单仅汇总，不能直接审核。');
             abort_if($locked->procurementOrder()->where('origin', 'external')->whereNull('released_at')->exists(),
                 409, '外采订单未由 Vita 验收到货放行，不能通过普通国内审核');
             $factory = Warehouse::query()->whereRaw('UPPER(code) = ?', ['FACTORY'])->firstOrFail();
@@ -90,8 +91,27 @@ final class DomesticReviewDecisionService
                 );
                 $this->releaseReservations([(int) $locked->getKey()], $actor);
                 $this->workflow->set($locked, 'out_of_stock', (int) $locked->workflow_revision, $actor);
+            } elseif ($locked->fulfillment_parent_id !== null) {
+                // A warehouse rejection/shortage return is a single-leg operation.
+                // Never clear a sibling's warehouse, tracking, review or reservation.
+                abort_if(filled($locked->shipment->tracking_number)
+                    || $locked->shipmentAttempts()->exists()
+                    || DB::table('shipout_dispatch_attempts')->where('order_id', $locked->id)->exists()
+                    || DB::table('xlwms_dispatch_attempts')->where('order_id', $locked->id)->exists(),
+                    409, '该子订单已有物流或仓库推送记录，请使用专用履约处理流程。');
+                $this->unassign($locked, $actor);
+                $this->releaseReservations([(int) $locked->id], $actor);
+                $locked->refresh();
+                $locked->forceFill([
+                    'routing_warehouse_code' => 'UNASSIGNED',
+                    'routing_revision' => (int) $locked->routing_revision + 1,
+                    'domestic_reject_reason' => $decision === 'reject' ? trim((string) $reason) : null,
+                    'domestic_rejected_by' => $decision === 'reject' ? $actor->getAuthIdentifier() : null,
+                    'domestic_rejected_at' => $decision === 'reject' ? now() : null,
+                ])->save();
+                $this->workflow->set($locked, 'pending_allocation', (int) $locked->workflow_revision, $actor);
             } else {
-                $root = $locked->fulfillmentParent ?? $locked;
+                $root = $locked;
                 $siblings = $root->originalFulfillmentChildren()->with('shipment')->get();
                 if ($siblings->isNotEmpty()) {
                     abort_if($siblings->contains(fn (Order $sibling): bool => ! $sibling->shipment || $sibling->shipment->shipment_status !== 'pending'
@@ -148,7 +168,7 @@ final class DomesticReviewDecisionService
                 'domestic_business_review',
             );
             if ($decision === 'reject') {
-                $returnedOrder = $locked->fulfillmentParent ?? $locked;
+                $returnedOrder = $locked;
                 User::query()->where('is_active', true)
                     ->whereHas('roles', fn ($q) => $q->where('key', RolePreset::Operations->roleKey()))
                     ->get()
@@ -156,7 +176,7 @@ final class DomesticReviewDecisionService
                         'category' => 'logistics',
                         'title' => '国内商务分仓被驳回',
                         'message' => "订单 {$returnedOrder->erp_order_id} 被驳回：".trim((string) $reason),
-                        'action_url' => '/logistics/wait-stock?rejected=1',
+                        'action_url' => $locked->fulfillment_parent_id ? '/orders?view=exception' : '/logistics/wait-stock?rejected=1',
                         'entity_type' => 'order',
                         'entity_id' => (string) $returnedOrder->getKey(),
                         'actor_name' => $actor->name ?? null,
@@ -186,8 +206,7 @@ final class DomesticReviewDecisionService
 
     private function clearRejection(Order $order): void
     {
-        $root = $order->fulfillmentParent ?? $order;
-        $root->forceFill([
+        $order->forceFill([
             'domestic_reject_reason' => null,
             'domestic_rejected_by' => null,
             'domestic_rejected_at' => null,

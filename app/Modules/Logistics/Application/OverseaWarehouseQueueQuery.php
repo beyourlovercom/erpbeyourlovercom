@@ -33,6 +33,7 @@ final class OverseaWarehouseQueueQuery
      */
     public function applyView($query, string $view): void
     {
+        $query->whereDoesntHave('order.originalFulfillmentChildren');
         if ($view === 'review') {
             $this->progressQueries->overseasReview($query);
             $query->whereNot(fn ($q) => $this->providerIssued($q))

@@ -399,6 +399,43 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 1));
     }
 
+    public function test_split_restock_restores_only_selected_child_and_never_parent_or_shipped_sibling(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $root = $this->orderAt($warehouses['US-LA'], '007-SPLIT-SAFETY');
+        $root->shipment()->delete();
+        $root->forceFill(['workflow_status' => 'pending_allocation'])->save();
+        $a = $this->orderAt($warehouses['US-LA'], '007-SPLIT-SAFETY-A');
+        $b = $this->orderAt($warehouses['US-LA'], '007-SPLIT-SAFETY-B');
+        $c = $this->orderAt($warehouses['US-LA'], '007-SPLIT-SAFETY-C');
+        foreach (['A' => $a, 'B' => $b, 'C' => $c] as $suffix => $leg) {
+            $leg->forceFill(['fulfillment_parent_id' => $root->id, 'fulfillment_suffix' => $suffix,
+                'fulfillment_role' => 'original', 'order_kind' => 'fulfillment_derived',
+                'workflow_status' => 'pending_review'])->save();
+        }
+        $c->forceFill(['workflow_status' => 'sending', 'order_status' => 'shipped'])->save();
+        $c->shipment()->update(['shipment_status' => 'shipped', 'tracking_number' => 'TRACK-C', 'shipped_at' => now()]);
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$a->id}/approve")->assertRedirect();
+        $this->post("/logistics/oversea/orders/{$b->id}/stockout")->assertRedirect();
+        $beforeRoot = $root->fresh()->getAttributes();
+        $beforeA = $a->fresh()->getAttributes();
+        $beforeC = $c->fresh()->getAttributes();
+        $beforeCShipment = $c->fresh()->shipment->getAttributes();
+        $this->post("/logistics/oversea/orders/{$b->id}/restock")->assertRedirect();
+        self::assertSame('sending', $b->fresh()->workflow_status);
+        self::assertSame($beforeRoot, $root->fresh()->getAttributes());
+        self::assertSame($beforeA, $a->fresh()->getAttributes());
+        self::assertSame($beforeC, $c->fresh()->getAttributes());
+        self::assertSame($beforeCShipment, $c->fresh()->shipment->getAttributes());
+        $query = app(OrderProgressQuery::class);
+        self::assertFalse($query->pendingAllocation(Order::query())->whereKey($root->id)->exists());
+        self::assertFalse($query->readyForShipment(Order::query())->whereKey($root->id)->exists());
+        self::assertFalse($query->readyForShipment(Order::query())->whereKey($c->id)->exists());
+        self::assertTrue($query->readyForShipment(Order::query())->whereKey($b->id)->exists());
+        self::assertSame('partially_shipped', app(\App\Modules\Orders\Application\OrderWorkflowStatusProjection::class)->for($root->fresh())['code']);
+    }
+
     public function test_overseas_batch_review_applies_independently_and_never_bypasses_review_role(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);

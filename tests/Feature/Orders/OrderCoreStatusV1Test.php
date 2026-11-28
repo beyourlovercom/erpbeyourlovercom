@@ -201,7 +201,7 @@ final class OrderCoreStatusV1Test extends TestCase
         $this->assertSame('UAT-TRACK-123', $order->fresh()->shipment->tracking_number);
     }
 
-    public function test_shipped_order_return_to_allocation_preserves_dispatch_evidence_and_cannot_export(): void
+    public function test_shipped_order_cannot_return_to_allocation_and_preserves_dispatch_evidence(): void
     {
         $order = $this->order();
         $factory = Warehouse::query()->where('code', 'FACTORY')->firstOrFail();
@@ -213,12 +213,12 @@ final class OrderCoreStatusV1Test extends TestCase
         $actor = $this->user(['orders.view', 'orders.edit']);
         $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
             'workflow_status' => 'pending_allocation', 'expected_workflow_revision' => 0,
-        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_allocation');
+        ])->assertStatus(409);
         $fresh = $order->fresh('shipment');
         $this->assertSame('shipped', $fresh->order_status->value);
         $this->assertSame('HISTORY-TRACK-123', $fresh->shipment->tracking_number);
         $this->assertSame((int) $factory->id, (int) $fresh->shipment->warehouse_id);
-        $this->assertSame(1, $this->inQueue($order, 'pending_allocation'));
+        $this->assertSame(0, $this->inQueue($order, 'pending_allocation'));
         $this->assertSame(0, app(OrderProgressQuery::class)->domesticReady(Order::query())->whereKey($order->id)->count());
     }
 

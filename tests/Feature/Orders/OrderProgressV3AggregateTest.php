@@ -142,6 +142,34 @@ final class OrderProgressV3AggregateTest extends TestCase
         self::assertSame('TEST-123', $order->fresh()->shipment->tracking_number);
     }
 
+    public function test_legacy_split_root_and_shipped_child_labels_cannot_reopen_dispatch(): void
+    {
+        $root = $this->order('STALE-ROOT');
+        $root->forceFill(['workflow_status' => 'pending_allocation'])->save();
+        $a = $this->order('STALE-A', $root);
+        $b = $this->order('STALE-B', $root);
+        $c = $this->order('STALE-C', $root);
+        $factory = Warehouse::where('code', 'FACTORY')->firstOrFail();
+        $a->forceFill(['workflow_status' => 'sending'])->save();
+        $a->shipment()->create(['warehouse_id' => $factory->id, 'shipment_status' => 'pending']);
+        $b->forceFill(['workflow_status' => 'out_of_stock'])->save();
+        $b->shipment()->create(['warehouse_id' => $factory->id, 'shipment_status' => 'pending']);
+        $c->forceFill(['workflow_status' => 'sending', 'order_status' => 'shipped'])->save();
+        $c->shipment()->create(['warehouse_id' => $factory->id, 'shipment_status' => 'shipped', 'shipped_at' => now(), 'tracking_number' => 'TRACK-C']);
+        $q = app(OrderProgressQuery::class);
+        self::assertSame('partially_shipped', $this->phase($root));
+        self::assertSame('shipping', $this->phase($c));
+        self::assertFalse($q->pendingAllocation(Order::query())->whereKey($root->id)->exists());
+        self::assertFalse($q->readyForShipment(Order::query())->whereKey($c->id)->exists());
+        self::assertTrue($q->applyPhase(Order::query(), 'partially_shipped')->whereKey($root->id)->exists());
+        self::assertFalse(app(\App\Modules\Logistics\Application\PendingAllocationEntryPolicy::class)->allows($root));
+        $root->forceFill(['workflow_status' => 'sending'])->save();
+        self::assertFalse($q->readyForShipment(Order::query())->whereKey($root->id)->exists());
+        $b->forceFill(['workflow_status' => 'sending'])->save();
+        self::assertSame('partially_shipped', $this->phase($root));
+        self::assertSame('TRACK-C', $c->fresh()->shipment->tracking_number);
+    }
+
     private function phase(Order $order): string
     {
         return app(OrderWorkflowStatusProjection::class)->for($order->fresh())['code'];

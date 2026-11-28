@@ -80,7 +80,7 @@ final class ShipOutProductionBatchService
             ->whereHas('overseaReview', fn ($q) => $q
                 ->where('status', 'approved')
                 ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'))
-            ->whereHas('order', fn ($q) => $q->eligibleForOperations()
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->whereDoesntHave('originalFulfillmentChildren')
                 ->where(fn ($routing) => $routing->whereNull('routing_warehouse_code')
                     ->orWhere('routing_warehouse_code', 'US-LA'))
                 ->where('order_status', 'pending_shipment')
@@ -89,7 +89,7 @@ final class ShipOutProductionBatchService
                 ->whereDoesntHave('operationalMarkers', fn ($markers) => $markers
                     ->whereIn('marker', ['stockout', 'domestic_stockout', ...OrderManualHoldStatus::HOLD_MARKERS]))
                 ->whereDoesntHave('fulfillmentParent', fn ($parent) => $parent
-                    ->whereIn('workflow_status', ['pending_allocation', 'out_of_stock', ...OrderManualHoldStatus::CODES])
+                    ->whereIn('workflow_status', ['out_of_stock', ...OrderManualHoldStatus::CODES])
                     ->orWhereHas('operationalMarkers', fn ($m) => $m
                         ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)))
                 ->whereDoesntHave('externalReferences', fn ($references) => $references
@@ -143,7 +143,7 @@ final class ShipOutProductionBatchService
             ->whereHas('warehouse', fn ($q) => $q->where('code', 'US-LA'))
             ->whereHas('overseaReview', fn ($q) => $q->where('status', 'approved')
                 ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'))
-            ->whereHas('order', fn ($q) => $q->eligibleForOperations()
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->whereDoesntHave('originalFulfillmentChildren')
                 ->where(fn ($routing) => $routing->whereNull('routing_warehouse_code')
                     ->orWhere('routing_warehouse_code', 'US-LA'))
                 ->where('order_status', '!=', 'cancelled')
@@ -152,7 +152,7 @@ final class ShipOutProductionBatchService
                 ->whereDoesntHave('operationalMarkers', fn ($m) => $m
                     ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS))
                 ->whereDoesntHave('fulfillmentParent', fn ($parent) => $parent
-                    ->whereIn('workflow_status', ['pending_allocation', 'out_of_stock', ...OrderManualHoldStatus::CODES])
+                    ->whereIn('workflow_status', ['out_of_stock', ...OrderManualHoldStatus::CODES])
                     ->orWhereHas('operationalMarkers', fn ($m) => $m
                         ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)))
                 ->whereDoesntHave('externalReferences', fn ($references) => $references

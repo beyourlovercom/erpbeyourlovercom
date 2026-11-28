@@ -52,6 +52,12 @@ final class OrderCoreStatusTransitionService
             }
 
             $shipment = $locked->shipment;
+            if (in_array($command, ['pending_allocation', 'pending_review', 'sending', 'out_of_stock', 'out_of_stock_unallocated', 'resolve_stockout_unallocated', DomesticShippingHold::RESUME], true)) {
+                abort_if($locked->originalFulfillmentChildren->isNotEmpty(), 409, '拆单母订单仅汇总履约进度，请处理对应子订单。');
+                abort_if(in_array($locked->order_status, [OrderStatus::Shipped, OrderStatus::Completed, OrderStatus::CompletedDelivered], true)
+                    || in_array($shipment?->shipment_status, ['shipped', 'completed'], true)
+                    || $shipment?->shipped_at !== null, 409, '已有实际发货记录，请使用专用补发或异常处理流程。');
+            }
             $wasDomesticHold = DomesticShippingHold::isHeld($locked->workflow_status);
             $isDomesticCommand = in_array($command, DomesticShippingHold::CODES, true) || $command === DomesticShippingHold::RESUME;
             if ($wasDomesticHold && ! $isDomesticCommand) {
