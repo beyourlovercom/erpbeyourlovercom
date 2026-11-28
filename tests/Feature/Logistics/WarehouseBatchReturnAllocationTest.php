@@ -143,7 +143,7 @@ final class WarehouseBatchReturnAllocationTest extends TestCase
         $this->assertTrue(app(LogisticsStatusSummary::class)->pendingAllocationQuery()->whereKey($woo->id)->exists());
     }
 
-    public function test_split_child_returns_through_parent_queue_without_resetting_sibling_until_parent_selected(): void
+    public function test_split_child_returns_independently_and_parent_cannot_reset_shipped_sibling(): void
     {
         $actor = $this->actor(['logistics.view', 'domestic.review', 'logistics.operate']);
         $parent = $this->order('FACTORY', 'sending');
@@ -163,17 +163,19 @@ final class WarehouseBatchReturnAllocationTest extends TestCase
         ])->assertOk()->assertJsonPath('success_count', 1);
         $this->assertNull($a->fresh()->shipment->warehouse_id);
         $this->assertSame('pending_allocation', $a->fresh()->workflow_status);
-        $this->assertSame('pending_allocation', $parent->fresh()->workflow_status);
+        $this->assertSame('sending', $parent->fresh()->workflow_status);
         $this->assertNotNull($b->fresh()->shipment->warehouse_id);
-        $this->assertTrue(app(LogisticsStatusSummary::class)->pendingAllocationQuery()->whereKey($parent->id)->exists());
+        $this->assertFalse(app(LogisticsStatusSummary::class)->pendingAllocationQuery()->whereKey($parent->id)->exists());
+        $this->assertTrue(app(\App\Modules\Orders\Application\OrderProgressQuery::class)
+            ->unassignedSplitLeg(Order::query())->whereKey($a->id)->exists());
 
         $this->actingAs($actor)->postJson('/logistics/china/batch-return-allocation', [
-            'order_ids' => [$parent->id],
-        ])->assertOk()->assertJsonPath('success_count', 1);
-        $this->assertNull($b->fresh()->shipment->warehouse_id);
-        $this->assertSame('pending', $b->fresh()->shipment->shipment_status);
-        $this->assertDatabaseHas('shipment_attempts', ['order_id' => $b->id,
-            'shipment_status' => 'shipped', 'tracking_number' => 'SIBLING-DISPATCH']);
+            'order_ids' => [$parent->id, $b->id],
+        ])->assertOk()->assertJsonPath('success_count', 0)->assertJsonPath('failed_count', 2);
+        $this->assertNotNull($b->fresh()->shipment->warehouse_id);
+        $this->assertSame('shipped', $b->fresh()->shipment->shipment_status);
+        $this->assertSame('SIBLING-DISPATCH', $b->fresh()->shipment->tracking_number);
+        $this->assertDatabaseMissing('shipment_attempts', ['order_id' => $b->id]);
     }
 
     private function actor(array $permissions): User

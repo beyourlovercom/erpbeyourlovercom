@@ -1232,7 +1232,7 @@ const applyReviewBulk = async (payload:{action:string;reason:string}) => {
       publishGlobalFeedback({state:failed.length?'BLOCKED':'SUCCESS',
         title:'批量到待分仓：成功 '+(results.length-failed.length)+' 条，失败 '+failed.length+' 条',
         message:failed.length?failed.slice(0,8).map(row=>row.order_id+'：'+row.message).join('；')
-          :'已退回待分仓，当前发货仓库已清空。'})
+          :results.slice(0,8).map(row=>row.message).join('；')})
       router.reload({only:['rows','viewCounts']})
     }catch(error){
       publishGlobalFeedback({state:'ERROR',title:'批量到待分仓未完成',

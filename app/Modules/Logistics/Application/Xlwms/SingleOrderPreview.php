@@ -26,6 +26,7 @@ final class SingleOrderPreview
         $add = static function (bool $condition, string $reason) use (&$blocking): void {
             if ($condition) $blocking[] = $reason;
         };
+        $add($order->originalFulfillmentChildren()->exists(), 'split_parent_not_dispatchable');
         $add(! $shipment || $shipment->warehouse?->code !== $warehouseCode, 'wrong_warehouse');
         $add(! $webDraft && $order->order_status?->value !== 'pending_shipment', 'order_not_pending_shipment');
         $add(! $webDraft && (! $shipment || $shipment->shipment_status !== 'pending'), 'shipment_not_pending');
