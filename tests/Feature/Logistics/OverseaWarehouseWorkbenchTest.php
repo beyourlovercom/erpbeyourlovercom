@@ -279,7 +279,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->where('viewCounts.pending', 0));
     }
 
-    public function test_manual_primary_status_alone_selects_exactly_one_overseas_queue_and_never_rewrites_warehouse_review(): void
+    public function test_manual_primary_status_selects_one_queue_and_reopens_stockout_without_approving(): void
     {
         $actor = $this->userWith(['logistics.view', 'logistics.operate', 'orders.view', 'orders.edit']);
         $warehouses = $this->warehouses();
@@ -292,7 +292,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         foreach ([
             ['exception', 'exceptions', 1],
             ['out_of_stock', 'stockout', 2],
-            ['sending', 'stockout', 3],
+            ['sending', 'review', 3],
             ['pending_allocation', null, 4],
         ] as [$chosen, $expectedView, $revision]) {
             $this->actingAs($actor)->patchJson("/orders/{$order->id}/workflow-status", [
@@ -318,8 +318,8 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
                 ]);
             } else {
                 $this->assertDatabaseHas('oversea_warehouse_reviews', [
-                    'order_id' => $order->id, 'status' => 'stockout',
-                    'reviewed_warehouse_id' => $warehouses['US-SM']->id,
+                    'order_id' => $order->id, 'status' => $chosen === 'sending' ? 'pending' : 'stockout',
+                    'reviewed_warehouse_id' => $chosen === 'sending' ? null : $warehouses['US-SM']->id,
                 ]);
                 $this->assertDatabaseHas('shipments', [
                     'order_id' => $order->id, 'shipment_status' => 'pending',

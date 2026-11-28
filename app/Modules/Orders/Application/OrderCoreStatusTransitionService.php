@@ -10,6 +10,7 @@ use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
 use App\Modules\Logistics\Application\LogisticsReviewAccess;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\PendingFinalSkuMaterializer;
+use App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderWorkflowStatusHistory;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -85,21 +86,45 @@ final class OrderCoreStatusTransitionService
                 abort_if($locked->shipmentAttempts()->exists()
                     || DB::table('shipout_dispatch_attempts')->where('order_id', $locked->id)->exists()
                     || DB::table('xlwms_dispatch_attempts')->where('order_id', $locked->id)->exists()
-                    || DB::table('warehouse_dispatch_states')->where('order_id', $locked->id)->exists(),
+                    || DB::table('warehouse_dispatch_states')->where('order_id', $locked->id)->exists()
+                    || UsNyOutboundBatch::guarded((int) $locked->id),
                     409, '已有仓库推送记录，须先核实仓库处理结果。');
                 $code = strtoupper(trim((string) $shipment->warehouse?->code));
-                $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
+                if ($code !== 'TINGON') {
+                    $locked->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->delete();
+                }
                 if ($code === 'FACTORY') {
                     app(DomesticReviewDecisionService::class)
                         ->decide($locked, 'stockout', null, $actor);
                 } elseif (OverseaWarehouseReviewService::canonicalWarehouseCode($code) !== null) {
                     app(OverseaWarehouseReviewService::class)
                         ->stockout($locked, $actor, manualClassification: true);
+                } elseif ($code === 'TINGON') {
+                    // Tingon has its own manual logistics workflow, not a
+                    // domestic or Dede warehouse review ledger.
                 } else {
                     throw new HttpException(409, '当前仓库不支持缺货审核，请核对分仓。');
                 }
 
-                return $locked->fresh(['shipment.warehouse', 'operationalMarkers']);
+                if ($code !== 'TINGON') {
+                    return $locked->fresh(['shipment.warehouse', 'operationalMarkers']);
+                }
+            }
+            if (in_array($command, ['sending', 'pending_review'], true) && $unshipped && ! $unallocated) {
+                $code = strtoupper(trim((string) $shipment->warehouse?->code));
+                if ($code === 'FACTORY') {
+                    // A direct status selection may release the manual hold,
+                    // but never synthesizes Kaven approval.
+                    $locked->operationalMarkers()->where('marker', 'domestic_stockout')->delete();
+                } elseif (OverseaWarehouseReviewService::canonicalWarehouseCode($code) !== null) {
+                    // Direct Sending must not imply Dede approval. A stockout
+                    // ledger is reopened to pending, not approved.
+                    $shipment->overseaReview()->where('status', 'stockout')->update([
+                        'status' => 'pending', 'progress' => 'pending_review',
+                        'submitted_warehouse_id' => $shipment->warehouse_id,
+                        'reviewed_warehouse_id' => null, 'reviewed_by' => null, 'reviewed_at' => null,
+                    ]);
+                }
             }
             switch ($command) {
                 case DomesticShippingHold::MISSING_INFO:
