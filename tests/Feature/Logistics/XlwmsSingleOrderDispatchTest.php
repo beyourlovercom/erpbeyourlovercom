@@ -138,11 +138,11 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
 
     public static function nyCanaryActors(): array
     {
-        return ['authenticated logistics operator'=>[false,false], 'owner-authorized system CLI'=>[true,false], 'system pre-CREATE recovery'=>[true,true]];
+        return ['authenticated logistics operator'=>[false,false], 'owner-authorized system CLI'=>[true,false], 'system pre-CREATE recovery'=>[true,true], 'operator batch'=>[false,false,true]];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('nyCanaryActors')]
-    public function test_us_ny_canary_exact_order_creates_once_and_preserves_pending_status(bool $system, bool $recover): void
+    public function test_us_ny_canary_exact_order_creates_once_and_preserves_pending_status(bool $system, bool $recover, bool $batch = false): void
     {
         $o = $this->orderFixture();
         $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
@@ -154,8 +154,9 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             'app_key_encrypted'=>'FAKE_NY_KEY','app_secret_encrypted'=>'FAKE_NY_SECRET']);
         ProductWarehouseSku::query()->create(['warehouse_id'=>$ny->id,'product_id'=>$item->product_id,'sku'=>'NY-PHYSICAL',
             'is_active'=>true,'verified_at'=>now()]);
-        WarehouseInventory::query()->create(['warehouse_id'=>$ny->id,'product_id'=>$item->product_id,
-            'quantity_on_hand'=>10,'quantity_reserved'=>0]);
+        \App\Modules\Inventory\Infrastructure\UsNyStockClock::utc(fn () => WarehouseInventory::query()->create([
+            'warehouse_id'=>$ny->id,'product_id'=>$item->product_id,'quantity_on_hand'=>10,'quantity_reserved'=>0,
+            'provider_available_quantity'=>10,'provider_stock_synced_at'=>now()]));
         $role = \App\Modules\Identity\Infrastructure\Models\Role::query()->create(['key'=>'ny-test','label'=>'NY test']);
         $perm = \App\Modules\Identity\Infrastructure\Models\Permission::query()->firstOrCreate(['key'=>'logistics.operate'],['label'=>'Logistics operate']);
         $role->permissions()->attach($perm);
@@ -225,6 +226,32 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             config()->set('xlwms.us_ny_canary_system_enabled',true);
             $attempt=XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail();
             $r=['state'=>$attempt->state,'oms_order_no'=>$attempt->oms_order_no,'tracking_present'=>filled($attempt->oms_tracking_no)];
+        } elseif ($batch) {
+            config(['xlwms.us_ny_canary_enabled'=>false,'xlwms.us_ny_batch_read_enabled'=>true,
+                'xlwms.us_ny_operator_batch_enabled'=>true,'xlwms.us_ny_batch_owner_approved'=>true,
+                'xlwms.us_ny_inventory_physical_apply_enabled'=>true]);
+            $this->app->instance('env','production');
+            try {
+                $b=app(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::class);
+                $viewPerm=\App\Modules\Identity\Infrastructure\Models\Permission::query()->firstOrCreate(['key'=>'logistics.view'],['label'=>'Logistics view']);
+                $role->permissions()->syncWithoutDetaching([$viewPerm->id]);
+                $this->actingAs($actor->fresh())->withSession(['_token'=>'ny-batch-test-token'])->withHeader('X-CSRF-TOKEN','ny-batch-test-token');
+                $preview=$this->getJson('/logistics/oversea/us-ny/xlwms/batch/preview?scope=selected&order_ids='.$o->id)->assertOk()->json();
+                self::assertSame(1,$preview['count'],json_encode($preview['items']));
+                $this->getJson('/logistics/oversea/us-ny/xlwms/batch/preview?scope=all')->assertOk()->assertJsonPath('count',1);
+                $this->postJson('/logistics/oversea/us-ny/xlwms/batch/start',['scope'=>'selected','order_ids'=>(string)$o->id,'fingerprint'=>$preview['fingerprint'],'confirmation'=>'WRONG'])->assertStatus(409);
+                Http::assertNothingSent();
+                try {$svc->create($o->id,$actor->id,$p['payload_hash']);self::fail('No direct create without batch claim');}
+                catch (\RuntimeException $e) {self::assertSame('US_NY_CANARY_NOT_AUTHORIZED',$e->getMessage());}
+                $start=$this->postJson('/logistics/oversea/us-ny/xlwms/batch/start',['scope'=>'selected','order_ids'=>(string)$o->id,'fingerprint'=>$preview['fingerprint'],'confirmation'=>'CONFIRM_US_NY_BATCH_1'])->assertStatus(202)->json();
+                self::assertTrue(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded($o->id));
+                self::assertSame(1,$b->drain()['processed']);
+                $this->getJson('/logistics/oversea/us-ny/xlwms/batch/'.$start['batch_id'].'/status')->assertOk()->assertJsonPath('status','completed');
+                self::assertSame(0,$b->drain()['processed']);
+                self::assertSame(0,$b->preview([$o->id])['count']);
+                $attempt=XlwmsDispatchAttempt::where('order_id',$o->id)->firstOrFail();
+                $r=['state'=>$attempt->state,'oms_order_no'=>$attempt->oms_order_no,'tracking_present'=>filled($attempt->oms_tracking_no)];
+            } finally {$this->app->instance('env','testing');}
         } else {
             $r=$svc->create($o->id,$executor,$p['payload_hash']);
             self::assertNull($o->fresh()->shipment->tracking_number);
@@ -235,7 +262,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         self::assertSame('pending',$o->fresh()->shipment->shipment_status);
         self::assertCount(1,Http::recorded(fn($req)=>str_contains($req->url(),'outboundOrder/create')));
         try {$svc->create($o->id,$executor,$p['payload_hash']);self::fail('duplicate must block');}
-        catch (\RuntimeException $e) {self::assertSame($system ? 'US_NY_PREFLIGHT_BLOCKED_OR_STALE' : 'US_NY_ATTEMPT_EXISTS',$e->getMessage());}
+        catch (\RuntimeException $e) {self::assertSame($batch ? 'US_NY_CANARY_NOT_AUTHORIZED' : ($system ? 'US_NY_PREFLIGHT_BLOCKED_OR_STALE' : 'US_NY_ATTEMPT_EXISTS'),$e->getMessage());}
         self::assertCount(1,Http::recorded(fn($req)=>str_contains($req->url(),'outboundOrder/create')));
         $stage=app(\App\Modules\Logistics\Application\Xlwms\UsNyTrackingStage::class);
         $poller=app(\App\Modules\Logistics\Application\Xlwms\UsNyTrackingRefresh::class);

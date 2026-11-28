@@ -10,7 +10,7 @@ final class PendingAllocationEntryPolicy
     /** Woo statuses remain fully synchronized; this gates pending allocation only. */
     public function constrain(Builder $query): Builder
     {
-        return $query->where(function (Builder $eligible): void {
+        return $query->whereDoesntHave('originalFulfillmentChildren')->where(function (Builder $eligible): void {
             // An explicit staff force-return is authoritative even when Woo
             // still reports completed/cancelled. This does not write Woo.
             $eligible->where('workflow_status', 'pending_allocation')

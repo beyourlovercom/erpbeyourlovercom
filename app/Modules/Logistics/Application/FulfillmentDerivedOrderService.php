@@ -50,6 +50,12 @@ final class FulfillmentDerivedOrderService
         $this->assertParentShipmentMayBeReplaced($parent);
         $this->restoreSourceItems($parent);
         $parent->load('items');
+        if (config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
+            app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($parent, 0, $actor);
+        }
+        if (config('wlwy.ca_inventory_apply_enabled')) {
+            app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($parent, 0, $actor, 'CA');
+        }
         $parent->shipment?->delete();
 
         $children = collect();
@@ -353,6 +359,8 @@ final class FulfillmentDerivedOrderService
 
     private function assertParentShipmentMayBeReplaced(Order $parent): void
     {
+        abort_if(\App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch::guarded((int) $parent->id), 409, '加拿大仓已有推送或待核实记录，禁止重新分仓。');
+        abort_if(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded((int)$parent->id),409,'美东仓订单正在推送或待核实，禁止重新分仓。');
         $shipment = $parent->shipment;
         if (! $shipment) return;
         abort_if($shipment->shipment_status !== 'pending' || filled($shipment->tracking_number) || $shipment->shipped_at !== null, 409, '原订单已经进入实际物流，不能再拆单');
@@ -360,6 +368,8 @@ final class FulfillmentDerivedOrderService
 
     private function assertChildMayBeRebuilt(Order $child): void
     {
+        abort_if(\App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch::guarded((int) $child->id), 409, '加拿大仓已有推送或待核实记录，禁止重新分仓。');
+        abort_if(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded((int)$child->id),409,'美东仓订单正在推送或待核实，禁止重新分仓。');
         $shipment = $child->shipment;
         if (! $shipment) return;
         abort_if($shipment->shipment_status !== 'pending' || filled($shipment->tracking_number) || $shipment->shipped_at !== null, 409, "衍生订单 {$child->erp_order_id} 已进入实际物流，不能重建");
@@ -373,6 +383,12 @@ final class FulfillmentDerivedOrderService
     private function deletePendingChild(Order $child): void
     {
         $this->assertChildMayBeRebuilt($child);
+        if (config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
+            app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($child, 0, null);
+        }
+        if (config('wlwy.ca_inventory_apply_enabled')) {
+            app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)->sync($child, 0, null, 'CA');
+        }
         $child->delete();
     }
 

@@ -22,7 +22,13 @@ final class VersionedRateQuoteService
         return $this->calculate($request, true);
     }
 
-    private function calculate(array $request, bool $draft): array
+    /** Explicit actual-weight-only reference; dimensions are unknown, never a complete quote. */
+    public function quoteWeightOnlyReference(array $request, bool $draft): array
+    {
+        return $this->calculate($request, $draft, true);
+    }
+
+    private function calculate(array $request, bool $draft, bool $weightOnly = false): array
     {
         $id = $request['version_id'] ?? null;
         $date = $request['as_of'] ?? null;
@@ -103,6 +109,10 @@ final class VersionedRateQuoteService
             return $this->blocked('rate_components_missing_or_ambiguous');
         }
         $transportRule = json_decode($transport[0]->rule_spec, true);
+        if (is_array($transportRule) && isset($transportRule['catalog_restriction_source_cell'])) {
+            return $this->blocked('supplier_catalog_restriction');
+        }
+
         if (! is_array($transportRule) || (! $draft && (($transportRule['coverage_complete'] ?? false) !== true
             || ($handlingRows->isEmpty() && ($transportRule['handling_included'] ?? false) !== true)))) {
             return $this->blocked('rate_coverage_unverified');
@@ -124,16 +134,16 @@ final class VersionedRateQuoteService
             if (! is_int($quantity) || $quantity < 1 || $quantity > 10000) {
                 return $this->blocked('invalid_quantity');
             }
-            if (! is_array($dims) || count($dims) !== 3 || count(array_filter($dims, fn ($v) => $this->positive($v))) !== 3) {
+            if (! $weightOnly && (! is_array($dims) || count($dims) !== 3 || count(array_filter($dims, fn ($v) => $this->positive($v))) !== 3)) {
                 return $this->blocked('missing_dimensions');
             }
             $gross = (float) $rawWeight * ($basis === 'bare' ? 1.2 : 1);
-            if (! is_finite($gross) || $gross > 1000 || max($dims) > 10000) {
+            if (! is_finite($gross) || $gross > 1000 || (! $weightOnly && max($dims) > 10000)) {
                 return $this->blocked('invalid_measurement');
             }
-            $dims = array_values(array_map('floatval', $dims));
+            $dims = $weightOnly ? [] : array_values(array_map('floatval', $dims));
             foreach ($orderedRows as $row) {
-                $out = $this->component($row, $gross, $dims, $quantity, $date, $postal, $handling, $warehouse, $rateBands->get($row->id, collect()));
+                $out = $this->component($row, $gross, $dims, $quantity, $date, $postal, $handling, $warehouse, $rateBands->get($row->id, collect()), $weightOnly);
                 if (isset($out['reason'])) {
                     return $this->blocked($out['reason']);
                 }
@@ -152,6 +162,12 @@ final class VersionedRateQuoteService
         }
         $fx = $this->fx->convertToCny(array_map(fn ($currency, $amount) => ['currency' => $currency, 'revenue' => $amount], array_keys($totals), array_values($totals)));
 
+        if ($weightOnly) {
+            return ['status' => 'weight_only_reference', 'reason' => 'dimensions_unavailable', 'version_id' => $id, 'as_of' => $date, 'zone' => $zone,
+                'components' => $result, 'native_totals' => null, 'total_cny' => null, 'reference_native_totals' => $totals,
+                'reference_total_cny' => ($fx['available'] ?? false) ? $fx['amount_cny'] : null, 'fx' => $fx,
+                'estimate_only' => true, 'eligible_for_ranking' => false, 'coverage' => $draft ? 'draft_actual_weight_transport_only' : 'actual_weight_only'];
+        }
         if ($draft) {
             return ['status' => 'draft_estimate', 'reason' => 'unapproved_transport_reference', 'version_id' => $id, 'as_of' => $date, 'zone' => $zone,
                 'components' => $result, 'native_totals' => null, 'total_cny' => null, 'reference_native_totals' => $totals,
@@ -176,7 +192,7 @@ final class VersionedRateQuoteService
         return ['status' => 'unavailable', 'reason' => $reason, 'components' => [], 'native_totals' => null, 'total_cny' => null, 'estimate_only' => true];
     }
 
-    private function component(object $row, float $gross, array $dims, int $quantity, string $date, string $postal, string $handling, string $warehouse, Collection $rateBands): array
+    private function component(object $row, float $gross, array $dims, int $quantity, string $date, string $postal, string $handling, string $warehouse, Collection $rateBands, bool $weightOnly = false): array
     {
         $rule = json_decode($row->rule_spec, true);
         $known = ['basis', 'dim_divisor', 'volume_unit', 'volume_threshold', 'minimum', 'increment', 'max_actual_kg', 'max_billed',
@@ -208,7 +224,7 @@ final class VersionedRateQuoteService
                 }
             }
         }
-        if (isset($rule['max_girth_cm']) && (! $this->positive($rule['max_girth_cm']) || $rule['max_girth_cm'] <= $dims[0] + 2 * ($dims[1] + $dims[2]))) {
+        if (isset($rule['max_girth_cm']) && (! $this->positive($rule['max_girth_cm']) || (! $weightOnly && $rule['max_girth_cm'] <= $dims[0] + 2 * ($dims[1] + $dims[2])))) {
             return ['reason' => 'package_dimensions_outside_rule'];
         }
         if (isset($rule['max_actual_kg']) && (! $this->positive($rule['max_actual_kg']) || $gross > (float) $rule['max_actual_kg'])) {
@@ -231,14 +247,14 @@ final class VersionedRateQuoteService
             }
         }
         $actual = $gross * $factor;
-        $volume = array_product($dims);
+        $volume = $weightOnly ? null : array_product($dims);
         $dim = null;
         $basis = $rule['basis'] ?? null;
         if (! in_array($basis, ['actual', 'max', 'conditional_max'], true)) {
             return ['reason' => 'rule_unsupported'];
         }
         $raw = $actual;
-        if ($basis !== 'actual') {
+        if ($basis !== 'actual' && ! $weightOnly) {
             if (! $this->positive($rule['dim_divisor'] ?? null)) {
                 return ['reason' => 'rule_unsupported'];
             }
@@ -258,6 +274,11 @@ final class VersionedRateQuoteService
             if ($basis === 'max' || $volumeNative > (float) $rule['volume_threshold']) {
                 $raw = max($actual, $dim);
             }
+        }
+        if ($weightOnly && $basis !== 'actual' && (! $this->positive($rule['dim_divisor'] ?? null)
+            || ! in_array($rule['volume_unit'] ?? null, ['cm3_kg', 'in3_lb'], true)
+            || ($basis === 'conditional_max' && ! $this->positive($rule['volume_threshold'] ?? null)))) {
+            return ['reason' => 'rule_unsupported'];
         }
         $billed = $raw;
         if (isset($rule['minimum'])) {

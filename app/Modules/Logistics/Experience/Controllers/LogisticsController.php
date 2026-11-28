@@ -96,14 +96,35 @@ final class LogisticsController
         $requestedView = $request->query('allocation_view');
         $allocationView = $rejectionFilter ? 'rejected' : (in_array($requestedView, ['all', 'processed'], true) ? $requestedView : 'pending');
         $base = $this->statusSummary->pendingAllocationQuery();
-        $allTotal = (clone $base)->count();
-        $processedTotal = $this->rejectionReadModel->onlyProcessed(clone $base)->count();
-        $pendingTotal = $allTotal - $processedTotal;
+        $ordinaryTotal = (clone $base)->count();
+        $ordinaryProcessedTotal = $this->rejectionReadModel->onlyProcessed(clone $base)->count();
+        // Split parents are never executable allocation rows. Preserve the existing
+        // guarded family-reset entry as a read-only history record, not as pending.
+        $parentHistory = Order::query()->eligibleForOperations()
+            ->whereNull('fulfillment_parent_id')
+            ->where('order_status', 'pending_shipment')
+            ->whereHas('originalFulfillmentChildren')
+            ->whereHas('fulfillmentAllocation', fn ($q) => $q->where('status', 'submitted'))
+            ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'));
+        $parentHistoryTotal = (clone $parentHistory)->count();
+        $allTotal = $ordinaryTotal + $parentHistoryTotal;
+        $processedTotal = $ordinaryProcessedTotal + $parentHistoryTotal;
+        $pendingTotal = $ordinaryTotal - $ordinaryProcessedTotal;
         $rejectionSnapshot = $this->rejectionReadModel->snapshot(
             $this->statusSummary->pendingAllocationQuery()
         );
         $rejectionCount = $rejectionSnapshot['count'];
-        $query = (clone $base)
+        $listBase = clone $base;
+        if (in_array($allocationView, ['all', 'processed'], true)) {
+            if ($allocationView === 'processed') {
+                $this->rejectionReadModel->onlyProcessed($listBase);
+            }
+            $normalIds = $listBase->select('orders.id');
+            $historyIds = (clone $parentHistory)->select('orders.id');
+            $listBase = Order::query()->where(fn ($q) => $q->whereIn('orders.id', $normalIds)
+                ->orWhereIn('orders.id', $historyIds));
+        }
+        $query = $listBase
             ->with(['address', 'items.product', 'items.sourceProduct', 'owner', 'financials', 'shipment.warehouse',
                 'shipment.overseaReview', 'operationalMarkers', 'fulfillmentParent.operationalMarkers',
                 'originalFulfillmentChildren.operationalMarkers',
@@ -115,8 +136,6 @@ final class LogisticsController
         if ($rejectionFilter) {
             $this->rejectionReadModel->onlyRejected($query);
             $this->rejectionReadModel->onlyPending($query);
-        } elseif ($allocationView === 'processed') {
-            $this->rejectionReadModel->onlyProcessed($query);
         } elseif ($allocationView === 'pending') {
             $this->rejectionReadModel->onlyPending($query);
         }
@@ -193,6 +212,8 @@ final class LogisticsController
             'plan_keys' => ['sometimes', 'array'],
             'plan_keys.*' => ['string', 'max:128'],
             'confirmed' => ['required', 'accepted'],
+            'cost_tokens'=>['sometimes','array'],
+            'cost_tokens.*'=>['nullable','string','size:64'],
         ]);
 
         $warehouseCode = strtoupper(trim((string) ($data['warehouse_code'] ?? '')));
@@ -231,7 +252,7 @@ final class LogisticsController
                     if ($data['action'] === 'recommend') {
                         $planKey = trim((string) ($data['plan_keys'][(string) $id] ?? ''));
                         abort_if($planKey === '', 422, '本订单无可确认的系统推荐，请人工分仓。');
-                        $this->allocationSubmissions->submitRecommended($locked, $planKey, null, $request->user());
+                        $this->allocationSubmissions->submitRecommended($locked,$planKey,null,$request->user(),null,$data['cost_tokens'][(string)$id]??null);
                     } else {
                         abort_if($locked->items->isEmpty() || $locked->items->contains(
                             fn ($item): bool => strcasecmp(trim((string) ($item->source_sku ?: $item->sku)), 'gift') === 0
@@ -241,7 +262,7 @@ final class LogisticsController
                             'source_code' => $warehouseCode,
                         ])->values()->all();
                         // A bulk click cannot silently acknowledge missing/short stock.
-                        $this->allocationSubmissions->submitManual($locked, $assignments, null, $request->user(), false);
+                        $this->allocationSubmissions->submitManual($locked,$assignments,null,$request->user(),false,null,$data['cost_tokens'][(string)$id]??null);
                     }
                 });
                 $results[] = ['order_id' => $id, 'ok' => true, 'message' => '已完成分仓'];
@@ -266,6 +287,44 @@ final class LogisticsController
         ]);
     }
 
+    public function batchAllocationCostPreview(Request $request, \App\Modules\Logistics\Application\AllocationPlanCostConfirmation $cost): JsonResponse
+    {
+        $allowed=array_map('strtoupper',(array)config('warehouse_master.fulfillment_codes',[]));
+        $data=$request->validate([
+            'order_ids'=>['required','array','min:1','max:100'],
+            'order_ids.*'=>['required','integer','min:1','distinct'],
+            'action'=>['required',Rule::in(['recommend','warehouse'])],
+            'warehouse_code'=>['required_if:action,warehouse','nullable','string',Rule::in($allowed)],
+            'plan_keys'=>['sometimes','array'],'plan_keys.*'=>['string','max:128'],
+        ]);
+        $orders=$this->statusSummary->pendingAllocationQuery()->whereIn('orders.id',$data['order_ids'])
+            ->with(['items','address','fulfillmentAllocation'])->get()->keyBy('id');
+        $results=[];
+        foreach($data['order_ids'] as $rawId){
+            $id=(int)$rawId;$order=$orders->get($id);
+            if(!$order||$order->fulfillmentAllocation?->status==='submitted'){
+                $results[]=['order_id'=>$id,'ok'=>false,'message'=>'订单不在待分仓范围或已经提交。'];continue;
+            }
+            try{
+                if($data['action']==='recommend'){
+                    $plan=$this->allocationSubmissions->previewRecommendedPlan($order,(string)($data['plan_keys'][(string)$id]??''));
+                }else{
+                    abort_if($order->items->isEmpty()||$order->items->contains(fn($item)=>strcasecmp(trim((string)($item->source_sku?:$item->sku)),'gift')===0),422,'礼品或空商品需逐单处理。');
+                    $assignments=$order->items->map(fn($item)=>['order_item_id'=>(int)$item->id,'source_code'=>$data['warehouse_code']])->values()->all();
+                    $plan=$this->allocationSubmissions->previewManualPlan($order,$assignments,$request->user());
+                }
+                $results[]=['order_id'=>$id,'ok'=>true,'quote'=>$cost->quote($order,$plan,$request->user())];
+            }catch(ValidationException $e){
+                $results[]=['order_id'=>$id,'ok'=>false,'message'=>(string)(collect($e->errors())->flatten()->first()?:'请逐单处理。')];
+            }catch(HttpException $e){
+                $results[]=['order_id'=>$id,'ok'=>false,'message'=>$e->getMessage()?:'订单状态不允许分仓。'];
+            }catch(Throwable $e){
+                report($e);$results[]=['order_id'=>$id,'ok'=>false,'message'=>'预估未完成，请逐单检查。'];
+            }
+        }
+        return response()->json(['results'=>$results]);
+    }
+
     public function resetParentAllocation(Request $request, Order $order, ParentFulfillmentReallocationService $reallocation): JsonResponse
     {
         $data = $request->validate(['confirmed' => ['required', 'accepted'], 'token' => ['required', 'string', 'size:64']]);
@@ -276,11 +335,12 @@ final class LogisticsController
     public function submitRecommendedAllocation(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
+            'cost_confirmation'=>['nullable','string','size:64'],
             'plan_key' => ['required', 'string', 'max:128'],
             'expected_workflow_revision' => ['nullable', 'integer', 'min:0'],
             'decision_note' => ['nullable', 'string', 'max:1000'],
         ]);
-        $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitRecommended($order, $data['plan_key'], $data['decision_note'] ?? null, $request->user(), isset($data['expected_workflow_revision']) ? (int) $data['expected_workflow_revision'] : null));
+        $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitRecommended($order, $data['plan_key'], $data['decision_note'] ?? null, $request->user(), isset($data['expected_workflow_revision']) ? (int) $data['expected_workflow_revision'] : null,$data['cost_confirmation']??null));
         if ($request->expectsJson()) {
             return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
         }
@@ -302,6 +362,27 @@ final class LogisticsController
         return response()->json(['products' => $query->orderBy('sku')->get(['id', 'sku', 'name', 'material_full_name'])]);
     }
 
+    /** Read-only exact physical-plan estimate; cost tokens are not allocation authority. */
+    public function allocationCostPreview(Request $request, Order $order, \App\Modules\Logistics\Application\AllocationPlanCostConfirmation $cost): JsonResponse
+    {
+        $input=$request->validate([
+            'mode'=>['required','in:manual,quick,recommended'],
+            'plan_key'=>['required_if:mode,recommended','nullable','string','max:128'],
+            'assignments'=>['required_unless:mode,recommended','array','min:1','max:500'],
+            'assignments.*.order_item_id'=>['required','integer','distinct'],
+            'assignments.*.source_code'=>['required_if:mode,manual','nullable','string','max:32'],
+            'assignments.*.warehouse_id'=>['required_if:mode,quick','nullable','integer'],
+            'assignments.*.gift_mapping_id'=>['nullable','integer'],
+            'assignments.*.replacement_product_id'=>['nullable','integer','min:1'],
+            'assignments.*.carrier'=>['nullable','string','max:128'],
+            'assignments.*.service'=>['nullable','string','max:191'],
+        ]);
+        $order=$order->fresh(['address','items']);
+        $plan=$input['mode']==='recommended'?$this->allocationSubmissions->previewRecommendedPlan($order,$input['plan_key']):
+            $this->allocationSubmissions->previewManualPlan($order,$input['mode']==='quick'?$this->normalizeQuickAssignments($order,$input['assignments']):$input['assignments'],$request->user());
+        return response()->json($cost->quote($order,$plan,$request->user()));
+    }
+
     /** No changes to order, inventory or accounting state. */
     public function allocationRatePreview(Request $request, Order $order, AllocationRatePreviewService $service): JsonResponse
     {
@@ -321,6 +402,7 @@ final class LogisticsController
             'assignments.*.replacement_product_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
+        $order->loadMissing('address');
         $items = $order->items->keyBy('id');
         $issues = [];
         $seen = [];
@@ -337,6 +419,11 @@ final class LogisticsController
                 $issues[] = ['order_item_id' => $itemId, 'sku' => $sku, 'warehouse' => $warehouse,
                     'reason' => '商品或仓库无效，请刷新订单重新选择。'];
 
+                continue;
+            }
+            if (! $this->warehouseRouting->destinationAllowed($order->address?->country, $warehouse)) {
+                $issues[] = ['order_item_id' => $itemId, 'sku' => $sku, 'warehouse' => $warehouse,
+                    'reason' => '德国仓不支持该收件国家/地区，请选择其他仓库。'];
                 continue;
             }
             if ($warehouse === 'OUTSOURCE' && empty($row['replacement_product_id'])) {
@@ -385,6 +472,7 @@ final class LogisticsController
     public function submitManualAllocation(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
+            'cost_confirmation'=>['nullable','string','size:64'],
             'assignments' => ['required', 'array', 'min:1'],
             'assignments.*.order_item_id' => ['required', 'integer'],
             'assignments.*.source_code' => ['required', 'string', 'max:32'],
@@ -403,7 +491,7 @@ final class LogisticsController
             'request_id' => $request->attributes->get('erp_request_id'),
         ]);
         try {
-            $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false), isset($data['expected_workflow_revision']) ? (int) $data['expected_workflow_revision'] : null));
+            $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false), isset($data['expected_workflow_revision']) ? (int) $data['expected_workflow_revision'] : null,$data['cost_confirmation']??null));
             $outcome = 'submitted';
         } finally {
             Log::info('allocation.manual.finished', [
@@ -423,24 +511,37 @@ final class LogisticsController
     public function submitQuickAllocation(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate([
+            'cost_confirmation'=>['nullable','string','size:64'],
             'assignments' => ['required', 'array', 'min:1'],
             'assignments.*.order_item_id' => ['required', 'integer'],
             'assignments.*.warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
             'stock_exception_acknowledged' => ['sometimes', 'boolean'],
         ]);
 
+        $normalized = $this->normalizeQuickAssignments($order,$data['assignments']);
+
+        $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $normalized, null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false),null,$data['cost_confirmation']??null));
+
+        return back()->with('success', '分仓已提交');
+    }
+
+    private function normalizeQuickAssignments(Order $order,array $assignments): array
+    {
         $order->loadMissing(['address', 'items']);
         if ($order->items->contains(fn ($item): bool => strcasecmp(trim((string) ($item->source_sku ?: $item->sku)), 'gift') === 0)) {
             throw ValidationException::withMessages(['assignments' => 'gift 订单需要在“待分仓”中选择实际履约礼品 SKU。']);
         }
 
-        $warehouseIds = collect($data['assignments'])->pluck('warehouse_id')->map(fn ($id): int => (int) $id)->unique()->values();
+        $warehouseIds = collect($assignments)->pluck('warehouse_id')->map(fn ($id): int => (int) $id)->unique()->values();
         $warehouses = Warehouse::query()->whereIn('id', $warehouseIds)->where('is_active', true)->get()->keyBy('id');
         $allowedCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
-        $normalized = collect($data['assignments'])->map(function (array $assignment) use ($order, $warehouses, $allowedCodes): array {
+        $normalized = collect($assignments)->map(function (array $assignment) use ($order, $warehouses, $allowedCodes): array {
             $warehouse = $warehouses->get((int) $assignment['warehouse_id']);
             if (! $warehouse || ! in_array(strtoupper((string) $warehouse->code), $allowedCodes, true)) {
                 throw ValidationException::withMessages(['assignments' => '所选仓库不属于待分仓履约仓库。']);
+            }
+            if (! $this->warehouseRouting->destinationAllowed($order->address?->country, (string) $warehouse->code)) {
+                throw ValidationException::withMessages(['assignments' => '德国仓不支持该收件国家/地区，请选择其他仓库。']);
             }
             $route = strtoupper(trim((string) $warehouse->code)) === 'FACTORY'
                 ? [] : $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
@@ -458,9 +559,7 @@ final class LogisticsController
             ];
         })->values()->all();
 
-        $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $normalized, null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false)));
-
-        return back()->with('success', '分仓已提交');
+        return $normalized;
     }
 
     /**
@@ -989,6 +1088,11 @@ final class LogisticsController
         array $paymentDecisionsByOrderId = [],
         ?array $entryEligible = null,
     ): array {
+        $readOnlyParent = $order->fulfillment_parent_id === null && $order->originalFulfillmentChildren->isNotEmpty();
+        $germanyEligible = $this->warehouseRouting->destinationAllowed($order->address?->country, 'DE');
+        $germanyWarehouseIds = collect($context['warehouses'] ?? [])->filter(fn (array $w): bool => $this->warehouseRouting->canonicalWarehouseCode((string) ($w['code'] ?? '')) === 'DE')->pluck('id')->map(fn ($id): int => (int) $id)->all();
+        $eligibleAvailability = static fn (array $rows): array => $germanyEligible ? $rows : array_values(array_filter($rows, static fn (array $row): bool => ! in_array((int) ($row['warehouse_id'] ?? 0), $germanyWarehouseIds, true)));
+        $eligibleGiftOptions = fn (array $rows): array => $germanyEligible ? $rows : array_filter($rows, fn ($key): bool => $this->warehouseRouting->canonicalWarehouseCode((string) $key) !== 'DE', ARRAY_FILTER_USE_KEY);
         $destinationContext = [
             'province_state' => $order->address?->province_state,
             'city' => $order->address?->city,
@@ -1034,10 +1138,11 @@ final class LogisticsController
             'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
             'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
             'workflow_revision' => (int) $order->workflow_revision,
+            'read_only_parent' => $readOnlyParent,
             'reallocation_generation' => $order->fulfillment_parent_id === null ? $this->reallocationGenerationForPreview($order) : null,
             'reallocation_token' => $order->fulfillment_parent_id === null && $order->originalFulfillmentChildren->isNotEmpty()
                 ? ParentFulfillmentReallocationService::token($order, $allocation) : null,
-            'can_edit_workflow_status' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
+            'can_edit_workflow_status' => ! $readOnlyParent && app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
             'workflow_status_options' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             'external_order_number' => $order->external_order_number,
             'order_date' => $order->order_date?->toDateString(),
@@ -1062,6 +1167,8 @@ final class LogisticsController
             'recipient_name' => $order->address?->recipient_name,
             'phone' => $order->address?->phone,
             'country' => $order->address?->country,
+            'country_display' => $this->warehouseRouting->countryDisplay($order->address?->country),
+            'germany_warehouse_eligible' => $germanyEligible,
             'province_state' => $order->address?->province_state,
             'city' => $order->address?->city,
             'address_line_1' => $order->address?->address_line_1,
@@ -1071,6 +1178,12 @@ final class LogisticsController
             'carrier_routes' => $carrierRoutes,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'item_count' => $order->items->sum('quantity'),
+            'currency' => $order->currency,
+            'can_edit_items' => ! $order->isOperationallyArchived() && $order->archived_at === null
+                && in_array($order->order_kind, [OrderKind::Customer, OrderKind::KolFulfillment], true)
+                && ($order->fulfillment_parent_id === null)
+                && (auth()->user()?->can('orders.edit') ?? false),
+            'items_revision' => \App\Modules\Orders\Application\OrderItemAmendmentPreflight::revisionForItems($order->items),
             'items' => $order->items->map(fn ($item): array => [
                 'id' => $item->id,
                 'product_id' => $item->product_id,
@@ -1082,14 +1195,15 @@ final class LogisticsController
                 'product_name' => $item->sourceProduct?->name ?? ($item->fulfillmentSourceProductId() ? $item->product?->name : $item->source_product_summary),
                 'material_full_name' => $item->sourceProduct?->material_full_name ?? ($item->fulfillmentSourceProductId() ? $item->product?->material_full_name : null),
                 'source_product_id' => $item->fulfillmentSourceProductId(),
-                'source_availability' => $context['availability'][$item->fulfillmentSourceProductId()] ?? [],
+                'source_availability' => $eligibleAvailability($context['availability'][$item->fulfillmentSourceProductId()] ?? []),
                 'previous_replacement_product_id' => collect($allocation?->manual_assignments ?? [])->firstWhere('order_item_id', $item->id)['replacement_product_id'] ?? null,
                 'product_summary' => $item->product_summary,
                 'quantity' => $item->quantity,
-                'availability' => $context['availability'][$item->product_id] ?? [],
+                'unit_price' => (string) $item->unit_price,
+                'availability' => $eligibleAvailability($context['availability'][$item->product_id] ?? []),
                 'is_gift' => $this->giftSkuResolutions->isGiftSku($item->source_sku ?: $item->sku),
                 'gift_options_by_warehouse' => array_key_exists('gift_resolution', $context)
-                    ? $this->giftSkuResolutions->options((string) ($item->source_sku ?: $item->sku), (int) $item->quantity, $context['gift_resolution'])
+                    ? $eligibleGiftOptions($this->giftSkuResolutions->options((string) ($item->source_sku ?: $item->sku), (int) $item->quantity, $context['gift_resolution']))
                     : [],
             ])->values()->all(),
             'warehouse_recommendation' => $recommendation,

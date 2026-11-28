@@ -89,6 +89,24 @@ describe('Inventory foundation UI', () => {
     expect(wrapper.find('a[href="/inventory/add"]').exists()).toBe(false)
   })
 
+  it('shows two additional tabs only for authorized users and preserves canonical Inertia navigation', async () => {
+    globalThis.localStorage?.clear()
+    const base = {rows:{data:[],links:[],current_page:1,last_page:1},warehouses:[],filters:{},matrixRows:[],inventoryView:'warehouse' as const,warehouseGridEnabled:false}
+    const wrapper=mount(Products,{props:{...base,canViewLogistics:true}})
+    expect(wrapper.get('[data-testid="inventory-view-logistics"]').text()).toBe('物流参数')
+    expect(wrapper.get('[data-testid="inventory-view-sources"]').text()).toBe('数据来源')
+    await wrapper.get('[data-testid="inventory-view-logistics"]').trigger('click')
+    expect(router.get).toHaveBeenLastCalledWith('/inventory/products',{view:'logistics'},expect.objectContaining({preserveState:true}))
+    await wrapper.get('[data-testid="inventory-view-sources"]').trigger('click')
+    expect(router.get).toHaveBeenLastCalledWith('/inventory/products',{view:'sources'},expect.objectContaining({preserveState:true}))
+    wrapper.unmount()
+    const restricted=mount(Products,{props:{...base,canViewLogistics:false}})
+    expect(restricted.find('[data-testid="inventory-view-logistics"]').exists()).toBe(false)
+    expect(restricted.find('[data-testid="inventory-view-sources"]').exists()).toBe(false)
+    restricted.unmount()
+    globalThis.localStorage?.clear()
+  })
+
   it('products table renders cross-warehouse stock truth and empty search controls', () => {
     const wrapper = mount(Products, { props: {
       rows: { data: [{ id: 7, warehouse: { slug: 'us-moreplus', public_slug: 'us-la', name: '美西 MorePlus 仓' }, product: { id: 9, sku: 'SKU-007', name: 'Test Product' }, inbound_at: '2026-08-20', stay_days: 5, location: 'A-01', quantity_on_hand: 12, quantity_reserved: 2, quantity_available: 10, stock_status: 'in_stock', stock_status_label: '有货', standard_qoh: 8, expected_restock_qty: 4, replenishment: { policy_status: 'reorder', policy_label: '建议补货', shipped_90d_qty: 90, monthly_average: 30, daily_average: 1, days_of_cover: 10, safety_stock_qty: 3, reorder_point_qty: 8, recommended_restock_qty: 4 } }], links: [], current_page: 1, last_page: 1 },

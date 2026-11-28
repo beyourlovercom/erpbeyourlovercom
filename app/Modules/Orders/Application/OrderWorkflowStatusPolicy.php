@@ -46,6 +46,11 @@ final class OrderWorkflowStatusPolicy
             && in_array($shipment->shipment_status, ['shipped', 'completed'], true)
             && $shipment->shipped_at !== null;
 
+        $splitParent = $order->relationLoaded('originalFulfillmentChildren')
+            ? $order->originalFulfillmentChildren->isNotEmpty()
+            : $order->originalFulfillmentChildren()->exists();
+        $dispatchFacts = $hasDispatch || in_array($order->order_status, [OrderStatus::Shipped, OrderStatus::Completed, OrderStatus::CompletedDelivered], true)
+            || in_array($shipment?->shipment_status, ['shipped', 'completed'], true) || $shipment?->shipped_at !== null;
         $options = [];
         foreach (OrderWorkflowStatus::registry() as $code => $definition) {
             $allowed = false;
@@ -65,9 +70,15 @@ final class OrderWorkflowStatusPolicy
             } elseif (DomesticShippingHold::isHeld($order->workflow_status)) {
                 $allowed = false;
             }
+            if ($customer && ($splitParent || $dispatchFacts)
+                && in_array($code, ['pending_allocation', 'pending_review', 'sending', 'out_of_stock'], true)) {
+                $allowed = false;
+            }
             $disabledReason = null;
             if (! $allowed) {
                 $disabledReason = match (true) {
+                    $splitParent && in_array($code, ['pending_allocation', 'pending_review', 'sending', 'out_of_stock'], true) => '拆单母订单仅汇总，请操作子订单',
+                    $dispatchFacts && in_array($code, ['pending_allocation', 'pending_review', 'sending', 'out_of_stock'], true) => '已存在实际发货记录，请使用专用履约流程',
                     $blocked => '归档、回收站或上级归档订单不能直接修改工作状态',
                     ! $operator && ! $domestic && ! $oversea => '当前账号没有工作状态修改权限',
                     ! $definition['mutable'] => '此状态由真实业务事件决定，不能修改名称来生成发货、签收或支付记录',
@@ -97,7 +108,7 @@ final class OrderWorkflowStatusPolicy
             $mayResolve = $operator && ! $blocked;
             if ($resolve[0] === 'resolve_stockout') {
                 $unallocated = ! $shipment?->warehouse_id;
-                $mayResolve = ! $blocked && (($unallocated && $operator)
+                $mayResolve = ! $blocked && ! $splitParent && ! $dispatchFacts && (($unallocated && $operator)
                     || ($domestic && $warehouse === 'FACTORY') || $oversea);
             }
             $options[] = ['code' => $resolve[0], 'en' => $resolve[1], 'zh' => $resolve[2],

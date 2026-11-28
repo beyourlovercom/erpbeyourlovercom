@@ -6,6 +6,8 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Identity\Application\AuthorizationKeys;
+use App\Modules\Inventory\Application\PackagingOptimizationWorkspace;
+use App\Modules\Inventory\Application\PackagingUpgradeService;
 use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementMedia;
 use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
@@ -19,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -31,12 +34,21 @@ final class PackagingMeasurementController
         $user = $request->user();
         abort_unless($user->can(AuthorizationKeys::InventoryPackagingSubmit->value) || $user->can(AuthorizationKeys::InventoryPackagingReview->value) || $user->can(AuthorizationKeys::InventoryView->value), 403);
         $reviewer = $user->can(AuthorizationKeys::InventoryPackagingReview->value) || $user->can(AuthorizationKeys::InventoryView->value);
+        $filters=$request->validate(['tab'=>['nullable',Rule::in(['records','optimization','standards'])],'search'=>['nullable','string','max:120'],'status'=>['nullable',Rule::in(['draft','submitted','approved','rejected'])],'coverage'=>['nullable',Rule::in(['missing','complete','review'])],'per_page'=>['nullable','integer',Rule::in([20,50,100])],'product_id'=>['nullable','integer','min:1'],'country'=>['nullable','regex:/^[A-Z]{2}$/D'],'postal'=>['nullable','string','max:20'],'route_id'=>['nullable','integer','min:1'],'divisor'=>['nullable','integer',Rule::in([5000,6000,8000])],'confirmed'=>['nullable','boolean'],'handling'=>['nullable',Rule::in(['supplier','internal'])]]);
+        $tab=$filters['tab']??'records';
+        $canQuote=$user->can(AuthorizationKeys::InventoryPackagingReview->value);
+        if ($tab!=='records') {
+            abort_unless($reviewer,403);
+            $workspace=app(PackagingOptimizationWorkspace::class);
+            $list=$workspace->listing($filters);
+            return Inertia::render('Inventory/Packaging/Index',['records'=>['data'=>[],'links'=>[]],'filters'=>$filters,'tab'=>$tab,'canReview'=>$reviewer,'canSubmit'=>$user->can(AuthorizationKeys::InventoryPackagingSubmit->value),'canQuote'=>$canQuote,'optimization'=>$list,'selected'=>isset($filters['product_id'])?$workspace->detail((int)$filters['product_id'],$filters,$canQuote):null]);
+        }
         $query = PackagingMeasurementRecord::query()->with(['product:id,sku,name','warehouse:id,name','creator:id,name','media']);
         if (! $reviewer) $query->where('created_by', $user->getAuthIdentifier());
         if ($request->filled('status')) $query->where('status', $request->string('status'));
         if ($request->filled('search')) $query->whereHas('product', fn ($q) => $q->where('sku', 'like', '%'.$request->string('search').'%')->orWhere('name', 'like', '%'.$request->string('search').'%'));
-        $records = $query->latest('id')->paginate(20)->withQueryString()->through(fn (PackagingMeasurementRecord $r) => $this->summary($r));
-        return Inertia::render('Inventory/Packaging/Index', ['records'=>$records, 'filters'=>$request->only(['status','search']), 'canReview'=>$reviewer, 'canSubmit'=>$user->can(AuthorizationKeys::InventoryPackagingSubmit->value)]);
+        $records = $query->latest('id')->paginate((int)($filters['per_page']??20))->withQueryString()->through(fn (PackagingMeasurementRecord $r) => $this->summary($r));
+        return Inertia::render('Inventory/Packaging/Index', ['records'=>$records, 'filters'=>$filters, 'tab'=>'records', 'canReview'=>$reviewer, 'canSubmit'=>$user->can(AuthorizationKeys::InventoryPackagingSubmit->value)]);
     }
 
     public function create(Request $request): Response
@@ -61,8 +73,11 @@ final class PackagingMeasurementController
             'packagingPresets'=>$this->presets->all(),
             'currentStandardRecordId'=>$profile?->current_measurement_record_id,
             'isCurrentStandard'=>(int) ($profile?->current_measurement_record_id ?? 0) === (int) $record->id,
+            'upgradeComparison'=>app(PackagingUpgradeService::class)->comparison($record),
+            'upgradeQuote'=>$request->user()->can(AuthorizationKeys::InventoryPackagingReview->value)?$record->upgrade_quote_snapshot:null,
             'canAdoptStandard'=>$record->status === 'approved' && $request->user()->can(AuthorizationKeys::InventoryPackagingReview->value),
             'canReview'=>$request->user()->can(AuthorizationKeys::InventoryPackagingReview->value),
+            'canResubmit'=>$record->status === 'rejected' && (int) $record->created_by === (int) $request->user()->getAuthIdentifier() && $request->user()->can(AuthorizationKeys::InventoryPackagingSubmit->value),
             'canEdit'=>$record->status === 'draft' && $record->created_by === $request->user()->getAuthIdentifier(),
         ]);
     }
@@ -74,6 +89,7 @@ final class PackagingMeasurementController
         $profile = $this->activeProfile($record->product_id);
         return Inertia::render('Inventory/Packaging/Form', [
             'record'=>$this->detail($record),
+            'upgradeComparison'=>app(PackagingUpgradeService::class)->comparison($record),
             'warehouses'=>$this->warehouses(),
             'packagingPresets'=>$this->presets->all(),
             'packagingSop'=>$profile && $this->hasPackagingGuide($profile) ? $this->packagingProfile($profile) : null,
@@ -86,8 +102,37 @@ final class PackagingMeasurementController
         $profile = $this->activeProfile($product->id);
         return response()->json([
             'presets'=>$this->presets->all(),
+            'upgrade_baseline_id'=>$this->upgradeBaseline($product->id)?->id,
             'packaging_sop'=>$profile && $this->hasPackagingGuide($profile) ? $this->packagingProfile($profile) : null,
         ]);
+    }
+
+    private function upgradeBaseline(int $productId): ?PackagingMeasurementRecord
+    {
+        $id=$this->activeProfile($productId)?->current_measurement_record_id;
+        return $id?PackagingMeasurementRecord::query()->whereKey($id)->where('product_id',$productId)->where('status','approved')
+            ->where('packaged_weight_kg','>',0)->where('packaging_length_cm','>',0)->where('packaging_width_cm','>',0)->where('packaging_height_cm','>',0)->first():null;
+    }
+
+    public function startUpgrade(Request $request, Product $product): RedirectResponse
+    {
+        $this->authorizeSubmit($request);
+        abort_unless(Product::query()->businessCatalog()->where('is_active',true)->whereKey($product->id)->exists(),404);
+        $data=$request->validate(['baseline_id'=>['required','integer','min:1'],'method'=>['required',Rule::in($this->presets->keys())],'divisor'=>['required','integer',Rule::in([5000,6000,8000])]]);
+        $record=DB::transaction(function()use($request,$product,$data){
+            Product::query()->lockForUpdate()->findOrFail($product->id);
+            $base=$this->upgradeBaseline($product->id);
+            abort_unless($base && (int)$base->id===(int)$data['baseline_id'],409,'当前包装标准已变化，请重新确认方案');
+            $existing=PackagingMeasurementRecord::query()->where('product_id',$product->id)->where('upgrade_from_record_id',$base->id)
+                ->where('created_by',$request->user()->getAuthIdentifier())->where('packaging_method_key',$data['method'])->whereIn('status',['draft','submitted'])->latest('id')->first();
+            if($existing)return $existing;
+            $plan=app(PackagingUpgradeService::class)->plan($base,$data['method'],(int)$data['divisor']);
+            $record=PackagingMeasurementRecord::create(['product_id'=>$product->id,'warehouse_id'=>$base->warehouse_id,'packaging_method_key'=>$data['method'],
+                'upgrade_from_record_id'=>$base->id,'upgrade_plan'=>$plan,'status'=>'draft','created_by'=>$request->user()->getAuthIdentifier()]);
+            $this->audit($request,'packaging_measurement.upgrade_confirmed',$record,'factory_confirmed_upgrade');
+            return $record;
+        });
+        return redirect()->route($record->status==='draft'?'inventory.packaging.edit':'inventory.packaging.show',$record)->with('success','已记录采用方案，请填写升级后的真实尺寸和重量');
     }
 
     public function store(Request $request): RedirectResponse
@@ -95,14 +140,20 @@ final class PackagingMeasurementController
         $this->authorizeSubmit($request);
         $record = PackagingMeasurementRecord::create([...$this->validated($request, false), 'status'=>'draft', 'created_by'=>$request->user()->getAuthIdentifier()]);
         $this->audit($request, 'packaging_measurement.created', $record, 'packaging_measurement_created');
-        return redirect()->route('inventory.packaging.edit', $record)->with('success', '草稿已保存，可以继续上传证据');
+        return redirect()->route('inventory.packaging.edit', $record)->with('success', '草稿已保存，可直接填写测量数据或选传图片');
     }
 
     public function update(Request $request, PackagingMeasurementRecord $record): RedirectResponse
     {
         $this->authorizeOwnerDraft($request, $record);
-        $record->update($this->validated($request, false));
-        $this->audit($request, 'packaging_measurement.updated', $record, 'packaging_measurement_updated');
+        $data = $this->validated($request, false);
+        DB::transaction(function () use ($request, $record, $data): void {
+            $record = PackagingMeasurementRecord::query()->lockForUpdate()->findOrFail($record->id);
+            $this->authorizeOwnerDraft($request, $record);
+            $this->guardEvidenceProduct($record, $data);
+            $record->update($data);
+            $this->audit($request, 'packaging_measurement.updated', $record, 'packaging_measurement_updated');
+        });
         return back()->with('success', '草稿已更新');
     }
 
@@ -113,6 +164,8 @@ final class PackagingMeasurementController
         $stored = [];
         try {
             DB::transaction(function () use ($request, $record, $data, &$stored): void {
+                $record = PackagingMeasurementRecord::query()->lockForUpdate()->findOrFail($record->id);
+                $this->authorizeOwnerDraft($request, $record);
                 foreach ($request->file('files', []) as $file) {
                     $path = $file->store('inventory/packaging-evidence/'.$record->id.'/'.$data['kind'], 'local');
                     $stored[] = $path;
@@ -128,9 +181,13 @@ final class PackagingMeasurementController
 
     public function removeMedia(Request $request, PackagingMeasurementMedia $media): RedirectResponse
     {
-        $this->authorizeOwnerDraft($request, $media->record()->firstOrFail());
-        Storage::disk($media->disk)->delete($media->path);
-        $media->delete();
+        DB::transaction(function () use ($request, $media): void {
+            $record = PackagingMeasurementRecord::query()->lockForUpdate()->findOrFail($media->record_id);
+            $this->authorizeOwnerDraft($request, $record);
+            $lockedMedia = $record->media()->whereKey($media->id)->firstOrFail();
+            $lockedMedia->delete();
+            DB::afterCommit(fn () => Storage::disk($lockedMedia->disk)->delete($lockedMedia->path));
+        });
         return back()->with('success', '图片已删除');
     }
 
@@ -138,9 +195,20 @@ final class PackagingMeasurementController
     {
         $this->authorizeOwnerDraft($request, $record);
         $data = $this->validated($request, true);
-        abort_unless($record->media()->where('kind','measurement')->exists() && $record->media()->where('kind','weight')->exists(), 422, '提交前必须上传尺寸测量图和称重记录图');
-        $record->update([...$data, 'status'=>'submitted', 'submitted_at'=>now()]);
-        $this->audit($request, 'packaging_measurement.submitted', $record, 'packaging_measurement_submitted');
+        $record = DB::transaction(function () use ($request, $record, $data): PackagingMeasurementRecord {
+            $record = PackagingMeasurementRecord::query()->lockForUpdate()->findOrFail($record->id);
+            $this->authorizeOwnerDraft($request, $record);
+            $this->guardEvidenceProduct($record, $data);
+            $reason = $this->photoRequirement($record, $data);
+            if ($reason && ! $this->hasRequiredPhotos($record)) {
+                throw ValidationException::withMessages(['photos'=>$reason === 'reviewer_requested'
+                    ? '运营要求拍照复核，请上传尺寸图及称重图。'
+                    : '本次测量与已采用的同包装标准差异明显，请核对数值；确认无误后上传尺寸图及称重图。']);
+            }
+            $record->update([...$data, 'photo_requirement_reason'=>$reason, 'status'=>'submitted', 'submitted_at'=>now()]);
+            $this->audit($request, 'packaging_measurement.submitted', $record, 'packaging_measurement_submitted');
+            return $record;
+        });
         $record->loadMissing('product:id,sku,name');
         $this->notifications->publishToPermission(AuthorizationKeys::InventoryPackagingReview->value, [
             'category'=>'inventory',
@@ -157,9 +225,18 @@ final class PackagingMeasurementController
     public function review(Request $request, PackagingMeasurementRecord $record): RedirectResponse
     {
         abort_unless($record->status === 'submitted', 422, '只有待审核记录可以审核');
-        $data = $request->validate(['decision'=>['required', Rule::in(['approved','rejected'])], 'review_note'=>['nullable','string','max:5000']]);
-        $record->update(['status'=>$data['decision'], 'review_note'=>$data['review_note'] ?? null, 'reviewed_by'=>$request->user()->getAuthIdentifier(), 'reviewed_at'=>now()]);
-        $this->audit($request, 'packaging_measurement.'.$data['decision'], $record, 'packaging_measurement_'.$data['decision']);
+        $data = $request->validate(['decision'=>['required', Rule::in(['approved','rejected'])], 'review_note'=>['required_if:decision,rejected','nullable','string','max:5000'], 'require_photos'=>['sometimes','boolean']]);
+        abort_if(($data['require_photos'] ?? false) && $data['decision'] !== 'rejected', 422, '拍照复核必须通过驳回发起');
+        $record = DB::transaction(function () use ($request, $record, $data): PackagingMeasurementRecord {
+            $record = PackagingMeasurementRecord::query()->lockForUpdate()->findOrFail($record->id);
+            abort_unless($record->status === 'submitted', 409, '记录已被处理，请刷新');
+            if ($data['decision'] === 'approved' && $record->photo_requirement_reason && ! $this->hasRequiredPhotos($record)) {
+                throw ValidationException::withMessages(['photos'=>'本记录要求拍照复核，证据不完整。']);
+            }
+            $record->update(['photo_requirement_reason'=>($data['require_photos'] ?? false) ? 'reviewer_requested' : $record->photo_requirement_reason, 'status'=>$data['decision'], 'review_note'=>$data['review_note'] ?? null, 'reviewed_by'=>$request->user()->getAuthIdentifier(), 'reviewed_at'=>now()]);
+            $this->audit($request, 'packaging_measurement.'.$data['decision'], $record, 'packaging_measurement_'.$data['decision']);
+            return $record;
+        });
         $record->loadMissing(['product:id,sku,name','creator:id,name']);
         if ($record->creator && (int) $record->creator->id !== (int) $request->user()->getAuthIdentifier()) {
             $approved = $data['decision'] === 'approved';
@@ -179,16 +256,73 @@ final class PackagingMeasurementController
         return back()->with('success', $data['decision'] === 'approved' ? '已批准' : '已驳回');
     }
 
+    public function resubmit(Request $request, PackagingMeasurementRecord $record): RedirectResponse
+    {
+        $this->authorizeSubmit($request);
+        $next = DB::transaction(function () use ($request, $record): PackagingMeasurementRecord {
+            $record = PackagingMeasurementRecord::query()->lockForUpdate()->findOrFail($record->id);
+            abort_unless((int) $record->created_by === (int) $request->user()->getAuthIdentifier(), 403);
+            abort_unless($record->status === 'rejected', 422, '只有已驳回记录可以重新测量');
+            $existing = PackagingMeasurementRecord::query()->where('resubmission_of_id', $record->id)->first();
+            if ($existing) {
+                abort_unless($existing->status === 'draft', 409, '已存在重新提交记录');
+                return $existing;
+            }
+            // Original evidence remains immutable; only explicit or abnormal review requires new photos.
+            $next = PackagingMeasurementRecord::create([
+                ...$record->only(['product_id','warehouse_id','packaging_method_key','upgrade_from_record_id','upgrade_plan']),
+                'resubmission_of_id'=>$record->id, 'photo_requirement_reason'=>$record->photo_requirement_reason, 'status'=>'draft', 'created_by'=>$request->user()->getAuthIdentifier(),
+            ]);
+            $this->audit->record(AuditActor::user($request->user(), AuditSource::Web),
+                'packaging_measurement.resubmission_created', $next::class, $next->id,
+                after: ['resubmission_of_id'=>$record->id, 'product_id'=>$record->product_id],
+                reason: 'packaging_measurement_rejected_resubmission');
+            return $next;
+        });
+        return redirect()->route('inventory.packaging.edit', $next)->with('success', '请重新填写测量数据；原驳回记录保留，按复核要求上传图片');
+    }
+
+    public function upgradeQuote(Request $request, PackagingMeasurementRecord $record): JsonResponse
+    {
+        abort_unless($record->upgrade_from_record_id && in_array($record->status,['submitted','approved'],true),422);
+        $data=$request->validate(['country'=>['required','regex:/^[A-Z]{2}$/D'],'route_id'=>['nullable','integer','min:1'],'postal'=>['nullable','string','max:20'],'handling'=>['nullable',Rule::in(['supplier','internal'])],'confirmed'=>['nullable','boolean']]);
+        $routes=app(PackagingOptimizationWorkspace::class)->routes($data['country'],now('Asia/Shanghai')->toDateString())->map(fn($r)=>['id'=>(int)$r->component_id,'label'=>$r->warehouse_code.' / '.$r->carrier.' / '.$r->service.' · '.$r->status])->values();
+        $quote=isset($data['route_id'])?app(PackagingUpgradeService::class)->quote($record,$data):null;
+        return response()->json(['routes'=>$routes,'quote'=>$quote]);
+    }
+
     public function adoptStandard(Request $request, PackagingMeasurementRecord $record): RedirectResponse
     {
         abort_unless($record->status === 'approved', 422, '只有已批准记录可以设为当前包装标准');
-        DB::transaction(function () use ($request, $record): void {
-            $profile = ProductPackagingProfile::query()->firstOrNew(['product_id'=>$record->product_id]);
-            if (! $profile->exists && in_array($record->packaging_method_key, $this->presets->keys(), true)) {
+        $expectation = $request->validate(['expected_current_standard_record_id'=>['sometimes','nullable','integer'],'quote_route_id'=>['nullable','integer','min:1'],'quote_postal'=>['nullable','string','max:20'],'quote_confirmed'=>['nullable','boolean'],'quote_country'=>['required_with:quote_route_id','nullable','regex:/^[A-Z]{2}$/D'],'quote_handling'=>['nullable',Rule::in(['supplier','internal'])]]);
+        DB::transaction(function () use ($request, $record, $expectation): void {
+            Product::query()->lockForUpdate()->findOrFail($record->product_id);
+            $record = PackagingMeasurementRecord::query()->lockForUpdate()->findOrFail($record->id);
+            abort_unless($record->status === 'approved', 409, '记录状态已变化');
+            abort_unless($record->packaged_weight_kg > 0 && $record->packaging_length_cm > 0 && $record->packaging_width_cm > 0 && $record->packaging_height_cm > 0, 422, '包装测量不完整');
+            abort_if($record->photo_requirement_reason && ! $this->hasRequiredPhotos($record), 422, '拍照复核证据不完整');
+            $profile = ProductPackagingProfile::query()->where('product_id',$record->product_id)->lockForUpdate()->first()
+                ?? new ProductPackagingProfile(['product_id'=>$record->product_id]);
+            $previous = $profile->current_measurement_record_id;
+            if (array_key_exists('expected_current_standard_record_id', $expectation)) {
+                abort_unless((int) $previous === (int) $expectation['expected_current_standard_record_id'], 409, '包装标准已变化，请刷新后重新确认');
+            }
+            if ((int) $previous === (int) $record->id && $profile->is_active) return;
+            if ($record->upgrade_from_record_id) {
+                abort_unless($profile->is_active && (int)$previous===(int)$record->upgrade_from_record_id,409,'原包装标准已变化，禁止覆盖更新后的标准');
+                $quote=null;
+                if (!empty($expectation['quote_route_id']) && ($expectation['quote_confirmed']??false)) {
+                    $quote=app(PackagingUpgradeService::class)->quote($record,['route_id'=>$expectation['quote_route_id'],'confirmed'=>true,'country'=>$expectation['quote_country'],'postal'=>$expectation['quote_postal']??'','handling'=>$expectation['quote_handling']??'supplier']);
+                }
+                if (!empty($expectation['quote_route_id']) && ($expectation['quote_confirmed']??false)) abort_unless($quote && ($quote['after']['status']??null)!=='unavailable',422,'报价无法确认，请重新测算或取消费用快照');
+                $record->update(['standard_adopted_at'=>now(),'upgrade_quote_snapshot'=>$quote]);
+            }
+            if (in_array($record->packaging_method_key, $this->presets->keys(), true)) {
                 $profile->preset_key = $record->packaging_method_key;
             }
-            if (! $profile->exists && $record->packaging_method_key === 'custom') {
-                $profile->custom_method = '定制包装方案';
+            if ($record->packaging_method_key === 'custom') {
+                $profile->preset_key = null;
+                $profile->custom_method ??= '定制包装方案';
             }
             $profile->current_measurement_record_id = $record->id;
             $profile->is_active = true;
@@ -197,7 +331,8 @@ final class PackagingMeasurementController
                 AuditActor::user($request->user(), AuditSource::Web),
                 'packaging_measurement.adopted_as_current_standard',
                 $record::class, $record->id,
-                after: ['product_id'=>$record->product_id, 'current_measurement_record_id'=>$record->id],
+                before: ['current_measurement_record_id'=>$previous],
+                after: ['product_id'=>$record->product_id, 'current_measurement_record_id'=>$record->id, 'adopted_at'=>now()->toIso8601String()],
                 reason: 'packaging_measurement_current_standard_adopted',
             );
         });
@@ -228,10 +363,47 @@ final class PackagingMeasurementController
         ]);
     }
 
+    private function hasRequiredPhotos(PackagingMeasurementRecord $record): bool
+    {
+        return $record->media()->where('kind','measurement')->exists()
+            && $record->media()->where('kind','weight')->exists();
+    }
+
+    /** Only comparable adopted measurements qualify; a new packaging method is not itself anomalous. */
+    private function photoRequirement(PackagingMeasurementRecord $record, array $data): ?string
+    {
+        if ($record->photo_requirement_reason) return $record->photo_requirement_reason;
+        $method = $data['packaging_method_key'] ?? $record->packaging_method_key;
+        if (! $method) return null;
+        $profile = ProductPackagingProfile::query()->where('product_id', $data['product_id'])->where('is_active', true)->first();
+        if (! $profile?->current_measurement_record_id) return null;
+        $prior = PackagingMeasurementRecord::query()->whereKey($profile->current_measurement_record_id)
+            ->where('product_id', $data['product_id'])->where('status','approved')->where('packaging_method_key',$method)->first();
+        if (! $prior) return null;
+        $keys = ['packaged_weight_kg','packaging_length_cm','packaging_width_cm','packaging_height_cm'];
+        foreach ($keys as $key) if (! is_numeric($prior->$key) || (float) $prior->$key <= 0) return null;
+        $weightRatio = (float) $data['packaged_weight_kg'] / (float) $prior->packaged_weight_kg;
+        $volumeRatio = 1.0;
+        foreach (array_slice($keys, 1) as $key) $volumeRatio *= (float) $data[$key] / (float) $prior->$key;
+        // Conservative operational default: at least double or at most half the adopted weight or volume.
+        return min($weightRatio,$volumeRatio) <= 0.5 || max($weightRatio,$volumeRatio) >= 2.0
+            ? 'material_deviation' : null;
+    }
+
+    private function guardEvidenceProduct(PackagingMeasurementRecord $record, array $data): void
+    {
+        if ($record->upgrade_from_record_id) {
+            abort_unless((int)$data['product_id']===(int)$record->product_id && ($data['packaging_method_key']??null)===$record->packaging_method_key,422,'升级方案商品及包装方式已确认，不可修改；不同方案请新建记录');
+        }
+        if ($record->resubmission_of_id || $record->media()->exists()) {
+            abort_unless((int) $record->product_id === (int) $data['product_id'], 422, '有证据或重传历史的记录不能更换商品');
+        }
+    }
+
     private function authorizeSubmit(Request $request): void { abort_unless($request->user()->can(AuthorizationKeys::InventoryPackagingSubmit->value), 403); }
     private function authorizeOwnerDraft(Request $request, PackagingMeasurementRecord $record): void { $this->authorizeSubmit($request); abort_unless($record->created_by === $request->user()->getAuthIdentifier() && $record->status === 'draft', 403); }
     private function authorizeRead(Request $request, PackagingMeasurementRecord $record): void { $user=$request->user(); abort_unless($user->can(AuthorizationKeys::InventoryPackagingReview->value) || $user->can(AuthorizationKeys::InventoryView->value) || ($user->can(AuthorizationKeys::InventoryPackagingSubmit->value) && $record->created_by === $user->getAuthIdentifier()), 403); }
-    private function audit(Request $request, string $action, PackagingMeasurementRecord $record, string $reason): void { $this->audit->record(AuditActor::user($request->user(), AuditSource::Web), $action, $record::class, $record->id, after: ['status'=>$record->status], reason: $reason); }
+    private function audit(Request $request, string $action, PackagingMeasurementRecord $record, string $reason): void { $this->audit->record(AuditActor::user($request->user(), AuditSource::Web), $action, $record::class, $record->id, after: ['status'=>$record->status,'photo_requirement_reason'=>$record->photo_requirement_reason,'upgrade_from_record_id'=>$record->upgrade_from_record_id], reason: $reason); }
     private function warehouses() { return Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id','name']); }
     private function activeProfile(int $productId): ?ProductPackagingProfile { return ProductPackagingProfile::query()->with('media')->where('product_id', $productId)->where('is_active', true)->first(); }
 
@@ -250,7 +422,7 @@ final class PackagingMeasurementController
     {
         return [...$this->summary($r), 'warehouse_id'=>$r->warehouse_id,'packaging_length_cm'=>$r->packaging_length_cm,
             'packaging_width_cm'=>$r->packaging_width_cm,'packaging_height_cm'=>$r->packaging_height_cm,'packaged_weight_kg'=>$r->packaged_weight_kg,
-            'note'=>$r->note,'submitted_at'=>$r->submitted_at?->toIso8601String(),'reviewer'=>$r->reviewer?->name,'reviewed_at'=>$r->reviewed_at?->toIso8601String(),
+            'resubmission_of_id'=>$r->resubmission_of_id,'upgrade_from_record_id'=>$r->upgrade_from_record_id,'standard_adopted_at'=>$r->standard_adopted_at?->toIso8601String(),'photo_requirement_reason'=>$r->photo_requirement_reason,'note'=>$r->note,'submitted_at'=>$r->submitted_at?->toIso8601String(),'reviewer'=>$r->reviewer?->name,'reviewed_at'=>$r->reviewed_at?->toIso8601String(),
             'review_note'=>$r->review_note,'media'=>$r->media->map(fn($m)=>['id'=>$m->id,'kind'=>$m->kind,'name'=>$m->original_name,'mime_type'=>$m->mime_type,'size_bytes'=>$m->size_bytes,'url'=>route('inventory.packaging.media',$m)])->values()];
     }
 

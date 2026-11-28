@@ -51,9 +51,10 @@ final class XlwmsOrderGateway
                 && in_array($channel, (array) config('xlwms.de_verified_channel_codes', []), true)
                 && $itemsValid;
             $productionNy = app()->environment('production', 'testing')
-                && (bool) config('xlwms.us_ny_canary_enabled', false)
                 && $exactOrderId > 0
-                && $exactOrderId === (int) config('xlwms.us_ny_canary_order_id')
+                && ((config('xlwms.us_ny_canary_enabled', false)
+                    && $exactOrderId === (int) config('xlwms.us_ny_canary_order_id'))
+                    || \App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::liveEnabled())
                 && $connection->oms_warehouse_code === 'US01'
                 && ($row['whCode'] ?? null) === 'US01'
                 && ($row['isSubmit'] ?? null) === 1

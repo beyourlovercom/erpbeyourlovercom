@@ -21,9 +21,30 @@ final class OrderProgressResolver
         if ($order->archived_at !== null || $order->isOperationallyArchived()) {
             return 'archived';
         }
+        if ($order->fulfillment_parent_id === null) {
+            $order->loadMissing('originalFulfillmentChildren');
+            if ($order->originalFulfillmentChildren->isNotEmpty()) {
+                return $this->aggregateChildren($order->originalFulfillmentChildren);
+            }
+        }
+        if ($order->fulfillment_parent_id !== null
+            && $order->order_status === OrderStatus::PendingShipment
+            && $order->workflow_status === 'pending_allocation'
+            && in_array($order->routing_warehouse_code, [null, 'UNASSIGNED'], true)) {
+            $order->loadMissing('shipment');
+            $shipment = $order->shipment;
+            if ($shipment === null || ($shipment->shipment_status === 'pending'
+                && $shipment->shipped_at === null)) {
+                return 'exception';
+            }
+        }
         // Staff explicitly returning an order to allocation/review wins over
         // its former visible phase; shipment facts still gate real dispatch.
-        if (in_array($order->workflow_status, ['pending_allocation', 'pending_review'], true)) {
+        $order->loadMissing('shipment');
+        $hasShipped = in_array($order->order_status, [OrderStatus::Shipped, OrderStatus::Completed, OrderStatus::CompletedDelivered], true)
+            || in_array($order->shipment?->shipment_status, ['shipped', 'completed'], true)
+            || $order->shipment?->shipped_at !== null;
+        if (! $hasShipped && in_array($order->workflow_status, ['pending_allocation', 'pending_review'], true)) {
             return $order->workflow_status;
         }
         if ($order->order_status === OrderStatus::Cancelled) {
@@ -34,22 +55,15 @@ final class OrderProgressResolver
         // source, shipment, refund, or warehouse facts.
         $order->loadMissing('operationalMarkers');
         $selected = OrderManualHoldStatus::selected($order);
-        if ($selected !== null) {
+        if ($selected !== null && ! ($hasShipped && in_array($selected, ['sending', 'pending_allocation'], true))) {
             return OrderManualHoldStatus::bucket($selected);
         }
         if ($order->fulfillment_parent_id !== null) {
             $order->loadMissing('fulfillmentParent.operationalMarkers');
             $parent = $order->fulfillmentParent;
             $parentSelected = $parent ? OrderManualHoldStatus::selected($parent) : null;
-            if ($parentSelected !== null) {
+            if ($parentSelected !== null && in_array($parentSelected, [...OrderManualHoldStatus::CODES, 'out_of_stock'], true)) {
                 return OrderManualHoldStatus::bucket($parentSelected);
-            }
-        }
-
-        if ($order->fulfillment_parent_id === null) {
-            $order->loadMissing('originalFulfillmentChildren');
-            if ($order->originalFulfillmentChildren->isNotEmpty()) {
-                return $this->aggregateChildren($order->originalFulfillmentChildren);
             }
         }
 
@@ -136,6 +150,14 @@ final class OrderProgressResolver
     private function aggregateChildren(Collection $children): string
     {
         $phases = $children->map(fn (Order $child): ?string => $this->resolve($child))->values();
+        $physicallyShipped = $children->filter(function (Order $child): bool {
+            $child->loadMissing('shipment');
+            return in_array($child->shipment?->shipment_status, ['shipped', 'completed'], true)
+                && $child->shipment?->shipped_at !== null;
+        })->count();
+        if ($physicallyShipped > 0 && $physicallyShipped < $children->count()) {
+            return 'partially_shipped';
+        }
 
         if ($phases->contains('exception')) {
             return 'exception';

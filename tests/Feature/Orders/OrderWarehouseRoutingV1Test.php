@@ -296,21 +296,21 @@ final class OrderWarehouseRoutingV1Test extends TestCase
         $route = $this->patchJson('/orders/'.$order->id.'/warehouse-route', [
             'warehouse_code' => 'US-NY', 'expected_routing_revision' => 0,
         ])->assertOk()->assertJsonPath('routing_warehouse.code', 'US-NY')
-            ->assertJsonPath('target_url', '/logistics/oversea/us-ny?view=pending&global_grid=1');
+            ->assertJsonPath('target_url', '/logistics/oversea/us-ny?view=review&global_grid=1');
         self::assertSame('US-NY', $route->json('routing_warehouse.code'));
         $this->get('/logistics/oversea/us-3sm?view=pending')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('rows.total', 0)->where('viewCounts.pending', 0));
-        $this->get('/logistics/oversea/us-ny?view=pending')
+        $this->get('/logistics/oversea/us-ny?view=review')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->where('rows.total', 1)->where('viewCounts.pending', 1)
+            ->where('rows.total', 1)->where('viewCounts.review', 1)
             ->where('rows.data.0.routing_warehouse.code', 'US-NY'));
 
         foreach ([
             ['out_of_stock', 'stockout', 1],
             ['exception', 'exceptions', 2],
             ['renew', 'exceptions', 3],
-            ['sending', 'pending', 4],
+            ['sending', 'review', 4],
         ] as [$status, $bucket, $revision]) {
             $this->patchJson('/orders/'.$order->id.'/workflow-status', [
                 'workflow_status' => $status, 'expected_workflow_revision' => $revision,

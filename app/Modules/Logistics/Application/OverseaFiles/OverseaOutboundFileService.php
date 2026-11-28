@@ -23,6 +23,11 @@ final class OverseaOutboundFileService
     {
         $order = $shipment->order;
         abort_unless($order, 422, '找不到订单。');
+        abort_if($order->originalFulfillmentChildren()->exists(), 409, '拆单母订单禁止直接导出。');
+        abort_if($order->fulfillment_parent_id !== null
+            && ($order->order_status?->value !== 'pending_shipment'
+                || $shipment->shipment_status !== 'pending' || $shipment->shipped_at !== null
+                || filled($shipment->tracking_number)), 409, '子订单已有实际物流，请使用专用补发流程。');
         $base = trim((string) $this->references()->warehouse($order));
         abort_if($base === '', 422, '订单缺少仓库参考单号。');
         $reference = $this->wms->uniqueUsSmReference($base);
@@ -53,6 +58,13 @@ final class OverseaOutboundFileService
     /** @param iterable<Shipment> $shipments @return array{filename:string,bytes:string} */
     public function export(string $warehouseKey, iterable $shipments): array
     {
+        $shipments = collect($shipments);
+        foreach ($shipments as $shipment) {
+            abort_if($shipment->order?->originalFulfillmentChildren()->exists()
+                || $shipment->order?->order_status?->value !== 'pending_shipment'
+                || $shipment->shipment_status !== 'pending' || $shipment->shipped_at !== null,
+                409, '拆单母订单或已发货订单禁止导出。');
+        }
         $bytes = match ($warehouseKey) {
             'us-ny', 'us-3sm', 'de-tianyun' => $this->wms->export($warehouseKey, $shipments),
             'us-moreplus' => $this->morePlus->export($shipments),

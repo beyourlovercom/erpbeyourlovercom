@@ -4,6 +4,30 @@ namespace App\Modules\Logistics\Application;
 
 final class WarehouseRoutingPolicy
 {
+    public function destinationAllowed(?string $country, string $warehouse): bool
+    {
+        $code = $this->canonicalWarehouseCode($warehouse);
+        $allow = config("warehouse_routing.destination_allowlists.{$code}");
+        if (! is_array($allow)) return true;
+        $destination = \App\Support\Countries\CountryStandard::resolve($country);
+        return $destination !== null && in_array($destination, $allow, true);
+    }
+
+    public function countryDisplay(?string $country): string
+    {
+        $code = \App\Support\Countries\CountryStandard::resolve($country);
+        if ($code === null) return trim((string) $country) === '' ? '—' : trim((string) $country).'/区域待确认';
+        $row = collect(\App\Support\Countries\CountryStandard::dictionary())->firstWhere('code', $code);
+        $region = '区域待确认';
+        foreach (config('country_regions.groups', []) as $label => $codes) {
+            if (in_array($code, $codes, true)) {
+                $region = $label === '欧盟' && ! $this->destinationAllowed($code, 'DE') ? '欧洲' : $label;
+                break;
+            }
+        }
+        return $code.'-'.($row['zh'] ?? $code).'/'.$region;
+    }
+
     /** @return array<string,mixed>|null */
     public function country(string $country): ?array
     {
@@ -37,7 +61,7 @@ final class WarehouseRoutingPolicy
     {
         return collect($this->country($country)['warehouses'] ?? [])
             ->map(fn ($warehouse): string => strtoupper(trim((string) (is_array($warehouse) ? ($warehouse['code'] ?? '') : $warehouse))))
-            ->filter()->unique()->values()->all();
+            ->filter(fn (string $code): bool => $code !== '' && $this->destinationAllowed($country, $code))->unique()->values()->all();
     }
 
     public function fixedWarehouseCode(string $country): ?string

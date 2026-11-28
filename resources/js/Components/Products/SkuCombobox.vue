@@ -89,6 +89,11 @@ const onInput = (event: Event) => {
 }
 
 const select = (option: SkuOption) => {
+  // A delayed search must not reopen the dropdown after a SKU is selected.
+  clearTimeout(debounceTimer)
+  clearTimeout(blurTimer)
+  requestSequence += 1
+  loading.value = false
   inputValue.value = option.sku
   emit('update:modelValue', option.sku)
   emit('update:productId', option.id)

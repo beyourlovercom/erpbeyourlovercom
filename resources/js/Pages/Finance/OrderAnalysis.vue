@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { orderCountryLabel } from '../../lib/countryStandard'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, onMounted, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
@@ -245,7 +246,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
     date: row.order_date ?? '—',
     source: row.source_type,
     order_workflow_status: row.workflow_status_projection.zh,
-    country: row.country ?? '—',
+    country: orderCountryLabel(row.country),
     currency: row.currency,
     revenue: money(row.summary.commercial_revenue_before_refund, row),
     refund: money(row.values.refund_amount ?? null, row),

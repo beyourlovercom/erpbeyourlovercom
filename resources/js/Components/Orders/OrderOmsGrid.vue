@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { orderCountryLabel } from '../../lib/countryStandard'
 import { computed, ref } from 'vue'
 import type { ColDef } from 'ag-grid-community'
 import OmsGrid from '../../Components/DataGrid/OmsGrid.vue'
@@ -68,7 +69,7 @@ const columns = computed<ColDef<Record<string, unknown>>[]>(() => [
   basic('source', 'source_label', '来源', 116, true, true),
   basic('date', 'order_date', '订单日期', 126, true, true),
   basic('recipient', 'recipient', '收件人', 135, true),
-  basic('country', 'country', '国家', 92, true),
+  { ...basic('country', 'country', '国家', 205, true), valueFormatter: p => orderCountryLabel(p.value), useValueFormatterForExport: false, tooltipValueGetter: p => orderCountryLabel(p.value) },
   { ...basic('warehouse', 'warehouse_name', '所属分仓', 192, true),
     cellRenderer:OrderWarehouseRouteGridCell,
     cellRendererParams:{warehouseRouteOptions:props.warehouseRouteOptions??[],

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { orderCountryLabel } from '../../lib/countryStandard'
 import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
@@ -98,7 +99,7 @@ const goToPage = (page: number) => router.get('/logistics/in-transit', { ...curr
       </tr></thead><tbody>
         <template v-for="row in shipments.data" :key="row.shipment_id">
           <tr>
-            <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.erp_order_id ?? '—' }}</Link><span v-else>{{ row.erp_order_id ?? '—' }}</span></template><template v-else-if="column.key === 'contact'">{{ row.contact_user_name ?? '未分配' }}</template><template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template><template v-else-if="column.key === 'warehouse'">{{ row.warehouse_name ?? '—' }}</template><template v-else-if="column.key === 'carrier'">{{ [row.carrier, row.service].filter(Boolean).join(' / ') || '—' }}</template><template v-else-if="column.key === 'tracking'">{{ row.tracking_number ?? '—' }}</template><template v-else>{{ row.shipped_at ? row.shipped_at.slice(0, 10) : '—' }}</template></td>
+            <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.erp_order_id ?? '—' }}</Link><span v-else>{{ row.erp_order_id ?? '—' }}</span></template><template v-else-if="column.key === 'contact'">{{ row.contact_user_name ?? '未分配' }}</template><template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ orderCountryLabel(row.country) }}</template><template v-else-if="column.key === 'warehouse'">{{ row.warehouse_name ?? '—' }}</template><template v-else-if="column.key === 'carrier'">{{ [row.carrier, row.service].filter(Boolean).join(' / ') || '—' }}</template><template v-else-if="column.key === 'tracking'">{{ row.tracking_number ?? '—' }}</template><template v-else>{{ row.shipped_at ? row.shipped_at.slice(0, 10) : '—' }}</template></td>
             <td class="mvp-actions">
               <button class="mvp-button" type="button" @click="copyTracking(row)">复制追踪</button>
               <button v-if="props.canOperate" class="mvp-button" type="button" @click="exceptionOpen = exceptionOpen === row.order_id ? null : row.order_id">标记异常</button>

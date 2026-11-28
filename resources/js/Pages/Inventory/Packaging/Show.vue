@@ -7,20 +7,43 @@ type Media = { id:number; kind:string; name:string|null; url:string }
 type SopStep = { position:number; title:string; instruction:string; image_url?:string|null }
 type SopExample = { title:string; image_url?:string|null }
 type PackagingSop = { id:number; title:string; method:string; scenario?:string|null; version?:string|null; materials:string[]; steps:SopStep[]; tips:string[]; examples:SopExample[] }
-const props = defineProps<{record:any; packagingSop:PackagingSop|null; canReview:boolean; canEdit:boolean; canAdoptStandard:boolean; isCurrentStandard:boolean; currentStandardRecordId:number|null}>()
+const props = defineProps<{record:any; packagingSop:PackagingSop|null; canReview:boolean; canResubmit?:boolean; canEdit:boolean; canAdoptStandard:boolean; isCurrentStandard:boolean; currentStandardRecordId:number|null;upgradeComparison?:any;upgradeQuote?:any}>()
 const labels:any = { draft:'草稿', submitted:'待审核', approved:'已批准', rejected:'已驳回' }
 const reviewNote = ref('')
+const requirePhotos = ref(false)
+const country=ref('US'),postal=ref(''),handling=ref('supplier'),routeId=ref(0),confirmed=ref(false)
+const routes=ref<{id:number;label:string}[]>([]),quote=ref<any>(props.upgradeQuote??null),quoteError=ref('')
+const quotedRoute=ref(false)
+async function loadQuote(reset=false){
+    if(reset){routeId.value=0;confirmed.value=false}
+    quoteError.value='';quotedRoute.value=false
+    const params=new URLSearchParams({country:country.value,postal:postal.value,handling:handling.value,confirmed:confirmed.value?'1':'0'})
+    if(routeId.value)params.set('route_id',String(routeId.value))
+    const response=await fetch(`/inventory/packaging/${props.record.id}/upgrade-quote?${params}`,{headers:{Accept:'application/json'}})
+    if(!response.ok){quoteError.value='报价不可用';return}
+    const result=await response.json();routes.value=result.routes;quote.value=result.quote
+    quotedRoute.value=!!result.quote&&result.quote.after?.status!=='unavailable'
+    if(routeId.value&&!quotedRoute.value)quoteError.value='报价不可用，不能记入节省金额'
+}
+function invalidateQuote(){confirmed.value=false;quotedRoute.value=false;quote.value=null}
+function f(v:any,d=2){return v==null?'—':Number(v).toFixed(d)}
+function method(v:any){return ({carton:'加纸箱',direct_mailer:'原包装套袋',document_bubble_mailer:'文件气泡袋',bubble_wrap_cut:'气泡袋裁剪',custom:'定制'} as Record<string,string>)[v]||v||'—'}
+function price(q:any){const n=q?.status==='draft_estimate'?q.reference_total_cny:q?.total_cny;return n==null?'待核算':(q.status==='draft_estimate'?'参考 ':'')+'¥'+f(n)}
+
 
 function review(decision:string) {
     router.post(`/inventory/packaging/${props.record.id}/review`, {
         decision,
         review_note: reviewNote.value || null,
+        require_photos: decision === 'rejected' && requirePhotos.value,
     })
 }
 
 function adoptStandard() {
-    router.post(`/inventory/packaging/${props.record.id}/adopt-standard`)
+    router.post(`/inventory/packaging/${props.record.id}/adopt-standard`, {expected_current_standard_record_id:props.currentStandardRecordId,...(quotedRoute.value?{quote_route_id:routeId.value,quote_country:country.value,quote_postal:postal.value,quote_handling:handling.value,quote_confirmed:true}:{})})
 }
+
+function resubmit() { router.post(`/inventory/packaging/${props.record.id}/resubmit`) }
 
 function mediaFor(kind:string): Media[] {
     return (props.record.media ?? []).filter((media:Media) => media.kind === kind)
@@ -41,6 +64,7 @@ function mediaFor(kind:string): Media[] {
                     <span class="status-pill" :class="`status-${record.status}`">{{labels[record.status]}}</span>
                     <Link class="mvp-button" href="/inventory/packaging">返回列表</Link>
                     <Link v-if="canEdit" class="mvp-button" :href="`/inventory/packaging/${record.id}/edit`">编辑草稿</Link>
+                    <button v-if="canResubmit" class="mvp-button mvp-button-primary" @click="resubmit">重新测量</button>
                     <span v-if="isCurrentStandard" class="current-standard-pill">当前包装标准</span>
                     <button v-else-if="canAdoptStandard" class="mvp-button mvp-button-primary" @click="adoptStandard">设为当前包装标准</button>
                     <button v-if="canReview && record.status === 'submitted'" class="mvp-button" @click="review('rejected')">驳回</button>
@@ -48,6 +72,30 @@ function mediaFor(kind:string): Media[] {
                 </div>
             </div>
 
+            <section v-if="upgradeComparison" class="mvp-card" style="padding:14px;overflow:auto">
+                <h3>包装升级版本对比</h3>
+                <table style="width:100%;text-align:left;border-collapse:collapse;line-height:2">
+                    <thead><tr><th>参数</th><th>优化前 #{{upgradeComparison.baseline.record_id}}</th><th>理论建议（非实测）</th><th>优化后实测</th></tr></thead>
+                    <tbody>
+                        <tr><td>包装方式</td><td>{{method(upgradeComparison.baseline.method)}}</td><td>{{method(upgradeComparison.proposed.method)}}</td><td>{{method(upgradeComparison.actual.method)}}</td></tr>
+                        <tr v-for="field in ['length_cm','width_cm','height_cm','weight_kg']" :key="field"><td>{{({length_cm:'长度 cm',width_cm:'宽度 cm',height_cm:'高度 cm',weight_kg:'重量 kg'} as Record<string,string>)[field]}}</td><td>{{f(upgradeComparison.baseline[field],field==='weight_kg'?3:2)}}</td><td>{{f(upgradeComparison.proposed[field],field==='weight_kg'?3:2)}}</td><td><strong>{{f(upgradeComparison.actual[field],field==='weight_kg'?3:2)}}</strong></td></tr>
+                    </tbody>
+                </table>
+                <p>实际体积变化：{{upgradeComparison.volume_reduction_fraction==null?'—':f(Math.abs(upgradeComparison.volume_reduction_fraction)*100,1)+'% '+(upgradeComparison.volume_reduction_fraction>=0?'减少':'增加')}} · 重量节省：{{f(upgradeComparison.weight_saving_kg==null?null:upgradeComparison.weight_saving_kg*1000,0)}} g</p>
+                <p>{{record.standard_adopted_at?'本版本曾生效 · '+new Date(record.standard_adopted_at).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}):'待审核及采用；原包装标准仍保留'}}</p>
+                <div v-if="canReview&&['submitted','approved'].includes(record.status)&&!record.standard_adopted_at" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                    <label>目的国 <input v-model="country" maxlength="2" @input="invalidateQuote" style="width:55px"/></label>
+                    <label>邮编 <input v-model="postal" @input="invalidateQuote" style="width:95px"/></label>
+                    <button class="mvp-button" @click="loadQuote(true)">读取路线</button>
+                    <select v-model="routeId" @change="invalidateQuote"><option :value="0">选择路线</option><option v-for="r in routes" :key="r.id" :value="r.id">{{r.label}}</option></select>
+                    <select v-model="handling" @change="invalidateQuote"><option value="supplier">供应商操作费</option><option value="internal">内部操作费</option></select>
+                    <label><input v-model="confirmed" type="checkbox" @change="quotedRoute=false"/> 确认试算适用</label>
+                    <button class="mvp-button" @click="loadQuote()">重新核算</button>
+                </div>
+                <p v-if="quote">同路线试算：{{price(quote.before)}} → {{price(quote.after?.quote)}}；单件节省 {{quote.after?.logistics_saving_cny!=null?'¥'+f(quote.after.logistics_saving_cny):quote.after?.reference_transport_saving_cny!=null?'参考 ¥'+f(quote.after.reference_transport_saving_cny):'待核算'}}（不计入月度排名）</p>
+                <p v-if="quoteError" role="alert">{{quoteError}}</p>
+                <small>实测确认不等于安全或计费规则批准；草稿运费仅作参考。未核实费用不阻止真实包装标准采用。</small>
+            </section>
             <div class="evidence-grid">
                 <article class="mvp-card evidence-card">
                     <div class="evidence-card-title"><span class="step">1</span><h3>尺寸证据</h3></div>
@@ -62,7 +110,7 @@ function mediaFor(kind:string): Media[] {
                             <img :src="media.url" :alt="media.name || '测量记录图'" />
                             <span>测量记录图</span>
                         </a>
-                        <p v-if="!mediaFor('measurement').length" class="empty-evidence">未上传测量记录图</p>
+                        <p v-if="!mediaFor('measurement').length" class="empty-evidence">未上传测量记录图{{record.photo_requirement_reason?'（复核必传）':'（选填）'}}</p>
                     </div>
                 </article>
 
@@ -75,7 +123,7 @@ function mediaFor(kind:string): Media[] {
                             <img :src="media.url" :alt="media.name || '称重记录图'" />
                             <span>称重记录图</span>
                         </a>
-                        <p v-if="!mediaFor('weight').length" class="empty-evidence">未上传称重记录图</p>
+                        <p v-if="!mediaFor('weight').length" class="empty-evidence">未上传称重记录图{{record.photo_requirement_reason?'（复核必传）':'（选填）'}}</p>
                     </div>
                 </article>
 
@@ -92,7 +140,8 @@ function mediaFor(kind:string): Media[] {
 
             <div v-if="canReview && record.status === 'submitted'" class="mvp-card review-box">
                 <h3>审核备注</h3>
-                <textarea v-model="reviewNote" rows="3" placeholder="可填写审核意见；驳回时建议说明原因"></textarea>
+                <textarea v-model="reviewNote" rows="3" placeholder="填写审核意见；驳回必须说明原因"></textarea>
+                <label><input v-model="requirePhotos" type="checkbox"/> 驳回后要求拍照复核</label>
             </div>
 
             <div v-if="record.note || record.review_note" class="mvp-card note-card">

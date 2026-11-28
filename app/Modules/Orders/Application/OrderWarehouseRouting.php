@@ -8,6 +8,7 @@ use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
+use App\Modules\Logistics\Application\OverseaWarehouseQueueQuery;
 use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
 use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
@@ -104,6 +105,9 @@ final class OrderWarehouseRouting
             'cancelled', 'archived' => 'cancelled',
             default => 'pending',
         };
+        if ($order->originalFulfillmentChildren()->exists()) {
+            return '/orders?view='.($view === 'exceptions' ? 'exception' : $phase);
+        }
         if ($view === 'pending_allocation') {
             return '/logistics/wait-stock?global_grid=1';
         }
@@ -128,8 +132,8 @@ final class OrderWarehouseRouting
             'CA' => 'ca',
         ];
         if (isset($overseas[$route])) {
-            $queue = in_array($view, ['pending', 'review', 'stockout', 'exceptions', 'shipped'], true)
-                ? $view : 'all';
+            $queue = app(OverseaWarehouseQueueQuery::class)->destination((int) $order->id)
+                ?? (in_array($view, ['pending', 'review', 'stockout', 'exceptions', 'shipped'], true) ? $view : 'all');
 
             return '/logistics/oversea/'.$overseas[$route].'?view='.$queue.'&global_grid=1';
         }
@@ -181,6 +185,7 @@ final class OrderWarehouseRouting
             if ($locked->trashed() || $locked->archived_at !== null || $locked->isOperationallyArchived()) {
                 throw new HttpException(409, '归档或删除订单不可修改所属分仓。');
             }
+            abort_if($locked->originalFulfillmentChildren()->exists(), 409, '拆单母订单不可直接修改分仓，请在履约发货中逐段处理。');
             abort_if(DomesticShippingHold::isHeld($locked->workflow_status), 409, '冻结发货订单请先恢复待发货再修改所属分仓。');
             if ((int) $locked->routing_revision !== $revision) {
                 throw new HttpException(409, '所属分仓已被其他人修改，请刷新后重试。');
@@ -283,6 +288,8 @@ final class OrderWarehouseRouting
         abort_if($shipment && ($shipment->shipment_status !== 'pending'
             || filled($shipment->tracking_number) || $shipment->shipped_at !== null), 409,
             '已有真实物流或追踪单号，禁止直接修改发货仓。');
+        abort_if(\App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch::guarded((int) $order->id), 409, '加拿大仓已有推送或待核实记录，禁止改仓。');
+        abort_if(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded((int)$order->id),409,'美东仓订单正在推送或待核实，禁止改仓。');
         abort_if($order->shipmentAttempts()->exists()
             || DB::table('shipout_dispatch_attempts')->where('order_id', $order->id)->exists(), 409,
             '存在已提交仓库或历史物流尝试，禁止通过所属分仓直接改仓。');

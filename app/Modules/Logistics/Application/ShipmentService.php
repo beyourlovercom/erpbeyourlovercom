@@ -40,6 +40,8 @@ final class ShipmentService
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertOperationallyEligible($lockedOrder);
+            abort_if(\App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch::guarded((int) $lockedOrder->id), 409, '加拿大仓已有推送或待核实记录，禁止覆盖发货草稿。');
+            abort_if(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded((int)$lockedOrder->id),409,'美东仓订单正在推送或待核实，禁止覆盖发货草稿。');
             abort_if(\App\Modules\Orders\Application\DomesticShippingHold::isHeld($lockedOrder->workflow_status), 409, '冻结发货订单请先恢复待发货再保存履约草稿。');
             $this->assertNoPendingReview($lockedOrder);
             $this->paymentGate->assertAllowed($lockedOrder);
@@ -89,6 +91,14 @@ final class ShipmentService
             $changed = $shipment->isDirty();
             $shipment->save();
             $this->syncFinalSkusForWarehouse($lockedOrder, $originalWarehouseId, (int) $shipment->warehouse_id);
+            if ($warehouseProvided && config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
+                app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
+                    ->sync($lockedOrder, (int) $shipment->warehouse_id, $actor);
+            }
+            if ($warehouseProvided && config('wlwy.ca_inventory_apply_enabled')) {
+                app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
+                    ->sync($lockedOrder, (int) $shipment->warehouse_id, $actor, 'CA');
+            }
             $this->syncPackagingSnapshots($lockedOrder, $shipment);
 
             if ($changed) {
@@ -124,15 +134,9 @@ final class ShipmentService
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertOperationallyEligible($lockedOrder);
             abort_if(\App\Modules\Orders\Application\DomesticShippingHold::isHeld($lockedOrder->workflow_status), 409, '冻结发货订单请先恢复待发货再确认发货。');
-            // A physically allocated FACTORY child may ship independently while
-            // its parent still appears in the staff pending-allocation queue.
-            // Other parent holds (exception, stockout, etc.) remain blocking.
-            $allocatedDomesticChild = $lockedOrder->fulfillment_parent_id !== null
-                && strtoupper((string) ($lockedOrder->shipment?->warehouse?->code ?? '')) === 'FACTORY';
+            // Split children own dispatch progress. A stale root allocation or shortage
+            // label cannot suspend an independent segment; explicit exception holds remain.
             $parentBlockingStatuses = [...OrderManualHoldStatus::CODES, 'out_of_stock'];
-            if (! $allocatedDomesticChild) {
-                $parentBlockingStatuses[] = 'pending_allocation';
-            }
             abort_if(in_array($lockedOrder->workflow_status, [...OrderManualHoldStatus::CODES, 'out_of_stock', 'pending_allocation'], true)
                 || $lockedOrder->operationalMarkers()->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS)->exists()
                 || $lockedOrder->fulfillmentParent()->where(function ($parent) use ($parentBlockingStatuses): void {
@@ -198,6 +202,14 @@ final class ShipmentService
             if (! $alreadyShipped) {
                 $this->syncFinalSkusForWarehouse($lockedOrder, $originalWarehouseId, (int) $shipment->warehouse_id);
                 $this->syncPackagingSnapshots($lockedOrder, $shipment);
+            }
+            if (!$alreadyShipped && config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
+                app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
+                    ->commit($lockedOrder, (int) $shipment->warehouse_id, $actor);
+            }
+            if (!$alreadyShipped && config('wlwy.ca_inventory_apply_enabled')) {
+                app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
+                    ->commit($lockedOrder, (int) $shipment->warehouse_id, $actor, 'CA');
             }
             if ($lockedOrder->order_status?->value !== 'shipped') {
                 $lockedOrder->forceFill(['order_status' => 'shipped'])->save();
@@ -742,6 +754,9 @@ final class ShipmentService
 
     private function assertOperationallyEligible(Model $order): void
     {
+        if (method_exists($order, 'originalFulfillmentChildren')) {
+            abort_if($order->originalFulfillmentChildren()->exists(), 409, '拆单母订单仅汇总履约，禁止直接物流操作。');
+        }
         if (method_exists($order, 'isOperationallyArchived') && $order->isOperationallyArchived()) {
             abort(409, '运营归档订单不可进行物流操作。');
         }
