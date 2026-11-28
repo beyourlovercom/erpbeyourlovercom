@@ -3,9 +3,11 @@
 namespace App\Modules\Logistics\Experience\Jobs;
 
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionBatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryDispatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -122,6 +124,17 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
                 // Any ambiguous outcome must NEVER be resubmitted.
                 $resultStatus = DB::table('shipout_dispatch_attempts')
                     ->where('order_id', $item->order_id)->exists() ? 'uncertain' : 'skipped';
+                if ($resultStatus === 'skipped' && isset($actor) && $actor
+                    && in_array($code, ['SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE', 'SHIPOUT_R10_INSUFFICIENT_AVAILABLE_STOCK'], true)) {
+                    try {
+                        app(OverseaWarehouseReviewService::class)->stockout(Order::query()->findOrFail($item->order_id), $actor, true);
+                        // This is a local hold, NOT a provider submission. Explicit
+                        // restock and fresh preflight are still required before POST.
+                        $resultStatus = 'local_stockout';
+                    } catch (Throwable) {
+                        // Unconfirmed or conflicting evidence stays quarantined.
+                    }
+                }
             }
             DB::table('shipout_production_batch_items')->where('id', $item->id)
                 ->update([
@@ -171,7 +184,7 @@ final class ProcessShipOutProductionBatch implements ShouldQueue
     {
         $exceptions = DB::table('shipout_production_batch_items')
             ->where('batch_id', $this->batchId)
-            ->whereIn('status', ['skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review'])
+            ->whereIn('status', ['skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review', 'local_stockout'])
             ->exists();
         DB::table('shipout_production_batches')->where('id', $this->batchId)
             ->update([

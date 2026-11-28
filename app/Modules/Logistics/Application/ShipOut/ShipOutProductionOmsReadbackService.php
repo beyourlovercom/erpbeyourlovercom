@@ -113,6 +113,9 @@ final class ShipOutProductionOmsReadbackService
         // Keep historical batch results aligned with the actual exception
         // queue, without modifying the immutable POST or shipment/Tracking.
         $this->quarantineCompletedBatchIfLaterException($orderId, $state, $reason);
+        if ($reason === null && in_array($state, ['confirmed', 'warehouse_awaiting', 'provider_shipped'], true)) {
+            $this->recoverTemporaryReadback($orderId, $providerId);
+        }
 
         return $result + [
             'oms_persisted_state' => $state,
@@ -148,6 +151,39 @@ final class ShipOutProductionOmsReadbackService
                 ->where('status', 'completed')
                 ->update(['status' => 'completed_partial', 'updated_at' => now()]);
         }
+    }
+
+    private function recoverTemporaryReadback(int $orderId, string $providerId): void
+    {
+        if ($providerId === '') {
+            return;
+        }
+        DB::transaction(function () use ($orderId, $providerId): void {
+            $attempt = DB::table('shipout_dispatch_attempts')->where('order_id', $orderId)
+                ->where('provider_warehouse_id', ShipOutProductionDispatchState::MOREPLUS_PROVIDER_WAREHOUSE_ID)
+                ->where('status', 'acknowledged')->where('provider_order_id', $providerId)->lockForUpdate()->first();
+            $latest = DB::table('shipout_oms_readbacks')->where('order_id', $orderId)->latest('id')->first();
+            if (! $attempt || ! $latest || $latest->provider_order_id !== $providerId
+                || ! in_array($latest->state, ['confirmed', 'warehouse_awaiting', 'provider_shipped'], true)
+                || $latest->reason_code !== null) {
+                return;
+            }
+            $items = DB::table('shipout_production_batch_items')->where('order_id', $orderId)
+                ->where('provider_order_id', $providerId)->where('status', 'needs_review')
+                ->where('result_code', ShipOutProductionDispatchState::TEMPORARY_READBACK_ERROR)
+                ->lockForUpdate()->get(['id', 'batch_id']);
+            foreach ($items as $item) {
+                DB::table('shipout_production_batch_items')->where('id', $item->id)->update([
+                    'status' => 'oms_visible', 'result_code' => 'OMS_VISIBLE_PENDING_REAL_FULFILLMENT',
+                    'updated_at' => now(),
+                ]);
+                if (! DB::table('shipout_production_batch_items')->where('batch_id', $item->batch_id)
+                    ->whereNotIn('status', ['oms_visible', 'simulated'])->exists()) {
+                    DB::table('shipout_production_batches')->where('id', $item->batch_id)
+                        ->where('status', 'completed_partial')->update(['status' => 'completed', 'updated_at' => now()]);
+                }
+            }
+        });
     }
 
     private function recordUnavailable(int $orderId): void

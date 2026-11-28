@@ -263,6 +263,42 @@ final class ShipOutProductionOmsReadbackTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_temporary_read_failure_recovers_only_matching_ack_and_batch(): void
+    {
+        Http::preventStrayRequests();
+        $id = 8822;
+        $attempt = $this->attempt($id);
+        $batchId = '00000000-0000-4000-8000-000000000822';
+        DB::table('shipout_production_batches')->insert([
+            'id' => $batchId, 'operator_user_id' => 1,
+            'status' => 'completed_partial', 'dry_run' => false, 'total' => 1,
+            'finished_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('shipout_production_batch_items')->insert([
+            'batch_id' => $batchId, 'order_id' => $id, 'order_no' => 'R12-TEST-'.$id,
+            'status' => 'needs_review', 'provider_order_id' => 'OMS-TEST-'.$id,
+            'result_code' => ShipOutProductionDispatchState::TEMPORARY_READBACK_ERROR,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $record = app(ShipOutProductionOmsReadbackService::class);
+        $record->recordResult($id, $this->providerResult($id));
+        $this->assertDatabaseHas('shipout_production_batch_items', ['order_id' => $id, 'status' => 'needs_review']);
+        DB::table('shipout_oms_readbacks')->where('order_id', $id)->update(['checked_at' => now()->subMinutes(3)]);
+        $record->recordResult($id, $this->providerResult($id));
+        $last = DB::table('shipout_oms_readbacks')->where('order_id', $id)->latest('id')->first();
+        $historical = (object) ['status' => 'needs_review', 'result_code' => ShipOutProductionDispatchState::TEMPORARY_READBACK_ERROR,
+            'provider_order_id' => 'OMS-TEST-'.$id];
+        $this->assertSame('oms_confirmed', ShipOutProductionDispatchState::from($attempt, $historical, $last)['status']);
+        $historical->provider_order_id = 'WRONG-OMS';
+        $this->assertSame('oms_quarantined', ShipOutProductionDispatchState::from($attempt, $historical, $last)['status']);
+        $this->assertDatabaseHas('shipout_production_batch_items', ['order_id' => $id, 'status' => 'oms_visible']);
+        $this->assertDatabaseHas('shipout_production_batches', ['id' => $batchId, 'status' => 'completed']);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        $record->recordResult($id, $this->providerResult($id, 6));
+        $this->assertDatabaseHas('shipout_production_batch_items', ['order_id' => $id, 'status' => 'provider_cancelled']);
+        Http::assertNothingSent();
+    }
+
     public function test_unknown_readback_is_quarantined_not_treated_as_confirmed(): void
     {
         $id = 8803;
