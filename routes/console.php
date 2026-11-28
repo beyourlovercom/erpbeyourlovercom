@@ -117,6 +117,23 @@ if (app()->environment('production') && config('xlwms.de_status_refresh_enabled'
         ->name('xlwms.de.outbound.refresh')->withoutOverlapping(5)->onOneServer()->runInBackground();
 }
 
+// US-NY physical inventory authority; separate from tracking and historical FIFO.
+Artisan::command('xlwms:sync-us-ny-physical {--apply} {--dry-run}', function (\App\Modules\Logistics\Application\Xlwms\UsNyPhysicalStockSyncService $sync): int {
+    if ($this->option('apply') && $this->option('dry-run')) return Command::INVALID;
+    try {
+        $this->line(json_encode($sync->run((bool) $this->option('apply')), JSON_THROW_ON_ERROR));
+        return Command::SUCCESS;
+    } catch (Throwable $error) {
+        $this->error('US_NY_PHYSICAL_SYNC_FAILED:'.$error->getMessage());
+        return Command::FAILURE;
+    }
+});
+if (app()->environment('production') && config('xlwms.us_ny_inventory_hourly_enabled', false)) {
+    $nyMode = config('xlwms.us_ny_inventory_physical_apply_enabled', false) ? '--apply' : '--dry-run';
+    Schedule::command('xlwms:sync-us-ny-physical '.$nyMode)
+        ->hourlyAt(13)->name('xlwms.us-ny.inventory.sync')->withoutOverlapping(15)->onOneServer()->runInBackground();
+}
+
 // US-NY tracking only: offset from the other half-hourly tasks.
 Artisan::command('xlwms:refresh-us-ny-tracking', function (): int {
     if (app()->environment('production') && config('xlwms.us_ny_tracking_refresh_enabled', false)) {

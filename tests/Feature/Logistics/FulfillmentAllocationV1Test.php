@@ -264,6 +264,32 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame(1, $progress->domesticReady(Order::query())->whereKey($order->id)->count());
     }
 
+    public function test_us_ny_split_allocation_reserves_only_actual_physical_sku(): void
+    {
+        config()->set('xlwms.us_ny_inventory_physical_apply_enabled', true);
+        [$user, $order] = $this->scenario(2);
+        $items = $order->items()->orderBy('id')->get();
+        $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        ProductWarehouseSku::query()->create(['product_id' => $items[0]->product_id,
+            'warehouse_id' => $ny->id, 'sku' => 'NY-ACTUAL', 'is_active' => true, 'verified_at' => now()]);
+        $stock = \App\Modules\Inventory\Infrastructure\Models\WarehouseInventory::query()->create([
+            'warehouse_id' => $ny->id, 'product_id' => $items[0]->product_id,
+            'quantity_on_hand' => 10, 'quantity_reserved' => 0,
+            'provider_available_quantity' => 10, 'provider_stock_synced_at' => now()]);
+        app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $items[0]->id, 'source_code' => 'US-NY'],
+            ['order_item_id' => $items[1]->id, 'source_code' => 'FACTORY'],
+        ], null, $user, true);
+        $nyChild = $order->fresh()->originalFulfillmentChildren()->with('shipment.warehouse','items')->get()
+            ->first(fn ($child) => $child->shipment->warehouse->code === 'US-NY');
+        self::assertNotNull($nyChild);
+        self::assertSame('NY-ACTUAL', $nyChild->items->first()->final_sku);
+        self::assertSame(1, $stock->fresh()->quantity_reserved);
+        $this->assertDatabaseHas('inventory_reservations', ['order_id' => $nyChild->id, 'warehouse_id' => $ny->id, 'status' => 'reserved']);
+        $this->assertDatabaseMissing('inventory_reservations', ['order_id' => $order->id]);
+        self::assertSame(9, app(\App\Modules\Inventory\Application\InventoryAvailabilityProjection::class)->forRows(collect([$stock->fresh()]))[$stock->id]);
+    }
+
     public function test_overseas_allocation_waits_for_dede_review_before_sending(): void
     {
         [$user, $order] = $this->scenario(1);

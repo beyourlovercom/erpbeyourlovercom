@@ -174,7 +174,7 @@ final class XlwmsInventorySyncService
     }
 
     /** NY must use an active, verified warehouse mapping, never a global alias. */
-    private function resolveWarehouseSku(Warehouse $warehouse, string $sku): array
+    public function resolveWarehouseSku(Warehouse $warehouse, string $sku): array
     {
         if ($warehouse->code !== 'US-NY') return $this->resolver->resolve($sku);
         $matches = \App\Modules\Products\Infrastructure\Models\ProductWarehouseSku::query()
@@ -422,7 +422,7 @@ final class XlwmsInventorySyncService
             // An unchanged full signed DE read is a NEW observation. Preserve
             // the separate physical apply proof on the same snapshot row, but
             // update freshness for the next actual warehouse dispatch preflight.
-            if ($warehouse->code === 'DE') {
+            if (in_array($warehouse->code, ['DE', 'US-NY'], true)) {
                 $snapshot->forceFill(['fetched_at' => now()])->save();
             }
             return $snapshot->fresh();

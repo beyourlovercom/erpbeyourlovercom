@@ -142,7 +142,9 @@ final class SingleOrderPreview
                 $blocking[] = (string) ($identity['code'] ?? 'OMS_PRODUCT_IDENTITY_NOT_VERIFIED');
             }
         }
-        if ($requireFreshSnapshot && ! $webDraft) {
+        if (!$webDraft && $warehouseCode === 'US-NY' && config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
+            $blocking = array_merge($blocking, app(UsNyAllocationReservation::class)->dispatchBlockers($order));
+        } elseif ($requireFreshSnapshot && ! $webDraft) {
             $this->addFreshAppliedV2Blockers($shipment?->warehouse_id, $order->items, $blocking);
         }
 
