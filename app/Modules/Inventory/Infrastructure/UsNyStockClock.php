@@ -34,7 +34,7 @@ final class UsNyStockClock
         return $query;
     }
 
-    public static function fresh(?WarehouseInventory $stock): bool
+    public static function fresh(?WarehouseInventory $stock, string $warehouseCode = 'US-NY'): bool
     {
         if (! $stock || $stock->provider_available_quantity === null) {
             return false;
@@ -47,6 +47,10 @@ final class UsNyStockClock
         }
         $age = now()->getTimestamp() - (int) $epoch;
 
-        return $age >= 0 && $age <= 7200;
+        // CA02 has an Owner-approved daily mirror plus one hour of scheduler grace.
+        // All other warehouses retain the existing two-hour proof window.
+        $maxAge = strtoupper($warehouseCode) === 'CA' ? 25 * 3600 : 7200;
+
+        return $age >= 0 && $age <= $maxAge;
     }
 }

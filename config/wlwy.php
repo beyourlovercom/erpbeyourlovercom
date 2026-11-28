@@ -2,7 +2,7 @@
 
 return [
     'ca_inventory_apply_enabled' => env('WLWY_CA_INVENTORY_APPLY_ENABLED', false),
-    'ca_inventory_hourly_enabled' => env('WLWY_CA_INVENTORY_HOURLY_ENABLED', false),
+    'ca_inventory_daily_enabled' => env('WLWY_CA_INVENTORY_DAILY_ENABLED', false),
     'ca_batch_read_enabled' => env('WLWY_CA_BATCH_READ_ENABLED', false),
     'ca_dispatch_enabled' => env('WLWY_CA_DISPATCH_ENABLED', false),
     'ca_dispatch_owner_approved' => env('WLWY_CA_DISPATCH_OWNER_APPROVED', false),

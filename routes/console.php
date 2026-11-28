@@ -430,10 +430,10 @@ Artisan::command('wlwy:sync-ca-physical {--apply} {--dry-run}', function (): int
         return Command::FAILURE;
     }
 });
-if (app()->environment('production') && config('wlwy.ca_inventory_hourly_enabled')) {
+if (app()->environment('production') && config('wlwy.ca_inventory_daily_enabled')) {
     $caMode = config('wlwy.ca_inventory_apply_enabled') ? '--apply' : '--dry-run';
     Schedule::command('wlwy:sync-ca-physical '.$caMode)
-        ->hourlyAt(23)->name('wlwy.ca.inventory.sync')->withoutOverlapping(15)->onOneServer()->runInBackground();
+        ->dailyAt('09:23')->timezone('Asia/Shanghai')->name('wlwy.ca.inventory.sync')->withoutOverlapping(15)->onOneServer()->runInBackground();
 }
 
 Artisan::command('wlwy:drain-ca-batch', function (): int {
