@@ -7,6 +7,8 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\NotificationCenter\Application\NotificationPublisher;
@@ -56,6 +58,8 @@ final class OverseaWarehouseReviewService
         private readonly NotificationPublisher $notifications,
         private readonly AuditRecorder $audit,
         private readonly PendingFinalSkuMaterializer $finalSkuMaterializer,
+        private readonly InventoryAvailabilityReader $availability,
+        private readonly InventoryReservationRepository $reservations,
     ) {}
 
     public function updateDraft(Order $order, array $data, Authenticatable $actor): Order
@@ -136,6 +140,8 @@ final class OverseaWarehouseReviewService
                 ], $actor);
             }
             $this->finalSkuMaterializer->heal($locked, $actor);
+            $shortages = $this->stockShortages($locked);
+            abort_if($shortages !== [], 409, implode('；', $shortages));
             $before = ['status' => $review->status, 'reviewed_warehouse_id' => $review->reviewed_warehouse_id,
                 'reviewed_by' => $review->reviewed_by, 'reviewed_at' => $review->reviewed_at?->toDateTimeString()];
             $review->forceFill([
@@ -159,12 +165,40 @@ final class OverseaWarehouseReviewService
         });
     }
 
+    /** Same available-stock projection as allocation, aggregated per actual
+     * fulfillment product (including gifts and replacements), never source SKU. */
+    public function stockShortages(Order $order, bool $confirmedOnly = false): array
+    {
+        $order->loadMissing('shipment.warehouse');
+        $warehouseId = (int) $order->shipment?->warehouse_id;
+        $groups = $order->items()->get()->groupBy('product_id');
+        $rows = $this->availability->forProductIds($groups->keys()->all(), $this->reservations->activeForOrder((int) $order->id));
+        $messages = [];
+        foreach ($groups as $productId => $items) {
+            $sku = $items->first()->final_sku ?: $items->first()->sku;
+            $required = (int) $items->sum('quantity');
+            $row = collect($rows[$productId] ?? [])->firstWhere('warehouse_id', $warehouseId);
+            $available = $row['quantity_available'] ?? null;
+            if ($confirmedOnly && ($available === null || in_array($row['stock_gate_reason'] ?? null,
+                ['provider_sku_not_synced', 'oms_sku_not_confirmed', 'oms_snapshot_blocked', 'oms_snapshot_not_applied'], true))) {
+                continue;
+            }
+            if ($available === null || (int) $available < $required) {
+                $actual = $available === null ? '未知' : (string) $available;
+                $messages[] = ($order->shipment?->warehouse?->name ?? '海外仓').' SKU '.$sku
+                    .' 库存不足或未确认：需要 '.$required.' 件，当前可用 '.$actual.' 件';
+            }
+        }
+
+        return $messages;
+    }
+
     /** Hold an unshipped overseas allocation in the canonical review ledger.
      * No Shipment/Tracking/Woo write occurs; only approved reviews may ship.
      */
-    public function stockout(Order $order, Authenticatable $actor): void
+    public function stockout(Order $order, Authenticatable $actor, bool $confirmedPreflight = false): void
     {
-        DB::transaction(function () use ($order, $actor): void {
+        DB::transaction(function () use ($order, $actor, $confirmedPreflight): void {
             $locked = Order::query()->with(['shipment.warehouse', 'externalReferences'])
                 ->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             abort_if($locked->archived_at !== null || $locked->isOperationallyArchived() || $locked->trashed(), 409, '归档订单不可操作。');
@@ -175,23 +209,43 @@ final class OverseaWarehouseReviewService
             abort_unless(self::canonicalWarehouseCode($locked->shipment->warehouse?->code) !== null, 422, '该订单不是海外仓订单');
             abort_if($locked->externalReferences->contains('provider', 'historical_logistics'), 409, '历史物流订单不可操作。');
             $review = $this->reviewForMutation($locked);
-            abort_unless($review->status === 'pending', 409, '只有待审核订单可标记缺货。');
+            $historicalLocalSkip = DB::table('shipout_production_batch_items')->where('order_id', $locked->id)
+                ->where('status', 'skipped')->whereNull('provider_order_id')
+                ->whereIn('result_code', ['SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE', 'SHIPOUT_R10_INSUFFICIENT_AVAILABLE_STOCK']);
+            $repair = ! $confirmedPreflight && $review->status === 'approved' && $historicalLocalSkip->exists();
+            $confirmedPreflight = $confirmedPreflight || $repair;
+            $shortages = $confirmedPreflight ? $this->stockShortages($locked, true) : [];
+            if ($confirmedPreflight) {
+                abort_unless($review->status === 'approved'
+                    && (int) $review->reviewed_warehouse_id === (int) $locked->shipment->warehouse_id
+                    && $shortages !== [], 409, '当前仓库缺货事实未确认。');
+                abort_if(DB::table('shipout_dispatch_attempts')->where('order_id', $locked->id)->exists()
+                    || DB::table('xlwms_dispatch_attempts')->where('order_id', $locked->id)->exists()
+                    || DB::table('warehouse_dispatch_states')->where('order_id', $locked->id)->exists(),
+                    409, '已有仓库推送记录，须人工核对。');
+            } else {
+                abort_unless($review->status === 'pending', 409, '只有待审核订单可标记缺货。');
+            }
             $before = ['status' => $review->status, 'reviewed_warehouse_id' => $review->reviewed_warehouse_id];
             $review->forceFill([
                 'status' => 'stockout',
                 'progress' => 'pending_review',
+                'note' => $confirmedPreflight ? implode('；', $shortages) : $review->note,
                 'reviewed_warehouse_id' => $locked->shipment->warehouse_id,
                 'reviewed_by' => $actor->getAuthIdentifier(),
                 'reviewed_at' => now(),
             ])->save();
-            if ($locked->workflow_status === 'pending_review') {
+            if (in_array($locked->workflow_status, ['pending_review', 'sending'], true)) {
                 $this->workflow->set($locked, 'out_of_stock', (int) $locked->workflow_revision, $actor);
+            }
+            if ($repair) {
+                $historicalLocalSkip->update(['status' => 'local_stockout', 'updated_at' => now()]);
             }
             $this->audit->record(
                 AuditActor::user($actor, AuditSource::Web), 'oversea.review_stockout',
                 OverseaWarehouseReview::class, $review->getKey(), $before,
                 ['status' => 'stockout', 'reviewed_warehouse_id' => $locked->shipment->warehouse_id],
-                'oversea_warehouse_review',
+                $confirmedPreflight ? 'confirmed_local_stock_preflight' : 'oversea_warehouse_review',
             );
         });
     }

@@ -166,7 +166,7 @@ final class OverseaWarehouseController
             && Schema::hasTable('shipout_production_batch_items')
             ? DB::table('shipout_production_batch_items')
                 ->whereIn('order_id', $shipments->getCollection()->pluck('order_id')->all())
-                ->orderByDesc('id')->get(['order_id', 'status', 'result_code'])->unique('order_id')->keyBy('order_id')
+                ->orderByDesc('id')->get(['order_id', 'status', 'result_code', 'provider_order_id'])->unique('order_id')->keyBy('order_id')
             : collect();
         // Latest durable, sanitized signed OMS evidence: no provider HTTP
         // while listing, pagination or counting.
@@ -702,10 +702,10 @@ final class OverseaWarehouseController
             'routing_warehouse' => $order ? app(OrderWarehouseRouting::class)->project($order) : null,
             'workflow_revision' => (int) ($order?->workflow_revision ?? 0),
             'order_kind' => $order?->order_kind?->value,
-            'warehouse_dispatch' => $shipment->warehouse?->code === 'US-LA'
+            'warehouse_dispatch' => strtoupper((string) $shipment->warehouse?->code) === 'US-LA'
                 ? ShipOutProductionDispatchState::warehouseDispatch($shipOutAttempt, (string) $shipment->shipment_status, $shipOutBatchItem, $shipOutReadback)
                 : WarehouseDispatchStatus::from((string) $shipment->shipment_status, $xlwms),
-            'shipout_production' => $shipment->warehouse?->code === 'US-LA'
+            'shipout_production' => strtoupper((string) $shipment->warehouse?->code) === 'US-LA'
                 ? ShipOutProductionDispatchState::from($shipOutAttempt, $shipOutBatchItem, $shipOutReadback) : null,
             'source_type' => ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type) instanceof \BackedEnum
                 ? ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type)->value

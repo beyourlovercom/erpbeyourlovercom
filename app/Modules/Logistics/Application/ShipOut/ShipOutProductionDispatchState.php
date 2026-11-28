@@ -11,6 +11,8 @@ use Illuminate\Database\Query\Builder;
  */
 final class ShipOutProductionDispatchState
 {
+    public const TEMPORARY_READBACK_ERROR = 'OMS_READBACK_UNAVAILABLE_MANUAL_CHECK';
+
     public const MOREPLUS_PROVIDER_WAREHOUSE_ID = '1265864414750314497';
 
     public static function scopeAttempt(Builder $query): void
@@ -26,7 +28,16 @@ final class ShipOutProductionDispatchState
             ->whereColumn('q.order_id', 'shipments.order_id')
             ->whereIn('q.status', [
                 'skipped', 'uncertain', 'failed', 'provider_cancelled', 'needs_review',
-            ]);
+            ])->whereNot(function ($recoverable): void {
+                $recoverable->where('q.status', 'needs_review')
+                    ->whereNotNull('q.result_code')->where('q.result_code', self::TEMPORARY_READBACK_ERROR)
+                    ->whereNotNull('q.provider_order_id')
+                    ->whereExists(function ($verified): void {
+                        self::scopeCreated($verified);
+                        $verified->whereColumn('oms_latest.provider_order_id', 'q.provider_order_id')
+                            ->whereNull('oms_latest.reason_code');
+                    });
+            });
     }
 
     /** SQL predicate against newest sanitized signed OMS GET, never API ACK. */
@@ -71,9 +82,16 @@ final class ShipOutProductionDispatchState
         // A terminal batch exception overrides an earlier ACK in the list.
         // Never use the ACK itself to claim that OMS accepted the order.
         $latestOmsState = (string) ($omsReadback->state ?? '');
-        $quarantine = in_array((string) ($batchItem->status ?? ''), [
+        $recoveredReadback = $accepted
+            && ($batchItem->status ?? null) === 'needs_review'
+            && ($batchItem->result_code ?? null) === self::TEMPORARY_READBACK_ERROR
+            && in_array($latestOmsState, ['confirmed', 'warehouse_awaiting', 'provider_shipped'], true)
+            && blank($omsReadback->reason_code ?? null)
+            && (string) ($batchItem->provider_order_id ?? '') === (string) $attempt->provider_order_id
+            && (string) ($omsReadback->provider_order_id ?? '') === (string) $attempt->provider_order_id;
+        $quarantine = (! $recoveredReadback && in_array((string) ($batchItem->status ?? ''), [
             'provider_cancelled', 'needs_review', 'uncertain', 'failed', 'skipped',
-        ], true) || in_array($latestOmsState, ['cancelled', 'unverified'], true);
+        ], true)) || in_array($latestOmsState, ['cancelled', 'unverified'], true);
         $code = (string) (($omsReadback->reason_code ?? null) ?: ($batchItem->result_code ?? ''));
         $reason = match ($code) {
             'PROVIDER_DUPLICATE_ORDER' => '海外仓判定重复订单',
