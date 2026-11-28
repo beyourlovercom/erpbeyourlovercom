@@ -37,7 +37,7 @@ type DerivedOrderRecord = { order_id:number; erp_order_id:string|null; contact_u
 type ExistingAllocation = { status:string; decision_source:'system_recommendation'|'manual'; selected_plan_key:string|null; decision_note:string|null; plan_snapshot:(Plan & { derived_orders?:DerivedOrderRecord[];cost_confirmation?:AllocationCost })|null; submitted_at:string|null }
 type CarrierRoute = { carrier:string|null; carrier_label:string|null; service:string|null; automatic:boolean }
 type AllocationRejection = { source:string; reason:string; by:string|null; at:string|null }
-type Order = { country_display?:string; germany_warehouse_eligible?:boolean; can_edit_items?:boolean; items_revision?:string; currency?:string; reallocation_token?:string|null; reallocation_generation?:number|null; order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; contact_user_name?:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
+type Order = { read_only_parent?:boolean; country_display?:string; germany_warehouse_eligible?:boolean; can_edit_items?:boolean; items_revision?:string; currency?:string; reallocation_token?:string|null; reallocation_generation?:number|null; order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; contact_user_name?:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
 type Warehouse = { id:number; slug:string; code:string; name:string; country_code:string|null; can_auto_allocate:boolean }
 type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
@@ -248,7 +248,7 @@ const allocationGridRows = computed<GridListRow[]>(() => filteredOrders.value.ma
   workflow_status_projection: order.workflow_status_projection,
   workflow_revision: order.workflow_revision ?? 0,
   routing_warehouse:order.routing_warehouse,
-  can_edit_warehouse_route:Boolean(props.canEditWarehouseRoute),
+  can_edit_warehouse_route:Boolean(props.canEditWarehouseRoute&&!order.read_only_parent),
   warehouse_route_name:order.routing_warehouse?.name??'未分仓',
   can_edit_workflow_status: Boolean(order.can_edit_workflow_status),
   workflow_status_options: order.workflow_status_options,
@@ -367,7 +367,7 @@ const selectedStockWarnings = computed(() => {
 // An overseas rejection revokes the *effective* completion state even when
 // historical fulfillment_allocations.status still says submitted. Keep a
 // successful local reallocation processed until the refreshed server page lands.
-const processed = (order:Order) => Boolean(localSubmitted[order.id]
+const processed = (order:Order) => Boolean(order.read_only_parent || localSubmitted[order.id]
   || (order.fulfillment_allocation?.status === 'submitted' && !order.allocation_rejection))
 const hasGift = (order:Order) => order.items.some(item => item.is_gift)
 const guidanceById = computed(() => new Map(props.orders.data.map(order =>
@@ -422,6 +422,7 @@ watch(()=>props.orders.data,()=>{
 })
 const selectedBulkOrders = computed(()=>props.orders.data.filter(order=>selectedBulkOrderIds.value.includes(order.id)))
 function eligibleForBatch(order:Order,action:string):boolean {
+  if(order.read_only_parent)return false
   if (action==='archive') return props.canArchive===true
   if (processed(order) || !order.items.length || hasGift(order)) return false
   if (action==='recommend') return !!order.allocation_decision.can_use_recommendation
@@ -995,7 +996,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order||repl
             :can-edit="Boolean(order.can_edit_workflow_status)"
             :options="order.workflow_status_options ?? workflowStatusOptions ?? []" /><span v-else>—</span></td>
           <td><OrderWarehouseRouteSelect v-if="order.routing_warehouse" :order-id="order.id"
-            :projection="order.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute)"
+            :projection="order.routing_warehouse" :can-edit="Boolean(canEditWarehouseRoute&&!order.read_only_parent)"
             :options="warehouseRouteOptions??[]" /><span v-else>—</span></td>
           <td class="sku-list"><div v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? item.product_summary ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-if="item.is_gift" :class="item.resolved_fulfillment_sku?'gift-done':'gift-pending'">{{ item.resolved_fulfillment_sku ? `→ ${item.resolved_fulfillment_sku}` : '待解析' }}</span></div></td>
           <td class="address-summary"><strong>{{ order.recipient_name ?? '—' }}</strong><span>{{ addressLine(order) || '—' }}</span><small v-if="order.phone">{{ order.phone }}</small></td>

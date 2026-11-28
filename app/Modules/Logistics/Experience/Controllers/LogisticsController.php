@@ -96,14 +96,35 @@ final class LogisticsController
         $requestedView = $request->query('allocation_view');
         $allocationView = $rejectionFilter ? 'rejected' : (in_array($requestedView, ['all', 'processed'], true) ? $requestedView : 'pending');
         $base = $this->statusSummary->pendingAllocationQuery();
-        $allTotal = (clone $base)->count();
-        $processedTotal = $this->rejectionReadModel->onlyProcessed(clone $base)->count();
-        $pendingTotal = $allTotal - $processedTotal;
+        $ordinaryTotal = (clone $base)->count();
+        $ordinaryProcessedTotal = $this->rejectionReadModel->onlyProcessed(clone $base)->count();
+        // Split parents are never executable allocation rows. Preserve the existing
+        // guarded family-reset entry as a read-only history record, not as pending.
+        $parentHistory = Order::query()->eligibleForOperations()
+            ->whereNull('fulfillment_parent_id')
+            ->where('order_status', 'pending_shipment')
+            ->whereHas('originalFulfillmentChildren')
+            ->whereHas('fulfillmentAllocation', fn ($q) => $q->where('status', 'submitted'))
+            ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'));
+        $parentHistoryTotal = (clone $parentHistory)->count();
+        $allTotal = $ordinaryTotal + $parentHistoryTotal;
+        $processedTotal = $ordinaryProcessedTotal + $parentHistoryTotal;
+        $pendingTotal = $ordinaryTotal - $ordinaryProcessedTotal;
         $rejectionSnapshot = $this->rejectionReadModel->snapshot(
             $this->statusSummary->pendingAllocationQuery()
         );
         $rejectionCount = $rejectionSnapshot['count'];
-        $query = (clone $base)
+        $listBase = clone $base;
+        if (in_array($allocationView, ['all', 'processed'], true)) {
+            if ($allocationView === 'processed') {
+                $this->rejectionReadModel->onlyProcessed($listBase);
+            }
+            $normalIds = $listBase->select('orders.id');
+            $historyIds = (clone $parentHistory)->select('orders.id');
+            $listBase = Order::query()->where(fn ($q) => $q->whereIn('orders.id', $normalIds)
+                ->orWhereIn('orders.id', $historyIds));
+        }
+        $query = $listBase
             ->with(['address', 'items.product', 'items.sourceProduct', 'owner', 'financials', 'shipment.warehouse',
                 'shipment.overseaReview', 'operationalMarkers', 'fulfillmentParent.operationalMarkers',
                 'originalFulfillmentChildren.operationalMarkers',
@@ -115,8 +136,6 @@ final class LogisticsController
         if ($rejectionFilter) {
             $this->rejectionReadModel->onlyRejected($query);
             $this->rejectionReadModel->onlyPending($query);
-        } elseif ($allocationView === 'processed') {
-            $this->rejectionReadModel->onlyProcessed($query);
         } elseif ($allocationView === 'pending') {
             $this->rejectionReadModel->onlyPending($query);
         }
@@ -1069,6 +1088,7 @@ final class LogisticsController
         array $paymentDecisionsByOrderId = [],
         ?array $entryEligible = null,
     ): array {
+        $readOnlyParent = $order->fulfillment_parent_id === null && $order->originalFulfillmentChildren->isNotEmpty();
         $germanyEligible = $this->warehouseRouting->destinationAllowed($order->address?->country, 'DE');
         $germanyWarehouseIds = collect($context['warehouses'] ?? [])->filter(fn (array $w): bool => $this->warehouseRouting->canonicalWarehouseCode((string) ($w['code'] ?? '')) === 'DE')->pluck('id')->map(fn ($id): int => (int) $id)->all();
         $eligibleAvailability = static fn (array $rows): array => $germanyEligible ? $rows : array_values(array_filter($rows, static fn (array $row): bool => ! in_array((int) ($row['warehouse_id'] ?? 0), $germanyWarehouseIds, true)));
@@ -1118,10 +1138,11 @@ final class LogisticsController
             'workflow_status_projection' => app(OrderWorkflowStatusProjection::class)->for($order),
             'routing_warehouse' => app(OrderWarehouseRouting::class)->project($order),
             'workflow_revision' => (int) $order->workflow_revision,
+            'read_only_parent' => $readOnlyParent,
             'reallocation_generation' => $order->fulfillment_parent_id === null ? $this->reallocationGenerationForPreview($order) : null,
             'reallocation_token' => $order->fulfillment_parent_id === null && $order->originalFulfillmentChildren->isNotEmpty()
                 ? ParentFulfillmentReallocationService::token($order, $allocation) : null,
-            'can_edit_workflow_status' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
+            'can_edit_workflow_status' => ! $readOnlyParent && app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['can_edit'],
             'workflow_status_options' => app(OrderWorkflowStatusPolicy::class)->for($order, auth()->user())['options'],
             'external_order_number' => $order->external_order_number,
             'order_date' => $order->order_date?->toDateString(),

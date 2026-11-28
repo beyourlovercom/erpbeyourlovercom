@@ -732,6 +732,13 @@ final class FulfillmentAllocationV1Test extends TestCase
         $parent->refresh();
         $oldRevision = (int) $parent->workflow_revision;
         $token = ParentFulfillmentReallocationService::token($parent, $parent->fulfillmentAllocation);
+        $this->actingAs($actor)->get('/logistics/wait-stock')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->has('orders.data', 0));
+        $this->get('/logistics/wait-stock?allocation_view=processed')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('orders.data.0.id', $parent->id)->where('orders.data.0.read_only_parent', true)
+            ->where('orders.data.0.reallocation_token', $token)->where('pendingTotal', 0));
+        $this->get('/logistics/wait-stock?allocation_view=all')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('orders.data.0.id', $parent->id)->where('orders.data.0.read_only_parent', true));
         $viewer = $this->userWith(['logistics.view']);
         $this->actingAs($viewer)->postJson($reset, ['confirmed' => true, 'token' => $token])->assertForbidden();
         $this->actingAs($actor)->postJson($reset, ['token' => $token])->assertUnprocessable();
