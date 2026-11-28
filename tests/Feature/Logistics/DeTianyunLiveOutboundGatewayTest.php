@@ -89,76 +89,47 @@ final class DeTianyunLiveOutboundGatewayTest extends TestCase
         }
     }
 
-    public function test_hannover_duplicate_scan_covers_all_995_rows_and_detects_old_manual_reference(): void
+    public function test_hannover_exact_reference_finds_manual_order_without_history_scan(): void
     {
-        $requests = 0;
-        Http::fake(function ($req) use (&$requests) {
-            if (str_contains($req->url(), '/outboundOrder/detail')) {
-                return Http::response(['code' => 200, 'data' => []]);
-            }
-            $page = (int) (is_object($req['data']) ? $req['data']->page : $req['data']['page']);
-            $requests++;
-            $rows = [];
-            for ($i = ($page - 1) * 10 + 1; $i <= min(995, $page * 10); $i++) {
-                $rows[] = ['outboundOrderNo' => 'DE-'.$i, 'whCode' => 'Hannover',
-                    'referOrderNo' => $i === 876 ? '007-ORDER-OLD' : 'OTHER-'.$i];
-            }
-            return Http::response(['code' => 200, 'data' => [
-                'records' => $rows, 'total' => 995, 'page' => $page, 'pageSize' => 10, 'pages' => 100,
-            ]]);
+        Http::fake(function ($req) {
+            $data = (array) $req['data'];
+            $refs = $data['referOrderNoList'] ?? [];
+            return Http::response(['code' => 200, 'data' => in_array('007-ORDER-OLD', $refs, true)
+                ? [['outboundOrderNo' => 'DE-876', 'whCode' => 'Hannover', 'referOrderNo' => '007-ORDER-OLD']]
+                : []]);
         });
         $gateway = app(XlwmsOrderGateway::class);
         self::assertSame([], $gateway->findExisting($this->connection(), 'BYL-ERP-321', '007-ORDER-321'));
-        self::assertSame(100, $requests);
-        $requests = 0;
         $matches = $gateway->findExisting($this->connection(), 'BYL-ERP-321', '007-ORDER-321', ['007-ORDER-OLD']);
         self::assertSame('DE-876', $matches[0]['outboundOrderNo']);
-        self::assertSame(88, $requests);
+        Http::assertSentCount(7);
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/outboundOrder/pageList'));
     }
 
-    public function test_hannover_inconsistent_or_repeated_pages_never_prove_no_duplicate(): void
+    public function test_exact_query_returning_unrelated_order_never_proves_absence(): void
     {
-        Http::fake(function ($req) {
-            if (str_contains($req->url(), '/outboundOrder/detail')) {
-                return Http::response(['code' => 200, 'data' => []]);
-            }
-            $page = (int) (is_object($req['data']) ? $req['data']->page : $req['data']['page']);
-            $rows = [];
-            for ($i = 1; $i <= 10; $i++) {
-                $rows[] = ['outboundOrderNo' => 'DE-'.$i, 'referOrderNo' => 'OTHER-'.$i];
-            }
-            return Http::response(['code' => 200, 'data' => [
-                'records' => $rows, 'total' => 20, 'page' => $page, 'pageSize' => 10, 'pages' => 2,
-            ]]);
-        });
+        Http::fake(fn () => Http::response(['code' => 200, 'data' => [
+            ['outboundOrderNo' => 'OTHER', 'referOrderNo' => 'UNRELATED'],
+        ]]));
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('OMS_DUPLICATE_SCAN_INCOMPLETE');
+        $this->expectExceptionMessage('OMS_STATUS_IDENTITY_MISMATCH');
         app(XlwmsOrderGateway::class)->findExisting($this->connection(), 'BYL-ERP-321', '007-ORDER-321');
     }
 
-    public function test_us_ny_duplicate_scan_covers_811_rows_and_finds_legacy_reference(): void
+    public function test_us_ny_exact_manual_reference_uses_no_pagination(): void
     {
-        $requests = 0;
-        Http::fake(function ($req) use (&$requests) {
-            if (str_contains($req->url(), '/outboundOrder/detail')) {
-                return Http::response(['code' => 200, 'data' => []]);
-            }
-            $page = (int) (is_object($req['data']) ? $req['data']->page : $req['data']['page']);
-            $requests++;
-            $rows = [];
-            for ($i = ($page - 1) * 10 + 1; $i <= min(811, $page * 10); $i++) {
-                $rows[] = ['outboundOrderNo' => 'NY-'.$i, 'whCode' => 'US01',
-                    'referOrderNo' => $i === 811 ? 'NY-LEGACY' : 'OTHER-'.$i];
-            }
-            return Http::response(['code' => 200, 'data' => [
-                'records' => $rows, 'total' => 811, 'page' => $page, 'pageSize' => 10, 'pages' => 82,
-            ]]);
+        Http::fake(function ($req) {
+            $data = (array) $req['data'];
+            return Http::response(['code' => 200, 'data' => in_array('NY-LEGACY', $data['referOrderNoList'] ?? [], true)
+                ? [['outboundOrderNo' => 'NY-811', 'whCode' => 'US01', 'referOrderNo' => 'NY-LEGACY']]
+                : []]);
         });
         $connection = $this->connection();
         $connection->oms_warehouse_code = 'US01';
         $matches = app(XlwmsOrderGateway::class)->findExisting($connection, 'BYL-ERP-321', '007-ORDER-321', ['NY-LEGACY']);
         self::assertSame('NY-811', $matches[0]['outboundOrderNo']);
-        self::assertSame(82, $requests);
+        Http::assertSentCount(4);
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/outboundOrder/pageList'));
     }
 
     public function test_us_ny_cannot_reuse_german_live_create_authorization(): void

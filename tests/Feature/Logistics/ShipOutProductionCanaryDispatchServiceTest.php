@@ -262,7 +262,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->assertSame('pending', $order->fresh()->shipment->shipment_status);
         $this->assertNull($order->fresh()->shipment->tracking_number);
         $this->assertFalse((bool) config('shipout.production_tracking_apply_enabled'));
-        Http::assertSentCount(10);
+        Http::assertSentCount(9);
         Http::assertSent(fn ($r) => $r->method() === 'POST'
             && $r->url() === 'https://open.shipout.com/api/open-api/oms/order/batchSubmitAsync'
             && ($r->data()[0]['shipmentForms'][0]['outboundInfo']['sysServiceId'] ?? null) === '9'
@@ -275,10 +275,10 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         } catch (RuntimeException $e) {
             $this->assertSame('SHIPOUT_R10_PRIOR_ATTEMPT_BLOCKED', $e->getMessage());
         }
-        Http::assertSentCount(10);
+        Http::assertSentCount(9);
     }
 
-    public function test_r9_same_sku_qty_recipient_different_ref_is_blocked_before_one_shot_post(): void
+    public function test_exact_reference_allows_different_order_without_scanning_recipient_history(): void
     {
         $order = $this->order();
         $previous = [
@@ -299,21 +299,15 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->enableProductionV1();
         $v1Preview = app(ShipOutProductionCanaryDispatchService::class)
             ->previewApproved($order->id, $this->shipDate());
-        $this->assertFalse($v1Preview['ready']);
-        $this->assertSame('risk', $v1Preview['history_risk']['status']);
-        $this->assertSame('SHIPOUT_R9_14D_CONTENT_DUPLICATE_RISK',
-            $v1Preview['history_risk']['code']);
-        try {
-            app(ShipOutProductionCanaryDispatchService::class)->dispatchApprovedOrder(
-                $order->id, $this->shipDate(), $preview['payload_hash'],
-                'SUBMIT_SHIPOUT_ORDER_'.$order->id, auth()->user()
-            );
-            $this->fail('Content duplicate must block before first provider POST');
-        } catch (RuntimeException $error) {
-            $this->assertSame('SHIPOUT_R9_14D_CONTENT_DUPLICATE_RISK', $error->getMessage());
-        }
-        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
-        Http::assertNotSent(fn ($r) => $r->method() === 'POST');
+        $this->assertTrue($v1Preview['ready']);
+        $this->assertSame('SHIPOUT_EXACT_REFERENCE_CLEAR', $v1Preview['history_risk']['code']);
+        $result = app(ShipOutProductionCanaryDispatchService::class)->dispatchApprovedOrder(
+            $order->id, $this->shipDate(), $preview['payload_hash'],
+            'SUBMIT_SHIPOUT_ORDER_'.$order->id, auth()->user()
+        );
+        $this->assertSame('acknowledged', $result['status']);
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 1);
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'order/queryListV2') && ! str_contains($r->url(), 'orderNO='));
     }
 
     public function test_r10_wrong_expected_payload_hash_never_inserts_attempt_or_posts(): void
@@ -1013,7 +1007,7 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->assertSame([['omsSku' => self::SKU, 'qty' => 1]], $preview['items']);
         $this->assertSame(64, strlen($preview['payload_hash']));
         $this->assertStringNotContainsString('Example Way', json_encode($preview));
-        Http::assertSentCount(5);
+        Http::assertSentCount(4);
         Http::assertNotSent(fn ($request) => $request->method() === 'POST');
         $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
     }

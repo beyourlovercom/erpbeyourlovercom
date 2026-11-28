@@ -36,7 +36,22 @@ final class OverseaWarehouseQueueQuery
         if ($view === 'review') {
             $this->progressQueries->overseasReview($query);
             $query->whereNot(fn ($q) => $this->providerIssued($q))
-                ->whereNot(fn ($q) => $this->providerException($q));
+                ->where(function ($reviewable): void {
+                    $reviewable->whereNot(fn ($q) => $this->providerException($q))
+                        // A proven pre-CREATE failure must not hide a reopened
+                        // warehouse review. Approving still cannot submit OMS.
+                        ->orWhere(function ($preCreate): void {
+                            $preCreate->whereHas('warehouse', fn ($w) => $w->whereIn('code', ['DE', 'US-NY']))
+                                ->whereExists(function ($attempt): void {
+                                    $this->scopeDeAttempt($attempt);
+                                    $attempt->where('de_attempt.state', 'blocked_preflight_error')
+                                        ->whereIn('de_attempt.failure_code', ['DE_OMS_PREFLIGHT_OR_DUPLICATE_LOOKUP_FAILED', 'US_NY_PREFLIGHT_OR_DUPLICATE_BLOCKED'])
+                                        ->whereNull('de_attempt.oms_order_no')->whereNull('de_attempt.oms_status_code')
+                                        ->whereNull('de_attempt.oms_tracking_no')->whereNull('de_attempt.oms_status_checked_at')
+                                        ->whereNull('de_attempt.duplicate_match_field')->whereNull('de_attempt.oms_status_failure_code');
+                                });
+                        });
+                });
 
             return;
         }
@@ -141,13 +156,13 @@ final class OverseaWarehouseQueueQuery
                     ->whereExists(fn ($q) => $this->scopeDeAttempt($q))
                     ->whereNotExists(fn ($q) => $this->scopeDeIssued($q));
             })->orWhere(function ($ny): void {
-                $ny->whereHas('warehouse', fn ($w) => $w->where('code','US-NY'))
+                $ny->whereHas('warehouse', fn ($w) => $w->where('code', 'US-NY'))
                     ->whereNotExists(fn ($q) => $this->scopeDeIssued($q))
-                    ->whereExists(function ($q):void {
+                    ->whereExists(function ($q): void {
                         $q->selectRaw('1')->from('xlwms_ny_dispatch_batch_items as ni')
-                            ->join('xlwms_ny_dispatch_batches as nb','nb.id','=','ni.batch_id')
-                            ->whereColumn('ni.order_id','shipments.order_id')->where('nb.dry_run',false)
-                            ->whereIn('ni.status',['queued','processing','uncertain']);
+                            ->join('xlwms_ny_dispatch_batches as nb', 'nb.id', '=', 'ni.batch_id')
+                            ->whereColumn('ni.order_id', 'shipments.order_id')->where('nb.dry_run', false)
+                            ->whereIn('ni.status', ['queued', 'processing', 'uncertain']);
                     });
             })->orWhere(function ($moreplus): void {
                 $moreplus->whereHas('warehouse', fn ($w) => $w->whereRaw('UPPER(code) = ?', ['US-LA']))

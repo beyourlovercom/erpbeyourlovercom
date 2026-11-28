@@ -1,0 +1,9 @@
+# ERP1 warehouse exact-reference and manual retry V1
+
+Owner 2026-11-28: duplicate check current order identity only, no unrelated history enumeration. A second explicit operator submission after a proven pre-CREATE failure may reuse that attempt; no deletion of provider history. Automatic all-pending runs never opt into retry. A known or uncertain provider CREATE is NOT proof of absence and must be reconciled; no blind repeat CREATE. Existing review, stock, routing, archive, identity, unique attempt, actor and tracking gates remain. ERP1 only.
+
+- Hannover and US01: signed production read-only positive/negative probes verified thirdOrderNoList, platformOrderNoList, referOrderNoList (1/0 for each); exact detail only, no pageList scan. Manual order references also prevent repeat creation. DE and NY selected preview and exact confirmation bind the prior eligible attempt; audit records actual actor, old/new fingerprint. Reopened review is visible before retry.
+- MorePlus: signed orderNO query positive/negative 1/0 verified; existing signed exact preflight retained. Remove mandatory 14-day content history scan from active dispatch. Selected retry may requeue completed pre-CREATE skipped item without attempt/provider evidence; actual accepted/uncertain/rejected provider attempts remain reconciliation-only. Successful later OMS visibility supersedes historical pre-CREATE skip only.
+- US-SM manual import unchanged. Canada PR #926 not in production/main; exact reference-only contract must be verified and implemented in that independent integration before live release.
+- Five-minute tracking unchanged. No real OMS CREATE, no production order mutation. Separate from #932 release authorization. No DB migration.
+- PHP 294/294, 3891 assertions, frontend prior 87/87, production build and all-staff 30-tab protection PASS. Final CI and isolated browser/Owner UAT gate before production.

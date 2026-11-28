@@ -7,6 +7,7 @@ use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\OverseaWarehouseQueueQuery;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -45,6 +46,34 @@ final class UsNyOutboundBatch
             ->where('i.status', 'processing')->where('b.status', 'running')->where('b.operator_user_id', $actor)->where('b.dry_run', false)->exists();
     }
 
+    public static function recoveryEligible(XlwmsDispatchAttempt $prior, Order $order): bool
+    {
+        return self::liveEnabled()
+            && (int) $prior->order_id === (int) $order->id
+            && (int) $prior->warehouse_id === (int) $order->shipment?->warehouse_id
+            && $order->shipment?->warehouse?->code === 'US-NY'
+            && $prior->third_order_no === 'BYL-ERP-'.$order->id
+            && $prior->state === 'blocked_preflight_error'
+            && $prior->failure_code === 'US_NY_PREFLIGHT_OR_DUPLICATE_BLOCKED'
+            && blank($prior->oms_order_no) && blank($prior->oms_status_code)
+            && blank($prior->oms_tracking_no) && blank($prior->oms_status_checked_at)
+            && blank($prior->duplicate_match_field) && blank($prior->oms_status_failure_code)
+            && DB::table('xlwms_ny_dispatch_batch_items as i')->join('xlwms_ny_dispatch_batches as b', 'b.id', '=', 'i.batch_id')
+                ->where('i.order_id', $order->id)->where('i.payload_hash', $prior->request_fingerprint)
+                ->where('i.status', 'skipped')->where('i.result_code', 'blocked_preflight_error')
+                ->where('b.dry_run', false)->where('b.operator_user_id', $prior->requested_by)
+                ->where('b.status', 'completed_partial')->exists()
+            && ! DB::table('xlwms_ny_dispatch_batch_items')->where('order_id', $order->id)
+                ->whereIn('status', ['oms_visible', 'uncertain'])->exists();
+    }
+
+    public static function authorizedRecovery(int $id, int $actor, int $attemptId): bool
+    {
+        return self::authorizedClaim($id, $actor)
+            && DB::table('xlwms_ny_dispatch_batch_items')->where('id', self::$execution['item'])
+                ->where('result_code', 'US_NY_RECOVER_PREFLIGHT:'.$attemptId)->exists();
+    }
+
     public static function guarded(int $id): bool
     {
         return Schema::hasTable('xlwms_ny_dispatch_batch_items') && DB::table('xlwms_ny_dispatch_batch_items as i')
@@ -62,7 +91,7 @@ final class UsNyOutboundBatch
         }
         $overflow = count($ids) > self::MAX;
         $ids = array_slice($ids, 0, self::MAX);
-        $data = $ids === [] ? ['items' => [], 'count' => 0] : $this->preview->preview($ids);
+        $data = $ids === [] ? ['items' => [], 'count' => 0] : $this->preview->preview($ids, $selected !== null);
         $items = $data['items'];
         foreach ($items as &$row) {
             if (self::guarded((int) $row['order_id'])) {
@@ -102,7 +131,7 @@ final class UsNyOutboundBatch
                 DB::table('xlwms_ny_dispatch_batches')->insert(['id' => $id, 'operator_user_id' => $actor, 'status' => 'queued', 'dry_run' => $dry, 'total' => $p['count'], 'created_at' => now(), 'updated_at' => now()]);
                 foreach ($p['items'] as $item) {
                     if ($item['ready']) {
-                        DB::table('xlwms_ny_dispatch_batch_items')->insert(['batch_id' => $id, 'order_id' => $item['order_id'], 'order_no' => $item['order_no'], 'payload_hash' => $item['payload_hash'], 'status' => 'queued', 'created_at' => now(), 'updated_at' => now()]);
+                        DB::table('xlwms_ny_dispatch_batch_items')->insert(['batch_id' => $id, 'order_id' => $item['order_id'], 'order_no' => $item['order_no'], 'payload_hash' => $item['payload_hash'], 'status' => 'queued', 'result_code' => isset($item['recovery_attempt_id']) ? 'US_NY_RECOVER_PREFLIGHT:'.$item['recovery_attempt_id'] : null, 'created_at' => now(), 'updated_at' => now()]);
                     }
                 }
 
@@ -162,8 +191,9 @@ final class UsNyOutboundBatch
                     continue;
                 }
                 try {
-                    $p = $this->preview->preview([(int) $item->order_id])['items'][0];
-                    if (! $p['ready'] || ! hash_equals($item->payload_hash, (string) $p['payload_hash'])) {
+                    $retry = preg_match('/^US_NY_RECOVER_PREFLIGHT:([1-9][0-9]*)$/D', (string) $item->result_code, $matches) ? (int) $matches[1] : null;
+                    $p = $this->preview->preview([(int) $item->order_id], $retry !== null)['items'][0];
+                    if (! $p['ready'] || ($p['recovery_attempt_id'] ?? null) !== $retry || ! hash_equals($item->payload_hash, (string) $p['payload_hash'])) {
                         throw new RuntimeException('US_NY_PREFLIGHT_CHANGED');
                     }
                     if ($b->dry_run) {
@@ -171,7 +201,7 @@ final class UsNyOutboundBatch
                         $code = 'US_NY_DEV_NO_IO';
                     } else {
                         self::$execution = ['order' => (int) $item->order_id, 'actor' => (int) $b->operator_user_id, 'item' => (int) $item->id, 'hash' => $item->payload_hash];
-                        $r = $this->dispatch->create((int) $item->order_id, (int) $b->operator_user_id, $item->payload_hash);
+                        $r = $this->dispatch->create((int) $item->order_id, (int) $b->operator_user_id, $item->payload_hash, $retry);
                         $status = match ($r['state']) {
                             'oms_create_confirmed' => 'oms_visible','uncertain_manual_reconcile' => 'uncertain',default => 'skipped'
                         };

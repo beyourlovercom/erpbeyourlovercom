@@ -3,6 +3,8 @@
 namespace App\Modules\Logistics\Infrastructure\Xlwms;
 
 use App\Modules\Logistics\Application\Xlwms\DeTianyunDispatchAuthorization;
+use App\Modules\Logistics\Application\Xlwms\UsNyCanaryDispatch;
+use App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -54,7 +56,7 @@ final class XlwmsOrderGateway
                 && $exactOrderId > 0
                 && ((config('xlwms.us_ny_canary_enabled', false)
                     && $exactOrderId === (int) config('xlwms.us_ny_canary_order_id'))
-                    || \App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::liveEnabled())
+                    || UsNyOutboundBatch::liveEnabled())
                 && $connection->oms_warehouse_code === 'US01'
                 && ($row['whCode'] ?? null) === 'US01'
                 && ($row['isSubmit'] ?? null) === 1
@@ -63,7 +65,7 @@ final class XlwmsOrderGateway
                 && collect($items)->every(static fn ($item): bool => is_array($item)
                     && is_string($item['sku'] ?? null) && trim($item['sku']) !== ''
                     && is_int($item['quantity'] ?? null) && $item['quantity'] > 0)
-                && \App\Modules\Logistics\Application\Xlwms\UsNyCanaryDispatch::permitsCreate($connection, $row, $exactOrderId);
+                && UsNyCanaryDispatch::permitsCreate($connection, $row, $exactOrderId);
             if (! $legacyTest && ! $productionDe && ! $productionNy) {
                 throw new RuntimeException('XLWMS_OPENAPI_CREATE_BLOCKED_USE_OMS_DRAFT_IMPORT');
             }
@@ -80,7 +82,9 @@ final class XlwmsOrderGateway
         $normalized = $path === 'warehouse/options' ? null : XlwmsSignature::normalize($data);
         $authcode = XlwmsSignature::sign($appKey, $secret, $reqTime, $normalized);
         $payload = ['appKey' => $appKey, 'reqTime' => $reqTime];
-        if ($normalized !== null) $payload['data'] = $normalized;
+        if ($normalized !== null) {
+            $payload['data'] = $normalized;
+        }
 
         try {
             $response = Http::acceptJson()->asJson()
@@ -91,12 +95,17 @@ final class XlwmsOrderGateway
             // A transport exception can contain the complete authcode query string.
             throw new RuntimeException('OMS_TRANSPORT_UNCERTAIN');
         }
-        if ($response->status() >= 500) throw new RuntimeException('OMS_SERVER_UNCERTAIN');
-        if (! $response->successful()) throw new RuntimeException('OMS_HTTP_REJECTED');
+        if ($response->status() >= 500) {
+            throw new RuntimeException('OMS_SERVER_UNCERTAIN');
+        }
+        if (! $response->successful()) {
+            throw new RuntimeException('OMS_HTTP_REJECTED');
+        }
         $json = $response->json();
         if (! is_array($json) || (int) ($json['code'] ?? -1) !== 200) {
             throw new RuntimeException('OMS_BUSINESS_REJECTED');
         }
+
         return $json;
     }
 
@@ -104,7 +113,10 @@ final class XlwmsOrderGateway
     public function warehouseOptions(WarehouseOpenApiConnection $connection): array
     {
         $data = $this->signedPost($connection, 'warehouse/options', []);
-        if (! is_array($data['data'] ?? null)) throw new RuntimeException('OMS_WAREHOUSE_RESPONSE_INVALID');
+        if (! is_array($data['data'] ?? null)) {
+            throw new RuntimeException('OMS_WAREHOUSE_RESPONSE_INVALID');
+        }
+
         return array_values(array_filter($data['data'], 'is_array'));
     }
 
@@ -112,11 +124,10 @@ final class XlwmsOrderGateway
      * Check both API-origin and MANUALLY created OMS orders. A manual record
      * may have no thirdOrderNo / platformOrderNo and only referOrderNo.
      *
-     * Never treat an incomplete page scan as "no duplicate". Keep the
-     * read-only scan bounded: a warehouse with >500 rows needs an
-     * independently verified exact-search provider contract before creating.
+     * Verified Hannover / US01 exact detail filters avoid unrelated history.
+     * The legacy read-only manual warehouse scan is not used by these sites.
      *
-     * @param list<string> $referenceNos Exact confirmed ERP/Woo references only.
+     * @param  list<string>  $referenceNos  Exact confirmed ERP/Woo references only.
      * @return list<array<string,mixed>>
      */
     public function findExisting(
@@ -133,90 +144,59 @@ final class XlwmsOrderGateway
             throw new RuntimeException('OMS_DUPLICATE_LOOKUP_INPUT_INVALID');
         }
 
-        // One identifier per detail request. Some providers implement multiple
-        // list fields as AND rather than OR, silently missing old manual rows.
-        foreach ([
+        // Signed positive and negative probes verified the exact reference
+        // filter on Hannover and US01. One field per request avoids AND semantics.
+        $exactOnly = in_array($connection->oms_warehouse_code, ['Hannover', 'US01'], true);
+        $queries = [
             ['thirdOrderNoList' => [$thirdOrderNo]],
             ...($platformOrderNo ? [['platformOrderNoList' => [$platformOrderNo]]] : []),
-        ] as $query) {
+        ];
+        if ($exactOnly) {
+            foreach (array_values(array_unique(array_filter([$platformOrderNo, ...$referenceNos]))) as $ref) {
+                $queries[] = ['referOrderNoList' => [$ref]];
+            }
+        }
+        foreach ($queries as $query) {
             $detail = $this->signedPost($connection, 'outboundOrder/detail', $query);
             $records = $detail['data'] ?? null;
-            if (! is_array($records)) throw new RuntimeException('OMS_DETAIL_RESPONSE_INVALID');
+            if (! is_array($records) || ! array_is_list($records)) {
+                throw new RuntimeException('OMS_DETAIL_RESPONSE_INVALID');
+            }
             $found = $this->exactMatches($records, $refs);
-            if ($found !== []) return $found;
+            if ($exactOnly && count($found) !== count($records)) {
+                throw new RuntimeException('OMS_STATUS_IDENTITY_MISMATCH');
+            }
+            if ($found !== []) {
+                return $found;
+            }
         }
 
-        // Historical/manual warehouse orders are only discoverable by
-        // referOrderNo in the paginated outbound order list.
-        if (in_array($connection->oms_warehouse_code, ['Hannover', 'US01'], true)) {
-            return $this->findExistingDeComplete($connection, $refs);
+        if ($exactOnly) {
+            return [];
         }
+        // Retain the read-only manual warehouse contract until verified.
         $pageSize = 10;
         for ($page = 1; $page <= 50; $page++) {
             $response = $this->signedPost($connection, 'outboundOrder/pageList', [
                 'page' => $page, 'pageSize' => $pageSize,
             ]);
             $data = $response['data'] ?? null;
-            if (! is_array($data)) throw new RuntimeException('OMS_PAGE_RESPONSE_INVALID');
-            $rows = $data['records'] ?? $data['list'] ?? $data['rows'] ?? (array_is_list($data) ? $data : null);
-            if (! is_array($rows)) throw new RuntimeException('OMS_PAGE_RESPONSE_INVALID');
-            $matched = $this->exactMatches($rows, $refs);
-            if ($matched !== []) return $matched;
-            $total = $data['total'] ?? $data['totalCount'] ?? null;
-            if (count($rows) < $pageSize) return [];
-            if (is_numeric($total) && $page * $pageSize >= (int) $total) return [];
-        }
-        throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
-    }
-
-    /**
-     * Hannover's live pageList returns page/pageSize/pages/total and at most
-     * 10 rows. Do not treat the former 500-row scan as proof of absence.
-     * A changing total, repeated record, incomplete page or inconsistent
-     * pagination is uncertain and must still block CREATE.
-     *
-     * @param list<string> $refs
-     * @return list<array<string,mixed>>
-     */
-    private function findExistingDeComplete(WarehouseOpenApiConnection $connection, array $refs): array
-    {
-        $size = 10;
-        $total = null;
-        $seen = [];
-        $deadline = microtime(true) + 240;
-        for ($page = 1; $page <= 300; $page++) {
-            if (microtime(true) > $deadline) throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
-            $response = $this->signedPost($connection, 'outboundOrder/pageList', [
-                'page' => $page, 'pageSize' => $size,
-            ]);
-            $data = $response['data'] ?? null;
-            if (! is_array($data) || ! is_array($data['records'] ?? null)
-                || ! array_is_list($data['records'])
-                || ! isset($data['total']) || ! is_numeric($data['total'])
-                || (int) $data['total'] < 0) {
+            if (! is_array($data)) {
                 throw new RuntimeException('OMS_PAGE_RESPONSE_INVALID');
             }
-            $currentTotal = (int) $data['total'];
-            $pages = (int) ceil($currentTotal / $size);
-            $total ??= $currentTotal;
-            if ($currentTotal !== $total || $pages > 300
-                || (isset($data['page']) && (int) $data['page'] !== $page)
-                || (isset($data['pageSize']) && (int) $data['pageSize'] !== $size)
-                || (isset($data['pages']) && (int) $data['pages'] !== $pages)
-                || count($data['records']) !== min($size, max(0, $total - ($page - 1) * $size))) {
-                throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
+            $rows = $data['records'] ?? $data['list'] ?? $data['rows'] ?? (array_is_list($data) ? $data : null);
+            if (! is_array($rows)) {
+                throw new RuntimeException('OMS_PAGE_RESPONSE_INVALID');
             }
-            $matched = $this->exactMatches($data['records'], $refs);
-            if ($matched !== []) return $matched;
-            foreach ($data['records'] as $row) {
-                $id = is_array($row) ? trim((string) ($row['outboundOrderNo'] ?? '')) : '';
-                if ($id === '' || isset($seen[$id])) {
-                    throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
-                }
-                $seen[$id] = true;
+            $matched = $this->exactMatches($rows, $refs);
+            if ($matched !== []) {
+                return $matched;
             }
-            if ($page >= $pages) {
-                if (count($seen) !== $total) throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
+            $total = $data['total'] ?? $data['totalCount'] ?? null;
+            if (count($rows) < $pageSize) {
+                return [];
+            }
+            if (is_numeric($total) && $page * $pageSize >= (int) $total) {
                 return [];
             }
         }
@@ -229,7 +209,7 @@ final class XlwmsOrderGateway
      * productList[].quantity (integer). Missing/ambiguous quantities fail
      * closed; matching only a SKU set could ship a wrong quantity.
      *
-     * @param list<array{sku:string,quantity:int}> $expectedItems
+     * @param  list<array{sku:string,quantity:int}>  $expectedItems
      */
     public function findExistingExact(
         WarehouseOpenApiConnection $connection,
@@ -252,30 +232,45 @@ final class XlwmsOrderGateway
                 return false;
             }
             $actual = $this->exactItemQuantities($row['productList'] ?? $row['products'] ?? null);
+
             return $actual !== null && $actual === $expected;
         }));
-        if ($matches !== [] && $strict === []) throw new RuntimeException('OMS_STATUS_IDENTITY_MISMATCH');
-        if (count($strict) > 1) throw new RuntimeException('OMS_DUPLICATE_AMBIGUOUS');
+        if ($matches !== [] && $strict === []) {
+            throw new RuntimeException('OMS_STATUS_IDENTITY_MISMATCH');
+        }
+        if (count($strict) > 1) {
+            throw new RuntimeException('OMS_DUPLICATE_AMBIGUOUS');
+        }
+
         return $strict;
     }
 
     /** @return array<string,int>|null */
     private function exactItemQuantities(mixed $items): ?array
     {
-        if (! is_array($items) || ! array_is_list($items) || $items === []) return null;
+        if (! is_array($items) || ! array_is_list($items) || $items === []) {
+            return null;
+        }
         $quantities = [];
         foreach ($items as $item) {
-            if (! is_array($item)) return null;
+            if (! is_array($item)) {
+                return null;
+            }
             $sku = $item['sku'] ?? null;
             $qty = $item['quantity'] ?? null;
             if (! is_string($sku) || trim($sku) === ''
                 || ! (is_int($qty) || (is_string($qty) && preg_match('/^[1-9][0-9]*$/D', $qty)))
-                || (int)$qty < 1 || (int)$qty > 1000000) return null;
+                || (int) $qty < 1 || (int) $qty > 1000000) {
+                return null;
+            }
             $sku = trim($sku);
-            $quantities[$sku] = ($quantities[$sku] ?? 0) + (int)$qty;
-            if ($quantities[$sku] > 1000000) return null;
+            $quantities[$sku] = ($quantities[$sku] ?? 0) + (int) $qty;
+            if ($quantities[$sku] > 1000000) {
+                return null;
+            }
         }
         ksort($quantities);
+
         return $quantities;
     }
 
@@ -283,15 +278,17 @@ final class XlwmsOrderGateway
      * Strict exact identifier match only. Never fuzzy match recipient/address.
      * Read-only vendor result may use multiple reference field aliases.
      *
-     * @param array<mixed> $rows
-     * @param list<string> $refs
+     * @param  array<mixed>  $rows
+     * @param  list<string>  $refs
      * @return list<array<string,mixed>>
      */
     private function exactMatches(array $rows, array $refs): array
     {
         $matched = [];
         foreach ($rows as $row) {
-            if (! is_array($row)) continue;
+            if (! is_array($row)) {
+                continue;
+            }
             foreach ([
                 'thirdOrderNo', 'platformOrderNo', 'referOrderNo',
                 'referenceOrderNo', 'referenceNo',
@@ -304,6 +301,7 @@ final class XlwmsOrderGateway
                 }
             }
         }
+
         return $matched;
     }
 
@@ -330,10 +328,10 @@ final class XlwmsOrderGateway
             || count($data['records']) > 10 || (int) $data['total'] > 1) {
             throw new RuntimeException('OMS_STATUS_RESPONSE_INVALID');
         }
-        if ((int)$data['total'] === 0 && count($data['records']) === 0) {
+        if ((int) $data['total'] === 0 && count($data['records']) === 0) {
             return null;
         }
-        if ((int)$data['total'] !== 1 || count($data['records']) !== 1) {
+        if ((int) $data['total'] !== 1 || count($data['records']) !== 1) {
             throw new RuntimeException('OMS_STATUS_RESPONSE_INVALID');
         }
         $item = $data['records'][0];
@@ -356,10 +354,10 @@ final class XlwmsOrderGateway
 
         return [
             'order_no' => $omsOrderNo,
-            'third_order_no' => trim((string)($item['thirdOrderNo'] ?? '')),
-            'refer_order_no' => trim((string)($item['referOrderNo'] ?? '')),
-            'platform_order_no' => trim((string)($item['platformOrderNo'] ?? '')),
-            'status_code' => (string)$status,
+            'third_order_no' => trim((string) ($item['thirdOrderNo'] ?? '')),
+            'refer_order_no' => trim((string) ($item['referOrderNo'] ?? '')),
+            'platform_order_no' => trim((string) ($item['platformOrderNo'] ?? '')),
+            'status_code' => (string) $status,
             'tracking_no' => $tracking ?: null,
         ];
     }
@@ -368,18 +366,22 @@ final class XlwmsOrderGateway
      * External imports may have no thirdOrderNo at all; platformOrderNo must
      * match the unique ERP reissue ID and native detail is revalidated later.
      */
-    public function readManualDraftDetail(WarehouseOpenApiConnection $conn,string $platformNo): array
+    public function readManualDraftDetail(WarehouseOpenApiConnection $conn, string $platformNo): array
     {
-        if (!preg_match('/^BYL-RESHIP-[0-9a-f]{32}$/D',$platformNo)) {
+        if (! preg_match('/^BYL-RESHIP-[0-9a-f]{32}$/D', $platformNo)) {
             throw new RuntimeException('OMS_MANUAL_DRAFT_REFERENCE_INVALID');
         }
-        $r=$this->signedPost($conn,'outboundOrder/detail',
-            ['platformOrderNoList'=>[$platformNo]]);
-        $rows=$r['data']??null;
-        if (!is_array($rows)) throw new RuntimeException('OMS_MANUAL_DRAFT_DETAIL_INVALID');
-        $matched=array_values(array_filter($rows,static fn($row): bool =>
-            is_array($row) && ($row['platformOrderNo']??null)===$platformNo));
-        if (count($matched)!==1) throw new RuntimeException('OMS_MANUAL_DRAFT_DETAIL_AMBIGUOUS');
+        $r = $this->signedPost($conn, 'outboundOrder/detail',
+            ['platformOrderNoList' => [$platformNo]]);
+        $rows = $r['data'] ?? null;
+        if (! is_array($rows)) {
+            throw new RuntimeException('OMS_MANUAL_DRAFT_DETAIL_INVALID');
+        }
+        $matched = array_values(array_filter($rows, static fn ($row): bool => is_array($row) && ($row['platformOrderNo'] ?? null) === $platformNo));
+        if (count($matched) !== 1) {
+            throw new RuntimeException('OMS_MANUAL_DRAFT_DETAIL_AMBIGUOUS');
+        }
+
         return $matched[0];
     }
 
@@ -392,8 +394,7 @@ final class XlwmsOrderGateway
         $channels = $this->signedPost($connection, 'logistics/channel/list', ['whCode' => $whCode]);
         $channelRecords = $channels['data'] ?? null;
         if (! is_array($channelRecords)
-            || ! collect($channelRecords)->contains(static fn($r): bool =>
-                is_array($r) && ($r['channelCode'] ?? null) === $channel
+            || ! collect($channelRecords)->contains(static fn ($r): bool => is_array($r) && ($r['channelCode'] ?? null) === $channel
                 && (! isset($r['whCodes']) || (array) $r['whCodes'] === [] || in_array($whCode, (array) $r['whCodes'], true)))) {
             throw new RuntimeException('OMS_CHANNEL_NOT_AVAILABLE');
         }
@@ -405,8 +406,8 @@ final class XlwmsOrderGateway
             // cheapest-price as equivalent. This does not imply shipped.
             if (! is_array($record)
                 || $channel !== 'No_Shipping_Service'
-                || (string)($record['channelType'] ?? '') !== '2'
-                || trim((string)($record['channelName'] ?? '')) !== '无需物流服务') {
+                || (string) ($record['channelType'] ?? '') !== '2'
+                || trim((string) ($record['channelName'] ?? '')) !== '无需物流服务') {
                 throw new RuntimeException('US_SM_NO_SHIPPING_CHANNEL_UNAVAILABLE');
             }
         }
@@ -414,12 +415,15 @@ final class XlwmsOrderGateway
             'page' => 1, 'pageSize' => 100, 'skuList' => array_values(array_unique($skuList)),
         ]);
         $records = $products['data']['records'] ?? null;
-        if (! is_array($records)) throw new RuntimeException('OMS_PRODUCT_CATALOG_UNAVAILABLE');
+        if (! is_array($records)) {
+            throw new RuntimeException('OMS_PRODUCT_CATALOG_UNAVAILABLE');
+        }
         foreach ($skuList as $sku) {
-            $exists = collect($records)->contains(static fn($r): bool =>
-                is_array($r) && ($r['sku'] ?? null) === $sku
+            $exists = collect($records)->contains(static fn ($r): bool => is_array($r) && ($r['sku'] ?? null) === $sku
                 && (! isset($r['approveStatus']) || (int) $r['approveStatus'] === 2));
-            if (! $exists) throw new RuntimeException('OMS_SKU_NOT_APPROVED_OR_MISSING');
+            if (! $exists) {
+                throw new RuntimeException('OMS_SKU_NOT_APPROVED_OR_MISSING');
+            }
         }
     }
 
@@ -428,21 +432,21 @@ final class XlwmsOrderGateway
      * invoke this method after its own one-shot safety gate is satisfied.
      * Must NEVER fallback to the normal isSubmit=1 createSingle method.
      *
-     * @param array<string,mixed> $draft
+     * @param  array<string,mixed>  $draft
      * @return array{confirmed:bool,order_no:?string}
      */
     public function createTestDraftSingle(WarehouseOpenApiConnection $connection, array $draft): array
     {
-        $reference = (string)($draft['referOrderNo'] ?? '');
+        $reference = (string) ($draft['referOrderNo'] ?? '');
         $items = $draft['productList'] ?? null;
-        if (! app()->environment(['local','testing'])
-            || (int)($draft['isSubmit'] ?? -1) !== 0
+        if (! app()->environment(['local', 'testing'])
+            || (int) ($draft['isSubmit'] ?? -1) !== 0
             || ! preg_match('/^TEST-XLWMS-[0-9]{3,12}$/', $reference)
-            || (string)($draft['platformOrderNo'] ?? '') !== $reference
-            || ! preg_match('/^BYL-TEST-[0-9]+$/', (string)($draft['thirdOrderNo'] ?? ''))
-            || ! str_contains(strtoupper((string)($draft['receiver'] ?? '')), 'DO NOT SHIP')
+            || (string) ($draft['platformOrderNo'] ?? '') !== $reference
+            || ! preg_match('/^BYL-TEST-[0-9]+$/', (string) ($draft['thirdOrderNo'] ?? ''))
+            || ! str_contains(strtoupper((string) ($draft['receiver'] ?? '')), 'DO NOT SHIP')
             || ! is_array($items) || count($items) !== 1
-            || (int)($items[0]['quantity'] ?? 0) !== 1
+            || (int) ($items[0]['quantity'] ?? 0) !== 1
             || ! filled($draft['whCode'] ?? null)
             || ! filled($draft['logisticsChannel'] ?? null)
         ) {
@@ -450,22 +454,24 @@ final class XlwmsOrderGateway
         }
         $data = $this->signedPost($connection, 'outboundOrder/create', [$draft]);
         $matches = array_values(array_filter(
-            (array)($data['data'] ?? []),
-            static fn($row): bool => is_array($row)
+            (array) ($data['data'] ?? []),
+            static fn ($row): bool => is_array($row)
                 && ($row['thirdOrderNo'] ?? null) === ($draft['thirdOrderNo'] ?? null)
         ));
         if (count($matches) !== 1 || ($matches[0]['success'] ?? null) !== true
             || empty($matches[0]['orderNo'])) {
             throw new RuntimeException('OMS_TEST_DRAFT_CREATE_UNCONFIRMED');
         }
-        return ['confirmed'=>true,'order_no'=>(string)$matches[0]['orderNo']];
+
+        return ['confirmed' => true, 'order_no' => (string) $matches[0]['orderNo']];
     }
 
     /** Requests initial draft-only CREATE (isSubmit=0), but XLWMS OpenAPI
      * may later AUTO-SUBMIT the order independently of this API request and
      * the OMS UI checkbox. A status=0 readback is NOT a lasting draft guarantee.
      * Idempotency/identity enforcement occurs in the application service.
-     * @param array<string,mixed> $draft
+     *
+     * @param  array<string,mixed>  $draft
      * @return array{confirmed:bool,order_no:string,draft_verified:bool,oms_status_code:?string,draft_verify_code:?string}
      */
     public function createDraftSingle(WarehouseOpenApiConnection $connection, array $draft): array
@@ -487,24 +493,25 @@ final class XlwmsOrderGateway
             || blank($matches[0]['orderNo'] ?? null)) {
             throw new RuntimeException('OMS_DRAFT_CREATE_NOT_CONFIRMED');
         }
-        $omsNo=(string)$matches[0]['orderNo'];
+        $omsNo = (string) $matches[0]['orderNo'];
         // CREATE acceptance is not proof of arrival in the OMS draft inbox.
         // Never trigger another CREATE to compensate for a failed readback.
         try {
-            $remote=$this->readExactOrderStatus($connection,$omsNo);
-            if (!$remote || $remote['third_order_no']!==$draft['thirdOrderNo']
-                || $remote['platform_order_no']!==($draft['platformOrderNo']??null)) {
-                return ['confirmed'=>true,'order_no'=>$omsNo,'draft_verified'=>false,
-                    'oms_status_code'=>$remote['status_code']??null,
-                    'draft_verify_code'=>'OMS_DRAFT_IDENTITY_UNVERIFIED'];
+            $remote = $this->readExactOrderStatus($connection, $omsNo);
+            if (! $remote || $remote['third_order_no'] !== $draft['thirdOrderNo']
+                || $remote['platform_order_no'] !== ($draft['platformOrderNo'] ?? null)) {
+                return ['confirmed' => true, 'order_no' => $omsNo, 'draft_verified' => false,
+                    'oms_status_code' => $remote['status_code'] ?? null,
+                    'draft_verify_code' => 'OMS_DRAFT_IDENTITY_UNVERIFIED'];
             }
-            return ['confirmed'=>true,'order_no'=>$omsNo,
-                'draft_verified'=>$remote['status_code']==='0',
-                'oms_status_code'=>$remote['status_code'],
-                'draft_verify_code'=>$remote['status_code']==='0'?null:'OMS_NOT_IN_DRAFT'];
+
+            return ['confirmed' => true, 'order_no' => $omsNo,
+                'draft_verified' => $remote['status_code'] === '0',
+                'oms_status_code' => $remote['status_code'],
+                'draft_verify_code' => $remote['status_code'] === '0' ? null : 'OMS_NOT_IN_DRAFT'];
         } catch (\Throwable) {
-            return ['confirmed'=>true,'order_no'=>$omsNo,'draft_verified'=>false,
-                'oms_status_code'=>null,'draft_verify_code'=>'OMS_DRAFT_READBACK_UNAVAILABLE'];
+            return ['confirmed' => true, 'order_no' => $omsNo, 'draft_verified' => false,
+                'oms_status_code' => null, 'draft_verify_code' => 'OMS_DRAFT_READBACK_UNAVAILABLE'];
         }
     }
 
@@ -525,6 +532,7 @@ final class XlwmsOrderGateway
         if (count($matches) !== 1 || ($matches[0]['success'] ?? null) !== true) {
             throw new RuntimeException('OMS_CREATE_NOT_CONFIRMED');
         }
+
         return ['confirmed' => true, 'order_no' => (string) ($matches[0]['orderNo'] ?? '') ?: null];
     }
 }
