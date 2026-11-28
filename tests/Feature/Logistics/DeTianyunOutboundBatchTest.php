@@ -728,13 +728,13 @@ final class DeTianyunOutboundBatchTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_stale_fingerprint_and_all_scope_cannot_create_a_batch(): void
+    public function test_stale_fingerprint_cannot_create_a_batch_and_all_scope_is_read_only(): void
     {
         $operator = $this->operator();
         $order = $this->order($operator, '21');
         $this->actingAs($operator);
         $this->getJson('/logistics/oversea/de-tianyun/xlwms/batch/preview?scope=all')
-            ->assertStatus(422)->assertJsonPath('error_code', 'DE_BATCH_SELECTION_INVALID');
+            ->assertOk()->assertJsonPath('scope', 'all');
         $this->postJson('/logistics/oversea/de-tianyun/xlwms/batch/start', [
             'scope' => 'selected', 'order_ids' => (string) $order->id,
             'fingerprint' => str_repeat('a', 64), 'confirmation' => 'CONFIRM_DE_TIANYUN_BATCH_1',

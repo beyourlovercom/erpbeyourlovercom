@@ -28,6 +28,9 @@ final class UsNyCanaryDispatch
                 && $orderId > 0 && $orderId === (int) config('xlwms.us_ny_canary_order_id');
         }
         $actor = User::query()->find($actorId);
+        if (UsNyOutboundBatch::authorizedClaim($orderId, $actorId)) {
+            return $actor?->is_active && app(LogisticsExecutionAccess::class)->allows($actor);
+        }
         return app()->environment('production', 'testing')
             && config('xlwms.us_ny_canary_enabled', false)
             && $orderId > 0 && $orderId === (int) config('xlwms.us_ny_canary_order_id')

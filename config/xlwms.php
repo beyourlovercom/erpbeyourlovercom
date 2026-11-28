@@ -69,6 +69,9 @@ return [
     // NY first apply is isolated Dev only; production remains fail-closed.
     // One explicitly approved NY order only; never enables DE/US-SM.
     'us_ny_tracking_refresh_enabled' => filter_var(env('XLWMS_US_NY_TRACKING_REFRESH_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'us_ny_batch_read_enabled' => env('XLWMS_US_NY_BATCH_READ_ENABLED', false),
+    'us_ny_operator_batch_enabled' => env('XLWMS_US_NY_OPERATOR_BATCH_ENABLED', false),
+    'us_ny_batch_owner_approved' => env('XLWMS_US_NY_BATCH_OWNER_APPROVED', false),
     'us_ny_canary_enabled' => filter_var(env('XLWMS_US_NY_CANARY_ENABLED', false), FILTER_VALIDATE_BOOL),
     'us_ny_canary_order_id' => (int) env('XLWMS_US_NY_CANARY_ORDER_ID', 0),
     'us_ny_canary_system_enabled' => false, // process-local trusted CLI only; never env-enabled
