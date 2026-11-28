@@ -55,12 +55,21 @@ const markerSize=computed(()=>view.value.w/180);
    </svg>
    <p class="offline-map-attribution absolute bottom-1 left-2 px-1 text-slate-500">Natural Earth · GeoNames（有本地匹配时） · 直线距离估算</p>
   </div>
-  <div class="space-y-1 border-l border-slate-200 p-2"><p class="text-slate-500">参考距离 · 从近到远</p><button v-for="w in rows" :key="w.code" type="button" :disabled="!w.point" class="flex w-full items-center justify-between gap-1 rounded px-1 py-1 text-left hover:bg-emerald-50" :class="selected===w.code?'bg-emerald-100':''" @click="pick(w.code)"><span><span class="mr-1 inline-block h-2 w-2 rounded-full" :style="{background:colors[w.stock]}"/>{{w.name}}<small class="block pl-3 text-slate-500">{{w.point?precision(w.point):'位置未知'}} · {{labels[w.stock]}}</small></span><strong class="whitespace-nowrap">{{w.km===null?'—':(w.approximate?'约 ':'')+w.km.toLocaleString()+' km'}}</strong></button></div>
+  <div class="offline-map-distances border-l border-slate-200"><p class="offline-map-distance-title text-slate-500">参考距离 · 从近到远</p><div class="offline-map-distance-list space-y-1 p-2" tabindex="0" aria-label="仓库参考距离列表"><button v-for="w in rows" :key="w.code" type="button" :disabled="!w.point" class="flex w-full items-center justify-between gap-1 rounded px-1 py-1 text-left hover:bg-emerald-50" :class="selected===w.code?'bg-emerald-100':''" @click="pick(w.code)"><span><span class="mr-1 inline-block h-2 w-2 rounded-full" :style="{background:colors[w.stock]}"/>{{w.name}}<small class="block pl-3 text-slate-500">{{w.point?precision(w.point):'位置未知'}} · {{labels[w.stock]}}</small></span><strong class="whitespace-nowrap">{{w.km===null?'—':(w.approximate?'约 ':'')+w.km.toLocaleString()+' km'}}</strong></button></div></div>
  </div>
- <footer class="border-t p-2 text-slate-500"><p v-if="!recipient&&!loading&&!error" class="text-amber-700">无法识别国家，暂不计算距离。</p><p v-else-if="recipient">收件区域：{{recipient.label}} · {{precision(recipient)}}（估算）</p><p>仅为人工分仓参考，国家代表点不是实际仓库地址；距离不代表运费或可发货性。无外部地图请求。</p></footer>
+ <footer class="offline-map-footer border-t px-2 py-1 text-slate-500"><p v-if="!recipient&&!loading&&!error" class="text-amber-700">无法识别国家，暂不计算距离。</p><p v-else-if="recipient">收件区域：{{recipient.label}} · {{precision(recipient)}}（估算）</p><p>直线距离仅供参考，不代表实际仓址、运费或可发货性。</p></footer>
 </section>
 </template>
 
 <style scoped>
-.offline-map-grid{display:grid;grid-template-columns:minmax(0,1fr)}.offline-map-canvas{position:relative;min-height:256px;background:#ebf2f5;overflow:hidden}.offline-map-svg{height:256px;width:100%;display:block;cursor:grab;touch-action:none;user-select:none}.offline-map-svg:active{cursor:grabbing}.offline-map-attribution{font-size:10px;background:rgba(255,255,255,.82)}@media(min-width:1280px){.offline-map-grid{grid-template-columns:minmax(0,1fr) 180px}}
+.offline-map-grid{display:grid;grid-template-columns:minmax(0,1fr);align-items:start}
+.offline-map-canvas{position:relative;height:256px;min-height:0;background:#ebf2f5;overflow:hidden}
+.offline-map-svg{height:100%;width:100%;display:block;cursor:grab;touch-action:none;user-select:none}
+.offline-map-svg:active{cursor:grabbing}
+.offline-map-attribution{font-size:10px;background:rgba(255,255,255,.82)}
+.offline-map-distances{display:flex;flex-direction:column;min-height:0;min-width:0;height:160px;overflow:hidden}
+.offline-map-distance-title{flex:none;padding:6px 8px 0}
+.offline-map-distance-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.offline-map-footer{font-size:10px;line-height:1.35}
+@media(min-width:1280px){.offline-map-grid{grid-template-columns:minmax(0,1fr) 180px}.offline-map-distances{height:256px}}
 </style>

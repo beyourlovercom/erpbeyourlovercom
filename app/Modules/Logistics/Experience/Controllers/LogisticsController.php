@@ -1142,6 +1142,12 @@ final class LogisticsController
             'carrier_routes' => $carrierRoutes,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'item_count' => $order->items->sum('quantity'),
+            'currency' => $order->currency,
+            'can_edit_items' => ! $order->isOperationallyArchived() && $order->archived_at === null
+                && in_array($order->order_kind, [OrderKind::Customer, OrderKind::KolFulfillment], true)
+                && ($order->fulfillment_parent_id === null)
+                && (auth()->user()?->can('orders.edit') ?? false),
+            'items_revision' => \App\Modules\Orders\Application\OrderItemAmendmentPreflight::revisionForItems($order->items),
             'items' => $order->items->map(fn ($item): array => [
                 'id' => $item->id,
                 'product_id' => $item->product_id,
@@ -1157,6 +1163,7 @@ final class LogisticsController
                 'previous_replacement_product_id' => collect($allocation?->manual_assignments ?? [])->firstWhere('order_item_id', $item->id)['replacement_product_id'] ?? null,
                 'product_summary' => $item->product_summary,
                 'quantity' => $item->quantity,
+                'unit_price' => (string) $item->unit_price,
                 'availability' => $context['availability'][$item->product_id] ?? [],
                 'is_gift' => $this->giftSkuResolutions->isGiftSku($item->source_sku ?: $item->sku),
                 'gift_options_by_warehouse' => array_key_exists('gift_resolution', $context)

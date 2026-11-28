@@ -12,6 +12,12 @@ final class OrderItemAmendmentPreflight
 {
     public function __construct(private readonly InventoryAvailabilityReader $availability) {}
 
+    /** Stable revision shared by order-detail edits and allocation read projections. */
+    public static function revisionForItems(\Illuminate\Support\Collection $items): string
+    {
+        return hash('sha256', $items->sortBy('id')->values()->map(fn ($item) => $item->only(['id', 'product_id', 'quantity', 'unit_price', 'product_summary']))->toJson());
+    }
+
     /** @param array<int, array<string, mixed>> $items */
     public function preview(Order $order, array $items, bool $includeStock = true): array
     {
@@ -118,7 +124,7 @@ final class OrderItemAmendmentPreflight
             'changed' => $changed, 'fulfillment_only' => $isWoo,
             'can_save_direct' => $issues === [], 'requires_replan' => false,
             'can_atomic_single_replan' => false, 'can_atomic_multi_replan' => false,
-            'expected_revision' => hash('sha256', $old->map(fn ($item) => $item->only(['id', 'product_id', 'quantity', 'unit_price', 'product_summary']))->toJson()),
+            'expected_revision' => self::revisionForItems($old),
             'no_writes' => true, 'currency' => $order->currency ?? 'USD',
             'old_items_gross' => number_format($oldCents / 100, 2, '.', ''),
             'new_items_gross' => number_format($newCents / 100, 2, '.', ''),
