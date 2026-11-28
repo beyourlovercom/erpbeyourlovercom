@@ -11,6 +11,7 @@ use App\Modules\Logistics\Application\Domestic\DomesticCarrierDefaults;
 use App\Modules\Logistics\Application\LogisticsStatusSummary;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -110,6 +111,25 @@ final class DomesticBusinessReviewTest extends TestCase
         $this->actingAs($unauthorized)->postJson('/logistics/china/batch-review', [
             'order_ids' => [$first->id], 'action' => 'approve',
         ])->assertForbidden();
+    }
+
+    public function test_manual_domestic_stockout_syncs_marker_and_legacy_restock_does_not_invent_approval(): void
+    {
+        $actor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate', 'domestic.review']);
+        $order = $this->order();
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'out_of_stock', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'out_of_stock');
+        $this->assertDatabaseHas('order_operational_markers', ['order_id' => $order->id, 'marker' => 'domestic_stockout']);
+        $this->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'resolve_stockout', 'expected_workflow_revision' => $order->fresh()->workflow_revision,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'sending');
+        $legacy = $this->order();
+        $legacy->forceFill(['workflow_status' => 'out_of_stock'])->save();
+        $this->patchJson('/orders/'.$legacy->id.'/workflow-status', [
+            'workflow_status' => 'resolve_stockout', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_review');
+        $this->assertDatabaseMissing('order_operational_markers', ['order_id' => $legacy->id, 'marker' => 'domestic_reviewed']);
     }
 
     public function test_stockout_return_to_allocation_is_not_a_business_rejection(): void
@@ -565,7 +585,7 @@ final class DomesticBusinessReviewTest extends TestCase
         self::assertCount(0, json_decode((string) $record->before, true)['cleared_staged_tracking']);
         self::assertSame(0, app(LogisticsStatusSummary::class)->pendingAllocationQuery()
             ->whereKey($parent->id)->count());
-        self::assertTrue(app(\App\Modules\Orders\Application\OrderProgressQuery::class)
+        self::assertTrue(app(OrderProgressQuery::class)
             ->unassignedSplitLeg(Order::query())->whereKey($domestic->id)->exists());
     }
 

@@ -12,6 +12,7 @@ use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\PendingFinalSkuMaterializer;
 use App\Modules\NotificationCenter\Application\NotificationPublisher;
+use App\Modules\Orders\Application\DomesticShippingHold;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -39,7 +40,7 @@ final class DomesticReviewDecisionService
             $locked = Order::query()->with([
                 'shipment', 'operationalMarkers', 'externalReferences', 'fulfillmentParent',
             ])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
-            abort_if(\App\Modules\Orders\Application\DomesticShippingHold::isHeld($locked->workflow_status), 409, '冻结发货订单请先恢复待发货。');
+            abort_if(DomesticShippingHold::isHeld($locked->workflow_status), 409, '冻结发货订单请先恢复待发货。');
             abort_if($locked->originalFulfillmentChildren()->exists(), 409, '拆单母订单仅汇总，不能直接审核。');
             abort_if($locked->procurementOrder()->where('origin', 'external')->whereNull('released_at')->exists(),
                 409, '外采订单未由 Vita 验收到货放行，不能通过普通国内审核');
@@ -68,6 +69,18 @@ final class DomesticReviewDecisionService
                 );
             }
 
+            if ($decision === 'restock' && ! $locked->operationalMarkers->contains('marker', 'domestic_stockout')) {
+                $approved = $locked->operationalMarkers->contains('marker', 'domestic_reviewed');
+                $this->workflow->set($locked, $approved ? 'sending' : 'pending_review', (int) $locked->workflow_revision, $actor);
+                $this->audit->record(
+                    AuditActor::user($actor, AuditSource::Web), 'domestic.review_restock_legacy',
+                    Order::class, $locked->getKey(), $before,
+                    ['decision' => 'restock', 'workflow_status' => $approved ? 'sending' : 'pending_review'],
+                    'legacy_manual_stockout_recovery',
+                );
+
+                return;
+            }
             $clearedStagedTracking = [];
             if (in_array($decision, ['approve', 'restock'], true)) {
                 // Approved factory orders receive a persisted, country-aware
@@ -236,6 +249,7 @@ final class DomesticReviewDecisionService
         } elseif ($order->workflow_status === 'out_of_stock') {
             $this->workflow->set($order, 'sending', (int) $order->workflow_revision, $actor);
         }
+
         return $staged;
     }
 }

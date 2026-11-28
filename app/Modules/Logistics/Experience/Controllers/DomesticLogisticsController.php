@@ -18,6 +18,7 @@ use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\SelectedExportOrderIds;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Orders\Application\DomesticReviewAmountResolver;
+use App\Modules\Orders\Application\DomesticShippingHold;
 use App\Modules\Orders\Application\OrderBusinessDateResolver;
 use App\Modules\Orders\Application\OrderContactProjection;
 use App\Modules\Orders\Application\OrderLogisticsAuthority;
@@ -239,8 +240,10 @@ final class DomesticLogisticsController
         abort_unless($this->reviewAccess->allows($request->user()), 403);
         $this->decisions->decide($order, 'restock', null, $request->user());
 
-        return redirect('/logistics/china?view=pending')
-            ->with('success', '已确认到货，订单已进入待发货。');
+        $pendingReview = $order->fresh()->workflow_status === 'pending_review';
+
+        return redirect('/logistics/china?view='.($pendingReview ? 'review' : 'pending'))
+            ->with('success', $pendingReview ? '已解除缺货，等待国内商务审核。' : '已确认到货，订单已进入待发货。');
     }
 
     public function returnAllocation(Request $request, Order $order): RedirectResponse
@@ -515,10 +518,10 @@ final class DomesticLogisticsController
         }
         if (! in_array($view, ['frozen', 'all'], true)) {
             $query->where(fn (Builder $q) => $q->whereNull('workflow_status')
-                ->orWhereNotIn('workflow_status', \App\Modules\Orders\Application\DomesticShippingHold::STORED_CODES));
+                ->orWhereNotIn('workflow_status', DomesticShippingHold::STORED_CODES));
         }
         match ($view) {
-            'frozen' => $query->whereIn('workflow_status', \App\Modules\Orders\Application\DomesticShippingHold::STORED_CODES)
+            'frozen' => $query->whereIn('workflow_status', DomesticShippingHold::STORED_CODES)
                 ->where('order_status', 'pending_shipment')
                 ->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending')->whereNull('shipped_at')),
             'outsource' => $query->where('order_status', 'pending_shipment')
@@ -556,7 +559,7 @@ final class DomesticLogisticsController
             $query->whereHas('shipment', fn ($shipment) => $shipment->whereRaw('LOWER(carrier) = ?', [mb_strtolower($filters['carrier'])]));
         }
         if ($filters['status'] !== '') {
-            $allowed = ['pending_review', 'sending', 'out_of_stock', 'sent', 'shipping', 'completed', 'progress_conflict', 'partially_shipped', ...\App\Modules\Orders\Application\DomesticShippingHold::CODES];
+            $allowed = ['pending_review', 'sending', 'out_of_stock', 'sent', 'shipping', 'completed', 'progress_conflict', 'partially_shipped', ...DomesticShippingHold::CODES];
             in_array($filters['status'], $allowed, true)
                 ? $this->progressQueries->applyPhase($query, $filters['status'])
                 : $query->whereRaw('1=0');
@@ -699,7 +702,7 @@ final class DomesticLogisticsController
                     'received_quantity' => (int) $line->received_quantity,
                 ])->values()->all(),
             ] : null,
-            'export_blockers' => \App\Modules\Orders\Application\DomesticShippingHold::isHeld($order->workflow_status)
+            'export_blockers' => DomesticShippingHold::isHeld($order->workflow_status)
                 ? ['冻结发货订单禁止导出']
                 : ($shipment?->shipment_status !== 'pending'
                 ? ['该单已离开待发货队列，禁止重复导出']

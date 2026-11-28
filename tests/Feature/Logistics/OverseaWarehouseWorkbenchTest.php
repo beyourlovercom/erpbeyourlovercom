@@ -463,6 +463,65 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 1));
     }
 
+    public function test_manual_stockout_syncs_all_oversea_warehouses_and_restock_uses_real_review(): void
+    {
+        $actor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate']);
+        foreach ($this->warehouses() as $code => $warehouse) {
+            if (! in_array(strtoupper($code), ['US-LA', 'US-NY', 'US-SM', 'DE', 'CA'], true)) {
+                continue;
+            }
+            $order = $this->orderAt($warehouse, 'MANUAL-STOCKOUT-'.$code);
+            $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+                'workflow_status' => 'out_of_stock', 'expected_workflow_revision' => 0,
+            ])->assertOk()->assertJsonPath('workflow_status.code', 'out_of_stock');
+            $this->assertDatabaseHas('oversea_warehouse_reviews', [
+                'order_id' => $order->id, 'status' => 'stockout', 'reviewed_warehouse_id' => $warehouse->id,
+            ]);
+            $this->assertSame('out_of_stock', $order->fresh()->workflow_status);
+            $this->patchJson('/orders/'.$order->id.'/workflow-status', [
+                'workflow_status' => 'resolve_stockout', 'expected_workflow_revision' => $order->fresh()->workflow_revision,
+            ])->assertOk();
+            $this->assertDatabaseHas('oversea_warehouse_reviews', [
+                'order_id' => $order->id, 'status' => 'approved', 'reviewed_warehouse_id' => $warehouse->id,
+            ]);
+            $this->assertSame('sending', $order->fresh()->workflow_status);
+        }
+    }
+
+    public function test_legacy_split_stockout_without_review_returns_only_child_to_review(): void
+    {
+        $actor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate']);
+        $w = $this->warehouses();
+        $root = $this->orderAt($w['US-NY'], 'LEGACY-STOCKOUT-ROOT');
+        $root->shipment()->delete();
+        $a = $this->orderAt($w['US-LA'], 'LEGACY-STOCKOUT-A');
+        $b = $this->orderAt($w['US-NY'], 'LEGACY-STOCKOUT-B');
+        foreach (['A' => $a, 'B' => $b] as $suffix => $leg) {
+            $leg->forceFill(['fulfillment_parent_id' => $root->id, 'fulfillment_suffix' => $suffix,
+                'fulfillment_role' => 'original', 'order_kind' => 'fulfillment_derived'])->save();
+        }
+        $a->forceFill(['workflow_status' => 'sending', 'order_status' => 'shipped'])->save();
+        $a->shipment()->update(['shipment_status' => 'shipped', 'tracking_number' => 'LEGACY-TRACK-A', 'shipped_at' => now()]);
+        $b->forceFill(['workflow_status' => 'out_of_stock'])->save();
+        $beforeRoot = $root->fresh()->getAttributes();
+        $beforeA = $a->fresh()->getAttributes();
+        $beforeShipment = $a->fresh()->shipment->getAttributes();
+        $this->actingAs($actor)->get('/logistics/oversea/us-ny?view=stockout')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $b->id)->where('rows.data.0.review_status', 'stockout'));
+        $this->actingAs($actor)->patchJson('/orders/'.$b->id.'/workflow-status', [
+            'workflow_status' => 'resolve_stockout', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_review');
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $b->id, 'status' => 'pending', 'submitted_warehouse_id' => $w['US-NY']->id,
+            'reviewed_warehouse_id' => null,
+        ]);
+        $this->assertFalse(app(OrderProgressQuery::class)->readyForShipment(Order::query())->whereKey($b->id)->exists());
+        $this->assertSame($beforeRoot, $root->fresh()->getAttributes());
+        $this->assertSame($beforeA, $a->fresh()->getAttributes());
+        $this->assertSame($beforeShipment, $a->fresh()->shipment->getAttributes());
+    }
+
     public function test_split_restock_restores_only_selected_child_and_never_parent_or_shipped_sibling(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
