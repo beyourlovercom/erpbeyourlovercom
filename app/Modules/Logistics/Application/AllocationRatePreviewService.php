@@ -51,7 +51,7 @@ final class AllocationRatePreviewService
         }
         $standards = $this->packaging->forProductIds(array_keys($items));
         $shipping = $this->shipping->forProductIds(array_keys($items));
-        $products = Product::query()->whereIn('id', array_keys($items))->get(['id', 'weight_kg', 'length_cm', 'width_cm', 'height_cm', 'has_battery', 'has_liquid'])->keyBy('id');
+        $products = Product::query()->whereIn('id', array_keys($items))->get(['id', 'weight_kg', 'has_battery', 'has_liquid'])->keyBy('id');
         $weight = 0.0;
         $length = $width = $height = 0.0;
         $missing = $missingDimensions = $estimated = [];
@@ -75,10 +75,6 @@ final class AllocationRatePreviewService
             }
             $dims = [$s['packaging_length_cm'] ?? null, $s['packaging_width_cm'] ?? null, $s['packaging_height_cm'] ?? null];
             $dimensionSource = 'approved_packaging';
-            if (count(array_filter($dims, $positive)) !== 3) {
-                $dims = [$product?->length_cm, $product?->width_cm, $product?->height_cm];
-                $dimensionSource = 'product_dimensions_reference';
-            }
             if (! $positive($kg)) {
                 $missing[] = $id;
             } else {
@@ -99,6 +95,7 @@ final class AllocationRatePreviewService
             }
             $evidence[] = ['product_id' => $id, 'quantity' => $quantity, 'weight_source' => $positive($kg) ? $weightSource : 'missing',
                 'weight_kg' => $positive($kg) ? (float) $kg : null, 'dimension_source' => $dimensionSource,
+                'dimensions_cm' => $dimensionSource === 'missing' ? null : $dims,
                 'measurement_record_id' => $s['measurement_record_id'] ?? null,
                 'shipping_evidence' => $weightSource === 'adopted_shipping_weight' ? ($shipping[$id] ?? null) : null];
         }

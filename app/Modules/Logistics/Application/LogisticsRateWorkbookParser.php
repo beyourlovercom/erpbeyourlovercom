@@ -446,6 +446,16 @@ final class LogisticsRateWorkbookParser
                 break;
             }
         }
+        // Source-specific restriction: a catalog with unknown cargo classification must
+        // not treat an explicitly prohibited US route as an applicable cheap channel.
+        $restrictedUsCell = null;
+        for ($r = 1; $r <= $limit; $r++) {
+            $line = $this->value($s, 'A'.$r);
+            if ($line && str_contains($line, '美国') && str_contains($line, '不接受成人用品')) {
+                $restrictedUsCell = 'A'.$r;
+                break;
+            }
+        }
         foreach ($groups as $group) {
             // A price-table import does not certify channel-specific dimensional, rounding or restriction rules.
             $rule = $this->sdWeightRule($service, $group['country'], $group['zone']);
@@ -476,6 +486,9 @@ final class LogisticsRateWorkbookParser
                 if (! $recognized) {
                     $rule = ['basis' => 'review_required'];
                 }
+            }
+            if ($group['country'] === 'US' && $restrictedUsCell !== null) {
+                $rule['catalog_restriction_source_cell'] = $restrictedUsCell;
             }
             foreach ($group['bands'] as &$band) {
                 $band['raw_values']['weight_rule_evidence'] = $weightEvidence;

@@ -109,6 +109,10 @@ final class VersionedRateQuoteService
             return $this->blocked('rate_components_missing_or_ambiguous');
         }
         $transportRule = json_decode($transport[0]->rule_spec, true);
+        if (is_array($transportRule) && isset($transportRule['catalog_restriction_source_cell'])) {
+            return $this->blocked('supplier_catalog_restriction');
+        }
+
         if (! is_array($transportRule) || (! $draft && (($transportRule['coverage_complete'] ?? false) !== true
             || ($handlingRows->isEmpty() && ($transportRule['handling_included'] ?? false) !== true)))) {
             return $this->blocked('rate_coverage_unverified');

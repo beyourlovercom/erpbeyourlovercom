@@ -1,0 +1,134 @@
+name: ERP1 Factory Packaging Optimization V2
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Inventory/Application/PackagingOptimization*.php'
+      - 'app/Modules/Inventory/Experience/Controllers/PackagingMeasurementController.php'
+      - 'app/Modules/Inventory/Experience/Routes/web.php'
+      - 'app/Modules/Inventory/Infrastructure/Models/PackagingMeasurementRecord.php'
+      - 'database/migrations/**packaging_measurement**'
+      - 'database/migrations/**packaging_photo_requirement**'
+      - 'tests/Feature/Inventory/Packaging*Test.php'
+      - 'tests/Unit/Inventory/Packaging*Test.php'
+      - 'app/Modules/Logistics/Application/VersionedRateQuoteService.php'
+      - 'app/Modules/Logistics/Application/FulfillmentPlanCostEstimator.php'
+      - '.github/workflows/erp-factory-packaging-optimization-v2.yml'
+permissions:
+  contents: read
+jobs:
+  packaging-contracts:
+    name: packaging-contracts (${{ matrix.database }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, mysql]
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: erp_packaging_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, gd, pdo_sqlite, sqlite3, pdo_mysql
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: npm ci
+      - run: npm run typecheck && npm run build
+      - name: Packaging and A4 contract tests
+        run: >-
+          vendor/bin/phpunit
+          tests/Feature/Inventory/PackagingMeasurementEvidenceTest.php
+          tests/Feature/Inventory/PackagingOptimization*Test.php
+          tests/Unit/Inventory/PackagingOptimization*Test.php
+          tests/Feature/Products/ShippingWeightStandardCandidateTest.php
+          tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php
+          tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: ${{ matrix.database }}
+          DB_DATABASE: ${{ matrix.database == 'sqlite' && ':memory:' || 'erp_packaging_test' }}
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          DB_URL: ''
+          ERP_LOCAL_ADMIN_BYPASS: 'false'
+      - name: MySQL isolated packaging migration rollback and reapply
+        if: matrix.database == 'mysql'
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: mysql
+          DB_DATABASE: erp_packaging_test
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          DB_URL: ''
+          ERP_LOCAL_ADMIN_BYPASS: 'false'
+        run: |
+          set -euo pipefail
+          test "$DB_DATABASE" = erp_packaging_test
+          test "$DB_HOST" = 127.0.0.1
+          php artisan migrate:fresh --force --quiet
+          migration=database/migrations/2026_11_27_230000_add_packaging_measurement_resubmission_link.php
+          check_schema() {
+            EXPECT_COLUMN="$1" php -r '
+              $pdo = new PDO("mysql:host=127.0.0.1;port=3306;dbname=erp_packaging_test", getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
+              $column = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=\x27packaging_measurement_records\x27 AND COLUMN_NAME=\x27resubmission_of_id\x27")->fetchColumn();
+              $ledger = (int) $pdo->query("SELECT COUNT(*) FROM migrations WHERE migration=\x272026_11_27_230000_add_packaging_measurement_resubmission_link\x27")->fetchColumn();
+              if ($column !== (int)getenv("EXPECT_COLUMN") || $ledger !== $column) exit(1);
+              echo "PACKAGING_MYSQL_SCHEMA_LEDGER_PASS\n";
+            '
+          }
+          photo=database/migrations/2026_11_28_000100_add_packaging_photo_requirement_reason.php
+          check_photo() {
+            EXPECT_COLUMN="$1" php -r '
+              $pdo = new PDO("mysql:host=127.0.0.1;port=3306;dbname=erp_packaging_test", getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
+              $column = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=\x27packaging_measurement_records\x27 AND COLUMN_NAME=\x27photo_requirement_reason\x27")->fetchColumn();
+              $ledger = (int) $pdo->query("SELECT COUNT(*) FROM migrations WHERE migration=\x272026_11_28_000100_add_packaging_photo_requirement_reason\x27")->fetchColumn();
+              if ($column !== (int)getenv("EXPECT_COLUMN") || $ledger !== $column) exit(1);
+              echo "PACKAGING_PHOTO_MYSQL_SCHEMA_LEDGER_PASS\n";
+            '
+          }
+          upgrade=database/migrations/2026_11_28_143400_add_packaging_upgrade_lineage.php
+          check_upgrade() {
+            EXPECT_COLUMN="$1" php -r '
+              $pdo = new PDO("mysql:host=127.0.0.1;port=3306;dbname=erp_packaging_test", getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
+              $column = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=\x27packaging_measurement_records\x27 AND COLUMN_NAME IN (\x27upgrade_from_record_id\x27,\x27upgrade_plan\x27,\x27standard_adopted_at\x27,\x27upgrade_quote_snapshot\x27)")->fetchColumn();
+              $ledger = (int) $pdo->query("SELECT COUNT(*) FROM migrations WHERE migration=\x272026_11_28_143400_add_packaging_upgrade_lineage\x27")->fetchColumn();
+              if ($column !== 4*(int)getenv("EXPECT_COLUMN") || $ledger !== (int)getenv("EXPECT_COLUMN")) exit(1);
+              echo "PACKAGING_UPGRADE_MYSQL_SCHEMA_LEDGER_PASS\n";
+            '
+          }
+          check_upgrade 1
+          php artisan migrate:rollback --step=1 --path="$upgrade" --force
+          check_upgrade 0
+          check_photo 1
+          php artisan migrate:rollback --step=1 --path="$photo" --force
+          check_photo 0
+          check_schema 1
+          php artisan migrate:rollback --step=1 --path="$migration" --force
+          check_schema 0
+          php artisan migrate --path="$migration" --force
+          check_schema 1
+          php artisan migrate --path="$photo" --force
+          check_photo 1
+          php artisan migrate --path="$upgrade" --force
+          check_upgrade 1
