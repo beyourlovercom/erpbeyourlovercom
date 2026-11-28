@@ -44,6 +44,7 @@ jobs:
             tests/Feature/Logistics/DeAuthoritativePhysicalStockSyncTest.php \
             tests/Feature/Logistics/UsNyPhysicalStockSyncTest.php \
             tests/Feature/Logistics/CanadaPhysicalStockSyncTest.php \
+            tests/Feature/Logistics/CanadaOutboundBatchTest.php \
             tests/Feature/Logistics/DeTianyunOutboundBatchTest.php \
             tests/Feature/Logistics/DeTianyunLiveOutboundGatewayTest.php \
             tests/Feature/DeTianyunSkuSyncV2Test.php \

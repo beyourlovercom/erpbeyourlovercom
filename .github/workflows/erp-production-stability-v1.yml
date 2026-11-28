@@ -88,4 +88,4 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: root
           ERP_LOCAL_ADMIN_BYPASS: 'false'
-        run: php artisan test tests/Feature/Logistics/CanadaPhysicalStockSyncTest.php tests/Feature/Logistics/FulfillmentAllocationV1Test.php --filter='CanadaPhysicalStockSyncTest|test_ca_manual_allocation'
+        run: php artisan test tests/Feature/Logistics/CanadaPhysicalStockSyncTest.php tests/Feature/Logistics/CanadaOutboundBatchTest.php tests/Feature/Logistics/FulfillmentAllocationV1Test.php --filter='CanadaPhysicalStockSyncTest|CanadaOutboundBatchTest|test_ca_manual_allocation'

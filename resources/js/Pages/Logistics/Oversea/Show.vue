@@ -84,6 +84,7 @@ const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
   globalGridEnabled?:boolean; gridSearch?:string; gridSort?:{colId:string;direction:'asc'|'desc'}|null; gridFilters?:Record<string,string>
   shipoutProductionBatchUi?:boolean; shipoutProductionBatchDryRun?:boolean; shipoutProductionBatchPaused?:boolean;
+  caBatchUi?:boolean; caBatchPaused?:boolean; caLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
   deTianyunBatchUi?:boolean; deTianyunBatchLiveEnabled?:boolean; deTianyunBatchSimulation?:boolean;
   deTianyunLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
   shipoutProductionLatestBatch?:{id:string;status:string;dry_run:boolean;total:number}|null;
@@ -215,16 +216,17 @@ type ShipOutBatchItem = { order_id:number; order_no:string; status:string; resul
 type ShipOutBatchStatus = { batch_id:string; status:string; dry_run:boolean; total:number; processed:number; items:ShipOutBatchItem[] }
 const shipoutBatchSelection = ref<number[]>([])
 const shipoutBatchPreviewIds = ref<number[]>([])
+const isCaBatch = computed(() => props.warehouseKey==='ca' && props.caBatchUi===true)
 const isDeTianyunBatch = computed(() => props.warehouseKey==='de-tianyun' && props.deTianyunBatchUi===true)
 const deTianyunIsSimulation = computed(() => props.deTianyunBatchSimulation!==false)
 const showShipoutSelection = computed(() => props.view==='pending'
-  && ((!!props.shipoutProductionBatchUi && props.warehouseKey==='us-moreplus') || isDeTianyunBatch.value))
-const shipoutBatchApiBase = computed(() => isDeTianyunBatch.value
+  && ((!!props.shipoutProductionBatchUi && props.warehouseKey==='us-moreplus') || isDeTianyunBatch.value || isCaBatch.value))
+const shipoutBatchApiBase = computed(() => isCaBatch.value ? '/logistics/oversea/ca/wlwy/batch' : isDeTianyunBatch.value
   ? '/logistics/oversea/de-tianyun/xlwms/batch'
   : '/logistics/oversea/us-moreplus/shipout/batch')
 const shipoutPageSelectable = computed(() => visibleRows.value
   .filter(row => row.shipment_status==='pending'
-    && (isDeTianyunBatch.value ? row.review_status==='approved' : !row.shipout_production?.attempted))
+    && ((isDeTianyunBatch.value || isCaBatch.value) ? row.review_status==='approved' : !row.shipout_production?.attempted))
   .map(row=>row.order_id))
 const shipoutPageAllSelected = computed(() => shipoutPageSelectable.value.length>0
   && shipoutPageSelectable.value.every(id=>shipoutBatchSelection.value.includes(id)))
@@ -265,8 +267,8 @@ const onShipoutBatchVisible=()=>{
 onUnmounted(()=>{ stopShipoutBatchPolling();document.removeEventListener('visibilitychange',onShipoutBatchVisible) })
 onMounted(()=>{
   document.addEventListener('visibilitychange',onShipoutBatchVisible)
-  const last=isDeTianyunBatch.value ? props.deTianyunLatestBatch : props.shipoutProductionLatestBatch
-  if(last&&(props.shipoutProductionBatchUi || isDeTianyunBatch.value)) {
+  const last=isCaBatch.value ? props.caLatestBatch : isDeTianyunBatch.value ? props.deTianyunLatestBatch : props.shipoutProductionLatestBatch
+  if(last&&(props.shipoutProductionBatchUi || isDeTianyunBatch.value || isCaBatch.value)) {
     shipoutBatchStatus.value={batch_id:last.id,status:last.status,dry_run:last.dry_run,
       total:last.total,processed:0,items:[]}
     pollShipoutBatchIfVisible()
@@ -301,7 +303,7 @@ async function shipoutBatchCheck(forcedIds:number[]|null=null) {
   const ids=(props.view==='pending' ? (forcedIds??[...shipoutBatchSelection.value]) : []).sort((a,b)=>a-b)
   if(isDeTianyunBatch.value && !ids.length) {shipoutBatchError.value='请先勾选德国天运仓待发货订单';return}
   if(!isDeTianyunBatch.value && !ids.length
-    && !window.confirm('未勾选订单。是否选择美西 MorePlus 仓全部待发货订单（包含缺货订单）进入预检？缺货、未审核、已提交及有重复风险的订单会逐单隔离，绝不强制发货。'))return
+    && !window.confirm(isCaBatch.value?'未勾选订单。是否选择加拿大仓全部待发货订单进入预检？库存不足、未审核及重复风险订单不会推送。':'未勾选订单。是否选择美西 MorePlus 仓全部待发货订单（包含缺货订单）进入预检？缺货、未审核、已提交及有重复风险的订单会逐单隔离，绝不强制发货。'))return
   if(ids.length>200){shipoutBatchError.value='单批最多选择 200 单，请分批处理';return}
   shipoutBatchPreviewIds.value=ids
   shipoutBatchBusy.value=true;shipoutBatchError.value='';shipoutBatchPreview.value=null
@@ -338,14 +340,14 @@ async function shipoutBatchPoll() {
 }
 async function shipoutBatchStart() {
   const preview=shipoutBatchPreview.value
-  if(props.shipoutProductionBatchPaused||!preview||preview.overflow||preview.count<1||shipoutBatchBusy.value)return
+  if((isCaBatch.value?(props.caBatchPaused||!props.canOperate):props.shipoutProductionBatchPaused)||!preview||preview.overflow||preview.count<1||shipoutBatchBusy.value)return
   if(isDeTianyunBatch.value && !deTianyunIsSimulation.value && !props.deTianyunBatchLiveEnabled) {
     shipoutBatchError.value='德国天运仅开放生产只读预检，尚未核实渠道和放行真实订单'
     return
   }
   const ids=shipoutBatchPreviewIds.value
   if(preview.scope==='selected' && !ids.length)return
-  const message=(isDeTianyunBatch.value
+  const message=(isCaBatch.value ? (preview.dry_run?'加拿大仓 Dev 模拟（不会向 OMS 发单）':'真实向加拿大仓逐单推送') : isDeTianyunBatch.value
       ? (deTianyunIsSimulation.value?'德国天运 Dev 模拟（不会向 OMS 发单）':'真实向德国天运 OMS 逐单推送')
     :preview.dry_run?'Dev 模拟批次（不会访问海外仓）':'真实向 MorePlus 仓库逐单推送')
     +'：扫描 '+(preview.scan_count??preview.count)+' 单，进入逐单校验 '+preview.count
@@ -354,7 +356,7 @@ async function shipoutBatchStart() {
   shipoutBatchBusy.value=true;shipoutBatchError.value=''
   try {
     const reply=await shipoutBatchApi(shipoutBatchApiBase.value+'/start',{
-      fingerprint:preview.fingerprint,confirmation:(isDeTianyunBatch.value?'CONFIRM_DE_TIANYUN_BATCH_':'CONFIRM_MOREPLUS_BATCH_')+preview.count,
+      fingerprint:preview.fingerprint,confirmation:(isCaBatch.value?'CONFIRM_CA_BATCH_':isDeTianyunBatch.value?'CONFIRM_DE_TIANYUN_BATCH_':'CONFIRM_MOREPLUS_BATCH_')+preview.count,
       scope:preview.scope||'all',order_ids:ids.join(','),
     }) as {batch_id:string;status:string;dry_run:boolean;total:number}
     shipoutBatchStatus.value={batch_id:reply.batch_id,status:reply.status,dry_run:reply.dry_run,
@@ -378,9 +380,11 @@ const shipoutBatchLabel=(status:string)=>({
   needs_review:'OMS 核实未完成 · 人工处理',
   skipped:'跳过（未下单）',uncertain:'结果不确定 · 禁止重发',
   failed:'提交失败（禁止自动重试）',
+  accepted:'API 已受理 · 等待仓库回读',confirmed:'仓库已接单 · 等待物流单号',tracking_staged:'物流单号已回填',exception:'异常 · 禁止重复提交',blocked:'预检阻断',in_flight:'正在推送',
   simulated:'Dev 模拟通过',processing:'处理中',queued:'待处理',
 } as Record<string,string>)[status]||status
 const shipoutBatchReason=(code:string|null)=>({
+  CA_EXISTING_NO_CREATE:'发现已有仓库单，已阻止重复创建',CA_CREATE_UNCERTAIN:'创建结果不确定，禁止重发',CA_PRECHECK_FAILED:'订单状态、库存、审核或授权发生变化',CA_TRACKING_STAGED:'单号已回填 ERP',CA_ACK_PENDING_READBACK:'等待正式 OMS 签名回读',
   PROVIDER_DUPLICATE_ORDER:'仓库异步判定重复订单，请与 MorePlus 核对原有记录',
   PROVIDER_EZEESHIP_SHIPPING_ERROR:'EzeeShip 运输服务异常，请仓库核对账户和渠道',
   PROVIDER_CANCELLED_OTHER:'仓库异步取消，请人工查看 OMS 原因',
@@ -1551,6 +1555,12 @@ const onGridSelection = (rows:GridListRow[]) => {
     reviewSelection.value=visibleRows.value.filter(row=>ids.has(row.order_id) && row.shipment_status==='pending'
       && (props.view==='review'?row.review_status==='pending':row.review_status==='stockout')).map(row=>row.order_id)
   }else if(showShipoutSelection.value){
+    if(isCaBatch.value){
+      const pageIds=new Set(visibleRows.value.map(row=>row.order_id))
+      shipoutBatchSelection.value=[...new Set([...shipoutBatchSelection.value.filter(id=>!pageIds.has(id)),...visibleRows.value.filter(row=>ids.has(row.order_id)&&row.review_status==='approved'&&row.shipment_status==='pending').map(row=>row.order_id)])]
+      shipoutBatchPreview.value=null
+      return
+    }
     shipoutBatchSelection.value=visibleRows.value.filter(row=>ids.has(row.order_id)
       && row.shipment_status==='pending' && !row.shipout_production?.attempted).map(row=>row.order_id)
   }else if(props.canTrackingSync){
@@ -1591,7 +1601,7 @@ const compactPages = computed<(number|string)[]>(() => {
         <div><h1>{{ pageTitle }}</h1><p v-if="!gridEnabled && warehouseKey === 'us-3sm'">审核通过后，下载订单文件，在世迈 OMS 人工导入。重复导入前先检查当前草稿箱，避免重复下单。</p><p v-else-if="!gridEnabled">审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="!gridEnabled && warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终物流商，不能假定 USPS Priority。</p></div>
         <div class="oversea-file-actions">
           <button type="button" class="file-button" data-testid="oversea-global-grid-toggle" @click="toggleGrid">{{gridEnabled?'返回原表':'切换新版表'}}</button>
-          <button v-if="shipoutProductionBatchUi && warehouseKey==='us-moreplus'" type="button"
+          <button v-if="(shipoutProductionBatchUi && warehouseKey==='us-moreplus') || (isCaBatch && view==='pending')" type="button"
             class="file-button primary" :disabled="shipoutBatchBusy || Boolean(shipoutBatchStatus && ['queued','running','awaiting_oms','paused'].includes(shipoutBatchStatus.status))"
             @click="shipoutBatchCheck()">一键推送仓库</button>
           <button v-if="isDeTianyunBatch && view==='pending'" type="button"
@@ -1615,12 +1625,12 @@ const compactPages = computed<(number|string)[]>(() => {
           </template>
         </div>
       </header>
-      <section v-if="(shipoutProductionBatchUi && warehouseKey==='us-moreplus' || isDeTianyunBatch)
-        && (shipoutBatchPreview || shipoutBatchStatus || shipoutBatchError || shipoutProductionBatchPaused)"
+      <section v-if="(shipoutProductionBatchUi && warehouseKey==='us-moreplus' || isDeTianyunBatch || isCaBatch)
+        && (shipoutBatchPreview || shipoutBatchStatus || shipoutBatchError || shipoutProductionBatchPaused || caBatchPaused)"
         class="xlwms-batch-result" role="status" data-testid="oversea-provider-batch-feedback">
-        <small v-if="shipoutProductionBatchPaused" class="xlwms-error" role="alert">当前批量推送已安全暂停：仓库重复判定原因待核对。管理员可查看预览与历史结果，但不可提交新订单。</small>
+        <small v-if="isCaBatch?caBatchPaused:shipoutProductionBatchPaused" class="xlwms-error" role="alert">当前批量推送已安全暂停：仓库重复判定原因待核对。管理员可查看预览与历史结果，但不可提交新订单。</small>
         <strong v-if="shipoutBatchPreview">
-          {{isDeTianyunBatch
+          {{isCaBatch ? (shipoutBatchPreview.dry_run?'加拿大仓 Dev 模拟预览':'加拿大仓推送预检') : isDeTianyunBatch
             ? (deTianyunIsSimulation?'德国天运 Dev 模拟预览（不会创建 OMS 订单）'
               :deTianyunBatchLiveEnabled?'德国天运真实推送预检':'德国天运 Production 只读预检（推送未启用）')
             :shipoutBatchPreview.dry_run?'Dev 模拟预览（不连接真实 OMS）':'MorePlus 真实推送预览'}}
@@ -1632,20 +1642,20 @@ const compactPages = computed<(number|string)[]>(() => {
           <span v-if="shipoutBatchPreview.overflow">（超过单批 200 单限制，请分批处理）</span>
         </strong>
         <small v-if="shipoutBatchPreview" class="xlwms-note">{{isDeTianyunBatch?'只预检所选德国仓订单；不匹配 SKU、未验证库存和未核实渠道会逐单显示原因。':'包含缺货订单的扫描统计；库存不足、未审核、历史已提交及重复风险订单不向仓库提交。'}}</small>
-        <div v-if="isDeTianyunBatch && shipoutBatchPreview?.items?.length" class="shipout-batch-results" data-testid="de-batch-preflight-results">
+        <div v-if="(isDeTianyunBatch || isCaBatch) && shipoutBatchPreview?.items?.length" class="shipout-batch-results" data-testid="de-batch-preflight-results">
           <span v-for="item in shipoutBatchPreview.items" :key="item.order_id">
-            {{item.order_no}} · {{item.ready?(deTianyunIsSimulation?'可模拟':deTianyunBatchLiveEnabled?'可推送':'预检通过'):'阻断'}}
+            {{item.order_no}} · {{item.ready?(isCaBatch?'预检通过':deTianyunIsSimulation?'可模拟':deTianyunBatchLiveEnabled?'可推送':'预检通过'):'阻断'}}
             <small v-if="item.blockers.length">（{{item.blockers.join('、')}}）</small>
           </span>
         </div>
         <button v-if="shipoutBatchPreview && shipoutBatchPreview.count>0 && !shipoutBatchPreview.overflow"
-          type="button" class="file-button primary" :disabled="shipoutBatchBusy || shipoutProductionBatchPaused || (isDeTianyunBatch && !deTianyunIsSimulation && !deTianyunBatchLiveEnabled)" @click="shipoutBatchStart">
+          type="button" class="file-button primary" :disabled="shipoutBatchBusy || (isCaBatch?(caBatchPaused||!canOperate):shipoutProductionBatchPaused) || (isDeTianyunBatch && !deTianyunIsSimulation && !deTianyunBatchLiveEnabled)" @click="shipoutBatchStart">
           {{isDeTianyunBatch && !deTianyunIsSimulation && !deTianyunBatchLiveEnabled?'真实推送尚未启用'
             :shipoutBatchPreview.dry_run?'确认运行 Dev 模拟':'确认逐单推送 '+shipoutBatchPreview.count+' 单'}}
         </button>
         <strong v-if="shipoutBatchStatus">
-          {{isDeTianyunBatch?(shipoutBatchStatus.dry_run?'德国天运 Dev 模拟批次':'德国天运真实推送批次'):shipoutBatchStatus.dry_run?'Dev 模拟批次':'MorePlus 推送批次'}} ·
-          已核实 {{shipoutBatchStatus.processed}} / {{shipoutBatchStatus.total}} · {{shipoutBatchState(shipoutBatchStatus.status)}}
+          {{isCaBatch?(shipoutBatchStatus.dry_run?'加拿大仓 Dev 模拟批次':'加拿大仓推送批次'):isDeTianyunBatch?(shipoutBatchStatus.dry_run?'德国天运 Dev 模拟批次':'德国天运真实推送批次'):shipoutBatchStatus.dry_run?'Dev 模拟批次':'MorePlus 推送批次'}} ·
+          已核实 {{shipoutBatchStatus.processed}} / {{shipoutBatchStatus.total}} · {{isCaBatch && shipoutBatchStatus.status==='completed'?'本批次处理完成':shipoutBatchState(shipoutBatchStatus.status)}}
         </strong>
         <div v-if="shipoutBatchStatus" class="shipout-batch-results">
           <span v-for="item in shipoutBatchStatus.items" :key="item.order_id">
@@ -1654,7 +1664,7 @@ const compactPages = computed<(number|string)[]>(() => {
           </span>
         </div>
         <small v-if="shipoutBatchError" class="xlwms-error" role="alert">{{shipoutBatchError}}</small>
-        <small>{{isDeTianyunBatch?'本轮仅模拟逐单预检，无仓库 API 调用、无 Tracking 或 ERP 发货写入。':'自动逐单执行；订单接单不代表出库，不同步 Tracking。不确定结果绝不自动重试。'}}</small>
+        <small>{{isCaBatch?'逐单推送；签名回读确认后自动回填有效单号。不确定结果不重发。':isDeTianyunBatch?'本轮仅模拟逐单预检，无仓库 API 调用、无 Tracking 或 ERP 发货写入。':'自动逐单执行；订单接单不代表出库，不同步 Tracking。不确定结果绝不自动重试。'}}</small>
       </section>
       <div v-if="warehouseKey === 'us-3sm' && (batchResult || batchError)" class="xlwms-batch-result" role="status">
         <strong v-if="batchResult">本次处理 {{ batchResult.count }} 单 · 新建 {{batchResult.summary?.created??0}} · 已存在 {{batchResult.summary?.existing??0}} · 阻断 {{batchResult.summary?.blocked??0}} · 待核实 {{batchResult.summary?.uncertain??0}}</strong>
@@ -1713,7 +1723,7 @@ const compactPages = computed<(number|string)[]>(() => {
           :filter-columns="[]" :filter-values="gridFilters??{}"
           :cell-text-selection="view==='pending'"
           :enable-selection="Boolean(view==='pending' || (canReview && ['review','stockout'].includes(view)) || (canArchive && view!=='stockout') || bulkShipPreviewScope || canTrackingSync || showShipoutSelection)"
-          :selected-order-ids="(canReview && ['review','stockout','pending'].includes(view))?returnAllocationSelection:view==='pending'?exportSelection:(canArchive && view!=='stockout')?archiveSelection:bulkShipPreviewScope?bulkShipSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
+          :selected-order-ids="isCaBatch && showShipoutSelection ? shipoutBatchSelection : (canReview && ['review','stockout','pending'].includes(view))?returnAllocationSelection:view==='pending'?exportSelection:(canArchive && view!=='stockout')?archiveSelection:bulkShipPreviewScope?bulkShipSelection:showShipoutSelection?shipoutBatchSelection:trackingSelection"
           search-placeholder="搜索全部订单号 / Tracking / 收件人 / SKU..."
           @search-change="searchGrid" @sort-change="sortGrid"
           @selection-change="onGridSelection" @page-change="gridNavigate({page:$event})"
