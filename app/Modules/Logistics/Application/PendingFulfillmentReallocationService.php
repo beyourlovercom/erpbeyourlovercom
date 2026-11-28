@@ -183,7 +183,8 @@ final class PendingFulfillmentReallocationService
     private function assertNoDispatchEvidence(Order $child): void
     {
         abort_if($child->shipmentAttempts()->exists()
-            || DB::table('shipout_dispatch_attempts')->where('order_id', $child->id)->exists(), 409,
+            || DB::table('shipout_dispatch_attempts')->where('order_id', $child->id)->exists()
+            || DB::table('xlwms_dispatch_attempts')->where('order_id', $child->id)->exists(), 409,
             '该履约已有仓库推送记录，请核实仓库是否接单后再重新分仓。');
     }
 

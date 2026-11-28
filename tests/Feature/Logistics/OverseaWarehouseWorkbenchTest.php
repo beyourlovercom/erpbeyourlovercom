@@ -17,6 +17,7 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackServic
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Orders\Application\OrderProgressQuery;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
@@ -278,7 +279,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->where('viewCounts.pending', 0));
     }
 
-    public function test_manual_primary_status_alone_selects_exactly_one_overseas_queue_and_never_rewrites_warehouse_review(): void
+    public function test_manual_primary_status_selects_one_queue_and_reopens_stockout_without_approving(): void
     {
         $actor = $this->userWith(['logistics.view', 'logistics.operate', 'orders.view', 'orders.edit']);
         $warehouses = $this->warehouses();
@@ -291,7 +292,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         foreach ([
             ['exception', 'exceptions', 1],
             ['out_of_stock', 'stockout', 2],
-            ['sending', 'stockout', 3],
+            ['sending', 'review', 3],
             ['pending_allocation', null, 4],
         ] as [$chosen, $expectedView, $revision]) {
             $this->actingAs($actor)->patchJson("/orders/{$order->id}/workflow-status", [
@@ -317,8 +318,8 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
                 ]);
             } else {
                 $this->assertDatabaseHas('oversea_warehouse_reviews', [
-                    'order_id' => $order->id, 'status' => 'stockout',
-                    'reviewed_warehouse_id' => $warehouses['US-SM']->id,
+                    'order_id' => $order->id, 'status' => $chosen === 'sending' ? 'pending' : 'stockout',
+                    'reviewed_warehouse_id' => $chosen === 'sending' ? null : $warehouses['US-SM']->id,
                 ]);
                 $this->assertDatabaseHas('shipments', [
                     'order_id' => $order->id, 'shipment_status' => 'pending',
@@ -460,6 +461,102 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
         $this->actingAs($user)->get('/logistics/oversea/us-ny?view=pending')
             ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 1));
+    }
+
+    public function test_manual_stockout_syncs_all_oversea_warehouses_and_restock_uses_real_review(): void
+    {
+        $actor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate']);
+        foreach ($this->warehouses() as $code => $warehouse) {
+            if (! in_array(strtoupper($code), ['US-LA', 'US-NY', 'US-SM', 'DE', 'CA'], true)) {
+                continue;
+            }
+            $order = $this->orderAt($warehouse, 'MANUAL-STOCKOUT-'.$code);
+            $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+                'workflow_status' => 'out_of_stock', 'expected_workflow_revision' => 0,
+            ])->assertOk()->assertJsonPath('workflow_status.code', 'out_of_stock');
+            $this->assertDatabaseHas('oversea_warehouse_reviews', [
+                'order_id' => $order->id, 'status' => 'stockout', 'reviewed_warehouse_id' => $warehouse->id,
+            ]);
+            $this->assertSame('out_of_stock', $order->fresh()->workflow_status);
+            $this->patchJson('/orders/'.$order->id.'/workflow-status', [
+                'workflow_status' => 'resolve_stockout', 'expected_workflow_revision' => $order->fresh()->workflow_revision,
+            ])->assertOk();
+            $this->assertDatabaseHas('oversea_warehouse_reviews', [
+                'order_id' => $order->id, 'status' => 'approved', 'reviewed_warehouse_id' => $warehouse->id,
+            ]);
+            $this->assertSame('sending', $order->fresh()->workflow_status);
+        }
+    }
+
+    public function test_legacy_split_stockout_without_review_returns_only_child_to_review(): void
+    {
+        $actor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate']);
+        $w = $this->warehouses();
+        $root = $this->orderAt($w['US-NY'], 'LEGACY-STOCKOUT-ROOT');
+        $root->shipment()->delete();
+        $a = $this->orderAt($w['US-LA'], 'LEGACY-STOCKOUT-A');
+        $b = $this->orderAt($w['US-NY'], 'LEGACY-STOCKOUT-B');
+        foreach (['A' => $a, 'B' => $b] as $suffix => $leg) {
+            $leg->forceFill(['fulfillment_parent_id' => $root->id, 'fulfillment_suffix' => $suffix,
+                'fulfillment_role' => 'original', 'order_kind' => 'fulfillment_derived'])->save();
+        }
+        $a->forceFill(['workflow_status' => 'sending', 'order_status' => 'shipped'])->save();
+        $a->shipment()->update(['shipment_status' => 'shipped', 'tracking_number' => 'LEGACY-TRACK-A', 'shipped_at' => now()]);
+        $b->forceFill(['workflow_status' => 'out_of_stock'])->save();
+        $beforeRoot = $root->fresh()->getAttributes();
+        $beforeA = $a->fresh()->getAttributes();
+        $beforeShipment = $a->fresh()->shipment->getAttributes();
+        $this->actingAs($actor)->get('/logistics/oversea/us-ny?view=stockout')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $b->id)->where('rows.data.0.review_status', 'stockout'));
+        $this->actingAs($actor)->patchJson('/orders/'.$b->id.'/workflow-status', [
+            'workflow_status' => 'resolve_stockout', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_review');
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $b->id, 'status' => 'pending', 'submitted_warehouse_id' => $w['US-NY']->id,
+            'reviewed_warehouse_id' => null,
+        ]);
+        $this->assertFalse(app(OrderProgressQuery::class)->readyForShipment(Order::query())->whereKey($b->id)->exists());
+        $this->assertSame($beforeRoot, $root->fresh()->getAttributes());
+        $this->assertSame($beforeA, $a->fresh()->getAttributes());
+        $this->assertSame($beforeShipment, $a->fresh()->shipment->getAttributes());
+    }
+
+    public function test_split_restock_restores_only_selected_child_and_never_parent_or_shipped_sibling(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $root = $this->orderAt($warehouses['US-LA'], '007-SPLIT-SAFETY');
+        $root->shipment()->delete();
+        $root->forceFill(['workflow_status' => 'pending_allocation'])->save();
+        $a = $this->orderAt($warehouses['US-LA'], '007-SPLIT-SAFETY-A');
+        $b = $this->orderAt($warehouses['US-LA'], '007-SPLIT-SAFETY-B');
+        $c = $this->orderAt($warehouses['US-LA'], '007-SPLIT-SAFETY-C');
+        foreach (['A' => $a, 'B' => $b, 'C' => $c] as $suffix => $leg) {
+            $leg->forceFill(['fulfillment_parent_id' => $root->id, 'fulfillment_suffix' => $suffix,
+                'fulfillment_role' => 'original', 'order_kind' => 'fulfillment_derived',
+                'workflow_status' => 'pending_review'])->save();
+        }
+        $c->forceFill(['workflow_status' => 'sending', 'order_status' => 'shipped'])->save();
+        $c->shipment()->update(['shipment_status' => 'shipped', 'tracking_number' => 'TRACK-C', 'shipped_at' => now()]);
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$a->id}/approve")->assertRedirect();
+        $this->post("/logistics/oversea/orders/{$b->id}/stockout")->assertRedirect();
+        $beforeRoot = $root->fresh()->getAttributes();
+        $beforeA = $a->fresh()->getAttributes();
+        $beforeC = $c->fresh()->getAttributes();
+        $beforeCShipment = $c->fresh()->shipment->getAttributes();
+        $this->post("/logistics/oversea/orders/{$b->id}/restock")->assertRedirect();
+        self::assertSame('sending', $b->fresh()->workflow_status);
+        self::assertSame($beforeRoot, $root->fresh()->getAttributes());
+        self::assertSame($beforeA, $a->fresh()->getAttributes());
+        self::assertSame($beforeC, $c->fresh()->getAttributes());
+        self::assertSame($beforeCShipment, $c->fresh()->shipment->getAttributes());
+        $query = app(OrderProgressQuery::class);
+        self::assertFalse($query->pendingAllocation(Order::query())->whereKey($root->id)->exists());
+        self::assertFalse($query->readyForShipment(Order::query())->whereKey($root->id)->exists());
+        self::assertFalse($query->readyForShipment(Order::query())->whereKey($c->id)->exists());
+        self::assertTrue($query->readyForShipment(Order::query())->whereKey($b->id)->exists());
+        self::assertSame('partially_shipped', app(OrderWorkflowStatusProjection::class)->for($root->fresh())['code']);
     }
 
     public function test_overseas_batch_review_applies_independently_and_never_bypasses_review_role(): void

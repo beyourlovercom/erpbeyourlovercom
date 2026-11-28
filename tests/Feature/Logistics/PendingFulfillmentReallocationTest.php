@@ -9,6 +9,7 @@ use App\Modules\Orders\Application\OrderWarehouseRouting;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class PendingFulfillmentReallocationTest extends TestCase
@@ -84,6 +85,23 @@ final class PendingFulfillmentReallocationTest extends TestCase
         $this->actingAs($user)->postJson('/logistics/orders/'.$a->id.'/reallocate-pending-fulfillment', [
             'warehouse_id' => $target->id,
         ])->assertStatus(409);
+    }
+
+    public function test_pending_child_with_xlwms_attempt_cannot_be_reallocated_even_without_tracking(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.edit', 'logistics.operate']);
+        [$parent, $a, $b, $target] = $this->splitScenario();
+        $before = $b->shipment()->firstOrFail()->getAttributes();
+        DB::table('xlwms_dispatch_attempts')->insert([
+            'order_id' => $b->id, 'warehouse_id' => $before['warehouse_id'],
+            'third_order_no' => 'SYNTHETIC-UNCERTAIN', 'state' => 'uncertain',
+            'request_fingerprint' => str_repeat('0', 64), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->actingAs($user)->postJson('/logistics/orders/'.$b->id.'/reallocate-pending-fulfillment', [
+            'warehouse_id' => $target->id, 'stock_exception_acknowledged' => true,
+        ])->assertStatus(409);
+        $this->assertSame($before, $b->shipment()->firstOrFail()->getAttributes());
+        $this->assertSame('submitted', $parent->fulfillmentAllocation()->firstOrFail()->status);
     }
 
     public function test_pending_child_requires_a_started_sibling_otherwise_full_reallocation_is_used(): void

@@ -16,6 +16,9 @@ final class DomesticDispatchEligibility
     {
         $order->loadMissing(['shipment.warehouse', 'operationalMarkers', 'procurementOrder']);
         $shipment = $order->shipment;
+        if ($order->originalFulfillmentChildren()->exists()) {
+            return ['拆单母订单禁止直接导出发货'];
+        }
         if ($order->trashed() || $order->archived_at !== null || $order->isOperationallyArchived()) {
             return ['归档或删除订单禁止导出'];
         }
