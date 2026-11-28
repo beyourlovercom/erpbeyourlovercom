@@ -240,7 +240,7 @@ const domesticGridRows = computed<GridListRow[]>(()=>props.rows.data.map(row=>({
 const pendingHasSyncAction = computed(()=>props.view==='pending' && props.canTrackingSync
   && props.rows.data.some(row=>eligibleForTracking(row)))
 // R5.3 pending pilot: reuse the Owner-frozen public grid contract, never duplicate business columns.
-const domesticGridSettingsVersion = computed<1|2>(()=>props.view==='pending'?2:1)
+const domesticGridSettingsVersion = computed<1|2>(()=>props.view==='outsource'?1:2)
 const domesticGridFieldGroups:FieldGroups={
   '订单信息':['line','order','contact','status','warehouse_route','review','paid_date'],
   '商品信息':['sku','material_full_name','quantity','amount'],

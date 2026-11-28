@@ -94,7 +94,7 @@ const columns:ColDef<GridRow>[] = [
       <span class="inventory-matrix-pending">待激活 已收货未确认库存</span>
       <span>按实际库存排序；每列独立筛选</span>
     </div>
-    <GlobalGrid namespace="grid.inventory.matrix.v1" title="全球多仓库存总表"
+    <GlobalGrid :column-settings-version="2" :field-groups="{'商品信息':['sku','material_name'],'仓库库存':warehouses.map(([code])=>code)}" namespace="grid.inventory.matrix.v1" title="全球多仓库存总表"
       :rows="gridRows" :columns="columns" :required-column-ids="['sku','material_name']"
       :default-pinned-left="2" :default-pinned-right="0" remember-client-filters
       search-placeholder="搜索 SKU / 物料名称...">

@@ -42,11 +42,11 @@ const baseProps = {
 }
 
 describe('Domestic logistics production workbench', () => {
-  it('opts only pending into the frozen Unified Grid V2 without losing any authorized columns or namespace', () => {
+  it('opts every existing domestic shared view into the frozen Unified Grid V2 without losing any authorized columns or namespace', () => {
     for(const view of ['pending','review','stockout','today','today-4px','today-weship','exceptions','all','frozen','outsource']){
       const wrapper=mount(Index,{props:{...baseProps,view,globalGridPilotEnabled:true,trackingImportPreview:null,trackingImportProvider:null}})
       const state=(wrapper.vm as unknown as {$:{setupState:Record<string,any>}}).$.setupState
-      expect(state.domesticGridSettingsVersion).toBe(view==='pending'?2:1)
+      expect(state.domesticGridSettingsVersion).toBe(view==='outsource'?1:2)
       const columns=state.domesticGridColumns
       const catalog=existingFieldCatalog(columns,state.domesticGridFieldGroups,['order','status','warehouse_route'])
       expect(catalog.map(c=>c.id)).toEqual(columns.map((c:{colId:string})=>c.colId))
