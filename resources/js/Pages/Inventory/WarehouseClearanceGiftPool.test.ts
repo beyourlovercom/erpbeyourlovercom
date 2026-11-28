@@ -51,12 +51,13 @@ const clearanceCandidates = [
 ]
 
 describe('Warehouse Clearance / Gift Pool V1', () => {
-  it('renders current inventory and the inline clearance pool with live stock, priority and local candidates', () => {
+  it('renders current inventory and the clearance pool with live stock, priority and local candidates', async () => {
     const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, billImportPreview:null,costCenter: emptyCostCenter, canOperate: true, canManage: false } })
+    await wrapper.findAll('.warehouse-tabs button').find(b=>b.text().trim()==='库存')!.trigger('click')
     expect(wrapper.text()).toContain('目前仓库产品库存统计')
-    expect(wrapper.text()).toContain('清仓 / Gift 库')
-    expect(wrapper.findAll('button').some(button => button.text().includes('清仓 / Gift 库'))).toBe(false)
     expect(wrapper.text()).toContain('已在清仓')
+    await wrapper.findAll('.inventory-mode-bar button').find(b=>b.text().startsWith('清仓'))!.trigger('click')
+    expect(wrapper.text()).toContain('清仓 / Gift 库')
     expect(wrapper.text()).toContain('加入清仓后自动成为本仓 Gift 候选')
     expect(wrapper.text()).toContain('CLR-A')
     expect(wrapper.text()).toContain('Clearance B')
@@ -68,9 +69,11 @@ describe('Warehouse Clearance / Gift Pool V1', () => {
     expect(wrapper.findAll('input[type="number"]').some(input => input.attributes('value') === '1')).toBe(true)
   })
 
-  it('keeps the inline clearance pool read-only for inventory viewers without operate permission', () => {
+  it('keeps the clearance pool read-only for inventory viewers without operate permission', async () => {
     const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, billImportPreview:null,costCenter: emptyCostCenter, canOperate: false, canManage: false } })
+    await wrapper.findAll('.warehouse-tabs button').find(b=>b.text().trim()==='库存')!.trigger('click')
     expect(wrapper.text()).toContain('目前仓库产品库存统计')
+    await wrapper.findAll('.inventory-mode-bar button').find(b=>b.text().startsWith('清仓'))!.trigger('click')
     expect(wrapper.text()).toContain('清仓 / Gift 库')
     expect(wrapper.find('input[placeholder="搜索本仓库存 SKU / 商品"]').exists()).toBe(false)
     expect(wrapper.findAll('button').some(button => button.text() === '移出')).toBe(false)
@@ -78,3 +81,5 @@ describe('Warehouse Clearance / Gift Pool V1', () => {
     expect(wrapper.text()).toContain('缺货')
   })
 })
+
+vi.mock('../../Components/DataGrid/GlobalGrid.vue',async()=>({default:(await import('../../Components/DataGrid/testing/GlobalGridHarness')).default}))

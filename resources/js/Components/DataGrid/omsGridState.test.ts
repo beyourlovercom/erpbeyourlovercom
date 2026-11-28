@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampPinnedCounts, pinnedStateForVisibleColumns, restoreColumnWidths, sanitizeOmsGridPreference } from './omsGridState'
+import { clampPinnedCounts, pinnedStateForVisibleColumns, restoreColumnWidths, sanitizeOmsGridPreference, sanitizeLegacyNativeGridPreference } from './omsGridState'
 
 describe('OMS Grid preference normalization', () => {
   it('reserves a scrollable middle column and clamps invalid pin counts', () => {
@@ -88,4 +88,10 @@ describe('OMS Grid preference normalization', () => {
     expect(saved?.pageSize).toBe('all')
     expect(sanitizeOmsGridPreference(saved, ['orderNumber'])?.pageSize).toBe('all')
   })
+})
+
+it('imports only permitted native preference keys in stored order',()=>{
+  const value=sanitizeLegacyNativeGridPreference({columns:[{key:'b',visible:false},{key:'secret',visible:true},{key:'b',visible:true},{key:'a',visible:true}]},['a','b'],1,0)
+  expect(value?.columns).toEqual([{colId:'b',hide:true},{colId:'a',hide:false}])
+  expect(sanitizeLegacyNativeGridPreference({columns:[{key:'secret',visible:true}]},['a'],1,0)).toBeNull()
 })

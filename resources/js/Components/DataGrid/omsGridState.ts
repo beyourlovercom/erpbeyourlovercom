@@ -97,3 +97,20 @@ export function sanitizeOmsGridPreference(
     pageSize,
   }
 }
+
+/** Import the authorized account's old native column order only via an explicit legacy namespace. */
+export function sanitizeLegacyNativeGridPreference(raw: unknown, allowedIds: string[], pinnedLeft: number, pinnedRight: number): OmsGridPreference | null {
+  if (!raw || typeof raw !== 'object') return null
+  const input = (raw as {columns?: unknown}).columns
+  if (!Array.isArray(input)) return null
+  const allowed = new Set(allowedIds)
+  const seen = new Set<string>()
+  const columns: ColumnState[] = []
+  for (const c of input) {
+    if (!c || typeof c.key !== 'string' || typeof c.visible !== 'boolean' || !allowed.has(c.key) || seen.has(c.key)) continue
+    seen.add(c.key)
+    columns.push({colId:c.key,hide:!c.visible})
+  }
+  if (!columns.length) return null
+  return {version:1,columns,pinnedLeft,pinnedRight,density:'compact',pageSize:50}
+}

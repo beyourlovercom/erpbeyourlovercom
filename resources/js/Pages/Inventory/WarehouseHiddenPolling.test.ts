@@ -54,3 +54,5 @@ describe('R3-C warehouse hidden tab status GET policy', () => {
     vi.restoreAllMocks()
   })
 })
+
+vi.mock('../../Components/DataGrid/GlobalGrid.vue',async()=>({default:(await import('../../Components/DataGrid/testing/GlobalGridHarness')).default}))

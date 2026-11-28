@@ -183,9 +183,9 @@ describe('MorePlus inventory stock sync in Warehouse 360', () => {
     expect(row.findAll('td')[2].text()).toContain('90')
     const lastReadCell = row.findAll('td')[6]
     expect(lastReadCell.text()).toContain('77')
-    expect(lastReadCell.attributes('title')).toContain('最近读取原始库存：80')
-    expect(lastReadCell.attributes('title')).toContain('读取后已确认发货：3')
-    expect(lastReadCell.attributes('title')).toContain('ERP 当前库存')
+    expect(lastReadCell.get('[title]').attributes('title')).toContain('最近读取原始库存：80')
+    expect(lastReadCell.get('[title]').attributes('title')).toContain('读取后已确认发货：3')
+    expect(lastReadCell.get('[title]').attributes('title')).toContain('ERP 当前库存')
     expect(lastReadCell.find('button').exists()).toBe(false)
     const other = mount(WarehouseShow, { props: { ...props, warehouse: { ...warehouse, inventories: [item] } } })
     await other.findAll('.warehouse-tabs button').find(b => b.text() === '库存')!.trigger('click')
@@ -225,3 +225,5 @@ describe('MorePlus inventory stock sync in Warehouse 360', () => {
   })
 
 })
+
+vi.mock('../../Components/DataGrid/GlobalGrid.vue',async()=>({default:(await import('../../Components/DataGrid/testing/GlobalGridHarness')).default}))

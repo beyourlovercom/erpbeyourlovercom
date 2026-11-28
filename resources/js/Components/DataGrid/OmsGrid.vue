@@ -14,7 +14,7 @@ import {
   CellStyleModule, LocaleModule, TextEditorModule, ModuleRegistry, themeBalham,
   type ColDef, type ColGroupDef, type ColumnState, type GridApi, type GridReadyEvent, type SortChangedEvent,
 } from 'ag-grid-community'
-import { clampPinnedCounts, pinnedStateForVisibleColumns, restoreColumnWidths, sanitizeOmsGridPreference, type OmsDensity, type OmsGridPreference } from './omsGridState'
+import { clampPinnedCounts, pinnedStateForVisibleColumns, restoreColumnWidths, sanitizeOmsGridPreference, sanitizeLegacyNativeGridPreference, type OmsDensity, type OmsGridPreference } from './omsGridState'
 
 // Only register features used by the shared table. Unused AG Grid community
 // editors, infinite models and optional modules stay out of its lazy chunk.
@@ -43,6 +43,7 @@ const props = withDefaults(defineProps<{
   defaultPinnedRight?: number
   requiredColumnIds?: string[]
   serverPagination?: ServerPagination
+  serverPageSizeLocked?: boolean
   serverSort?: ServerSort
   serverSearch?: string
   serverColumnFilters?: Record<string, string>
@@ -361,11 +362,11 @@ const restore = (value: OmsGridPreference) => {
 const load = async () => {
   const current = storageKey.value ? readCache(storageKey.value) : null
   if (current) { restore(current); return }
-  const getServer = async (namespace: string): Promise<OmsGridPreference | null> => {
+  const getServer = async (namespace: string, nativeLegacy = false): Promise<OmsGridPreference | null> => {
     if (props.preferenceScope !== 'account') return null
     try {
       const response = await axios.get('/ui/preferences/' + encodeURIComponent(namespace),{timeout:2000})
-      return sanitizeOmsGridPreference(response.data?.value,ids.value)
+      return sanitizeOmsGridPreference(response.data?.value,ids.value) ?? (nativeLegacy ? sanitizeLegacyNativeGridPreference(response.data?.value,ids.value,props.defaultPinnedLeft,props.defaultPinnedRight) : null)
     } catch { return null }
   }
   let value = await getServer(props.namespace)
@@ -373,7 +374,7 @@ const load = async () => {
     for (const namespace of props.legacyPreferenceNamespaces) {
       if (!namespace || namespace === props.namespace) continue
       value = (actorId.value > 0 ? readCache(scopedStorageKey(namespace)) : null)
-        ?? await getServer(namespace)
+        ?? await getServer(namespace,true)
       if (value) break
     }
   }
@@ -470,7 +471,7 @@ const resetGrid = () => {
   // already 50, immediately reloading an obsolete server-saved layout.
   scheduleSave()
   saveClientFilters()
-  if (props.serverPagination && (props.serverPagination.page_size_mode ?? props.serverPagination.per_page) !== 50) {
+  if (props.serverPagination && !props.serverPageSizeLocked && (props.serverPagination.page_size_mode ?? props.serverPagination.per_page) !== 50) {
     emit('page-size-change', 50)
   }
 }
@@ -494,6 +495,7 @@ const changeDensity = () => { density.value = density.value === 'compact' ? 'sta
 const changeServerPageSize = (event: Event) => {
   const selector = event.target as HTMLSelectElement
   const previous = String(props.serverPagination?.page_size_mode ?? props.serverPagination?.per_page ?? 50)
+  if (props.serverPageSizeLocked) { selector.value = previous; return }
   if (selector.value === 'all') {
     if (!props.allowAllRows) { selector.value = previous; return }
     const total = props.serverPagination?.total ?? 0
@@ -597,7 +599,8 @@ onBeforeUnmount(() => {
         <div v-if="serverPagination" class="oms-server-pagination">
           <div class="oms-footer-left"><slot name="footer-left" :selected-count="selectedCount" /></div>
           <div class="oms-footer-right">
-            <label>每页 <select aria-label="服务端每页条数" :value="serverPagination.page_size_mode ?? serverPagination.per_page" @change="changeServerPageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option v-if="allowAllRows" value="all">全部</option></select></label>
+            <label v-if="!serverPageSizeLocked">每页 <select aria-label="服务端每页条数" :value="serverPagination.page_size_mode ?? serverPagination.per_page" @change="changeServerPageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option v-if="allowAllRows" value="all">全部</option></select></label>
+            <span v-else>每页 {{ serverPagination.per_page }} 条</span>
             <span>共 {{ serverPagination.total }} 条 · 第 {{ serverPagination.current_page }} / {{ Math.max(1, serverPagination.last_page) }} 页</span>
             <button type="button" aria-label="上一页" :disabled="serverPagination.current_page <= 1" @click="emit('page-change', serverPagination.current_page - 1)">‹</button>
             <button type="button" aria-label="下一页" :disabled="serverPagination.current_page >= serverPagination.last_page" @click="emit('page-change', serverPagination.current_page + 1)">›</button>

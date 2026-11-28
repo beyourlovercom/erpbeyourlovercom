@@ -202,3 +202,5 @@ describe('Warehouse Restock Plan Snapshot', () => {
     expect(wrapper.findAll('button').some((button) => button.text().includes('一键生成蓝标'))).toBe(false)
   })
 })
+
+vi.mock('../../Components/DataGrid/GlobalGrid.vue',async()=>({default:(await import('../../Components/DataGrid/testing/GlobalGridHarness')).default}))

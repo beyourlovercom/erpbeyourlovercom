@@ -15,6 +15,7 @@ const props = withDefaults(defineProps<{
   rows: Row[]
   requiredColumnIds: string[]
   page?: Pager | null
+  serverPageSizeLocked?: boolean
   rowIdentityKey?: string
   search?: string
   searchPlaceholder?: string
@@ -53,6 +54,7 @@ const emit = defineEmits<{
       :rows="rows"
       :required-column-ids="requiredColumnIds"
       :server-pagination="props.page ?? undefined"
+      :server-page-size-locked="serverPageSizeLocked"
       :row-identity-key="rowIdentityKey"
       :server-search="search"
       :server-sort="sort"

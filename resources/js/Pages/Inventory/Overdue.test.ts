@@ -102,3 +102,5 @@ describe('overdue warehouse inventory UI', () => {
     expect(wrapper.find('a[data-testid="overdue-export"]').attributes('href')).toBe('/inventory/overdue/export')
   })
 })
+
+vi.mock('../../Components/DataGrid/GlobalGrid.vue',async()=>({default:(await import('../../Components/DataGrid/testing/GlobalGridHarness')).default}))

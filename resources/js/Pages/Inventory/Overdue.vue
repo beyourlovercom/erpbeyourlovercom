@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
+import { computed as gridComputed } from 'vue'
+import type { ColDef } from 'ag-grid-community'
+import GlobalGridTemplates from '../../Components/DataGrid/GlobalGridTemplates.vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type OverdueRow = {
@@ -16,7 +19,7 @@ type Summary = {
 }
 type Page = {
   data:OverdueRow[];current_page:number;last_page:number;total:number
-  from:number|null;to:number|null;prev_page_url:string|null;next_page_url:string|null
+  per_page?:number;from:number|null;to:number|null;prev_page_url:string|null;next_page_url:string|null
 }
 const props = defineProps<{
   asOf:string;cutoffDate:string;summary:Summary
@@ -67,6 +70,28 @@ const downloadHref=computed(()=>{
   return '/inventory/overdue/export'+(params.toString()?'?'+params.toString():'')
 })
 const origin=(row:OverdueRow)=>row.source==='dated_lot'?(row.lot_id?'批次 #'+row.lot_id:'入库批次'):'汇总入库日期'
+type GridRow=Record<string,unknown>
+const overdueRows=gridComputed<GridRow[]>(()=>props.rows.data.map((row,index)=>({...row,
+  id:row.warehouse_id+'-'+row.product_id+'-'+(row.lot_id??'summary')+'-'+index,
+  group_label:'—',owner_label:'—',origin_label:origin(row),quality_label:row.quality==='批次已核对'?'已核对':row.quality,
+})))
+const overdueColumns=gridComputed<ColDef<GridRow>[]>(()=>[
+  {field:'warehouse_name',headerName:'仓别',width:170},{field:'group_label',headerName:'组别',width:85},
+  {field:'owner_label',headerName:'责任人',width:100},{field:'putaway_date',headerName:'入库时间',width:125},
+  {field:'sku',headerName:'FNSKU',width:175,pinned:'left',lockPinned:true},
+  {field:'product_name',headerName:'物料名称',width:260,tooltipField:'product_name'},
+  {field:'quantity',headerName:'数量',width:95},{field:'age_days',headerName:'库龄',width:100},
+  {field:'overdue_days',headerName:'超期天数',width:110},{field:'origin_label',headerName:'批次 / 来源',width:145},
+  {field:'quality_label',headerName:'核对状态',width:215,tooltipField:'quality'},
+  ...(props.canManageExclusions?[{colId:'actions',headerName:'超期统计',width:105,pinned:'right' as const,lockPinned:true,lockVisible:true}]:[]),
+])
+const overduePage=gridComputed(()=>({current_page:props.rows.current_page,last_page:props.rows.last_page,per_page:props.rows.per_page??50,total:props.rows.total}))
+const overdueGroups={'批次与商品':['warehouse_name','group_label','owner_label','putaway_date','sku','product_name'],
+  '超期信息':['quantity','age_days','overdue_days','origin_label','quality_label'],'操作':['actions']}
+const goToPage=(page:number)=>{
+  const url=page===props.rows.current_page-1?props.rows.prev_page_url:page===props.rows.current_page+1?props.rows.next_page_url:null
+  if(url)router.get(url,{}, {preserveState:true})
+}
 </script>
 
 <template>
@@ -133,41 +158,20 @@ const origin=(row:OverdueRow)=>row.source==='dated_lot'?(row.lot_id?'批次 #'+r
       当前筛选：<strong>{{number(filteredRows)}} 条批次 / {{number(filteredUnits)}} 件</strong>
       <span>导出内容遵循当前筛选条件，不受页面分页限制</span>
     </div>
-    <div class="overdue-table-shell">
-      <table class="overdue-table">
-        <thead><tr>
-          <th>仓别</th><th>组别</th><th>责任人</th><th>入库时间</th>
-          <th>FNSKU</th><th>物料名称</th><th class="number-col">数量</th>
-          <th>库龄</th><th>超期天数</th><th>批次 / 来源</th><th>核对状态</th><th v-if="canManageExclusions">超期统计</th>
-        </tr></thead>
-        <tbody>
-          <tr v-for="(row,index) in rows.data" :key="row.warehouse_id+'-'+row.product_id+'-'+(row.lot_id||'summary')+'-'+index">
-            <td><strong>{{row.warehouse_name}}</strong><small>{{row.warehouse_code}}</small></td>
-            <td class="empty-cell">—</td>
-            <td class="empty-cell">—</td>
-            <td>{{row.putaway_date}}</td>
-            <td><strong>{{row.sku}}</strong><small v-if="row.canonical_sku!==row.sku">ERP: {{row.canonical_sku}}</small></td>
-            <td class="name-cell">{{row.product_name}}</td>
-            <td class="number-col"><strong>{{number(row.quantity)}}</strong></td>
-            <td>{{row.age_days}} 天</td>
-            <td>{{row.overdue_days}} 天</td>
-            <td>{{origin(row)}}</td>
-            <td><span :class="['quality-pill',row.quality==='批次已核对'?'verified':'review']">{{row.quality==='批次已核对'?'已核对':'待复核'}}</span><small v-if="row.quality!=='批次已核对'">{{row.quality}}</small></td>
-            <td v-if="canManageExclusions"><label class="overdue-switch"><input type="checkbox" :disabled="pendingProduct!==null" :aria-label="'屏蔽 '+row.sku" @change="toggleExcluded(row.product_id,true)"/><span>参与</span></label></td>
-          </tr>
-          <tr v-if="rows.data.length===0"><td :colspan="canManageExclusions?12:11" class="empty-row">当前筛选没有满 90 天的在库批次。</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div v-if="rows.total>0" class="overdue-pagination">
-      <span>共 {{number(rows.total)}} 条 · 第 {{rows.current_page}} / {{rows.last_page}} 页</span>
-      <div>
-        <Link v-if="rows.prev_page_url" class="mvp-button" :href="rows.prev_page_url" preserve-state>上一页</Link>
-        <span v-else class="mvp-button disabled">上一页</span>
-        <Link v-if="rows.next_page_url" class="mvp-button" :href="rows.next_page_url" preserve-state>下一页</Link>
-        <span v-else class="mvp-button disabled">下一页</span>
-      </div>
-    </div>
+    <GlobalGridTemplates namespace="grid.inventory.overdue.v2" title="超期库存明细"
+      :columns="overdueColumns" :rows="overdueRows" :field-groups="overdueGroups"
+      :required-column-ids="canManageExclusions?['sku','actions']:['sku']" :page="overduePage"
+      :show-search="false" server-page-size-locked :default-pinned-right="canManageExclusions?1:0" cell-text-selection
+      @page-change="goToPage">
+      <template #cell-warehouse_name="{row}"><div><strong>{{row.warehouse_name}}</strong><small class="overdue-grid-small">{{row.warehouse_code}}</small></div></template>
+      <template #cell-sku="{row}"><div><strong>{{row.sku}}</strong><small v-if="row.canonical_sku!==row.sku" class="overdue-grid-small">ERP: {{row.canonical_sku}}</small></div></template>
+      <template #cell-quantity="{row}"><strong>{{number(row.quantity)}}</strong></template>
+      <template #cell-age_days="{row}">{{row.age_days}} 天</template>
+      <template #cell-overdue_days="{row}">{{row.overdue_days}} 天</template>
+      <template #cell-quality_label="{row}"><div><span :class="['quality-pill',row.quality==='批次已核对'?'verified':'review']">{{row.quality==='批次已核对'?'已核对':'待复核'}}</span><small v-if="row.quality!=='批次已核对'" class="overdue-grid-small" :title="row.quality">{{row.quality}}</small></div></template>
+      <template #cell-actions="{row}"><label v-if="canManageExclusions" class="overdue-switch"><input type="checkbox" :disabled="pendingProduct!==null" :aria-label="'屏蔽 '+row.sku" @change="toggleExcluded(row.product_id,true)"/><span>参与</span></label></template>
+    </GlobalGridTemplates>
+    <p v-if="!rows.data.length" class="empty-row">当前筛选没有满 90 天的在库批次。</p>
   </section>
   <p class="overdue-footnote">说明：满 90 天按入库日期计算，等于 90 天当天即入选；此报表仅供库存查询，不自动修改库存，也不直接改变 P9 仓储费用。缺日期的库存不推测入库时间；批次账差异将标记待复核。</p>
 </section>
@@ -175,6 +179,7 @@ const origin=(row:OverdueRow)=>row.source==='dated_lot'?(row.lot_id?'批次 #'+r
 </template>
 
 <style scoped>
+.overdue-grid-small{display:block;font-size:10px;color:#82909b;overflow:hidden;text-overflow:ellipsis;line-height:1.1;max-width:200px}
 .overdue-page{display:flex;flex-direction:column;gap:17px}
 .overdue-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .overdue-kpis .mvp-card{display:flex;flex-direction:column;gap:6px;padding:18px}

@@ -90,3 +90,5 @@ describe('Warehouse inbound SKU review P0', () => {
     expect(wrapper.text()).toContain('待复核')
   })
 })
+
+vi.mock('../../Components/DataGrid/GlobalGrid.vue',async()=>({default:(await import('../../Components/DataGrid/testing/GlobalGridHarness')).default}))
