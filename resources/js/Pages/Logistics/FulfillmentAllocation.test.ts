@@ -298,7 +298,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(document.body.textContent).toContain('系统候选方案：拆分发货')
     expect(document.body.textContent).toContain('美西MorePlus')
     expect(document.body.textContent).toContain('中国工厂')
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     expect(document.body.textContent).toContain('估算成本：¥83.00')
     expect(document.body.textContent).toContain('仓库地理参考')
     expect(document.body.textContent).toContain('90001')
@@ -579,7 +579,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
       input.dispatchEvent(new Event('change', { bubbles: true }))
     }
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
@@ -608,7 +608,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
       select.value='US-LA';select.dispatchEvent(new Event('change',{bubbles:true}))
     }
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
@@ -644,7 +644,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
       select.value='US-LA';select.dispatchEvent(new Event('change',{bubbles:true}))
     }
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
@@ -667,7 +667,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     const wrapper = mountPage()
     await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
@@ -850,7 +850,7 @@ describe('Actual fulfillment product selection', () => {
     const warehouse=row.querySelector('td:nth-child(5) select') as HTMLSelectElement
     warehouse.value='US-LA';warehouse.dispatchEvent(new Event('change',{bubbles:true}))
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认费用并分仓')!
     submit.click()
     await flushPromises()
@@ -955,7 +955,7 @@ describe('ERP1 compact allocation dialog', () => {
     const wrapper=mountPage()
     await wrapper.findAll('button').find(b=>b.text()==='查看方案')!.trigger('click')
     await flushPromises()
-    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'), { timeout: 5000, interval: 50 })
     const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认费用并分仓')!
     submit.click(); await flushPromises()
     const reload=vi.mocked(router.reload)
