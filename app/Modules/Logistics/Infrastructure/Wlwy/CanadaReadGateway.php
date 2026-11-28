@@ -98,10 +98,18 @@ final class CanadaReadGateway
         if ($references === [] || count($references) > 1000 || count(array_unique($references)) !== count($references)) {
             throw new RuntimeException('CA_REFERENCE_INVALID');
         }
+        $canonical = [];
         foreach ($references as $reference) {
             if (! is_string($reference) || trim($reference) === '' || strlen($reference) > 50) {
                 throw new RuntimeException('CA_REFERENCE_INVALID');
             }
+            // CA02 actually normalizes the customer reference to lowercase.
+            // Do not treat a case-only change as a different physical order.
+            $normalized = strtolower($reference);
+            if (isset($canonical[$normalized])) {
+                throw new RuntimeException('CA_REFERENCE_INVALID');
+            }
+            $canonical[$normalized] = $reference;
         }
         $data = $this->read($connection, 'fu.wms.outbound.getorderstatus', ['ref_no' => $references]);
         $rows = $data['consignmentlist'] ?? null;
@@ -110,11 +118,12 @@ final class CanadaReadGateway
         }
         $result = array_fill_keys($references, []);
         foreach ($rows as $row) {
-            if (! is_array($row) || ! in_array($row['ref_no'] ?? null, $references, true)
+            $returned = is_array($row) && is_string($row['ref_no'] ?? null) ? strtolower($row['ref_no']) : '';
+            if (! is_array($row) || ! isset($canonical[$returned])
                 || ($row['from_warehouse_code'] ?? null) !== 'CA02' || empty($row['consignment_no'])) {
                 throw new RuntimeException('CA_STATUS_IDENTITY_CONFLICT');
             }
-            $result[$row['ref_no']][] = $row;
+            $result[$canonical[$returned]][] = $row;
         }
 
         return $result;

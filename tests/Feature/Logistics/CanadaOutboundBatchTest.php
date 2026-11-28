@@ -12,6 +12,7 @@ use App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch;
 use App\Modules\Logistics\Application\Wlwy\CanadaTrackingRefresh;
 use App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation;
 use App\Modules\Logistics\Experience\Jobs\ProcessCanadaOutboundBatch;
+use App\Modules\Logistics\Infrastructure\Wlwy\CanadaReadGateway;
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
@@ -151,7 +152,7 @@ final class CanadaOutboundBatchTest extends TestCase
             }
             $ref = $b['ref_no'][0];
             $rows = ($ref === 'C99911' || ($ref === 'C99912' && $visible)) ? [
-                ['ref_no' => $ref, 'from_warehouse_code' => 'CA02', 'consignment_no' => $ref === 'C99911' ? 'OMS-11' : 'OMS-12',
+                ['ref_no' => strtolower($ref), 'from_warehouse_code' => 'CA02', 'consignment_no' => $ref === 'C99911' ? 'OMS-11' : 'OMS-12',
                     'status' => 'C', 'logistics_product_code' => 'CAPOST', 'shipping_no' => '1234567890123456']] : [];
 
             return Http::response(['result' => '1', 'data' => ['consignmentlist' => $rows], 'errors' => null]);
@@ -172,6 +173,28 @@ final class CanadaOutboundBatchTest extends TestCase
         $this->assertSame(0, app(CanadaTrackingRefresh::class)->run()['staged']);
         app(CanadaOutboundBatch::class)->drain();
         $this->assertSame(1, $creates);
+    }
+
+    public function test_status_lookup_rejects_case_collisions_before_network_and_unrelated_references(): void
+    {
+        $actor = $this->operator();
+        $this->order($actor, '41');
+        $connection = WarehouseOpenApiConnection::where('provider', 'wlwy')->firstOrFail();
+        $gateway = app(CanadaReadGateway::class);
+        Http::fake(['https://api.wlwytech.com/router/api/service*' => Http::response([
+            'result' => '1', 'data' => ['consignmentlist' => [
+                ['ref_no' => 'c99942', 'from_warehouse_code' => 'CA02', 'consignment_no' => 'OTHER'],
+            ]], 'errors' => null,
+        ])]);
+        try {
+            $gateway->exactStatuses($connection, ['C99941', 'c99941']);
+            $this->fail('Ambiguous reference normalization must fail closed.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('CA_REFERENCE_INVALID', $e->getMessage());
+        }
+        Http::assertNothingSent();
+        $this->expectExceptionMessage('CA_STATUS_IDENTITY_CONFLICT');
+        $gateway->exactStatus($connection, 'C99941');
     }
 
     public function test_fake_live_create_timeout_stays_uncertain_and_never_retries(): void
