@@ -21,6 +21,17 @@ final class OrderProgressResolver
         if ($order->archived_at !== null || $order->isOperationallyArchived()) {
             return 'archived';
         }
+        if ($order->fulfillment_parent_id !== null
+            && $order->order_status === OrderStatus::PendingShipment
+            && $order->workflow_status === 'pending_allocation'
+            && in_array($order->routing_warehouse_code, [null, 'UNASSIGNED'], true)) {
+            $order->loadMissing('shipment');
+            $shipment = $order->shipment;
+            if ($shipment === null || ($shipment->shipment_status === 'pending'
+                && $shipment->shipped_at === null)) {
+                return 'exception';
+            }
+        }
         // Staff explicitly returning an order to allocation/review wins over
         // its former visible phase; shipment facts still gate real dispatch.
         if (in_array($order->workflow_status, ['pending_allocation', 'pending_review'], true)) {

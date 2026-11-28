@@ -9,6 +9,7 @@ use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
+use App\Modules\Logistics\Application\OverseaWarehouseQueueQuery;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
@@ -559,6 +560,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
                     'oms_status_code' => $omsStatus, 'failure_code' => $failure,
                 ]);
                 self::assertSame('sending', $order->fresh()->workflow_status);
+                self::assertSame($view, app(OverseaWarehouseQueueQuery::class)->destination($order->id));
                 foreach (['review', 'stockout', 'pending', 'issued', 'shipped', 'exceptions'] as $candidate) {
                     $response = $this->get('/logistics/oversea/'.$route.'?view='.$candidate.'&search='.$order->erp_order_id)->assertOk();
                     self::assertSame($candidate === $view ? 1 : 0, $response->viewData('page')['props']['rows']['total'], $code.' '.$state.' '.$omsStatus.' '.$candidate);

@@ -8,6 +8,7 @@ use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
+use App\Modules\Logistics\Application\OverseaWarehouseQueueQuery;
 use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
 use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
@@ -128,8 +129,8 @@ final class OrderWarehouseRouting
             'CA' => 'ca',
         ];
         if (isset($overseas[$route])) {
-            $queue = in_array($view, ['pending', 'review', 'stockout', 'exceptions', 'shipped'], true)
-                ? $view : 'all';
+            $queue = app(OverseaWarehouseQueueQuery::class)->destination((int) $order->id)
+                ?? (in_array($view, ['pending', 'review', 'stockout', 'exceptions', 'shipped'], true) ? $view : 'all');
 
             return '/logistics/oversea/'.$overseas[$route].'?view='.$queue.'&global_grid=1';
         }

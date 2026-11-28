@@ -152,6 +152,7 @@ final class OrderProgressQuery
             'exception' => $orders->where('order_status', '!=', 'cancelled')
                 ->where(function (Builder $q): void {
                     $q->whereIn('workflow_status', OrderManualHoldStatus::EXCEPTION_CODES)
+                        ->orWhere(fn (Builder $leg) => $this->unassignedSplitLeg($leg))
                         ->orWhere(function (Builder $auto): void {
                             $this->withoutExplicitPrimary($auto)
                                 ->where(function (Builder $facts): void {
@@ -274,6 +275,19 @@ final class OrderProgressQuery
                 ->orWhereHas('operationalMarkers', fn ($m) => $m
                     ->whereIn('marker', OrderManualHoldStatus::HOLD_MARKERS))
                 ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'exception')));
+    }
+
+    /** An unassigned active split leg must be reconciled individually, not
+     * silently returned to the root-only allocation workbench. */
+    public function unassignedSplitLeg(Builder $orders): Builder
+    {
+        return $orders->whereNotNull('fulfillment_parent_id')
+            ->eligibleForOperations()
+            ->where('order_status', 'pending_shipment')
+            ->where('workflow_status', 'pending_allocation')
+            ->where(fn ($q) => $q->whereNull('routing_warehouse_code')->orWhere('routing_warehouse_code', 'UNASSIGNED'))
+            ->where(fn ($q) => $q->whereDoesntHave('shipment')
+                ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending')->whereNull('shipped_at')));
     }
 
     /** Reusable direct-segment reconciliation predicate, excluding root roll-up. */
