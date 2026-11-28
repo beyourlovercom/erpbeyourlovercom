@@ -339,6 +339,44 @@ final class PackagingMeasurementEvidenceTest extends TestCase
         $this->assertDatabaseCount('orders',0);
     }
 
+    public function test_factory_confirmed_upgrade_keeps_baseline_and_actual_separate_until_adoption(): void
+    {
+        $factory=$this->userWith(['inventory.packaging.submit']);
+        $reviewer=$this->userWith(['inventory.packaging.review']);
+        $p=Product::create(['name'=>'Upgrade synthetic','sku'=>'UPGRADE-B6','is_active'=>true]);
+        $other=Product::create(['name'=>'Other','sku'=>'UPGRADE-OTHER','is_active'=>true]);
+        $base=PackagingMeasurementRecord::create(['product_id'=>$p->id,'status'=>'approved','packaging_method_key'=>'carton','created_by'=>$reviewer->id,'packaged_weight_kg'=>2.232,'packaging_length_cm'=>39,'packaging_width_cm'=>25.5,'packaging_height_cm'=>18.7,'measured_at'=>now()]);
+        $profile=ProductPackagingProfile::create(['product_id'=>$p->id,'preset_key'=>'carton','current_measurement_record_id'=>$base->id,'is_active'=>true]);
+        $path="/inventory/packaging/product/{$p->id}/upgrade";
+        $request=['baseline_id'=>$base->id,'method'=>'document_bubble_mailer','divisor'=>6000];
+        $this->actingAs($reviewer)->post($path,$request)->assertForbidden();
+        $this->actingAs($factory)->post("/inventory/packaging/product/{$other->id}/upgrade",$request)->assertStatus(409);
+        $this->actingAs($factory)->post($path,$request)->assertRedirect();
+        $r=PackagingMeasurementRecord::where('upgrade_from_record_id',$base->id)->firstOrFail();
+        $this->assertNull($r->packaged_weight_kg);$this->assertNull($r->packaging_height_cm);
+        $this->assertSame(13.4,$r->upgrade_plan['proposed']['height_cm']);
+        $this->assertSame(18.7,$r->upgrade_plan['baseline']['height_cm']);
+        $this->actingAs($factory)->post($path,$request)->assertRedirect();
+        $this->assertSame(1,PackagingMeasurementRecord::where('upgrade_from_record_id',$base->id)->count());
+        $payload=['product_id'=>$p->id,'packaging_method_key'=>'document_bubble_mailer','packaging_length_cm'=>39,'packaging_width_cm'=>25.5,'packaging_height_cm'=>13.2,'packaged_weight_kg'=>2.18,'measured_at'=>'2026-11-28 14:00:00'];
+        $this->actingAs($factory)->post("/inventory/packaging/{$r->id}/submit",[...$payload,'packaging_method_key'=>'carton'])->assertStatus(422);
+        $this->actingAs($factory)->post("/inventory/packaging/{$r->id}/submit",$payload)->assertRedirect()->assertSessionDoesntHaveErrors();
+        $this->assertSame($base->id,$profile->fresh()->current_measurement_record_id);
+        $this->assertSame(0,$r->media()->count());
+        $this->actingAs($factory)->get("/inventory/packaging/{$r->id}/upgrade-quote?country=US")->assertForbidden();
+        $this->actingAs($reviewer)->get("/inventory/packaging/{$r->id}")->assertOk()->assertInertia(fn($page)=>$page->where('upgradeComparison.actual.height_cm',13.2)->where('upgradeComparison.weight_saving_kg',0.052)->where('upgradeComparison.proposed.height_cm',13.4));
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$r->id}/review",['decision'=>'approved'])->assertRedirect();
+        $this->assertSame($base->id,$profile->fresh()->current_measurement_record_id);
+        $this->actingAs($reviewer)->post("/inventory/packaging/{$r->id}/adopt-standard",['expected_current_standard_record_id'=>$base->id])->assertRedirect();
+        $this->assertSame($r->id,$profile->fresh()->current_measurement_record_id);
+        $this->assertNotNull($r->fresh()->standard_adopted_at);
+        $this->assertSame('18.70',$base->fresh()->packaging_height_cm);
+        $read=app(\App\Modules\Inventory\Application\ProductPackagingStandardReader::class)->forProductIds([$p->id])[$p->id];
+        $this->assertSame('13.20',$read['packaging_height_cm']);$this->assertSame('2.180',$read['packaged_weight_kg']);
+        $this->actingAs($factory)->post($path,$request)->assertStatus(409);
+        $this->assertDatabaseCount('orders',0);
+    }
+
     private function userWith(array $keys): User
     {
         $user = User::factory()->create(); $role = Role::create(['key'=>'test-'.uniqid(),'label'=>'Test']);

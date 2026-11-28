@@ -101,7 +101,7 @@ final class PackagingOptimizationWorkspace
         return ['items'=>[$productId=>1],'weight_kg'=>$input['weight_kg'],'dimensions_cm'=>[$input['length_cm'],$input['width_cm'],$input['height_cm']],'weight_basis'=>'measured_packaged','eligibility'=>'confirmed'];
     }
 
-    private function routes(string $country,string $date)
+    public function routes(string $country,string $date)
     {
         $effective=DB::table('logistics_rate_versions')->whereIn('status',['approved','draft'])->whereNotNull('effective_from')->where('effective_from','<=',$date)
             ->where(fn($q)=>$q->whereNull('effective_until')->orWhere('effective_until','>=',$date))

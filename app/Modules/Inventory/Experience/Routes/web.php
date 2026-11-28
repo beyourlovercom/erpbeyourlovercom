@@ -21,6 +21,7 @@ Route::middleware(['web','auth'])->group(function (): void {
 });
 
 Route::middleware(['web','auth','can:inventory.packaging.submit'])->group(function (): void {
+    Route::post('/inventory/packaging/product/{product}/upgrade',[PackagingMeasurementController::class,'startUpgrade'])->whereNumber('product')->name('inventory.packaging.upgrade');
     Route::post('/inventory/packaging', [PackagingMeasurementController::class, 'store'])->name('inventory.packaging.store');
     Route::patch('/inventory/packaging/{record}', [PackagingMeasurementController::class, 'update'])->whereNumber('record')->name('inventory.packaging.update');
     Route::post('/inventory/packaging/{record}/resubmit', [PackagingMeasurementController::class, 'resubmit'])->whereNumber('record')->name('inventory.packaging.resubmit');
@@ -30,6 +31,7 @@ Route::middleware(['web','auth','can:inventory.packaging.submit'])->group(functi
 });
 
 Route::middleware(['web','auth','can:inventory.packaging.review'])->group(function (): void {
+    Route::get('/inventory/packaging/{record}/upgrade-quote',[PackagingMeasurementController::class,'upgradeQuote'])->whereNumber('record')->name('inventory.packaging.upgrade-quote');
     Route::post('/inventory/packaging/{record}/review', [PackagingMeasurementController::class, 'review'])->whereNumber('record')->name('inventory.packaging.review');
     Route::post('/inventory/packaging/{record}/adopt-standard', [PackagingMeasurementController::class, 'adoptStandard'])->whereNumber('record')->name('inventory.packaging.adopt-standard');
 });

@@ -107,6 +107,19 @@ jobs:
               echo "PACKAGING_PHOTO_MYSQL_SCHEMA_LEDGER_PASS\n";
             '
           }
+          upgrade=database/migrations/2026_11_28_143400_add_packaging_upgrade_lineage.php
+          check_upgrade() {
+            EXPECT_COLUMN="$1" php -r '
+              $pdo = new PDO("mysql:host=127.0.0.1;port=3306;dbname=erp_packaging_test", getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
+              $column = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=\x27packaging_measurement_records\x27 AND COLUMN_NAME IN (\x27upgrade_from_record_id\x27,\x27upgrade_plan\x27,\x27standard_adopted_at\x27,\x27upgrade_quote_snapshot\x27)")->fetchColumn();
+              $ledger = (int) $pdo->query("SELECT COUNT(*) FROM migrations WHERE migration=\x272026_11_28_143400_add_packaging_upgrade_lineage\x27")->fetchColumn();
+              if ($column !== 4*(int)getenv("EXPECT_COLUMN") || $ledger !== (int)getenv("EXPECT_COLUMN")) exit(1);
+              echo "PACKAGING_UPGRADE_MYSQL_SCHEMA_LEDGER_PASS\n";
+            '
+          }
+          check_upgrade 1
+          php artisan migrate:rollback --step=1 --path="$upgrade" --force
+          check_upgrade 0
           check_photo 1
           php artisan migrate:rollback --step=1 --path="$photo" --force
           check_photo 0
@@ -117,3 +130,5 @@ jobs:
           check_schema 1
           php artisan migrate --path="$photo" --force
           check_photo 1
+          php artisan migrate --path="$upgrade" --force
+          check_upgrade 1
