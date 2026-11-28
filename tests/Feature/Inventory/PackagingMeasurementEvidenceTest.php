@@ -319,6 +319,26 @@ final class PackagingMeasurementEvidenceTest extends TestCase
         $this->assertSame(0,$other->media()->count());
     }
 
+    public function test_optimization_workspace_enforces_role_and_canonical_catalogue_scope(): void
+    {
+        $factory=$this->userWith(['inventory.packaging.submit']);
+        $reviewer=$this->userWith(['inventory.packaging.review']);
+        $viewer=$this->userWith(['inventory.view']);
+        $p=Product::create(['name'=>'Synthetic workspace','sku'=>'B6-CANONICAL','is_active'=>true]);
+        $excluded=Product::create(['name'=>'Excluded','sku'=>'00W-B6','is_active'=>true]);
+        $r=PackagingMeasurementRecord::create(['product_id'=>$p->id,'status'=>'approved','packaging_method_key'=>'carton','created_by'=>$factory->id,'packaged_weight_kg'=>2.232,'packaging_length_cm'=>39,'packaging_width_cm'=>25.5,'packaging_height_cm'=>18.7,'measured_at'=>now()]);
+        ProductPackagingProfile::create(['product_id'=>$p->id,'preset_key'=>'carton','current_measurement_record_id'=>$r->id,'is_active'=>true]);
+        $url='/inventory/packaging?tab=optimization&search=B6-CANONICAL&product_id='.$p->id;
+        $this->actingAs($factory)->get($url)->assertForbidden();
+        $this->actingAs($viewer)->get($url)->assertOk()->assertInertia(fn($page)=>$page->component('Inventory/Packaging/Index')->where('canQuote',false)->where('optimization.stats.total',1)->where('selected.geometry.baseline.candidate_height_cm',13.4)->has('selected.routes',0)->where('selected.history.monthly_saving_cny',null)->where('selected.history.eligible_for_ranking',false)->missing('selected.product.input.evidence'));
+        $this->actingAs($reviewer)->get($url)->assertOk()->assertInertia(fn($page)=>$page->where('canQuote',true)->where('selected.quote',null)->has('selected.methods',4));
+        $this->actingAs($reviewer)->get('/inventory/packaging?tab=optimization&product_id='.$excluded->id)->assertNotFound();
+        $this->actingAs($reviewer)->get('/inventory/packaging?tab=standards&search=B6-CANONICAL')->assertOk()->assertInertia(fn($page)=>$page->has('optimization.rows.data',1)->where('optimization.rows.data.0.sku','B6-CANONICAL'));
+        $this->assertDatabaseCount('packaging_measurement_records',1);
+        $this->assertDatabaseCount('product_packaging_profiles',1);
+        $this->assertDatabaseCount('orders',0);
+    }
+
     private function userWith(array $keys): User
     {
         $user = User::factory()->create(); $role = Role::create(['key'=>'test-'.uniqid(),'label'=>'Test']);

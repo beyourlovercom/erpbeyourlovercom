@@ -6,6 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Identity\Application\AuthorizationKeys;
+use App\Modules\Inventory\Application\PackagingOptimizationWorkspace;
 use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementMedia;
 use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
@@ -32,12 +33,21 @@ final class PackagingMeasurementController
         $user = $request->user();
         abort_unless($user->can(AuthorizationKeys::InventoryPackagingSubmit->value) || $user->can(AuthorizationKeys::InventoryPackagingReview->value) || $user->can(AuthorizationKeys::InventoryView->value), 403);
         $reviewer = $user->can(AuthorizationKeys::InventoryPackagingReview->value) || $user->can(AuthorizationKeys::InventoryView->value);
+        $filters=$request->validate(['tab'=>['nullable',Rule::in(['records','optimization','standards'])],'search'=>['nullable','string','max:120'],'status'=>['nullable',Rule::in(['draft','submitted','approved','rejected'])],'coverage'=>['nullable',Rule::in(['missing','complete','review'])],'per_page'=>['nullable','integer',Rule::in([20,50,100])],'product_id'=>['nullable','integer','min:1'],'country'=>['nullable','regex:/^[A-Z]{2}$/D'],'postal'=>['nullable','string','max:20'],'route_id'=>['nullable','integer','min:1'],'divisor'=>['nullable','integer',Rule::in([5000,6000,8000])],'confirmed'=>['nullable','boolean'],'handling'=>['nullable',Rule::in(['supplier','internal'])]]);
+        $tab=$filters['tab']??'records';
+        $canQuote=$user->can(AuthorizationKeys::InventoryPackagingReview->value);
+        if ($tab!=='records') {
+            abort_unless($reviewer,403);
+            $workspace=app(PackagingOptimizationWorkspace::class);
+            $list=$workspace->listing($filters);
+            return Inertia::render('Inventory/Packaging/Index',['records'=>['data'=>[],'links'=>[]],'filters'=>$filters,'tab'=>$tab,'canReview'=>$reviewer,'canSubmit'=>$user->can(AuthorizationKeys::InventoryPackagingSubmit->value),'canQuote'=>$canQuote,'optimization'=>$list,'selected'=>isset($filters['product_id'])?$workspace->detail((int)$filters['product_id'],$filters,$canQuote):null]);
+        }
         $query = PackagingMeasurementRecord::query()->with(['product:id,sku,name','warehouse:id,name','creator:id,name','media']);
         if (! $reviewer) $query->where('created_by', $user->getAuthIdentifier());
         if ($request->filled('status')) $query->where('status', $request->string('status'));
         if ($request->filled('search')) $query->whereHas('product', fn ($q) => $q->where('sku', 'like', '%'.$request->string('search').'%')->orWhere('name', 'like', '%'.$request->string('search').'%'));
-        $records = $query->latest('id')->paginate(20)->withQueryString()->through(fn (PackagingMeasurementRecord $r) => $this->summary($r));
-        return Inertia::render('Inventory/Packaging/Index', ['records'=>$records, 'filters'=>$request->only(['status','search']), 'canReview'=>$reviewer, 'canSubmit'=>$user->can(AuthorizationKeys::InventoryPackagingSubmit->value)]);
+        $records = $query->latest('id')->paginate((int)($filters['per_page']??20))->withQueryString()->through(fn (PackagingMeasurementRecord $r) => $this->summary($r));
+        return Inertia::render('Inventory/Packaging/Index', ['records'=>$records, 'filters'=>$filters, 'tab'=>'records', 'canReview'=>$reviewer, 'canSubmit'=>$user->can(AuthorizationKeys::InventoryPackagingSubmit->value)]);
     }
 
     public function create(Request $request): Response

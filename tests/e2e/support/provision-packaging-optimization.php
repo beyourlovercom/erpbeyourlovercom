@@ -34,4 +34,17 @@ $p=Product::create(['sku'=>'UAT-PACKAGE-001','name'=>'Synthetic packaging sample
 $r=PackagingMeasurementRecord::create(['product_id'=>$p->id,'status'=>'rejected','packaging_method_key'=>'carton','created_by'=>$factory->id,
     'packaging_length_cm'=>39,'packaging_width_cm'=>25.5,'packaging_height_cm'=>18.7,'packaged_weight_kg'=>2.232,
     'review_note'=>'Synthetic rejected evidence','measured_at'=>now()]);
-echo $r->id;
+if (getenv('BYL_PACKAGING_OWNER_UAT')==='1') {
+    $admin=User::query()->where('email','admin@local.test')->firstOrFail();
+    $base=PackagingMeasurementRecord::create(['product_id'=>$p->id,'status'=>'approved','packaging_method_key'=>'carton','created_by'=>$admin->id,
+        'packaging_length_cm'=>39,'packaging_width_cm'=>25.5,'packaging_height_cm'=>18.7,'packaged_weight_kg'=>2.232,'measured_at'=>now()]);
+    \App\Modules\Products\Infrastructure\Models\ProductPackagingProfile::create(['product_id'=>$p->id,'preset_key'=>'carton','current_measurement_record_id'=>$base->id,'is_active'=>true]);
+    PackagingMeasurementRecord::create(['product_id'=>$p->id,'status'=>'approved','packaging_method_key'=>'document_bubble_mailer','created_by'=>$admin->id,'packaging_length_cm'=>39,'packaging_width_cm'=>25.5,'packaging_height_cm'=>13.4,'packaged_weight_kg'=>2.232,'measured_at'=>now()]);
+    Product::create(['sku'=>'UAT-PACKAGE-002','name'=>'待补录测量（测试）','is_active'=>true]);
+    $source=DB::table('logistics_rate_source_files')->insertGetId(['sha256'=>hash('sha256','packaging-owner-uat-fixture'),'original_filename'=>'SYNTHETIC-UAT-NOT-REAL.xlsx','private_storage_path'=>'synthetic','mime_type'=>'test','byte_size'=>1]);
+    $book=DB::table('logistics_rate_books')->insertGetId(['key'=>'synthetic-packaging','supplier_name'=>'Synthetic UAT','display_name'=>'Synthetic UAT']);
+    $version=DB::table('logistics_rate_versions')->insertGetId(['book_id'=>$book,'source_file_id'=>$source,'version_number'=>1,'status'=>'draft','effective_from'=>'2026-01-01']);
+    $component=DB::table('logistics_rate_components')->insertGetId(['version_id'=>$version,'component_key'=>'transport','warehouse_code'=>'FACTORY','carrier'=>'UAT-TEST','service'=>'synthetic','destination_country'=>'US','component_type'=>'transport','currency'=>'CNY','weight_unit'=>'kg','pricing_mode'=>'fixed_band','rule_spec'=>json_encode(['basis'=>'max','dim_divisor'=>6000,'volume_unit'=>'cm3_kg','increment'=>1,'coverage_complete'=>true,'handling_included'=>true]),'source_sheet'=>'SYNTHETIC','source_cells'=>'A1:B4','review_status'=>'verified']);
+    foreach ([[0,2,10],[2,3,20],[3,4,30],[4,10,40]] as $i=>$band) DB::table('logistics_rate_bands')->insert(['component_id'=>$component,'sequence'=>$i+1,'min_weight'=>$band[0],'max_weight'=>$band[1],'min_inclusive'=>false,'max_inclusive'=>true,'fixed_amount'=>$band[2],'source_cells'=>'A'.($i+1)]);
+    echo 'OWNER_FIXTURE_READY';
+} else echo $r->id;
