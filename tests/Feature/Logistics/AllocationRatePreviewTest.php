@@ -136,13 +136,13 @@ final class AllocationRatePreviewTest extends TestCase
         $row = collect($r['rows'])->firstWhere('warehouse_code', 'FACTORY');
         $this->assertSame('weight_only_reference', $row['status']);
         $this->assertEqualsWithDelta(52, $row['amount_cny'], 0.000001);
-        $this->assertSame([(int) $items[1]->product_id], $r['missing_product_ids']);
+        $this->assertEqualsCanonicalizing($items->pluck('product_id')->all(), $r['missing_product_ids']);
         $this->assertSame('product_weight_plus_20_percent', $r['measurement_evidence'][0]['weight_source']);
         Product::whereKey($items[1]->product_id)->update(['length_cm' => 30, 'width_cm' => 10, 'height_cm' => 6]);
-        $r = $this->actingAs($u)->getJson($url)->assertOk()->assertJsonPath('measurement.basis', 'product_standard_estimate')->json();
-        $this->assertEquals([30, 15, 16], $r['measurement']['dimensions_cm']);
+        $r = $this->actingAs($u)->getJson($url)->assertOk()->assertJsonPath('measurement.basis', 'weight_only_reference')->assertJsonPath('measurement.dimensions_cm', null)->json();
+        $this->assertSame('missing', $r['measurement_evidence'][0]['dimension_source']);
         $this->assertEqualsWithDelta(2.1, $r['measurement']['weight_kg'], 0.000001);
-        $this->assertSame([], $r['missing_product_ids']);
+        $this->assertEqualsCanonicalizing($items->pluck('product_id')->all(), $r['missing_product_ids']);
         $this->assertDatabaseCount('fulfillment_allocations', 0);
     }
 

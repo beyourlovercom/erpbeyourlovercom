@@ -5,11 +5,17 @@ namespace App\Modules\Inventory\Experience\Controllers;
 use App\Modules\Identity\Application\AuthorizationKeys;
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\InventoryMatrixService;
+use App\Modules\Inventory\Application\InventoryProductRatePreview;
 use App\Modules\Inventory\Application\InventoryAvailabilityProjection;
 use App\Modules\Inventory\Application\WarehouseLastReadStockService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseOverdueInventoryService;
 use App\Modules\Shell\Application\GlobalGridPilot;
+use App\Modules\Products\Application\ProductLogisticsProjection;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -30,8 +36,11 @@ final class InventoryController
         return Inertia::render('Inventory/WarehouseList', ['warehouses' => $this->inventory->warehouses(), 'canManage' => auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false]);
     }
 
-    public function products(Request $request, InventoryMatrixService $matrix): Response|RedirectResponse
+    public function products(Request $request, InventoryMatrixService $matrix, ProductLogisticsProjection $logistics, InventoryProductRatePreview $rates): Response|RedirectResponse
     {
+        $view = $request->query('view');
+        $canViewLogistics = (bool) $request->user()?->can('products.view');
+        if (in_array($view, ['logistics','sources'], true)) abort_unless($canViewLogistics, 403);
         $pageSize = in_array((string) $request->query('per_page', '100'), ['20', '50', '100'], true)
             ? (int) $request->query('per_page', 100) : 100;
         $page = $this->inventory->productInventory($request->only(['search', 'warehouse', 'stock_status']), $pageSize);
@@ -60,12 +69,67 @@ final class InventoryController
             ])->toArray(),
             'warehouses' => $this->inventory->warehouses(), 'filters' => ['search' => $request->input('search'), 'warehouse' => $canonicalWarehouse, 'stock_status' => $request->input('stock_status')],
             'matrixRows' => fn () => $matrix->rows(),
-            'inventoryView' => in_array($request->query('view'), ['product','warehouse'], true) ? $request->query('view') : ($request->has('warehouse') || $request->has('global_grid') ? 'warehouse' : null),
+            'canViewLogistics' => $canViewLogistics,
+            'canPreviewRates' => $canViewLogistics && (bool)$request->user()?->can('logistics.view'),
+            'rateScopes' => $view === 'logistics' && $canViewLogistics && $request->user()?->can('logistics.view') ? fn () => $rates->scopes() : [],
+            'logisticsRows' => $view === 'logistics' ? fn () => $logistics->rows(array_column($matrix->rows(), 'id')) : null,
+            'sourceRows' => $view === 'sources' ? fn () => $logistics->sources(array_column($matrix->rows(), 'id')) : null,
+            'inventoryView' => in_array($request->query('view'), ['product','warehouse','logistics','sources'], true) ? $request->query('view') : ($request->has('warehouse') || $request->has('global_grid') ? 'warehouse' : null),
             // This approved page is a separate grid rollout; do not change other pilots.
             'warehouseGridEnabled' => ! (GlobalGridPilot::available() && $request->query('global_grid') === '0'),
             'globalGridPilotAvailable' => GlobalGridPilot::available(),
             'globalGridPilotEnabled' => GlobalGridPilot::enabled($request),
         ]);
+    }
+
+    public function previewProductRate(Request $request, int $product, InventoryMatrixService $matrix, InventoryProductRatePreview $rates): JsonResponse
+    {
+        abort_unless($request->user()?->can('products.view') && $request->user()?->can('logistics.view'), 403);
+        abort_unless(in_array($product, array_column($matrix->rows(),'id'), true), 404);
+        $input = $request->validate([
+            'measurement_record_id'=>'required|integer|min:1','version_id'=>'required|integer|min:1',
+            'warehouse_code'=>'required|string|max:32','carrier'=>'required|string|max:64','service'=>'required|string|max:96',
+            'country'=>'required|string|regex:/^[A-Z]{2}$/D','postal_code'=>'nullable|string|max:32','as_of'=>'required|date_format:Y-m-d',
+            'eligibility_confirmed'=>'required|boolean',
+        ]);
+        return response()->json($rates->preview($product, $input));
+    }
+
+    public function exportProductLogistics(Request $request, InventoryMatrixService $matrix, ProductLogisticsProjection $logistics): StreamedResponse
+    {
+        abort_unless($request->user()?->can('products.view'), 403);
+        $view = $request->query('view', 'logistics');
+        abort_unless(in_array($view, ['logistics','sources'], true), 422);
+        $ids = array_column($matrix->rows(), 'id');
+        $rows = $view === 'sources' ? $logistics->sources($ids) : $logistics->rows($ids);
+        $columns = $view === 'sources' ? [
+            'sku'=>'SKU','material_name'=>'物料名称','source'=>'数据来源','kind'=>'测量类型','weight_kg'=>'重量 kg',
+            'dimensions'=>'尺寸 cm','method'=>'包装方案','status'=>'审核状态','current'=>'当前采用','observed_at'=>'测量时间',
+            'reviewed_at'=>'审核时间','media_count'=>'证据数量','reference'=>'来源编号',
+        ] : [
+            'sku'=>'SKU','material_name'=>'物料名称','retail_dimensions'=>'彩盒尺寸 cm','retail_weight_kg'=>'彩盒毛重 kg',
+            'retail_volume_cm3'=>'彩盒体积 cm³','retail_weight_source'=>'彩盒重量来源','unclassified_package_dimensions'=>'未分类包装参考 cm',
+            'shipping_dimensions'=>'物流尺寸 cm','shipping_volume_cm3'=>'物流体积 cm³','shipping_weight_kg'=>'物流实重 kg',
+            'packaging_method'=>'包装方案','shipping_status'=>'物流参数状态','volume_weight_kg'=>'体积重 kg',
+            'billable_weight_kg'=>'计费重 kg','billing_basis'=>'计费状态','reference_weight_kg'=>'运输参考重量 kg',
+            'carton_dimensions'=>'整箱尺寸 cm','carton_weight_kg'=>'整箱毛重 kg','carton_cbm'=>'整箱 CBM',
+            'units_per_carton'=>'装箱数量','estimated_carton_dimensions'=>'外箱预估尺寸 cm','estimated_carton_cbm'=>'外箱预估 CBM',
+        ];
+        $book = new Spreadsheet();
+        $sheet = $book->getActiveSheet();
+        $sheet->fromArray(array_values($columns), null, 'A1');
+        foreach ($rows as $i => $row) {
+            foreach (array_keys($columns) as $j => $field) {
+                $v = $row[$field] ?? null;
+                if ($v === null) continue;
+                $sheet->setCellValueExplicit([$j+1,$i+2], is_bool($v) ? ($v ? '是' : '否') : $v, is_int($v) || is_float($v) ? DataType::TYPE_NUMERIC : DataType::TYPE_STRING);
+            }
+        }
+        $sheet->freezePane('C2');
+        return response()->streamDownload(function () use ($book): void {
+            (new Xlsx($book))->save('php://output');
+            $book->disconnectWorksheets();
+        }, 'ERP-product-'.$view.'-'.now()->format('Ymd').'.xlsx', ['Content-Type'=>'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
     }
 
     public function productSearch(Request $request): JsonResponse

@@ -16,10 +16,10 @@ type Rec = {
     id:number; status:string; packaging_method_key?:string|null;
     product:{id:number;sku:string|null;name:string}; warehouse:string|null; warehouse_id:number|null;
     packaging_length_cm?:string; packaging_width_cm?:string; packaging_height_cm?:string; packaged_weight_kg?:string;
-    measured_at?:string|null; note?:string; media:Media[]
+    measured_at?:string|null; note?:string; photo_requirement_reason?:string|null; upgrade_from_record_id?:number|null; media:Media[]
 }
 
-const props = defineProps<{record:Rec|null; warehouses:{id:number;name:string}[]; packagingPresets:Preset[]; packagingSop:PackagingSop|null}>()
+const props = defineProps<{record:Rec|null; warehouses:{id:number;name:string}[]; packagingPresets:Preset[]; packagingSop:PackagingSop|null;upgradeComparison?:any}>()
 const initialMethod = props.record?.packaging_method_key || props.packagingSop?.preset_key || props.packagingPresets[0]?.key || null
 const form = useForm({
     product_id: props.record?.product.id ?? null as number|null,
@@ -33,6 +33,8 @@ const form = useForm({
     note: props.record?.note ?? '',
 })
 
+const photoError = computed(() => (form.errors as Record<string,string>).photos || '')
+const photosRequired = computed(() => !!props.record?.photo_requirement_reason || !!photoError.value)
 const search = ref(props.record ? `${props.record.product.sku || '无 SKU'} · ${props.record.product.name}` : '')
 const results = ref<ProductOption[]>([])
 const productSop = ref<PackagingSop|null>(props.packagingSop)
@@ -40,6 +42,10 @@ const initialHasRenderedGuide = !!props.packagingSop?.rendered_illustration_url 
 const guideMode = ref<'default'|'rendered'>(initialHasRenderedGuide ? 'rendered' : 'default')
 const showSteps = ref(false)
 const guideLoading = ref(false)
+const upgradeBaseline=ref<number|null>(null)
+const upgradeDivisor=ref(6000)
+function beginUpgrade(){if(form.product_id&&upgradeBaseline.value&&selectedPreset.value)router.post(`/inventory/packaging/product/${form.product_id}/upgrade`,{baseline_id:upgradeBaseline.value,method:form.packaging_method_key,divisor:upgradeDivisor.value})}
+function upgradeDims(v:any){return v&&v.length_cm&&v.width_cm&&v.height_cm?[v.length_cm,v.width_cm,v.height_cm].join(' × ')+' cm':'—'}
 
 const selectedPreset = computed(() => props.packagingPresets.find(item => item.key === form.packaging_method_key) ?? null)
 const isCustom = computed(() => form.packaging_method_key === 'custom')
@@ -66,6 +72,7 @@ async function find() {
 }
 
 async function chooseProduct(item:ProductOption) {
+    if(props.record?.upgrade_from_record_id)return
     form.product_id = item.id
     search.value = `${item.sku || '无 SKU'} · ${item.name}`
     results.value = []
@@ -74,6 +81,7 @@ async function chooseProduct(item:ProductOption) {
         const response = await fetch(`/inventory/packaging/product/${item.id}/guide`)
         const payload = response.ok ? await response.json() : null
         productSop.value = payload?.packaging_sop ?? null
+        upgradeBaseline.value=payload?.upgrade_baseline_id??null
         form.packaging_method_key = productSop.value?.preset_key || props.packagingPresets[0]?.key || null
         guideMode.value = productSop.value?.rendered_illustration_url ? 'rendered' : 'default'
     } finally {
@@ -82,12 +90,14 @@ async function chooseProduct(item:ProductOption) {
 }
 
 function choosePreset(key:string) {
+    if(props.record?.upgrade_from_record_id)return
     form.packaging_method_key = key
     showSteps.value = false
     guideMode.value = productSop.value?.preset_key === key && productSop.value?.rendered_illustration_url ? 'rendered' : 'default'
 }
 
 function chooseCustom() {
+    if(props.record?.upgrade_from_record_id)return
     form.packaging_method_key = 'custom'
     guideMode.value = productSop.value?.rendered_illustration_url ? 'rendered' : 'default'
     showSteps.value = true
@@ -130,8 +140,8 @@ function mediaFor(kind:string):Media[] {
             <div class="mvp-page-heading page-heading">
                 <div>
                     <p class="mvp-kicker">Factory Workspace</p>
-                    <h2>{{record ? '编辑草稿' : '新建包装测量记录'}}</h2>
-                    <p class="page-purpose">每单只需完成尺寸测量与称重，并上传两类对应照片；包装方式仅供操作参考。</p>
+                    <h2>{{record?.upgrade_from_record_id?'确认新版包装标准':record?'编辑草稿':'新建包装测量记录'}}</h2>
+                    <p class="page-purpose">填写包装尺寸与重量即可提交；图片默认选填，仅在要求复核时必传。</p>
                 </div>
                 <div class="mvp-actions action-zone">
                     <Link class="mvp-button" href="/inventory/packaging">返回列表</Link>
@@ -140,14 +150,21 @@ function mediaFor(kind:string):Media[] {
                 </div>
             </div>
 
+            <section v-if="upgradeComparison" class="mvp-card section-card">
+                <h3>升级方案 · 实测后提交</h3>
+                <p>原标准 #{{upgradeComparison.baseline.record_id}}：{{upgradeDims(upgradeComparison.baseline)}} / {{upgradeComparison.baseline.weight_kg}} kg</p>
+                <p>理论建议（非实测）：{{upgradeDims(upgradeComparison.proposed)}} / {{upgradeComparison.proposed.weight_kg}} kg（参考除数 {{upgradeComparison.reference_divisor}}）</p>
+                <p v-if="upgradeComparison.prior_candidate">已有候选测量：{{upgradeDims(upgradeComparison.prior_candidate)}} / {{upgradeComparison.prior_candidate.weight_kg}} kg</p>
+                <p>确认采用后请在下方填写实际打包数据，不能直接复制理论建议；批准并采用前原标准保持生效。</p>
+            </section>
             <section class="mvp-card section-card">
                 <div class="section-title"><span>1</span><div><h3>产品与工厂</h3><p>先确认本次测量对应的产品与操作地点。</p></div></div>
                 <div class="identity-grid">
                     <div class="field-block product-field">
                         <label>产品 SKU / 名称 <em>*</em></label>
                         <div class="search-control">
-                            <input v-model="search" placeholder="输入 SKU 或产品名称搜索" @keyup.enter="find" />
-                            <button type="button" @click="find" aria-label="搜索产品">⌕</button>
+                            <input v-model="search" :disabled="!!record?.upgrade_from_record_id" placeholder="输入 SKU 或产品名称搜索" @keyup.enter="find" />
+                            <button type="button" :disabled="!!record?.upgrade_from_record_id" @click="find" aria-label="搜索产品">⌕</button>
                         </div>
                         <div v-if="results.length" class="search-results">
                             <button v-for="item in results" :key="item.id" type="button" @click="chooseProduct(item)">{{item.sku || '无 SKU'}} · {{item.name}}</button>
@@ -166,32 +183,33 @@ function mediaFor(kind:string):Media[] {
 
             <section class="evidence-entry-grid primary-evidence-grid">
                 <article class="mvp-card evidence-entry-card">
-                    <div class="section-title small"><span>2</span><div><h3>包装尺寸 + 测量图</h3><p>填写打包后的长宽高，并拍摄尺寸测量照片。</p></div></div>
+                    <div class="section-title small"><span>2</span><div><h3>{{record?.upgrade_from_record_id?'升级后实测尺寸':'包装尺寸'}}</h3><p>填写打包后的长宽高。</p></div></div>
                     <div class="dimension-inputs">
                         <label><span>长度 <em>*</em></span><div class="unit-input"><input v-model="form.packaging_length_cm" type="number" step="0.01" min="0"/><b>cm</b></div></label>
                         <label><span>宽度 <em>*</em></span><div class="unit-input"><input v-model="form.packaging_width_cm" type="number" step="0.01" min="0"/><b>cm</b></div></label>
                         <label><span>高度 <em>*</em></span><div class="unit-input"><input v-model="form.packaging_height_cm" type="number" step="0.01" min="0"/><b>cm</b></div></label>
                     </div>
                     <div class="metric-summary">包装尺寸：<strong>{{dimensionSummary}}</strong></div>
-                    <div class="upload-title"><strong>尺寸测量图 <em>*</em></strong><small>建议卷尺 / 尺子与包装同时入镜</small></div>
+                    <div class="upload-title"><strong>尺寸测量图 <em v-if="photosRequired">*</em><small v-else>（选填）</small></strong><small>建议卷尺 / 尺子与包装同时入镜</small></div>
                     <label class="dropzone" :class="{disabled:!record}"><input type="file" accept="image/jpeg,image/png,image/webp" multiple capture="environment" :disabled="!record" @change="upload('measurement',$event)"/><span class="upload-icon">⇧</span><strong>{{record?'拍照 / 上传尺寸图':'先保存草稿后拍照'}}</strong><small>JPG / PNG / WEBP · 单张 ≤ 10MB</small></label>
                     <div class="thumb-grid"><figure v-for="media in mediaFor('measurement')" :key="media.id"><img :src="media.url" :alt="media.name || '尺寸测量图'"/><button type="button" @click="removeMedia(media)">×</button></figure></div>
                     <small v-if="form.errors.packaging_length_cm || form.errors.packaging_width_cm || form.errors.packaging_height_cm" class="field-error">请完整填写包装长、宽、高。</small>
                 </article>
 
                 <article class="mvp-card evidence-entry-card">
-                    <div class="section-title small"><span>3</span><div><h3>包装重量 + 称重图</h3><p>填写打包后重量，并拍摄电子秤读数。</p></div></div>
+                    <div class="section-title small"><span>3</span><div><h3>{{record?.upgrade_from_record_id?'升级后实测重量':'包装重量'}}</h3><p>填写打包后的实际重量。</p></div></div>
                     <div class="weight-fields">
                         <label><span>打包后重量 <em>*</em></span><div class="unit-input"><input v-model="form.packaged_weight_kg" type="number" step="0.001" min="0"/><b>kg</b></div></label>
                         <label><span>测量时间 <em>*</em></span><input v-model="form.measured_at" type="datetime-local"/></label>
                     </div>
-                    <div class="upload-title"><strong>称重记录图 <em>*</em></strong><small>请确保电子秤数字清晰可见</small></div>
+                    <div class="upload-title"><strong>称重记录图 <em v-if="photosRequired">*</em><small v-else>（选填）</small></strong><small>请确保电子秤数字清晰可见</small></div>
                     <label class="dropzone" :class="{disabled:!record}"><input type="file" accept="image/jpeg,image/png,image/webp" multiple capture="environment" :disabled="!record" @change="upload('weight',$event)"/><span class="upload-icon">⇧</span><strong>{{record?'拍照 / 上传称重图':'先保存草稿后拍照'}}</strong><small>JPG / PNG / WEBP · 单张 ≤ 10MB</small></label>
                     <div class="thumb-grid"><figure v-for="media in mediaFor('weight')" :key="media.id"><img :src="media.url" :alt="media.name || '称重记录图'"/><button type="button" @click="removeMedia(media)">×</button></figure></div>
                     <small v-if="form.errors.packaged_weight_kg || form.errors.measured_at" class="field-error">请填写重量与测量时间。</small>
                 </article>
             </section>
 
+            <p v-if="photosRequired" class="field-error" role="alert">{{photoError || '本次为拍照复核，须上传尺寸图及称重图。'}}</p>
             <section class="mvp-card section-card note-section">
                 <div class="section-title small"><span>4</span><div><h3>备注</h3><p>仅在有异常或特殊情况时补充说明。</p></div></div>
                 <textarea v-model="form.note" rows="4" maxlength="5000" placeholder="请输入备注信息（选填）"></textarea>
@@ -199,13 +217,17 @@ function mediaFor(kind:string):Media[] {
 
             <section class="mvp-card section-card reference-section">
                 <div class="section-title"><span>5</span><div><h3>包装方式参考</h3><p>这是工厂打包参考，不影响本单尺寸 / 重量证据提交。</p></div></div>
-                <div class="reference-banner"><strong>参考信息</strong><span>优先完成上方两次拍照；需要确认包装方式时再查看这里。</span></div>
+                <div class="reference-banner"><strong>参考信息</strong><span>仅在需要确认包装方式时查看。</span></div>
                 <div class="preset-heading reference-heading">
                     <div><h4>预设包装方案</h4><p>选择后显示对应示意图；该选择不是提交必填项。</p></div>
-                    <button class="custom-link" type="button" @click="chooseCustom">没有合适预设？查看定制包装方案 →</button>
+                    <button class="custom-link" type="button" :disabled="!!record?.upgrade_from_record_id" @click="chooseCustom">没有合适预设？查看定制包装方案 →</button>
+                </div>
+                <div v-if="!record&&upgradeBaseline&&selectedPreset" class="mvp-actions" style="margin:8px 0">
+                    <label>理论参考除数 <select v-model="upgradeDivisor"><option :value="5000">5000</option><option :value="6000">6000</option><option :value="8000">8000</option></select></label>
+                    <button type="button" class="mvp-button mvp-button-primary" @click="beginUpgrade">确认采用优化方案</button>
                 </div>
                 <div class="preset-grid">
-                    <button v-for="preset in packagingPresets" :key="preset.key" type="button" class="preset-card" :class="{active:form.packaging_method_key===preset.key}" @click="choosePreset(preset.key)">
+                    <button v-for="preset in packagingPresets" :key="preset.key" type="button" :disabled="!!record?.upgrade_from_record_id" class="preset-card" :class="{active:form.packaging_method_key===preset.key}" @click="choosePreset(preset.key)">
                         <span v-if="form.packaging_method_key===preset.key" class="preset-check">✓</span>
                         <img :src="preset.default_image_url" :alt="`${preset.label}默认示意图`" />
                         <strong>{{preset.label}}</strong>
