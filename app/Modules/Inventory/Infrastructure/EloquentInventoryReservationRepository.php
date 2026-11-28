@@ -111,7 +111,7 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
                 : 'Warehouse has no confirmed full inventory authority.');
         }
 
-        $lockedInventory = WarehouseInventory::query()
+        $lockedInventory = UsNyStockClock::withEpoch(WarehouseInventory::query())
             ->where('warehouse_id', $warehouseId)
             ->whereIn('product_id', $required->keys()->all())
             ->orderBy('product_id')
@@ -132,10 +132,8 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
             }
             $effectiveAvailable = (int) $inventory->quantity_available;
             if ($nyAuthoritative) {
-                if (!$inventory->provider_stock_synced_at || $inventory->provider_available_quantity === null
-                    || $inventory->provider_stock_synced_at->isFuture()
-                    || $inventory->provider_stock_synced_at->diffInMinutes(now()) > 120) {
-                    throw new DomainException('US-NY SKU requires a fresh verified provider inventory sync.');
+                if (! UsNyStockClock::fresh($inventory)) {
+                    throw new DomainException('美东仓该商品库存尚未完成有效 API 校对，请同步后重试。');
                 }
                 $effectiveAvailable = min(max(0, (int) $inventory->quantity_on_hand - (int) $inventory->quantity_reserved),
                     max(0, (int) $inventory->provider_available_quantity - (int) $inventory->quantity_reserved));
@@ -160,7 +158,7 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
                 $effectiveAvailable = min($effectiveAvailable, max($dated - (int) $inventory->quantity_reserved, 0), max((int) $inventory->quantity_on_hand - $unknown - (int) $inventory->quantity_reserved, 0));
             }
             if ($effectiveAvailable < $quantity) {
-                throw new DomainException("Insufficient available inventory for product {$productId}.");
+                throw new DomainException($nyAuthoritative ? "美东仓商品库存不足（商品 ID：{$productId}），请重新选择仓库。" : "Insufficient available inventory for product {$productId}.");
             }
         }
 

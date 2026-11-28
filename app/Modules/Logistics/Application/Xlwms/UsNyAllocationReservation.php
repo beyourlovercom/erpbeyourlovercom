@@ -8,6 +8,7 @@ use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Inventory\Infrastructure\UsNyStockClock;
 use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
@@ -76,10 +77,9 @@ final class UsNyAllocationReservation
             ->map(fn ($items) => (int) $items->sum('quantity'));
         $blockers = [];
         foreach ($required as $pid => $qty) {
-            $stock = WarehouseInventory::query()
+            $stock = UsNyStockClock::withEpoch(WarehouseInventory::query())
                 ->where('warehouse_id', $ny)->where('product_id', $pid)->first();
-            if (! $stock || ! $stock->provider_stock_synced_at || $stock->provider_available_quantity === null
-                || $stock->provider_stock_synced_at->isFuture() || $stock->provider_stock_synced_at->diffInMinutes(now()) > 120) {
+            if (! UsNyStockClock::fresh($stock)) {
                 $blockers[] = 'US_NY_OMS_SKU_NOT_FRESH';
 
                 continue;

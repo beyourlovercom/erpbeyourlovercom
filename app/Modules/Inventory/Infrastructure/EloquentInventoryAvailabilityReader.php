@@ -78,11 +78,11 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
         }
 
         $warehouses = collect($this->activeWarehouses());
-        $rows = WarehouseInventory::query()
+        $rows = UsNyStockClock::withEpoch(WarehouseInventory::query(), ['product_id', 'warehouse_id', 'quantity_on_hand', 'quantity_reserved', 'expected_restock_qty',
+                'provider_stock_synced_at', 'provider_available_quantity', 'factory_native_status'])
             ->whereIn('product_id', $ids->all())
             ->whereIn('warehouse_id', $warehouses->pluck('id')->all())
-            ->get(['product_id', 'warehouse_id', 'quantity_on_hand', 'quantity_reserved', 'expected_restock_qty',
-                'provider_stock_synced_at', 'provider_available_quantity', 'factory_native_status'])
+            ->get()
             ->keyBy(fn (WarehouseInventory $row): string => $row->product_id.':'.$row->warehouse_id);
         $usSm = $warehouses->firstWhere('code', 'US-SM');
         $providerAvailable = $usSm !== null
@@ -129,9 +129,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                 }
                 if (strtoupper((string) $warehouse['code']) === 'US-NY'
                     && config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
-                    $confirmed = $row && $row->provider_stock_synced_at && $row->provider_available_quantity !== null
-                        && !$row->provider_stock_synced_at->isFuture()
-                        && $row->provider_stock_synced_at->diffInMinutes(now()) <= 120;
+                    $confirmed = UsNyStockClock::fresh($row);
                     $available = $confirmed ? min(max(0, $onHand - $reserved), max(0, (int) $row->provider_available_quantity - $reserved)) : 0;
                     if (!$confirmed) $stockGateReason = 'oms_sku_not_confirmed';
                 }
