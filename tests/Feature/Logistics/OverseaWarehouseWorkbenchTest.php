@@ -5,11 +5,13 @@ namespace Tests\Feature\Logistics;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Audit\Infrastructure\Models\AuditRecord;
+use App\Modules\Inventory\Application\Contracts\InventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
 use App\Modules\Logistics\Application\OverseaWarehouseQueueQuery;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProductionBatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionDispatchState;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
@@ -389,7 +391,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $other = $this->orderAt($warehouse, 'OTHER-HOLD');
         $product = $own->items()->first()->product_id;
         WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product)->update(['quantity_on_hand' => 2]);
-        app(\App\Modules\Inventory\Application\Contracts\InventoryReservationRepository::class)->reserve($own->id, $warehouse->id, 'test-own-hold', null, $actor->id);
+        app(InventoryReservationRepository::class)->reserve($own->id, $warehouse->id, 'test-own-hold', null, $actor->id);
         $this->actingAs($actor)->post("/logistics/oversea/orders/{$other->id}/approve")->assertStatus(409);
         $this->post("/logistics/oversea/orders/{$own->id}/approve")->assertRedirect();
         $this->assertDatabaseHas('oversea_warehouse_reviews', ['order_id' => $own->id, 'status' => 'approved']);
@@ -1358,7 +1360,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->where('rows.total', 1)->where('rows.data.0.shipout_production.status', 'oms_confirmed')
             ->where('rows.data.0.shipment_status', 'pending'));
         $this->get('/logistics/oversea/us-moreplus?view=exceptions')->assertOk()->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
-        $projection = app(\App\Modules\Logistics\Application\ShipOut\ShipOutProductionBatchService::class)->status($batchId);
+        $projection = app(ShipOutProductionBatchService::class)->status($batchId);
         $this->assertSame('completed', $projection['status']);
         $this->assertSame('oms_visible', $projection['items']->first()->status);
         $this->assertDatabaseCount('shipout_dispatch_attempts', 1);

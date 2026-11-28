@@ -4,10 +4,10 @@ namespace App\Modules\Logistics\Experience\Jobs;
 
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
-use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionBatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryDispatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
