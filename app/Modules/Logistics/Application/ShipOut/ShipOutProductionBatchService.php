@@ -277,9 +277,31 @@ final class ShipOutProductionBatchService
         $items = DB::table('shipout_production_batch_items')->where('batch_id', $batchId)
             ->orderBy('id')->get(['order_id', 'order_no', 'status', 'result_code', 'provider_order_id']);
 
+        $temporary = $items->filter(fn ($item) => $item->status === 'needs_review'
+            && $item->result_code === ShipOutProductionDispatchState::TEMPORARY_READBACK_ERROR);
+        $recovered = false;
+        if ($temporary->isNotEmpty()) {
+            $ids = $temporary->pluck('order_id');
+            $attempts = DB::table('shipout_dispatch_attempts')->whereIn('order_id', $ids)
+                ->where('provider_warehouse_id', ShipOutProductionDispatchState::MOREPLUS_PROVIDER_WAREHOUSE_ID)
+                ->get()->keyBy('order_id');
+            $latest = DB::table('shipout_oms_readbacks as r')->whereIn('r.order_id', $ids)
+                ->whereRaw('r.id = (SELECT MAX(prior.id) FROM shipout_oms_readbacks AS prior WHERE prior.order_id = r.order_id)')
+                ->get()->keyBy('order_id');
+            foreach ($temporary as $item) {
+                if (ShipOutProductionDispatchState::from($attempts->get($item->order_id), $item, $latest->get($item->order_id))['is_oms_created']) {
+                    $recovered = true;
+                    $item->status = 'oms_visible';
+                    $item->result_code = 'OMS_VISIBLE_PENDING_REAL_FULFILLMENT';
+                }
+            }
+        }
+        $effectiveStatus = $recovered && $batch->status === 'completed_partial' && $items->every(fn ($item) => in_array($item->status, ['oms_visible', 'simulated'], true))
+            ? 'completed' : $batch->status;
+
         return [
             'batch_id' => $batch->id,
-            'status' => $batch->status,
+            'status' => $effectiveStatus,
             'dry_run' => (bool) $batch->dry_run,
             'total' => $batch->total,
             // Processed means readback completed or deliberately blocked;

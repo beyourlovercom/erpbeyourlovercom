@@ -374,7 +374,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
                 ]];
             }
 
-            public function forProductIds(array $productIds): array
+            public function forProductIds(array $productIds, ?array $ownReservation = null): array
             {
                 $this->availabilityReads++;
 
@@ -431,7 +431,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
                 return $this->warehouses;
             }
 
-            public function forProductIds(array $productIds): array
+            public function forProductIds(array $productIds, ?array $ownReservation = null): array
             {
                 return collect($this->availability)->only($productIds)->all();
             }

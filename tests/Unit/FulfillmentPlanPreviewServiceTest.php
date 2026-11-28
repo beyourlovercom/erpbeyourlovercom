@@ -7,10 +7,13 @@ use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 final class FulfillmentPlanPreviewServiceTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_military_address_blocks_when_no_single_us_warehouse_can_fulfill_without_factory(): void
     {
         $warehouses = [
@@ -181,7 +184,7 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         $this->assertSame('preview', $preview['status']);
         $plan = collect($preview['plans'])->firstWhere('plan_type', 'factory');
         $this->assertSame('Weship', $plan['segments'][0]['carrier']);
-        $this->assertNull($plan['segments'][0]['service']);
+        $this->assertSame('Standard', $plan['segments'][0]['service']);
 
         $preview = $this->service([], [10 => []])->preview('ID', [['product_id' => 10, 'quantity' => 1]]);
         $plan = collect($preview['plans'])->firstWhere('plan_type', 'factory');
@@ -207,7 +210,7 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
                 return $this->warehouses;
             }
 
-            public function forProductIds(array $productIds): array
+            public function forProductIds(array $productIds, ?array $ownReservation = null): array
             {
                 $this->availabilityReads++;
 
@@ -259,7 +262,7 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
                 return $this->warehouses;
             }
 
-            public function forProductIds(array $productIds): array
+            public function forProductIds(array $productIds, ?array $ownReservation = null): array
             {
                 return collect($this->availability)->only($productIds)->all();
             }
