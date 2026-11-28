@@ -1759,6 +1759,30 @@ it('uses the same editable status cell for all overseas warehouse Global Grid vi
 })
 
 
+describe('Canada uses the MorePlus batch UI with its own exact route', () => {
+  it('selects the visible Canada order and previews the CA-only provider batch', async () => {
+    const ca={key:'ca',id:4,code:'CA',label:'加拿大仓',carrier:'Canada Post',url:'/logistics/oversea/ca'}
+    const wrapper=mountPage({warehouseKey:'ca',warehouse:ca,warehouseOptions:[ca],view:'pending',
+      caBatchUi:true,caBatchPaused:false,globalGridEnabled:true,
+      rows:{...usSmPendingRows,data:[{...usSmPendingRows.data[0],warehouse_id:4,warehouse_code:'CA',warehouse_name:'加拿大仓',country:'CA',carrier:'Canada Post'}]}})
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({count:1,overflow:false,fingerprint:'a'.repeat(64),dry_run:true,
+      scope:'selected',items:[{order_id:99,order_no:'C99-007',ready:true,blockers:[]}]})})
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      await flushPromises()
+      const grid=wrapper.findComponent({name:'MockGlobalGrid'})
+      if(grid.exists())grid.vm.$emit('selection-change',[{id:99}])
+      else await wrapper.get('input[aria-label^="选择推送"]').setValue(true)
+      await wrapper.vm.$nextTick()
+      const button=wrapper.findAll('button').find(b=>b.text()==='一键推送仓库')!
+      await button.trigger('click')
+      await flushPromises()
+      expect(fetchMock).toHaveBeenCalledWith('/logistics/oversea/ca/wlwy/batch/preview?scope=selected&order_ids=99',expect.objectContaining({method:'GET'}))
+      expect(wrapper.get('[data-testid="oversea-provider-batch-feedback"]').text()).toContain('加拿大仓 Dev 模拟预览')
+    } finally {wrapper.unmount();vi.unstubAllGlobals()}
+  })
+})
+
 describe('NY MorePlus batch parity', () => {
   it('uses a distinct NY selected preview endpoint and blocks real dispatch until enabled', async () => {
     const ny={key:'us-ny',id:2,code:'US-NY',label:'美东纽约仓',carrier:'USPS',url:'/logistics/oversea/us-ny'}

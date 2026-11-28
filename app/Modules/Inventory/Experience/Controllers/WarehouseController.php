@@ -67,6 +67,7 @@ final class WarehouseController
         $moreplusPreviewVisible=strtoupper((string) $w->code)==='US-LA' && (bool) session()->pull('inventory.moreplus_preview_visible.'.$w->id,false);
         return Inertia::render('Inventory/WarehouseShow',[
             'warehouse'=>$this->payload($w),
+            'caApiStockEnabled'=>$w->code==='CA' && app()->environment('production') && config('wlwy.ca_inventory_apply_enabled'),
             'moreplusInventoryPreview'=>$moreplusPreviewVisible ? session('inventory.moreplus_provider_preview.'.$w->id) : null,
             'moreplusFifoPreview'=>$moreplusPreviewVisible ? session('inventory.moreplus_fifo_preview.'.$w->id) : null,
             'clearanceProducts'=>$this->clearance->listForWarehouse($w),

@@ -208,6 +208,12 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         [ShipOutProductionBatchController::class, 'status'])
         ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.shipout.production.batch.status:'])
         ->whereUuid('batchId')->name('logistics.shipout.production.batch.status');
+    Route::get('/logistics/oversea/ca/wlwy/batch/preview', [\App\Modules\Logistics\Experience\Controllers\CanadaOutboundBatchController::class,'preview'])
+        ->middleware(['can:logistics.view','throttle:100,1,erp-logistics:ca.batch.preview:'])->name('logistics.ca.batch.preview');
+    Route::post('/logistics/oversea/ca/wlwy/batch/start', [\App\Modules\Logistics\Experience\Controllers\CanadaOutboundBatchController::class,'start'])
+        ->middleware([...$execution,'throttle:100,1,erp-logistics:ca.batch.start:'])->name('logistics.ca.batch.start');
+    Route::get('/logistics/oversea/ca/wlwy/batch/{batchId}/status', [\App\Modules\Logistics\Experience\Controllers\CanadaOutboundBatchController::class,'status'])
+        ->middleware(['can:logistics.view','throttle:100,1,erp-logistics:ca.batch.status:'])->whereUuid('batchId')->name('logistics.ca.batch.status');
     Route::get('/logistics/oversea/{warehouse}/export', [OverseaWarehouseController::class, 'export'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.export');
     Route::post('/logistics/oversea/{warehouse}/tracking-import/preview', [OverseaWarehouseController::class, 'previewTrackingReturn'])->middleware($execution)->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.tracking-import.preview');
     Route::post('/logistics/oversea/{warehouse}/tracking-import/apply', [OverseaWarehouseController::class, 'applyTrackingReturn'])->middleware($execution)->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.tracking-import.apply');

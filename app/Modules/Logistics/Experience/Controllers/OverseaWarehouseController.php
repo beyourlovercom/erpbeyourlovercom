@@ -20,6 +20,7 @@ use App\Modules\Logistics\Application\WarehouseDispatchStatus;
 use App\Modules\Logistics\Application\WarehouseExceptionResolution;
 use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
+use App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch;
 use App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
@@ -179,6 +180,10 @@ final class OverseaWarehouseController
                 ->orderByDesc('id')->get(['order_id', 'provider_order_id', 'provider_status', 'state', 'reason_code', 'checked_at'])
                 ->unique('order_id')->keyBy('order_id')
             : collect();
+        $caAttempts = in_array($warehouseKey, ['ca', 'all'], true)
+            ? DB::table('wlwy_ca_batch_items')->where('dry_run', false)
+                ->whereIn('shipment_id', $shipments->getCollection()->pluck('id')->all())
+                ->orderByDesc('id')->get()->unique('shipment_id')->keyBy('shipment_id') : collect();
         $webDraftAttempts = $warehouseKey === 'us-3sm'
             ? XlwmsWebDraftAttempt::query()->whereIn('order_id', $shipments->getCollection()->pluck('order_id')->all())
                 ->latest('id')->get()->unique('order_id')->keyBy('order_id')
@@ -198,6 +203,8 @@ final class OverseaWarehouseController
             'gridFilters' => $gridEnabled ? $gridFilters : ['carrier' => '', 'tracking' => '', 'contact' => $gridFilters['contact']],
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => [
                 ...$this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id.':'.$shipment->warehouse_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id), $shipOutAttempts->get($shipment->order_id), $shipOutBatchItems->get($shipment->order_id), $shipOutReadbacks->get($shipment->order_id)),
+                ...($shipment->warehouse?->code === 'CA' && $caAttempts->has($shipment->id)
+                    ? ['warehouse_dispatch' => CanadaOutboundBatch::projection($caAttempts->get($shipment->id), (string) $shipment->shipment_status)] : []),
                 // Logistics access alone is not enough for editing an order's staff workflow progress.
                 'can_edit_workflow_status' => $shipment->order !== null
                     && app(OrderWorkflowStatusPolicy::class)->for($shipment->order, $request->user())['can_edit'],
@@ -249,6 +256,10 @@ final class OverseaWarehouseController
             // Administrative visibility and read-only history remain available
             // while the real POST batch gate is OFF after provider duplicates.
             // Never couple viewing a disabled button to permission to POST.
+            'caBatchUi' => $warehouseKey === 'ca' && CanadaOutboundBatchController::visible(),
+            'caBatchPaused' => $warehouseKey === 'ca' && app()->environment('production') && (! config('wlwy.ca_dispatch_enabled') || ! config('wlwy.ca_dispatch_owner_approved') || ! config('wlwy.ca_duplicate_contract_verified') || ! config('wlwy.ca_batch_contract_verified')),
+            'caLatestBatch' => $warehouseKey === 'ca' && CanadaOutboundBatchController::visible()
+                ? DB::table('wlwy_ca_batches')->where('operator_user_id', $request->user()->id)->orderByDesc('created_at')->first(['id', 'status', 'dry_run', DB::raw('(select count(*) from wlwy_ca_batch_items where batch_id=wlwy_ca_batches.id) as total')]) : null,
             'shipoutProductionBatchUi' => $warehouseKey === 'us-moreplus'
                 && (app()->environment(['local', 'testing'])
                     ? $request->user()?->can('logistics.view')

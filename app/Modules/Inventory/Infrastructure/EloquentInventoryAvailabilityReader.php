@@ -134,8 +134,8 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     && $isMorePlus && $available !== null) {
                     $available = min($available, max(0, (int) $row->provider_available_quantity - (int) $reserved));
                 }
-                if (strtoupper((string) $warehouse['code']) === 'US-NY'
-                    && config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
+                if ((strtoupper((string) $warehouse['code']) === 'US-NY' && config('xlwms.us_ny_inventory_physical_apply_enabled', false))
+                    || (strtoupper((string) $warehouse['code']) === 'CA' && config('wlwy.ca_inventory_apply_enabled'))) {
                     $confirmed = UsNyStockClock::fresh($row);
                     $available = $confirmed ? min(max(0, $onHand - $reserved), max(0, (int) $row->provider_available_quantity - $reserved)) : 0;
                     if (!$confirmed) $stockGateReason = 'oms_sku_not_confirmed';

@@ -272,6 +272,39 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame(1, $progress->domesticReady(Order::query())->whereKey($order->id)->count());
     }
 
+    public function test_ca_manual_allocation_reserves_verified_stock_across_mysql_session_zones(): void
+    {
+        config()->set('wlwy.ca_inventory_apply_enabled', true);
+        [$user, $order] = $this->scenario(1);
+        $order->address()->update(['country' => 'CA', 'province_state' => 'ON', 'city' => 'Toronto', 'postal_code' => 'M5V 1A1']);
+        $item = $order->items()->firstOrFail();
+        $ca = Warehouse::query()->where('code', 'CA')->firstOrFail();
+        ProductWarehouseSku::query()->create(['product_id' => $item->product_id,
+            'warehouse_id' => $ca->id, 'sku' => 'CA-ACTUAL', 'is_active' => true, 'verified_at' => now()]);
+        $clock = \App\Modules\Inventory\Infrastructure\UsNyStockClock::class;
+        $stock = $clock::utc(fn () => WarehouseInventory::query()->create([
+            'warehouse_id' => $ca->id, 'product_id' => $item->product_id,
+            'quantity_on_hand' => 25, 'quantity_reserved' => 0,
+            'provider_available_quantity' => 25, 'provider_stock_synced_at' => now()]));
+        $mysql = \DB::connection()->getDriverName() === 'mysql';
+        $original = $mysql ? \DB::scalar('SELECT @@session.time_zone') : null;
+        try {
+            if ($mysql) \DB::statement("SET time_zone = '-08:00'");
+            $projection = app(\App\Modules\Inventory\Application\InventoryAvailabilityProjection::class);
+            $this->assertSame(25, $projection->forRows(collect([$stock->fresh()]))[$stock->id]);
+            $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/manual', [
+                'assignments' => [['order_item_id' => $item->id, 'source_code' => 'CA']],
+            ])->assertSuccessful();
+            $this->assertSame('pending_review', $order->fresh()->workflow_status);
+            $this->assertSame('CA-ACTUAL', $item->fresh()->final_sku);
+            $this->assertSame(1, $stock->fresh()->quantity_reserved);
+            $this->assertSame(24, $projection->forRows(collect([$stock->fresh()]))[$stock->id]);
+            if ($mysql) $this->assertSame('+00:00', \DB::scalar('SELECT @@session.time_zone'));
+        } finally {
+            if ($mysql) \DB::statement('SET time_zone = ?', [$original]);
+        }
+    }
+
     public function test_us_ny_split_allocation_reserves_only_actual_physical_sku(): void
     {
         config()->set('xlwms.us_ny_inventory_physical_apply_enabled', true);

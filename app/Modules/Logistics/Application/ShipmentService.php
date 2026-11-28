@@ -40,6 +40,7 @@ final class ShipmentService
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertOperationallyEligible($lockedOrder);
+            abort_if(\App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch::guarded((int) $lockedOrder->id), 409, '加拿大仓已有推送或待核实记录，禁止覆盖发货草稿。');
             abort_if(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded((int)$lockedOrder->id),409,'美东仓订单正在推送或待核实，禁止覆盖发货草稿。');
             abort_if(\App\Modules\Orders\Application\DomesticShippingHold::isHeld($lockedOrder->workflow_status), 409, '冻结发货订单请先恢复待发货再保存履约草稿。');
             $this->assertNoPendingReview($lockedOrder);
@@ -93,6 +94,10 @@ final class ShipmentService
             if ($warehouseProvided && config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
                 app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
                     ->sync($lockedOrder, (int) $shipment->warehouse_id, $actor);
+            }
+            if ($warehouseProvided && config('wlwy.ca_inventory_apply_enabled')) {
+                app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
+                    ->sync($lockedOrder, (int) $shipment->warehouse_id, $actor, 'CA');
             }
             $this->syncPackagingSnapshots($lockedOrder, $shipment);
 
@@ -201,6 +206,10 @@ final class ShipmentService
             if (!$alreadyShipped && config('xlwms.us_ny_inventory_physical_apply_enabled', false)) {
                 app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
                     ->commit($lockedOrder, (int) $shipment->warehouse_id, $actor);
+            }
+            if (!$alreadyShipped && config('wlwy.ca_inventory_apply_enabled')) {
+                app(\App\Modules\Logistics\Application\Xlwms\UsNyAllocationReservation::class)
+                    ->commit($lockedOrder, (int) $shipment->warehouse_id, $actor, 'CA');
             }
             if ($lockedOrder->order_status?->value !== 'shipped') {
                 $lockedOrder->forceFill(['order_status' => 'shipped'])->save();
