@@ -134,6 +134,12 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         ->whereNumber('order')->name('logistics.xlwms.order.reconcile');
     // DE/Hannover reuses the MorePlus selected-order preview/queue UX.
     // These isolated-Dev endpoints do not contain any OMS CREATE path.
+    Route::get('/logistics/oversea/us-ny/xlwms/batch/preview', [\App\Modules\Logistics\Experience\Controllers\UsNyOutboundBatchController::class, 'preview'])
+        ->middleware(['can:logistics.view','throttle:100,1,erp-logistics:ny.batch.preview:'])->name('logistics.ny.batch.preview');
+    Route::post('/logistics/oversea/us-ny/xlwms/batch/start', [\App\Modules\Logistics\Experience\Controllers\UsNyOutboundBatchController::class, 'start'])
+        ->middleware(['can:logistics.operate',RequireLogisticsExecution::class,'throttle:100,1,erp-logistics:ny.batch.start:'])->name('logistics.ny.batch.start');
+    Route::get('/logistics/oversea/us-ny/xlwms/batch/{batchId}/status', [\App\Modules\Logistics\Experience\Controllers\UsNyOutboundBatchController::class, 'status'])
+        ->middleware(['can:logistics.view','throttle:100,1,erp-logistics:ny.batch.status:'])->whereUuid('batchId')->name('logistics.ny.batch.status');
     Route::get('/logistics/oversea/de-tianyun/xlwms/batch/preview',
         [DeTianyunOutboundBatchController::class, 'preview'])
         ->middleware(['can:logistics.view', 'throttle:100,1,erp-logistics:logistics.xlwms.de.batch.preview:'])->name('logistics.xlwms.de.batch.preview');

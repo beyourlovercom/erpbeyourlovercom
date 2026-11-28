@@ -1614,7 +1614,7 @@ describe('DE Tianyun reuses MorePlus selected-order Dev batch UX', () => {
     warehouse_name:'德国天运仓',carrier:'DHL',review_status:'approved' as const}
   const rowB={...rowA,order_id:102,erp_order_id:'007-DE-102'}
 
-  it('shows only the selected-order button and previews exact single-order row without POST', async () => {
+  it('shows unified one-click button and previews exact single-order row without POST', async () => {
     const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({
       scope:'selected',scan_count:1,count:0,excluded_count:1,overflow:false,dry_run:true,
       fingerprint:'a'.repeat(64),
@@ -1626,8 +1626,8 @@ describe('DE Tianyun reuses MorePlus selected-order Dev batch UX', () => {
         warehouseOptions:[...warehouseOptions,deWarehouse],deTianyunBatchUi:true,deTianyunBatchSimulation:true,
         rows:{...usSmPendingRows,data:[rowA]}})
       const selected=page.get('[data-testid="de-tianyun-selected-push"]')
-      expect(selected.attributes('disabled')).toBeDefined()
-      expect(page.text()).not.toContain('一键推送仓库')
+      expect(selected.attributes('disabled')).toBeUndefined()
+      expect(page.text()).toContain('一键推送仓库')
       await page.findAll('button').find(b=>b.text()==='单笔推送')!.trigger('click')
       await vi.waitFor(()=>expect(page.text()).toContain('DE_OMS_CHANNEL_NOT_VERIFIED'))
       expect(fetchMock.mock.calls.map(c=>c[0])).toEqual([
@@ -1737,4 +1737,24 @@ it('uses the same editable status cell for all overseas warehouse Global Grid vi
     expect(data.workflow_status,view).toBe('待发')
     page.unmount()
   }
+})
+
+
+describe('NY MorePlus batch parity', () => {
+  it('uses a distinct NY selected preview endpoint and blocks real dispatch until enabled', async () => {
+    const ny={key:'us-ny',id:2,code:'US-NY',label:'美东纽约仓',carrier:'USPS',url:'/logistics/oversea/us-ny'}
+    const row={...usSmPendingRows.data[0],warehouse_id:2,warehouse_name:'美东纽约仓',review_status:'approved' as const}
+    const mock=vi.fn().mockResolvedValue({ok:true,json:async()=>({scope:'selected',count:1,scan_count:1,excluded_count:0,overflow:false,dry_run:false,fingerprint:'a'.repeat(64),items:[{order_id:99,order_no:row.erp_order_id,ready:true,blockers:[]}]})})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({warehouseKey:'us-ny',warehouse:ny,warehouseOptions:[ny],nyBatchUi:true,nyBatchPaused:true,rows:{...usSmPendingRows,data:[row]}})
+      await page.find('input[aria-label="选择当前页待发货订单"]').setValue(true)
+      await page.findAll('button').find(b=>b.text()==='一键推送仓库')!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('美东纽约仓推送预检'))
+      expect(mock.mock.calls[0][0]).toBe('/logistics/oversea/us-ny/xlwms/batch/preview?scope=selected&order_ids=99')
+      expect(page.findAll('button').find(b=>b.text().includes('确认逐单推送'))!.attributes('disabled')).toBeDefined()
+      expect(mock).toHaveBeenCalledTimes(1)
+      page.unmount()
+    } finally {vi.unstubAllGlobals()}
+  })
 })
