@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { orderCountryLabel } from '../../lib/countryStandard'
 import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
@@ -45,7 +46,7 @@ const goToPage = (page: number) => router.get('/logistics/cancelled', { ...curre
             <template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.erp_order_id ?? '—' }}</Link><span v-else>{{ row.erp_order_id ?? '—' }}</span></template><template v-else-if="column.key === 'contact'">{{ row.contact_user_name ?? '未分配' }}</template>
             <template v-else-if="column.key === 'order_date'">{{ row.order_date ?? '—' }}</template>
             <template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template>
-            <template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template>
+            <template v-else-if="column.key === 'country'">{{ orderCountryLabel(row.country) }}</template>
             <template v-else><span v-for="(item, index) in row.items" :key="`${item.product_url ?? item.sku ?? 'item'}-${index}`"><Link v-if="item.product_url" :href="item.product_url" class="mvp-link">{{ item.sku ?? item.product_summary ?? '—' }}</Link><span v-else>{{ item.sku ?? item.product_summary ?? '—' }}</span><small> × {{ item.quantity }}</small><template v-if="index < row.items.length - 1"> · </template></span></template>
           </td>
           <td><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">查看订单</Link><span v-else>—</span></td>

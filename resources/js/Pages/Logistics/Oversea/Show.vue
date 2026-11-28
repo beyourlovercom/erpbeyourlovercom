@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { orderCountryLabel } from '../../../lib/countryStandard'
 import { Head, router } from '@inertiajs/vue3'
 import axios from 'axios'
 import { computed, defineAsyncComponent, nextTick, reactive, ref, watch, onMounted, onUnmounted } from 'vue'
@@ -2009,7 +2010,7 @@ const compactPages = computed<(number|string)[]>(() => {
               </template>
                 <template v-else-if="column.key === 'note'"><div class="note-cell"><input v-model="draft(row).note" :disabled="!canEditRow || inlineSaveBusy[row.order_id]" class="note-input" :class="{ error: !!rowErrors[row.order_id] }"  :placeholder="warehouseKey==='us-moreplus'?'仅填备注；USPS单号自动转入Tracking':'等海运 / 等空运 / 缺货 / 太贵 / 送不到…'" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></template>
                 <template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template>
-                <template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template>
+                <template v-else-if="column.key === 'country'">{{ orderCountryLabel(row.country) }}</template>
                 <template v-else-if="column.key === 'material_full_name'"><span :title="materialText(row)">{{ materialText(row) }}</span></template>
                 <template v-else>{{ itemText(row) }}</template>
               </td>

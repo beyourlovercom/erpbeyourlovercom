@@ -1,3 +1,4 @@
+import { orderCountryLabel } from '../../lib/countryStandard'
 import { router } from '@inertiajs/vue3'
 import type { ColDef } from 'ag-grid-community'
 
@@ -12,7 +13,16 @@ type Options = {
   context?: () => Record<string, QueryValue>
 }
 export const gridColumn = <Row extends GridListRow>(definition: ColDef<Row>): ColDef<Row> =>
-  ({ sortable: false, filter: false, ...definition })
+  ({ sortable: false, filter: false,
+    ...(definition.field === 'country' && definition.headerName === '国家' ? {
+      width: Math.max(definition.width ?? 0, 205),
+      valueFormatter: params => orderCountryLabel(params.value),
+      useValueFormatterForExport: false,
+      tooltipValueGetter: params => orderCountryLabel(params.value),
+    } : {}),
+    ...definition,
+    ...(definition.field === 'country' && definition.headerName === '国家' ? { width: Math.max(definition.width ?? 0, 205) } : {}),
+  })
 
 export function useGlobalGridListAdapter(options: Options) {
   const navigate = (overrides: Record<string, QueryValue> = {}) => {

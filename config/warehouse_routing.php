@@ -130,7 +130,7 @@ return [
     // Owner confirmed the exact 32 destinations including Germany. This is a
     // physical destination eligibility gate, not an automatic-dispatch grant.
     'destination_allowlists' => [
-        'DE' => ['DE','AT','BE','CZ','DK','EE','ES','FI','FR','GR','HU','IT','LT','LU','NL','PL','SE','SI','SK','PT','LV','BG','MT','RO','HR','IE','CY','GB','LI','MC','SM','NO'],
+        'DE' => json_decode(file_get_contents(__DIR__.'/../resources/data/countries/order-country-display.json'), true, 512, JSON_THROW_ON_ERROR)['germany_destinations'],
     ],
 
     'global' => [

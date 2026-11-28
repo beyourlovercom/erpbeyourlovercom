@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { orderCountryLabel } from '../../lib/countryStandard'
 import { currentContactQuery } from '../../Components/Orders/orderContactQuery'
 import { Head, Link, router } from '@inertiajs/vue3'
 import { defineAsyncComponent } from 'vue'
@@ -263,7 +264,7 @@ const allocationGridRows = computed<GridListRow[]>(() => filteredOrders.value.ma
   amount: order.amount === null || order.amount === undefined ? '—' : `${order.amount} ${order.amount_currency ?? 'USD'}`,
   recipient: order.recipient_name ?? '—',
   phone: order.phone ?? '—',
-  country: countryDisplay(order),
+  country: order.country ?? '—',
   province: order.province_state ?? '—',
   city: order.city ?? '—',
   postal_code: order.postal_code ?? '—',
@@ -522,7 +523,7 @@ const warehouseOptions = computed(() => [
   { id:-1, slug:'outsource', code:'OUTSOURCE', name:'外采 → 中国工厂发货', country_code:'CN', can_auto_allocate:false },
 ])
 const canonicalWarehouseCode = (code:string) => { const upper = code.trim().toUpperCase(); return upper === 'US-SJ' ? 'US-SM' : upper === 'DE-TIANYUN' ? 'DE' : upper }
-function countryDisplay(order:Order){return order.country_display ?? order.country ?? '—'}
+function countryDisplay(order:Order){return order.country_display ?? orderCountryLabel(order.country)}
 function warehouseAllowed(order:Order,code:string){return canonicalWarehouseCode(code)!=='DE'||order.germany_warehouse_eligible===true}
 function warehouseOptionsFor(order:Order){return warehouseOptions.value.filter(w=>warehouseAllowed(order,w.code))}
 const selectedWarehouseOptions=computed(()=>selectedOrder.value?warehouseOptionsFor(selectedOrder.value):[])
@@ -998,7 +999,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order||repl
             :options="warehouseRouteOptions??[]" /><span v-else>—</span></td>
           <td class="sku-list"><div v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? item.product_summary ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-if="item.is_gift" :class="item.resolved_fulfillment_sku?'gift-done':'gift-pending'">{{ item.resolved_fulfillment_sku ? `→ ${item.resolved_fulfillment_sku}` : '待解析' }}</span></div></td>
           <td class="address-summary"><strong>{{ order.recipient_name ?? '—' }}</strong><span>{{ addressLine(order) || '—' }}</span><small v-if="order.phone">{{ order.phone }}</small></td>
-          <td><template v-if="order.country==='US'"><span :class="['zone-chip',order.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(order) }}</span><div class="zone-priority">{{ zonePriorityLabel(order.us_fulfillment_zone) }}</div></template><span v-else>{{ countryDisplay(order) }}</span></td>
+          <td><template v-if="order.country==='US'"><div>{{ countryDisplay(order) }}</div><span :class="['zone-chip',order.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(order) }}</span><div class="zone-priority">{{ zonePriorityLabel(order.us_fulfillment_zone) }}</div></template><span v-else>{{ countryDisplay(order) }}</span></td>
           <td class="advice-cell"><span :class="['advice-heading',guidanceFor(order).kind]">{{ guidanceFor(order).title }}</span></td>
           <td><span :class="['status-chip',guidanceFor(order).kind]">{{ guidanceFor(order).status }}</span></td>
           <td class="sticky-action"><button class="primary compact" @click="openPlan(order)">{{ processed(order)?'查看记录':'查看方案' }}</button></td>

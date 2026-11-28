@@ -15,3 +15,6 @@ Owner 已确认 DE 纳入，保留德国本土固定路由。旧 DK/FI/SE 属默
 实现优先复用 config/warehouse_routing.php / WarehouseRoutingPolicy 作为唯一事实源；后端投影到分仓页面和 AllocationRatePreviewService、FulfillmentAllocationSubmissionService，检查 FulfillmentAllocationDecisionService 与现有规划器是否漏掉新资格约束。测试覆盖名单内外、缺失国家、GB/UK、上下单、库存/礼品/替换、手工/快捷/推荐/批量、费用、历史记录及原有国内仓逻辑。独立增量发布，不回滚 ABC，不修改 ERP2。
 
 国家展示：两位代码-中文国家名/业务区域；欧盟仅标真实成员且在白名单内，英国、挪威、列支敦士登、摩纳哥、圣马力诺属于欧洲（非欧盟），均保持德国仓资格。美国显示 US-美国/北美。国家原始存储仍为 ISO 代码。
+
+## 全订单列表国家显示标准（Owner 2026-11-28）
+ERP1 所有已有订单国家列使用共享 orderCountryLabel / order-country-display.json，现代表格统一 formatter、旧版列表直接调用同一函数。订单总表、分仓、国内审核及发货、海外各仓、运输中、待单号、异常、取消、合作仓、物流商订单、仓库发货、财务订单分析、导入预览均按同一规则展示。国家原字段、服务端搜索及出口数据保持不变，不新增国家列或修改权限。Owner 已通过原德国仓白名单和分仓国家显示 UAT；推广后的候选另做回归，不修改 ERP2。
