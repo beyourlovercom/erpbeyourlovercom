@@ -3,6 +3,7 @@
 namespace App\Modules\Identity\Experience\Fortify;
 
 use App\Modules\Identity\Application\AuthorizationKeys;
+use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\AuditWriteException;
@@ -103,6 +104,16 @@ final class IdentityFortify
             }
             Gate::define($key->value, fn (User $user) => $user->hasPermission($key->value));
         }
+        // Content editing is narrower than orders.edit (which also grants trash and
+        // other operational actions). Preserve explicitly configured custom permissions.
+        Gate::define('orders.content.update', fn (User $user): bool =>
+            $user->hasPermission('orders.edit') || (
+                $user->permission_mode !== 'custom'
+                && $user->hasPermission('orders.view')
+                && $user->hasPermission('logistics.operate')
+                && $user->roles()->where('key', RolePreset::Logistics->roleKey())->exists()
+            )
+        );
     }
 
     private static function registerAuditListeners(): void
