@@ -105,6 +105,9 @@ final class OrderWarehouseRouting
             'cancelled', 'archived' => 'cancelled',
             default => 'pending',
         };
+        if ($order->originalFulfillmentChildren()->exists()) {
+            return '/orders?view='.($view === 'exceptions' ? 'exception' : $phase);
+        }
         if ($view === 'pending_allocation') {
             return '/logistics/wait-stock?global_grid=1';
         }
@@ -182,6 +185,7 @@ final class OrderWarehouseRouting
             if ($locked->trashed() || $locked->archived_at !== null || $locked->isOperationallyArchived()) {
                 throw new HttpException(409, '归档或删除订单不可修改所属分仓。');
             }
+            abort_if($locked->originalFulfillmentChildren()->exists(), 409, '拆单母订单不可直接修改分仓，请在履约发货中逐段处理。');
             abort_if(DomesticShippingHold::isHeld($locked->workflow_status), 409, '冻结发货订单请先恢复待发货再修改所属分仓。');
             if ((int) $locked->routing_revision !== $revision) {
                 throw new HttpException(409, '所属分仓已被其他人修改，请刷新后重试。');

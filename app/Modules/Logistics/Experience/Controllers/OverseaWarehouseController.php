@@ -588,7 +588,7 @@ final class OverseaWarehouseController
         abort_unless($this->reviewAccess->allows($request->user()), 403);
         $this->reviews->restock($order, $request->user());
 
-        return back()->with('success', '已确认到货并审核通过，进入待发货。');
+        return back()->with('success', $order->fresh()->workflow_status === 'pending_review' ? '已解除缺货，等待当前仓库审核。' : '已确认到货并审核通过，进入待发货。');
     }
 
     public function approve(Request $request, Order $order): RedirectResponse
@@ -706,9 +706,11 @@ final class OverseaWarehouseController
             'note' => $review?->note,
             'reviewer_name' => $review?->reviewer?->name,
             'reviewed_at' => $review?->reviewed_at?->copy()->timezone('Asia/Shanghai')->format('Y-m-d H:i'),
-            'review_status' => $effectiveApproved ? 'approved'
-                : ($review?->status === 'stockout'
-                    && (int) $review->reviewed_warehouse_id === (int) $shipment->warehouse_id ? 'stockout' : 'pending'),
+            'review_status' => $order?->workflow_status === 'out_of_stock' && $shipment->shipment_status === 'pending'
+                ? 'stockout'
+                : ($effectiveApproved ? 'approved'
+                    : ($review?->status === 'stockout'
+                        && (int) $review->reviewed_warehouse_id === (int) $shipment->warehouse_id ? 'stockout' : 'pending')),
             'shipment_status' => $shipment->shipment_status,
             'workflow_status_projection' => $order ? $this->workflowStatusProjection->for($order) : null,
             'routing_warehouse' => $order ? app(OrderWarehouseRouting::class)->project($order) : null,

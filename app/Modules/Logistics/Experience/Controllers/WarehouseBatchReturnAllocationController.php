@@ -43,8 +43,11 @@ final class WarehouseBatchReturnAllocationController
         foreach ($data['order_ids'] as $rawId) {
             $id = (int) $rawId;
             try {
-                $this->returns->returnToAllocation(Order::withTrashed()->findOrFail($id), $request->user(), $source);
-                $results[] = ['order_id' => $id, 'ok' => true, 'message' => '已进入待分仓，旧发货仓已清空'];
+                $order = Order::withTrashed()->findOrFail($id);
+                $this->returns->returnToAllocation($order, $request->user(), $source);
+                $results[] = ['order_id' => $id, 'ok' => true, 'message' => $order->fulfillment_parent_id
+                    ? '子订单已进入独立履约异常队列，请在履约发货重新分仓'
+                    : '已进入待分仓，旧发货仓已清空'];
             } catch (ModelNotFoundException) {
                 $results[] = ['order_id' => $id, 'ok' => false, 'message' => '订单不存在'];
             } catch (HttpExceptionInterface $exception) {

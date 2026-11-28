@@ -18,6 +18,7 @@ final class OrderProgressQuery
         // Unreviewed factory orders must remain reviewable even after staff
         // changed that label. Exception/stockout holds still take precedence.
         return $this->withoutManualException($orders)
+            ->whereDoesntHave('originalFulfillmentChildren')
             ->where('order_status', 'pending_shipment')
             ->where(fn (Builder $q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
             ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')
@@ -49,6 +50,7 @@ final class OrderProgressQuery
         // A manually selected "sending" status cannot bypass real factory
         // allocation, procurement release, stockout or shipment status.
         return $this->withoutManualException($orders)
+            ->whereDoesntHave('originalFulfillmentChildren')
             ->where('order_status', 'pending_shipment')
             ->where(fn (Builder $q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
             ->whereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending')
@@ -81,6 +83,9 @@ final class OrderProgressQuery
     public function pendingAllocation(Builder $orders): Builder
     {
         return $orders->whereNull('fulfillment_parent_id')
+            ->whereDoesntHave('originalFulfillmentChildren')
+            ->whereNotIn('order_status', ['shipped', 'completed', 'completed_delivered'])
+            ->whereDoesntHave('shipment', fn ($s) => $s->whereIn('shipment_status', ['shipped', 'completed'])->orWhereNotNull('shipped_at'))
             ->where(function (Builder $q): void {
                 // A deliberate staff choice does not wait for someone to
                 // silently clean old warehouse/approval records first.
@@ -112,7 +117,10 @@ final class OrderProgressQuery
     /** Shared operational Sending queue, for customer order listing and segments. */
     public function readyForShipment(Builder $orders): Builder
     {
-        return $orders->where(function (Builder $q): void {
+        return $orders->whereDoesntHave('originalFulfillmentChildren')
+            ->where('order_status', 'pending_shipment')
+            ->whereDoesntHave('shipment', fn ($s) => $s->whereIn('shipment_status', ['shipped', 'completed'])->orWhereNotNull('shipped_at'))
+            ->where(function (Builder $q): void {
             // Manual classification is not a shipping authorization:
             // actual dispatch endpoints still check warehouse and stockout.
             $q->where('workflow_status', 'sending')
@@ -144,7 +152,18 @@ final class OrderProgressQuery
         }
         if (! in_array($phase, ['exception', 'cancelled', 'returned_follow_up',
             'pending_allocation', 'sending', 'out_of_stock'], true)) {
-            $this->withoutManualPrimary($orders);
+            if (in_array($phase, ['partially_shipped', 'allocated', 'sent', 'shipping', 'completed'], true)) {
+                $orders->where(function (Builder $q): void {
+                    $q->whereHas('originalFulfillmentChildren')
+                        ->orWhere(fn (Builder $normal) => $this->withoutManualPrimary($normal))
+                        ->orWhere(function (Builder $stale): void {
+                            $stale->whereIn('workflow_status', ['sending', 'pending_allocation', 'pending_review'])
+                                ->whereHas('shipment', fn ($s) => $s->whereIn('shipment_status', ['shipped', 'completed']));
+                        });
+                });
+            } else {
+                $this->withoutManualPrimary($orders);
+            }
             $orders->where('order_status', '!=', 'cancelled');
         }
 

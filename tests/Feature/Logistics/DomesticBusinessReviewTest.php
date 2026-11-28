@@ -11,6 +11,7 @@ use App\Modules\Logistics\Application\Domestic\DomesticCarrierDefaults;
 use App\Modules\Logistics\Application\LogisticsStatusSummary;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -110,6 +111,25 @@ final class DomesticBusinessReviewTest extends TestCase
         $this->actingAs($unauthorized)->postJson('/logistics/china/batch-review', [
             'order_ids' => [$first->id], 'action' => 'approve',
         ])->assertForbidden();
+    }
+
+    public function test_manual_domestic_stockout_syncs_marker_and_legacy_restock_does_not_invent_approval(): void
+    {
+        $actor = $this->userWith(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate', 'domestic.review']);
+        $order = $this->order();
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'out_of_stock', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'out_of_stock');
+        $this->assertDatabaseHas('order_operational_markers', ['order_id' => $order->id, 'marker' => 'domestic_stockout']);
+        $this->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'resolve_stockout', 'expected_workflow_revision' => $order->fresh()->workflow_revision,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'sending');
+        $legacy = $this->order();
+        $legacy->forceFill(['workflow_status' => 'out_of_stock'])->save();
+        $this->patchJson('/orders/'.$legacy->id.'/workflow-status', [
+            'workflow_status' => 'resolve_stockout', 'expected_workflow_revision' => 0,
+        ])->assertOk()->assertJsonPath('workflow_status.code', 'pending_review');
+        $this->assertDatabaseMissing('order_operational_markers', ['order_id' => $legacy->id, 'marker' => 'domestic_reviewed']);
     }
 
     public function test_stockout_return_to_allocation_is_not_a_business_rejection(): void
@@ -527,7 +547,7 @@ final class DomesticBusinessReviewTest extends TestCase
         self::assertFalse($order->operationalMarkers()->where('marker', 'domestic_reviewed')->exists());
     }
 
-    public function test_split_order_rejection_unassigns_unshipped_siblings_and_returns_parent_to_vita(): void
+    public function test_split_order_rejection_unassigns_only_selected_child_and_preserves_siblings(): void
     {
         $actor = $this->userWith(['domestic.review']);
         $parent = $this->order();
@@ -547,24 +567,26 @@ final class DomesticBusinessReviewTest extends TestCase
             $child->shipment()->create(['warehouse_id' => $warehouse->id, 'shipment_status' => 'pending']);
         }
         $domestic = $parent->originalFulfillmentChildren()->where('fulfillment_suffix', 'A')->firstOrFail();
-        foreach ($parent->originalFulfillmentChildren as $child) {
-            $child->shipment()->update(['tracking_number' => 'STAGED-'.$child->fulfillment_suffix]);
-        }
+        $sibling = $parent->originalFulfillmentChildren()->where('fulfillment_suffix', 'B')->firstOrFail();
+        $sibling->shipment()->update(['tracking_number' => 'STAGED-B']);
         $this->actingAs($actor)->post('/logistics/china/orders/'.$domestic->id.'/reject', [
             'reason' => '收件人税号需重新核对',
         ])->assertRedirect();
         $this->assertDatabaseHas('orders', [
-            'id' => $parent->id, 'domestic_reject_reason' => '收件人税号需重新核对',
+            'id' => $domestic->id, 'domestic_reject_reason' => '收件人税号需重新核对',
         ]);
-        foreach ($parent->originalFulfillmentChildren as $child) {
-            self::assertNull($child->fresh()->shipment->warehouse_id);
-            self::assertNull($child->fresh()->shipment->tracking_number);
-        }
+        self::assertNull($domestic->fresh()->shipment->warehouse_id);
+        self::assertSame('pending_allocation', $domestic->fresh()->workflow_status);
+        self::assertSame($overseas->id, $sibling->fresh()->shipment->warehouse_id);
+        self::assertSame('STAGED-B', $sibling->fresh()->shipment->tracking_number);
+        self::assertNull($parent->fresh()->domestic_reject_reason);
         $record = DB::table('audit_records')->where('entity_id', $domestic->id)
             ->where('action', 'domestic.review_reject')->latest('id')->first();
-        self::assertCount(2, json_decode((string) $record->before, true)['cleared_staged_tracking']);
-        self::assertSame(1, app(LogisticsStatusSummary::class)->pendingAllocationQuery()
+        self::assertCount(0, json_decode((string) $record->before, true)['cleared_staged_tracking']);
+        self::assertSame(0, app(LogisticsStatusSummary::class)->pendingAllocationQuery()
             ->whereKey($parent->id)->count());
+        self::assertTrue(app(OrderProgressQuery::class)
+            ->unassignedSplitLeg(Order::query())->whereKey($domestic->id)->exists());
     }
 
     public function test_split_reject_with_shipped_sibling_aborts_without_partial_unassignment(): void
