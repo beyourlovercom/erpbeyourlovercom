@@ -495,9 +495,25 @@ describe('warehouse OMS portal inside the overseas page heading', () => {
     expect(link.attributes('href')).toBe('https://oms.shipout.com/z/#/login')
   })
 
+  it.each([
+    ['us-ny', 'US-NY', '美东纽约仓', 'https://oms.xlwms.com/login'],
+    ['de-tianyun', 'DE', '德国天运仓', 'https://oms.xlwms.com/login'],
+    ['ca', 'CA', '加拿大仓', 'https://order.wlwytech.com/ioms/'],
+  ])('renders the %s portal in the existing heading across views', (key, code, label, href) => {
+    for (const view of ['pending', 'review', 'shipped', 'exceptions', 'all', 'stockout'] as const) {
+      const wrapper=mountPage({warehouseKey:key,warehouse:{key,id:3,code,label,carrier:'',url:'/logistics/oversea/'+key},view})
+      const link=wrapper.find('.oversea-heading .warehouse-portal-link')
+      expect(link.text()).toContain('进入'+label+'库')
+      expect(link.attributes('href')).toBe(href)
+      expect(link.attributes('target')).toBe('_blank')
+      expect(link.attributes('rel')).toBe('noopener noreferrer')
+      wrapper.unmount()
+    }
+  })
+
   it('hides the portal on the all-warehouse page or unsupported warehouse', () => {
     expect(mountPage({warehouseKey:'all',warehouse:null}).find('.warehouse-portal-link').exists()).toBe(false)
-    expect(mountPage({warehouseKey:'us-ny',warehouse:{key:'us-ny',id:3,code:'US-NY',label:'美东纽约仓',carrier:'USPS',url:'/logistics/oversea/us-ny'}}).find('.warehouse-portal-link').exists()).toBe(false)
+    expect(mountPage({warehouseKey:'unknown',warehouse:{key:'unknown',id:3,code:'UNKNOWN',label:'Unknown',carrier:'',url:'/logistics/oversea/unknown'}}).find('.warehouse-portal-link').exists()).toBe(false)
   })
 })
 
