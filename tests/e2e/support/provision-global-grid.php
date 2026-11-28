@@ -437,4 +437,16 @@ if (str_contains((string) getenv('BYL_E2E_GREP'), 'Inventory Matrix V1 real brow
     });
     fwrite(STDOUT, "INVENTORY_MATRIX_EXTRA_FIXTURES_PASS\n");
 }
+if (str_contains((string) getenv('BYL_E2E_GREP'), 'Product Inventory V2 real browser')) {
+    DB::transaction(function () use ($product,$owner): void {
+        $record=\App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord::create([
+            'product_id'=>$product->id,'created_by'=>$owner->id,'status'=>'approved','packaging_method_key'=>'carton',
+            'packaging_length_cm'=>30,'packaging_width_cm'=>20,'packaging_height_cm'=>10,'packaged_weight_kg'=>0.75,'measured_at'=>now(),
+        ]);
+        \App\Modules\Products\Infrastructure\Models\ProductPackagingProfile::create([
+            'product_id'=>$product->id,'preset_key'=>'carton','current_measurement_record_id'=>$record->id,'is_active'=>true,
+        ]);
+        \Tests\Support\InventoryProductRateFixture::create($owner->id);
+    });
+}
 fwrite(STDOUT, "GLOBAL_GRID_SYNTHETIC_FIXTURES_PASS: 1 product, 1 inventory, 1 procurement, 1 domestic review; disposable SQLite only\n");
