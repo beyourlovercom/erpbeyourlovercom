@@ -410,3 +410,12 @@ if (app()->environment('production') && (bool) config('shipout.oms_reconciliatio
         ->withoutOverlapping(15)
         ->onOneServer()->runInBackground();
 }
+
+
+Artisan::command('xlwms:drain-us-ny-batch', function (): int {
+    $this->line(json_encode(app(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::class)->drain(), JSON_THROW_ON_ERROR));
+    return Command::SUCCESS;
+});
+if (app()->environment('production') && \App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::liveEnabled()) {
+    Schedule::command('xlwms:drain-us-ny-batch')->everyMinute()->name('xlwms.us-ny.batch.drain')->withoutOverlapping(15)->onOneServer()->runInBackground();
+}

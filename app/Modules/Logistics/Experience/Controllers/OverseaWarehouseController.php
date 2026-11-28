@@ -212,6 +212,12 @@ final class OverseaWarehouseController
                 && filled(config('xlwms.oms_web_hmac_key')),
             // R5-R6 DE uses the approved MorePlus selected-order workflow,
             // with a distinct dry-run-only OMS queue and warehouse audit.
+            'nyBatchUi' => $warehouseKey === 'us-ny' && \App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::visible()
+                && $this->executionAccess->allows($request->user()),
+            'nyBatchPaused' => $warehouseKey === 'us-ny' && app()->environment('production') && !\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::liveEnabled(),
+            'nyLatestBatch' => $warehouseKey === 'us-ny' && \App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::visible()
+                && Schema::hasTable('xlwms_ny_dispatch_batches')
+                ? DB::table('xlwms_ny_dispatch_batches')->where('operator_user_id',(int)$request->user()->id)->orderByDesc('created_at')->first(['id','status','dry_run','total']) : null,
             'deTianyunBatchUi' => $warehouseKey === 'de-tianyun'
                 && (app()->environment('local', 'testing')
                     || (app()->environment('production')
