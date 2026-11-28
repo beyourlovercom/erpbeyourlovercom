@@ -3,7 +3,7 @@ import {costMoney,costNative,type AllocationCost} from '../../lib/allocationCost
 withDefaults(defineProps<{quote:AllocationCost|null;loading?:boolean;error?:string;showFactory?:boolean;readonly?:boolean;embedded?:boolean}>(),{showFactory:true})
 defineEmits<{refresh:[]}>()
 const status:Record<string,string>={estimated:'已审核费率 · 预计',partial_reference:'部分估算 / 未审核报价参考',native_only:'仅原币参考',unavailable:'暂无法估算'}
-const reasons:Record<string,string>={selected_service_rate_missing:'所选仓库及实际渠道缺少对应费率',missing_packaging_standard:'缺少商品重量',missing_destination:'缺少有效目的国',unresolved_product:'实际发货商品未确认',dimensions_unavailable:'缺少尺寸，未核算体积重',unapproved_transport_reference:'未审核基础运输费，其他费用可能未包含',fx_unavailable:'汇率不可用',rate_scope_missing:'缺少对应报价',rule_unsupported:'计费规则待核实',postal_zone_missing_or_ambiguous:'邮编分区待核实',postal_rate_excluded:'邮编不适用',weight_band_missing_or_ambiguous:'未匹配重量档'}
+const reasons:Record<string,string>={selected_service_rate_missing:'所选仓库及实际渠道缺少对应费率',missing_packaging_standard:'缺少商品重量',missing_destination:'缺少有效目的国',unresolved_product:'实际发货商品未确认',dimensions_unavailable:'缺少尺寸，未核算体积重',unapproved_transport_reference:'未审核基础运输费，其他费用可能未包含',fx_unavailable:'汇率不可用',rate_scope_missing:'缺少对应报价',supplier_catalog_restriction:'原报价明确限制货物类型，渠道不适用',rule_unsupported:'计费规则待核实',postal_zone_missing_or_ambiguous:'邮编分区待核实',postal_rate_excluded:'邮编不适用',weight_band_missing_or_ambiguous:'未匹配重量档'}
 </script>
 <template>
   <section class="selected-cost" :class="{embedded}" data-testid="selected-allocation-cost">

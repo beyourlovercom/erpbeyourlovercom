@@ -14,7 +14,7 @@ const error=ref('')
 const quote=ref<Row|null>(null)
 const scope=computed(()=>selected.value===''?null:props.scopes[Number(selected.value)])
 const components=computed(()=>Array.isArray(quote.value?.components)?quote.value.components as Row[]:[])
-const reasonLabels:Record<string,string>={measurement_missing_or_changed:'包装测量已变更，请刷新页面',measurement_incomplete:'物流实重或尺寸不完整',rate_center_not_available:'报价中心尚未上线',rate_version_not_approved:'报价版本未批准',rate_version_outside_effective_dates:'不在报价有效期内',rate_scope_missing:'缺少对应渠道报价',rate_coverage_unverified:'费率覆盖尚未核验',rate_rule_unreviewed:'规则尚未审核',eligibility_unconfirmed:'未确认渠道适用性',postal_zone_missing_or_ambiguous:'邮编分区未核实或冲突',postal_code_invalid:'邮编不正确或缺失',package_dimensions_outside_rule:'物流尺寸不符合渠道限制',package_weight_outside_rule:'重量超出渠道限制',weight_band_missing_or_ambiguous:'重量档缺失或冲突',fx_unavailable:'缺少有效汇率'}
+const reasonLabels:Record<string,string>={measurement_missing_or_changed:'包装测量已变更，请刷新页面',measurement_incomplete:'物流实重或尺寸不完整',rate_center_not_available:'报价中心尚未上线',rate_version_not_approved:'报价版本未批准',rate_version_outside_effective_dates:'不在报价有效期内',supplier_catalog_restriction:'原报价明确限制货物类型，渠道不适用',rate_scope_missing:'缺少对应渠道报价',rate_coverage_unverified:'费率覆盖尚未核验',rate_rule_unreviewed:'规则尚未审核',eligibility_unconfirmed:'未确认渠道适用性',postal_zone_missing_or_ambiguous:'邮编分区未核实或冲突',postal_code_invalid:'邮编不正确或缺失',package_dimensions_outside_rule:'物流尺寸不符合渠道限制',package_weight_outside_rule:'重量超出渠道限制',weight_band_missing_or_ambiguous:'重量档缺失或冲突',fx_unavailable:'缺少有效汇率'}
 function reset(){confirmed.value=false;quote.value=null;error.value=''}
 async function calculate(){
  if(!scope.value||!confirmed.value||busy.value)return

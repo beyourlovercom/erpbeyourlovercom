@@ -327,6 +327,14 @@ final class LogisticsRateCenterWorkflowTest extends TestCase
         $trial = $estimator->quoteDraftTransport($request);
         $this->assertSame('draft_estimate', $trial['status']);
         $this->assertNull($trial['total_cny']);
+        foreach (['sd_economy_battery' => 'A108', 'sd_standard_general' => 'A390', 'sd_economy_general' => 'A119'] as $restrictedService => $cell) {
+            $restricted = DB::table('logistics_rate_components')->where('service', $restrictedService)->where('destination_country', 'US')->first();
+            $this->assertSame($cell, json_decode($restricted->rule_spec, true)['catalog_restriction_source_cell']);
+            $blocked = $estimator->quoteDraftTransport([...$request, 'service' => $restrictedService]);
+            $this->assertSame('supplier_catalog_restriction', $blocked['reason']);
+            $this->assertNull($blocked['total_cny']);
+        }
+
         $this->assertEqualsWithDelta(37.72, $trial['reference_native_totals']['CNY'], 0.000001);
         $this->assertSame('C3:E3', $trial['components'][0]['source_cells']);
         $zaTrial = $estimator->quoteDraftTransport([...$request, 'service' => 'sd_standard_general', 'country' => 'ZA', 'postal_code' => '8001',
