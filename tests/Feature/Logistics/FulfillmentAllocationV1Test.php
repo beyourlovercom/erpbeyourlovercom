@@ -766,7 +766,7 @@ final class FulfillmentAllocationV1Test extends TestCase
         $this->assertCount(6, $parent->fulfillmentChildren()->get());
     }
 
-    public function test_parent_reset_blocks_tracking_but_allows_previous_review_and_dispatch_without_tracking(): void
+    public function test_parent_reset_blocks_tracking_and_uncertain_or_completed_dispatch_without_tracking(): void
     {
         [$actor, $parent] = $this->scenario(2);
         $this->actingAs($actor)->postJson('/logistics/orders/'.$parent->id.'/fulfillment-allocation/manual', [
@@ -812,8 +812,8 @@ final class FulfillmentAllocationV1Test extends TestCase
         $factory->shipment()->update(['tracking_number' => '   ']);
         $this->actingAs($actor)->postJson($reset, [
             'confirmed' => true, 'token' => $token,
-        ])->assertOk()->assertJsonPath('archived_count', 2);
-        $this->assertCount(0, $parent->originalFulfillmentChildren()->get());
+        ])->assertConflict();
+        $this->assertCount(2, $parent->originalFulfillmentChildren()->get());
         $this->assertCount(2, $parent->fulfillmentChildren()->get());
         $this->assertDatabaseHas('shipout_dispatch_attempts', ['id' => $attemptId, 'status' => 'uncertain']);
         $this->assertDatabaseHas('shipment_attempts', ['id' => $historical->id, 'tracking_number' => null]);

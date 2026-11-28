@@ -33,9 +33,8 @@ final class WarehouseBatchReturnAllocationService
         DB::transaction(function () use ($order, $actor, $source): void {
             $initial = Order::withTrashed()->findOrFail($order->getKey());
             $rootId = (int) ($initial->fulfillment_parent_id ?: $initial->getKey());
-            // The canonical allocation queue contains parents. A selected
-            // child resets itself plus its parent; selecting a parent resets
-            // the whole A/B/C fulfillment family, including replacements.
+            // Lock the whole family, but a split operation may only mutate the selected leg.
+            // Whole-family replacement requires the dedicated parent reallocation workflow.
             $family = Order::withTrashed()
                 ->where(fn ($query) => $query->whereKey($rootId)->orWhere('fulfillment_parent_id', $rootId))
                 ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
@@ -44,19 +43,35 @@ final class WarehouseBatchReturnAllocationService
             abort_unless($root && $selected, 404);
             abort_if($selected->fulfillment_role === Order::SUPERSEDED_FULFILLMENT_ROLE, 409, '重新分仓历史履约不可恢复运营。');
             $family = $family->reject(fn (Order $member) => $member->fulfillment_role === Order::SUPERSEDED_FULFILLMENT_ROLE);
-            $targets = $selected->is($root)
-                ? $family->values()
-                : $family->filter(fn (Order $member) => $member->is($root) || $member->is($selected))->values();
+            $split = $root->originalFulfillmentChildren()->exists() || $selected->fulfillment_parent_id !== null;
+            abort_if($split && $selected->is($root), 409, '拆单母订单不能直接退回分仓，请在履约发货中处理对应子订单。');
+            $targets = collect([$selected]);
 
             $shipments = Shipment::query()->whereIn('order_id', $targets->pluck('id'))
                 ->orderBy('order_id')->lockForUpdate()->get()->keyBy('order_id');
+            if ($split) {
+                $shipment = $shipments->get($selected->id);
+                abort_if($selected->order_status !== OrderStatus::PendingShipment
+                    || ($shipment && ($shipment->shipment_status !== 'pending'
+                        || filled($shipment->tracking_number) || $shipment->shipped_at !== null))
+                    || $selected->shipmentAttempts()->exists()
+                    || DB::table('shipout_dispatch_attempts')->where('order_id', $selected->id)->exists()
+                    || DB::table('xlwms_dispatch_attempts')->where('order_id', $selected->id)->exists(),
+                    409, '该子订单已有实际物流或仓库推送记录，请核对后使用专用履约处理流程。');
+            }
             foreach ($targets as $target) {
                 $this->resetCurrentAssignment($target, $shipments->get($target->getKey()), $actor, $source,
                     (int) $selected->getKey(), $rootId);
             }
 
-            abort_unless($this->queues->pendingAllocationQuery()->whereKey($rootId)->exists(),
-                409, '退回后主订单无法进入实际待分仓队列，已回滚本次变更。');
+            if ($split) {
+                abort_unless(app(\App\Modules\Orders\Application\OrderProgressQuery::class)
+                    ->unassignedSplitLeg(Order::query())->whereKey($selected->id)->exists(),
+                    409, '子订单未进入独立履约异常队列，已回滚本次变更。');
+            } else {
+                abort_unless($this->queues->pendingAllocationQuery()->whereKey($rootId)->exists(),
+                    409, '退回后订单无法进入实际待分仓队列，已回滚本次变更。');
+            }
         });
     }
 

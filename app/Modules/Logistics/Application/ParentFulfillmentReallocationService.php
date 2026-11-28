@@ -61,10 +61,16 @@ final class ParentFulfillmentReallocationService
             foreach ($family as $member) {
                 $shipment = $shipments->get($member->id);
                 $attempts = $member->shipmentAttempts()->lockForUpdate()->get(['id', 'tracking_number']);
-                abort_if(filled($shipment?->tracking_number)
+                abort_if(in_array($member->order_status?->value, ['shipped', 'completed', 'completed_delivered'], true)
+                    || in_array($shipment?->shipment_status, ['shipped', 'completed'], true)
+                    || $shipment?->shipped_at !== null
+                    || filled($shipment?->tracking_number)
                     || $attempts->contains(fn ($attempt) => filled($attempt->tracking_number)), 409,
                     '履约 '.$member->erp_order_id.' 已有物流单号，请人工确认是否已发货，并手工调整母订单。不能自动归档。');
             }
+            abort_if(DB::table('shipout_dispatch_attempts')->whereIn('order_id', $ids)->exists()
+                || DB::table('xlwms_dispatch_attempts')->whereIn('order_id', $ids)->exists(),
+                409, '已有仓库推送记录，不能自动整单重新分仓。请先核实仓库处理结果。');
             $parentShipment = $shipments->get($root->id);
             abort_if($parentShipment && $parentShipment->warehouse_id !== null, 409, '母订单仍有独立发货仓，请先核对。');
             // Release only currently reserved stock. Never reverse committed stock or

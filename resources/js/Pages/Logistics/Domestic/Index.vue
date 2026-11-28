@@ -697,7 +697,7 @@ const applyGridBatch = async (payload:{action:string;reason:string}) => {
       state:errors.length?'BLOCKED':'SUCCESS',
       title:'批量操作：成功 '+success.length+' 条，失败 '+errors.length+' 条',
       message:errors.length?errors.slice(0,8).map(row=>row.order_id+'：'+row.message).join('；')
-        :forced?'已退回待分仓，当前发货仓库已清空。':'按原业务规则保存。',
+        :forced?success.slice(0,8).map(row=>row.message).join('；'):'按原业务规则保存。',
     })
     router.reload({only:['rows','viewCounts']})
   } catch (error) {
