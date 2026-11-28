@@ -317,7 +317,8 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(map?.textContent).toContain('最近仓')
     expect(map?.textContent).toContain('美东纽约')
     expect(map?.textContent).toContain('德国天运')
-    expect(map?.textContent).toContain('直线距离估算')
+    expect(map?.querySelector('header strong')?.getAttribute('title')).toContain('直线距离估算')
+    expect(map?.querySelector('footer')).toBeNull()
     expect(document.body.textContent).toContain('确认人工分配并提交')
     const region = Array.from(map!.querySelectorAll('button')).find(b => b.textContent==='收件区域')!
     region.click()

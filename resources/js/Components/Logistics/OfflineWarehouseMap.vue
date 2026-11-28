@@ -41,7 +41,7 @@ const markerSize=computed(()=>view.value.w/180);
 </script>
 <template>
 <section class="overflow-hidden rounded-lg border border-slate-200 text-xs" data-testid="offline-warehouse-map">
- <header class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-3"><strong class="text-sm">仓库地理参考 <span class="ml-1 font-normal text-slate-500">离线地图</span></strong>
+ <header class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2"><strong class="text-sm" title="Natural Earth · GeoNames（有本地匹配时） · 直线距离估算，不代表实际仓址、运费或可发货性。">仓库地理参考</strong>
  <div class="flex gap-1"><button v-for="m in [{id:'world',label:'全球'},{id:'region',label:'收件区域'},{id:'nearest',label:'最近仓'}] as const" :key="m.id" type="button" :aria-pressed="mode===m.id" class="rounded border px-2 py-1" :class="mode===m.id?'bg-white font-semibold text-emerald-700':''" @click="setMode(m.id)">{{m.label}}</button></div></header>
  <div v-if="loading" class="p-3">正在读取收件区域…</div><div v-else-if="error" class="p-3 text-amber-700">{{error}}</div>
  <div v-else class="offline-map-grid">
@@ -53,11 +53,11 @@ const markerSize=computed(()=>view.value.w/180);
     <g v-for="w in mapped" :key="w.code" :transform="'translate('+project(w.point!).x+' '+project(w.point!).y+')'" @pointerdown.stop @click.stop="pick(w.code)"><circle :r="markerSize" :fill="colors[w.stock]" stroke="white" :stroke-width="markerSize/4"/><text :x="markerSize+2" :y="-markerSize/2" :font-size="markerSize*1.8" fill="#243e55" paint-order="stroke" stroke="#fff" :stroke-width="markerSize*.22">{{w.name}}</text><title>{{w.name}} · {{precision(w.point)}} · {{w.km??'未知'}} km</title></g>
     <g v-if="recipient" :transform="'translate('+project(recipient).x+' '+project(recipient).y+')'"><circle :r="markerSize*1.3" fill="#e05649" stroke="white" :stroke-width="markerSize/3"/><text :x="markerSize*1.6" :y="markerSize*1.5" :font-size="markerSize*2" fill="#c63428" paint-order="stroke" stroke="white" :stroke-width="markerSize*.3">收件地 · {{recipient.label}}</text></g>
    </svg>
-   <p class="offline-map-attribution absolute bottom-1 left-2 px-1 text-slate-500">Natural Earth · GeoNames（有本地匹配时） · 直线距离估算</p>
+
   </div>
   <div class="offline-map-distances border-l border-slate-200"><p class="offline-map-distance-title text-slate-500">参考距离 · 从近到远</p><div class="offline-map-distance-list space-y-1 p-2" tabindex="0" aria-label="仓库参考距离列表"><button v-for="w in rows" :key="w.code" type="button" :disabled="!w.point" class="flex w-full items-center justify-between gap-1 rounded px-1 py-1 text-left hover:bg-emerald-50" :class="selected===w.code?'bg-emerald-100':''" @click="pick(w.code)"><span><span class="mr-1 inline-block h-2 w-2 rounded-full" :style="{background:colors[w.stock]}"/>{{w.name}}<small class="block pl-3 text-slate-500">{{w.point?precision(w.point):'位置未知'}} · {{labels[w.stock]}}</small></span><strong class="whitespace-nowrap">{{w.km===null?'—':(w.approximate?'约 ':'')+w.km.toLocaleString()+' km'}}</strong></button></div></div>
  </div>
- <footer class="offline-map-footer border-t px-2 py-1 text-slate-500"><p v-if="!recipient&&!loading&&!error" class="text-amber-700">无法识别国家，暂不计算距离。</p><p v-else-if="recipient">收件区域：{{recipient.label}} · {{precision(recipient)}}（估算）</p><p>直线距离仅供参考，不代表实际仓址、运费或可发货性。</p></footer>
+ <p v-if="!recipient&&!loading&&!error" class="px-2 py-1 text-amber-700">无法识别国家，暂不计算距离。</p>
 </section>
 </template>
 
@@ -66,10 +66,8 @@ const markerSize=computed(()=>view.value.w/180);
 .offline-map-canvas{position:relative;height:256px;min-height:0;background:#ebf2f5;overflow:hidden}
 .offline-map-svg{height:100%;width:100%;display:block;cursor:grab;touch-action:none;user-select:none}
 .offline-map-svg:active{cursor:grabbing}
-.offline-map-attribution{font-size:10px;background:rgba(255,255,255,.82)}
 .offline-map-distances{display:flex;flex-direction:column;min-height:0;min-width:0;height:160px;overflow:hidden}
 .offline-map-distance-title{flex:none;padding:6px 8px 0}
 .offline-map-distance-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
-.offline-map-footer{font-size:10px;line-height:1.35}
 @media(min-width:1280px){.offline-map-grid{grid-template-columns:minmax(0,1fr) 180px}.offline-map-distances{height:256px}}
 </style>

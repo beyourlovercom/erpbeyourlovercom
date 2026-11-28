@@ -4,7 +4,7 @@ import { ref, watch, onBeforeUnmount, computed } from 'vue'
 type Component = {component_type:string;amount:number;currency:string;source_sheet?:string|null;source_cells?:string|null;billable_weight?:number;weight_unit?:string}
 type RateRow = {warehouse_code:string;carrier:string|null;service:string|null;version_number?:number;version_id?:number;version_status?:string;status:string;reason:string|null;amount_cny:number|null;native_totals:Record<string,number>|null;extra_item_usd:number|null;components?:Component[];zone?:string|null}
 type Result = {status:string;reason:string|null;country:string;as_of:string;measurement:{weight_kg:number;dimensions_cm:number[]|null;item_count:number;basis:string}|null;rows:RateRow[];warehouse_rows?:RateRow[];factory_default_reference?:RateRow|null}
-const props=defineProps<{orderId:number;revision:string;disabled?:boolean;warehouses:{code:string;name:string}[]}>()
+const props=defineProps<{orderId:number;revision:string;disabled?:boolean;embedded?:boolean;refreshKey?:number;warehouses:{code:string;name:string}[]}>()
 const data=ref<Result|null>(null)
 const loading=ref(false)
 const orderedRows=computed(()=>[...(data.value?.warehouse_rows??[])].sort((a,b)=>Number(b.warehouse_code==='FACTORY')-Number(a.warehouse_code==='FACTORY')))
@@ -31,12 +31,12 @@ async function refresh(scope=''){
   }catch(e){if(seq===sequence&&!c.signal.aborted)error.value=true}
   finally{if(seq===sequence)loading.value=false}
 }
-watch(()=>[props.orderId,props.revision,props.disabled],()=>void refresh(),{immediate:true})
+watch(()=>[props.orderId,props.revision,props.disabled,props.refreshKey],()=>void refresh(),{immediate:true})
 onBeforeUnmount(()=>{sequence++;controller?.abort()})
 </script>
 <template>
-  <section class="rate-preview" data-testid="allocation-rate-preview">
-    <header><strong>各仓最低运费参考</strong><small v-if="data?.measurement">{{data.measurement.item_count}}件 · {{data.measurement.weight_kg}} kg · {{data.measurement.dimensions_cm?.join(' × ')??'尺寸未知'}} {{data.measurement.dimensions_cm?'cm':''}}</small><button type="button" :disabled="loading||disabled" @click="refresh()">刷新</button></header>
+  <section class="rate-preview" :class="{embedded}" data-testid="allocation-rate-preview">
+    <header><strong :title="data ? '整单单仓参考；不代表库存或可寄送。草稿不参与自动分仓排名。费率日期 ' + data.as_of : '整单单仓参考'">各仓最低运费参考</strong><small v-if="data?.measurement">{{data.measurement.item_count}}件 · {{data.measurement.weight_kg}} kg · {{data.measurement.dimensions_cm?.join(' × ')??'尺寸未知'}} {{data.measurement.dimensions_cm?'cm':''}}</small><button v-if="!embedded" type="button" :disabled="loading||disabled" @click="refresh()">刷新</button></header>
     <p v-if="disabled">实际发货商品尚未确认或已选择替换商品；为防止按原 SKU 错算，暂不展示整单运费。</p>
     <p v-else-if="loading" role="status">正在计算运费…</p>
     <p v-else-if="error" role="status">运费预估暂不可用，请刷新。不影响正常分仓。</p>
@@ -46,15 +46,15 @@ onBeforeUnmount(()=>{sequence++;controller?.abort()})
         <article v-for="row in orderedRows" :key="key(row)" :data-warehouse="row.warehouse_code" class="rate-row">
           <div><b>{{name(row)}}</b><small v-if="row.service">{{names[row.service]??row.service}} · V{{row.version_number}}</small></div>
           <div class="rate-money"><b v-if="row.native_totals">{{amount(row)}}</b><small v-if="row.native_totals">{{native(row)}}</small><small v-if="row.zone">Zone {{row.zone}}</small>
-            <span v-if="row.status==='weight_only_reference'" class="draft">{{row.version_status==='draft'?'未审核 · ':''}}仅实重参考 · 未计体积重</span><span v-else-if="row.status==='draft_reference'" class="draft">未审核 · 假设可寄送的基础运费</span><span v-else-if="row.status==='approved_reference'" class="reviewed">已审核费率 · 条件估算</span>
+            <span v-if="row.status==='weight_only_reference'" class="draft">{{row.version_status==='draft'?'未审核 · ':''}}仅实重参考 · 未计体积重</span><span v-else-if="row.status==='draft_reference'" class="draft">未审核 · 基础运费参考</span><span v-else-if="row.status==='approved_reference'" class="reviewed">已审核费率 · 条件估算</span>
             <span v-else class="unavailable">{{reasons[row.reason??'']??'暂不可估算'}}</span>
-            <small v-if="row.extra_item_usd!==null&&row.extra_item_usd>0&&row.native_totals">额外件操作参考 USD {{row.extra_item_usd.toFixed(2)}}（未计入上方金额）</small>
+            <small v-if="row.extra_item_usd!==null&&row.extra_item_usd>0&&row.native_totals">额外件操作参考 USD {{row.extra_item_usd.toFixed(2)}}（未计入）</small>
             <button v-if="row.reason==='eligibility_unconfirmed'" type="button" @click="refresh(key(row))">已核实此渠道适用，试算</button>
           </div>
           <details v-if="row.components?.length"><summary>计费明细</summary><div v-for="(c,i) in row.components" :key="i">{{c.component_type==='transport'?'运输费':c.component_type==='handling'?'操作费':'额外件操作费'}} {{c.currency}} {{Number(c.amount).toFixed(2)}}<span v-if="c.billable_weight!=null"> · {{Number(c.billable_weight).toFixed(3)}} {{c.weight_unit}}</span><small v-if="c.source_sheet">{{c.source_sheet}} · {{c.source_cells}}</small></div></details>
         </article>
       </div>
-      <small class="rate-note">{{data.measurement?.basis==='weight_only_reference'?'缺少尺寸，仅按实重试算，实际费用可能更高。':data.measurement?.basis==='product_standard_estimate'?'按商品标准数据估算，非实际物流包装尺寸；裸重已增加20%。':data.measurement?.basis==='stacked_packaging_estimate'?'按现有物流包装尺寸及重量堆叠为一个假设包裹，未计新增外箱重量，实际合包需复测。':'使用现有已审核的单件物流包装实测重量及尺寸，实际仓库包装可能不同。'}} 每仓仅展示同等费用范围内最低可计算的渠道参考；不是当前拆单合计，不代表有货或可寄送。草稿不含未知费用，不参与自动分仓排名。费率日期 {{data.as_of}}。</small>
+      <details v-if="!embedded" class="rate-note"><summary>估算说明</summary><small>{{data.measurement?.basis==='weight_only_reference'?'缺少尺寸，仅按实重试算，实际费用可能更高。':data.measurement?.basis==='product_standard_estimate'?'按商品标准数据估算，非实际物流包装尺寸；裸重已增加20%。':data.measurement?.basis==='stacked_packaging_estimate'?'按现有物流包装尺寸及重量堆叠为一个假设包裹，未计新增外箱重量，实际合包需复测。':'使用现有已审核的单件物流包装实测重量及尺寸，实际仓库包装可能不同。'}} 每仓仅展示同等费用范围内最低可计算的渠道参考；不是当前拆单合计，不代表有货或可寄送。草稿不含未知费用，不参与自动分仓排名。费率日期 {{data.as_of}}。</small></details>
     </template>
   </section>
 </template>
@@ -69,4 +69,12 @@ onBeforeUnmount(()=>{sequence++;controller?.abort()})
 .draft{color:#92400e}.reviewed{color:#166534}.unavailable{color:#64748b}
 .rate-row details{grid-column:1/-1;color:#64748b;font-size:11px}.rate-row summary{cursor:pointer}
 .rate-note{display:block;margin-top:7px;color:#64748b;font-size:11px}
+.rate-preview.embedded{margin:0;border:0;border-radius:0;padding:5px 0 0;border-top:1px solid #e2e8f0}
+.embedded header{margin-bottom:4px;gap:6px}
+.embedded .rate-rows{gap:4px;align-items:start}
+.embedded .rate-row{padding:4px 6px;gap:2px 6px}
+.embedded .rate-row details{line-height:1.2}
+.embedded .rate-money{font-size:11px;line-height:1.35}
+.embedded .rate-money b{font-size:14px}
+
 </style>
