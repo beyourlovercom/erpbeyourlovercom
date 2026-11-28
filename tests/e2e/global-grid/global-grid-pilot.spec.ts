@@ -1439,3 +1439,24 @@ test('Product Inventory V2 real browser four views and logistics evidence',async
   await expect(grid.getByText('E2E-SKU-0001',{exact:true}).first()).toBeVisible()
   console.log('PRODUCT_INVENTORY_V2_FOUR_VIEWS_PASS')
 })
+
+
+test('order country labels are consistent on real logistics grids and native fallback',async({page,context})=>{
+  const guard=await installBrowserGuards(context,page)
+  await page.setViewportSize({width:1920,height:1000})
+  await loginThroughUi(page,syntheticUsers().logisticsOperator)
+  for(const [path,number] of [
+    ['/logistics/awaiting-tracking','007-E2E-R5L2-AWAIT'],
+    ['/logistics/in-transit','007-E2E-R5L2-TRANSIT'],
+    ['/logistics/exceptions','007-E2E-R5L2-EXCEPTION'],
+  ]){
+    await page.goto(path+'?global_grid=1&search='+number)
+    const grid=page.getByTestId('erp-global-grid-v1')
+    await expect(grid.getByText(number,{exact:true})).toBeVisible()
+    await expect(grid.locator('.ag-cell[col-id="country"]').first()).toHaveText('DE-德国/欧盟')
+    await page.getByTestId('l2-global-grid-toggle').click()
+    await expect(page.locator('.mvp-table-wrap')).toContainText('DE-德国/欧盟')
+  }
+  await guard.assertClean()
+  console.log('ORDER_COUNTRY_LISTS_BROWSER_PASS')
+})

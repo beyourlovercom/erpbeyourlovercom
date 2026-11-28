@@ -12,6 +12,11 @@ test('ERP1 allocation compact: stock, delete, add, adjacent navigation and submi
   await page.getByRole('button',{name:'查看方案',exact:true}).first().click()
   const modal=page.locator('.plan-modal')
   await expect(modal.locator('.info-card').first()).toContainText('E2E-COMPACT-02')
+  await expect(modal.locator('.top-grid')).toContainText('US-美国/北美')
+  await expect(modal.locator('.manual-table-wrap tbody select option[value="DE"]')).toHaveCount(0)
+  await expect(modal.locator('.stock-list')).not.toContainText('德国仓')
+  await expect(modal.getByTestId('offline-warehouse-map')).not.toContainText('德国天运')
+
   await expect(modal.getByRole('button',{name:'上一单'})).toBeDisabled()
   await modal.getByRole('button',{name:'下一单'}).click()
   await expect(modal.locator('.info-card').first()).toContainText('E2E-COMPACT-01')

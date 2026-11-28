@@ -158,6 +158,7 @@ final class FulfillmentAllocationSubmissionService
         ])->values();
         abort_if($normalized->isEmpty(), 422, '请为每个 SKU 选择发货仓库');
         abort_if($normalized->contains(fn (array $row): bool => $row['order_item_id'] <= 0 || ! in_array($row['source_code'], self::ALLOWED_SOURCE_CODES, true)), 422, '人工分仓包含无效仓库');
+        abort_if($normalized->contains(fn (array $row): bool => ! $this->warehouseRouting->destinationAllowed($locked->address?->country, $row['source_code'])), 422, '德国仓不支持该收件国家/地区，请选择其他仓库。');
         abort_if($normalized->pluck('order_item_id')->duplicates()->isNotEmpty(), 422, '同一个订单商品不能拆数量到多个仓库');
 
         $orderItemIds = $locked->items->pluck('id')->map(fn ($id) => (int) $id)->sort()->values();
@@ -428,6 +429,7 @@ final class FulfillmentAllocationSubmissionService
     {
         $segments = collect($plan['segments'] ?? [])->map(function (array $segment) use ($order): array {
             $code = (string) ($segment['source_code'] ?? '');
+            abort_unless($this->warehouseRouting->destinationAllowed($order->address?->country, $code), 422, '德国仓不支持该收件国家/地区，请选择其他仓库。');
             // Factory candidates deliberately have no warehouse ID during advisory planning.
             // Resolve the actual active warehouse before both fee preview and materialization.
             if ($code === 'FACTORY') {
