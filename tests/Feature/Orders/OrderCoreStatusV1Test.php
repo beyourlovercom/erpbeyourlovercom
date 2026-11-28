@@ -39,6 +39,20 @@ final class OrderCoreStatusV1Test extends TestCase
         $this->assertSame(1, $this->inQueue($order, 'pending_allocation'));
     }
 
+    public function test_global_exception_action_restores_unallocated_order_without_shipping(): void
+    {
+        $order = $this->order();
+        $actor = $this->user(['orders.view', 'orders.edit', 'logistics.view', 'logistics.operate']);
+        $this->actingAs($actor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'exception', 'expected_workflow_revision' => 0,
+        ])->assertOk();
+        $this->postJson('/logistics/orders/'.$order->id.'/resolve-workbench-exception', [
+            'expected_workflow_revision' => 1,
+        ])->assertOk()->assertJsonPath('destination', 'pending_allocation');
+        $this->assertNull($order->fresh()->shipment);
+        $this->assertSame(1, $this->inQueue($order, 'pending_allocation'));
+    }
+
     public function test_stockout_before_allocation_is_real_and_restock_returns_to_vita_queue(): void
     {
         $order = $this->order();

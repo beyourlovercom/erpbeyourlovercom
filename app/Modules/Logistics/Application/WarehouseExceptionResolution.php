@@ -6,11 +6,14 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionOmsReadbackService;
+use App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch;
+use App\Modules\Logistics\Application\Wlwy\CanadaTrackingRefresh;
 use App\Modules\Logistics\Application\Xlwms\DeTianyunPreflightRecovery;
 use App\Modules\Logistics\Application\Xlwms\SingleOrderDispatch;
 use App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch;
 use App\Modules\Logistics\Application\Xlwms\UsNyTrackingStage;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
+use App\Modules\Orders\Application\OrderCoreStatusTransitionService;
 use App\Modules\Orders\Application\OrderManualHoldStatus;
 use App\Modules\Orders\Application\OrderProgressQuery;
 use App\Modules\Orders\Application\OrderProgressResolver;
@@ -35,11 +38,38 @@ final class WarehouseExceptionResolution
         abort_unless(app(LogisticsExecutionAccess::class)->allows($actor), 403);
         $id = (int) $order->id;
         $order = Order::query()->eligibleForOperations()->with('shipment.warehouse')->findOrFail($id);
-        abort_if($order->originalFulfillmentChildren()->exists(), 409, '拆单母单不执行履约操作，请处理实际子单。');
         abort_unless((int) $order->workflow_revision === $revision, 409, '订单状态已变化，请刷新重试。');
+        abort_if($order->order_status?->value === 'cancelled', 409, '已取消订单不可解除履约异常。');
+        if ($order->originalFulfillmentChildren()->exists()) {
+            abort_unless(in_array(OrderManualHoldStatus::selected($order), OrderManualHoldStatus::EXCEPTION_CODES, true), 409, '拆单母单不执行履约操作，请处理实际子单。');
+            $updated = app(OrderCoreStatusTransitionService::class)->transition($order, 'resolve_exception', $revision, $actor);
+
+            return ['destination' => app(OrderProgressResolver::class)->resolve($updated), 'message' => '母单人工异常已解除；子单独立异常仍须处理。'];
+        }
         $code = (string) $order->shipment?->warehouse?->code;
         $oversea = OverseaWarehouseReviewService::canonicalWarehouseCode($code) !== null;
-        abort_unless($oversea || $code === 'FACTORY', 409, '请在实际所属仓库处理异常。');
+        if (! $oversea && $code !== 'FACTORY') {
+            if (WebsiteSyncException::exists($id) || WebsiteSyncException::projectedFailure($order)) {
+                app(WebsiteSyncException::class)->recover($order, $actor);
+                $order->refresh();
+                abort_if(WebsiteSyncException::exists($id), 409, '官网同步异常仍存在。');
+                $revision = (int) $order->workflow_revision;
+                if (! in_array(OrderManualHoldStatus::selected($order), OrderManualHoldStatus::EXCEPTION_CODES, true)) {
+                    return ['destination' => app(OrderProgressResolver::class)->resolve($order), 'message' => '官网同步已重新执行并验证。'];
+                }
+            }
+            // Unallocated and special-warehouse manual holds use the existing
+            // authorized core transition, never fabricate a warehouse receipt.
+            abort_unless(in_array(OrderManualHoldStatus::selected($order), OrderManualHoldStatus::EXCEPTION_CODES, true),
+                409, '请先核对实际订单异常或所属仓库。');
+            abort_if($order->shipmentAttempts()->exists() || DB::table('xlwms_dispatch_attempts')->where('order_id', $id)->exists()
+                || DB::table('shipout_dispatch_attempts')->where('order_id', $id)->exists()
+                || DB::table('wlwy_ca_batch_items')->where('order_id', $id)->where('dry_run', false)->exists(),
+                409, '存在历史仓库推送记录，请先核对实际履约。');
+            $updated = app(OrderCoreStatusTransitionService::class)->transition($order, 'resolve_exception', $revision, $actor);
+
+            return ['destination' => app(OrderProgressResolver::class)->resolve($updated), 'message' => '人工异常已解除，已恢复实际订单进度。'];
+        }
         $isException = fn () => $oversea
             ? $this->queues->destination($id) === 'exceptions'
             : Order::query()->whereKey($id)->where(function ($q) {
@@ -48,7 +78,7 @@ final class WarehouseExceptionResolution
                     ->orWhere(fn ($m) => app(OrderProgressQuery::class)->applyPhase($m, 'progress_conflict'))
                     ->orWhereHas('shipment', fn ($s) => WebsiteSyncException::forShipment($s));
             })->exists();
-        $syncFailed = WebsiteSyncException::exists($id);
+        $syncFailed = WebsiteSyncException::exists($id) || (! $isException() && WebsiteSyncException::projectedFailure($order));
         abort_unless($isException() || $syncFailed, 409, '订单已不在异常队列，请刷新页面。');
 
         // Sync-only exceptions are distinct from physical delivery. Reuse the
@@ -81,6 +111,12 @@ final class WarehouseExceptionResolution
                 abort(409, '仓库原单查询失败，已保留异常。');
             }
             abort_unless($read['fresh'] ?? false, 409, '仓库原单查询失败，已保留异常。');
+        } elseif ($code === 'CA') {
+            try {
+                app(CanadaTrackingRefresh::class)->recoverOrder($id);
+            } catch (\Throwable) {
+                abort(409, '加拿大仓原单查询失败，已保留异常。');
+            }
         } elseif ($code === 'US-LA' && DB::table('shipout_dispatch_attempts')->where('order_id', $id)->exists()) {
             try {
                 app(ShipOutProductionOmsReadbackService::class)->inspectAndRecord($id);
@@ -104,6 +140,7 @@ final class WarehouseExceptionResolution
                         && ! DB::table('xlwms_de_dispatch_batch_items')->where('order_id', $id)->whereIn('status', ['queued', 'processing'])->exists(),
                     'US-NY' => $prior && UsNyOutboundBatch::recoveryEligible($prior, $o) && ! UsNyOutboundBatch::guarded($id),
                     'US-LA' => $this->morePlusPreCreateOnly($id),
+                    'CA' => CanadaOutboundBatch::releasePreCreateFailure($o, (int) $actor->getAuthIdentifier()),
                     default => false,
                 };
             if ($release) {

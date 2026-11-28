@@ -44,7 +44,7 @@ final class LogisticsTrackingListStatus
             ->where('aggregate_type', 'order')
             ->whereIn('aggregate_id', $rootOrders->pluck('root_order_id')->map(fn ($id): string => (string) $id)->unique()->values()->all())
             ->orderByDesc('id')
-            ->get(['aggregate_id', 'status', 'payload', 'completed_at'])
+            ->get(['aggregate_id', 'status', 'payload', 'completed_at', 'last_error_code'])
             ->unique('aggregate_id')
             ->keyBy('aggregate_id');
         $result = [];
@@ -78,6 +78,7 @@ final class LogisticsTrackingListStatus
                 'tracking_verified' => $trackingVerified,
                 'verified_outbox' => $trackingVerified && $statusVerified,
                 'status_outbox_status' => $statusOutbox?->status,
+                'status_outbox_error' => $statusOutbox?->last_error_code,
                 'status_outbox_woo_status' => $statusPayload['woo_status'] ?? null,
                 'outbox_tracking_number' => trim((string) ($payload['tracking_number'] ?? '')),
                 'verified_at' => $statusVerified ? $statusOutbox->completed_at : $row->completed_at,
@@ -229,6 +230,7 @@ final class LogisticsTrackingListStatus
             );
             if ($matchingProvider !== []) {
                 $result[$shipmentId] = [
+                    ...($result[$shipmentId] ?? []),
                     'status' => 'completed',
                     'reason' => null,
                     'verified_remote_tracking' => true,
@@ -280,6 +282,9 @@ final class LogisticsTrackingListStatus
             $manualSyncStatus = $manualSyncStatus->value;
         }
 
+        if (($outbox['status_outbox_status'] ?? '') === 'failed' || (($outbox['status_outbox_status'] ?? '') === 'pending' && filled($outbox['status_outbox_error'] ?? null))) {
+            return ['status' => 'failed', 'reason' => '官网订单状态同步失败，请解除异常后重新核验。'];
+        }
         if ($outbox['remote_tracking_conflict'] ?? false) {
             return ['status' => 'conflict', 'reason' => $outbox['reason'] ?? '官网 Tracking 物流商冲突'];
         }

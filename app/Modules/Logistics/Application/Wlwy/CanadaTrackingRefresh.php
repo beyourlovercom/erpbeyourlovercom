@@ -48,10 +48,28 @@ final class CanadaTrackingRefresh
         return $result;
     }
 
-    private function refresh(int $id, ?array $knownRows = null): bool
+    /** Explicit operator readback, scoped to the same acknowledged receipt. */
+    public function recoverOrder(int $orderId): bool
     {
+        $item = DB::table('wlwy_ca_batch_items')->where('order_id', $orderId)->where('dry_run', false)
+            ->whereIn('status', ['accepted', 'confirmed', 'uncertain', 'tracking_staged', 'exception'])
+            ->whereNotNull('provider_order_id')->where('provider_order_id', '!=', '')->latest('id')->first();
+        if (! $item) {
+            return false;
+        }
+        $this->refresh((int) $item->id, allowException: true);
+
+        return true;
+    }
+
+    private function refresh(int $id, ?array $knownRows = null, bool $allowException = false): bool
+    {
+        $states = ['accepted', 'confirmed', 'uncertain', 'tracking_staged'];
+        if ($allowException) {
+            $states[] = 'exception';
+        }
         $item = DB::table('wlwy_ca_batch_items')->where('id', $id)->where('dry_run', false)
-            ->whereIn('status', ['accepted', 'confirmed', 'uncertain', 'tracking_staged'])->first();
+            ->whereIn('status', $states)->first();
         if (! $item) {
             return false;
         }
@@ -62,11 +80,11 @@ final class CanadaTrackingRefresh
         }
         $rows = $knownRows ?? $this->gateway->exactStatus($this->batches->connection((int) $shipment->warehouse_id), $item->reference);
 
-        return DB::transaction(function () use ($id, $rows, $item) {
+        return DB::transaction(function () use ($id, $rows, $item, $states) {
             $locked = Order::query()->eligibleForOperations()->whereKey($item->order_id)->lockForUpdate()->firstOrFail();
             $s = $locked->shipment()->lockForUpdate()->firstOrFail();
             $current = DB::table('wlwy_ca_batch_items')->where('id', $id)->lockForUpdate()->first();
-            if (! $current || ! in_array($current->status, ['accepted', 'confirmed', 'uncertain', 'tracking_staged'], true)
+            if (! $current || ! in_array($current->status, $states, true)
                 || (int) $s->id !== (int) $item->shipment_id || $s->warehouse?->code !== 'CA') {
                 throw new RuntimeException('CA_TRACKING_SCOPE_CHANGED');
             }

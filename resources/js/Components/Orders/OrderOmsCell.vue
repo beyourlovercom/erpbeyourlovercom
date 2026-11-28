@@ -12,7 +12,7 @@ type Order = {
   source_label?: string; external_order_number?: string;
   workflow_status_projection?: Workflow; workflow_revision?: number; can_edit_workflow_status?: boolean; workflow_status_options?: Option[]; tracking_sync_status?: string | null; tracking_sync_label?: string | null; tracking_sync_reason?: string | null
 }
-type Params = ICellRendererParams & { mode?: 'number' | 'status' | 'action' | 'sync'; options?: Option[]; canEdit?: boolean }
+type Params = ICellRendererParams & { mode?: 'number' | 'status' | 'action' | 'sync'; options?: Option[]; canEdit?: boolean; canResolve?:boolean; exceptionView?:boolean; resolveException?:(id:number)=>void }
 const props = defineProps<{ params: Params }>()
 const order = computed(() => props.params.data as Order | undefined)
 const href = computed(() => order.value?.order_kind === 'kol_fulfillment'
@@ -37,6 +37,7 @@ const sourceTitle = computed(() => order.value?.source_label === 'WooCommerce' &
       <span v-else>—</span>
     </template>
     <template v-else-if="order && params.mode === 'sync'"><span v-if="order.tracking_sync_status" class="oms-sync-pill" :class="order.tracking_sync_status" :title="order.tracking_sync_reason ?? ''">{{ order.tracking_sync_label ?? '—' }}</span><span v-else>—</span></template>
+    <template v-else-if="order && params.mode==='action' && params.canResolve && params.resolveException && (params.exceptionView || ['failed','conflict','retry_wait'].includes(order.tracking_sync_status??''))"><button type="button" class="oms-resolve" @click.stop="params.resolveException(order.id)">解除异常</button><Link :href="href" class="oms-order-link">查看</Link></template>
     <Link v-else-if="order" :href="href" class="oms-order-link" :title="sourceTitle || label">
       {{ params.mode === 'action' ? '查看' : label }}
     </Link>
@@ -46,7 +47,7 @@ const sourceTitle = computed(() => order.value?.source_label === 'WooCommerce' &
 <style scoped>
 .oms-order-cell{display:flex;align-items:center;height:100%;min-width:0;overflow:hidden;white-space:nowrap}
 .oms-order-link{color:#155dfb;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-.oms-order-link:hover{text-decoration:underline}
+.oms-resolve{font-size:12px;color:#087f6d;border:1px solid #a1c7bf;border-radius:4px;padding:2px 5px;margin-right:6px;white-space:nowrap}.oms-order-link:hover{text-decoration:underline}
 .oms-item-followup{color:#cbd5e1}
 .oms-sync-pill{display:inline-flex;align-items:center;padding:3px 7px;border-radius:5px;font-size:11px;font-weight:700;background:#fff1d6;color:#92400e;white-space:nowrap}.oms-sync-pill.completed{background:#dcfce7;color:#166534}.oms-sync-pill.failed{background:#fee2e2;color:#991b1b}.oms-sync-pill.retry_wait{background:#fef3c7;color:#92400e}.oms-sync-pill.processing{background:#dbeafe;color:#1d4ed8}.oms-sync-pill.partial{background:#fef3c7;color:#92400e}
 </style>

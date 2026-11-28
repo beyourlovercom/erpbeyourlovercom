@@ -1,12 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
+import axios from 'axios'
 
-const { get, post, del } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), del: vi.fn() }))
+const { get, post, del, reload } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), del: vi.fn(), reload: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
   Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
-  router: { get, post, delete: del },
+  router: { get, post, delete: del, reload },
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' } }))
 
@@ -28,6 +29,17 @@ const props = {
 
 describe('Orders Saved Views', () => {
   beforeEach(() => { get.mockClear(); post.mockClear(); del.mockClear() })
+
+  it('uses the unified recovery endpoint from the global exception list', async () => {
+    const request = vi.spyOn(axios, 'post').mockResolvedValue({data:{message:'异常已解除'}})
+    const wrapper = mount(Index, {props:{...props, canResolveException:true, filters:{view:'exception'}, orders:{...props.orders,data:[{id:99,erp_order_id:'TEST-99',workflow_revision:3}],total:1} as any}})
+    await wrapper.findAll('button').find(b=>b.text()==='解除异常')!.trigger('click')
+    await flushPromises()
+    expect(request).toHaveBeenCalledWith('/logistics/orders/99/resolve-workbench-exception',{expected_workflow_revision:3},expect.any(Object))
+    expect(reload).toHaveBeenCalledWith({only:['orders']})
+    wrapper.unmount()
+    request.mockRestore()
+  })
 
   it('shows history identity preview only in the authorized KOL order list', () => {
     const manager = mount(Index, { props: {

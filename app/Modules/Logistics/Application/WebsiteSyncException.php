@@ -39,7 +39,7 @@ final class WebsiteSyncException
                         self::failure($failed);
                     })->orWhereExists(function ($failed): void {
                         $failed->selectRaw('1')->from('sync_outbox as sync_failed')
-                            ->join('orders as sync_order', 'sync_order.id', '=', 'shipments.order_id')
+                            ->crossJoin('orders as sync_order')->whereColumn('sync_order.id', 'shipments.order_id')
                             ->where('sync_failed.operation', 'woocommerce.order_status_outbound')
                             ->where('sync_failed.aggregate_type', 'order')
                             ->whereRaw('sync_failed.aggregate_id = COALESCE(sync_order.fulfillment_parent_id, sync_order.id)')
@@ -65,6 +65,24 @@ final class WebsiteSyncException
         self::forShipment($q);
 
         return $q->exists();
+    }
+
+    public static function projectedFailure(Order $order): bool
+    {
+        $shipment = $order->shipment;
+        if (! $shipment || $shipment->shipment_status !== 'shipped' || blank($shipment->tracking_number)) {
+            return false;
+        }
+        $root = $order->fulfillment_parent_id ? $order->fulfillmentParent : $order;
+        $source = $root?->source_type;
+        if (($source instanceof \BackedEnum ? $source->value : $source) !== 'woocommerce') {
+            return false;
+        }
+        $projection = app(LogisticsTrackingListStatus::class);
+        $states = $projection->forShipments([(int) $shipment->id]);
+        $state = $projection->currentStatus($states[$shipment->id] ?? null, $order->manualSync?->website_sync_status);
+
+        return in_array($state['status'], ['failed', 'conflict', 'retry_wait'], true);
     }
 
     public function recover(Order $order, Authenticatable $actor): void
