@@ -87,6 +87,11 @@ Pure read-only input projection of adopted packaged measurement, shipping refere
 - Acceptance covers the delivered physical measurement/adoption workflow and existing-table UAT. It does not certify real monthly savings, supplier-rate applicability, or V4 shared-grid integration. PR #918 remains draft with order-trash and orders-kol-regression failures. Do not copy its candidate grid; joint release gates remain open.
 - B7 Production authorization is separate; no Production release or ERP2 change. No additional scope or repeated Owner UAT requested at this point.
 
+## Owner freeze and joint-release handoff (2026-11-28 Beijing 15:00)
+- Owner explicitly ordered B feature-development freeze and closure of this independent development track. Wait for independent logistics-rate track A and coordinate the three-track joint ERP1 release (A logistics fees, B packaging optimization, and product inventory/measurement data). Do not add features, repeat accepted R6 UAT, independently merge/deploy B, or change ERP2.
+- Frozen implementation f32bf325fef49e8b041665d719f9bc030f1b1552; Owner UAT acceptance archive 1654caf0f6c76259d87ac7d9a17df0cd99cfc6d9 has seven SUCCESS CI checks confirmed on its exact head. Keep PR #902 open as draft and preserve the branch/worktree for joint integration. Independent development CLOSED; joint-release work remains pending, not production deployed.
+- Joint-release owner must reconcile latest main and the three candidate branches without duplicating B or A logic, verify canonical adopted packaging measurement reader and A4 rate contract, apply migrations in dependency order, run integration/CI and safe rollback checks, and verify the affected real pages. Already accepted R6 workflow is a frozen regression baseline; only material integration changes require new Owner acceptance. Actual ranking remains gated on approved applicable rates and verified parcel/protection evidence. Unified Grid V2 dependency still requires integration or explicit exception. No standalone release or unverified savings claim.
+
 ## PROJECT POSITION
 PROGRAM_ROADMAP: see exact canonical sequence below (document 13; historical status superseded by current V3 overlay).
 ## Program Roadmap
@@ -121,17 +126,17 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 The Program Roadmap is the top-level delivery sequence. It must not be replaced by the current Architecture track or a single Work Package map.
 CURRENT_TRACK_PHASE_MAP: B0 audit → B1 data contract → B2 geometry → B3 A4 comparison → B4 ranking → B5 workflow → B6 UAT → B7 release
 COMPLETED_PHASES: B0–B3 backend and workspace; B4 historical projection algorithm; B5 optional-photo workflow; B6/R6 implementation, isolated Chrome workflow, Owner live UAT PASS; exact implementation head seven CI SUCCESS
-CURRENT_PHASE: B6 / R6 Owner UAT PASS; B7 release dependency gate
+CURRENT_PHASE: B independent development CLOSED / FROZEN; B7 delegated to three-track joint release
 CURRENT_WORK_PACKAGE: ERP1-FACTORY-PACKAGING-OPTIMIZATION-V2-20261127
-PACKAGE_STATUS: OPEN / OWNER_UAT_PASS / RELEASE_DEPENDENCIES_PENDING
-WAITING_PHASES: verified A4 production rates and parcel evidence for real ranking; V4 shared-grid integration or explicit release exception; B7 separate release authorization
+PACKAGE_STATUS: FROZEN / OWNER_UAT_PASS / JOINT_RELEASE_PENDING
+WAITING_PHASES: A and product inventory/measurement track release readiness; applicable rate/parcel evidence; shared grid integration or explicit exception; joint B7
 BASELINE: 6c9347ffc029e53565dd80640dde6568f9886ac7
-GITHUB_STATE: main 77b9bdb9; PR #902 implementation f32bf325 seven CI SUCCESS, mergeable; draft; no merge or release
+GITHUB_STATE: PR #902 draft retained; frozen implementation f32bf325; acceptance archive 1654caf0 exact-head seven CI SUCCESS; no independent merge or deploy
 SOURCE_CONFLICTS: earlier ERP2 parity language superseded by ERP1-only directive; stale AI/CURRENT_CONTEXT roadmap superseded by current Owner handoff and document 13 V3 overlay; production release directory identifies 6c9347ff; independent exact SHA attestation unavailable.
 GLOBAL_GATE: no release; preserve Owner visual and UAT approval; no real DB writes
 PRODUCTION_DEPLOYMENT_STATUS: NO for this package; active production release directory and read-only MySQL aggregate verified
-NEXT_DEPENDENCY: joint A/B/V4 release readiness and explicit Production authorization; do not repeat accepted R6 UAT
-EVIDENCE_AS_OF: 2026-11-28 14:48 Beijing time; OS account a; GitHub actor beyourlovercom
+NEXT_DEPENDENCY: A logistics-fee completion and three-track joint ERP1 release integration; no further independent B feature development
+EVIDENCE_AS_OF: 2026-11-28 15:00 Beijing time; OS account a; GitHub actor beyourlovercom
 ## ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: 4h planning / 2.5–6h backend-only scope (estimate, not elapsed or promise)
 KNOWN_CURRENT_TRACK_REMAINING: UNKNOWN WITH EVIDENCE; backend candidate delivered, UI/production verification remaining; no accepted elapsed-hour ledger
