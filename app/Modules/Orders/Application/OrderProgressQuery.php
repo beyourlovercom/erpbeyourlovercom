@@ -45,6 +45,7 @@ final class OrderProgressQuery
         // selection remains available for exceptional manual bypasses.
         $orders->where(fn (Builder $q) => $q->whereNull('workflow_status')
             ->orWhere('workflow_status', '!=', 'pending_review'));
+
         // A manually selected "sending" status cannot bypass real factory
         // allocation, procurement release, stockout or shipment status.
         return $this->withoutManualException($orders)
@@ -151,6 +152,7 @@ final class OrderProgressQuery
             'exception' => $orders->where('order_status', '!=', 'cancelled')
                 ->where(function (Builder $q): void {
                     $q->whereIn('workflow_status', OrderManualHoldStatus::EXCEPTION_CODES)
+                        ->orWhere(fn (Builder $leg) => $this->unassignedSplitLeg($leg))
                         ->orWhere(function (Builder $auto): void {
                             $this->withoutExplicitPrimary($auto)
                                 ->where(function (Builder $facts): void {
@@ -228,8 +230,8 @@ final class OrderProgressQuery
                 ->where(fn (Builder $approval) => $approval
                     ->whereHas('shipment.warehouse', fn ($w) => $w->where('code', 'FACTORY'))
                     ->orWhereHas('shipment', fn ($shipment) => $shipment
-                    ->whereHas('overseaReview', fn ($r) => $r->where('status', 'approved')
-                        ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id')))),
+                        ->whereHas('overseaReview', fn ($r) => $r->where('status', 'approved')
+                            ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id')))),
             'progress_conflict' => $orders->where(function (Builder $q): void {
                 $this->directConflict($q)
                     ->orWhereHas('originalFulfillmentChildren', fn (Builder $child) => $this->directConflict($child));
@@ -275,6 +277,19 @@ final class OrderProgressQuery
                 ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'exception')));
     }
 
+    /** An unassigned active split leg must be reconciled individually, not
+     * silently returned to the root-only allocation workbench. */
+    public function unassignedSplitLeg(Builder $orders): Builder
+    {
+        return $orders->whereNotNull('fulfillment_parent_id')
+            ->eligibleForOperations()
+            ->where('order_status', 'pending_shipment')
+            ->where('workflow_status', 'pending_allocation')
+            ->where(fn ($q) => $q->whereNull('routing_warehouse_code')->orWhere('routing_warehouse_code', 'UNASSIGNED'))
+            ->where(fn ($q) => $q->whereDoesntHave('shipment')
+                ->orWhereHas('shipment', fn ($s) => $s->where('shipment_status', 'pending')->whereNull('shipped_at')));
+    }
+
     /** Reusable direct-segment reconciliation predicate, excluding root roll-up. */
     private function directConflict(Builder $orders): Builder
     {
@@ -293,50 +308,41 @@ final class OrderProgressQuery
     }
 
     /** $shipments is a Shipment model query. */
+    private function withoutOverseasManualHold(Builder $orders): Builder
+    {
+        return $this->withoutManualException($orders)->where(fn ($q) => $q
+            ->whereNull('workflow_status')
+            ->orWhereNotIn('workflow_status', array_values(array_diff(OrderManualHoldStatus::PRIMARY_CODES, ['sending']))));
+    }
+
     public function overseasReview(Builder $shipments): Builder
     {
-        return $shipments->whereHas('order', fn (Builder $order) => $this->withoutManualPrimary($order))
-            ->where('shipment_status', 'pending')->whereNotNull('warehouse_id')
-            ->where(function ($q): void {
-                $q->whereDoesntHave('overseaReview')
-                    ->orWhereHas('overseaReview', fn ($r) => $r->whereNotIn('status', ['approved', 'stockout']))
-                    ->orWhereHas('overseaReview', fn ($r) => $r
-                        ->whereIn('status', ['approved', 'stockout'])
-                        ->where(function ($mismatch): void {
-                            $mismatch->whereNull('reviewed_warehouse_id')
-                                ->orWhereColumn('reviewed_warehouse_id', '!=', 'shipments.warehouse_id');
-                        }));
+        return $shipments->whereHas('order', fn (Builder $order) => $this->withoutOverseasManualHold($order))
+            ->where('shipment_status', 'pending')->whereNull('shipped_at')->whereNotNull('warehouse_id')
+            ->whereDoesntHave('overseaReview', fn ($r) => $r->whereIn('status', ['approved', 'stockout'])
+                ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));
+    }
+
+    public function overseasStockout(Builder $shipments): Builder
+    {
+        return $shipments->where('shipment_status', 'pending')->whereNull('shipped_at')
+            ->where(function (Builder $q): void {
+                $q->whereHas('order', fn (Builder $o) => $o->where('workflow_status', 'out_of_stock'))
+                    ->orWhere(function (Builder $auto): void {
+                        $auto->whereHas('order', fn (Builder $o) => $this->withoutOverseasManualHold($o))
+                            ->whereHas('overseaReview', fn ($r) => $r->where('status', 'stockout')
+                                ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));
+                    });
             });
     }
 
-    /** Physical warehouse shortages remain factual records, but they only
-     * determine the MAIN work queue when staff has not selected another state. */
-    public function overseasStockout(Builder $shipments): Builder
-    {
-        return $shipments->where(function (Builder $q): void {
-            $q->whereHas('order', fn (Builder $o) => $o->where('workflow_status', 'out_of_stock'))
-                ->orWhere(function (Builder $auto): void {
-                    $auto->whereHas('order', fn (Builder $o) => $this->withoutManualPrimary($o))
-                        ->where('shipment_status', 'pending')
-                        ->whereHas('overseaReview', fn ($review) => $review
-                            ->where('status', 'stockout')
-                            ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));
-                });
-        });
-    }
-
-    /** $shipments is a Shipment model query. */
+    /** A staff label never substitutes for a current-warehouse approval. */
     public function overseasReady(Builder $shipments): Builder
     {
-        return $shipments->where(function (Builder $q): void {
-            $q->whereHas('order', fn (Builder $o) => $o->where('workflow_status', 'sending'))
-                ->orWhere(function (Builder $auto): void {
-                    $auto->whereHas('order', fn (Builder $o) => $this->withoutManualPrimary($o))
-                        ->where('shipment_status', 'pending')
-                        ->whereHas('overseaReview', fn ($r) => $r
-                            ->where('status', 'approved')
-                            ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));
-                });
-        });
+        return $shipments->where('shipment_status', 'pending')->whereNull('shipped_at')
+            ->whereHas('order', fn (Builder $o) => $this->withoutOverseasManualHold($o)
+                ->where('order_status', 'pending_shipment'))
+            ->whereHas('overseaReview', fn ($r) => $r->where('status', 'approved')
+                ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));
     }
 }
