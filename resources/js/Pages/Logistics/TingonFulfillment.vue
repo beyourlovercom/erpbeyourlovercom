@@ -131,7 +131,7 @@ const columns=computed<ColDef<GridListRow>[]>(()=>[
           :class="props.view===t.key?'border-violet-600 bg-violet-50 font-semibold text-violet-800':'border-slate-200 bg-white text-slate-600'"
           @click="changeView(t.key)">{{t.label}}</button>
       </div>
-      <GlobalGrid namespace="grid.logistics.tingon.v1" title="Tingon发货" :columns="columns"
+      <GlobalGrid :column-settings-version="2" :field-groups="{'订单信息':['contact','order','recipient','country','sku','workflow_status','route'],'物流信息':['warehouse','carrier','tracking','status'],'操作':['actions']}" namespace="grid.logistics.tingon.v1" title="Tingon发货" :columns="columns"
         :rows="rows" :page="props.orders" :search="props.search"
         :required-column-ids="['order','workflow_status','route']" row-identity-key="id"
         :filter-columns="['contact']" :filter-values="{contact:contactSearch}" @column-search-change="filterContactColumn"

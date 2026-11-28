@@ -143,6 +143,7 @@ const currentPath = computed(() => page.url.split('?')[0])
       :mobile-hidden="isNarrowScreen && !mobileOpen"
       :collapsed="sidebarCollapsed"
       :user="page.props.auth.user"
+      :header-account="true"
       @toggle-collapse="toggleSidebar"
     />
     <div class="shell-workspace">
@@ -150,8 +151,11 @@ const currentPath = computed(() => page.url.split('?')[0])
         :title="title"
         :breadcrumbs="breadcrumbs"
         :mobile-expanded="mobileOpen"
+        :sidebar-collapsed="sidebarCollapsed"
+        :user="page.props.auth.user"
         :notification-center="page.props.notificationCenter"
         @toggle-mobile="toggleMobile"
+        @toggle-sidebar="toggleSidebar"
       />
       <WorkspaceTabs
         v-if="workspaceTabsEnabled"

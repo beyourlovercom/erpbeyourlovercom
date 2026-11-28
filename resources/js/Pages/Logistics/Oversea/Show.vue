@@ -1728,6 +1728,7 @@ const compactPages = computed<(number|string)[]>(() => {
       <div v-if="gridEnabled" class="oversea-grid-main" data-testid="oversea-global-grid-workbench">
         <GlobalGrid :key="'oversea-grid-'+warehouseKey+'-'+view"
           :namespace="'grid.logistics.oversea.'+view+'.global.v1'"
+          :column-settings-version="2" :field-groups="{'订单信息':['order','contact','line','order_date','status','route','review','reviewer','reviewed_at'],'仓库与发货':['warehouse','shipment','dispatch','oms_order','carrier','service','tracking','shipped_at','sync'],'商品信息':['sku','material_full_name','quantity'],'收件信息':['recipient','country'],'备注与操作':['note','actions']}"
           :title="pageTitle" :columns="overseaGridColumns" :rows="overseaGridRows"
           :required-column-ids="['order','status','route']" :page="rows" row-identity-key="id"
           :search="gridSearch??''" :sort="gridSort??undefined"

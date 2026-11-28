@@ -103,7 +103,7 @@ const filterColumn = (filter:{colId:string;value:string}) => {
 }
 </script>
 <template>
-  <GlobalGrid :namespace="'grid.logistics.l2.'+mode+'.global.v1'"
+  <GlobalGrid :column-settings-version="2" :field-groups="{'订单信息':['order','contact','recipient','country'],'物流信息':['warehouse','carrier','tracking_number','shipped_at'],'异常与操作':['reason','actions']}" :namespace="'grid.logistics.l2.'+mode+'.global.v1'"
     :title="title" :columns="columns" :rows="rows" :required-column-ids="['order']"
     :row-identity-key="'shipment_id'" :page="shipments" :search="props.search??''"
     :sort="orderSort" :filter-columns="['contact']" :filter-values="{contact:contactSearch}" @column-search-change="filterColumn" search-placeholder="搜索全部订单号 / 收件人 / Tracking / 物流商..."

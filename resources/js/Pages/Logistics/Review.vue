@@ -72,8 +72,8 @@ const decide = (row:Row) => { if (!props.canOperate) return; const value=form(ro
       <StatusBar :statuses="props.statusBar"/><div class="mvp-page-heading"><div><p class="mvp-kicker">Logistics Review</p><h2>复核单</h2><p>复核中的订单会阻断正常履约操作。<strong v-if="!props.canOperate"> 当前角色为只读模式。</strong></p></div></div><div v-if="globalGridPilotAvailable" style="margin:8px 0">
   <button type="button" class="mvp-button" data-testid="review-global-grid-toggle" @click="gridNavigation.toggle()">{{ globalGridPilotEnabled?'返回原表':'体验 Global Grid V1' }}</button>
 </div>
-<GlobalGrid v-if="globalGridPilotEnabled" namespace="grid.logistics.review.global.v1"
-  title="物流复核 · Global Grid V1" :rows="reviewGridRows" :columns="reviewGridColumns"
+<GlobalGrid v-if="globalGridPilotEnabled" :column-settings-version="2" :field-groups="{'订单信息':['order','contact','sku'],'物流信息':['logistics','tracking'],'复核信息':['trigger','time','reason','actions']}" namespace="grid.logistics.review.global.v1"
+  title="物流复核" :rows="reviewGridRows" :columns="reviewGridColumns"
   :required-column-ids="['order']" :page="reviewPager" :search="gridSearch??''"
   :filter-columns="['contact']" :filter-values="{contact:contactSearch}" @column-search-change="filterContactColumn"
   search-placeholder="搜索全部复核订单号 / 收件人..."

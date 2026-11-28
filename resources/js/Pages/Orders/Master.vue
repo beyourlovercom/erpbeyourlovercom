@@ -130,6 +130,7 @@ const columns: ColDef<GridListRow>[] = [
     cellRenderer: GlobalGridCell, cellRendererParams: { mode: 'actions',
       actionsFor: (row: GridListRow) => [{ label: row.archive_state === '回收站' ? '回收站' : '查看', href: String(row.order_url) }] } }),
 ]
+const fieldGroups = { '订单基本信息':['order_number','contact','external_number','kind','collaboration_partner','source','owner'], '状态及时间':['status','workflow_status','archive_state','date'], '仓库及商品':['warehouse','sku','material_full_name'], '收件信息':['recipient','email'], '操作':['actions'] }
 const filterColumns = ['order_number', 'contact', 'external_number', 'recipient', 'sku', 'warehouse', 'status', 'date', 'source']
 const filterValues = computed(() => Object.fromEntries(filterColumns.map(key => [key, props.filters['grid_' + key] ?? ''])))
 const changeColumnSearch = ({ colId, value }: { colId: string; value: string }) => {
@@ -147,6 +148,9 @@ const changeSort = ({ colId, direction }: { colId: string; direction: 'asc' | 'd
     <section class="mvp-page orders-master">
       <div class="master-heading">
         <div><h2>订单总表</h2><span class="master-total">全部可查看记录 {{ props.counts.all.toLocaleString('en-US') }} 单</span></div>
+        <div class="quick-filters" aria-label="快速筛选">
+        <button v-for="item in viewOptions.filter(item => item.key !== 'trash' || canSeeTrash)" :key="item.key" type="button" class="quick-chip" :class="{ active: view === item.key }" @click="go({ view: item.key, page: 1 })">{{ item.label }} <span class="chip-count">{{ props.counts[item.key].toLocaleString('en-US') }}</span></button>
+      </div>
         <div class="mvp-actions page-header-actions"><Link class="mvp-button" href="/orders/archive">归档清单</Link></div>
       </div>
       <form class="master-toolbar" role="search" @submit.prevent="submitSearch">
@@ -154,15 +158,9 @@ const changeSort = ({ colId, direction }: { colId: string; direction: 'asc' | 'd
         <select v-model="kind" aria-label="订单类型" @change="go({ page: 1 })"><option v-for="item in kinds" :key="item.key" :value="item.key">{{ item.label }}</option></select>
         <select v-model="source" aria-label="订单来源" @change="go({ page: 1 })"><option v-for="item in sources" :key="item.key" :value="item.key">{{ item.label }}</option></select>
       </form>
-      <div class="quick-filters" aria-label="快速筛选">
-        <span class="quick-label">快捷筛选</span>
-        <button v-for="item in viewOptions.filter(item => item.key !== 'trash' || canSeeTrash)" :key="item.key"
-          type="button" class="quick-chip" :class="{ active: view === item.key }"
-          @click="go({ view: item.key, page: 1 })">{{ item.label }} <span class="chip-count">{{ props.counts[item.key].toLocaleString('en-US') }}</span></button>
-      </div>
       <Suspense>
         <GlobalGrid
-          namespace="grid.orders.master.v1" title="订单总表" :rows="rows" :columns="columns" :required-column-ids="['order_number']"
+          namespace="grid.orders.master.v1" :column-settings-version="2" :field-groups="fieldGroups" :cell-text-selection="true" title="订单总表" :rows="rows" :columns="columns" :required-column-ids="['order_number']"
           :page="orders" :show-search="false" :enable-selection="false"
           :sort="{ colId: props.filters.sort ?? 'date', direction: props.filters.direction === 'asc' ? 'asc' : 'desc' }"
           :filter-columns="filterColumns" :filter-values="filterValues"
@@ -184,7 +182,7 @@ const changeSort = ({ colId, direction }: { colId: string; direction: 'asc' | 'd
 
 <style scoped>
 .orders-master{padding-top:4px}
-.master-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 10px}
+.master-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 4px}
 .master-heading>div:first-child{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .master-heading h2{font-size:22px;line-height:1.3;margin:0}
 .master-total{font-size:12px;color:#64748b}
@@ -193,9 +191,9 @@ const changeSort = ({ colId, direction }: { colId: string; direction: 'asc' | 'd
 .master-search input{border:0;outline:none;background:transparent;min-width:0;flex:1;font-size:13px}
 .master-toolbar select{height:38px;min-width:154px;border:1px solid #cad6df;border-radius:8px;padding:0 9px;background:white;font-size:13px}
 .clear-search{border:0;background:transparent;cursor:pointer;color:#64748b;font-size:19px}
-.quick-filters{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0 0 8px}
+.quick-filters{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:0}
 .quick-label{font-size:12px;color:#7b8793;margin-right:3px}
-.quick-chip{border:1px solid #e2e8f0;border-radius:20px;padding:6px 10px;background:#f8fafc;cursor:pointer;color:#475569;font-size:12px}
+.quick-chip{border:1px solid #e2e8f0;border-radius:20px;padding:4px 8px;background:#f8fafc;cursor:pointer;color:#475569;font-size:12px}
 .quick-chip.active{background:#e2f5f0;border-color:#a4dccd;color:#087d67;font-weight:700}
 .chip-count{margin-left:3px;opacity:.72;font-variant-numeric:tabular-nums}
 .master-loading{padding:38px;text-align:center;border:1px dashed #cad6df;border-radius:8px}

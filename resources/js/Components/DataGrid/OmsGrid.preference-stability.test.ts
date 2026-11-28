@@ -207,3 +207,24 @@ describe('account-level Grid column stability', () => {
     wrapper.unmount()
   })
 })
+
+
+describe('V4 grid dialog integration', () => {
+  it('applies only saved changes using the existing account preference and required pins', async () => {
+    const wrapper = mount(OmsGrid,{props:{namespace,columns:definitions.map(c=>({...c})),rows:[{id:1}],columnSettingsVersion:2,fieldGroups:{'商品':['sku','quantity']},requiredColumnIds:['order'],serverPagination:{current_page:1,last_page:1,per_page:50,total:1}},global:{stubs:{Teleport:true}}})
+    await flushPromises()
+    const open=()=>wrapper.findAll('button').find(b=>b.text().includes('列设置'))!.trigger('click')
+    const sku=()=>wrapper.findAll('label.grid-v2-field').find(b=>b.text().trim()==='SKU')!.get('input')
+    await open(); await sku().setValue(false)
+    expect(mock.state.find(c=>c.colId==='sku')?.hide).not.toBe(true)
+    await wrapper.get('.grid-v2-dialog footer div button').trigger('click')
+    expect(mock.put).not.toHaveBeenCalled()
+    await open(); await sku().setValue(false); await wrapper.get('.grid-v2-primary').trigger('click')
+    expect(mock.state.find(c=>c.colId==='sku')?.hide).toBe(true)
+    expect(mock.state.find(c=>c.colId==='order')?.hide).toBe(false)
+    expect(mock.state.find(c=>c.colId==='actions')?.pinned).toBe('right')
+    wrapper.unmount();await flushPromises()
+    expect(mock.put).toHaveBeenCalledTimes(1)
+    expect(mock.put.mock.lastCall?.[1].value.columns).toEqual(expect.arrayContaining([expect.objectContaining({colId:'sku',hide:true})]))
+  })
+})

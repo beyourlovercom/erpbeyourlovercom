@@ -4,7 +4,7 @@ import type { SafeUser, ShellNavigationItem } from '../../types/navigation'
 import NavigationItem from './NavigationItem.vue'
 import UserAccountMenu from './UserAccountMenu.vue'
 
-defineProps<{ items: ShellNavigationItem[]; currentPath: string; mobileHidden: boolean; collapsed: boolean; user: SafeUser }>()
+defineProps<{ items: ShellNavigationItem[]; currentPath: string; mobileHidden: boolean; collapsed: boolean; user: SafeUser; headerAccount?: boolean }>()
 const emit = defineEmits<{ toggleCollapse: [] }>()
 </script>
 
@@ -17,6 +17,6 @@ const emit = defineEmits<{ toggleCollapse: [] }>()
     <div class="shell-primary-links">
       <NavigationItem v-for="item in items" :key="item.key" :item="item" :current-path="currentPath" :collapsed="collapsed" />
     </div>
-    <UserAccountMenu :user="user" :navigation-hidden="mobileHidden" />
+    <UserAccountMenu :class="{ 'shell-sidebar-account-fallback': headerAccount }" :user="user" :navigation-hidden="mobileHidden" />
   </nav>
 </template>

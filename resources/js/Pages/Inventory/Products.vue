@@ -231,8 +231,8 @@ const breadcrumbs = [{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/
         </select>
         <button class="mvp-button" @click="apply">筛选</button>
       </div>
-      <GlobalGrid v-if="warehouseGrid" namespace="grid.inventory.products.global.v1"
-        title="产品库存 · Global Grid V1" :rows="globalRows" :columns="inventoryColumns"
+      <GlobalGrid v-if="warehouseGrid" :column-settings-version="2" :field-groups="{'商品与仓库':['warehouse','sku','name','material_full_name','location','inbound_at','stay_days'],'库存信息':['quantity_on_hand','quantity_reserved','quantity_available','stock_status','provider_stock_synced_at','standard_qoh'],'销售与补货':['shipped_90d_qty','velocity','days_of_cover','safety_stock_qty','reorder_point_qty','replenishment','expected_restock_qty']}" namespace="grid.inventory.products.global.v1"
+        title="产品库存" :rows="globalRows" :columns="inventoryColumns"
         :search="filters.search ?? ''" search-placeholder="搜索全部 SKU / 产品名称..."
         :required-column-ids="['warehouse','sku']" :page="inventoryPager"
         @page-change="gridPage" @page-size-change="gridPageSize" @search-change="globalGridSearch" />

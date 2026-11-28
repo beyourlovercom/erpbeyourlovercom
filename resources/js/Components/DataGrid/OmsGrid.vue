@@ -4,6 +4,8 @@ import { usePage } from '@inertiajs/vue3'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { AgGridVue } from 'ag-grid-vue3'
 import OmsServerFloatingFilter from './OmsServerFloatingFilter.vue'
+import GridFieldSettings from './GridFieldSettings.vue'
+import { existingFieldCatalog,makeColumnDraft,type FieldGroups } from './gridFieldCatalog'
 import {
   ClientSideRowModelModule, ColumnApiModule, RowApiModule, RenderApiModule,
   PaginationModule, RowSelectionModule, TextFilterModule, NumberFilterModule,
@@ -30,6 +32,8 @@ type ServerPagination = { current_page: number; last_page: number; per_page: num
 type ServerSort = { colId: string; direction: 'asc' | 'desc' }
 const props = withDefaults(defineProps<{
   namespace: string
+  columnSettingsVersion?: 1 | 2
+  fieldGroups?: FieldGroups
   columns: GridColumn[]
   rows: GridRow[]
   title?: string
@@ -103,6 +107,9 @@ const required = computed(() => new Set(props.requiredColumnIds))
 const api = ref<GridApi<GridRow> | null>(null)
 const states = ref<ColumnState[]>([])
 const settingsOpen = ref(false)
+const fieldCatalog = computed(() => existingFieldCatalog(leafColumns.value, props.fieldGroups ?? {}, props.requiredColumnIds))
+const settingsRequired = computed(() => fieldCatalog.value.filter(f=>f.required).map(f=>f.id))
+const settingsWidths = computed(() => Object.fromEntries(leafColumns.value.map(c=>[c.colId??c.field??'',c.width])))
 const maximized = ref(false)
 const density = ref<OmsDensity>('compact')
 const pageSize = ref<number | 'all'>(50)
@@ -425,6 +432,13 @@ const dropColumn = (event: DragEvent, target: string) => {
   restoring = false
   scheduleSave()
 }
+const saveFieldSettings = (value:{columns:ColumnState[];left:number;right:number}) => {
+  if(!api.value||!layoutReady.value)return
+  const current=new Map(api.value.getColumnState().map(c=>[c.colId,c]))
+  const columns=makeColumnDraft(value.columns,fieldCatalog.value,settingsRequired.value).map(c=>({...current.get(c.colId),colId:c.colId,hide:c.hide,width:c.width??current.get(c.colId)?.width}))
+  restore({...snapshot(),columns,pinnedLeft:value.left,pinnedRight:value.right})
+  scheduleSave();settingsOpen.value=false
+}
 const resetGrid = () => {
   if (!api.value) return
   restoring = true
@@ -590,7 +604,8 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-      <aside v-if="settingsOpen" class="oms-side" aria-label="列设置">
+      <GridFieldSettings v-if="settingsOpen && columnSettingsVersion === 2" :catalog="fieldCatalog" :state="orderedColumns" :required-ids="settingsRequired" :left="pinnedLeft" :right="pinnedRight" :default-left="defaultPinnedLeft" :default-right="defaultPinnedRight" :default-widths="settingsWidths" :default-order="ids" @cancel="settingsOpen=false" @save="saveFieldSettings" />
+      <aside v-if="settingsOpen && columnSettingsVersion !== 2" class="oms-side" aria-label="列设置">
         <div class="oms-side-head"><strong>列设置</strong><button type="button" aria-label="关闭列设置" @click="settingsOpen = false">×</button></div>
         <p class="oms-side-help">拖拽调整顺序；取消勾选隐藏列。</p>
         <div class="oms-pin-settings">
