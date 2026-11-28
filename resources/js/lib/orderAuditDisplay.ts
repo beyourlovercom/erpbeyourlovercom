@@ -10,6 +10,7 @@ const labels: Record<string, string> = {
   'order.workflow_status_changed': '修改工作状态',
   'order.core_status_changed': '修改订单状态',
   'order.warehouse_route_changed': '修改分仓路线',
+  'order.allocation_cost_confirmed': '确认分仓预估费用',
   'order.auxiliary_status_added': '添加辅助状态',
   'order.auxiliary_status_removed': '移除辅助状态',
   'order.operational_marker.updated': '更新辅助标记',

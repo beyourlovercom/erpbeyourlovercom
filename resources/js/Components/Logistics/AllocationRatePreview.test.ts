@@ -29,7 +29,7 @@ describe('Allocation rate preview',()=>{
     const w=mount(AllocationRatePreview,{props});await w.setProps({orderId:11});await flushPromises()
     expect(f.mock.calls[0][1].signal.aborted).toBe(true)
     complete({ok:true,json:async()=>result});await flushPromises()
-    expect(w.text()).toContain('缺少已审核的物流包装重量/尺寸')
+    expect(w.text()).toContain('缺少商品重量，暂无法估算')
     expect(w.text()).not.toContain('¥37.50');w.unmount()
   })
   it('confirms only the exact approved route and version',async()=>{

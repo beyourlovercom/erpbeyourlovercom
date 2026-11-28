@@ -17,6 +17,8 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import StockExceptionConfirmDialog from '../../Components/Logistics/StockExceptionConfirmDialog.vue'
 import OfflineWarehouseMap from '../../Components/Logistics/OfflineWarehouseMap.vue'
 import AllocationRatePreview from '../../Components/Logistics/AllocationRatePreview.vue'
+import SelectedAllocationCost from '../../Components/Logistics/SelectedAllocationCost.vue'
+import {fetchAllocationCost,costMoney,costNative,type AllocationCost} from '../../lib/allocationCostConfirmation'
 import { allocationStockWarnings } from '../../lib/allocationStockWarning'
 import { allocationGuidance } from '../../lib/allocationGuidance'
 
@@ -30,7 +32,7 @@ type Zone = { status:string; zone:'west'|'east'|null; zone_label:string|null; po
 type Plan = { plan_key:string; plan_type:'single'|'factory'|'split'; is_split:boolean; shipment_count:number; label:string; segments:Segment[]; cost:PlanCost; effective_cost?:number|null; execution_status:string; destination_zone?:Zone|null }
 type AllocationDecision = { status:'system_recommendation'|'manual_review'; status_label:string; reason_code:string; manual_reasons:string[]; recommended_plan_key:string|null; recommended_plan:Plan|null; baseline_plan:Plan|null; estimated_cost:number|null; currency:string|null; estimated_saving:number|null; plans:Plan[]; can_use_recommendation:boolean; policy:{ system_is_advisory:boolean; human_confirmation_required:boolean; missing_data_falls_back_to_manual:boolean; same_order_item_quantity_split_allowed:boolean; max_sources:number; split_pattern:string } }
 type DerivedOrderRecord = { order_id:number; erp_order_id:string|null; contact_user_name?:string|null; derived:boolean; suffix:string|null; warehouse_id:number|null; warehouse_code:string|null; warehouse_name:string|null; carrier?:string|null; service?:string|null; carrier_selection_source?:string|null; items:Array<{ sku:string|null; source_sku?:string|null; resolved_fulfillment_sku?:string|null; product_summary:string|null; quantity:number }> }
-type ExistingAllocation = { status:string; decision_source:'system_recommendation'|'manual'; selected_plan_key:string|null; decision_note:string|null; plan_snapshot:(Plan & { derived_orders?:DerivedOrderRecord[] })|null; submitted_at:string|null }
+type ExistingAllocation = { status:string; decision_source:'system_recommendation'|'manual'; selected_plan_key:string|null; decision_note:string|null; plan_snapshot:(Plan & { derived_orders?:DerivedOrderRecord[];cost_confirmation?:AllocationCost })|null; submitted_at:string|null }
 type CarrierRoute = { carrier:string|null; carrier_label:string|null; service:string|null; automatic:boolean }
 type AllocationRejection = { source:string; reason:string; by:string|null; at:string|null }
 type Order = { reallocation_token?:string|null; reallocation_generation?:number|null; order_kind?:string; workflow_status_projection?:{code:string;en:string;zh:string;color:string;source:string;mutable?:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; workflow_status_options?:{code:string;zh:string;en:string;color:string;mutable:boolean}[]; routing_warehouse?:{code:string;name:string;source:string;revision:number}; allocation_rejection?: AllocationRejection|null; id:number; erp_order_id:string|null; contact_user_name?:string|null; external_order_number?:string|null; order_url:string|null; order_date?:string|null; amount?:string|null; amount_currency?:string|null; amount_source?:string|null; source_type?:string|null; order_status?:string|null; order_kind_label?:string|null; owner_label?:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
@@ -166,7 +168,7 @@ async function fetchReplacementAvailability(id:number){
 // Selection is intentionally scoped to the visible server page and business tab.
 const selectedBulkOrderIds = ref<number[]>([])
 const bulkBusy = ref(false)
-type BatchReview = {action:string; label:string; ids:number[]; skipped:number[]}
+type BatchReview = {action:string; label:string; ids:number[]; skipped:number[]; quotes?:Record<string,AllocationCost>; costError?:string; costLoading?:boolean}
 const batchReview = ref<BatchReview|null>(null)
 
 const gridSearchText = ref(props.gridSearch ?? '')
@@ -374,7 +376,7 @@ function eligibleForBatch(order:Order,action:string):boolean {
   return action.startsWith('warehouse:') && warehouseOptions.value.some(
     warehouse=>action==='warehouse:'+warehouse.code)
 }
-function prepareGridBatch(payload:{action:string;reason:string}){
+async function prepareGridBatch(payload:{action:string;reason:string}){
   if (bulkBusy.value || !bulkOptions.value.some(option=>option.value===payload.action)) return
   const ids=selectedBulkOrders.value.filter(order=>eligibleForBatch(order,payload.action)).map(order=>order.id)
   if (payload.action==='archive' && ids.length>50) {
@@ -388,10 +390,29 @@ function prepareGridBatch(payload:{action:string;reason:string}){
     label:bulkOptions.value.find(option=>option.value===payload.action)?.label??'批量操作',
     ids,skipped,
   }
+  const draft=batchReview.value
+  if(payload.action==='archive'||!ids.length||!draft)return
+  const action=draft.action==='recommend'?'recommend':'warehouse'
+  const planKeys:Record<string,string>={}
+  for(const id of ids){const key=props.orders.data.find(o=>o.id===id)?.allocation_decision.recommended_plan_key;if(key)planKeys[String(id)]=key}
+  draft.costLoading=true
+  try{
+    const res=await fetch('/logistics/wait-stock/batch-allocation/cost-preview',{method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},body:JSON.stringify({order_ids:ids,action,warehouse_code:action==='warehouse'?draft.action.slice('warehouse:'.length):undefined,plan_keys:planKeys})})
+    if(!res.ok)throw new Error('批量费用预估失败')
+    const body=await res.json() as {results:Array<{order_id:number;ok:boolean;quote?:AllocationCost;message?:string}>}
+    if(batchReview.value!==draft)return
+    if(!Array.isArray(body.results))throw new Error('批量费用数据无效')
+    draft.quotes={}
+    for(const r of body.results){if(r.ok&&r.quote)draft.quotes[String(r.order_id)]=r.quote}
+    const failed=ids.filter(id=>!draft.quotes?.[String(id)])
+    draft.skipped=[...draft.skipped,...failed]
+    draft.ids=ids.filter(id=>!!draft.quotes?.[String(id)])
+  }catch{if(batchReview.value===draft)draft.costError='批量费用预估暂不可用，请返回重试；缺失报价本身不影响分仓。'}
+  finally{if(batchReview.value===draft)draft.costLoading=false}
 }
 async function confirmGridBatch(){
   const draft=batchReview.value
-  if (!draft || bulkBusy.value || !draft.ids.length) return
+  if (!draft || bulkBusy.value || !draft.ids.length || draft.costLoading || (draft.action!=='archive'&&!draft.quotes)) return
   const archive=draft.action==='archive'
   if (archive ? !props.canArchive : !props.canOperate) return
   const action=draft.action==='recommend'?'recommend':'warehouse'
@@ -410,7 +431,7 @@ async function confirmGridBatch(){
       method:'POST',credentials:'same-origin',cache:'no-store',
       headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},
       body:JSON.stringify(archive?{order_ids:draft.ids}:{order_ids:draft.ids,action,warehouse_code:warehouseCode,
-        plan_keys:planKeys,confirmed:true}),
+        plan_keys:planKeys,confirmed:true,cost_tokens:Object.fromEntries(Object.entries(draft.quotes??{}).map(([id,q])=>[id,q.confirmation_token]))}),
     })
     const result=await response.json().catch(()=>({})) as {
       message?:string; results?:Array<{order_id:number;ok:boolean;message:string}>}
@@ -660,6 +681,50 @@ function matchesRecommendation(order:Order){
     return canonicalWarehouseCode(source)===canonicalWarehouseCode(segment.source_code) && (source==='FACTORY' || carrier===(recommendedCarrier??''))
   })
 }
+function manualCostAssignments(order:Order):AllocationAssignment[]{
+  const assignments:AllocationAssignment[] = order.items.map(item => {
+    const source = manualAssignments[order.id][item.id]
+    const carrier = ['FACTORY','OUTSOURCE'].includes(source) ? null : (manualCarriers[order.id]?.[source] || defaultCarrier(order, source))
+    const route = order.carrier_routes?.[source]
+    return {
+      order_item_id: item.id, source_code: source,
+      gift_mapping_id: item.is_gift ? Number(manualGiftMappings[order.id][item.id]) : null,
+      ...(chosenReplacement(order,item) ? {replacement_product_id:chosenReplacement(order,item)!.id} : {}),
+      carrier, service: carrier && carrier === route?.carrier ? route?.service ?? null : null,
+    }
+  })
+  return assignments
+}
+const selectedCost=ref<AllocationCost|null>(null)
+const selectedCostLoading=ref(false)
+const selectedCostError=ref('')
+const selectedCostRefresh=ref(0)
+const selectedCostInput=computed(()=>{
+  const order=selectedOrder.value
+  if(!order||processed(order)||!props.canOperate||replacementLoading.value||splitConstraintError(order))return null
+  const payload=matchesRecommendation(order)?{mode:'recommended',plan_key:order.allocation_decision.recommended_plan_key}:{mode:'manual',assignments:manualCostAssignments(order)}
+  return {id:order.id,revision:order.workflow_revision,payload,items:order.items.map(i=>[i.id,i.product_id,i.quantity])}
+})
+let costSequence=0
+watch(()=>JSON.stringify([selectedCostInput.value,selectedCostRefresh.value]),(key,_old,onCleanup)=>{
+  const seq=++costSequence
+  selectedCost.value=null;selectedCostError.value='';selectedCostLoading.value=false
+  const input=selectedCostInput.value;if(!input)return
+  const controller=new AbortController();selectedCostLoading.value=true
+  const timer=setTimeout(async()=>{
+    try{const quote=await fetchAllocationCost(input.id,input.payload,controller.signal);if(seq===costSequence)selectedCost.value=quote}
+    catch{if(seq===costSequence&&!controller.signal.aborted)selectedCostError.value='费用预估暂不可用'}
+    finally{if(seq===costSequence)selectedCostLoading.value=false}
+  },200)
+  onCleanup(()=>{clearTimeout(timer);controller.abort()})
+},{immediate:true})
+function selectedCostToken(){return selectedCost.value?.confirmation_token??null}
+function costSubmitLabel(order:Order){
+  if(selectedCostLoading.value)return '正在计算费用…'
+  if(selectedCost.value?.requires_confirmation)return '确认费用并分仓'
+  if(selectedCost.value||selectedCostError.value)return '费用未知 · 继续分仓'
+  return matchesRecommendation(order)?'采用推荐并提交分仓':'确认人工分配并提交'
+}
 async function submitRecommended(){
   const order=selectedOrder.value,decision=order?.allocation_decision
   if(!order||!decision?.recommended_plan_key||!decision.can_use_recommendation||!props.canOperate||submitting.value)return
@@ -667,7 +732,7 @@ async function submitRecommended(){
   try{
     const response=await fetch('/logistics/orders/'+order.id+'/fulfillment-allocation/recommended',{
       method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},
-      body:JSON.stringify({plan_key:decision.recommended_plan_key,decision_note:decisionNote.value,expected_workflow_revision:order.workflow_revision}),
+      body:JSON.stringify({plan_key:decision.recommended_plan_key,decision_note:decisionNote.value,expected_workflow_revision:order.workflow_revision,cost_confirmation:selectedCostToken()}),
     })
     const body=await response.json().catch(()=>({})) as {message?:string;submitted_at?:string;errors?:Record<string,string[]>}
     if(!response.ok)throw new Error(submissionMessage(body,response.status,response.headers.get('X-Request-ID')))
@@ -689,17 +754,7 @@ async function submitManual(stockExceptionAcknowledged = false) {
   const validation = splitConstraintError(order)
   if (validation) { submitError.value = validation; return }
   // Stock availability is displayed as advice; no extra confirmation blocks manual choice.
-  const assignments:AllocationAssignment[] = order.items.map(item => {
-    const source = manualAssignments[order.id][item.id]
-    const carrier = ['FACTORY','OUTSOURCE'].includes(source) ? null : (manualCarriers[order.id]?.[source] || defaultCarrier(order, source))
-    const route = order.carrier_routes?.[source]
-    return {
-      order_item_id: item.id, source_code: source,
-      gift_mapping_id: item.is_gift ? Number(manualGiftMappings[order.id][item.id]) : null,
-      ...(chosenReplacement(order,item) ? {replacement_product_id:chosenReplacement(order,item)!.id} : {}),
-      carrier, service: carrier && carrier === route?.carrier ? route?.service ?? null : null,
-    }
-  })
+  const assignments=manualCostAssignments(order)
   submitting.value = true
   submitError.value = ''
   let submittedRequest = false
@@ -727,6 +782,7 @@ async function submitManual(stockExceptionAcknowledged = false) {
         assignments, decision_note: decisionNote.value,
         expected_workflow_revision:order.workflow_revision,
         stock_exception_acknowledged: stockExceptionAcknowledged,
+        cost_confirmation:selectedCostToken(),
       }),
     })
     const body = await response.json().catch(() => ({})) as { message?: string; submitted_at?: string; errors?: Record<string,string[]> }
@@ -793,7 +849,7 @@ function confirmStockException() {
   stockConfirmOpen.value = false
   void submitManual(true)
 }
-async function submitPrimary(){ const order=selectedOrder.value; if(!order||replacementLoading.value)return; if(matchesRecommendation(order)) await submitRecommended(); else await submitManual() }
+async function submitPrimary(){ const order=selectedOrder.value; if(!order||replacementLoading.value||selectedCostLoading.value)return; if(matchesRecommendation(order)) await submitRecommended(); else await submitManual() }
 </script>
 
 <template>
@@ -879,10 +935,23 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order||repl
             {{ batchReview.ids.slice(0,12).map(id=>props.orders.data.find(order=>order.id===id)?.erp_order_id??id).join('、') }}
             <span v-if="batchReview.ids.length>12">等 {{ batchReview.ids.length }} 单</span>
           </div>
+          <div v-if="batchReview.action!=='archive'" class="batch-list">
+            <p v-if="batchReview.costLoading">正在逐单估算费用…</p>
+            <p v-else-if="batchReview.costError">{{batchReview.costError}}</p>
+            <template v-else-if="batchReview.quotes">
+              <strong>逐单费用确认（缺失不计零）</strong>
+              <div style="max-height:220px;overflow:auto">
+                <div v-for="id in batchReview.ids" :key="id" style="display:flex;justify-content:space-between;gap:8px;padding:4px 0">
+                  <span>{{props.orders.data.find(o=>o.id===id)?.erp_order_id??id}}</span>
+                  <span>{{costMoney(batchReview.quotes[String(id)]?.total_cny??batchReview.quotes[String(id)]?.known_subtotal_cny)}}<template v-if="batchReview.quotes[String(id)]?.total_cny==null"> · 部分或未知</template><small v-for="(g,i) in batchReview.quotes[String(id)]?.groups??[]" :key="i" style="display:block">{{g.warehouse_name}} {{costNative(g.native_totals)}}</small></span>
+                </div>
+              </div>
+            </template>
+          </div>
           <footer>
             <button type="button" class="secondary" @click="batchReview=null">返回</button>
             <button type="button" class="primary" data-testid="allocation-batch-confirm-apply"
-              :disabled="!batchReview.ids.length || bulkBusy" @click="confirmGridBatch">
+              :disabled="!batchReview.ids.length || bulkBusy || batchReview.costLoading || (batchReview.action!=='archive'&&!batchReview.quotes)" @click="confirmGridBatch">
               {{ bulkBusy?'提交中…':((batchReview.action==='archive'?'确认归档 ':'确认提交 ')+batchReview.ids.length+' 条') }}
             </button>
           </footer>
@@ -915,6 +984,8 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order||repl
 
       <section v-else class="processed-primary"><div class="record-banner"><div><strong>分仓已完成</strong><span>后续物流只处理已确定仓库、物流商与实际履约 SKU 的执行订单。</span></div><span class="status-chip done">{{ selectedOrder.fulfillment_allocation?.decision_source==='manual'?'人工确认':'采用系统推荐' }}</span></div><div class="segment-grid"><article v-for="child in selectedOrder.fulfillment_allocation?.plan_snapshot?.derived_orders??[]" :key="child.order_id" class="segment-card"><header><div><small>{{ child.derived?`衍生订单 ${child.suffix??''}`:'原订单直接履约' }}</small><h3>{{ child.erp_order_id }}</h3></div><div class="record-route"><span>{{ child.warehouse_code?sourceLabel(child.warehouse_code):(child.warehouse_name??'—') }}</span><strong>{{ carrierLabel(child.carrier) }}</strong></div></header><table><thead><tr><th>实际履约 SKU</th><th>来源</th><th>数量</th></tr></thead><tbody><tr v-for="item in child.items" :key="`${child.order_id}-${item.sku}`"><td><strong>{{ item.resolved_fulfillment_sku??item.sku }}</strong></td><td>{{ item.source_sku??item.sku }}</td><td>{{ item.quantity }}</td></tr></tbody></table></article></div></section>
 
+      <SelectedAllocationCost v-if="processed(selectedOrder)&&selectedOrder.fulfillment_allocation?.plan_snapshot?.cost_confirmation" :quote="selectedOrder.fulfillment_allocation.plan_snapshot.cost_confirmation" readonly />
+      <SelectedAllocationCost v-if="!processed(selectedOrder)&&props.canOperate" :quote="selectedCost" :loading="selectedCostLoading" :error="selectedCostError" @refresh="selectedCostRefresh++" />
       <AllocationRatePreview v-if="!processed(selectedOrder)" :key="selectedOrder.id" :order-id="selectedOrder.id" :revision="String(selectedOrder.workflow_revision??'')+'|'+selectedOrder.items.map(i=>i.id+':'+i.product_id+':'+i.quantity).join(',')" :warehouses="warehouseOptions" :disabled="selectedOrder.items.some(i=>i.is_gift||!!i.previous_replacement_product_id||!!replacementSelections[selectedOrder!.id]?.[i.id])" />
       <div class="top-grid">
         <section class="info-card"><header><strong>订单信息</strong><span :class="selectedOrder.allocation_decision.status==='manual_review'?'mini-warn':'mini-good'">{{ selectedOrder.allocation_decision.status_label }}</span></header><dl><dt>订单号</dt><dd>{{ selectedOrder.erp_order_id }}</dd><dt>收件人</dt><dd>{{ selectedOrder.recipient_name ?? '—' }}</dd><dt>联系电话</dt><dd>{{ selectedOrder.phone ?? '—' }}</dd><dt>订单商品</dt><dd><span class="order-item-chip" v-for="item in selectedOrder.items" :key="item.id">{{ item.sku??item.product_summary }} × {{ item.quantity }}</span></dd><dt>收货地址</dt><dd>{{ addressLine(selectedOrder) || '—' }}</dd><dt>订单联络人</dt><dd>{{ selectedOrder.contact_user_name || '未分配' }}</dd></dl></section>
@@ -929,7 +1000,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order||repl
         <small>来源：{{ selectedOrder.allocation_rejection.source }} · 驳回人：{{ selectedOrder.allocation_rejection.by ?? '—' }} · 时间：{{ selectedOrder.allocation_rejection.at ? new Date(selectedOrder.allocation_rejection.at).toLocaleString('zh-CN') : '—' }}</small>
       </div>
       <label v-if="!processed(selectedOrder)" class="note-field">运营备注（选填）<textarea v-model="decisionNote" rows="2" placeholder="客户特殊要求、临时仓库情况、人工调整原因…" maxlength="500"/><small>{{ decisionNote.length }}/500</small></label><div v-else-if="selectedOrder.fulfillment_allocation?.decision_note" class="record-note"><strong>运营备注</strong><span>{{ selectedOrder.fulfillment_allocation.decision_note }}</span></div>
-      <footer class="modal-actions"><p v-if="submitError" class="submit-error" role="alert" aria-live="assertive">{{ submitError }}</p><button v-if="props.canOperate&&selectedOrder.reallocation_token" type="button" class="secondary reallocation-danger" data-testid="reallocation-open" :disabled="submitting" @click="reallocationConfirmOpen=true">重新分仓</button><button class="secondary" :disabled="submitting" @click="closePlan">关闭</button><button v-if="!processed(selectedOrder)&&props.canOperate" class="primary green" :disabled="submitting||replacementLoading>0" @click="submitPrimary">{{ submitting?'提交中…':(matchesRecommendation(selectedOrder)?'采用推荐并提交分仓':'确认人工分配并提交') }}</button><span v-else-if="processed(selectedOrder)" class="submitted-note">该订单分仓决策已提交</span></footer>
+      <footer class="modal-actions"><p v-if="submitError" class="submit-error" role="alert" aria-live="assertive">{{ submitError }}</p><button v-if="props.canOperate&&selectedOrder.reallocation_token" type="button" class="secondary reallocation-danger" data-testid="reallocation-open" :disabled="submitting" @click="reallocationConfirmOpen=true">重新分仓</button><button class="secondary" :disabled="submitting" @click="closePlan">关闭</button><button v-if="!processed(selectedOrder)&&props.canOperate" class="primary green" :disabled="submitting||replacementLoading>0||selectedCostLoading" @click="submitPrimary">{{ submitting?'提交中…':costSubmitLabel(selectedOrder) }}</button><span v-else-if="processed(selectedOrder)" class="submitted-note">该订单分仓决策已提交</span></footer>
     </section></div></Teleport>
     <div v-if="reallocationConfirmOpen && selectedOrder" class="modal-backdrop reallocation-confirm" data-testid="reallocation-confirm">
       <section class="batch-confirm" role="alertdialog" aria-modal="true" aria-label="确认重新分仓">

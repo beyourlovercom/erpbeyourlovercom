@@ -1,9 +1,19 @@
-import { mount, flushPromises } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import Show from './Show.vue'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
+
+
+vi.mock('../../lib/allocationCostConfirmation', async importOriginal => ({
+  ...await importOriginal<typeof import('../../lib/allocationCostConfirmation')>(),
+  fetchAllocationCost: vi.fn().mockResolvedValue({
+    confirmation_token:'a'.repeat(64), requires_confirmation:true,
+    known_subtotal_cny:31, total_cny:null, known_group_count:1,
+    unknown_group_count:1, partial_group_count:0, groups:[],
+  }),
+}))
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
@@ -30,6 +40,8 @@ vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
 vi.mock('../../Components/Products/SkuCombobox.vue', () => ({
   default: { props: ['modelValue', 'productId'], template: '<input class="sku-combobox-stub" />' },
 }))
+
+enableAutoUnmount(afterEach)
 
 const baseOrder = {
   id: 1,
@@ -927,15 +939,16 @@ describe('Orders/Show V2', () => {
     expect(choices).toHaveLength(2)
     expect((choices[0].element as HTMLInputElement).checked).toBe(true)
     expect(wrapper.text()).toContain('推荐')
-    expect(wrapper.text()).toContain('采用推荐并提交分仓')
+    await vi.waitFor(()=>expect(wrapper.text()).toContain('确认费用并分仓'))
 
     await choices[1].trigger('change')
-    expect(wrapper.text()).toContain('确认分仓')
-    const confirm = wrapper.findAll('button[type="button"]').find(button => button.text() === '确认分仓')
+    await vi.waitFor(()=>expect(wrapper.text()).toContain('确认费用并分仓'))
+    const confirm = wrapper.findAll('button[type="button"]').find(button => button.text() === '确认费用并分仓')
     await confirm!.trigger('click')
     expect(router.post).toHaveBeenCalledWith('/logistics/orders/1/fulfillment-allocation/quick', {
       assignments: [{ order_item_id: 10, warehouse_id: 2 }],
       stock_exception_acknowledged: false,
+      cost_confirmation:'a'.repeat(64),
     }, expect.any(Object))
     const submitOptions = vi.mocked(router.post).mock.lastCall?.[2] as { onError: (errors: Record<string, string>) => void }
     submitOptions.onError({ assignments: '发货仓 US-LA 尚未启用' })
@@ -958,7 +971,8 @@ describe('Orders/Show V2', () => {
     }
     const wrapper = mount(Show, { props: { order: baseOrder, audit, inventoryAvailability: availability, allocationUi, warehouses: [{ id: 2, slug: 'us-ny', name: '美东纽约仓', code: 'US-NY', country_code: 'US' }] }, attachTo: document.body })
     await wrapper.get('input[type="radio"][name="allocation-10"]').trigger('change')
-    const submit = wrapper.findAll('button').find(button => button.text() === '确认分仓')
+    await vi.waitFor(()=>expect(wrapper.text()).toContain('确认费用并分仓'))
+    const submit = wrapper.findAll('button').find(button => button.text() === '确认费用并分仓')
     const callsBefore = vi.mocked(router.post).mock.calls.length
     await submit!.trigger('click')
     expect(document.body.textContent).toContain('所选仓库库存不足或未知')
@@ -968,6 +982,7 @@ describe('Orders/Show V2', () => {
     expect(router.post).toHaveBeenCalledWith('/logistics/orders/1/fulfillment-allocation/quick', {
       assignments: [{ order_item_id: 10, warehouse_id: 2 }],
       stock_exception_acknowledged: true,
+      cost_confirmation:'a'.repeat(64),
     }, expect.any(Object))
     expect(document.body.textContent).toContain('提交中…')
     const options = vi.mocked(router.post).mock.lastCall?.[2] as { onSuccess: () => void }

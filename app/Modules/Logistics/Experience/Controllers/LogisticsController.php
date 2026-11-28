@@ -193,6 +193,8 @@ final class LogisticsController
             'plan_keys' => ['sometimes', 'array'],
             'plan_keys.*' => ['string', 'max:128'],
             'confirmed' => ['required', 'accepted'],
+            'cost_tokens'=>['sometimes','array'],
+            'cost_tokens.*'=>['nullable','string','size:64'],
         ]);
 
         $warehouseCode = strtoupper(trim((string) ($data['warehouse_code'] ?? '')));
@@ -231,7 +233,7 @@ final class LogisticsController
                     if ($data['action'] === 'recommend') {
                         $planKey = trim((string) ($data['plan_keys'][(string) $id] ?? ''));
                         abort_if($planKey === '', 422, '本订单无可确认的系统推荐，请人工分仓。');
-                        $this->allocationSubmissions->submitRecommended($locked, $planKey, null, $request->user());
+                        $this->allocationSubmissions->submitRecommended($locked,$planKey,null,$request->user(),null,$data['cost_tokens'][(string)$id]??null);
                     } else {
                         abort_if($locked->items->isEmpty() || $locked->items->contains(
                             fn ($item): bool => strcasecmp(trim((string) ($item->source_sku ?: $item->sku)), 'gift') === 0
@@ -241,7 +243,7 @@ final class LogisticsController
                             'source_code' => $warehouseCode,
                         ])->values()->all();
                         // A bulk click cannot silently acknowledge missing/short stock.
-                        $this->allocationSubmissions->submitManual($locked, $assignments, null, $request->user(), false);
+                        $this->allocationSubmissions->submitManual($locked,$assignments,null,$request->user(),false,null,$data['cost_tokens'][(string)$id]??null);
                     }
                 });
                 $results[] = ['order_id' => $id, 'ok' => true, 'message' => '已完成分仓'];
@@ -266,6 +268,44 @@ final class LogisticsController
         ]);
     }
 
+    public function batchAllocationCostPreview(Request $request, \App\Modules\Logistics\Application\AllocationPlanCostConfirmation $cost): JsonResponse
+    {
+        $allowed=array_map('strtoupper',(array)config('warehouse_master.fulfillment_codes',[]));
+        $data=$request->validate([
+            'order_ids'=>['required','array','min:1','max:100'],
+            'order_ids.*'=>['required','integer','min:1','distinct'],
+            'action'=>['required',Rule::in(['recommend','warehouse'])],
+            'warehouse_code'=>['required_if:action,warehouse','nullable','string',Rule::in($allowed)],
+            'plan_keys'=>['sometimes','array'],'plan_keys.*'=>['string','max:128'],
+        ]);
+        $orders=$this->statusSummary->pendingAllocationQuery()->whereIn('orders.id',$data['order_ids'])
+            ->with(['items','address','fulfillmentAllocation'])->get()->keyBy('id');
+        $results=[];
+        foreach($data['order_ids'] as $rawId){
+            $id=(int)$rawId;$order=$orders->get($id);
+            if(!$order||$order->fulfillmentAllocation?->status==='submitted'){
+                $results[]=['order_id'=>$id,'ok'=>false,'message'=>'订单不在待分仓范围或已经提交。'];continue;
+            }
+            try{
+                if($data['action']==='recommend'){
+                    $plan=$this->allocationSubmissions->previewRecommendedPlan($order,(string)($data['plan_keys'][(string)$id]??''));
+                }else{
+                    abort_if($order->items->isEmpty()||$order->items->contains(fn($item)=>strcasecmp(trim((string)($item->source_sku?:$item->sku)),'gift')===0),422,'礼品或空商品需逐单处理。');
+                    $assignments=$order->items->map(fn($item)=>['order_item_id'=>(int)$item->id,'source_code'=>$data['warehouse_code']])->values()->all();
+                    $plan=$this->allocationSubmissions->previewManualPlan($order,$assignments,$request->user());
+                }
+                $results[]=['order_id'=>$id,'ok'=>true,'quote'=>$cost->quote($order,$plan,$request->user())];
+            }catch(ValidationException $e){
+                $results[]=['order_id'=>$id,'ok'=>false,'message'=>(string)(collect($e->errors())->flatten()->first()?:'请逐单处理。')];
+            }catch(HttpException $e){
+                $results[]=['order_id'=>$id,'ok'=>false,'message'=>$e->getMessage()?:'订单状态不允许分仓。'];
+            }catch(Throwable $e){
+                report($e);$results[]=['order_id'=>$id,'ok'=>false,'message'=>'预估未完成，请逐单检查。'];
+            }
+        }
+        return response()->json(['results'=>$results]);
+    }
+
     public function resetParentAllocation(Request $request, Order $order, ParentFulfillmentReallocationService $reallocation): JsonResponse
     {
         $data = $request->validate(['confirmed' => ['required', 'accepted'], 'token' => ['required', 'string', 'size:64']]);
@@ -276,11 +316,12 @@ final class LogisticsController
     public function submitRecommendedAllocation(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
+            'cost_confirmation'=>['nullable','string','size:64'],
             'plan_key' => ['required', 'string', 'max:128'],
             'expected_workflow_revision' => ['nullable', 'integer', 'min:0'],
             'decision_note' => ['nullable', 'string', 'max:1000'],
         ]);
-        $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitRecommended($order, $data['plan_key'], $data['decision_note'] ?? null, $request->user(), isset($data['expected_workflow_revision']) ? (int) $data['expected_workflow_revision'] : null));
+        $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitRecommended($order, $data['plan_key'], $data['decision_note'] ?? null, $request->user(), isset($data['expected_workflow_revision']) ? (int) $data['expected_workflow_revision'] : null,$data['cost_confirmation']??null));
         if ($request->expectsJson()) {
             return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
         }
@@ -300,6 +341,27 @@ final class LogisticsController
         }
 
         return response()->json(['products' => $query->orderBy('sku')->get(['id', 'sku', 'name', 'material_full_name'])]);
+    }
+
+    /** Read-only exact physical-plan estimate; cost tokens are not allocation authority. */
+    public function allocationCostPreview(Request $request, Order $order, \App\Modules\Logistics\Application\AllocationPlanCostConfirmation $cost): JsonResponse
+    {
+        $input=$request->validate([
+            'mode'=>['required','in:manual,quick,recommended'],
+            'plan_key'=>['required_if:mode,recommended','nullable','string','max:128'],
+            'assignments'=>['required_unless:mode,recommended','array','min:1','max:500'],
+            'assignments.*.order_item_id'=>['required','integer','distinct'],
+            'assignments.*.source_code'=>['required_if:mode,manual','nullable','string','max:32'],
+            'assignments.*.warehouse_id'=>['required_if:mode,quick','nullable','integer'],
+            'assignments.*.gift_mapping_id'=>['nullable','integer'],
+            'assignments.*.replacement_product_id'=>['nullable','integer','min:1'],
+            'assignments.*.carrier'=>['nullable','string','max:128'],
+            'assignments.*.service'=>['nullable','string','max:191'],
+        ]);
+        $order=$order->fresh(['address','items']);
+        $plan=$input['mode']==='recommended'?$this->allocationSubmissions->previewRecommendedPlan($order,$input['plan_key']):
+            $this->allocationSubmissions->previewManualPlan($order,$input['mode']==='quick'?$this->normalizeQuickAssignments($order,$input['assignments']):$input['assignments'],$request->user());
+        return response()->json($cost->quote($order,$plan,$request->user()));
     }
 
     /** No changes to order, inventory or accounting state. */
@@ -385,6 +447,7 @@ final class LogisticsController
     public function submitManualAllocation(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
+            'cost_confirmation'=>['nullable','string','size:64'],
             'assignments' => ['required', 'array', 'min:1'],
             'assignments.*.order_item_id' => ['required', 'integer'],
             'assignments.*.source_code' => ['required', 'string', 'max:32'],
@@ -403,7 +466,7 @@ final class LogisticsController
             'request_id' => $request->attributes->get('erp_request_id'),
         ]);
         try {
-            $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false), isset($data['expected_workflow_revision']) ? (int) $data['expected_workflow_revision'] : null));
+            $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false), isset($data['expected_workflow_revision']) ? (int) $data['expected_workflow_revision'] : null,$data['cost_confirmation']??null));
             $outcome = 'submitted';
         } finally {
             Log::info('allocation.manual.finished', [
@@ -423,21 +486,31 @@ final class LogisticsController
     public function submitQuickAllocation(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate([
+            'cost_confirmation'=>['nullable','string','size:64'],
             'assignments' => ['required', 'array', 'min:1'],
             'assignments.*.order_item_id' => ['required', 'integer'],
             'assignments.*.warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
             'stock_exception_acknowledged' => ['sometimes', 'boolean'],
         ]);
 
+        $normalized = $this->normalizeQuickAssignments($order,$data['assignments']);
+
+        $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $normalized, null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false),null,$data['cost_confirmation']??null));
+
+        return back()->with('success', '分仓已提交');
+    }
+
+    private function normalizeQuickAssignments(Order $order,array $assignments): array
+    {
         $order->loadMissing(['address', 'items']);
         if ($order->items->contains(fn ($item): bool => strcasecmp(trim((string) ($item->source_sku ?: $item->sku)), 'gift') === 0)) {
             throw ValidationException::withMessages(['assignments' => 'gift 订单需要在“待分仓”中选择实际履约礼品 SKU。']);
         }
 
-        $warehouseIds = collect($data['assignments'])->pluck('warehouse_id')->map(fn ($id): int => (int) $id)->unique()->values();
+        $warehouseIds = collect($assignments)->pluck('warehouse_id')->map(fn ($id): int => (int) $id)->unique()->values();
         $warehouses = Warehouse::query()->whereIn('id', $warehouseIds)->where('is_active', true)->get()->keyBy('id');
         $allowedCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
-        $normalized = collect($data['assignments'])->map(function (array $assignment) use ($order, $warehouses, $allowedCodes): array {
+        $normalized = collect($assignments)->map(function (array $assignment) use ($order, $warehouses, $allowedCodes): array {
             $warehouse = $warehouses->get((int) $assignment['warehouse_id']);
             if (! $warehouse || ! in_array(strtoupper((string) $warehouse->code), $allowedCodes, true)) {
                 throw ValidationException::withMessages(['assignments' => '所选仓库不属于待分仓履约仓库。']);
@@ -458,9 +531,7 @@ final class LogisticsController
             ];
         })->values()->all();
 
-        $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $normalized, null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false)));
-
-        return back()->with('success', '分仓已提交');
+        return $normalized;
     }
 
     /**

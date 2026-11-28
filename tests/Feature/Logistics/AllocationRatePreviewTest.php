@@ -4,11 +4,15 @@ namespace Tests\Feature\Logistics;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Finance\Application\FxReferenceSettingsService;
 use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord;
+use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
+use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
+use App\Modules\Products\Infrastructure\Models\ProductWeightEvidence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -111,9 +115,145 @@ final class AllocationRatePreviewTest extends TestCase
         $r = $this->actingAs($u)->getJson($url.'?confirmed_scope='.urlencode('DE|DHL|domestic|'.$v))->assertOk()->assertJsonPath('rows.0.status', 'approved_reference')->assertJsonPath('eligible_for_ranking', false)->json();
         $this->assertEquals(55, $r['rows'][0]['amount_cny']); // EUR 5 + USD 2; no double charge
         $missing = $this->order($u, 'DE', false);
-        $this->actingAs($u)->getJson('/logistics/orders/'.$missing->id.'/fulfillment-allocation/rate-preview')->assertOk()->assertJsonPath('reason', 'missing_packaging_standard')->assertJsonCount(0,'rows');
+        $this->actingAs($u)->getJson('/logistics/orders/'.$missing->id.'/fulfillment-allocation/rate-preview')->assertOk()->assertJsonPath('reason', 'missing_packaging_standard')->assertJsonCount(0, 'rows');
         $o->items()->first()->update(['sku' => 'gift', 'source_sku' => 'gift']);
-        $this->actingAs($u)->getJson($url)->assertOk()->assertJsonPath('reason','unresolved_product')->assertJsonCount(0,'rows');
-        $this->assertDatabaseCount('fulfillment_allocations',0);
+        $this->actingAs($u)->getJson($url)->assertOk()->assertJsonPath('reason', 'unresolved_product')->assertJsonCount(0, 'rows');
+        $this->assertDatabaseCount('fulfillment_allocations', 0);
+    }
+
+    public function test_product_weight_fallback_and_missing_dimensions_are_partial_not_official_totals(): void
+    {
+        $u = $this->actor(['logistics.view']);
+        $o = $this->order($u, 'US', false);
+        $items = $o->items()->get();
+        Product::whereKey($items[0]->product_id)->update(['weight_kg' => 0.5, 'length_cm' => 20, 'width_cm' => 15, 'height_cm' => 5]);
+        Product::whereKey($items[1]->product_id)->update(['weight_kg' => 0.75]);
+        $v = $this->version($u, 'synthetic-factory');
+        $this->rateComponent($v, 'FACTORY', 'US', 'SPEEDA', 'sd_economy_battery', 'transport', 10, 20);
+        $url = '/logistics/orders/'.$o->id.'/fulfillment-allocation/rate-preview';
+        $r = $this->actingAs($u)->getJson($url)->assertOk()->assertJsonPath('measurement.basis', 'weight_only_reference')->assertJsonPath('measurement.dimensions_cm', null)->json();
+        $this->assertEqualsWithDelta(2.1, $r['measurement']['weight_kg'], 0.000001);
+        $row = collect($r['rows'])->firstWhere('warehouse_code', 'FACTORY');
+        $this->assertSame('weight_only_reference', $row['status']);
+        $this->assertEqualsWithDelta(52, $row['amount_cny'], 0.000001);
+        $this->assertSame([(int) $items[1]->product_id], $r['missing_product_ids']);
+        $this->assertSame('product_weight_plus_20_percent', $r['measurement_evidence'][0]['weight_source']);
+        Product::whereKey($items[1]->product_id)->update(['length_cm' => 30, 'width_cm' => 10, 'height_cm' => 6]);
+        $r = $this->actingAs($u)->getJson($url)->assertOk()->assertJsonPath('measurement.basis', 'product_standard_estimate')->json();
+        $this->assertEquals([30, 15, 16], $r['measurement']['dimensions_cm']);
+        $this->assertEqualsWithDelta(2.1, $r['measurement']['weight_kg'], 0.000001);
+        $this->assertSame([], $r['missing_product_ids']);
+        $this->assertDatabaseCount('fulfillment_allocations', 0);
+    }
+
+    public function test_split_cost_confirmation_is_actor_and_plan_bound_and_unknown_cost_is_not_zero(): void
+    {
+        $u = $this->actor(['logistics.view', 'logistics.operate']);
+        $o = $this->order($u);
+        $items = $o->items()->orderBy('id')->get();
+        $v = $this->version($u, 'synthetic-factory');
+        $this->rateComponent($v, 'FACTORY', 'US', 'SPEEDA', 'sd_economy_battery', 'transport', 10, 20);
+        $assignments = [['order_item_id' => $items[0]->id, 'source_code' => 'FACTORY'], ['order_item_id' => $items[1]->id, 'source_code' => 'US-LA']];
+        $url = '/logistics/orders/'.$o->id.'/fulfillment-allocation';
+        $viewer = $this->actor(['logistics.view']);
+        $this->actingAs($viewer)->postJson($url.'/cost-preview', ['mode' => 'manual', 'assignments' => $assignments])->assertForbidden();
+        $quote = $this->actingAs($u)->postJson($url.'/cost-preview', ['mode' => 'manual', 'assignments' => $assignments])->assertOk()
+            ->assertJsonPath('requires_confirmation', true)->assertJsonPath('total_cny', null)->assertJsonPath('unknown_group_count', 1)->json();
+        $this->assertEqualsWithDelta(30, $quote['known_subtotal_cny'], 0.001);
+        $this->assertEqualsWithDelta(45, $quote['factory_default_reference']['amount_cny'], 0.001);
+        $this->assertSame(2, $quote['groups'][0]['items'][0]['quantity']);
+        $this->assertNull($quote['groups'][1]['amount_cny']);
+        $this->assertDatabaseCount('fulfillment_allocations', 0);
+        $this->actingAs($u)->postJson($url.'/manual', ['assignments' => $assignments])->assertUnprocessable()->assertJsonValidationErrors('cost_confirmation');
+        $other = $this->actor(['logistics.view', 'logistics.operate']);
+        $this->actingAs($other)->postJson($url.'/manual', ['assignments' => $assignments, 'cost_confirmation' => $quote['confirmation_token']])->assertUnprocessable()->assertJsonValidationErrors('cost_confirmation');
+        $this->actingAs($u)->postJson($url.'/manual', ['assignments' => [['order_item_id' => $items[0]->id, 'source_code' => 'US-LA'], ['order_item_id' => $items[1]->id, 'source_code' => 'FACTORY']], 'cost_confirmation' => $quote['confirmation_token']])->assertUnprocessable()->assertJsonValidationErrors('cost_confirmation');
+        DB::table('logistics_rate_bands')->whereIn('component_id', DB::table('logistics_rate_components')->where('version_id', $v)->pluck('id'))->update(['fixed_amount' => 11]);
+        $this->actingAs($u)->postJson($url.'/manual', ['assignments' => $assignments, 'cost_confirmation' => $quote['confirmation_token']])->assertUnprocessable()->assertJsonValidationErrors('cost_confirmation');
+        $this->assertDatabaseCount('fulfillment_allocations', 0);
+        $quote = $this->actingAs($u)->postJson($url.'/cost-preview', ['mode' => 'manual', 'assignments' => $assignments])->assertOk()->json();
+        $this->actingAs($u)->postJson($url.'/manual', ['assignments' => $assignments, 'cost_confirmation' => $quote['confirmation_token']])->assertOk();
+        $snapshot = $o->fresh()->fulfillmentAllocation->plan_snapshot['cost_confirmation'];
+        $this->assertSame('confirmed', $snapshot['confirmation_status']);
+        $this->assertSame($u->id, $snapshot['confirmed_by']);
+        $this->assertEqualsWithDelta(31, $snapshot['known_subtotal_cny'], 0.001);
+        $this->assertNull($snapshot['total_cny']);
+        $this->assertStringContainsString('+08:00', $snapshot['confirmed_at']);
+        $this->assertArrayNotHasKey('confirmation_token', $snapshot);
+        $this->assertCount(2, $o->fresh()->fulfillmentChildren);
+        $audit = AuditRecord::query()
+            ->where('entity_id', (string) $o->id)->where('action', 'order.allocation_cost_confirmed')->sole();
+        $this->assertSame((int) $u->id, (int) $audit->actor_id);
+        $this->assertSame('confirmed', $audit->after['confirmation_status']);
+        $this->assertEquals($snapshot, $audit->after);
+
+    }
+
+    public function test_quick_and_batch_share_confirmation_gate_but_missing_weights_allow_submission(): void
+    {
+        $u = $this->actor(['logistics.view', 'logistics.operate']);
+        $o = $this->order($u);
+        $unknown = $this->order($u, 'US', false);
+        $v = $this->version($u, 'synthetic-factory');
+        $this->rateComponent($v, 'FACTORY', 'US', 'SPEEDA', 'sd_economy_battery', 'transport', 10, 20);
+        $factory = DB::table('warehouses')->where('code', 'FACTORY')->value('id');
+        $assignments = $o->items()->get()->map(fn ($i) => ['order_item_id' => $i->id, 'warehouse_id' => $factory])->all();
+        $url = '/logistics/orders/'.$o->id.'/fulfillment-allocation';
+        $quote = $this->actingAs($u)->postJson($url.'/cost-preview', ['mode' => 'quick', 'assignments' => $assignments])->assertOk()->json();
+        $this->assertTrue($quote['requires_confirmation']);
+        $this->actingAs($u)->postJson($url.'/quick', ['assignments' => $assignments])->assertUnprocessable()->assertJsonValidationErrors('cost_confirmation');
+        $body = ['order_ids' => [$o->id, $unknown->id], 'action' => 'warehouse', 'warehouse_code' => 'FACTORY', 'confirmed' => true];
+        $r = $this->actingAs($u)->postJson('/logistics/wait-stock/batch-allocation/cost-preview', $body)->assertOk()->json('results');
+        $this->assertTrue($r[0]['quote']['requires_confirmation']);
+        $this->assertFalse($r[1]['quote']['requires_confirmation']);
+        $this->actingAs($u)->postJson('/logistics/wait-stock/batch-allocation', $body)->assertOk()->assertJsonPath('succeeded', 1)->assertJsonPath('failed', 1);
+        $this->assertNull($o->fresh()->fulfillmentAllocation);
+        $this->assertSame('skipped_unavailable', $unknown->fresh()->fulfillmentAllocation->plan_snapshot['cost_confirmation']['confirmation_status']);
+        $this->actingAs($u)->postJson($url.'/quick', ['assignments' => $assignments, 'cost_confirmation' => $quote['confirmation_token']])->assertRedirect();
+        $this->assertSame('confirmed', $o->fresh()->fulfillmentAllocation->plan_snapshot['cost_confirmation']['confirmation_status']);
+    }
+
+    public function test_recommended_and_batch_recommended_use_same_resolved_snapshot(): void
+    {
+        $u = $this->actor(['logistics.view', 'logistics.operate']);
+        $orders = [$this->order($u, 'DE'), $this->order($u, 'DE')];
+        $v = $this->version($u, 'synthetic-factory');
+        $this->rateComponent($v, 'FACTORY', 'DE', 'SPEEDA', 'sd_economy_battery', 'transport', 10, 20);
+        app(FxReferenceSettingsService::class)->save(['USD' => 7.5, 'EUR' => 8], ['USD' => false, 'EUR' => false], null);
+        $keys = [];
+        foreach ($orders as $o) {
+            foreach ($o->items()->get() as $item) {
+                $p = Product::findOrFail($item->product_id);
+                $e = ProductWeightEvidence::create([
+                    'product_id' => $p->id, 'weight_kind' => 'shipping_reference_weight', 'observed_weight_kg' => 0.5,
+                    'raw_sku' => $p->sku, 'source_type' => 'manual_entry', 'source_reference' => 'cost-recommended-fixture',
+                    'status' => 'adopted', 'reviewed_at' => now(),
+                ]);
+                $p->forceFill(['shipping_weight_kg' => 0.5, 'shipping_weight_evidence_id' => $e->id,
+                    'standard_packaging_cost' => 1, 'cost_currency' => 'CNY'])->save();
+            }
+            $order = $o->fresh(['items', 'address']);
+            $items = $order->items->map(fn ($i) => ['product_id' => $i->product_id, 'quantity' => $i->quantity, 'sku' => $i->sku])->all();
+            $preview = app(FulfillmentPlanPreviewService::class)->preview('DE', $items);
+            $decision = app(FulfillmentAllocationDecisionService::class)->present($order, $preview);
+            $this->assertTrue($decision['can_use_recommendation'], json_encode($decision['manual_reasons']));
+            $keys[$o->id] = $decision['recommended_plan_key'];
+        }
+        [$o,$b] = $orders;
+        $url = '/logistics/orders/'.$o->id.'/fulfillment-allocation';
+        $body = ['mode' => 'recommended', 'plan_key' => $keys[$o->id]];
+        $quote = $this->actingAs($u)->postJson($url.'/cost-preview', $body)->assertOk()->assertJsonPath('requires_confirmation', true)->json();
+        $this->assertDatabaseCount('fulfillment_allocations', 0);
+        $this->actingAs($u)->postJson($url.'/recommended', ['plan_key' => $keys[$o->id]])->assertUnprocessable()->assertJsonValidationErrors('cost_confirmation');
+        $response = $this->actingAs($u)->postJson($url.'/recommended', ['plan_key' => $keys[$o->id], 'cost_confirmation' => $quote['confirmation_token']]);
+        $this->assertSame(200, $response->status(), $response->getContent());
+        $saved = $o->fresh()->fulfillmentAllocation->plan_snapshot['cost_confirmation'];
+        $this->assertSame('confirmed', $saved['confirmation_status']);
+        $this->assertEquals($quote['known_subtotal_cny'], $saved['known_subtotal_cny']);
+        $body = ['order_ids' => [$b->id], 'action' => 'recommend', 'plan_keys' => [$b->id => $keys[$b->id]], 'confirmed' => true];
+        $quote = $this->actingAs($u)->postJson('/logistics/wait-stock/batch-allocation/cost-preview', $body)->assertOk()->assertJsonPath('results.0.ok', true)->json('results.0.quote');
+        $this->actingAs($u)->postJson('/logistics/wait-stock/batch-allocation', $body)->assertOk()->assertJsonPath('failed', 1);
+        $this->actingAs($u)->postJson('/logistics/wait-stock/batch-allocation', [...$body, 'cost_tokens' => [$b->id => $quote['confirmation_token']]])->assertOk()->assertJsonPath('succeeded', 1);
+        $this->assertSame('confirmed', $b->fresh()->fulfillmentAllocation->plan_snapshot['cost_confirmation']['confirmation_status']);
     }
 }

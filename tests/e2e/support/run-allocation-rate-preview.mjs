@@ -6,7 +6,9 @@ try{
   run=await createDisposableRun()
   const {env}=run
   env.BYL_E2E_ALLOCATION_RATE='1'
-  env.BYL_RATE_DE_SOURCE=process.env.BYL_RATE_DE_SOURCE??''
+  env.BYL_RATE_SOURCE_DIR=process.env.BYL_RATE_SOURCE_DIR??''
+  env.LARAVEL_STORAGE_PATH=run.runRoot+'/storage'
+  for(const d of ['app/private','app/public','framework/cache/data','framework/sessions','framework/views','logs'])await mkdir(env.LARAVEL_STORAGE_PATH+'/'+d,{recursive:true,mode:0o700})
   const evidence=process.env.BYL_E2E_VISUAL_EVIDENCE_DIR
   if(evidence){if(!path.isAbsolute(evidence))throw new Error('Absolute evidence directory required');await mkdir(evidence,{recursive:true,mode:0o700});env.BYL_E2E_VISUAL_EVIDENCE_DIR=evidence}
   for(const [cmd,args] of [

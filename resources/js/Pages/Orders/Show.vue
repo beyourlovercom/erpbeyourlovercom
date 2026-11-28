@@ -20,6 +20,8 @@ const commonCurrencyOptions = [
 ]
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import StockExceptionConfirmDialog from '../../Components/Logistics/StockExceptionConfirmDialog.vue'
+import SelectedAllocationCost from '../../Components/Logistics/SelectedAllocationCost.vue'
+import {fetchAllocationCost,type AllocationCost} from '../../lib/allocationCostConfirmation'
 import { allocationStockWarnings } from '../../lib/allocationStockWarning'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatusPill.vue'
@@ -550,7 +552,32 @@ const allocationMatchesRecommendation = computed(() => Boolean(props.allocationU
   const recommended = props.allocationUi?.recommended_warehouse_ids?.[item.id] ?? null
   return recommended !== null && allocationSelected(item.id) === recommended
 }))
+const quickCost=ref<AllocationCost|null>(null)
+const quickCostLoading=ref(false)
+const quickCostError=ref('')
+const quickCostRefresh=ref(0)
+const quickCostInput=computed(()=>{
+  const ui=props.allocationUi
+  if(!allocationEditing.value||!allocationReady.value||ui?.requires_full_flow||!(ui?.can_operate||(ui?.can_reallocate&&reallocationOpen.value)))return null
+  // Stock warning uses the explicit quick path, even if warehouse IDs match recommendation.
+  const useRecommendation=allocationMatchesRecommendation.value&&selectedAllocationStockWarnings.value.length===0
+  return {id:props.order.id,payload:useRecommendation?{mode:'recommended',plan_key:ui?.recommended_plan_key}:{mode:'quick',assignments:props.order.items.map(item=>({order_item_id:item.id,warehouse_id:allocationSelected(item.id)}))},items:props.order.items.map(i=>[i.id,i.product_id,i.quantity])}
+})
+let quickCostSeq=0
+watch(()=>JSON.stringify([quickCostInput.value,quickCostRefresh.value]),(_key,_old,onCleanup)=>{
+  const seq=++quickCostSeq
+  quickCost.value=null;quickCostError.value='';quickCostLoading.value=false
+  const input=quickCostInput.value;if(!input)return
+  const controller=new AbortController();quickCostLoading.value=true
+  const timer=setTimeout(async()=>{
+    try{const quote=await fetchAllocationCost(input.id,input.payload,controller.signal);if(seq===quickCostSeq)quickCost.value=quote}
+    catch{if(seq===quickCostSeq&&!controller.signal.aborted)quickCostError.value='费用预估暂不可用'}
+    finally{if(seq===quickCostSeq)quickCostLoading.value=false}
+  },200)
+  onCleanup(()=>{clearTimeout(timer);controller.abort()})
+},{immediate:true})
 const submitAllocation = () => {
+  if(quickCostLoading.value)return
   if (selectedAllocationStockWarnings.value.length) {
     allocationServerWarning.value = ''
     allocationStockConfirmOpen.value = true
@@ -566,7 +593,7 @@ const confirmAllocationStockException = () => {
 const postAllocation = (stockExceptionAcknowledged: boolean) => {
   const allocationUi = props.allocationUi
   const canSubmit = Boolean(allocationUi?.can_operate || (allocationUi?.can_reallocate && reallocationOpen.value))
-  if (allocationSubmitting.value) return
+  if (allocationSubmitting.value||quickCostLoading.value) return
   if (!allocationUi) {
     allocationError.value = '无法读取当前分仓权限，请刷新订单后重试。'
     allocationServerWarning.value = allocationError.value
@@ -592,7 +619,7 @@ const postAllocation = (stockExceptionAcknowledged: boolean) => {
   const options = {
     preserveScroll: true,
     onError: (errors: Record<string, string>) => {
-      allocationError.value = errors.assignments ?? errors.stock_exception_acknowledged ?? errors.plan_key ?? Object.values(errors).find(Boolean) ?? '分仓未提交，请核实仓库或订单状态。'
+      allocationError.value = errors.cost_confirmation ?? errors.assignments ?? errors.stock_exception_acknowledged ?? errors.plan_key ?? Object.values(errors).find(Boolean) ?? '分仓未提交，请核实仓库或订单状态。'
       if (errors.stock_exception_acknowledged) {
         allocationServerWarning.value = errors.stock_exception_acknowledged
         allocationStockConfirmOpen.value = true
@@ -605,10 +632,10 @@ const postAllocation = (stockExceptionAcknowledged: boolean) => {
     onFinish: () => { allocationSubmitting.value = false },
   }
   if (!stockExceptionAcknowledged && allocationMatchesRecommendation.value && allocationUi.recommended_plan_key) {
-    router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/recommended`, { plan_key: allocationUi.recommended_plan_key, decision_note: null }, options)
+    router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/recommended`, { plan_key: allocationUi.recommended_plan_key, decision_note: null, cost_confirmation:quickCost.value?.confirmation_token??null }, options)
     return
   }
-  router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/quick`, { assignments: props.order.items.map(item => ({ order_item_id: item.id, warehouse_id: allocationSelected(item.id) })), stock_exception_acknowledged: stockExceptionAcknowledged }, options)
+  router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/quick`, { assignments: props.order.items.map(item => ({ order_item_id: item.id, warehouse_id: allocationSelected(item.id) })), stock_exception_acknowledged: stockExceptionAcknowledged, cost_confirmation:quickCost.value?.confirmation_token??null }, options)
 }
 
 
@@ -1388,6 +1415,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
+        <SelectedAllocationCost v-if="allocationEditing&&!allocationUi?.requires_full_flow" :quote="quickCost" :loading="quickCostLoading" :error="quickCostError" @refresh="quickCostRefresh++" />
         <div v-if="allocationUi?.status === 'pending' || (allocationUi?.can_reallocate && reallocationOpen)" class="ord-allocation-action-bar">
           <div>
             <strong>{{ allocationUi?.status === 'submitted' ? '重新分仓' : '待分仓' }} · {{ allocationSelectedCount }}/{{ order.items.length }} SKU 已选择</strong>
@@ -1397,7 +1425,7 @@ onBeforeUnmount(() => {
           <div class="ord-allocation-actions">
             <button v-if="allocationUi?.status === 'submitted'" type="button" class="erp-btn erp-btn-secondary" @click="reallocationOpen = false">取消调整</button>
             <a v-else :href="allocationUi.full_allocation_url" class="erp-btn erp-btn-secondary">完整分仓</a>
-            <button v-if="!allocationUi.requires_full_flow" type="button" class="erp-btn erp-btn-primary" :disabled="!allocationReady || allocationSubmitting" @click="submitAllocation">{{ allocationSubmitting ? '提交中…' : allocationUi?.status === 'submitted' ? '确认重新分仓' : allocationMatchesRecommendation ? '采用推荐并提交分仓' : '确认分仓' }}</button>
+            <button v-if="!allocationUi.requires_full_flow" type="button" class="erp-btn erp-btn-primary" :disabled="!allocationReady || allocationSubmitting || quickCostLoading" @click="submitAllocation">{{ allocationSubmitting ? '提交中…' : quickCostLoading ? '正在计算费用…' : quickCost?.requires_confirmation ? '确认费用并分仓' : (quickCost||quickCostError) ? '费用未知 · 继续分仓' : allocationUi?.status === 'submitted' ? '确认重新分仓' : allocationMatchesRecommendation ? '采用推荐并提交分仓' : '确认分仓' }}</button>
           </div>
         </div>
         <p v-if="allocationError" class="ord-allocation-error" role="alert">{{ allocationError }}</p>

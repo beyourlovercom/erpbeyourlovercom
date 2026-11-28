@@ -7,6 +7,10 @@ on:
       - 'tests/Feature/Logistics/LogisticsRateCenter*Test.php'
       - 'tests/Feature/Logistics/AllocationRatePreviewTest.php'
       - 'app/Modules/Logistics/Application/AllocationRatePreviewService.php'
+      - 'app/Modules/Logistics/Application/AllocationPlanCostConfirmation.php'
+      - 'app/Modules/Logistics/Application/FulfillmentAllocationSubmissionService.php'
+      - 'resources/js/Components/Logistics/SelectedAllocationCost.vue'
+      - 'resources/js/lib/allocationCostConfirmation.ts'
       - 'resources/js/Components/Logistics/AllocationRatePreview*'
       - 'resources/js/Pages/Logistics/FulfillmentAllocation.vue'
       - 'app/Modules/Logistics/Application/LogisticsRate*.php'
@@ -29,7 +33,7 @@ jobs:
           extensions: mbstring, pdo_sqlite, sqlite3
           coverage: none
       - run: composer install --no-interaction --prefer-dist --no-progress
-      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php tests/Feature/Logistics/AllocationRatePreviewTest.php
+      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php tests/Feature/Logistics/AllocationRatePreviewTest.php tests/Feature/Logistics/FulfillmentAllocationV1Test.php
         env:
           APP_ENV: testing
           DB_CONNECTION: sqlite
@@ -59,7 +63,7 @@ jobs:
           extensions: mbstring, pdo_mysql
           coverage: none
       - run: composer install --no-interaction --prefer-dist --no-progress
-      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php tests/Feature/Logistics/AllocationRatePreviewTest.php
+      - run: vendor/bin/phpunit tests/Feature/Logistics/LogisticsRateCenterFoundationTest.php tests/Feature/Logistics/LogisticsRateCenterWorkflowTest.php tests/Feature/Logistics/AllocationRatePreviewTest.php tests/Feature/Logistics/FulfillmentAllocationV1Test.php
         env:
           APP_ENV: testing
           DB_CONNECTION: mysql
@@ -79,6 +83,6 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npx vitest run resources/js/Components/Logistics/AllocationRatePreview.test.ts
+      - run: npx vitest run resources/js/Components/Logistics/AllocationRatePreview.test.ts resources/js/Pages/Logistics/FulfillmentAllocation.test.ts resources/js/Pages/Orders/Show.test.ts
       - run: npm run typecheck
       - run: npm run build

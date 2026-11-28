@@ -1,6 +1,16 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FulfillmentAllocation from './FulfillmentAllocation.vue'
+
+
+vi.mock('../../lib/allocationCostConfirmation', async importOriginal => ({
+  ...await importOriginal<typeof import('../../lib/allocationCostConfirmation')>(),
+  fetchAllocationCost: vi.fn().mockResolvedValue({
+    confirmation_token:'a'.repeat(64), requires_confirmation:true,
+    known_subtotal_cny:31, total_cny:null, known_group_count:1,
+    unknown_group_count:1, partial_group_count:0, groups:[],
+  }),
+}))
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { template: '<span />' },
@@ -137,6 +147,7 @@ function mountPage(customProps: any = props) {
   return mount(FulfillmentAllocation, { props: customProps, attachTo: document.body })
 }
 
+enableAutoUnmount(afterEach)
 afterEach(() => {
   document.body.innerHTML = ''
   vi.unstubAllGlobals()
@@ -175,9 +186,9 @@ describe('Rejected overseas legacy allocation compatibility', () => {
 
 describe('Vita Fulfillment Allocation V1.1', () => {
   it('reuses Global Grid multi-selection and batch footer, with a second explicit confirmation', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue({
-      ok:true, json:async()=>({results:[{order_id:10,ok:true,message:'已完成分仓'}]}),
-    })
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({results:[{order_id:10,ok:true,quote:{confirmation_token:'a'.repeat(64),requires_confirmation:true,known_subtotal_cny:31,total_cny:null,groups:[]}}]})})
+      .mockResolvedValueOnce({ok:true,json:async()=>({results:[{order_id:10,ok:true,message:'已完成分仓'}]})})
     vi.stubGlobal('fetch',fetchSpy)
     const wrapper=mountPage({...props, globalGridPilotEnabled:true})
     await flushPromises()
@@ -193,18 +204,21 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     const dialog=document.body.querySelector('[data-testid="allocation-batch-confirm"]')
     expect(dialog?.textContent).toContain('可提交 1 条')
     expect(dialog?.textContent).toContain('需逐单处理 1 条')
-    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(fetchSpy.mock.calls[0][0]).toBe('/logistics/wait-stock/batch-allocation/cost-preview')
+    expect(dialog?.textContent).toContain('31.00')
 
     const confirm=document.body.querySelector<HTMLButtonElement>('[data-testid="allocation-batch-confirm-apply"]')
     expect(confirm?.disabled).toBe(false)
     confirm?.click()
     await flushPromises()
-    expect(fetchSpy).toHaveBeenCalledTimes(1)
-    const [url,options]=fetchSpy.mock.calls[0]
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    const [url,options]=fetchSpy.mock.calls[1]
     expect(url).toBe('/logistics/wait-stock/batch-allocation')
     const body=JSON.parse(options.body as string)
     expect(body).toMatchObject({action:'recommend',order_ids:[10],confirmed:true})
     expect(body.plan_keys['10']).toBe('split:abc')
+    expect(body.cost_tokens['10']).toBe('a'.repeat(64))
     wrapper.unmount()
   })
 
@@ -283,7 +297,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(document.body.textContent).toContain('系统候选方案：拆分发货')
     expect(document.body.textContent).toContain('美西MorePlus')
     expect(document.body.textContent).toContain('中国工厂')
-    expect(document.body.textContent).toContain('采用推荐并提交分仓')
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
     expect(document.body.textContent).toContain('估算成本：¥83.00')
     expect(document.body.textContent).toContain('仓库地理参考')
     expect(document.body.textContent).toContain('90001')
@@ -426,7 +440,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(giftSelect.options.length).toBe(1)
   })
 
-  it('shows the exact out-of-stock state and does not offer zero-stock clearance SKUs', async () => {
+  it('shows zero-stock gift as a manual exception without claiming availability', async () => {
     const wrapper = mountPage({ ...props, orders: { ...props.orders, data: [giftOrder], total: 1 }, pendingTotal: 1 })
     await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
     await flushPromises()
@@ -439,7 +453,8 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(document.body.textContent).toContain('Gift 当前可出库库存不足')
     const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
     expect(Array.from(giftSelect.options).map(option => option.textContent).join(' ')).toContain('GIFT-MP-02')
-    expect(Array.from(giftSelect.options).find(option => option.textContent?.includes('GIFT-MP-02'))?.disabled).toBe(true)
+    expect(Array.from(giftSelect.options).find(option => option.textContent?.includes('GIFT-MP-02'))?.disabled).toBe(false)
+    expect(giftSelect.textContent).toContain('人工可选')
   })
 
 
@@ -465,12 +480,13 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     const gift = row.querySelectorAll('select')[2] as HTMLSelectElement
     const choices = Array.from(gift.options)
     expect(choices.find(option => option.textContent?.includes('GIFT-MP-02'))?.disabled).toBe(false)
-    expect(choices.find(option => option.textContent?.includes('UNSYNCED-GIFT'))?.disabled).toBe(true)
+    expect(choices.find(option => option.textContent?.includes('UNSYNCED-GIFT'))?.disabled).toBe(false)
+    expect(choices.find(option => option.textContent?.includes('UNSYNCED-GIFT'))?.textContent).toContain('人工可选')
     expect(document.body.textContent).toContain('有货 7')
     wrapper.unmount()
   })
 
-  it('auto-detects blocked US-SM OMS snapshot and renders disabled Gift instead of false out-of-stock', async () => {
+  it('labels blocked US-SM OMS snapshot and preserves manual gift selection', async () => {
     const blockedGift = {
       ...giftItem, gift_options_by_warehouse: {
         ...giftItem.gift_options_by_warehouse,
@@ -489,11 +505,12 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     warehouse.value = 'US-SM'
     warehouse.dispatchEvent(new Event('change', { bubbles: true }))
     await flushPromises()
-    expect(document.body.textContent).toContain('OMS 快照被阻断')
+    expect(document.body.textContent).toContain('世迈 OMS 库存快照核验被阻断')
     expect(document.body.textContent).toContain('OMS 核验阻断')
     const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
     const blocked = Array.from(giftSelect.options).find(option => option.textContent?.includes('GIFT-SM-01'))
-    expect(blocked?.disabled).toBe(true)
+    expect(blocked?.disabled).toBe(false)
+    expect(blocked?.textContent).toContain('人工可选')
     wrapper.unmount()
   })
 
@@ -517,7 +534,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(document.body.textContent).not.toContain('确认人工分配并提交')
   })
 
-  it('requires a visible acknowledgement before manual allocation to an out-of-stock warehouse', async () => {
+  it('keeps manual stock advisory and confirms known cost without duplicate stock acknowledgement', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ can_submit: true, issues: [] }) })
       .mockResolvedValueOnce({
@@ -536,19 +553,16 @@ describe('Vita Fulfillment Allocation V1.1', () => {
       input.dispatchEvent(new Event('change', { bubbles: true }))
     }
     await flushPromises()
-    const submit = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '确认人工分配并提交') as HTMLButtonElement
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    const submit = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(document.body.textContent).toContain('所选仓库库存不足或未知')
-    expect(document.body.textContent).toContain('SV205')
-    const confirm = document.body.querySelector('.stock-exception-confirm') as HTMLButtonElement
-    confirm.click()
-    await flushPromises()
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(document.body.querySelector('.stock-exception-confirm')).toBeNull()
     expect(fetchMock.mock.calls[0][0]).toContain('/fulfillment-allocation/preflight')
     const payload = JSON.parse(fetchMock.mock.calls[1][1].body)
-    expect(payload.stock_exception_acknowledged).toBe(true)
+    expect(payload.stock_exception_acknowledged).toBe(false)
+    expect(payload.cost_confirmation).toBe('a'.repeat(64))
     expect(payload.assignments).toHaveLength(2)
     wrapper.unmount()
   })
@@ -568,7 +582,8 @@ describe('Vita Fulfillment Allocation V1.1', () => {
       select.value='US-LA';select.dispatchEvent(new Event('change',{bubbles:true}))
     }
     await flushPromises()
-    const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认人工分配并提交') as HTMLButtonElement
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
     const confirm=document.body.querySelector('.stock-exception-confirm') as HTMLButtonElement|null
@@ -603,13 +618,11 @@ describe('Vita Fulfillment Allocation V1.1', () => {
       select.value='US-LA';select.dispatchEvent(new Event('change',{bubbles:true}))
     }
     await flushPromises()
-    const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认人工分配并提交') as HTMLButtonElement
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
-    const confirm=document.body.querySelector('.stock-exception-confirm') as HTMLButtonElement
-    expect(confirm).toBeTruthy()
-    confirm.click()
-    await flushPromises()
+    expect(document.body.querySelector('.stock-exception-confirm')).toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(fetchMock.mock.calls[0][0]).toContain('/fulfillment-allocation/preflight')
     expect(fetchMock.mock.calls[1][0]).toContain('/fulfillment-allocation/manual')
@@ -628,13 +641,15 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     const wrapper = mountPage()
     await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
     await flushPromises()
-    const submit = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '采用推荐并提交分仓') as HTMLButtonElement
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    const submit = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '确认费用并分仓') as HTMLButtonElement
     submit.click()
     await flushPromises()
 
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(fetchMock.mock.calls[0][0]).toBe('/logistics/orders/10/fulfillment-allocation/recommended')
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', credentials: 'same-origin' })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).cost_confirmation).toBe('a'.repeat(64))
     expect(document.body.textContent).not.toContain('履约方案详情')
     expect(wrapper.text()).toContain('已处理 1')
     await wrapper.findAll('button').find(button => button.text().startsWith('已处理'))!.trigger('click')
@@ -809,7 +824,8 @@ describe('Actual fulfillment product selection', () => {
     const warehouse=row.querySelector('td:nth-child(5) select') as HTMLSelectElement
     warehouse.value='US-LA';warehouse.dispatchEvent(new Event('change',{bubbles:true}))
     await flushPromises()
-    const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认人工分配并提交')!
+    await vi.waitFor(()=>expect(document.body.textContent).toContain('确认费用并分仓'))
+    const submit=Array.from(document.body.querySelectorAll('button')).find(b=>b.textContent==='确认费用并分仓')!
     submit.click()
     await flushPromises()
     expect(fetchMock).toHaveBeenCalledTimes(4)
