@@ -20,6 +20,7 @@ use App\Modules\Logistics\Application\WarehouseDispatchStatus;
 use App\Modules\Logistics\Application\WarehouseFinalSkuResolver;
 use App\Modules\Logistics\Application\WarehouseSkuPresentation;
 use App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch;
+use App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
@@ -167,7 +168,7 @@ final class OverseaWarehouseController
             && Schema::hasTable('shipout_production_batch_items')
             ? DB::table('shipout_production_batch_items')
                 ->whereIn('order_id', $shipments->getCollection()->pluck('order_id')->all())
-                ->orderByDesc('id')->get(['order_id', 'status', 'result_code'])->unique('order_id')->keyBy('order_id')
+                ->orderByDesc('id')->get(['order_id', 'status', 'result_code', 'provider_order_id'])->unique('order_id')->keyBy('order_id')
             : collect();
         // Latest durable, sanitized signed OMS evidence: no provider HTTP
         // while listing, pagination or counting.
@@ -219,6 +220,12 @@ final class OverseaWarehouseController
                 && filled(config('xlwms.oms_web_hmac_key')),
             // R5-R6 DE uses the approved MorePlus selected-order workflow,
             // with a distinct dry-run-only OMS queue and warehouse audit.
+            'nyBatchUi' => $warehouseKey === 'us-ny' && UsNyOutboundBatch::visible()
+                && $this->executionAccess->allows($request->user()),
+            'nyBatchPaused' => $warehouseKey === 'us-ny' && app()->environment('production') && ! UsNyOutboundBatch::liveEnabled(),
+            'nyLatestBatch' => $warehouseKey === 'us-ny' && UsNyOutboundBatch::visible()
+                && Schema::hasTable('xlwms_ny_dispatch_batches')
+                ? DB::table('xlwms_ny_dispatch_batches')->where('operator_user_id', (int) $request->user()->id)->orderByDesc('created_at')->first(['id', 'status', 'dry_run', 'total']) : null,
             'deTianyunBatchUi' => $warehouseKey === 'de-tianyun'
                 && (app()->environment('local', 'testing')
                     || (app()->environment('production')
@@ -707,10 +714,10 @@ final class OverseaWarehouseController
             'routing_warehouse' => $order ? app(OrderWarehouseRouting::class)->project($order) : null,
             'workflow_revision' => (int) ($order?->workflow_revision ?? 0),
             'order_kind' => $order?->order_kind?->value,
-            'warehouse_dispatch' => $shipment->warehouse?->code === 'US-LA'
+            'warehouse_dispatch' => strtoupper((string) $shipment->warehouse?->code) === 'US-LA'
                 ? ShipOutProductionDispatchState::warehouseDispatch($shipOutAttempt, (string) $shipment->shipment_status, $shipOutBatchItem, $shipOutReadback)
                 : WarehouseDispatchStatus::from((string) $shipment->shipment_status, $xlwms),
-            'shipout_production' => $shipment->warehouse?->code === 'US-LA'
+            'shipout_production' => strtoupper((string) $shipment->warehouse?->code) === 'US-LA'
                 ? ShipOutProductionDispatchState::from($shipOutAttempt, $shipOutBatchItem, $shipOutReadback) : null,
             'source_type' => ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type) instanceof \BackedEnum
                 ? ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type)->value

@@ -285,6 +285,7 @@ final class OrderWarehouseRouting
             || filled($shipment->tracking_number) || $shipment->shipped_at !== null), 409,
             '已有真实物流或追踪单号，禁止直接修改发货仓。');
         abort_if(\App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch::guarded((int) $order->id), 409, '加拿大仓已有推送或待核实记录，禁止改仓。');
+        abort_if(\App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded((int)$order->id),409,'美东仓订单正在推送或待核实，禁止改仓。');
         abort_if($order->shipmentAttempts()->exists()
             || DB::table('shipout_dispatch_attempts')->where('order_id', $order->id)->exists(), 409,
             '存在已提交仓库或历史物流尝试，禁止通过所属分仓直接改仓。');

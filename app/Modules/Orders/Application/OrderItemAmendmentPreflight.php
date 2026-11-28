@@ -87,6 +87,7 @@ final class OrderItemAmendmentPreflight
                     ->whereNotNull('oms_order_no')->exists();
             if ($order->order_status !== OrderStatus::PendingShipment || $committed || $dispatched
                 || \App\Modules\Logistics\Application\Wlwy\CanadaOutboundBatch::guarded((int) $order->id)
+                || \App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch::guarded((int)$order->id)
                 || ($shipment && ($shipment->shipment_status !== 'pending' || $shipment->shipped_at !== null))) {
                 $issues[] = '已执行的发货或仓库订单不能直接覆盖历史商品。';
             }

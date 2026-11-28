@@ -11,6 +11,7 @@ use App\Modules\Logistics\Application\Wlwy\CanadaPhysicalStockSync;
 use App\Modules\Logistics\Application\Wlwy\CanadaTrackingRefresh;
 use App\Modules\Logistics\Application\Xlwms\DeAuthoritativePhysicalStockSyncService;
 use App\Modules\Logistics\Application\Xlwms\DeTianyunStatusRefresh;
+use App\Modules\Logistics\Application\Xlwms\UsNyOutboundBatch;
 use App\Modules\Logistics\Application\Xlwms\UsNyPhysicalStockSyncService;
 use App\Modules\Logistics\Application\Xlwms\UsNyTrackingRefresh;
 use App\Modules\Logistics\Experience\Jobs\ProcessDeTianyunOutboundBatch;
@@ -452,4 +453,13 @@ if (app()->environment('production') && config('wlwy.ca_dispatch_enabled') && co
 }
 if (app()->environment('production') && config('wlwy.ca_tracking_enabled')) {
     Schedule::command('wlwy:refresh-ca-tracking')->cron('3-59/5 * * * *')->name('wlwy.ca.tracking.refresh')->withoutOverlapping(10)->onOneServer()->runInBackground();
+}
+
+Artisan::command('xlwms:drain-us-ny-batch', function (): int {
+    $this->line(json_encode(app(UsNyOutboundBatch::class)->drain(), JSON_THROW_ON_ERROR));
+
+    return Command::SUCCESS;
+});
+if (app()->environment('production') && UsNyOutboundBatch::liveEnabled()) {
+    Schedule::command('xlwms:drain-us-ny-batch')->everyMinute()->name('xlwms.us-ny.batch.drain')->withoutOverlapping(15)->onOneServer()->runInBackground();
 }

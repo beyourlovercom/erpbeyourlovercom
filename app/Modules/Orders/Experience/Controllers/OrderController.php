@@ -482,10 +482,10 @@ final class OrderController
                 && $order->shipment?->shipped_at === null,
             'workflowStatusOptions' => app(OrderWorkflowStatusPolicy::class)->for($order, $request->user())['options'],
             'canEditOrder' => ! $order->isOperationallyArchived() && $order->archived_at === null
-                && ($request->user()?->can('orders.edit') ?? false),
+                && ($request->user()?->can('orders.content.update') ?? false),
             'canSyncChildAddresses' => ! $isDerived && $order->originalFulfillmentChildren()->exists()
                 && ! $order->isOperationallyArchived() && $order->archived_at === null
-                && ($request->user()?->can('orders.edit') ?? false),
+                && ($request->user()?->can('orders.content.update') ?? false),
             'canEditWorkflowStatus' => app(OrderWorkflowStatusPolicy::class)->for($order, $request->user())['can_edit'],
             'canManageAuxiliary' => ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'canTrashOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),

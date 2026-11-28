@@ -2,8 +2,10 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Logistics\Application\OverseaWarehouseQueueQuery;
 use App\Modules\Logistics\Application\Xlwms\DeTianyunOutboundBatchService;
 use App\Modules\Logistics\Experience\Jobs\ProcessDeTianyunOutboundBatch;
+use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +19,17 @@ final class DeTianyunOutboundBatchController
     {
         abort_unless($this->canPreview(), 403);
         try {
-            return response()->json($batches->preview($this->selection($request)))
+            $ids = $this->selection($request);
+            $all = $request->input('scope') === 'all';
+            if ($all && ($ids === [] || count($ids) > DeTianyunOutboundBatchService::MAX_ORDERS)) {
+                return response()->json(['scope' => 'all', 'count' => 0, 'scan_count' => count($ids), 'excluded_count' => count($ids), 'overflow' => $ids !== [], 'dry_run' => ! app()->environment('production'), 'items' => [], 'fingerprint' => ''])->header('Cache-Control', 'no-store, private');
+            }
+            $preview = $batches->preview($ids);
+            if ($all) {
+                $preview['scope'] = 'all';
+            }
+
+            return response()->json($preview)
                 ->header('Cache-Control', 'no-store, private');
         } catch (RuntimeException $e) {
             return $this->error($e->getMessage(), 422);
@@ -33,6 +45,9 @@ final class DeTianyunOutboundBatchController
         ]);
         try {
             $selected = $this->selection($request);
+            if ($selected === [] || count($selected) > DeTianyunOutboundBatchService::MAX_ORDERS) {
+                return $this->error('DE_BATCH_SELECTION_INVALID', 422);
+            }
             $preview = $batches->preview($selected);
             if (! hash_equals('CONFIRM_DE_TIANYUN_BATCH_'.$preview['count'], $input['confirmation'])) {
                 return $this->error('DE_BATCH_CONFIRMATION_REQUIRED', 422);
@@ -90,6 +105,13 @@ final class DeTianyunOutboundBatchController
     private function selection(Request $request): array
     {
         $raw = $request->input('order_ids', '') ?? '';
+        if ($request->input('scope') === 'all' && $raw === '') {
+            $q = Shipment::query()->whereHas('warehouse', fn ($w) => $w->where('code', 'DE'))
+                ->whereHas('order', fn ($o) => $o->eligibleForOperations());
+            app(OverseaWarehouseQueueQuery::class)->applyView($q, 'pending');
+
+            return $q->orderBy('order_id')->limit(DeTianyunOutboundBatchService::MAX_ORDERS + 1)->pluck('order_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        }
         if ($request->input('scope') !== 'selected' || ! is_string($raw)
             || preg_match('/^[1-9][0-9]*(?:,[1-9][0-9]*)*$/D', $raw) !== 1) {
             throw new RuntimeException('DE_BATCH_SELECTION_INVALID');

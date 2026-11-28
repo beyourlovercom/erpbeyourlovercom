@@ -70,7 +70,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
             })->all();
     }
 
-    public function forProductIds(array $productIds): array
+    public function forProductIds(array $productIds, ?array $ownReservation = null): array
     {
         $ids = collect($productIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
         if ($ids->isEmpty()) {
@@ -105,15 +105,22 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
             $dated = WarehouseInventoryLot::query()->where('warehouse_id', $usSm['id'])->whereIn('product_id', $ids)->where('stock_status', 'sellable')->whereNotNull('putaway_date')->where('quantity', '>=', 0)->selectRaw('product_id, SUM(quantity) AS quantity')->groupBy('product_id')->pluck('quantity', 'product_id');
         }
 
+        $ownWarehouse = (int) ($ownReservation['warehouse_id'] ?? 0);
+        $ownItems = collect($ownReservation['items'] ?? [])->pluck('quantity', 'product_id');
         $result = [];
         foreach ($ids as $productId) {
-            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId, $usSm, $unknown, $dated, $providerAvailable, $omsSnapshotUnapplied, $latestUsSmSnapshot, $de, $deProviderAvailable): array {
+            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId, $usSm, $unknown, $dated, $providerAvailable, $omsSnapshotUnapplied, $latestUsSmSnapshot, $de, $deProviderAvailable, $ownWarehouse, $ownItems): array {
                 /** @var WarehouseInventory|null $row */
                 $row = $rows->get($productId.':'.$warehouse['id']);
                 $state = (string) $warehouse['inventory_state'];
                 $knownForProduct = $state === 'confirmed' || $row !== null;
                 $onHand = $knownForProduct ? (int) ($row?->quantity_on_hand ?? 0) : null;
                 $reserved = $knownForProduct ? (int) ($row?->quantity_reserved ?? 0) : null;
+                // The order can consume its own verified active reservation.
+                // Never credit a different warehouse, product or another order.
+                if ($reserved !== null && $ownWarehouse === (int) $warehouse['id']) {
+                    $reserved = max(0, $reserved - (int) $ownItems->get($productId, 0));
+                }
                 $available = $knownForProduct ? max($onHand - $reserved, 0) : null;
                 $erpAvailable = $available;
                 $isMorePlus = strtoupper((string) $warehouse['code']) === 'US-LA';

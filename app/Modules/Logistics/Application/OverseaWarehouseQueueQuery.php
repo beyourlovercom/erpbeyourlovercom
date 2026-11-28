@@ -146,6 +146,15 @@ final class OverseaWarehouseQueueQuery
             })->orWhere(function ($ca): void {
                 $ca->whereHas('warehouse', fn ($w) => $w->where('code', 'CA'))
                     ->whereExists(fn ($q) => $this->scopeCa($q, ['queued', 'in_flight', 'accepted', 'uncertain', 'exception', 'blocked']));
+            })->orWhere(function ($ny): void {
+                $ny->whereHas('warehouse', fn ($w) => $w->where('code','US-NY'))
+                    ->whereNotExists(fn ($q) => $this->scopeDeIssued($q))
+                    ->whereExists(function ($q):void {
+                        $q->selectRaw('1')->from('xlwms_ny_dispatch_batch_items as ni')
+                            ->join('xlwms_ny_dispatch_batches as nb','nb.id','=','ni.batch_id')
+                            ->whereColumn('ni.order_id','shipments.order_id')->where('nb.dry_run',false)
+                            ->whereIn('ni.status',['queued','processing','uncertain']);
+                    });
             })->orWhere(function ($moreplus): void {
                 $moreplus->whereHas('warehouse', fn ($w) => $w->whereRaw('UPPER(code) = ?', ['US-LA']))
                     ->where(function ($problem): void {
