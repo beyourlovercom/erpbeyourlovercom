@@ -76,6 +76,22 @@ describe('SkuCombobox', () => {
     expect(wrapper.find('.sku-combobox-dropdown').exists()).toBe(false)
   })
 
+  it('cancels a queued search when the user selects a visible SKU before debounce', async () => {
+    vi.useFakeTimers()
+    mockFetch.mockResolvedValue({ok:true,json:async()=>[{id:42,sku:'SEL-001',name:'Selected Product'}]})
+    const wrapper=mount(SkuCombobox,{props:{modelValue:'',productId:null}})
+    await wrapper.get('input').trigger('focus')
+    await flushPromises()
+    await wrapper.get('input').setValue('SEL')
+    await wrapper.get('.sku-combobox-option').trigger('mousedown')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('input').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.emitted('update:productId')?.at(-1)).toEqual([42])
+    wrapper.unmount()
+  })
+
   it('supports keyboard navigation and Enter selection', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
